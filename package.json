@@ -14,7 +14,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "test": "vitest run",
-    "rebuild:electron": "electron-builder install-app-deps",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3 --build-from-source",
     "rebuild:node": "npm rebuild better-sqlite3",
     "package:win": "npm run build && npm run rebuild:electron && electron-builder --win --config electron-builder.yml"
   },
@@ -26,6 +26,7 @@
     "@electron-toolkit/preload": "3.0.1",
     "@electron-toolkit/tsconfig": "1.0.1",
     "@electron-toolkit/utils": "3.0.0",
+    "@electron/rebuild": "^3.7.1",
     "@types/better-sqlite3": "7.6.11",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",

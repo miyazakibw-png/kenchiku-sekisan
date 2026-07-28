@@ -141,5 +141,93 @@ CREATE TABLE app_settings (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL DEFAULT '{}'
 );
+`,
+  /* 002: 明細を上下2段構成にし、明細番号を数値（小数2桁）へ変更 */ `
+CREATE TABLE m_details_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject_id INTEGER NOT NULL REFERENCES m_subjects(id) ON DELETE CASCADE,
+  detail_number REAL,
+  material_category_id INTEGER REFERENCES m_material_categories(id) ON DELETE SET NULL,
+  part_name TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+INSERT INTO m_details_new (
+  id, subject_id, detail_number, material_category_id, part_name, name,
+  description_upper, unit, remarks_upper, display_order, is_active, created_at, updated_at
+)
+SELECT
+  id, subject_id,
+  CASE
+    WHEN detail_number IS NULL OR trim(detail_number) = '' THEN NULL
+    WHEN trim(detail_number) GLOB '*[!0-9.]*' THEN NULL
+    ELSE CAST(detail_number AS REAL)
+  END,
+  material_category_id, '', name, description, unit, remarks,
+  display_order, is_active, created_at, updated_at
+FROM m_details;
+
+DROP TABLE m_details;
+ALTER TABLE m_details_new RENAME TO m_details;
+CREATE INDEX idx_m_details_subject_order ON m_details(subject_id, display_order);
+CREATE INDEX idx_m_details_number ON m_details(detail_number);
+`,
+  /* 003: 基本マスター群の追加（集計分類・型枠分類・入力拾い用部位・集計部位表示）と単位/材種区分の刷新 */ `
+CREATE TABLE m_aggregation_categories (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE m_formwork_categories (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- 入力拾い用の部位マスタ（部位ID・部位名・備考）
+CREATE TABLE m_pickup_parts (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- 集計部位（部位番号・部位名・視覚的判別用のカラー）
+CREATE TABLE m_aggregation_parts (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  background_color TEXT,
+  text_color TEXT,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+-- 集計部位表示（科目内訳タイトルの階層カッコ書式）
+CREATE TABLE m_part_bracket_formats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  level INTEGER NOT NULL UNIQUE,
+  left_bracket TEXT NOT NULL DEFAULT '',
+  right_bracket TEXT NOT NULL DEFAULT ''
+);
+
+DELETE FROM m_units;
+INSERT INTO m_units (id, name, display_order) VALUES
+  (1,'m',1),(2,'m2',2),(3,'m3',3),(4,'ヶ所',4),(5,'枚',5),(7,'kg',7),(9,'式',9);
+
+UPDATE m_details SET material_category_id = NULL;
+DELETE FROM m_finish_assembly_items;
+DELETE FROM m_material_categories;
+INSERT INTO m_material_categories (id, code, name, display_order) VALUES
+  (1,'1','仕上',1),(2,'2','軸組',2);
 `
 ]

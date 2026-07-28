@@ -18,15 +18,21 @@ export interface Unit {
   displayOrder: number
 }
 
+/** 1明細は上下2段で構成する（上段: 部位名/摘要上段/備考上段、下段: 名称/摘要下段/備考下段） */
 export interface Detail {
   id: number
   subjectId: number
-  detailNumber: string | null
+  /** 明細番号（小数点以下2桁の数値） */
+  detailNumber: number | null
   materialCategoryId: number | null
+  partName: string
   name: string
-  description: string
+  descriptionUpper: string
+  descriptionLower: string
   unit: string
-  remarks: string
+  remarksUpper: string
+  remarksLower: string
+  estimateDisplay: string
   displayOrder: number
   isActive: boolean
 }
@@ -35,12 +41,16 @@ export interface Detail {
 export interface DetailDraft {
   /** 既存行のID。新規行は null */
   id: number | null
-  detailNumber: string | null
+  detailNumber: number | null
   materialCategoryId: number | null
+  partName: string
   name: string
-  description: string
+  descriptionUpper: string
+  descriptionLower: string
   unit: string
-  remarks: string
+  remarksUpper: string
+  remarksLower: string
+  estimateDisplay: string
   isActive: boolean
 }
 

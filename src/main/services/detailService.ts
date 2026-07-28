@@ -2,6 +2,13 @@ import { asc, eq, inArray } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
 import { mDetails, mMaterialCategories, mSubjects, mUnits } from '../db/schema'
 import type { Detail, MasterOptions, SaveDetailsRequest } from '../../shared/types'
+import { DETAIL_NUMBER_DECIMALS } from '../../shared/detailNumber'
+
+/** 明細番号は小数2桁に丸めて保持する */
+function normalizeDetailNumber(value: number | null): number | null {
+  if (value === null || Number.isNaN(value)) return null
+  return Number(value.toFixed(DETAIL_NUMBER_DECIMALS))
+}
 
 export function listMasterOptions(db: AppDatabase): MasterOptions {
   return {
@@ -37,12 +44,16 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
     rows.forEach((row, index) => {
       const values = {
         subjectId,
-        detailNumber: row.detailNumber,
+        detailNumber: normalizeDetailNumber(row.detailNumber),
         materialCategoryId: row.materialCategoryId,
+        partName: row.partName,
         name: row.name,
-        description: row.description,
+        descriptionUpper: row.descriptionUpper,
+        descriptionLower: row.descriptionLower,
         unit: row.unit,
-        remarks: row.remarks,
+        remarksUpper: row.remarksUpper,
+        remarksLower: row.remarksLower,
+        estimateDisplay: row.estimateDisplay,
         isActive: row.isActive,
         displayOrder: index
       }

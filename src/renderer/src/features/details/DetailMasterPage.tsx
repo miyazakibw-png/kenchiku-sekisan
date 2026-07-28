@@ -6,8 +6,11 @@ import {
   createEmptyRow,
   insertRow,
   moveRow,
+  normalizeDetailNumberInput,
   removeRow,
+  toDetailDraft,
   toDraftRows,
+  updateDetailNumberInput,
   updateRow,
   type DraftRow
 } from './rowOperations'
@@ -37,7 +40,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     async (payload: { subjectId: number; rows: DraftRow[]; deletedIds: number[] }) => {
       const saved: Detail[] = await window.sekisan.saveDetails({
         subjectId: payload.subjectId,
-        rows: payload.rows.map(toDraft),
+        rows: payload.rows.map(toDetailDraft),
         deletedIds: payload.deletedIds
       })
       setDeletedIds([])
@@ -125,6 +128,22 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
       mutate(updateRow(rows, index, field, value))
     },
     [mutate, rows]
+  )
+
+  const handleDetailNumberChange = useCallback(
+    (index: number, input: string) => {
+      const next = updateDetailNumberInput(rows, index, input)
+      if (next !== rows) mutate(next)
+    },
+    [mutate, rows]
+  )
+
+  const handleDetailNumberBlur = useCallback(
+    (index: number) => {
+      const next = normalizeDetailNumberInput(rows, index)
+      if (next !== rows) setRows(next)
+    },
+    [rows]
   )
 
   const handleKeyDown = useCallback(
@@ -215,41 +234,48 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
           <table className="grid">
             <thead>
               <tr>
-                <th className="col-handle">↕</th>
-                <th className="col-no">No.</th>
+                <th className="col-handle" rowSpan={2}>↕</th>
+                <th className="col-no" rowSpan={2}>No.</th>
+                <th className="col-number">（部位）</th>
+                <th className="col-category" rowSpan={2}>材種区分</th>
+                <th className="col-name">部位名（上段）</th>
+                <th className="col-description">摘要（上段）</th>
+                <th className="col-unit" />
+                <th className="col-remarks">備考（上段）</th>
+                <th className="col-estimate" rowSpan={2}>積算用表示</th>
+                <th className="col-active" rowSpan={2}>有効</th>
+              </tr>
+              <tr>
                 <th className="col-number">明細番号</th>
-                <th className="col-category">材種区分</th>
-                <th className="col-name">名称</th>
-                <th className="col-description">摘要</th>
+                <th className="col-name">名称（下段）</th>
+                <th className="col-description">摘要（下段）</th>
                 <th className="col-unit">単位</th>
-                <th className="col-remarks">備考</th>
-                <th className="col-active">有効</th>
+                <th className="col-remarks">備考（下段）</th>
               </tr>
             </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr
-                  key={row.key}
-                  className={index === selectedIndex ? 'selected' : undefined}
-                  draggable
-                  onDragStart={() => (dragIndex.current = index)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (dragIndex.current !== null) handleMove(dragIndex.current, index)
-                    dragIndex.current = null
-                  }}
-                  onFocus={() => setSelectedIndex(index)}
-                  onKeyDown={(e) => handleKeyDown(e, index)}
-                >
-                  <td className="col-handle" title="ドラッグで並び替え">⠿</td>
-                  <td className="col-no">{index + 1}</td>
-                  <td>
-                    <input
-                      value={row.detailNumber ?? ''}
-                      onChange={(e) => handleChange(index, 'detailNumber', e.target.value)}
-                    />
+            {rows.map((row, index) => (
+              <tbody
+                key={row.key}
+                className={index === selectedIndex ? 'detail-group selected' : 'detail-group'}
+                draggable
+                onDragStart={() => (dragIndex.current = index)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex.current !== null) handleMove(dragIndex.current, index)
+                  dragIndex.current = null
+                }}
+                onFocus={() => setSelectedIndex(index)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
+              >
+                <tr className="upper-row">
+                  <td className="col-handle" rowSpan={2} title="ドラッグで並び替え">
+                    ⠿
                   </td>
-                  <td>
+                  <td className="col-no" rowSpan={2}>
+                    {index + 1}
+                  </td>
+                  <td className="col-number part-number" />
+                  <td className="col-category" rowSpan={2}>
                     <select
                       value={row.materialCategoryId ?? ''}
                       onChange={(e) =>
@@ -261,26 +287,74 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                       }
                     >
                       <option value="">（未設定）</option>
-                      {options.materialCategories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
+                      {options.materialCategories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
                         </option>
                       ))}
                     </select>
                   </td>
+                  <td className="col-name">
+                    <span className="readonly-cell" title="部位名（表示専用）">
+                      {row.partName}
+                    </span>
+                  </td>
                   <td>
                     <input
+                      placeholder="摘要（上段）"
+                      value={row.descriptionUpper}
+                      onChange={(e) => handleChange(index, 'descriptionUpper', e.target.value)}
+                    />
+                  </td>
+                  <td className="col-unit part-number" />
+                  <td>
+                    <input
+                      placeholder="備考（上段）"
+                      value={row.remarksUpper}
+                      onChange={(e) => handleChange(index, 'remarksUpper', e.target.value)}
+                    />
+                  </td>
+                  <td className="col-estimate" rowSpan={2}>
+                    <input
+                      value={row.estimateDisplay}
+                      onChange={(e) => handleChange(index, 'estimateDisplay', e.target.value)}
+                    />
+                  </td>
+                  <td className="col-active" rowSpan={2}>
+                    <input
+                      type="checkbox"
+                      checked={row.isActive}
+                      onChange={(e) => handleChange(index, 'isActive', e.target.checked)}
+                    />
+                  </td>
+                </tr>
+                <tr className="lower-row">
+                  <td className="col-number">
+                    <input
+                      className="num"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      title="明細番号（小数点以下2桁の数値）"
+                      value={row.detailNumberInput}
+                      onChange={(e) => handleDetailNumberChange(index, e.target.value)}
+                      onBlur={() => handleDetailNumberBlur(index)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      placeholder="名称"
                       value={row.name}
                       onChange={(e) => handleChange(index, 'name', e.target.value)}
                     />
                   </td>
                   <td>
                     <input
-                      value={row.description}
-                      onChange={(e) => handleChange(index, 'description', e.target.value)}
+                      placeholder="摘要（下段）"
+                      value={row.descriptionLower}
+                      onChange={(e) => handleChange(index, 'descriptionLower', e.target.value)}
                     />
                   </td>
-                  <td>
+                  <td className="col-unit">
                     <input
                       list="unit-options"
                       value={row.unit}
@@ -289,27 +363,23 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                   </td>
                   <td>
                     <input
-                      value={row.remarks}
-                      onChange={(e) => handleChange(index, 'remarks', e.target.value)}
-                    />
-                  </td>
-                  <td className="col-active">
-                    <input
-                      type="checkbox"
-                      checked={row.isActive}
-                      onChange={(e) => handleChange(index, 'isActive', e.target.checked)}
+                      placeholder="備考（下段）"
+                      value={row.remarksLower}
+                      onChange={(e) => handleChange(index, 'remarksLower', e.target.value)}
                     />
                   </td>
                 </tr>
-              ))}
-              {rows.length === 0 && (
+              </tbody>
+            ))}
+            {rows.length === 0 && (
+              <tbody>
                 <tr>
-                  <td colSpan={9} className="empty">
+                  <td colSpan={10} className="empty">
                     明細がありません。「➕ 行挿入」で追加してください。
                   </td>
                 </tr>
-              )}
-            </tbody>
+              </tbody>
+            )}
           </table>
           <datalist id="unit-options">
             {options.units.map((u) => (
@@ -322,7 +392,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
           <button type="button" onClick={() => mutate([...rows, createEmptyRow()])}>
             ➕ 最終行に追加
           </button>
-          <span>{rows.length} 行</span>
+          <span>{rows.length} 明細（1明細=2段）</span>
           <span className="hint">
             Ctrl+Enter:行挿入 / Ctrl+Delete:行削除 / Alt+↑↓:行移動 / Ctrl+D:行コピー / Ctrl+S:保存
           </span>
@@ -330,9 +400,4 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
       </section>
     </div>
   )
-}
-
-function toDraft(row: DraftRow): DetailDraft {
-  const { key: _key, ...draft } = row
-  return draft
 }

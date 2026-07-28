@@ -51,8 +51,8 @@ export const mUnits = sqliteTable('m_units', {
 
 /**
  * 明細マスター。
- * Excelの「名称・摘要・備考（上段/下段）」は name/description/remarks に統合し、
- * 改行や上下段分割は帳票フォーマッター側で制御する。
+ * 1明細は上下2段で構成する（Excel準拠）。
+ * 上段: 部位名 / 摘要(上段) / 備考(上段)、下段: 名称 / 摘要(下段) / 備考(下段)。
  */
 export const mDetails = sqliteTable(
   'm_details',
@@ -61,14 +61,22 @@ export const mDetails = sqliteTable(
     subjectId: integer('subject_id')
       .notNull()
       .references(() => mSubjects.id, { onDelete: 'cascade' }),
-    detailNumber: text('detail_number'),
+    /** 明細番号（小数点以下2桁の数値。例: 302.00） */
+    detailNumber: real('detail_number'),
     materialCategoryId: integer('material_category_id').references(() => mMaterialCategories.id, {
       onDelete: 'set null'
     }),
+    /** 部位名（上段） */
+    partName: text('part_name').notNull().default(''),
+    /** 名称（下段） */
     name: text('name').notNull().default(''),
-    description: text('description').notNull().default(''),
+    descriptionUpper: text('description_upper').notNull().default(''),
+    descriptionLower: text('description_lower').notNull().default(''),
     unit: text('unit').notNull().default(''),
-    remarks: text('remarks').notNull().default(''),
+    remarksUpper: text('remarks_upper').notNull().default(''),
+    remarksLower: text('remarks_lower').notNull().default(''),
+    /** 積算用表示 */
+    estimateDisplay: text('estimate_display').notNull().default(''),
     displayOrder: integer('display_order').notNull().default(0),
     isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
     createdAt: text('created_at').notNull().default(now),
@@ -216,6 +224,46 @@ export const calcSheetEntries = sqliteTable(
 export const appSettings = sqliteTable('app_settings', {
   key: text('key').primaryKey(),
   valueJson: text('value_json').notNull().default('{}')
+})
+
+/** 集計分類マスタ（内訳の階層化・部位Ⅱ科目内区分などを制御） */
+export const mAggregationCategories = sqliteTable('m_aggregation_categories', {
+  id: integer('id').primaryKey(),
+  name: text('name').notNull(),
+  displayOrder: integer('display_order').notNull().default(0)
+})
+
+/** 型枠分類マスタ（左官の打放補修から型枠を算出する際の仕様決定に使用） */
+export const mFormworkCategories = sqliteTable('m_formwork_categories', {
+  id: integer('id').primaryKey(),
+  name: text('name').notNull(),
+  displayOrder: integer('display_order').notNull().default(0)
+})
+
+/** 入力拾い用の部位マスタ */
+export const mPickupParts = sqliteTable('m_pickup_parts', {
+  id: integer('id').primaryKey(),
+  name: text('name').notNull(),
+  note: text('note').notNull().default(''),
+  displayOrder: integer('display_order').notNull().default(0)
+})
+
+/** 集計部位マスタ（視覚的判別用のカラーを保持） */
+export const mAggregationParts = sqliteTable('m_aggregation_parts', {
+  id: integer('id').primaryKey(),
+  name: text('name').notNull(),
+  backgroundColor: text('background_color'),
+  textColor: text('text_color'),
+  displayOrder: integer('display_order').notNull().default(0)
+})
+
+/** 集計部位表示マスタ（部位階層ごとのカッコ書式） */
+export const mPartBracketFormats = sqliteTable('m_part_bracket_formats', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  /** 1=部位Ⅰ, 2=部位Ⅱ, 3=部位Ⅲ */
+  level: integer('level').notNull().unique(),
+  leftBracket: text('left_bracket').notNull().default(''),
+  rightBracket: text('right_bracket').notNull().default('')
 })
 
 export type MDetail = typeof mDetails.$inferSelect

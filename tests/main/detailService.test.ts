@@ -26,10 +26,14 @@ function draft(name: string, overrides: Partial<DetailDraft> = {}): DetailDraft 
     id: null,
     detailNumber: null,
     materialCategoryId: null,
+    partName: '',
     name,
-    description: '',
+    descriptionUpper: '',
+    descriptionLower: '',
     unit: '㎡',
-    remarks: '',
+    remarksUpper: '',
+    remarksLower: '',
+    estimateDisplay: '',
     isActive: true,
     ...overrides
   }
@@ -43,12 +47,34 @@ beforeEach(() => {
   subjectId = listMasterOptions(db).subjects[0].id
 })
 
+describe('基本マスター群のシード', () => {
+  it('集計分類・型枠分類・部位・カッコ書式が投入される', () => {
+    expect(db.select().from(schema.mAggregationCategories).all()).toEqual([
+      { id: 2, name: '部位Ⅱ科目内区分', displayOrder: 2 }
+    ])
+    expect(db.select().from(schema.mFormworkCategories).all().map((c) => c.name)).toEqual([
+      '基礎階',
+      '地下階',
+      '地上階'
+    ])
+    expect(db.select().from(schema.mPickupParts).all().length).toBeGreaterThan(0)
+    const parts = db.select().from(schema.mAggregationParts).all()
+    expect(parts.length).toBe(20)
+    expect(parts.every((p) => p.textColor !== null)).toBe(true)
+    const brackets = db.select().from(schema.mPartBracketFormats).all()
+    expect(brackets.map((b) => [b.level, b.leftBracket, b.rightBracket])).toEqual([
+      [1, '（', '）'],
+      [2, '＜', '＞']
+    ])
+  })
+})
+
 describe('明細マスターの保存', () => {
   it('初期マスター（科目・材種・単位）が投入される', () => {
     const options = listMasterOptions(db)
     expect(options.subjects.length).toBeGreaterThan(0)
-    expect(options.materialCategories.map((c) => c.name)).toContain('下地1')
-    expect(options.units.map((u) => u.name)).toContain('㎡')
+    expect(options.materialCategories.map((c) => c.name)).toEqual(['仕上', '軸組'])
+    expect(options.units.map((u) => u.name)).toContain('m2')
   })
 
   it('新規行を採番順に登録する', () => {
@@ -90,6 +116,37 @@ describe('明細マスターの保存', () => {
       deletedIds: [saved[1].id]
     })
     expect(after.map((d) => d.name)).toEqual(['A'])
+  })
+
+  it('上下2段の各項目を保存・復元する', () => {
+    const [saved] = saveDetails(db, {
+      subjectId,
+      rows: [
+        draft('フリーアクセスフロア', {
+          partName: '同上切欠合せボーダー',
+          descriptionUpper: 'H100 ○○下',
+          descriptionLower: '端部専用支持脚及び補強用金物共',
+          remarksUpper: '備考上',
+          remarksLower: '備考下',
+          estimateDisplay: 'フリーアクセスフロア'
+        })
+      ],
+      deletedIds: []
+    })
+    expect(saved.partName).toBe('同上切欠合せボーダー')
+    expect(saved.descriptionLower).toBe('端部専用支持脚及び補強用金物共')
+    expect(saved.remarksLower).toBe('備考下')
+    expect(saved.estimateDisplay).toBe('フリーアクセスフロア')
+  })
+
+  it('明細番号を小数2桁の数値として保持する', () => {
+    const saved = saveDetails(db, {
+      subjectId,
+      rows: [draft('A', { detailNumber: 302 }), draft('B', { detailNumber: 12.3456 })],
+      deletedIds: []
+    })
+    expect(saved[0].detailNumber).toBe(302)
+    expect(saved[1].detailNumber).toBe(12.35)
   })
 
   it('科目ごとに明細を分離して取得する', () => {

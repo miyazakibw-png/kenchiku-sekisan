@@ -5,7 +5,9 @@ import {
   insertRow,
   moveRow,
   removeRow,
+  normalizeDetailNumberInput,
   toDraftRows,
+  updateDetailNumberInput,
   updateRow
 } from '../../src/renderer/src/features/details/rowOperations'
 import type { Detail } from '../../src/shared/types'
@@ -14,12 +16,16 @@ function detail(id: number, name: string): Detail {
   return {
     id,
     subjectId: 1,
-    detailNumber: `D${id}`,
+    detailNumber: id + 0.5,
     materialCategoryId: null,
+    partName: '',
     name,
-    description: '',
+    descriptionUpper: '',
+    descriptionLower: '',
     unit: '㎡',
-    remarks: '',
+    remarksUpper: '',
+    remarksLower: '',
+    estimateDisplay: '',
     displayOrder: id,
     isActive: true
   }
@@ -62,5 +68,25 @@ describe('明細マスターの行操作', () => {
 
   it('空行のキーは一意である', () => {
     expect(createEmptyRow().key).not.toBe(createEmptyRow().key)
+  })
+
+  it('明細番号は小数2桁表示で復元される', () => {
+    expect(rows[0].detailNumberInput).toBe('1.50')
+  })
+
+  it('明細番号は数値のみ受け付け、不正入力を拒否する', () => {
+    expect(updateDetailNumberInput(rows, 0, '302.5')[0]).toMatchObject({
+      detailNumberInput: '302.5',
+      detailNumber: 302.5
+    })
+    expect(updateDetailNumberInput(rows, 0, '302.')[0].detailNumberInput).toBe('302.')
+    expect(updateDetailNumberInput(rows, 0, 'K-001')).toBe(rows)
+    expect(updateDetailNumberInput(rows, 0, '302.555')).toBe(rows)
+    expect(updateDetailNumberInput(rows, 0, '')[0].detailNumber).toBeNull()
+  })
+
+  it('フォーカスアウトで明細番号を小数2桁へ整形する', () => {
+    const edited = updateDetailNumberInput(rows, 0, '302.5')
+    expect(normalizeDetailNumberInput(edited, 0)[0].detailNumberInput).toBe('302.50')
   })
 })

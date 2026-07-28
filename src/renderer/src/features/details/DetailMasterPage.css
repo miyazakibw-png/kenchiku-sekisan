@@ -141,8 +141,36 @@
   outline-offset: -2px;
 }
 
-.grid tr.selected {
+/* 1明細＝上段(部位)＋下段(明細)の2段構成 */
+.grid tbody.detail-group {
+  border-bottom: 2px solid #b9c0cb;
+}
+
+.grid tbody.selected {
   background: var(--selected);
+}
+
+.grid tr.upper-row td {
+  border-bottom-style: dotted;
+}
+
+.grid tr.upper-row input {
+  color: #33415c;
+}
+
+.part-number {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent,
+    transparent 4px,
+    #eef0f4 4px,
+    #eef0f4 8px
+  );
+}
+
+.grid td input.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .col-handle {
@@ -194,4 +222,12 @@
 .grid-footer .hint {
   margin-left: auto;
   color: #777;
+}
+
+.grid td .readonly-cell {
+  display: block;
+  padding: 2px 4px;
+  min-height: 20px;
+  color: #33415c;
+  background: #f2f4f8;
 }
