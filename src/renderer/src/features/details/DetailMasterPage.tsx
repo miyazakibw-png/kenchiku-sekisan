@@ -66,6 +66,16 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     }
   }, [subject])
 
+  // 未保存の編集を確定してから科目を切り替える（切替時のデータロスト防止）
+  const handleSelectSubject = useCallback(
+    async (next: Subject) => {
+      if (next.id === subject?.id) return
+      await saveNow()
+      setSubject(next)
+    },
+    [saveNow, subject]
+  )
+
   const mutate = useCallback(
     (next: DraftRow[]) => {
       setRows(next)
@@ -165,7 +175,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
               <button
                 type="button"
                 className={s.id === subject?.id ? 'subject-item active' : 'subject-item'}
-                onClick={() => setSubject(s)}
+                onClick={() => void handleSelectSubject(s)}
               >
                 <span className="subject-code">{s.code}</span>
                 {s.name}
