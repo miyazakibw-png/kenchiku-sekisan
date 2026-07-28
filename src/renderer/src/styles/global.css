@@ -1,0 +1,76 @@
+:root {
+  --border: #d5d9e0;
+  --surface: #f5f6f8;
+  --hover: #e8ebf0;
+  --selected: #e3f0ff;
+  --accent: #1f6feb;
+  font-family: 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  font-size: 14px;
+  color: #1f2328;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  height: 100%;
+}
+
+.app-nav {
+  background: #1f2937;
+  color: #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 12px;
+}
+
+.app-title {
+  padding: 14px 12px;
+  font-weight: 700;
+  font-size: 14px;
+  border-bottom: 1px solid #374151;
+}
+
+.nav-item {
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.nav-item:hover {
+  background: #374151;
+}
+
+.nav-item.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.nav-icon {
+  margin-right: 6px;
+}
+
+.app-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.placeholder {
+  padding: 32px;
+  color: #666;
+}
