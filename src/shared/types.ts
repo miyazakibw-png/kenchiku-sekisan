@@ -66,3 +66,59 @@ export interface MasterOptions {
   materialCategories: MaterialCategory[]
   units: Unit[]
 }
+
+/** 仕上明細セットの構成上の役割 */
+export type AssemblyItemRole = 'finish' | 'base1' | 'base2' | 'reinforce' | 'other'
+
+/** basic: 全物件共通の基本セット / project: 積算入力時に自動登録される物件固有セット */
+export type AssemblyScope = 'basic' | 'project'
+
+export interface AssemblyItem {
+  id: number | null
+  detailId: number
+  role: AssemblyItemRole
+  formula: string
+  coefficient: number
+  /** 表示用（保存対象外） */
+  detailName?: string
+  detailUnit?: string
+}
+
+export interface FinishAssembly {
+  id: number
+  assemblyCode: string | null
+  assemblyName: string
+  partId: number | null
+  usageCategory: string | null
+  scope: AssemblyScope
+  projectId: number | null
+  note: string
+  displayOrder: number
+  items: AssemblyItem[]
+}
+
+export interface SaveAssemblyRequest {
+  /** 既存セットのID。新規は null */
+  id: number | null
+  assemblyCode: string | null
+  assemblyName: string
+  partId: number | null
+  usageCategory: string | null
+  scope: AssemblyScope
+  projectId: number | null
+  note: string
+  items: AssemblyItem[]
+}
+
+export interface Part {
+  id: number
+  code: string | null
+  name: string
+  displayOrder: number
+}
+
+export interface AssemblyMasterOptions {
+  parts: Part[]
+  usageCategories: string[]
+  details: Detail[]
+}

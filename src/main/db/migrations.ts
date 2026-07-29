@@ -229,5 +229,12 @@ DELETE FROM m_finish_assembly_items;
 DELETE FROM m_material_categories;
 INSERT INTO m_material_categories (id, code, name, display_order) VALUES
   (1,'1','仕上',1),(2,'2','軸組',2);
+`,
+  /* 004: 仕上明細セットに 基本セット / 物件セット の区分を追加 */ `
+ALTER TABLE m_finish_assemblies ADD COLUMN scope TEXT NOT NULL DEFAULT 'basic';
+ALTER TABLE m_finish_assemblies ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE;
+-- 物件セットを基本セットへ昇格した場合の由来を保持する
+ALTER TABLE m_finish_assemblies ADD COLUMN source_assembly_id INTEGER REFERENCES m_finish_assemblies(id) ON DELETE SET NULL;
+CREATE INDEX idx_m_finish_assemblies_scope ON m_finish_assemblies(scope, project_id, display_order);
 `
 ]

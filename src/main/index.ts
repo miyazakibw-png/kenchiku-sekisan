@@ -3,8 +3,15 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { closeDatabase, getDatabase, initDatabase } from './db'
 import { listDetails, listMasterOptions, saveDetails } from './services/detailService'
+import {
+  deleteAssembly,
+  listAssemblies,
+  listAssemblyMasterOptions,
+  promoteAssemblyToBasic,
+  saveAssembly
+} from './services/assemblyService'
 import { IPC } from '../shared/ipc'
-import type { SaveDetailsRequest } from '../shared/types'
+import type { SaveAssemblyRequest, SaveDetailsRequest } from '../shared/types'
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -40,6 +47,17 @@ function registerIpcHandlers(): void {
   )
   ipcMain.handle(IPC.detailsSave, (_event, request: SaveDetailsRequest) =>
     saveDetails(getDatabase(), request)
+  )
+  ipcMain.handle(IPC.assemblyOptions, () => listAssemblyMasterOptions(getDatabase()))
+  ipcMain.handle(IPC.assemblyList, (_event, projectId: number | null) =>
+    listAssemblies(getDatabase(), projectId)
+  )
+  ipcMain.handle(IPC.assemblySave, (_event, request: SaveAssemblyRequest) =>
+    saveAssembly(getDatabase(), request)
+  )
+  ipcMain.handle(IPC.assemblyDelete, (_event, id: number) => deleteAssembly(getDatabase(), id))
+  ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
+    promoteAssemblyToBasic(getDatabase(), id)
   )
 }
 

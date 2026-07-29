@@ -98,13 +98,18 @@ export const mFinishAssemblies = sqliteTable(
     partId: integer('part_id').references(() => mParts.id, { onDelete: 'set null' }),
     /** 外部/内部などの用途区分 */
     usageCategory: text('usage_category'),
+    /** basic: 全物件共通の基本セット / project: 物件固有セット */
+    scope: text('scope').notNull().default('basic'),
+    projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    sourceAssemblyId: integer('source_assembly_id'),
     note: text('note').notNull().default(''),
     displayOrder: integer('display_order').notNull().default(0),
     createdAt: text('created_at').notNull().default(now),
     updatedAt: text('updated_at').notNull().default(now)
   },
   (t) => ({
-    partIdx: index('idx_m_finish_assemblies_part').on(t.partId, t.displayOrder)
+    partIdx: index('idx_m_finish_assemblies_part').on(t.partId, t.displayOrder),
+    scopeIdx: index('idx_m_finish_assemblies_scope').on(t.scope, t.projectId, t.displayOrder)
   })
 )
 
