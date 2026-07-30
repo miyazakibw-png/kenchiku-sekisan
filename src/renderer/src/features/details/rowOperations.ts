@@ -1,0 +1,126 @@
+import { formatDetailNumber, isValidDetailNumberInput, parseDetailNumber } from '@shared/detailNumber'
+import type { Detail, DetailDraft } from '@shared/types'
+
+export interface DraftRow extends DetailDraft {
+  /** 画面上で行を一意に識別するキー（新規行を含む） */
+  key: string
+  /** 明細番号の入力途中の文字列（例: "302."） */
+  detailNumberInput: string
+}
+
+let sequence = 0
+
+export function createEmptyRow(): DraftRow {
+  sequence += 1
+  return {
+    key: `new-${sequence}`,
+    id: null,
+    detailNumber: null,
+    detailNumberInput: '',
+    materialCategoryId: null,
+    partName: '',
+    name: '',
+    descriptionUpper: '',
+    descriptionLower: '',
+    unit: '',
+    remarksUpper: '',
+    remarksLower: '',
+    estimateDisplay: '',
+    isActive: true
+  }
+}
+
+export function toDraftRows(details: Detail[]): DraftRow[] {
+  return details.map((detail) => ({
+    key: `row-${detail.id}`,
+    id: detail.id,
+    detailNumber: detail.detailNumber,
+    detailNumberInput: formatDetailNumber(detail.detailNumber),
+    materialCategoryId: detail.materialCategoryId,
+    partName: detail.partName,
+    name: detail.name,
+    descriptionUpper: detail.descriptionUpper,
+    descriptionLower: detail.descriptionLower,
+    unit: detail.unit,
+    remarksUpper: detail.remarksUpper,
+    remarksLower: detail.remarksLower,
+    estimateDisplay: detail.estimateDisplay,
+    isActive: detail.isActive
+  }))
+}
+
+export function insertRow(rows: DraftRow[], index: number): DraftRow[] {
+  const next = [...rows]
+  next.splice(clampIndex(index, rows.length), 0, createEmptyRow())
+  return next
+}
+
+export function removeRow(rows: DraftRow[], index: number): DraftRow[] {
+  if (index < 0 || index >= rows.length) return rows
+  return rows.filter((_, i) => i !== index)
+}
+
+export function copyRow(rows: DraftRow[], index: number): DraftRow[] {
+  if (index < 0 || index >= rows.length) return rows
+  const next = [...rows]
+  next.splice(index + 1, 0, { ...omitKeys(rows[index]), key: createEmptyRow().key, id: null })
+  return next
+}
+
+export function moveRow(rows: DraftRow[], from: number, to: number): DraftRow[] {
+  if (from < 0 || from >= rows.length || to < 0 || to >= rows.length || from === to) return rows
+  const next = [...rows]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  return next
+}
+
+export function updateRow<K extends keyof DetailDraft>(
+  rows: DraftRow[],
+  index: number,
+  field: K,
+  value: DetailDraft[K]
+): DraftRow[] {
+  if (index < 0 || index >= rows.length) return rows
+  return rows.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+}
+
+/**
+ * 明細番号の入力を反映する。
+ * 形式違反（数値以外・小数3桁以上など）はその場で入力を拒否する。
+ */
+export function updateDetailNumberInput(
+  rows: DraftRow[],
+  index: number,
+  input: string
+): DraftRow[] {
+  if (index < 0 || index >= rows.length) return rows
+  if (!isValidDetailNumberInput(input)) return rows
+  return rows.map((row, i) =>
+    i === index ? { ...row, detailNumberInput: input, detailNumber: parseDetailNumber(input) } : row
+  )
+}
+
+/** フォーカスアウト時に小数2桁表示へ整形する */
+export function normalizeDetailNumberInput(rows: DraftRow[], index: number): DraftRow[] {
+  if (index < 0 || index >= rows.length) return rows
+  const formatted = formatDetailNumber(rows[index].detailNumber)
+  if (formatted === rows[index].detailNumberInput) return rows
+  return rows.map((row, i) => (i === index ? { ...row, detailNumberInput: formatted } : row))
+}
+
+/** 複製時は入力値のみ引き継ぎ、IDは新規扱いにする */
+function omitKeys(row: DraftRow): Omit<DraftRow, 'key' | 'id'> {
+  const { key: _key, id: _id, ...rest } = row
+  return rest
+}
+
+/** 保存用に画面専用フィールドを除去する */
+export function toDetailDraft(row: DraftRow): DetailDraft {
+  const { key: _key, detailNumberInput: _input, ...draft } = row
+  return draft
+}
+
+function clampIndex(index: number, length: number): number {
+  return Math.min(Math.max(index, 0), length)
+}

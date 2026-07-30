@@ -1,0 +1,111 @@
+.assembly-page {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.assembly-tree {
+  border-right: 1px solid #d5d9e0;
+  overflow: auto;
+  padding: 8px;
+  background: #f7f8fa;
+}
+
+.tree-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.tree-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.tree-item.child {
+  padding-left: 22px;
+  font-size: 12px;
+}
+
+.tree-item:hover {
+  background: #e8ecf3;
+}
+
+.tree-item.active {
+  background: #d7e3f6;
+  font-weight: 600;
+}
+
+.assembly-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.assembly-main .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.assembly-main .status {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.assembly-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.assembly-list .grid tbody tr {
+  cursor: pointer;
+}
+
+.assembly-list .grid tbody tr.selected {
+  background: var(--selected, #eaf1fb);
+}
+
+.assembly-editor .fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.assembly-editor .fields label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 2px;
+}
+
+.assembly-editor .fields label.wide {
+  flex: 1 1 320px;
+}
+
+.assembly-editor .items .ops button {
+  padding: 0 4px;
+}
+
+.assembly-editor .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.assembly-page .empty {
+  text-align: center;
+  color: #8a93a2;
+  padding: 12px;
+}
