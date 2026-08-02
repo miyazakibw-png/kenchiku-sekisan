@@ -14,6 +14,16 @@ import {
   updateRow,
   type DraftRow
 } from './rowOperations'
+import { useUndoRedo } from '../../hooks/useUndoRedo'
+import {
+  buildPastePreview,
+  copyRangeAsTsv,
+  isInRange,
+  normalizeRange,
+  type CellRange,
+  type PastePreview
+} from '../grid/gridClipboard'
+import { buildDetailColumns, sortByDetailNumber } from './detailColumns'
 import './DetailMasterPage.css'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -35,6 +45,17 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [filter, setFilter] = useState('')
   const dragIndex = useRef<number | null>(null)
+  const [selectedCol, setSelectedCol] = useState(0)
+  const [range, setRange] = useState<CellRange | null>(null)
+  const [sortAscending, setSortAscending] = useState(false)
+  const [preview, setPreview] = useState<PastePreview<DraftRow> | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const history = useUndoRedo<DraftRow[]>()
+
+  const columns = useMemo(
+    () => buildDetailColumns(options.materialCategories, options.units),
+    [options.materialCategories, options.units]
+  )
 
   const persist = useCallback(
     async (payload: { subjectId: number; rows: DraftRow[]; deletedIds: number[] }) => {
@@ -81,11 +102,79 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
 
   const mutate = useCallback(
     (next: DraftRow[]) => {
-      setRows(next)
+      setRows((prev) => {
+        history.push(prev)
+        return sortAscending ? sortByDetailNumber(next) : next
+      })
       markDirty()
     },
-    [markDirty]
+    [history, markDirty, sortAscending]
   )
+
+  const handleUndo = useCallback(() => {
+    setRows((current) => history.undo(current) ?? current)
+    markDirty()
+  }, [history, markDirty])
+
+  const handleRedo = useCallback(() => {
+    setRows((current) => history.redo(current) ?? current)
+    markDirty()
+  }, [history, markDirty])
+
+  const handleToggleSort = useCallback(() => {
+    const next = !sortAscending
+    setSortAscending(next)
+    if (next) mutate(sortByDetailNumber(rows))
+  }, [mutate, rows, sortAscending])
+
+  const selectCell = useCallback((rowIndex: number, col: number, extend: boolean) => {
+    setSelectedIndex(rowIndex)
+    setSelectedCol(col)
+    setRange((prev) =>
+      extend && prev
+        ? { ...prev, endRow: rowIndex, endCol: col }
+        : { startRow: rowIndex, startCol: col, endRow: rowIndex, endCol: col }
+    )
+  }, [])
+
+  const cellProps = useCallback(
+    (rowIndex: number, col: number) => ({
+      className: isInRange(range, rowIndex, col) ? 'cell in-range' : 'cell',
+      onMouseDown: (e: React.MouseEvent) => selectCell(rowIndex, col, e.shiftKey),
+      onFocus: () => selectCell(rowIndex, col, false)
+    }),
+    [range, selectCell]
+  )
+
+  const handleCopyRange = useCallback(async () => {
+    const target = range ?? {
+      startRow: selectedIndex,
+      startCol: selectedCol,
+      endRow: selectedIndex,
+      endCol: selectedCol
+    }
+    const tsv = copyRangeAsTsv(rows, columns, target)
+    await navigator.clipboard.writeText(tsv)
+    const r = normalizeRange(target)
+    setToast(`📋 ${r.endRow - r.startRow + 1}行 × ${r.endCol - r.startCol + 1}列をコピーしました`)
+  }, [columns, range, rows, selectedCol, selectedIndex])
+
+  const handlePasteRequest = useCallback(async () => {
+    const text = await navigator.clipboard.readText()
+    if (!text) return
+    setPreview(
+      buildPastePreview(rows, columns, text, selectedIndex, selectedCol, createEmptyRow)
+    )
+  }, [columns, rows, selectedCol, selectedIndex])
+
+  const handlePasteConfirm = useCallback(() => {
+    if (!preview) return
+    mutate(preview.rows)
+    setToast(
+      `✅ ${preview.cells.length}行を貼り付けました（追加 ${preview.addedRows} 行）。Ctrl+Z で元に戻せます`
+    )
+    setPreview(null)
+  }, [mutate, preview])
 
   const handleInsert = useCallback(
     (index: number) => {
@@ -166,9 +255,30 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
       } else if (event.ctrlKey && event.key === 's') {
         event.preventDefault()
         void saveNow()
+      } else if (event.ctrlKey && event.key === 'c') {
+        void handleCopyRange()
+      } else if (event.ctrlKey && event.key === 'v') {
+        event.preventDefault()
+        void handlePasteRequest()
+      } else if (event.ctrlKey && event.key === 'z') {
+        event.preventDefault()
+        handleUndo()
+      } else if (event.ctrlKey && event.key === 'y') {
+        event.preventDefault()
+        handleRedo()
       }
     },
-    [handleCopy, handleDelete, handleInsert, handleMove, saveNow]
+    [
+      handleCopy,
+      handleCopyRange,
+      handleDelete,
+      handleInsert,
+      handleMove,
+      handlePasteRequest,
+      handleRedo,
+      handleUndo,
+      saveNow
+    ]
   )
 
   const visibleSubjects = useMemo(() => {
@@ -223,6 +333,44 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
             <button type="button" title="行コピー (Ctrl+D)" onClick={() => handleCopy(selectedIndex)}>
               ⧉ 行コピー
             </button>
+            <button
+              type="button"
+              title="選択範囲をExcel形式でコピー (Ctrl+C)"
+              onClick={() => void handleCopyRange()}
+            >
+              📋 コピー
+            </button>
+            <button
+              type="button"
+              title="Excelから範囲貼り付け (Ctrl+V)"
+              onClick={() => void handlePasteRequest()}
+            >
+              📥 貼り付け
+            </button>
+            <button
+              type="button"
+              title="元に戻す (Ctrl+Z)"
+              disabled={!history.canUndo}
+              onClick={handleUndo}
+            >
+              ↩ 戻す
+            </button>
+            <button
+              type="button"
+              title="やり直す (Ctrl+Y)"
+              disabled={!history.canRedo}
+              onClick={handleRedo}
+            >
+              ↪ 進む
+            </button>
+            <button
+              type="button"
+              title="明細番号の昇順で表示する"
+              className={sortAscending ? 'toggle on' : 'toggle'}
+              onClick={handleToggleSort}
+            >
+              {sortAscending ? '🔢 昇順表示 ON' : '🔢 昇順表示 OFF'}
+            </button>
             <button type="button" title="今すぐ保存 (Ctrl+S)" onClick={() => void saveNow()}>
               💾 保存
             </button>
@@ -275,7 +423,11 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                     {index + 1}
                   </td>
                   <td className="col-number part-number" />
-                  <td className="col-category" rowSpan={2}>
+                  <td
+                    {...cellProps(index, 8)}
+                    className={`col-category ${cellProps(index, 8).className}`}
+                    rowSpan={2}
+                  >
                     <select
                       value={row.materialCategoryId ?? ''}
                       onChange={(e) =>
@@ -294,12 +446,12 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                       ))}
                     </select>
                   </td>
-                  <td className="col-name">
+                  <td {...cellProps(index, 1)}>
                     <span className="readonly-cell" title="部位名（表示専用）">
                       {row.partName}
                     </span>
                   </td>
-                  <td>
+                  <td {...cellProps(index, 3)}>
                     <input
                       placeholder="摘要（上段）"
                       value={row.descriptionUpper}
@@ -307,14 +459,18 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                     />
                   </td>
                   <td className="col-unit part-number" />
-                  <td>
+                  <td {...cellProps(index, 6)}>
                     <input
                       placeholder="備考（上段）"
                       value={row.remarksUpper}
                       onChange={(e) => handleChange(index, 'remarksUpper', e.target.value)}
                     />
                   </td>
-                  <td className="col-estimate" rowSpan={2}>
+                  <td
+                    {...cellProps(index, 9)}
+                    className={`col-estimate ${cellProps(index, 9).className}`}
+                    rowSpan={2}
+                  >
                     <input
                       value={row.estimateDisplay}
                       onChange={(e) => handleChange(index, 'estimateDisplay', e.target.value)}
@@ -329,7 +485,10 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                   </td>
                 </tr>
                 <tr className="lower-row">
-                  <td className="col-number">
+                  <td
+                    {...cellProps(index, 0)}
+                    className={`col-number ${cellProps(index, 0).className}`}
+                  >
                     <input
                       className="num"
                       inputMode="decimal"
@@ -340,28 +499,31 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                       onBlur={() => handleDetailNumberBlur(index)}
                     />
                   </td>
-                  <td>
+                  <td {...cellProps(index, 2)}>
                     <input
                       placeholder="名称"
                       value={row.name}
                       onChange={(e) => handleChange(index, 'name', e.target.value)}
                     />
                   </td>
-                  <td>
+                  <td {...cellProps(index, 4)}>
                     <input
                       placeholder="摘要（下段）"
                       value={row.descriptionLower}
                       onChange={(e) => handleChange(index, 'descriptionLower', e.target.value)}
                     />
                   </td>
-                  <td className="col-unit">
+                  <td
+                    {...cellProps(index, 5)}
+                    className={`col-unit ${cellProps(index, 5).className}`}
+                  >
                     <input
                       list="unit-options"
                       value={row.unit}
                       onChange={(e) => handleChange(index, 'unit', e.target.value)}
                     />
                   </td>
-                  <td>
+                  <td {...cellProps(index, 7)}>
                     <input
                       placeholder="備考（下段）"
                       value={row.remarksLower}
@@ -394,10 +556,75 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
           </button>
           <span>{rows.length} 明細（1明細=2段）</span>
           <span className="hint">
-            Ctrl+Enter:行挿入 / Ctrl+Delete:行削除 / Alt+↑↓:行移動 / Ctrl+D:行コピー / Ctrl+S:保存
+            Ctrl+Enter:行挿入 / Ctrl+Delete:行削除 / Alt+↑↓:行移動 / Ctrl+D:行コピー / Ctrl+S:保存 /
+            Ctrl+C:コピー / Ctrl+V:貼り付け / Ctrl+Z:戻す / Ctrl+Y:進む（Shift+クリックで範囲選択）
           </span>
         </footer>
       </section>
+
+      {preview && (
+        <div className="paste-preview-backdrop" role="dialog">
+          <div className="paste-preview">
+            <h3>📥 貼り付けプレビュー</h3>
+            <p>
+              {preview.cells.length}行 × {preview.cells[0]?.length ?? 0}列 を{' '}
+              {preview.startRow + 1}行目・「{preview.columns[preview.startCol]?.label ?? ''}」列から
+              貼り付けます（新規追加 {preview.addedRows} 行）。
+              {preview.errorCount > 0 && (
+                <strong className="error"> ⚠ エラー {preview.errorCount} 件（赤いセル）</strong>
+              )}
+            </p>
+            <div className="preview-scroll">
+              <table className="grid">
+                <thead>
+                  <tr>
+                    {preview.cells[0]?.map((_, c) => (
+                      <th key={c}>{preview.columns[preview.startCol + c]?.label ?? '（列なし）'}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.cells.map((line, r) => (
+                    <tr key={r}>
+                      {line.map((cell, c) => (
+                        <td key={c} className={cell.error ? 'invalid' : ''} title={cell.error}>
+                          {cell.value}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="preview-actions">
+              <button type="button" onClick={() => setPreview(null)}>
+                ✖ キャンセル
+              </button>
+              <button type="button" onClick={handlePasteConfirm}>
+                ✅ 貼り付けを確定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast">
+          <span>{toast}</span>
+          <button
+            type="button"
+            onClick={() => {
+              handleUndo()
+              setToast(null)
+            }}
+          >
+            ↩ 元に戻す
+          </button>
+          <button type="button" onClick={() => setToast(null)}>
+            ✖
+          </button>
+        </div>
+      )}
     </div>
   )
 }

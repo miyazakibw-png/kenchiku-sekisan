@@ -231,3 +231,76 @@
   color: #33415c;
   background: #f2f4f8;
 }
+
+.grid td.in-range {
+  background: #dbe8fb;
+  outline: 1px solid #7aa4e0;
+}
+
+.grid-toolbar .toggle.on {
+  background: #d7e3f6;
+  font-weight: 600;
+}
+
+.paste-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.paste-preview {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px;
+  width: min(900px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paste-preview .preview-scroll {
+  overflow: auto;
+  border: 1px solid #d5d9e0;
+}
+
+.paste-preview td.invalid {
+  background: #fde2e2;
+  color: #a11;
+}
+
+.paste-preview .preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.paste-preview .error {
+  color: #a11;
+}
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #33415c;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 30;
+}
+
+.toast button {
+  background: #ffffff22;
+  color: #fff;
+  border: 1px solid #ffffff55;
+  border-radius: 4px;
+  cursor: pointer;
+}
