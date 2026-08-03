@@ -48,6 +48,16 @@ export function moveItem(items: AssemblyItem[], from: number, to: number): Assem
   return next
 }
 
+/**
+ * 係数の入力途中（"1." など）を保持したまま数値へ反映する。
+ * 数値化できない入力は係数を変更しない。
+ */
+export function setCoefficientInput(input: string): Partial<AssemblyItem> {
+  const parsed = Number(input)
+  if (input === '' || Number.isNaN(parsed)) return { coefficientInput: input }
+  return { coefficientInput: input, coefficient: parsed }
+}
+
 export function updateItem(
   items: AssemblyItem[],
   index: number,

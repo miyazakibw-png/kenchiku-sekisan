@@ -79,6 +79,8 @@ export interface AssemblyItem {
   role: AssemblyItemRole
   formula: string
   coefficient: number
+  /** 係数の入力途中の文字列（例: "1."）。画面専用で保存対象外 */
+  coefficientInput?: string
   /** 表示用（保存対象外） */
   detailName?: string
   detailUnit?: string

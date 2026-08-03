@@ -8,6 +8,7 @@ import {
   moveItem,
   removeItem,
   roleLabel,
+  setCoefficientInput,
   updateItem
 } from '../../src/renderer/src/features/assemblies/assemblyEditor'
 
@@ -70,6 +71,13 @@ describe('仕上明細セットの編集ロジック', () => {
     expect(copy.id).toBe(0)
     expect(copy.assemblyName).toBe('内部壁（複製）')
     expect(copy.items[0].id).toBeNull()
+  })
+
+  it('係数は入力途中の文字列を保持し、数値化できる場合のみ反映する', () => {
+    expect(setCoefficientInput('1.')).toEqual({ coefficientInput: '1.', coefficient: 1 })
+    expect(setCoefficientInput('1.5')).toEqual({ coefficientInput: '1.5', coefficient: 1.5 })
+    expect(setCoefficientInput('')).toEqual({ coefficientInput: '' })
+    expect(setCoefficientInput('あ')).toEqual({ coefficientInput: 'あ' })
   })
 
   it('役割を日本語表示する', () => {

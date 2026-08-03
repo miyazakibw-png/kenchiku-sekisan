@@ -9,6 +9,7 @@ import {
   filterAssemblies,
   moveItem,
   removeItem,
+  setCoefficientInput,
   updateItem
 } from './assemblyEditor'
 import './AssemblyMasterPage.css'
@@ -341,12 +342,14 @@ export default function AssemblyMasterPage(): JSX.Element {
                         <input
                           className="num"
                           inputMode="decimal"
-                          value={item.coefficient}
+                          value={item.coefficientInput ?? String(item.coefficient)}
                           onChange={(e) =>
                             patch({
-                              items: updateItem(selected.items, index, {
-                                coefficient: Number(e.target.value) || 0
-                              })
+                              items: updateItem(
+                                selected.items,
+                                index,
+                                setCoefficientInput(e.target.value)
+                              )
                             })
                           }
                         />

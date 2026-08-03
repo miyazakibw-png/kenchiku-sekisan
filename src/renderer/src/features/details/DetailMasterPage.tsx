@@ -100,24 +100,29 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     [saveNow, subject]
   )
 
+  const rowsRef = useRef<DraftRow[]>(rows)
+  rowsRef.current = rows
+
   const mutate = useCallback(
     (next: DraftRow[]) => {
-      setRows((prev) => {
-        history.push(prev)
-        return sortAscending ? sortByDetailNumber(next) : next
-      })
+      history.push(rowsRef.current)
+      setRows(sortAscending ? sortByDetailNumber(next) : next)
       markDirty()
     },
     [history, markDirty, sortAscending]
   )
 
   const handleUndo = useCallback(() => {
-    setRows((current) => history.undo(current) ?? current)
+    const previous = history.undo(rowsRef.current)
+    if (previous === null) return
+    setRows(previous)
     markDirty()
   }, [history, markDirty])
 
   const handleRedo = useCallback(() => {
-    setRows((current) => history.redo(current) ?? current)
+    const next = history.redo(rowsRef.current)
+    if (next === null) return
+    setRows(next)
     markDirty()
   }, [history, markDirty])
 
@@ -137,11 +142,20 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     )
   }, [])
 
+  // Shift+クリック直後のフォーカスで範囲が1セルへ縮小しないよう、押下時の状態を引き継ぐ
+  const extendRef = useRef(false)
+
   const cellProps = useCallback(
     (rowIndex: number, col: number) => ({
       className: isInRange(range, rowIndex, col) ? 'cell in-range' : 'cell',
-      onMouseDown: (e: React.MouseEvent) => selectCell(rowIndex, col, e.shiftKey),
-      onFocus: () => selectCell(rowIndex, col, false)
+      onMouseDown: (e: React.MouseEvent) => {
+        extendRef.current = e.shiftKey
+        selectCell(rowIndex, col, e.shiftKey)
+      },
+      onFocus: () => {
+        selectCell(rowIndex, col, extendRef.current)
+        extendRef.current = false
+      }
     }),
     [range, selectCell]
   )
