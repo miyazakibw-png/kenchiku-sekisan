@@ -76,6 +76,22 @@ describe('グリッドのExcel互換コピー＆ペースト', () => {
     expect(preview.cells[0][3].error).toBe('列がありません')
   })
 
+  it('警告はエラーと区別して数える', () => {
+    const withWarning: typeof columns = [
+      ...columns.slice(0, 2),
+      {
+        key: 'qty',
+        label: '数量',
+        get: (r) => String(r.qty ?? ''),
+        set: (r, v) => ({ row: { ...r, qty: Number(v) }, warning: '要確認' })
+      }
+    ]
+    const preview = buildPastePreview(rows, withWarning, 'A\t床\t5', 0, 0, createRow)
+    expect(preview.errorCount).toBe(0)
+    expect(preview.warningCount).toBe(1)
+    expect(preview.rows[0].qty).toBe(5)
+  })
+
   it('全角数字・桁区切りは正規化して取り込む', () => {
     const preview = buildPastePreview(rows, columns, 'A\t床\t１，２３４', 0, 0, createRow)
     expect(preview.errorCount).toBe(0)

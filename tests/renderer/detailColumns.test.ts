@@ -47,8 +47,10 @@ describe('明細マスターの貼り付け列定義', () => {
     const set = column('unit').set
     if (!set) throw new Error('set が未定義です')
     expect(set(createEmptyRow(), 'm2').error).toBeUndefined()
+    expect(set(createEmptyRow(), '2').row.unit).toBe('m2')
     const warned = set(createEmptyRow(), '坪')
-    expect(warned.error).toBeDefined()
+    expect(warned.error).toBeUndefined()
+    expect(warned.warning).toBeDefined()
     expect(warned.row.unit).toBe('坪')
   })
 

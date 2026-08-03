@@ -14,6 +14,7 @@ import {
   updateRow,
   type DraftRow
 } from './rowOperations'
+import UnitInput, { UnitOptions } from '../../components/UnitInput'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import {
   buildPastePreview,
@@ -38,6 +39,12 @@ interface Props {
   options: MasterOptions
 }
 
+/** Undo/Redoで復元する画面状態 */
+interface HistorySnapshot {
+  rows: DraftRow[]
+  deletedIds: number[]
+}
+
 export default function DetailMasterPage({ options }: Props): JSX.Element {
   const [subject, setSubject] = useState<Subject | null>(options.subjects[0] ?? null)
   const [rows, setRows] = useState<DraftRow[]>([])
@@ -50,7 +57,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
   const [sortAscending, setSortAscending] = useState(false)
   const [preview, setPreview] = useState<PastePreview<DraftRow> | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const history = useUndoRedo<DraftRow[]>()
+  const history = useUndoRedo<HistorySnapshot>()
 
   const columns = useMemo(
     () => buildDetailColumns(options.materialCategories, options.units),
@@ -100,12 +107,26 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     [saveNow, subject]
   )
 
-  const rowsRef = useRef<DraftRow[]>(rows)
-  rowsRef.current = rows
+  const snapshotRef = useRef<HistorySnapshot>({ rows, deletedIds })
+  snapshotRef.current = { rows, deletedIds }
+
+  /**
+   * 履歴からの復元。
+   * 保存済みの行が復元後に存在しない場合は削除対象へ加える
+   * （加えないと次回の自動保存でDBから読み直され復活してしまう）。
+   */
+  const restore = useCallback((snapshot: HistorySnapshot) => {
+    const keptIds = new Set(snapshot.rows.map((row) => row.id).filter((id): id is number => id !== null))
+    const removedIds = snapshotRef.current.rows
+      .map((row) => row.id)
+      .filter((id): id is number => id !== null && !keptIds.has(id))
+    setRows(snapshot.rows)
+    setDeletedIds([...new Set([...snapshot.deletedIds, ...removedIds])])
+  }, [])
 
   const mutate = useCallback(
     (next: DraftRow[]) => {
-      history.push(rowsRef.current)
+      history.push(snapshotRef.current)
       setRows(sortAscending ? sortByDetailNumber(next) : next)
       markDirty()
     },
@@ -113,18 +134,18 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
   )
 
   const handleUndo = useCallback(() => {
-    const previous = history.undo(rowsRef.current)
+    const previous = history.undo(snapshotRef.current)
     if (previous === null) return
-    setRows(previous)
+    restore(previous)
     markDirty()
-  }, [history, markDirty])
+  }, [history, markDirty, restore])
 
   const handleRedo = useCallback(() => {
-    const next = history.redo(rowsRef.current)
+    const next = history.redo(snapshotRef.current)
     if (next === null) return
-    setRows(next)
+    restore(next)
     markDirty()
-  }, [history, markDirty])
+  }, [history, markDirty, restore])
 
   const handleToggleSort = useCallback(() => {
     const next = !sortAscending
@@ -531,10 +552,10 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                     {...cellProps(index, 5)}
                     className={`col-unit ${cellProps(index, 5).className}`}
                   >
-                    <input
-                      list="unit-options"
+                    <UnitInput
+                      units={options.units}
                       value={row.unit}
-                      onChange={(e) => handleChange(index, 'unit', e.target.value)}
+                      onChange={(value) => handleChange(index, 'unit', value)}
                     />
                   </td>
                   <td {...cellProps(index, 7)}>
@@ -557,11 +578,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
               </tbody>
             )}
           </table>
-          <datalist id="unit-options">
-            {options.units.map((u) => (
-              <option key={u.id} value={u.name} />
-            ))}
-          </datalist>
+          <UnitOptions units={options.units} />
         </div>
 
         <footer className="grid-footer">
@@ -585,7 +602,13 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
               {preview.startRow + 1}行目・「{preview.columns[preview.startCol]?.label ?? ''}」列から
               貼り付けます（新規追加 {preview.addedRows} 行）。
               {preview.errorCount > 0 && (
-                <strong className="error"> ⚠ エラー {preview.errorCount} 件（赤いセル）</strong>
+                <strong className="error"> ⛔ エラー {preview.errorCount} 件（赤いセル・取り込みません）</strong>
+              )}
+              {preview.warningCount > 0 && (
+                <strong className="warning">
+                  {' '}
+                  ⚠ 警告 {preview.warningCount} 件（黄色いセル・取り込みます）
+                </strong>
               )}
             </p>
             <div className="preview-scroll">
@@ -601,7 +624,11 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                   {preview.cells.map((line, r) => (
                     <tr key={r}>
                       {line.map((cell, c) => (
-                        <td key={c} className={cell.error ? 'invalid' : ''} title={cell.error}>
+                        <td
+                          key={c}
+                          className={cell.error ? 'invalid' : cell.warning ? 'warned' : ''}
+                          title={cell.error ?? cell.warning}
+                        >
                           {cell.value}
                         </td>
                       ))}

@@ -6,8 +6,11 @@ export interface GridColumn<T> {
   label: string
   /** 行から表示用の文字列を取り出す */
   get: (row: T) => string
-  /** 文字列を行へ適用する。不正値は error を返して確定前に色分け表示する */
-  set?: (row: T, value: string) => { row: T; error?: string }
+  /**
+   * 文字列を行へ適用する。
+   * error: 取り込めない不正値 / warning: 取り込むが確認が必要な値
+   */
+  set?: (row: T, value: string) => { row: T; error?: string; warning?: string }
 }
 
 export interface CellRange {
@@ -53,6 +56,7 @@ export function copyRangeAsTsv<T>(
 export interface PreviewCell {
   value: string
   error?: string
+  warning?: string
 }
 
 export interface PastePreview<T> {
@@ -62,6 +66,7 @@ export interface PastePreview<T> {
   cells: PreviewCell[][]
   columns: GridColumn<T>[]
   errorCount: number
+  warningCount: number
   /** 新しく追加される行数 */
   addedRows: number
   startRow: number
@@ -84,6 +89,7 @@ export function buildPastePreview<T>(
   const nextRows = [...rows]
   const cells: PreviewCell[][] = []
   let errorCount = 0
+  let warningCount = 0
   let addedRows = 0
 
   matrix.forEach((line, r) => {
@@ -103,10 +109,20 @@ export function buildPastePreview<T>(
       const result = column.set(nextRows[rowIndex], value)
       nextRows[rowIndex] = result.row
       if (result.error) errorCount += 1
-      previewLine.push({ value, error: result.error })
+      if (result.warning) warningCount += 1
+      previewLine.push({ value, error: result.error, warning: result.warning })
     })
     cells.push(previewLine)
   })
 
-  return { rows: nextRows, cells, columns, errorCount, addedRows, startRow, startCol }
+  return {
+    rows: nextRows,
+    cells,
+    columns,
+    errorCount,
+    warningCount,
+    addedRows,
+    startRow,
+    startCol
+  }
 }

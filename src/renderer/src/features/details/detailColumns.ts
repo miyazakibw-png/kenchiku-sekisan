@@ -4,6 +4,7 @@ import {
   isValidDetailNumberInput,
   parseDetailNumber
 } from '@shared/detailNumber'
+import { resolveUnitName } from '@shared/units'
 import type { GridColumn } from '../grid/gridClipboard'
 import type { DraftRow } from './rowOperations'
 
@@ -50,8 +51,10 @@ export function buildDetailColumns(
       label: '単位',
       get: (row) => row.unit,
       set: (row, value) => {
+        const resolved = resolveUnitName(units, value)
+        if (resolved !== value) return { row: { ...row, unit: resolved } }
         if (value !== '' && !units.some((u) => u.name === value)) {
-          return { row: { ...row, unit: value }, error: '単位マスタに存在しません' }
+          return { row: { ...row, unit: value }, warning: '単位マスタに存在しません（取り込みます）' }
         }
         return { row: { ...row, unit: value } }
       }

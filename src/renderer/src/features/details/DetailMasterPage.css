@@ -304,3 +304,12 @@
   border-radius: 4px;
   cursor: pointer;
 }
+
+.paste-preview td.warned {
+  background: #fff4d6;
+  color: #7a5a00;
+}
+
+.paste-preview .warning {
+  color: #7a5a00;
+}
