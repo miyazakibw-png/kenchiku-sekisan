@@ -25,7 +25,7 @@ import {
   type PastePreview
 } from '../grid/gridClipboard'
 import { useColumnWidths } from '../grid/useColumnWidths'
-import { buildDetailColumns, sortByDetailNumber } from './detailColumns'
+import { buildDetailColumns, sortDetailRows } from './detailColumns'
 import './DetailMasterPage.css'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -190,13 +190,18 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
     )
   }, [])
 
+  const sortRows = useCallback(
+    (target: DraftRow[]) => sortDetailRows(target, options.units, options.materialCategories),
+    [options.materialCategories, options.units]
+  )
+
   const mutate = useCallback(
     (next: DraftRow[]) => {
       history.push(snapshotRef.current)
-      setRows(sortAscending ? sortByDetailNumber(next) : next)
+      setRows(sortAscending ? sortRows(next) : next)
       markDirty()
     },
-    [history, markDirty, sortAscending]
+    [history, markDirty, sortAscending, sortRows]
   )
 
   const handleUndo = useCallback(() => {
@@ -216,7 +221,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
   const handleToggleSort = useCallback(() => {
     const next = !sortAscending
     setSortAscending(next)
-    if (next) mutate(sortByDetailNumber(rows))
+    if (next) mutate(sortRows(rows))
   }, [mutate, rows, sortAscending])
 
   const selectCell = useCallback((rowIndex: number, col: number, extend: boolean) => {

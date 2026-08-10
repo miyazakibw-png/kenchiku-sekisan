@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MaterialCategory, Unit } from '../../src/shared/types'
 import {
   buildDetailColumns,
-  sortByDetailNumber
+  sortDetailRows
 } from '../../src/renderer/src/features/details/detailColumns'
 import { createEmptyRow } from '../../src/renderer/src/features/details/rowOperations'
 
@@ -61,6 +61,6 @@ describe('明細マスターの貼り付け列定義', () => {
       { ...createEmptyRow(), detailNumber: 2.5 },
       { ...createEmptyRow(), detailNumber: 1 }
     ]
-    expect(sortByDetailNumber(rows).map((r) => r.detailNumber)).toEqual([1, 2.5, 10, null])
+    expect(sortDetailRows(rows).map((r) => r.detailNumber)).toEqual([1, 2.5, 10, null])
   })
 })

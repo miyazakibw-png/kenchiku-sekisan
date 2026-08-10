@@ -5,6 +5,7 @@ import {
   parseDetailNumber
 } from '@shared/detailNumber'
 import { resolveUnitName } from '@shared/units'
+import { sortDetails, type SortableDetail } from '../../../../core/sort/detailSortKey'
 import type { GridColumn } from '../grid/gridClipboard'
 import type { DraftRow } from './rowOperations'
 
@@ -93,11 +94,39 @@ export function buildDetailColumns(
 }
 
 /** 明細番号の昇順（未設定は末尾）。同値は元の並びを維持する */
-export function sortByDetailNumber(rows: DraftRow[]): DraftRow[] {
-  return [...rows].sort((a, b) => {
-    if (a.detailNumber === null && b.detailNumber === null) return 0
-    if (a.detailNumber === null) return 1
-    if (b.detailNumber === null) return -1
-    return a.detailNumber - b.detailNumber
-  })
+/** 共通ソートキー用に画面の行を変換する（明細マスターは単一科目・部位Ⅰ/Ⅱ未使用） */
+function toSortable(
+  row: DraftRow,
+  units: Unit[],
+  materialCategories: MaterialCategory[]
+): SortableDetail {
+  return {
+    subjectOrder: null,
+    part1: '',
+    part2SortOrder: null,
+    part2Name: '',
+    partNumber: null,
+    detailNumber: row.detailNumber,
+    partName: row.partName,
+    name: row.name,
+    unitOrder: units.find((u) => u.name === row.unit)?.id ?? null,
+    descriptionLower: row.descriptionLower,
+    descriptionUpper: row.descriptionUpper,
+    remarksLower: row.remarksLower,
+    remarksUpper: row.remarksUpper,
+    materialCategoryOrder:
+      materialCategories.find((c) => c.id === row.materialCategoryId)?.displayOrder ?? null
+  }
+}
+
+/**
+ * 明細行を昇順に並べ替える。
+ * 並び順ルールは共通モジュール（core/sort/detailSortKey）に集約している。
+ */
+export function sortDetailRows(
+  rows: DraftRow[],
+  units: Unit[] = [],
+  materialCategories: MaterialCategory[] = []
+): DraftRow[] {
+  return sortDetails(rows, (row) => toSortable(row, units, materialCategories))
 }
