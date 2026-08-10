@@ -24,6 +24,7 @@ import {
   type CellRange,
   type PastePreview
 } from '../grid/gridClipboard'
+import { useColumnWidths } from '../grid/useColumnWidths'
 import { buildDetailColumns, sortByDetailNumber } from './detailColumns'
 import './DetailMasterPage.css'
 
@@ -37,6 +38,44 @@ const STATUS_LABEL: Record<string, string> = {
 
 interface Props {
   options: MasterOptions
+}
+
+/** 表の列順（colgroup と列幅キーの対応） */
+const COLUMN_KEYS = [
+  'handle',
+  'no',
+  'number',
+  'category',
+  'name',
+  'description',
+  'unit',
+  'remarks',
+  'estimate',
+  'active'
+] as const
+
+/** 表示列の既定幅（ユーザーがドラッグで変更でき、localStorageに保存される） */
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  handle: 24,
+  no: 44,
+  number: 110,
+  category: 110,
+  name: 200,
+  description: 220,
+  unit: 90,
+  remarks: 180,
+  estimate: 130,
+  active: 48
+}
+
+/** 列幅の自動調整で参照するセル文字列 */
+const COLUMN_TEXTS: Record<string, (row: DraftRow) => string[]> = {
+  number: (row) => [row.detailNumberInput],
+  name: (row) => [row.partName, row.name],
+  description: (row) => [row.descriptionUpper, row.descriptionLower],
+  unit: (row) => [row.unit],
+  remarks: (row) => [row.remarksUpper, row.remarksLower],
+  estimate: (row) => [row.estimateDisplay]
 }
 
 /** Undo/Redoで復元する画面状態 */
@@ -58,10 +97,34 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
   const [preview, setPreview] = useState<PastePreview<DraftRow> | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const history = useUndoRedo<HistorySnapshot>()
+  const columnWidths = useColumnWidths('grid.width.details', DEFAULT_COLUMN_WIDTHS)
 
   const columns = useMemo(
     () => buildDetailColumns(options.materialCategories, options.units),
     [options.materialCategories, options.units]
+  )
+
+  /**
+   * 列見出しの右端に置く伸縮つまみ。
+   * ドラッグ=幅変更 / ダブルクリック=内容に合わせて自動調整 / 右クリック=既定幅に戻す
+   */
+  const resizer = useCallback(
+    (key: string): JSX.Element => (
+      <span
+        className="col-resizer"
+        title="ドラッグで幅変更／ダブルクリックで自動調整／右クリックで既定幅"
+        onMouseDown={(e) => columnWidths.startResize(key, e)}
+        onDoubleClick={() => {
+          const pick = COLUMN_TEXTS[key]
+          columnWidths.fitWidth(key, pick ? rows.flatMap(pick) : [])
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          columnWidths.resetWidth(key)
+        }}
+      />
+    ),
+    [columnWidths, rows]
   )
 
   const persist = useCallback(
@@ -409,6 +472,9 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
             >
               {sortAscending ? '🔢 昇順表示 ON' : '🔢 昇順表示 OFF'}
             </button>
+            <button type="button" title="列幅をすべて既定に戻す" onClick={columnWidths.resetAll}>
+              ↔ 列幅リセット
+            </button>
             <button type="button" title="今すぐ保存 (Ctrl+S)" onClick={() => void saveNow()}>
               💾 保存
             </button>
@@ -418,17 +484,26 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
 
         <div className="grid-scroll">
           <table className="grid">
+            <colgroup>
+              {COLUMN_KEYS.map((key) => (
+                <col key={key} style={{ width: `${columnWidths.widths[key]}px` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th className="col-handle" rowSpan={2}>↕</th>
                 <th className="col-no" rowSpan={2}>No.</th>
-                <th className="col-number">（部位）</th>
-                <th className="col-category" rowSpan={2}>材種区分</th>
-                <th className="col-name">部位名（上段）</th>
-                <th className="col-description">摘要（上段）</th>
-                <th className="col-unit" />
-                <th className="col-remarks">備考（上段）</th>
-                <th className="col-estimate" rowSpan={2}>積算用表示</th>
+                <th className="col-number">（部位）{resizer('number')}</th>
+                <th className="col-category" rowSpan={2}>
+                  材種区分{resizer('category')}
+                </th>
+                <th className="col-name">部位名（上段）{resizer('name')}</th>
+                <th className="col-description">摘要（上段）{resizer('description')}</th>
+                <th className="col-unit">{resizer('unit')}</th>
+                <th className="col-remarks">備考（上段）{resizer('remarks')}</th>
+                <th className="col-estimate" rowSpan={2}>
+                  積算用表示{resizer('estimate')}
+                </th>
                 <th className="col-active" rowSpan={2}>有効</th>
               </tr>
               <tr>
