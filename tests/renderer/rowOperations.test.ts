@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assignSavedIds,
   copyRow,
   createEmptyRow,
   insertRow,
@@ -88,5 +89,19 @@ describe('明細マスターの行操作', () => {
   it('フォーカスアウトで明細番号を小数2桁へ整形する', () => {
     const edited = updateDetailNumberInput(rows, 0, '302.5')
     expect(normalizeDetailNumberInput(edited, 0)[0].detailNumberInput).toBe('302.50')
+  })
+})
+
+describe('保存後のID反映', () => {
+  it('キーが一致する未保存行にだけIDを埋め、行オブジェクトの同一性を保つ', () => {
+    const rows = toDraftRows([])
+    const first = createEmptyRow()
+    const second = { ...createEmptyRow(), id: 5 }
+    const target = [first, second]
+    const next = assignSavedIds(target, new Map([[first.key, 11], [second.key, 99]]))
+    expect(next[0].id).toBe(11)
+    expect(next[1].id).toBe(5)
+    expect(next[1]).toBe(second)
+    expect(rows).toEqual([])
   })
 })

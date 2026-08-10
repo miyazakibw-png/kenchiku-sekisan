@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Detail, DetailDraft, MasterOptions, Subject } from '@shared/types'
 import { useAutoSave } from '../../hooks/useAutoSave'
 import {
+  assignSavedIds,
   copyRow,
   createEmptyRow,
   insertRow,
@@ -134,10 +135,22 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
         rows: payload.rows.map(toDetailDraft),
         deletedIds: payload.deletedIds
       })
-      setDeletedIds([])
-      setRows(toDraftRows(saved))
+      setDeletedIds((prev) => prev.filter((id) => !payload.deletedIds.includes(id)))
+      if (saved.length !== payload.rows.length) {
+        // 想定外のずれが起きた場合のみ作り直す（履歴は現在のデータと合わなくなるため破棄）
+        setRows(toDraftRows(saved))
+        history.clear()
+        return
+      }
+      const idByKey = new Map<string, number>()
+      payload.rows.forEach((row, index) => idByKey.set(row.key, saved[index].id))
+      setRows((prev) => assignSavedIds(prev, idByKey))
+      history.map((snapshot) => ({
+        rows: assignSavedIds(snapshot.rows, idByKey),
+        deletedIds: snapshot.deletedIds
+      }))
     },
-    []
+    [history]
   )
 
   const { status, markDirty, saveNow } = useAutoSave({

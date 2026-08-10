@@ -10,6 +10,11 @@ interface UndoRedo<T> {
   canUndo: boolean
   canRedo: boolean
   clear: () => void
+  /**
+   * 履歴中のすべてのスナップショットを変換する。
+   * 保存でIDが振られた等、履歴が現在のデータと食い違うのを防ぐために使う。
+   */
+  map: (transform: (snapshot: T) => T) => void
 }
 
 /**
@@ -62,10 +67,16 @@ export function useUndoRedo<T>(limit: number = UNDO_HISTORY_LIMIT): UndoRedo<T> 
     refresh()
   }, [refresh])
 
+  const map = useCallback((transform: (snapshot: T) => T) => {
+    undoStack.current = undoStack.current.map(transform)
+    redoStack.current = redoStack.current.map(transform)
+  }, [])
+
   return {
     push,
     undo,
     redo,
+    map,
     canUndo: undoStack.current.length > 0,
     canRedo: redoStack.current.length > 0,
     clear

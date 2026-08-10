@@ -124,3 +124,15 @@ export function toDetailDraft(row: DraftRow): DetailDraft {
 function clampIndex(index: number, length: number): number {
   return Math.min(Math.max(index, 0), length)
 }
+
+/**
+ * 保存で採番されたIDを、キーが一致する行へ反映する。
+ * 保存のたびに行を作り直すと（キーが変わり）Undo履歴が現在のデータと食い違うため、
+ * 行オブジェクトはそのままにIDだけを埋める。
+ */
+export function assignSavedIds(rows: DraftRow[], idByKey: Map<string, number>): DraftRow[] {
+  return rows.map((row) => {
+    const id = idByKey.get(row.key)
+    return row.id === null && id !== undefined ? { ...row, id } : row
+  })
+}
