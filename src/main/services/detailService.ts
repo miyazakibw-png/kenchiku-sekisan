@@ -34,6 +34,7 @@ export function listDetails(db: AppDatabase, subjectId: number): Detail[] {
 /**
  * 明細マスター画面の一括保存。
  * 画面の行順をそのまま display_order として採番し、削除行を物理削除する。
+ * Undoで復活した行（IDを持つが既にDBに無い行）は同じIDで再作成する。
  */
 export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detail[] {
   const { subjectId, rows, deletedIds } = request
@@ -59,10 +60,16 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
       }
       if (row.id === null) {
         tx.insert(mDetails).values(values).run()
-      } else {
-        tx.update(mDetails)
-          .set({ ...values, updatedAt: new Date().toISOString() })
-          .where(eq(mDetails.id, row.id))
+        return
+      }
+      const updated = tx
+        .update(mDetails)
+        .set({ ...values, updatedAt: new Date().toISOString() })
+        .where(eq(mDetails.id, row.id))
+        .run()
+      if (updated.changes === 0) {
+        tx.insert(mDetails)
+          .values({ ...values, id: row.id })
           .run()
       }
     })

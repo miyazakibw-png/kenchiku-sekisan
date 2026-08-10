@@ -156,3 +156,22 @@ describe('明細マスターの保存', () => {
     expect(listDetails(db, options.subjects[1].id).map((d) => d.name)).toEqual(['B'])
   })
 })
+
+describe('Undoで復活した行の保存', () => {
+  it('削除保存済みの行を同じIDで再作成する', () => {
+    const saved = saveDetails(db, {
+      subjectId,
+      rows: [draft('残す'), draft('消す')],
+      deletedIds: []
+    })
+    const removed = saved[1]
+    saveDetails(db, { subjectId, rows: [saved[0]], deletedIds: [removed.id] })
+    expect(listDetails(db, subjectId).length).toBe(1)
+
+    const restored = saveDetails(db, { subjectId, rows: [saved[0], removed], deletedIds: [] })
+    expect(restored.map((d) => [d.id, d.name])).toEqual([
+      [saved[0].id, '残す'],
+      [removed.id, '消す']
+    ])
+  })
+})

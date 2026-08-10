@@ -114,6 +114,7 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
    * 履歴からの復元。
    * 保存済みの行が復元後に存在しない場合は削除対象へ加える
    * （加えないと次回の自動保存でDBから読み直され復活してしまう）。
+   * 逆に復元で戻ってきた行は削除対象から外す（保存時に同じIDで再作成される）。
    */
   const restore = useCallback((snapshot: HistorySnapshot) => {
     const keptIds = new Set(snapshot.rows.map((row) => row.id).filter((id): id is number => id !== null))
@@ -121,7 +122,9 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
       .map((row) => row.id)
       .filter((id): id is number => id !== null && !keptIds.has(id))
     setRows(snapshot.rows)
-    setDeletedIds([...new Set([...snapshot.deletedIds, ...removedIds])])
+    setDeletedIds(
+      [...new Set([...snapshot.deletedIds, ...removedIds])].filter((id) => !keptIds.has(id))
+    )
   }, [])
 
   const mutate = useCallback(
