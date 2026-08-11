@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   assignSavedIds,
   copyRow,
+  restoreSnapshot,
+  type HistorySnapshot,
   createEmptyRow,
   insertRow,
   moveRow,
@@ -103,5 +105,47 @@ describe('保存後のID反映', () => {
     expect(next[1].id).toBe(5)
     expect(next[1]).toBe(second)
     expect(rows).toEqual([])
+  })
+})
+
+describe('履歴からの復元（保存を挟むケース）', () => {
+  it('挿入3回→保存→戻す3回で、保存済みの追加行がすべて削除対象になる', () => {
+    const base = [{ ...createEmptyRow(), id: 1 }, { ...createEmptyRow(), id: 2 }]
+    const added = [createEmptyRow(), createEmptyRow(), createEmptyRow()]
+
+    // 挿入のたびに直前の状態を履歴へ積む
+    const history: HistorySnapshot[] = [
+      { rows: base, deletedIds: [] },
+      { rows: [...base, added[0]], deletedIds: [] },
+      { rows: [...base, added[0], added[1]], deletedIds: [] }
+    ]
+    let current: HistorySnapshot = {
+      rows: [...base, added[0], added[1], added[2]],
+      deletedIds: []
+    }
+
+    // 保存: 追加行にIDが振られ、履歴側にも同じIDを反映する
+    const idByKey = new Map(added.map((row, index) => [row.key, 11 + index]))
+    current = { rows: assignSavedIds(current.rows, idByKey), deletedIds: [] }
+    const saved = history.map((snapshot) => ({
+      rows: assignSavedIds(snapshot.rows, idByKey),
+      deletedIds: snapshot.deletedIds
+    }))
+
+    // 戻す3回
+    for (let i = saved.length - 1; i >= 0; i -= 1) {
+      current = restoreSnapshot(current, saved[i])
+    }
+
+    expect(current.rows.map((row) => row.id)).toEqual([1, 2])
+    expect([...current.deletedIds].sort()).toEqual([11, 12, 13])
+  })
+
+  it('進むで戻ってきた行は削除対象から外れる', () => {
+    const kept = { ...createEmptyRow(), id: 1 }
+    const restored = { ...createEmptyRow(), id: 7 }
+    const current: HistorySnapshot = { rows: [kept], deletedIds: [7] }
+    const next = restoreSnapshot(current, { rows: [kept, restored], deletedIds: [] })
+    expect(next.deletedIds).toEqual([])
   })
 })

@@ -136,3 +136,33 @@ export function assignSavedIds(rows: DraftRow[], idByKey: Map<string, number>): 
     return row.id === null && id !== undefined ? { ...row, id } : row
   })
 }
+
+/** Undo/Redoで復元する画面状態 */
+export interface HistorySnapshot {
+  rows: DraftRow[]
+  deletedIds: number[]
+}
+
+/**
+ * 履歴スナップショットから画面状態を復元する。
+ * - 復元後に存在しない保存済み行は削除対象へ加える（加えないと次の保存でDBから復活する）
+ * - 復元で戻ってきた行は削除対象から外す（保存時に同じIDで再作成される）
+ * - 連続して戻す場合に前回分の削除対象を失わないよう、現在の削除対象も引き継ぐ
+ */
+export function restoreSnapshot(
+  current: HistorySnapshot,
+  snapshot: HistorySnapshot
+): HistorySnapshot {
+  const keptIds = new Set(
+    snapshot.rows.map((row) => row.id).filter((id): id is number => id !== null)
+  )
+  const removedIds = current.rows
+    .map((row) => row.id)
+    .filter((id): id is number => id !== null && !keptIds.has(id))
+  return {
+    rows: snapshot.rows,
+    deletedIds: [
+      ...new Set([...snapshot.deletedIds, ...current.deletedIds, ...removedIds])
+    ].filter((id) => !keptIds.has(id))
+  }
+}

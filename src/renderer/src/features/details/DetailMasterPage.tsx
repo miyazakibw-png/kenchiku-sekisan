@@ -4,6 +4,8 @@ import { useAutoSave } from '../../hooks/useAutoSave'
 import {
   assignSavedIds,
   copyRow,
+  restoreSnapshot,
+  type HistorySnapshot,
   createEmptyRow,
   insertRow,
   moveRow,
@@ -77,12 +79,6 @@ const COLUMN_TEXTS: Record<string, (row: DraftRow) => string[]> = {
   unit: (row) => [row.unit],
   remarks: (row) => [row.remarksUpper, row.remarksLower],
   estimate: (row) => [row.estimateDisplay]
-}
-
-/** Undo/Redoで復元する画面状態 */
-interface HistorySnapshot {
-  rows: DraftRow[]
-  deletedIds: number[]
 }
 
 export default function DetailMasterPage({ options }: Props): JSX.Element {
@@ -191,16 +187,12 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
    * 保存済みの行が復元後に存在しない場合は削除対象へ加える
    * （加えないと次回の自動保存でDBから読み直され復活してしまう）。
    * 逆に復元で戻ってきた行は削除対象から外す（保存時に同じIDで再作成される）。
+   * 連続して戻す場合に前回分の削除対象を失わないよう、現在の削除対象も引き継ぐ。
    */
   const restore = useCallback((snapshot: HistorySnapshot) => {
-    const keptIds = new Set(snapshot.rows.map((row) => row.id).filter((id): id is number => id !== null))
-    const removedIds = snapshotRef.current.rows
-      .map((row) => row.id)
-      .filter((id): id is number => id !== null && !keptIds.has(id))
-    setRows(snapshot.rows)
-    setDeletedIds(
-      [...new Set([...snapshot.deletedIds, ...removedIds])].filter((id) => !keptIds.has(id))
-    )
+    const next = restoreSnapshot(snapshotRef.current, snapshot)
+    setRows(next.rows)
+    setDeletedIds(next.deletedIds)
   }, [])
 
   const sortRows = useCallback(
