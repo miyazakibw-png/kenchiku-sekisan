@@ -236,5 +236,9 @@ ALTER TABLE m_finish_assemblies ADD COLUMN project_id INTEGER REFERENCES project
 -- 物件セットを基本セットへ昇格した場合の由来を保持する
 ALTER TABLE m_finish_assemblies ADD COLUMN source_assembly_id INTEGER REFERENCES m_finish_assemblies(id) ON DELETE SET NULL;
 CREATE INDEX idx_m_finish_assemblies_scope ON m_finish_assemblies(scope, project_id, display_order);
+`,
+  /* 005: 材種区分を5種類に拡張（3:下地1 4:下地2 5:予備） */ `
+INSERT OR IGNORE INTO m_material_categories (id, code, name, display_order) VALUES
+  (3,'3','下地1',3),(4,'4','下地2',4),(5,'5','予備',5);
 `
 ]

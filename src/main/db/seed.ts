@@ -47,7 +47,10 @@ const PARTS = [
 
 const MATERIAL_CATEGORIES = [
   { id: 1, code: '1', name: '仕上' },
-  { id: 2, code: '2', name: '軸組' }
+  { id: 2, code: '2', name: '軸組' },
+  { id: 3, code: '3', name: '下地1' },
+  { id: 4, code: '4', name: '下地2' },
+  { id: 5, code: '5', name: '予備' }
 ]
 
 /** 単位はIDに欠番があるため明示的に採番する */

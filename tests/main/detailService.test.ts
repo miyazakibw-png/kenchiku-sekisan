@@ -73,7 +73,13 @@ describe('明細マスターの保存', () => {
   it('初期マスター（科目・材種・単位）が投入される', () => {
     const options = listMasterOptions(db)
     expect(options.subjects.length).toBeGreaterThan(0)
-    expect(options.materialCategories.map((c) => c.name)).toEqual(['仕上', '軸組'])
+    expect(options.materialCategories.map((c) => c.name)).toEqual([
+      '仕上',
+      '軸組',
+      '下地1',
+      '下地2',
+      '予備'
+    ])
     expect(options.units.map((u) => u.name)).toContain('m2')
   })
 
