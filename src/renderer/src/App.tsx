@@ -42,7 +42,7 @@ export default function App(): JSX.Element {
         ) : nav === 'details' ? (
           <DetailMasterPage options={options} />
         ) : nav === 'assemblies' ? (
-          <AssemblyMasterPage />
+          <AssemblyMasterPage options={options} />
         ) : (
           <div className="placeholder">
             {NAV.find((item) => item.key === nav)?.label} は今後実装予定です。

@@ -35,12 +35,15 @@ describe('明細マスターの貼り付け列定義', () => {
     expect(set(createEmptyRow(), '').row.detailNumber).toBeNull()
   })
 
-  it('材種区分は名称またはコードで解決し、未登録はエラーにする', () => {
+  it('材種区分は番号でマスタの名称へ変換し、未登録の文字も取り込む', () => {
     const set = column('materialCategory').set
     if (!set) throw new Error('set が未定義です')
-    expect(set(createEmptyRow(), '軸組').row.materialCategoryId).toBe(2)
-    expect(set(createEmptyRow(), '1').row.materialCategoryId).toBe(1)
-    expect(set(createEmptyRow(), '存在しない').error).toBeDefined()
+    expect(set(createEmptyRow(), '軸組').row.materialCategory).toBe('軸組')
+    expect(set(createEmptyRow(), '1').row.materialCategory).toBe('仕上')
+    const free = set(createEmptyRow(), '存在しない')
+    expect(free.error).toBeUndefined()
+    expect(free.warning).toBeDefined()
+    expect(free.row.materialCategory).toBe('存在しない')
   })
 
   it('単位はマスタ未登録でも取り込むが警告を出す', () => {

@@ -18,6 +18,7 @@ import {
   type DraftRow
 } from './rowOperations'
 import UnitInput, { UnitOptions } from '../../components/UnitInput'
+import MasterCodeInput, { MasterCodeOptions } from '../../components/MasterCodeInput'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import {
   buildPastePreview,
@@ -551,23 +552,13 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
                     className={`col-category ${cellProps(index, 8).className}`}
                     rowSpan={2}
                   >
-                    <select
-                      value={row.materialCategoryId ?? ''}
-                      onChange={(e) =>
-                        handleChange(
-                          index,
-                          'materialCategoryId',
-                          e.target.value === '' ? null : Number(e.target.value)
-                        )
-                      }
-                    >
-                      <option value="">（未設定）</option>
-                      {options.materialCategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
+                    <MasterCodeInput
+                      entries={options.materialCategories}
+                      listId="material-category-options"
+                      title="材種区分マスタの番号を入力すると名称に変換されます（マスタに無い文字も入力できます）"
+                      value={row.materialCategory}
+                      onChange={(value) => handleChange(index, 'materialCategory', value)}
+                    />
                   </td>
                   <td {...cellProps(index, 1)}>
                     <span className="readonly-cell" title="部位名（表示専用）">
@@ -667,6 +658,10 @@ export default function DetailMasterPage({ options }: Props): JSX.Element {
             )}
           </table>
           <UnitOptions units={options.units} />
+          <MasterCodeOptions
+            entries={options.materialCategories}
+            listId="material-category-options"
+          />
         </div>
 
         <footer className="grid-footer">

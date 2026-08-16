@@ -46,7 +46,7 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
       const values = {
         subjectId,
         detailNumber: normalizeDetailNumber(row.detailNumber),
-        materialCategoryId: row.materialCategoryId,
+        materialCategory: row.materialCategory,
         partName: row.partName,
         name: row.name,
         descriptionUpper: row.descriptionUpper,

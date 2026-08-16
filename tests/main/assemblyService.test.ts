@@ -6,14 +6,15 @@ import * as schema from '../../src/main/db/schema'
 import { seedInitialData } from '../../src/main/db/seed'
 import type { AppDatabase } from '../../src/main/db'
 import {
-  deleteAssembly,
+  buildItemFromDetail,
   listAssemblies,
   listAssemblyMasterOptions,
+  mergeAssemblies,
   promoteAssemblyToBasic,
   saveAssembly
 } from '../../src/main/services/assemblyService'
-import { listMasterOptions, saveDetails } from '../../src/main/services/detailService'
-import type { DetailDraft } from '../../src/shared/types'
+import { listDetails, listMasterOptions, saveDetails } from '../../src/main/services/detailService'
+import type { AssemblyItem, DetailDraft } from '../../src/shared/types'
 
 function createDb(): AppDatabase {
   const sqlite = new Database(':memory:')
@@ -24,11 +25,11 @@ function createDb(): AppDatabase {
   return db
 }
 
-function draft(name: string): DetailDraft {
+function draft(name: string, materialCategory = '仕上'): DetailDraft {
   return {
     id: null,
     detailNumber: null,
-    materialCategoryId: null,
+    materialCategory,
     partName: '',
     name,
     descriptionUpper: '',
@@ -42,129 +43,176 @@ function draft(name: string): DetailDraft {
 }
 
 let db: AppDatabase
+let subjectId = 0
 let detailIds: number[]
+let projectIdRef = 0
 
 beforeEach(() => {
   db = createDb()
-  const subjectId = listMasterOptions(db).subjects[0].id
+  subjectId = listMasterOptions(db).subjects[0].id
   detailIds = saveDetails(db, {
     subjectId,
-    rows: [draft('軽鉄下地'), draft('グラスウール')],
+    rows: [draft('軽鉄下地', '下地1'), draft('グラスウール', '下地2')],
     deletedIds: []
   }).map((d) => d.id)
-  const projectId = Number(
+  projectIdRef = Number(
     db.insert(schema.projects).values({ name: 'テスト物件' }).run().lastInsertRowid
   )
-  projectIdRef = projectId
 })
 
-let projectIdRef = 0
+function itemOf(detailId: number, patch: Partial<AssemblyItem> = {}): AssemblyItem {
+  return { ...buildItemFromDetail(db, detailId), ...patch }
+}
 
 describe('仕上明細セットマスター', () => {
   it('基本セットを構成明細付きで保存・取得する', () => {
-    const saved = saveAssembly(db, {
+    const { assembly } = saveAssembly(db, {
       id: null,
-      assemblyCode: 'W-6',
-      assemblyName: '地下二重壁軸組',
-      partId: null,
-      usageCategory: '内部',
       scope: 'basic',
       projectId: null,
       note: '',
       items: [
-        { id: null, detailId: detailIds[0], role: 'base1', formula: 'P', coefficient: 1 },
-        { id: null, detailId: detailIds[1], role: 'base2', formula: 'P*1.1', coefficient: 1.1 }
+        itemOf(detailIds[0], { formula: 'P' }),
+        itemOf(detailIds[1], { formula: 'P*1.1', coefficient: 1.1 })
       ]
     })
-    expect(saved.items.map((i) => i.role)).toEqual(['base1', 'base2'])
-    expect(saved.items[1].formula).toBe('P*1.1')
-    expect(saved.items[0].detailName).toBe('軽鉄下地')
+    expect(assembly.items.map((i) => i.name)).toEqual(['軽鉄下地', 'グラスウール'])
+    expect(assembly.items.map((i) => i.materialCategory)).toEqual(['下地1', '下地2'])
+    expect(assembly.items[1].coefficient).toBe(1.1)
     expect(listAssemblies(db, null).length).toBe(1)
   })
 
-  it('構成明細を洗い替えで更新する', () => {
-    const saved = saveAssembly(db, {
+  it('明細マスターを後から直してもセットの内容は変わらない（一方通行）', () => {
+    const { assembly } = saveAssembly(db, {
       id: null,
-      assemblyCode: null,
-      assemblyName: 'C-1 天井',
-      partId: null,
-      usageCategory: null,
       scope: 'basic',
       projectId: null,
       note: '',
-      items: [{ id: null, detailId: detailIds[0], role: 'finish', formula: '', coefficient: 1 }]
+      items: [itemOf(detailIds[0])]
     })
-    const updated = saveAssembly(db, {
-      id: saved.id,
-      assemblyCode: null,
-      assemblyName: 'C-1 天井',
-      partId: null,
-      usageCategory: null,
+    const rows = listDetails(db, subjectId).map((detail) => ({
+      id: detail.id,
+      detailNumber: detail.detailNumber,
+      materialCategory: detail.materialCategory,
+      partName: detail.partName,
+      name: detail.id === detailIds[0] ? '軽鉄下地（改称）' : detail.name,
+      descriptionUpper: detail.descriptionUpper,
+      descriptionLower: detail.descriptionLower,
+      unit: detail.unit,
+      remarksUpper: detail.remarksUpper,
+      remarksLower: detail.remarksLower,
+      estimateDisplay: detail.estimateDisplay,
+      isActive: detail.isActive
+    }))
+    saveDetails(db, { subjectId, rows, deletedIds: [] })
+
+    expect(listAssemblies(db, null)[0].items[0].name).toBe('軽鉄下地')
+    expect(assembly.items[0].sourceDetailId).toBe(detailIds[0])
+  })
+
+  it('セット側の修正は明細マスターに反映されない', () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
       scope: 'basic',
       projectId: null,
       note: '',
-      items: [{ id: null, detailId: detailIds[1], role: 'finish', formula: '', coefficient: 1 }]
+      items: [itemOf(detailIds[0])]
     })
-    expect(updated.items.length).toBe(1)
-    expect(updated.items[0].detailId).toBe(detailIds[1])
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [{ ...assembly.items[0], name: 'セット内だけの名称' }]
+    })
+    expect(listDetails(db, subjectId).map((d) => d.name)).toEqual(['軽鉄下地', 'グラスウール'])
+  })
+
+  it('行を入れ替えると一覧の表示行（1行目）も変わる', () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [itemOf(detailIds[0]), itemOf(detailIds[1])]
+    })
+    const { assembly: swapped } = saveAssembly(db, {
+      id: assembly.id,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [assembly.items[1], assembly.items[0]]
+    })
+    expect(swapped.items[0].name).toBe('グラスウール')
+    expect(listAssemblies(db, null)[0].items[0].name).toBe('グラスウール')
+  })
+
+  it('同じ内容のセットができた場合は統合候補を返し、統合できる', () => {
+    const first = saveAssembly(db, {
+      id: null,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [itemOf(detailIds[0])]
+    })
+    expect(first.duplicateOf).toBeNull()
+
+    const second = saveAssembly(db, {
+      id: null,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [itemOf(detailIds[0])]
+    })
+    expect(second.duplicateOf?.id).toBe(first.assembly.id)
+
+    mergeAssemblies(db, first.assembly.id, second.assembly.id)
+    expect(listAssemblies(db, null).map((a) => a.id)).toEqual([first.assembly.id])
+  })
+
+  it('構成明細が空の保存は拒否する（最低1明細）', () => {
+    expect(() =>
+      saveAssembly(db, { id: null, scope: 'basic', projectId: null, note: '', items: [] })
+    ).toThrow()
   })
 
   it('物件セットは基本セット一覧に混ざらない', () => {
     saveAssembly(db, {
       id: null,
-      assemblyCode: null,
-      assemblyName: '物件用セット',
-      partId: null,
-      usageCategory: null,
       scope: 'project',
       projectId: projectIdRef,
       note: '',
-      items: [{ id: null, detailId: detailIds[0], role: 'finish', formula: '', coefficient: 1 }]
+      items: [itemOf(detailIds[0])]
     })
     expect(listAssemblies(db, null)).toEqual([])
-    expect(listAssemblies(db, projectIdRef).map((a) => a.assemblyName)).toEqual(['物件用セット'])
+    expect(listAssemblies(db, projectIdRef).map((a) => a.items[0].name)).toEqual(['軽鉄下地'])
   })
 
   it('物件セットを基本セットへ昇格できる', () => {
-    const projectAssembly = saveAssembly(db, {
+    const { assembly } = saveAssembly(db, {
       id: null,
-      assemblyCode: 'P-1',
-      assemblyName: '現場で組んだセット',
-      partId: null,
-      usageCategory: '外部',
       scope: 'project',
       projectId: projectIdRef,
-      note: '',
-      items: [{ id: null, detailId: detailIds[0], role: 'finish', formula: 'P', coefficient: 1 }]
+      note: '現場で組んだセット',
+      items: [itemOf(detailIds[0], { formula: 'P' })]
     })
-    const promoted = promoteAssemblyToBasic(db, projectAssembly.id)
+    const promoted = promoteAssemblyToBasic(db, assembly.id)
     expect(promoted.scope).toBe('basic')
     expect(promoted.projectId).toBeNull()
-    expect(promoted.items.length).toBe(1)
-    expect(listAssemblies(db, null).map((a) => a.assemblyName)).toEqual(['現場で組んだセット'])
-  })
-
-  it('セット削除で構成明細も削除される', () => {
-    const saved = saveAssembly(db, {
-      id: null,
-      assemblyCode: null,
-      assemblyName: '削除対象',
-      partId: null,
-      usageCategory: null,
-      scope: 'basic',
-      projectId: null,
-      note: '',
-      items: [{ id: null, detailId: detailIds[0], role: 'finish', formula: '', coefficient: 1 }]
-    })
-    deleteAssembly(db, saved.id)
-    expect(listAssemblies(db, null)).toEqual([])
-    expect(db.select().from(schema.mFinishAssemblyItems).all()).toEqual([])
+    expect(promoted.items.map((i) => i.name)).toEqual(['軽鉄下地'])
+    expect(listAssemblies(db, null).map((a) => a.note)).toEqual(['現場で組んだセット'])
   })
 
   it('セット編集用のマスター選択肢を返す', () => {
     const options = listAssemblyMasterOptions(db)
-    expect(options.parts.length).toBeGreaterThan(0)
-    expect(options.usageCategories).toContain('内部')
-    expect(options.details.map((d) => d.name)).toEqual(['軽鉄下地', 'グラスウール'])
+    expect(options.subjects.length).toBeGreaterThan(0)
+    expect(options.units.length).toBeGreaterThan(0)
+    expect(options.materialCategories.map((c) => c.name)).toEqual([
+      '仕上',
+      '軸組',
+      '下地1',
+      '下地2',
+      '予備'
+    ])
   })
 })

@@ -1,11 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
 import type {
+  AssemblyItem,
   AssemblyMasterOptions,
   Detail,
   FinishAssembly,
   MasterOptions,
   SaveAssemblyRequest,
+  SaveAssemblyResult,
   SaveDetailsRequest
 } from '../shared/types'
 
@@ -19,9 +21,12 @@ const api = {
     ipcRenderer.invoke(IPC.assemblyOptions),
   listAssemblies: (projectId: number | null): Promise<FinishAssembly[]> =>
     ipcRenderer.invoke(IPC.assemblyList, projectId),
-  saveAssembly: (request: SaveAssemblyRequest): Promise<FinishAssembly> =>
+  saveAssembly: (request: SaveAssemblyRequest): Promise<SaveAssemblyResult> =>
     ipcRenderer.invoke(IPC.assemblySave, request),
-  deleteAssembly: (id: number): Promise<void> => ipcRenderer.invoke(IPC.assemblyDelete, id),
+  buildAssemblyItem: (detailId: number): Promise<AssemblyItem> =>
+    ipcRenderer.invoke(IPC.assemblyItemFromDetail, detailId),
+  mergeAssemblies: (keepId: number, mergedId: number): Promise<FinishAssembly> =>
+    ipcRenderer.invoke(IPC.assemblyMerge, keepId, mergedId),
   promoteAssembly: (id: number): Promise<FinishAssembly> =>
     ipcRenderer.invoke(IPC.assemblyPromote, id)
 }

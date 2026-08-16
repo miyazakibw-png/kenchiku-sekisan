@@ -25,7 +25,7 @@ function draft(name: string, overrides: Partial<DetailDraft> = {}): DetailDraft 
   return {
     id: null,
     detailNumber: null,
-    materialCategoryId: null,
+    materialCategory: '',
     partName: '',
     name,
     descriptionUpper: '',

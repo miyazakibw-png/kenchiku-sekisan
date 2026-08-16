@@ -5,7 +5,8 @@ export const IPC = {
   assemblyOptions: 'assembly:options',
   assemblyList: 'assembly:list',
   assemblySave: 'assembly:save',
-  assemblyDelete: 'assembly:delete',
+  assemblyItemFromDetail: 'assembly:itemFromDetail',
+  assemblyMerge: 'assembly:merge',
   assemblyPromote: 'assembly:promote'
 } as const
 

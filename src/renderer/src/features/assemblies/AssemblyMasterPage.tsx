@@ -1,412 +1,515 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AssemblyItemRole, AssemblyMasterOptions, FinishAssembly } from '@shared/types'
-import { useAutoSave } from '../../hooks/useAutoSave'
+import type {
+  AssemblyMasterOptions,
+  Detail,
+  FinishAssembly,
+  Subject
+} from '@shared/types'
+import { formatDetailNumber } from '@shared/detailNumber'
+import UnitInput, { UnitOptions } from '../../components/UnitInput'
+import MasterCodeInput, { MasterCodeOptions } from '../../components/MasterCodeInput'
 import {
-  ROLE_LABELS,
   addItem,
-  createItem,
-  duplicateAsNew,
-  filterAssemblies,
+  createEmptyItem,
+  filterBySubject,
+  headItem,
   moveItem,
   removeItem,
-  setCoefficientInput,
-  updateItem
+  sortAssemblies,
+  toAssemblyItems,
+  toDraftItems,
+  updateCoefficientInput,
+  updateItem,
+  updateNumberInput,
+  type DraftItem
 } from './assemblyEditor'
 import './AssemblyMasterPage.css'
 
-const STATUS_LABEL: Record<string, string> = {
-  idle: '',
-  dirty: '● 未保存',
-  saving: '⏳ 保存中…',
-  saved: '✅ 保存済み',
-  error: '⚠ 保存失敗'
+interface Props {
+  options: AssemblyMasterOptions
 }
 
-export default function AssemblyMasterPage(): JSX.Element {
-  const [options, setOptions] = useState<AssemblyMasterOptions | null>(null)
+interface EditorState {
+  /** 既存セットのID。新規は null */
+  id: number | null
+  note: string
+  items: DraftItem[]
+}
+
+/** 統合確認（内容がまったく同じセットができた場合） */
+interface MergeState {
+  keepId: number
+  mergedId: number
+  message: string
+}
+
+export default function AssemblyMasterPage({ options }: Props): JSX.Element {
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([])
-  const [usageCategory, setUsageCategory] = useState<string | null>(null)
-  const [partId, setPartId] = useState<number | null>(null)
-  const [selected, setSelected] = useState<FinishAssembly | null>(null)
+  const [subject, setSubject] = useState<Subject | null>(options.subjects[0] ?? null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [picker, setPicker] = useState<Detail[] | null>(null)
+  const [merge, setMerge] = useState<MergeState | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    setAssemblies(await window.sekisan.listAssemblies(null))
+  }, [])
 
   useEffect(() => {
-    void window.sekisan.getAssemblyOptions().then(setOptions)
-    void window.sekisan.listAssemblies(null).then(setAssemblies)
-  }, [])
+    void reload()
+  }, [reload])
 
+  const subjectOrderById = useMemo(
+    () => new Map(options.subjects.map((s) => [s.id, s.displayOrder])),
+    [options.subjects]
+  )
+
+  /** 科目で絞り込んだうえで、共通ソートキーによる昇順（切替なし） */
   const visible = useMemo(
-    () => filterAssemblies(assemblies, { usageCategory, partId }),
-    [assemblies, usageCategory, partId]
+    () =>
+      sortAssemblies(
+        filterBySubject(assemblies, subject?.id ?? null),
+        subjectOrderById,
+        options.units,
+        options.materialCategories
+      ),
+    [assemblies, subject, subjectOrderById, options.units, options.materialCategories]
   )
 
-  const persist = useCallback(async (data: FinishAssembly | null) => {
-    if (!data || data.assemblyName.trim() === '') return
-    const saved = await window.sekisan.saveAssembly({
-      id: data.id > 0 ? data.id : null,
-      assemblyCode: data.assemblyCode,
-      assemblyName: data.assemblyName,
-      partId: data.partId,
-      usageCategory: data.usageCategory,
-      scope: data.scope,
-      projectId: data.projectId,
-      note: data.note,
-      items: data.items
-    })
-    setSelected(saved)
-    setAssemblies(await window.sekisan.listAssemblies(null))
+  const openEditor = useCallback((assembly: FinishAssembly) => {
+    setSelectedId(assembly.id)
+    setEditor({ id: assembly.id, note: assembly.note, items: toDraftItems(assembly.items) })
   }, [])
 
-  const { status, markDirty, saveNow } = useAutoSave({ data: selected, onSave: persist })
+  const openPicker = useCallback(async () => {
+    if (!subject) return
+    setPicker(await window.sekisan.listDetails(subject.id))
+  }, [subject])
 
-  const patch = useCallback(
-    (values: Partial<FinishAssembly>) => {
-      setSelected((prev) => (prev ? { ...prev, ...values } : prev))
-      markDirty()
+  /** 明細マスターから内容を写し取る（参照ではなく複製なので以後は連動しない） */
+  const pickDetail = useCallback(
+    async (detail: Detail) => {
+      const item = await window.sekisan.buildAssemblyItem(detail.id)
+      const [draft] = toDraftItems([item])
+      setPicker(null)
+      setEditor((prev) =>
+        prev === null
+          ? { id: null, note: '', items: [draft] }
+          : { ...prev, items: addItem(prev.items, draft) }
+      )
     },
-    [markDirty]
+    []
   )
 
-  const handleSelect = useCallback(
-    async (assembly: FinishAssembly) => {
-      if (assembly.id === selected?.id) return
-      await saveNow()
-      setSelected(assembly)
-    },
-    [saveNow, selected]
-  )
-
-  const handleNew = useCallback(async () => {
-    await saveNow()
-    setSelected({
-      id: 0,
-      assemblyCode: '',
-      assemblyName: '',
-      partId,
-      usageCategory,
+  const save = useCallback(async () => {
+    if (!editor) return
+    const result = await window.sekisan.saveAssembly({
+      id: editor.id,
       scope: 'basic',
       projectId: null,
-      note: '',
-      displayOrder: 0,
-      items: []
+      note: editor.note,
+      items: toAssemblyItems(editor.items)
     })
-  }, [partId, saveNow, usageCategory])
-
-  const handleDuplicate = useCallback(async () => {
-    if (!selected) return
-    await saveNow()
-    setSelected(duplicateAsNew(selected))
-    markDirty()
-  }, [markDirty, saveNow, selected])
-
-  const handleDelete = useCallback(async () => {
-    if (!selected || selected.id === 0) {
-      setSelected(null)
-      return
+    await reload()
+    setEditor(null)
+    setSelectedId(result.assembly.id)
+    if (result.duplicateOf) {
+      setMerge({
+        keepId: result.duplicateOf.id,
+        mergedId: result.assembly.id,
+        message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ''}）。既存セットへ統合しますか。`
+      })
+    } else {
+      setToast('保存しました')
     }
-    await window.sekisan.deleteAssembly(selected.id)
-    setSelected(null)
-    setAssemblies(await window.sekisan.listAssemblies(null))
-  }, [selected])
+  }, [editor, reload])
 
-  if (!options) return <div className="placeholder">読み込み中…</div>
+  const applyMerge = useCallback(async () => {
+    if (!merge) return
+    await window.sekisan.mergeAssemblies(merge.keepId, merge.mergedId)
+    setMerge(null)
+    setSelectedId(merge.keepId)
+    await reload()
+    setToast('同じ内容のセットへ統合しました')
+  }, [merge, reload])
+
+  const editItems = useCallback(
+    (next: DraftItem[]) => setEditor((prev) => (prev === null ? prev : { ...prev, items: next })),
+    []
+  )
 
   return (
     <div className="assembly-page">
       <aside className="assembly-tree">
-        <div className="tree-title">🗂 部位・用途</div>
-        <button
-          type="button"
-          className={usageCategory === null && partId === null ? 'tree-item active' : 'tree-item'}
-          onClick={() => {
-            setUsageCategory(null)
-            setPartId(null)
-          }}
-        >
-          すべて
-        </button>
-        {options.usageCategories.map((cat) => (
-          <div key={cat} className="tree-group">
-            <button
-              type="button"
-              className={
-                usageCategory === cat && partId === null ? 'tree-item active' : 'tree-item'
-              }
-              onClick={() => {
-                setUsageCategory(cat)
-                setPartId(null)
-              }}
-            >
-              📁 {cat}
-            </button>
-            {options.parts.map((part) => (
-              <button
-                key={`${cat}-${part.id}`}
-                type="button"
-                className={
-                  usageCategory === cat && partId === part.id
-                    ? 'tree-item child active'
-                    : 'tree-item child'
-                }
-                onClick={() => {
-                  setUsageCategory(cat)
-                  setPartId(part.id)
-                }}
-              >
-                {part.name}
-              </button>
-            ))}
-          </div>
+        <div className="tree-title">工種科目</div>
+        {options.subjects.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className={`tree-item ${subject?.id === s.id ? 'active' : ''}`}
+            onClick={() => setSubject(s)}
+          >
+            {s.code} {s.name}
+          </button>
         ))}
       </aside>
 
       <section className="assembly-main">
-        <header className="toolbar">
-          <button type="button" onClick={() => void handleNew()}>
-            ➕ 新規セット
+        <div className="toolbar">
+          <h2>仕上明細セットマスター</h2>
+          <button type="button" onClick={() => void openPicker()} disabled={!subject}>
+            ➕ 新規セット（明細マスターから）
           </button>
-          <button type="button" disabled={!selected} onClick={() => void handleDuplicate()}>
-            📄 複製
-          </button>
-          <button type="button" disabled={!selected} onClick={() => void handleDelete()}>
-            🗑 削除
-          </button>
-          <button type="button" disabled={!selected} onClick={() => void saveNow()}>
-            💾 保存
-          </button>
-          <span className="status">{STATUS_LABEL[status]}</span>
-        </header>
+          <span className="hint">行をダブルクリック／Enterでセット明細を開きます</span>
+          <span className="status">{toast ?? ''}</span>
+        </div>
 
         <div className="assembly-body">
-          <div className="assembly-list">
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>記号</th>
-                  <th>セット名称</th>
-                  <th>部位</th>
-                  <th>用途</th>
-                  <th>区分</th>
-                  <th>構成</th>
-                </tr>
-              </thead>
+          <table className="grid assembly-list">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>材種区分</th>
+                <th>部位番号／明細番号</th>
+                <th>部位名／名称</th>
+                <th>摘要</th>
+                <th>単位</th>
+                <th>掛け率</th>
+                <th>備考</th>
+                <th>明細数</th>
+              </tr>
+            </thead>
+            {visible.length === 0 ? (
               <tbody>
-                {visible.map((a) => (
-                  <tr
-                    key={a.id}
-                    className={a.id === selected?.id ? 'selected' : ''}
-                    onClick={() => void handleSelect(a)}
-                  >
-                    <td>{a.assemblyCode}</td>
-                    <td>{a.assemblyName}</td>
-                    <td>{options.parts.find((p) => p.id === a.partId)?.name ?? ''}</td>
-                    <td>{a.usageCategory ?? ''}</td>
-                    <td>{a.scope === 'basic' ? '基本' : '物件'}</td>
-                    <td>{a.items.length}</td>
-                  </tr>
-                ))}
-                {visible.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="empty">
-                      セットがありません。「➕ 新規セット」で追加してください。
-                    </td>
-                  </tr>
-                )}
+                <tr>
+                  <td colSpan={9} className="empty">
+                    この科目のセットはまだありません
+                  </td>
+                </tr>
               </tbody>
-            </table>
-          </div>
-
-          {selected && (
-            <div className="assembly-editor">
-              <div className="fields">
-                <label>
-                  記号
-                  <input
-                    value={selected.assemblyCode ?? ''}
-                    onChange={(e) => patch({ assemblyCode: e.target.value })}
-                  />
-                </label>
-                <label>
-                  セット名称
-                  <input
-                    value={selected.assemblyName}
-                    placeholder="例: W-6 地下二重壁軸組"
-                    onChange={(e) => patch({ assemblyName: e.target.value })}
-                  />
-                </label>
-                <label>
-                  部位
-                  <select
-                    value={selected.partId ?? ''}
-                    onChange={(e) =>
-                      patch({ partId: e.target.value === '' ? null : Number(e.target.value) })
-                    }
+            ) : (
+              visible.map((assembly, index) => {
+                const head = headItem(assembly)
+                if (!head) return null
+                return (
+                  <tbody
+                    key={assembly.id}
+                    className={`detail-group ${selectedId === assembly.id ? 'selected' : ''}`}
+                    tabIndex={0}
+                    onClick={() => setSelectedId(assembly.id)}
+                    onDoubleClick={() => openEditor(assembly)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') openEditor(assembly)
+                    }}
                   >
-                    <option value="">（未設定）</option>
-                    {options.parts.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  用途
-                  <select
-                    value={selected.usageCategory ?? ''}
-                    onChange={(e) =>
-                      patch({ usageCategory: e.target.value === '' ? null : e.target.value })
-                    }
-                  >
-                    <option value="">（未設定）</option>
-                    {options.usageCategories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="wide">
-                  備考
-                  <input
-                    value={selected.note}
-                    onChange={(e) => patch({ note: e.target.value })}
-                  />
-                </label>
-              </div>
+                    <tr className="upper-row">
+                      <td rowSpan={2}>{index + 1}</td>
+                      <td rowSpan={2}>{head.materialCategory}</td>
+                      <td className="num">{formatDetailNumber(head.partNumber)}</td>
+                      <td>{head.partName}</td>
+                      <td>{head.descriptionUpper}</td>
+                      <td rowSpan={2}>{head.unit}</td>
+                      <td rowSpan={2} className="num">
+                        {head.coefficient}
+                      </td>
+                      <td>{head.remarksUpper}</td>
+                      <td rowSpan={2} className="num">
+                        {assembly.items.length}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="num">{formatDetailNumber(head.detailNumber)}</td>
+                      <td>{head.name}</td>
+                      <td>{head.descriptionLower}</td>
+                      <td>{head.remarksLower}</td>
+                    </tr>
+                  </tbody>
+                )
+              })
+            )}
+          </table>
+        </div>
+      </section>
 
-              <table className="grid items">
+      {editor && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal assembly-editor">
+            <header>
+              <h3>セット明細{editor.id === null ? '（新規）' : ''}</h3>
+              <label className="note">
+                備考
+                <input
+                  value={editor.note}
+                  onChange={(e) =>
+                    setEditor((prev) => (prev === null ? prev : { ...prev, note: e.target.value }))
+                  }
+                />
+              </label>
+            </header>
+
+            <div className="modal-body">
+              <table className="grid">
                 <thead>
                   <tr>
-                    <th className="col-no">No.</th>
-                    <th>役割</th>
-                    <th>明細</th>
+                    <th>行</th>
+                    <th>材種区分</th>
+                    <th>部位番号／明細番号</th>
+                    <th>部位名／名称</th>
+                    <th>摘要</th>
                     <th>単位</th>
-                    <th>計算式（P=親数量）</th>
-                    <th>係数</th>
+                    <th>掛け率</th>
+                    <th>計算式</th>
+                    <th>備考</th>
                     <th>操作</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {selected.items.map((item, index) => (
-                    <tr key={`${item.id ?? 'new'}-${index}`}>
-                      <td className="col-no">{index + 1}</td>
-                      <td>
-                        <select
-                          value={item.role}
-                          onChange={(e) =>
-                            patch({
-                              items: updateItem(selected.items, index, {
-                                role: e.target.value as AssemblyItemRole
-                              })
-                            })
-                          }
-                        >
-                          {ROLE_LABELS.map((r) => (
-                            <option key={r.value} value={r.value}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={item.detailId}
-                          onChange={(e) =>
-                            patch({
-                              items: updateItem(selected.items, index, {
-                                detailId: Number(e.target.value)
-                              })
-                            })
-                          }
-                        >
-                          {options.details.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>{options.details.find((d) => d.id === item.detailId)?.unit ?? ''}</td>
-                      <td>
-                        <input
-                          placeholder="例: P*1.1"
-                          value={item.formula}
-                          onChange={(e) =>
-                            patch({
-                              items: updateItem(selected.items, index, { formula: e.target.value })
-                            })
+                {editor.items.map((item, index) => (
+                  <tbody key={item.key} className="detail-group">
+                    <tr className="upper-row">
+                      <td rowSpan={2}>{index + 1}</td>
+                      <td rowSpan={2}>
+                        <MasterCodeInput
+                          entries={options.materialCategories}
+                          listId="material-category-options"
+                          value={item.materialCategory}
+                          onChange={(value) =>
+                            editItems(updateItem(editor.items, index, { materialCategory: value }))
                           }
                         />
                       </td>
                       <td>
                         <input
                           className="num"
-                          inputMode="decimal"
-                          value={item.coefficientInput ?? String(item.coefficient)}
+                          value={item.partNumberInput}
                           onChange={(e) =>
-                            patch({
-                              items: updateItem(
-                                selected.items,
-                                index,
-                                setCoefficientInput(e.target.value)
-                              )
-                            })
+                            editItems(
+                              updateNumberInput(editor.items, index, 'partNumber', e.target.value)
+                            )
                           }
                         />
                       </td>
-                      <td className="ops">
+                      <td>
+                        <input
+                          value={item.partName}
+                          onChange={(e) =>
+                            editItems(updateItem(editor.items, index, { partName: e.target.value }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.descriptionUpper}
+                          onChange={(e) =>
+                            editItems(
+                              updateItem(editor.items, index, { descriptionUpper: e.target.value })
+                            )
+                          }
+                        />
+                      </td>
+                      <td rowSpan={2}>
+                        <UnitInput
+                          units={options.units}
+                          value={item.unit}
+                          onChange={(value) =>
+                            editItems(updateItem(editor.items, index, { unit: value }))
+                          }
+                        />
+                      </td>
+                      <td rowSpan={2}>
+                        <input
+                          className="num"
+                          value={item.coefficientInput}
+                          onChange={(e) =>
+                            editItems(updateCoefficientInput(editor.items, index, e.target.value))
+                          }
+                        />
+                      </td>
+                      <td rowSpan={2}>
+                        <input
+                          value={item.formula}
+                          placeholder="例: P*3"
+                          onChange={(e) =>
+                            editItems(updateItem(editor.items, index, { formula: e.target.value }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.remarksUpper}
+                          onChange={(e) =>
+                            editItems(
+                              updateItem(editor.items, index, { remarksUpper: e.target.value })
+                            )
+                          }
+                        />
+                      </td>
+                      <td rowSpan={2} className="ops">
                         <button
                           type="button"
-                          title="1行上"
-                          onClick={() =>
-                            patch({ items: moveItem(selected.items, index, index - 1) })
-                          }
+                          title="上へ"
+                          onClick={() => editItems(moveItem(editor.items, index, index - 1))}
                         >
                           ↑
                         </button>
                         <button
                           type="button"
-                          title="1行下"
-                          onClick={() =>
-                            patch({ items: moveItem(selected.items, index, index + 1) })
-                          }
+                          title="下へ"
+                          onClick={() => editItems(moveItem(editor.items, index, index + 1))}
                         >
                           ↓
                         </button>
                         <button
                           type="button"
-                          title="行削除"
-                          onClick={() => patch({ items: removeItem(selected.items, index) })}
+                          title="この明細を削除（最低1明細は残ります）"
+                          disabled={editor.items.length <= 1}
+                          onClick={() => editItems(removeItem(editor.items, index))}
                         >
                           🗑
                         </button>
                       </td>
                     </tr>
-                  ))}
-                  {selected.items.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="empty">
-                        構成明細がありません。「➕ 明細を追加」で追加してください。
+                      <td>
+                        <input
+                          className="num"
+                          value={item.detailNumberInput}
+                          onChange={(e) =>
+                            editItems(
+                              updateNumberInput(editor.items, index, 'detailNumber', e.target.value)
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.name}
+                          onChange={(e) =>
+                            editItems(updateItem(editor.items, index, { name: e.target.value }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.descriptionLower}
+                          onChange={(e) =>
+                            editItems(
+                              updateItem(editor.items, index, { descriptionLower: e.target.value })
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={item.remarksLower}
+                          onChange={(e) =>
+                            editItems(
+                              updateItem(editor.items, index, { remarksLower: e.target.value })
+                            )
+                          }
+                        />
                       </td>
                     </tr>
-                  )}
-                </tbody>
+                  </tbody>
+                ))}
               </table>
+              <p className="hint">
+                セット内の明細は明細マスターから写し取った控えです。ここでの修正は明細マスターには反映されません。
+              </p>
+            </div>
+
+            <footer>
+              <button type="button" onClick={() => void openPicker()}>
+                ➕ 明細マスターから追加
+              </button>
               <button
                 type="button"
-                disabled={options.details.length === 0}
                 onClick={() =>
-                  patch({
-                    items: addItem(selected.items, createItem(options.details[0].id))
-                  })
+                  subject && editItems(addItem(editor.items, createEmptyItem(subject.id)))
                 }
               >
-                ➕ 明細を追加
+                ➕ 空行を追加
               </button>
-            </div>
-          )}
+              <span className="spacer" />
+              <button type="button" onClick={() => setEditor(null)}>
+                閉じる
+              </button>
+              <button type="button" className="primary" onClick={() => void save()}>
+                💾 保存
+              </button>
+            </footer>
+          </div>
         </div>
-      </section>
+      )}
+
+      {picker && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal picker">
+            <header>
+              <h3>明細マスターから選ぶ（{subject?.name}）</h3>
+            </header>
+            <div className="modal-body">
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th>明細番号</th>
+                    <th>名称</th>
+                    <th>摘要</th>
+                    <th>単位</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {picker.map((detail) => (
+                    <tr
+                      key={detail.id}
+                      tabIndex={0}
+                      onDoubleClick={() => void pickDetail(detail)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void pickDetail(detail)
+                      }}
+                    >
+                      <td className="num">{formatDetailNumber(detail.detailNumber)}</td>
+                      <td>
+                        {detail.partName} / {detail.name}
+                      </td>
+                      <td>
+                        {detail.descriptionUpper} {detail.descriptionLower}
+                      </td>
+                      <td>{detail.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <footer>
+              <span className="hint">行をダブルクリック／Enterで取り込みます</span>
+              <span className="spacer" />
+              <button type="button" onClick={() => setPicker(null)}>
+                閉じる
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {merge && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal confirm">
+            <p>{merge.message}</p>
+            <footer>
+              <button type="button" onClick={() => setMerge(null)}>
+                統合しない
+              </button>
+              <button type="button" className="primary" onClick={() => void applyMerge()}>
+                統合する
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      <UnitOptions units={options.units} />
+      <MasterCodeOptions entries={options.materialCategories} listId="material-category-options" />
     </div>
   )
 }

@@ -1,23 +1,23 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
-import { mDetails, mFinishAssemblies, mFinishAssemblyItems, mParts } from '../db/schema'
+import {
+  mDetails,
+  mFinishAssemblies,
+  mFinishAssemblyItems,
+  mMaterialCategories,
+  mSubjects,
+  mUnits,
+  projectRoomFinishes
+} from '../db/schema'
 import type {
   AssemblyItem,
-  AssemblyItemRole,
   AssemblyMasterOptions,
   AssemblyScope,
   FinishAssembly,
-  SaveAssemblyRequest
+  SaveAssemblyRequest,
+  SaveAssemblyResult
 } from '../../shared/types'
-
-/** 左ツリーの用途区分。部位マスタと組み合わせてセットを分類する */
-export const USAGE_CATEGORIES = ['外部', '内部', '共通']
-
-const ROLES: AssemblyItemRole[] = ['finish', 'base1', 'base2', 'reinforce', 'other']
-
-function toRole(value: string): AssemblyItemRole {
-  return ROLES.includes(value as AssemblyItemRole) ? (value as AssemblyItemRole) : 'other'
-}
+import { assemblySignature } from '../../shared/assemblySignature'
 
 function toScope(value: string): AssemblyScope {
   return value === 'project' ? 'project' : 'basic'
@@ -25,9 +25,13 @@ function toScope(value: string): AssemblyScope {
 
 export function listAssemblyMasterOptions(db: AppDatabase): AssemblyMasterOptions {
   return {
-    parts: db.select().from(mParts).orderBy(asc(mParts.displayOrder)).all(),
-    usageCategories: USAGE_CATEGORIES,
-    details: db.select().from(mDetails).orderBy(asc(mDetails.displayOrder), asc(mDetails.id)).all()
+    subjects: db.select().from(mSubjects).orderBy(asc(mSubjects.displayOrder)).all(),
+    materialCategories: db
+      .select()
+      .from(mMaterialCategories)
+      .orderBy(asc(mMaterialCategories.displayOrder))
+      .all(),
+    units: db.select().from(mUnits).orderBy(asc(mUnits.displayOrder)).all()
   }
 }
 
@@ -49,10 +53,6 @@ export function listAssemblies(db: AppDatabase, projectId: number | null = null)
 
   return rows.map((row) => ({
     id: row.id,
-    assemblyCode: row.assemblyCode,
-    assemblyName: row.assemblyName,
-    partId: row.partId,
-    usageCategory: row.usageCategory,
     scope: toScope(row.scope),
     projectId: row.projectId,
     note: row.note,
@@ -63,42 +63,79 @@ export function listAssemblies(db: AppDatabase, projectId: number | null = null)
 
 function listItems(db: AppDatabase, assemblyId: number): AssemblyItem[] {
   return db
-    .select({
-      id: mFinishAssemblyItems.id,
-      detailId: mFinishAssemblyItems.detailId,
-      role: mFinishAssemblyItems.role,
-      formula: mFinishAssemblyItems.formula,
-      coefficient: mFinishAssemblyItems.coefficient,
-      detailName: mDetails.name,
-      detailUnit: mDetails.unit
-    })
+    .select()
     .from(mFinishAssemblyItems)
-    .innerJoin(mDetails, eq(mDetails.id, mFinishAssemblyItems.detailId))
     .where(eq(mFinishAssemblyItems.assemblyId, assemblyId))
     .orderBy(asc(mFinishAssemblyItems.displayOrder), asc(mFinishAssemblyItems.id))
     .all()
-    .map((item) => ({ ...item, role: toRole(item.role) }))
+    .map((item) => ({
+      id: item.id,
+      sourceDetailId: item.sourceDetailId,
+      subjectId: item.subjectId,
+      partNumber: item.partNumber,
+      detailNumber: item.detailNumber,
+      materialCategory: item.materialCategory,
+      partName: item.partName,
+      name: item.name,
+      descriptionUpper: item.descriptionUpper,
+      descriptionLower: item.descriptionLower,
+      unit: item.unit,
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+      estimateDisplay: item.estimateDisplay,
+      formula: item.formula,
+      coefficient: item.coefficient
+    }))
 }
 
-/** セット1件の保存。構成アイテムは画面の並び順で洗い替えする */
-export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): FinishAssembly {
-  const values = {
-    assemblyCode: request.assemblyCode,
-    assemblyName: request.assemblyName,
-    partId: request.partId,
-    usageCategory: request.usageCategory,
-    scope: request.scope,
-    projectId: request.scope === 'project' ? request.projectId : null,
-    note: request.note
+/**
+ * 明細マスターから1明細を写し取ってセットの構成明細を作る。
+ * 明細マスターは呼び出して入力するための一方通行なので、参照ではなく内容を複製する。
+ */
+export function buildItemFromDetail(db: AppDatabase, detailId: number): AssemblyItem {
+  const detail = db.select().from(mDetails).where(eq(mDetails.id, detailId)).get()
+  if (!detail) throw new Error(`明細が見つかりません: id=${detailId}`)
+  return {
+    id: null,
+    sourceDetailId: detail.id,
+    subjectId: detail.subjectId,
+    partNumber: null,
+    detailNumber: detail.detailNumber,
+    materialCategory: detail.materialCategory,
+    partName: detail.partName,
+    name: detail.name,
+    descriptionUpper: detail.descriptionUpper,
+    descriptionLower: detail.descriptionLower,
+    unit: detail.unit,
+    remarksUpper: detail.remarksUpper,
+    remarksLower: detail.remarksLower,
+    estimateDisplay: detail.estimateDisplay,
+    formula: '',
+    coefficient: 1
   }
+}
 
+/**
+ * セット1件の保存。構成明細は画面の並び順で洗い替えする。
+ * 保存後に内容が完全一致する別セットがある場合は統合候補として返す（統合するかは利用者が決める）。
+ */
+export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): SaveAssemblyResult {
+  if (request.items.length === 0) {
+    throw new Error('セットには最低1明細が必要です')
+  }
   const id = db.transaction((tx) => {
     let assemblyId = request.id
+    const values = {
+      // 一覧・参照用にセット名としてセット1行目の名称を保持する
+      assemblyName: request.items[0].name,
+      scope: request.scope,
+      projectId: request.scope === 'project' ? request.projectId : null,
+      note: request.note
+    }
     if (assemblyId === null) {
       const maxOrder = tx
         .select({ displayOrder: mFinishAssemblies.displayOrder })
         .from(mFinishAssemblies)
-        .orderBy(asc(mFinishAssemblies.displayOrder))
         .all()
         .reduce((max, r) => Math.max(max, r.displayOrder), -1)
       const result = tx
@@ -111,16 +148,25 @@ export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): Fin
         .set({ ...values, updatedAt: new Date().toISOString() })
         .where(eq(mFinishAssemblies.id, assemblyId))
         .run()
-      tx.delete(mFinishAssemblyItems)
-        .where(eq(mFinishAssemblyItems.assemblyId, assemblyId))
-        .run()
+      tx.delete(mFinishAssemblyItems).where(eq(mFinishAssemblyItems.assemblyId, assemblyId)).run()
     }
     request.items.forEach((item, index) => {
       tx.insert(mFinishAssemblyItems)
         .values({
           assemblyId,
-          detailId: item.detailId,
-          role: item.role,
+          sourceDetailId: item.sourceDetailId,
+          subjectId: item.subjectId,
+          partNumber: item.partNumber,
+          detailNumber: item.detailNumber,
+          materialCategory: item.materialCategory,
+          partName: item.partName,
+          name: item.name,
+          descriptionUpper: item.descriptionUpper,
+          descriptionLower: item.descriptionLower,
+          unit: item.unit,
+          remarksUpper: item.remarksUpper,
+          remarksLower: item.remarksLower,
+          estimateDisplay: item.estimateDisplay,
           formula: item.formula,
           coefficient: item.coefficient,
           displayOrder: index
@@ -130,7 +176,18 @@ export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): Fin
     return assemblyId
   })
 
-  return getAssembly(db, id)
+  const assembly = getAssembly(db, id)
+  return { assembly, duplicateOf: findDuplicate(db, assembly) }
+}
+
+/** 内容（構成明細の並びと文字）が完全一致する別セットを探す */
+function findDuplicate(db: AppDatabase, assembly: FinishAssembly): FinishAssembly | null {
+  const signature = assemblySignature(assembly.items)
+  return (
+    listAssemblies(db, assembly.projectId).find(
+      (other) => other.id !== assembly.id && assemblySignature(other.items) === signature
+    ) ?? null
+  )
 }
 
 export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
@@ -138,10 +195,6 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
   if (!row) throw new Error(`仕上明細セットが見つかりません: id=${id}`)
   return {
     id: row.id,
-    assemblyCode: row.assemblyCode,
-    assemblyName: row.assemblyName,
-    partId: row.partId,
-    usageCategory: row.usageCategory,
     scope: toScope(row.scope),
     projectId: row.projectId,
     note: row.note,
@@ -150,8 +203,21 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
   }
 }
 
-export function deleteAssembly(db: AppDatabase, id: number): void {
-  db.delete(mFinishAssemblies).where(eq(mFinishAssemblies.id, id)).run()
+/**
+ * 内容が同じになった2つのセットを1つへ統合する。
+ * 計算書など参照している側を残す側へ付け替えてから、重複したセットを取り除く。
+ * （マスターからの任意削除は誤操作防止のため設けない）
+ */
+export function mergeAssemblies(db: AppDatabase, keepId: number, mergedId: number): FinishAssembly {
+  if (keepId === mergedId) return getAssembly(db, keepId)
+  db.transaction((tx) => {
+    tx.update(projectRoomFinishes)
+      .set({ finishAssemblyId: keepId })
+      .where(eq(projectRoomFinishes.finishAssemblyId, mergedId))
+      .run()
+    tx.delete(mFinishAssemblies).where(eq(mFinishAssemblies.id, mergedId)).run()
+  })
+  return getAssembly(db, keepId)
 }
 
 /**
@@ -159,12 +225,8 @@ export function deleteAssembly(db: AppDatabase, id: number): void {
  */
 export function promoteAssemblyToBasic(db: AppDatabase, id: number): FinishAssembly {
   const source = getAssembly(db, id)
-  const created = saveAssembly(db, {
+  const { assembly } = saveAssembly(db, {
     id: null,
-    assemblyCode: source.assemblyCode,
-    assemblyName: source.assemblyName,
-    partId: source.partId,
-    usageCategory: source.usageCategory,
     scope: 'basic',
     projectId: null,
     note: source.note,
@@ -172,7 +234,7 @@ export function promoteAssemblyToBasic(db: AppDatabase, id: number): FinishAssem
   })
   db.update(mFinishAssemblies)
     .set({ sourceAssemblyId: source.id })
-    .where(eq(mFinishAssemblies.id, created.id))
+    .where(eq(mFinishAssemblies.id, assembly.id))
     .run()
-  return getAssembly(db, created.id)
+  return getAssembly(db, assembly.id)
 }

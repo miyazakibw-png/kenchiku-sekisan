@@ -63,9 +63,8 @@ export const mDetails = sqliteTable(
       .references(() => mSubjects.id, { onDelete: 'cascade' }),
     /** 明細番号（小数点以下2桁の数値。例: 302.00） */
     detailNumber: real('detail_number'),
-    materialCategoryId: integer('material_category_id').references(() => mMaterialCategories.id, {
-      onDelete: 'set null'
-    }),
+    /** 材種区分（数量チェック用の区分。マスタ番号で入力補助するが自由入力も可） */
+    materialCategory: text('material_category').notNull().default(''),
     /** 部位名（上段） */
     partName: text('part_name').notNull().default(''),
     /** 名称（下段） */
@@ -113,7 +112,11 @@ export const mFinishAssemblies = sqliteTable(
   })
 )
 
-/** 仕上明細セットの構成アイテム（仕上/下地1/下地2/補強 …） */
+/**
+ * 仕上明細セットの構成明細。
+ * 明細マスターは「呼び出して入力するための一方通行」なので、
+ * 参照ではなく呼び出した時点の内容を写し取って保持する（マスター修正は連動しない）。
+ */
 export const mFinishAssemblyItems = sqliteTable(
   'm_finish_assembly_items',
   {
@@ -121,18 +124,33 @@ export const mFinishAssemblyItems = sqliteTable(
     assemblyId: integer('assembly_id')
       .notNull()
       .references(() => mFinishAssemblies.id, { onDelete: 'cascade' }),
-    detailId: integer('detail_id')
+    /** 写し取り元の明細（追跡用。連動はしない） */
+    sourceDetailId: integer('source_detail_id'),
+    subjectId: integer('subject_id')
       .notNull()
-      .references(() => mDetails.id, { onDelete: 'restrict' }),
-    /** 構成上の役割: finish / base1 / base2 / reinforce / other */
-    role: text('role').notNull().default('finish'),
+      .references(() => mSubjects.id, { onDelete: 'cascade' }),
+    /** 部位番号（上段） */
+    partNumber: real('part_number'),
+    /** 明細番号（下段） */
+    detailNumber: real('detail_number'),
+    materialCategory: text('material_category').notNull().default(''),
+    partName: text('part_name').notNull().default(''),
+    name: text('name').notNull().default(''),
+    descriptionUpper: text('description_upper').notNull().default(''),
+    descriptionLower: text('description_lower').notNull().default(''),
+    unit: text('unit').notNull().default(''),
+    remarksUpper: text('remarks_upper').notNull().default(''),
+    remarksLower: text('remarks_lower').notNull().default(''),
+    estimateDisplay: text('estimate_display').notNull().default(''),
     /** 親数量(P)を用いた展開計算式。空なら親数量をそのまま継承 */
     formula: text('formula').notNull().default(''),
+    /** 掛け率（セットで拾うが計上単位が異なる場合に使用） */
     coefficient: real('coefficient').notNull().default(1),
     displayOrder: integer('display_order').notNull().default(0)
   },
   (t) => ({
-    assemblyOrderIdx: index('idx_m_fa_items_assembly_order').on(t.assemblyId, t.displayOrder)
+    assemblyOrderIdx: index('idx_m_fa_items_assembly_order').on(t.assemblyId, t.displayOrder),
+    subjectIdx: index('idx_m_fa_items_subject').on(t.subjectId, t.displayOrder)
   })
 )
 

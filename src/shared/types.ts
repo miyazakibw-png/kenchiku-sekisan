@@ -24,7 +24,8 @@ export interface Detail {
   subjectId: number
   /** 明細番号（小数点以下2桁の数値） */
   detailNumber: number | null
-  materialCategoryId: number | null
+  /** 材種区分（マスタ番号で入力補助するが、マスタに無い文字も入力可） */
+  materialCategory: string
   partName: string
   name: string
   descriptionUpper: string
@@ -42,7 +43,7 @@ export interface DetailDraft {
   /** 既存行のID。新規行は null */
   id: number | null
   detailNumber: number | null
-  materialCategoryId: number | null
+  materialCategory: string
   partName: string
   name: string
   descriptionUpper: string
@@ -67,49 +68,58 @@ export interface MasterOptions {
   units: Unit[]
 }
 
-/** 仕上明細セットの構成上の役割 */
-export type AssemblyItemRole = 'finish' | 'base1' | 'base2' | 'reinforce' | 'other'
-
 /** basic: 全物件共通の基本セット / project: 積算入力時に自動登録される物件固有セット */
 export type AssemblyScope = 'basic' | 'project'
 
+/**
+ * セットの構成明細。
+ * 明細マスターを参照せず、呼び出した時点の内容を写し取って保持する（一方通行）。
+ */
 export interface AssemblyItem {
   id: number | null
-  detailId: number
-  role: AssemblyItemRole
+  /** 写し取り元の明細（追跡用。連動はしない） */
+  sourceDetailId: number | null
+  subjectId: number
+  partNumber: number | null
+  detailNumber: number | null
+  materialCategory: string
+  partName: string
+  name: string
+  descriptionUpper: string
+  descriptionLower: string
+  unit: string
+  remarksUpper: string
+  remarksLower: string
+  estimateDisplay: string
   formula: string
+  /** 掛け率（セットで拾うが計上単位が異なる場合に使用） */
   coefficient: number
-  /** 係数の入力途中の文字列（例: "1."）。画面専用で保存対象外 */
-  coefficientInput?: string
-  /** 表示用（保存対象外） */
-  detailName?: string
-  detailUnit?: string
 }
 
 export interface FinishAssembly {
   id: number
-  assemblyCode: string | null
-  assemblyName: string
-  partId: number | null
-  usageCategory: string | null
   scope: AssemblyScope
   projectId: number | null
   note: string
   displayOrder: number
+  /** 1行目が一覧の表示行になる */
   items: AssemblyItem[]
 }
 
 export interface SaveAssemblyRequest {
   /** 既存セットのID。新規は null */
   id: number | null
-  assemblyCode: string | null
-  assemblyName: string
-  partId: number | null
-  usageCategory: string | null
   scope: AssemblyScope
   projectId: number | null
   note: string
   items: AssemblyItem[]
+}
+
+/** 保存結果。同じ内容のセットが既にある場合は統合候補を返す */
+export interface SaveAssemblyResult {
+  assembly: FinishAssembly
+  /** 内容が一致する既存セット（統合確認用） */
+  duplicateOf: FinishAssembly | null
 }
 
 export interface Part {
@@ -119,8 +129,5 @@ export interface Part {
   displayOrder: number
 }
 
-export interface AssemblyMasterOptions {
-  parts: Part[]
-  usageCategories: string[]
-  details: Detail[]
-}
+/** 仕上明細セット画面で使うマスター。明細マスター画面と同じ内容 */
+export type AssemblyMasterOptions = MasterOptions

@@ -240,5 +240,54 @@ CREATE INDEX idx_m_finish_assemblies_scope ON m_finish_assemblies(scope, project
   /* 005: 材種区分を5種類に拡張（3:下地1 4:下地2 5:予備） */ `
 INSERT OR IGNORE INTO m_material_categories (id, code, name, display_order) VALUES
   (3,'3','下地1',3),(4,'4','下地2',4),(5,'5','予備',5);
+`,
+  /* 006: 材種区分を自由入力（マスタ番号で入力補助）へ変更し、仕上明細セットを写し取り方式にする */ `
+-- 材種区分は数量チェック用の区分。マスタに無い文字も入力できるようテキストで保持する
+ALTER TABLE m_details ADD COLUMN material_category TEXT NOT NULL DEFAULT '';
+UPDATE m_details SET material_category = COALESCE(
+  (SELECT name FROM m_material_categories WHERE id = m_details.material_category_id), '');
+ALTER TABLE m_details DROP COLUMN material_category_id;
+
+-- セットは明細マスターを参照せず、呼び出した時点の内容を写し取って保持する（一方通行）
+CREATE TABLE m_finish_assembly_items_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  assembly_id INTEGER NOT NULL REFERENCES m_finish_assemblies(id) ON DELETE CASCADE,
+  -- 写し取り元の明細（追跡用。連動はしない）
+  source_detail_id INTEGER,
+  subject_id INTEGER NOT NULL REFERENCES m_subjects(id) ON DELETE CASCADE,
+  part_number REAL,
+  detail_number REAL,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_name TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  -- 親数量(P)を用いた展開計算式
+  formula TEXT NOT NULL DEFAULT '',
+  -- 掛け率（セットで拾うが計上単位が異なる場合に使用）
+  coefficient REAL NOT NULL DEFAULT 1,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO m_finish_assembly_items_new (
+  id, assembly_id, source_detail_id, subject_id, detail_number, material_category,
+  part_name, name, description_upper, description_lower, unit,
+  remarks_upper, remarks_lower, estimate_display, formula, coefficient, display_order
+)
+SELECT
+  i.id, i.assembly_id, i.detail_id, d.subject_id, d.detail_number, d.material_category,
+  d.part_name, d.name, d.description_upper, d.description_lower, d.unit,
+  d.remarks_upper, d.remarks_lower, d.estimate_display, i.formula, i.coefficient, i.display_order
+FROM m_finish_assembly_items i
+JOIN m_details d ON d.id = i.detail_id;
+
+DROP TABLE m_finish_assembly_items;
+ALTER TABLE m_finish_assembly_items_new RENAME TO m_finish_assembly_items;
+CREATE INDEX idx_m_fa_items_assembly_order ON m_finish_assembly_items(assembly_id, display_order);
+CREATE INDEX idx_m_fa_items_subject ON m_finish_assembly_items(subject_id, display_order);
 `
 ]

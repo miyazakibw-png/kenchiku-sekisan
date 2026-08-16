@@ -4,6 +4,7 @@ import {
   isValidDetailNumberInput,
   parseDetailNumber
 } from '@shared/detailNumber'
+import { resolveMasterName } from '@shared/masters'
 import { resolveUnitName } from '@shared/units'
 import { sortDetails, type SortableDetail } from '../../../../core/sort/detailSortKey'
 import type { GridColumn } from '../grid/gridClipboard'
@@ -75,13 +76,17 @@ export function buildDetailColumns(
     {
       key: 'materialCategory',
       label: '材種区分',
-      get: (row) =>
-        materialCategories.find((c) => c.id === row.materialCategoryId)?.name ?? '',
+      get: (row) => row.materialCategory,
+      // 数量チェック用の区分。マスタ番号で入力補助するが、マスタに無い文字も取り込む
       set: (row, value) => {
-        if (value === '') return { row: { ...row, materialCategoryId: null } }
-        const found = materialCategories.find((c) => c.name === value || c.code === value)
-        if (!found) return { row, error: '材種区分マスタに存在しません' }
-        return { row: { ...row, materialCategoryId: found.id } }
+        const resolved = resolveMasterName(materialCategories, value)
+        if (resolved !== value || value === '' || materialCategories.some((c) => c.name === value)) {
+          return { row: { ...row, materialCategory: resolved } }
+        }
+        return {
+          row: { ...row, materialCategory: value },
+          warning: '材種区分マスタに存在しません（取り込みます）'
+        }
       }
     },
     {
@@ -115,7 +120,7 @@ function toSortable(
     remarksLower: row.remarksLower,
     remarksUpper: row.remarksUpper,
     materialCategoryOrder:
-      materialCategories.find((c) => c.id === row.materialCategoryId)?.displayOrder ?? null
+      materialCategories.find((c) => c.name === row.materialCategory)?.displayOrder ?? null
   }
 }
 

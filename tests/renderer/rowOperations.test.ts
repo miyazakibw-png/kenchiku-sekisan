@@ -20,7 +20,7 @@ function detail(id: number, name: string): Detail {
     id,
     subjectId: 1,
     detailNumber: id + 0.5,
-    materialCategoryId: null,
+    materialCategory: '',
     partName: '',
     name,
     descriptionUpper: '',

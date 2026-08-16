@@ -4,9 +4,10 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { closeDatabase, getDatabase, initDatabase } from './db'
 import { listDetails, listMasterOptions, saveDetails } from './services/detailService'
 import {
-  deleteAssembly,
+  buildItemFromDetail,
   listAssemblies,
   listAssemblyMasterOptions,
+  mergeAssemblies,
   promoteAssemblyToBasic,
   saveAssembly
 } from './services/assemblyService'
@@ -55,7 +56,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.assemblySave, (_event, request: SaveAssemblyRequest) =>
     saveAssembly(getDatabase(), request)
   )
-  ipcMain.handle(IPC.assemblyDelete, (_event, id: number) => deleteAssembly(getDatabase(), id))
+  ipcMain.handle(IPC.assemblyItemFromDetail, (_event, detailId: number) =>
+    buildItemFromDetail(getDatabase(), detailId)
+  )
+  ipcMain.handle(IPC.assemblyMerge, (_event, keepId: number, mergedId: number) =>
+    mergeAssemblies(getDatabase(), keepId, mergedId)
+  )
   ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
     promoteAssemblyToBasic(getDatabase(), id)
   )
