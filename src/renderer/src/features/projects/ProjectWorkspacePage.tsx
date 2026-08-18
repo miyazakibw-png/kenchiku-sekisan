@@ -1,0 +1,216 @@
+import { useEffect, useMemo, useState } from 'react'
+import type { ProjectField, ProjectSummary } from '@shared/types'
+import { normalizeDate } from './projectLedger'
+import {
+  ALWAYS_VISIBLE,
+  loadHiddenFields,
+  MENU_GROUP_LABEL,
+  saveHiddenFields,
+  toggleHiddenField,
+  WORKSPACE_MENU,
+  type WorkspaceMenuItem
+} from './workspaceMenu'
+import './ProjectWorkspacePage.css'
+
+interface Props {
+  project: ProjectSummary
+  fields: ProjectField[]
+  /** 工事名称などの変更は物件管理台帳と同じレコードを更新する（相互連携） */
+  onSave: (project: ProjectSummary) => void
+  onBack: () => void
+}
+
+interface HeaderField {
+  key: string
+  label: string
+  value: string
+  /** ユーザー定義列は列IDで値を持つ */
+  fieldId: number | null
+  readOnly: boolean
+  set: (project: ProjectSummary, value: string) => ProjectSummary
+}
+
+const keepAsIs = (project: ProjectSummary): ProjectSummary => project
+
+export default function ProjectWorkspacePage({
+  project,
+  fields,
+  onSave,
+  onBack
+}: Props): JSX.Element {
+  const [draft, setDraft] = useState<ProjectSummary>(project)
+  const [hidden, setHidden] = useState<string[]>(loadHiddenFields)
+  const [showPicker, setShowPicker] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => setDraft(project), [project])
+
+  const headerFields = useMemo<HeaderField[]>(
+    () => [
+      {
+        key: 'managementNo',
+        label: '管理番号',
+        value: draft.managementNo,
+        fieldId: null,
+        readOnly: true,
+        set: keepAsIs
+      },
+      {
+        key: 'name',
+        label: '工事名称',
+        value: draft.name,
+        fieldId: null,
+        readOnly: false,
+        set: (project, value) => ({ ...project, name: value })
+      },
+      {
+        key: 'projectDate',
+        label: '日付',
+        value: draft.projectDate,
+        fieldId: null,
+        readOnly: false,
+        set: (project, value) => ({ ...project, projectDate: value })
+      },
+      {
+        key: 'builderName',
+        label: '施工会社名',
+        value: draft.builderName,
+        fieldId: null,
+        readOnly: false,
+        set: (project, value) => ({ ...project, builderName: value })
+      },
+      {
+        key: 'designerName',
+        label: '設計事務所名',
+        value: draft.designerName,
+        fieldId: null,
+        readOnly: false,
+        set: (project, value) => ({ ...project, designerName: value })
+      },
+      {
+        key: 'note',
+        label: '備考',
+        value: draft.note,
+        fieldId: null,
+        readOnly: false,
+        set: (project, value) => ({ ...project, note: value })
+      },
+      ...fields.map((field) => ({
+        key: `field-${field.id}`,
+        label: field.title,
+        value: draft.fieldValues[field.id] ?? '',
+        fieldId: field.id,
+        readOnly: false,
+        set: (project: ProjectSummary, value: string): ProjectSummary => ({
+          ...project,
+          fieldValues: { ...project.fieldValues, [field.id]: value }
+        })
+      }))
+    ],
+    [draft, fields]
+  )
+
+  const edit = (field: HeaderField, value: string): void =>
+    setDraft((prev) => field.set(prev, value))
+
+  const commit = (field: HeaderField): void => {
+    if (field.key === 'projectDate') {
+      const normalized = normalizeDate(draft.projectDate)
+      if (!normalized) {
+        setMessage('日付は 2026-08-17 の形式で入力してください')
+        return
+      }
+      onSave({ ...draft, projectDate: normalized })
+      return
+    }
+    onSave(draft)
+  }
+
+  const openMenu = (item: WorkspaceMenuItem): void =>
+    setMessage(item.ready ? '' : `${item.label} は次の工程で作ります（${item.note}）`)
+
+  const widthOf = (field: HeaderField): string | undefined => {
+    const defined = fields.find((row) => row.id === field.fieldId)
+    return defined ? `${defined.displayWidth}ch` : undefined
+  }
+
+  return (
+    <div className="workspace-page">
+      <div className="toolbar">
+        <button type="button" onClick={onBack}>
+          ← 物件管理台帳
+        </button>
+        <h2>積算操作（管理・移動・集計指示）</h2>
+        <button type="button" onClick={() => setShowPicker((prev) => !prev)}>
+          ⚙ 表示項目
+        </button>
+        <span className="status">{message}</span>
+      </div>
+
+      {showPicker && (
+        <div className="field-picker">
+          <span className="hint">管理番号・工事名称は常に表示します</span>
+          {headerFields.map((field) => (
+            <label key={field.key}>
+              <input
+                type="checkbox"
+                disabled={ALWAYS_VISIBLE.includes(field.key)}
+                checked={!hidden.includes(field.key)}
+                onChange={() => {
+                  const next = toggleHiddenField(hidden, field.key)
+                  setHidden(next)
+                  saveHiddenFields(next)
+                }}
+              />
+              {field.label}
+            </label>
+          ))}
+        </div>
+      )}
+
+      <dl className="workspace-header">
+        {headerFields
+          .filter((field) => !hidden.includes(field.key))
+          .map((field) => (
+            <div key={field.key} className="header-field">
+              <dt>{field.label}</dt>
+              <dd>
+                {field.readOnly ? (
+                  <span className="management-no" title="管理用の自動採番のため変更できません">
+                    {field.value}
+                  </span>
+                ) : (
+                  <input
+                    className={field.key === 'projectDate' ? 'date' : undefined}
+                    style={widthOf(field) ? { width: widthOf(field) } : undefined}
+                    value={field.value}
+                    onChange={(e) => edit(field, e.target.value)}
+                    onBlur={() => commit(field)}
+                  />
+                )}
+              </dd>
+            </div>
+          ))}
+      </dl>
+
+      <div className="workspace-menu">
+        {(['master', 'input', 'aggregate', 'output'] as const).map((group) => (
+          <section key={group}>
+            <h3>{MENU_GROUP_LABEL[group]}</h3>
+            {WORKSPACE_MENU.filter((item) => item.group === group).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={item.ready ? 'menu-item' : 'menu-item pending'}
+                title={item.note}
+                onClick={() => openMenu(item)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}

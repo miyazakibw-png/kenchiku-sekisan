@@ -7,18 +7,15 @@ import {
   sortProjects,
   type LedgerSortKey
 } from './projectLedger'
+import ProjectWorkspacePage from './ProjectWorkspacePage'
 import './ProjectLedgerPage.css'
-
-/** 工事概要（物件管理台帳と同じ項目。管理番号以外はどちらから修正しても相互反映する） */
-interface OverviewState {
-  project: ProjectSummary
-}
 
 export default function ProjectLedgerPage(): JSX.Element {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [fields, setFields] = useState<ProjectField[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [overview, setOverview] = useState<OverviewState | null>(null)
+  /** 開いている工事（積算操作画面） */
+  const [openedId, setOpenedId] = useState<number | null>(null)
   const [fieldEditor, setFieldEditor] = useState<ProjectField[] | null>(null)
   const [sortDescending, setSortDescending] = useState(false)
   const [toast, setToast] = useState('')
@@ -55,16 +52,12 @@ export default function ProjectLedgerPage(): JSX.Element {
       fieldValues: project.fieldValues
     })
     setProjects((prev) => prev.map((row) => (row.id === saved.id ? saved : row)))
-    setOverview((prev) => (prev && prev.project.id === saved.id ? { project: saved } : prev))
     setToast('保存しました')
   }, [])
 
   /** 画面上の編集は行だけを差し替え、確定（フォーカスアウト）で保存する */
   const editRow = useCallback((id: number, patch: Partial<ProjectSummary>) => {
     setProjects((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
-    setOverview((prev) =>
-      prev && prev.project.id === id ? { project: { ...prev.project, ...patch } } : prev
-    )
   }, [])
 
   const editFieldValue = useCallback(
@@ -126,6 +119,18 @@ export default function ProjectLedgerPage(): JSX.Element {
   }, [fieldEditor, reload])
 
   const selectedIndex = projects.findIndex((project) => project.id === selectedId)
+  const opened = projects.find((project) => project.id === openedId) ?? null
+
+  if (opened) {
+    return (
+      <ProjectWorkspacePage
+        project={opened}
+        fields={fields}
+        onSave={(project) => void saveProject(project)}
+        onBack={() => setOpenedId(null)}
+      />
+    )
+  }
 
   return (
     <div className="project-page">
@@ -187,9 +192,9 @@ export default function ProjectLedgerPage(): JSX.Element {
               draggable
               className={selectedId === project.id ? 'selected' : ''}
               onClick={() => setSelectedId(project.id)}
-              onDoubleClick={() => setOverview({ project })}
+              onDoubleClick={() => setOpenedId(project.id)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') setOverview({ project })
+                if (e.key === 'Enter') setOpenedId(project.id)
               }}
               onDragStart={() => {
                 dragIndex.current = index
@@ -256,87 +261,6 @@ export default function ProjectLedgerPage(): JSX.Element {
           ))}
         </tbody>
       </table>
-
-      {overview && (
-        <div className="modal-backdrop" role="dialog">
-          <div className="modal overview">
-            <header>
-              <h3>工事概要</h3>
-              <span className="hint">
-                管理番号以外は台帳・概要のどちらから修正しても同じ内容になります
-              </span>
-            </header>
-            <div className="modal-body">
-              <dl>
-                <dt>管理番号</dt>
-                <dd className="management-no">{overview.project.managementNo}</dd>
-                <dt>日付</dt>
-                <dd>
-                  <input
-                    className="date"
-                    value={overview.project.projectDate}
-                    onChange={(e) =>
-                      editRow(overview.project.id, { projectDate: e.target.value })
-                    }
-                    onBlur={(e) => commitDate(overview.project, e.target.value)}
-                  />
-                </dd>
-                <dt>工事名称</dt>
-                <dd>
-                  <input
-                    value={overview.project.name}
-                    onChange={(e) => editRow(overview.project.id, { name: e.target.value })}
-                    onBlur={() => void saveProject(overview.project)}
-                  />
-                </dd>
-                <dt>建設会社</dt>
-                <dd>
-                  <input
-                    value={overview.project.builderName}
-                    onChange={(e) => editRow(overview.project.id, { builderName: e.target.value })}
-                    onBlur={() => void saveProject(overview.project)}
-                  />
-                </dd>
-                <dt>設計事務所</dt>
-                <dd>
-                  <input
-                    value={overview.project.designerName}
-                    onChange={(e) => editRow(overview.project.id, { designerName: e.target.value })}
-                    onBlur={() => void saveProject(overview.project)}
-                  />
-                </dd>
-                <dt>備考</dt>
-                <dd>
-                  <input
-                    value={overview.project.note}
-                    onChange={(e) => editRow(overview.project.id, { note: e.target.value })}
-                    onBlur={() => void saveProject(overview.project)}
-                  />
-                </dd>
-                {fields.map((field) => (
-                  <div key={field.id} className="overview-field">
-                    <dt>{field.title}</dt>
-                    <dd>
-                      <input
-                        style={{ width: `${field.displayWidth}ch` }}
-                        value={overview.project.fieldValues[field.id] ?? ''}
-                        onChange={(e) => editFieldValue(overview.project, field.id, e.target.value)}
-                        onBlur={() => void saveProject(overview.project)}
-                      />
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            <footer>
-              <span className="spacer" />
-              <button type="button" onClick={() => setOverview(null)}>
-                閉じる
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
 
       {fieldEditor && (
         <div className="modal-backdrop" role="dialog">

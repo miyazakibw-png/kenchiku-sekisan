@@ -1,0 +1,116 @@
+.workspace-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.workspace-page .toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.workspace-page .toolbar h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.workspace-page .status {
+  margin-left: auto;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.workspace-page .field-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #d5d9e0;
+  font-size: 12px;
+}
+
+.workspace-page .field-picker .hint {
+  color: #6b7280;
+}
+
+.workspace-header {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 4px 12px;
+  margin: 12px;
+  max-width: 720px;
+}
+
+.workspace-header .header-field {
+  display: contents;
+}
+
+.workspace-header dt {
+  background: #1f3864;
+  color: #fff;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.workspace-header dd {
+  margin: 0;
+}
+
+.workspace-header input {
+  width: 100%;
+  max-width: 520px;
+}
+
+.workspace-page .date {
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'Menlo', monospace;
+  width: 11ch;
+}
+
+.workspace-page .management-no {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-weight: 600;
+}
+
+.workspace-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 0 12px 16px;
+}
+
+.workspace-menu section {
+  min-width: 220px;
+}
+
+.workspace-menu h3 {
+  font-size: 12px;
+  color: #4b5563;
+  margin: 0 0 4px;
+}
+
+.workspace-menu .menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #1f3864;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+
+.workspace-menu .menu-item.pending {
+  background: #8f9bb3;
+}
+
+.workspace-menu .menu-item:hover {
+  filter: brightness(1.15);
+}
