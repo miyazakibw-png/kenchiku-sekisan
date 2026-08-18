@@ -324,5 +324,15 @@ CREATE TABLE project_field_values (
   value TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (project_id, field_id)
 );
+`,
+  /* 008: 工種科目マスター（部位Ⅱ仕分け不要・集計順・備考・将来用の予備列） */ `
+-- 部位Ⅱの仕分けが必要な物件でも、科目によっては仕分け不要にできる
+ALTER TABLE m_subjects ADD COLUMN skip_part2 INTEGER NOT NULL DEFAULT 0;
+-- 集計順 1:部位順 2:明細番号順
+ALTER TABLE m_subjects ADD COLUMN aggregate_order INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE m_subjects ADD COLUMN note TEXT NOT NULL DEFAULT '';
+-- 将来の項目追加用の予備列（用途が決まるまで未使用）
+ALTER TABLE m_subjects ADD COLUMN spare1 TEXT NOT NULL DEFAULT '';
+ALTER TABLE m_subjects ADD COLUMN spare2 TEXT NOT NULL DEFAULT '';
 `
 ]

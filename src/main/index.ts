@@ -19,12 +19,14 @@ import {
   saveProject,
   saveProjectFields
 } from './services/projectService'
+import { listSubjects, saveSubjects } from './services/subjectService'
 import { IPC } from '../shared/ipc'
 import type {
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
-  SaveProjectRequest
+  SaveProjectRequest,
+  SubjectDraft
 } from '../shared/types'
 
 function createWindow(): void {
@@ -56,6 +58,10 @@ function createWindow(): void {
 
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC.masterOptions, () => listMasterOptions(getDatabase()))
+  ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()))
+  ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
+    saveSubjects(getDatabase(), rows)
+  )
   ipcMain.handle(IPC.detailsList, (_event, subjectId: number) =>
     listDetails(getDatabase(), subjectId)
   )

@@ -1,5 +1,7 @@
 export const IPC = {
   masterOptions: 'master:options',
+  subjectsList: 'subjects:list',
+  subjectsSave: 'subjects:save',
   detailsList: 'details:list',
   detailsSave: 'details:save',
   assemblyOptions: 'assembly:options',

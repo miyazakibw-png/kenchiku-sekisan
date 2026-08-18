@@ -3,6 +3,31 @@ export interface Subject {
   code: string
   name: string
   displayOrder: number
+  /** 集計時に部位Ⅱの仕分けを行わない科目（1で不要） */
+  skipPart2: number
+  /** 集計順 1:部位順 2:明細番号順 */
+  aggregateOrder: number
+  note: string
+  /** 将来の項目追加用の予備列 */
+  spare1: string
+  spare2: string
+}
+
+/** 工種科目マスター画面の1行。id が null の行は新規追加 */
+export interface SubjectDraft {
+  id: number | null
+  name: string
+  skipPart2: number
+  aggregateOrder: number
+  note: string
+  spare1: string
+  spare2: string
+}
+
+export interface SaveSubjectsResult {
+  subjects: Subject[]
+  /** 明細が登録済みで削除できなかった科目名 */
+  blockedDeletes: string[]
 }
 
 export interface MaterialCategory {

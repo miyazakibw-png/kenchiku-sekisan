@@ -75,7 +75,14 @@ export const mSubjects = sqliteTable('m_subjects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   code: text('code').notNull().unique(),
   name: text('name').notNull(),
-  displayOrder: integer('display_order').notNull().default(0)
+  displayOrder: integer('display_order').notNull().default(0),
+  /** 集計時に部位Ⅱの仕分けを行わない科目 */
+  skipPart2: integer('skip_part2').notNull().default(0),
+  /** 集計順 1:部位順 2:明細番号順 */
+  aggregateOrder: integer('aggregate_order').notNull().default(1),
+  note: text('note').notNull().default(''),
+  spare1: text('spare1').notNull().default(''),
+  spare2: text('spare2').notNull().default('')
 })
 
 /** 部位マスター */

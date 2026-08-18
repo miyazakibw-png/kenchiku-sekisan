@@ -12,11 +12,17 @@ import type {
   SaveAssemblyRequest,
   SaveAssemblyResult,
   SaveDetailsRequest,
-  SaveProjectRequest
+  SaveProjectRequest,
+  SaveSubjectsResult,
+  Subject,
+  SubjectDraft
 } from '../shared/types'
 
 const api = {
   getMasterOptions: (): Promise<MasterOptions> => ipcRenderer.invoke(IPC.masterOptions),
+  listSubjects: (): Promise<Subject[]> => ipcRenderer.invoke(IPC.subjectsList),
+  saveSubjects: (rows: SubjectDraft[]): Promise<SaveSubjectsResult> =>
+    ipcRenderer.invoke(IPC.subjectsSave, rows),
   listDetails: (subjectId: number): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsList, subjectId),
   saveDetails: (request: SaveDetailsRequest): Promise<Detail[]> =>
