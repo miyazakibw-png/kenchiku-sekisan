@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import type { MasterOptions } from '@shared/types'
 import DetailMasterPage from './features/details/DetailMasterPage'
 import AssemblyMasterPage from './features/assemblies/AssemblyMasterPage'
+import ProjectLedgerPage from './features/projects/ProjectLedgerPage'
 
 type NavKey = 'details' | 'assemblies' | 'projects' | 'settings'
 
 const NAV: { key: NavKey; label: string; icon: string; ready: boolean }[] = [
   { key: 'details', label: '明細マスター', icon: '📋', ready: true },
   { key: 'assemblies', label: '仕上明細セット', icon: '🧱', ready: true },
-  { key: 'projects', label: '物件管理', icon: '🏢', ready: false },
+  { key: 'projects', label: '物件管理台帳', icon: '🏢', ready: true },
   { key: 'settings', label: '設定', icon: '⚙️', ready: false }
 ]
 
@@ -43,6 +44,8 @@ export default function App(): JSX.Element {
           <DetailMasterPage options={options} />
         ) : nav === 'assemblies' ? (
           <AssemblyMasterPage options={options} />
+        ) : nav === 'projects' ? (
+          <ProjectLedgerPage />
         ) : (
           <div className="placeholder">
             {NAV.find((item) => item.key === nav)?.label} は今後実装予定です。

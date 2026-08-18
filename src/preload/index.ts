@@ -6,9 +6,13 @@ import type {
   Detail,
   FinishAssembly,
   MasterOptions,
+  ProjectField,
+  ProjectLedger,
+  ProjectSummary,
   SaveAssemblyRequest,
   SaveAssemblyResult,
-  SaveDetailsRequest
+  SaveDetailsRequest,
+  SaveProjectRequest
 } from '../shared/types'
 
 const api = {
@@ -28,7 +32,18 @@ const api = {
   mergeAssemblies: (keepId: number, mergedId: number): Promise<FinishAssembly> =>
     ipcRenderer.invoke(IPC.assemblyMerge, keepId, mergedId),
   promoteAssembly: (id: number): Promise<FinishAssembly> =>
-    ipcRenderer.invoke(IPC.assemblyPromote, id)
+    ipcRenderer.invoke(IPC.assemblyPromote, id),
+  getProjectLedger: (): Promise<ProjectLedger> => ipcRenderer.invoke(IPC.projectLedger),
+  createProject: (name: string): Promise<ProjectSummary> =>
+    ipcRenderer.invoke(IPC.projectCreate, name),
+  copyProject: (sourceId: number, name: string): Promise<ProjectSummary> =>
+    ipcRenderer.invoke(IPC.projectCopy, sourceId, name),
+  saveProject: (request: SaveProjectRequest): Promise<ProjectSummary> =>
+    ipcRenderer.invoke(IPC.projectSave, request),
+  reorderProjects: (orderedIds: number[]): Promise<ProjectSummary[]> =>
+    ipcRenderer.invoke(IPC.projectReorder, orderedIds),
+  saveProjectFields: (fields: ProjectField[]): Promise<ProjectField[]> =>
+    ipcRenderer.invoke(IPC.projectFieldsSave, fields)
 }
 
 export type SekisanApi = typeof api

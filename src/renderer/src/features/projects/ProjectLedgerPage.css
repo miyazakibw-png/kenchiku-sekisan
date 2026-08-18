@@ -1,0 +1,150 @@
+.project-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.project-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.project-page .toolbar .hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.project-page .status {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.project-list {
+  margin: 8px;
+  overflow: auto;
+}
+
+.project-list th {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.project-list th.handle,
+.project-list td.handle {
+  width: 20px;
+  cursor: grab;
+  color: #9aa3b2;
+  text-align: center;
+}
+
+.project-list tr.selected {
+  background: #eaf1fb;
+}
+
+/* 日付は桁ずれしないよう等幅で表示する */
+.project-page .date,
+.project-page .management-no {
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'Menlo', monospace;
+  width: 11ch;
+}
+
+.project-page .management-no {
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.project-page .num {
+  text-align: right;
+  width: 8ch;
+}
+
+.project-page .empty {
+  text-align: center;
+  color: #8a93a2;
+  padding: 12px;
+}
+
+.project-page .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.project-page .modal {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  max-width: 94vw;
+  min-width: 480px;
+}
+
+.project-page .modal header,
+.project-page .modal footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.project-page .modal header {
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.project-page .modal footer {
+  border-top: 1px solid #d5d9e0;
+}
+
+.project-page .modal header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.project-page .modal .modal-body {
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.project-page .modal .hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.project-page .modal .spacer {
+  margin-left: auto;
+}
+
+.project-page .modal .primary {
+  font-weight: 600;
+}
+
+.project-page .overview dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.project-page .overview dt {
+  color: #4b5563;
+  align-self: center;
+}
+
+.project-page .overview dd {
+  margin: 0;
+}
+
+.project-page .overview .overview-field {
+  display: contents;
+}

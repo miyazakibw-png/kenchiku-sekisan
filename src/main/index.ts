@@ -11,8 +11,21 @@ import {
   promoteAssemblyToBasic,
   saveAssembly
 } from './services/assemblyService'
+import {
+  copyProject,
+  createProject,
+  listProjectLedger,
+  reorderProjects,
+  saveProject,
+  saveProjectFields
+} from './services/projectService'
 import { IPC } from '../shared/ipc'
-import type { SaveAssemblyRequest, SaveDetailsRequest } from '../shared/types'
+import type {
+  ProjectField,
+  SaveAssemblyRequest,
+  SaveDetailsRequest,
+  SaveProjectRequest
+} from '../shared/types'
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -64,6 +77,20 @@ function registerIpcHandlers(): void {
   )
   ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
     promoteAssemblyToBasic(getDatabase(), id)
+  )
+  ipcMain.handle(IPC.projectLedger, () => listProjectLedger(getDatabase()))
+  ipcMain.handle(IPC.projectCreate, (_event, name: string) => createProject(getDatabase(), name))
+  ipcMain.handle(IPC.projectCopy, (_event, sourceId: number, name: string) =>
+    copyProject(getDatabase(), sourceId, name)
+  )
+  ipcMain.handle(IPC.projectSave, (_event, request: SaveProjectRequest) =>
+    saveProject(getDatabase(), request)
+  )
+  ipcMain.handle(IPC.projectReorder, (_event, orderedIds: number[]) =>
+    reorderProjects(getDatabase(), orderedIds)
+  )
+  ipcMain.handle(IPC.projectFieldsSave, (_event, fields: ProjectField[]) =>
+    saveProjectFields(getDatabase(), fields)
   )
 }
 

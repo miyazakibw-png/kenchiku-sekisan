@@ -289,5 +289,40 @@ DROP TABLE m_finish_assembly_items;
 ALTER TABLE m_finish_assembly_items_new RENAME TO m_finish_assembly_items;
 CREATE INDEX idx_m_fa_items_assembly_order ON m_finish_assembly_items(assembly_id, display_order);
 CREATE INDEX idx_m_fa_items_subject ON m_finish_assembly_items(subject_id, display_order);
+`,
+  /* 007: 物件管理台帳（管理番号・日付・建設会社・設計事務所・自由並べ替え・ユーザー定義列） */ `
+-- 管理番号は自動採番で変更不可。日付は作成日を初期値とし、YYYY-MM-DD の固定形式で保持する
+ALTER TABLE projects ADD COLUMN management_no TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN project_date TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN builder_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN designer_name TEXT NOT NULL DEFAULT '';
+-- 作成順とは無関係に台帳で並べ替えるための順序
+ALTER TABLE projects ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE projects ADD COLUMN source_project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;
+
+UPDATE projects SET
+  management_no = 'P-' || substr('0000' || id, -4),
+  project_date = COALESCE(substr(created_at, 1, 10), ''),
+  builder_name = COALESCE(client_name, ''),
+  display_order = id
+WHERE management_no = '';
+
+CREATE UNIQUE INDEX uq_projects_management_no ON projects(management_no);
+CREATE INDEX idx_projects_display_order ON projects(display_order);
+
+-- 物件管理台帳のユーザー定義列。display_width は画面表示の桁数制限（入力自体は制限しない）
+CREATE TABLE m_project_fields (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  display_width INTEGER NOT NULL DEFAULT 30,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE project_field_values (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  field_id INTEGER NOT NULL REFERENCES m_project_fields(id) ON DELETE CASCADE,
+  value TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (project_id, field_id)
+);
 `
 ]

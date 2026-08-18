@@ -1,21 +1,74 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import {
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex
+} from 'drizzle-orm/sqlite-core'
 
 const now = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
 
 /** 物件（プロジェクト）基本情報 */
-export const projects = sqliteTable('projects', {
+export const projects = sqliteTable(
+  'projects',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code'),
+    /** 管理番号（自動採番・変更不可） */
+    managementNo: text('management_no').notNull().default(''),
+    /** 台帳の日付（YYYY-MM-DD。作成日を初期値とし変更可） */
+    projectDate: text('project_date').notNull().default(''),
+    name: text('name').notNull(),
+    /** 建設会社 */
+    builderName: text('builder_name').notNull().default(''),
+    /** 設計事務所 */
+    designerName: text('designer_name').notNull().default(''),
+    clientName: text('client_name'),
+    location: text('location'),
+    /** 延べ床面積（㎡）。歩掛・比率計算のベース値 */
+    totalArea: real('total_area'),
+    note: text('note'),
+    /** 作成順とは無関係に台帳で並べ替えるための順序 */
+    displayOrder: integer('display_order').notNull().default(0),
+    /** コピー作成元の物件 */
+    sourceProjectId: integer('source_project_id'),
+    createdAt: text('created_at').notNull().default(now),
+    updatedAt: text('updated_at').notNull().default(now)
+  },
+  (t) => ({
+    managementNoUq: uniqueIndex('uq_projects_management_no').on(t.managementNo),
+    displayOrderIdx: index('idx_projects_display_order').on(t.displayOrder)
+  })
+)
+
+/** 物件管理台帳のユーザー定義列 */
+export const mProjectFields = sqliteTable('m_project_fields', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  code: text('code'),
-  name: text('name').notNull(),
-  clientName: text('client_name'),
-  location: text('location'),
-  /** 延べ床面積（㎡）。歩掛・比率計算のベース値 */
-  totalArea: real('total_area'),
-  note: text('note'),
-  createdAt: text('created_at').notNull().default(now),
-  updatedAt: text('updated_at').notNull().default(now)
+  title: text('title').notNull(),
+  /** 画面表示の桁数制限（半角換算。入力値自体は制限しない） */
+  displayWidth: integer('display_width').notNull().default(30),
+  displayOrder: integer('display_order').notNull().default(0)
 })
+
+/** ユーザー定義列の値 */
+export const projectFieldValues = sqliteTable(
+  'project_field_values',
+  {
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fieldId: integer('field_id')
+      .notNull()
+      .references(() => mProjectFields.id, { onDelete: 'cascade' }),
+    value: text('value').notNull().default('')
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.projectId, t.fieldId] })
+  })
+)
 
 /** 科目マスター */
 export const mSubjects = sqliteTable('m_subjects', {

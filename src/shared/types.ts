@@ -131,3 +131,44 @@ export interface Part {
 
 /** 仕上明細セット画面で使うマスター。明細マスター画面と同じ内容 */
 export type AssemblyMasterOptions = MasterOptions
+
+/** 物件管理台帳のユーザー定義列 */
+export interface ProjectField {
+  id: number
+  title: string
+  /** 画面表示の桁数制限（半角換算）。入力値自体は制限しない */
+  displayWidth: number
+  displayOrder: number
+}
+
+/** 物件管理台帳の1行。工事概要と同じ内容を扱う */
+export interface ProjectSummary {
+  id: number
+  /** 自動採番・変更不可 */
+  managementNo: string
+  /** YYYY-MM-DD */
+  projectDate: string
+  name: string
+  builderName: string
+  designerName: string
+  note: string
+  displayOrder: number
+  /** ユーザー定義列の値（キーは m_project_fields.id） */
+  fieldValues: Record<number, string>
+}
+
+/** 管理番号以外を更新する（台帳・工事概要のどちらからでも同じ内容を更新する） */
+export interface SaveProjectRequest {
+  id: number
+  projectDate: string
+  name: string
+  builderName: string
+  designerName: string
+  note: string
+  fieldValues: Record<number, string>
+}
+
+export interface ProjectLedger {
+  projects: ProjectSummary[]
+  fields: ProjectField[]
+}

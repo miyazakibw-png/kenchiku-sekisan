@@ -7,7 +7,13 @@ export const IPC = {
   assemblySave: 'assembly:save',
   assemblyItemFromDetail: 'assembly:itemFromDetail',
   assemblyMerge: 'assembly:merge',
-  assemblyPromote: 'assembly:promote'
+  assemblyPromote: 'assembly:promote',
+  projectLedger: 'project:ledger',
+  projectCreate: 'project:create',
+  projectCopy: 'project:copy',
+  projectSave: 'project:save',
+  projectReorder: 'project:reorder',
+  projectFieldsSave: 'project:fieldsSave'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
