@@ -1,28 +1,35 @@
-import { join } from 'path'
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { closeDatabase, getDatabase, initDatabase } from './db'
-import { listDetails, listMasterOptions, saveDetails } from './services/detailService'
+import { join } from "path";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { electronApp, is, optimizer } from "@electron-toolkit/utils";
+import { closeDatabase, getDatabase, initDatabase } from "./db";
+import {
+  listDetails,
+  listMasterOptions,
+  saveDetails,
+} from "./services/detailService";
 import {
   buildItemFromDetail,
   listAssemblies,
   listAssemblyMasterOptions,
   mergeAssemblies,
   promoteAssemblyToBasic,
-  saveAssembly
-} from './services/assemblyService'
+  saveAssembly,
+} from "./services/assemblyService";
 import {
   copyProject,
   createProject,
   listProjectLedger,
   reorderProjects,
   saveProject,
-  saveProjectFields
-} from './services/projectService'
-import { listSubjects, saveSubjects } from './services/subjectService'
-import { listFittings, saveFittings } from './services/fittingService'
-import { listEstimateRows, saveEstimateRows } from './services/estimateRowService'
-import { IPC } from '../shared/ipc'
+  saveProjectFields,
+} from "./services/projectService";
+import { listSubjects, saveSubjects } from "./services/subjectService";
+import { listFittings, saveFittings } from "./services/fittingService";
+import {
+  listEstimateRows,
+  saveEstimateRows,
+} from "./services/estimateRowService";
+import { IPC } from "../shared/ipc";
 import type {
   ProjectField,
   SaveAssemblyRequest,
@@ -30,107 +37,133 @@ import type {
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveProjectRequest,
-  SubjectDraft
-} from '../shared/types'
+  SubjectDraft,
+} from "../shared/types";
 
-function createWindow(): void {
+/** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用） */
+function createWindow(projectId?: number): void {
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     show: false,
-    title: '建築積算システム',
+    title: "建築積算システム",
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
-      contextIsolation: true
-    }
-  })
+      contextIsolation: true,
+    },
+  });
 
-  window.on('ready-to-show', () => window.show())
+  window.on("ready-to-show", () => window.show());
   window.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    window.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  const hash = projectId === undefined ? "" : `project=${projectId}`;
+
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    window.loadURL(
+      hash
+        ? `${process.env["ELECTRON_RENDERER_URL"]}#${hash}`
+        : process.env["ELECTRON_RENDERER_URL"],
+    );
   } else {
-    window.loadFile(join(__dirname, '../renderer/index.html'))
+    window.loadFile(
+      join(__dirname, "../renderer/index.html"),
+      hash ? { hash } : undefined,
+    );
   }
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle(IPC.masterOptions, () => listMasterOptions(getDatabase()))
-  ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()))
+  ipcMain.handle(IPC.masterOptions, () => listMasterOptions(getDatabase()));
+  ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()));
   ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
-    saveSubjects(getDatabase(), rows)
-  )
+    saveSubjects(getDatabase(), rows),
+  );
   ipcMain.handle(IPC.estimateRowsList, (_event, projectId: number) =>
-    listEstimateRows(getDatabase(), projectId)
-  )
-  ipcMain.handle(IPC.estimateRowsSave, (_event, request: SaveEstimateRowsRequest) =>
-    saveEstimateRows(getDatabase(), request)
-  )
+    listEstimateRows(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.estimateRowsSave,
+    (_event, request: SaveEstimateRowsRequest) =>
+      saveEstimateRows(getDatabase(), request),
+  );
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
-    listFittings(getDatabase(), projectId)
-  )
+    listFittings(getDatabase(), projectId),
+  );
   ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
-    saveFittings(getDatabase(), request)
-  )
+    saveFittings(getDatabase(), request),
+  );
   ipcMain.handle(IPC.detailsList, (_event, subjectId: number) =>
-    listDetails(getDatabase(), subjectId)
-  )
+    listDetails(getDatabase(), subjectId),
+  );
   ipcMain.handle(IPC.detailsSave, (_event, request: SaveDetailsRequest) =>
-    saveDetails(getDatabase(), request)
-  )
-  ipcMain.handle(IPC.assemblyOptions, () => listAssemblyMasterOptions(getDatabase()))
+    saveDetails(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.assemblyOptions, () =>
+    listAssemblyMasterOptions(getDatabase()),
+  );
   ipcMain.handle(IPC.assemblyList, (_event, projectId: number | null) =>
-    listAssemblies(getDatabase(), projectId)
-  )
+    listAssemblies(getDatabase(), projectId),
+  );
   ipcMain.handle(IPC.assemblySave, (_event, request: SaveAssemblyRequest) =>
-    saveAssembly(getDatabase(), request)
-  )
+    saveAssembly(getDatabase(), request),
+  );
   ipcMain.handle(IPC.assemblyItemFromDetail, (_event, detailId: number) =>
-    buildItemFromDetail(getDatabase(), detailId)
-  )
-  ipcMain.handle(IPC.assemblyMerge, (_event, keepId: number, mergedId: number) =>
-    mergeAssemblies(getDatabase(), keepId, mergedId)
-  )
+    buildItemFromDetail(getDatabase(), detailId),
+  );
+  ipcMain.handle(
+    IPC.assemblyMerge,
+    (_event, keepId: number, mergedId: number) =>
+      mergeAssemblies(getDatabase(), keepId, mergedId),
+  );
   ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
-    promoteAssemblyToBasic(getDatabase(), id)
-  )
-  ipcMain.handle(IPC.projectLedger, () => listProjectLedger(getDatabase()))
-  ipcMain.handle(IPC.projectCreate, (_event, name: string) => createProject(getDatabase(), name))
+    promoteAssemblyToBasic(getDatabase(), id),
+  );
+  ipcMain.handle(IPC.projectLedger, () => listProjectLedger(getDatabase()));
+  ipcMain.handle(IPC.projectCreate, (_event, name: string) =>
+    createProject(getDatabase(), name),
+  );
   ipcMain.handle(IPC.projectCopy, (_event, sourceId: number, name: string) =>
-    copyProject(getDatabase(), sourceId, name)
-  )
+    copyProject(getDatabase(), sourceId, name),
+  );
   ipcMain.handle(IPC.projectSave, (_event, request: SaveProjectRequest) =>
-    saveProject(getDatabase(), request)
-  )
+    saveProject(getDatabase(), request),
+  );
   ipcMain.handle(IPC.projectReorder, (_event, orderedIds: number[]) =>
-    reorderProjects(getDatabase(), orderedIds)
-  )
+    reorderProjects(getDatabase(), orderedIds),
+  );
   ipcMain.handle(IPC.projectFieldsSave, (_event, fields: ProjectField[]) =>
-    saveProjectFields(getDatabase(), fields)
-  )
+    saveProjectFields(getDatabase(), fields),
+  );
+  ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
+    createWindow(projectId),
+  );
+  ipcMain.handle(IPC.windowClose, (event) =>
+    BrowserWindow.fromWebContents(event.sender)?.close(),
+  );
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('jp.billswork.sekisan')
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+  electronApp.setAppUserModelId("jp.billswork.sekisan");
+  app.on("browser-window-created", (_, window) =>
+    optimizer.watchWindowShortcuts(window),
+  );
 
-  initDatabase(join(app.getPath('userData'), 'sekisan.db'))
-  registerIpcHandlers()
-  createWindow()
+  initDatabase(join(app.getPath("userData"), "sekisan.db"));
+  registerIpcHandlers();
+  createWindow();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 
-app.on('will-quit', closeDatabase)
+app.on("will-quit", closeDatabase);

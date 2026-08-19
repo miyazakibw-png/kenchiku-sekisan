@@ -7,10 +7,15 @@
 
 .project-page .toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   padding: 8px;
   border-bottom: 1px solid #d5d9e0;
+}
+
+.project-page .toolbar button {
+  white-space: nowrap;
 }
 
 .project-page .toolbar .hint {

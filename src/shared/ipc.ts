@@ -19,7 +19,9 @@ export const IPC = {
   projectCopy: 'project:copy',
   projectSave: 'project:save',
   projectReorder: 'project:reorder',
-  projectFieldsSave: 'project:fieldsSave'
+  projectFieldsSave: 'project:fieldsSave',
+  projectOpenWindow: 'project:openWindow',
+  windowClose: 'window:close'
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

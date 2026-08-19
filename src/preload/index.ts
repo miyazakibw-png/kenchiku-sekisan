@@ -61,7 +61,11 @@ const api = {
   reorderProjects: (orderedIds: number[]): Promise<ProjectSummary[]> =>
     ipcRenderer.invoke(IPC.projectReorder, orderedIds),
   saveProjectFields: (fields: ProjectField[]): Promise<ProjectField[]> =>
-    ipcRenderer.invoke(IPC.projectFieldsSave, fields)
+    ipcRenderer.invoke(IPC.projectFieldsSave, fields),
+  /** 物件を別ウィンドウで開く（複数物件の同時作業） */
+  openProjectWindow: (projectId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.projectOpenWindow, projectId),
+  closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose)
 }
 
 export type SekisanApi = typeof api
