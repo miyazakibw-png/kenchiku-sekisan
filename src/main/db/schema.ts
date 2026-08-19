@@ -215,32 +215,28 @@ export const mFinishAssemblyItems = sqliteTable(
 )
 
 /** 建具・控除情報（プロジェクト固有） */
-export const projectFittings = sqliteTable(
-  'project_fittings',
-  {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    projectId: integer('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    /** 建具記号（予約語・重複禁止） */
-    symbol: text('symbol').notNull(),
-    name: text('name').notNull().default(''),
-    width: real('width'),
-    height: real('height'),
-    quantity: real('quantity').notNull().default(1),
-    /** 自動計算(W×H)の手動補正値。設定時はこちらを優先 */
-    areaOverride: real('area_override'),
-    /** 巾木減(W)の手動補正値 */
-    baseboardDeductionOverride: real('baseboard_deduction_override'),
-    /** 軸組計算用「横補強」等の派生パラメーター */
-    reinforcementWidth: real('reinforcement_width'),
-    note: text('note').notNull().default(''),
-    displayOrder: integer('display_order').notNull().default(0)
-  },
-  (t) => ({
-    symbolUq: uniqueIndex('uq_project_fittings_symbol').on(t.projectId, t.symbol)
-  })
-)
+export const projectFittings = sqliteTable('project_fittings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  /** 建具記号。重複は許し、画面で赤文字にして知らせる */
+  symbol: text('symbol').notNull(),
+  /** 記号ごとの詳細拾い（硝子・額縁など）を後から足すための名称欄 */
+  name: text('name').notNull().default(''),
+  width: real('width'),
+  height: real('height'),
+  /** 腰高（FLから建具下端まで）。値がある場合は巾木の差し引きをしない */
+  sillHeight: real('sill_height'),
+  /** 面積計算（自動計算修正用）の計算式 */
+  areaFormula: text('area_formula').notNull().default(''),
+  /** 巾木長さ（自動計算修正用）の計算式 */
+  baseboardFormula: text('baseboard_formula').notNull().default(''),
+  note: text('note').notNull().default(''),
+  /** 1: 建具表に無いものを積算入力から登録した行 */
+  fromEstimate: integer('from_estimate').notNull().default(0),
+  displayOrder: integer('display_order').notNull().default(0)
+})
 
 /** 部位別入力（部屋別仕上） */
 export const projectRoomFinishes = sqliteTable(

@@ -5,6 +5,7 @@ import type {
   AssemblyMasterOptions,
   Detail,
   FinishAssembly,
+  Fitting,
   MasterOptions,
   ProjectField,
   ProjectLedger,
@@ -12,6 +13,7 @@ import type {
   SaveAssemblyRequest,
   SaveAssemblyResult,
   SaveDetailsRequest,
+  SaveFittingsRequest,
   SaveProjectRequest,
   SaveSubjectsResult,
   Subject,
@@ -39,6 +41,10 @@ const api = {
     ipcRenderer.invoke(IPC.assemblyMerge, keepId, mergedId),
   promoteAssembly: (id: number): Promise<FinishAssembly> =>
     ipcRenderer.invoke(IPC.assemblyPromote, id),
+  listFittings: (projectId: number): Promise<Fitting[]> =>
+    ipcRenderer.invoke(IPC.fittingsList, projectId),
+  saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>
+    ipcRenderer.invoke(IPC.fittingsSave, request),
   getProjectLedger: (): Promise<ProjectLedger> => ipcRenderer.invoke(IPC.projectLedger),
   createProject: (name: string): Promise<ProjectSummary> =>
     ipcRenderer.invoke(IPC.projectCreate, name),

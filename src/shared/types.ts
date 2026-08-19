@@ -30,6 +30,32 @@ export interface SaveSubjectsResult {
   blockedDeletes: string[]
 }
 
+/** 建具表の1行 */
+export interface Fitting {
+  id: number
+  projectId: number
+  symbol: string
+  name: string
+  width: number | null
+  height: number | null
+  sillHeight: number | null
+  areaFormula: string
+  baseboardFormula: string
+  note: string
+  /** 1: 建具表に無いものを積算入力から登録した行 */
+  fromEstimate: number
+  displayOrder: number
+}
+
+export type FittingDraft = Omit<Fitting, 'id' | 'projectId' | 'displayOrder'> & {
+  id: number | null
+}
+
+export interface SaveFittingsRequest {
+  projectId: number
+  rows: FittingDraft[]
+}
+
 export interface MaterialCategory {
   id: number
   code: string

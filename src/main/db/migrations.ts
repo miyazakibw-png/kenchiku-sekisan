@@ -334,5 +334,38 @@ ALTER TABLE m_subjects ADD COLUMN note TEXT NOT NULL DEFAULT '';
 -- 将来の項目追加用の予備列（用途が決まるまで未使用）
 ALTER TABLE m_subjects ADD COLUMN spare1 TEXT NOT NULL DEFAULT '';
 ALTER TABLE m_subjects ADD COLUMN spare2 TEXT NOT NULL DEFAULT '';
+`,
+  /* 009: 建具表メイン画面（腰高・自動計算修正用の計算式・記号重複可・積算入力からの登録） */ `
+CREATE TABLE project_fittings_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  -- 建具記号は重複を許し、画面で赤文字にして知らせる
+  symbol TEXT NOT NULL,
+  -- 記号ごとの詳細拾い（硝子・額縁など）を後から足せるように名称欄を残す
+  name TEXT NOT NULL DEFAULT '',
+  width REAL,
+  height REAL,
+  -- 腰高（FLから建具下端まで）。値がある場合は巾木の差し引きをしない
+  sill_height REAL,
+  -- 面積計算（自動計算修正用）。式は残したまま結果を面積に使う
+  area_formula TEXT NOT NULL DEFAULT '',
+  -- 巾木長さ（自動計算修正用）
+  baseboard_formula TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  -- 1: 建具表に無いものを積算入力から登録した行（末尾へまとめる）
+  from_estimate INTEGER NOT NULL DEFAULT 0,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO project_fittings_new (
+  id, project_id, symbol, name, width, height, note, display_order
+)
+SELECT id, project_id, symbol, name, width, height, note, display_order
+FROM project_fittings;
+
+DROP INDEX IF EXISTS uq_project_fittings_symbol;
+DROP TABLE project_fittings;
+ALTER TABLE project_fittings_new RENAME TO project_fittings;
+CREATE INDEX idx_project_fittings_order ON project_fittings(project_id, from_estimate, display_order);
 `
 ]

@@ -10,6 +10,7 @@ import {
   WORKSPACE_MENU,
   type WorkspaceMenuItem
 } from './workspaceMenu'
+import FittingsPage from '../fittings/FittingsPage'
 import './ProjectWorkspacePage.css'
 
 interface Props {
@@ -42,6 +43,7 @@ export default function ProjectWorkspacePage({
   const [hidden, setHidden] = useState<string[]>(loadHiddenFields)
   const [showPicker, setShowPicker] = useState(false)
   const [message, setMessage] = useState('')
+  const [openedMenu, setOpenedMenu] = useState<string | null>(null)
 
   useEffect(() => setDraft(project), [project])
 
@@ -126,12 +128,22 @@ export default function ProjectWorkspacePage({
     onSave(draft)
   }
 
-  const openMenu = (item: WorkspaceMenuItem): void =>
-    setMessage(item.ready ? '' : `${item.label} は次の工程で作ります（${item.note}）`)
+  const openMenu = (item: WorkspaceMenuItem): void => {
+    if (!item.ready) {
+      setMessage(`${item.label} は次の工程で作ります（${item.note}）`)
+      return
+    }
+    setMessage('')
+    setOpenedMenu(item.key)
+  }
 
   const widthOf = (field: HeaderField): string | undefined => {
     const defined = fields.find((row) => row.id === field.fieldId)
     return defined ? `${defined.displayWidth}ch` : undefined
+  }
+
+  if (openedMenu === 'fittings') {
+    return <FittingsPage project={draft} onBack={() => setOpenedMenu(null)} />
   }
 
   return (

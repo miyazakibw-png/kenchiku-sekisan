@@ -20,11 +20,13 @@ import {
   saveProjectFields
 } from './services/projectService'
 import { listSubjects, saveSubjects } from './services/subjectService'
+import { listFittings, saveFittings } from './services/fittingService'
 import { IPC } from '../shared/ipc'
 import type {
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
+  SaveFittingsRequest,
   SaveProjectRequest,
   SubjectDraft
 } from '../shared/types'
@@ -61,6 +63,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()))
   ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
     saveSubjects(getDatabase(), rows)
+  )
+  ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
+    listFittings(getDatabase(), projectId)
+  )
+  ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
+    saveFittings(getDatabase(), request)
   )
   ipcMain.handle(IPC.detailsList, (_event, subjectId: number) =>
     listDetails(getDatabase(), subjectId)

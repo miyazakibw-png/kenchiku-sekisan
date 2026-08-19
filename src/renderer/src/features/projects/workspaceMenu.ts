@@ -34,8 +34,8 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: 'fittings',
     label: '建具入力',
     group: 'input',
-    note: '建具積算用',
-    ready: false
+    note: '建具表（W・H・腰高から面積／巾木減／軸組横補強を算出）',
+    ready: true
   },
   {
     key: 'roomFinishes',

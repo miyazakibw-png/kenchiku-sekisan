@@ -10,6 +10,8 @@ export const IPC = {
   assemblyItemFromDetail: 'assembly:itemFromDetail',
   assemblyMerge: 'assembly:merge',
   assemblyPromote: 'assembly:promote',
+  fittingsList: 'fittings:list',
+  fittingsSave: 'fittings:save',
   projectLedger: 'project:ledger',
   projectCreate: 'project:create',
   projectCopy: 'project:copy',
