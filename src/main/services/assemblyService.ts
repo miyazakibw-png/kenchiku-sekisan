@@ -4,9 +4,6 @@ import {
   mDetails,
   mFinishAssemblies,
   mFinishAssemblyItems,
-  mMaterialCategories,
-  mSubjects,
-  mUnits,
   projectRoomFinishes
 } from '../db/schema'
 import type {
@@ -18,21 +15,14 @@ import type {
   SaveAssemblyResult
 } from '../../shared/types'
 import { assemblySignature } from '../../shared/assemblySignature'
+import { listMasterOptions } from './detailService'
 
 function toScope(value: string): AssemblyScope {
   return value === 'project' ? 'project' : 'basic'
 }
 
 export function listAssemblyMasterOptions(db: AppDatabase): AssemblyMasterOptions {
-  return {
-    subjects: db.select().from(mSubjects).orderBy(asc(mSubjects.displayOrder)).all(),
-    materialCategories: db
-      .select()
-      .from(mMaterialCategories)
-      .orderBy(asc(mMaterialCategories.displayOrder))
-      .all(),
-    units: db.select().from(mUnits).orderBy(asc(mUnits.displayOrder)).all()
-  }
+  return listMasterOptions(db)
 }
 
 /**

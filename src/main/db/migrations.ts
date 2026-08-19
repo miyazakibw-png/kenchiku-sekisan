@@ -367,5 +367,36 @@ DROP INDEX IF EXISTS uq_project_fittings_symbol;
 DROP TABLE project_fittings;
 ALTER TABLE project_fittings_new RENAME TO project_fittings;
 CREATE INDEX idx_project_fittings_order ON project_fittings(project_id, from_estimate, display_order);
+`,
+  /* 010: 部位別入力表（積算管理）。集計分類マスターは廃止し、部位Ⅱ別仕訳のチェックに置き換える */ `
+DROP TABLE IF EXISTS m_aggregation_categories;
+
+CREATE TABLE project_estimate_rows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  -- room: 部屋の行 / subtotal: 小計行（チェック用）
+  row_type TEXT NOT NULL DEFAULT 'room',
+  -- 空欄の場合は入力のある上の行を引き継ぐ
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  -- 1: 集計時に部位Ⅱ別で仕分ける
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  -- 型枠分類（IDを入力すると種類名に変換。マスターに無い文字も可）
+  formwork TEXT NOT NULL DEFAULT '',
+  -- 部位Ⅲ（部屋名）。記号を含め自由入力
+  part3 TEXT NOT NULL DEFAULT '',
+  ceiling_height REAL,
+  multiplier REAL NOT NULL DEFAULT 1,
+  note TEXT NOT NULL DEFAULT '',
+  -- 計算タイプ room:部屋別計算書 frame:軸組計算書 general:汎用計算書
+  calc_type TEXT NOT NULL DEFAULT 'room',
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_per_project_order ON project_estimate_rows(project_id, display_order);
+
+-- 計算書は当面この3書式。将来はこのマスターに追加すれば計算タイプの選択肢が増える
+UPDATE calc_sheet_definitions SET name = '部屋別計算書' WHERE key = 'room';
+UPDATE calc_sheet_definitions SET name = '軸組計算書' WHERE key = 'frame';
+UPDATE calc_sheet_definitions SET key = 'general', name = '汎用計算書' WHERE key = 'simple';
 `
 ]

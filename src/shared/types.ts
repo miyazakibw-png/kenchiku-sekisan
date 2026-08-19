@@ -117,6 +117,56 @@ export interface MasterOptions {
   subjects: Subject[]
   materialCategories: MaterialCategory[]
   units: Unit[]
+  /** 型枠分類（部位別入力表の型枠欄で番号入力に使う） */
+  formworkCategories: MasterEntry[]
+  /** 計算書の書式（将来の追加はこのマスターを増やす） */
+  calcSheets: CalcSheetOption[]
+}
+
+/** 計算書の書式。key を部位別入力表の計算タイプに持つ */
+export interface CalcSheetOption {
+  id: number
+  key: string
+  name: string
+}
+
+/** 番号入力で名称に変換する共通マスターの1件 */
+export interface MasterEntry {
+  id: number
+  name: string
+}
+
+/** 部屋ごとの計算タイプ（計算書書式の key。将来書式が増えても字面を増やすだけで済む） */
+export type CalcType = string
+
+/** 部位別入力表（積算管理）の1行 */
+export interface EstimateRow {
+  id: number
+  projectId: number
+  /** room: 部屋の行 / subtotal: 小計行 */
+  rowType: 'room' | 'subtotal'
+  /** 空欄なら入力のある上の行を引き継ぐ */
+  part1: string
+  part2: string
+  /** 1: 集計時に部位Ⅱ別で仕分ける */
+  part2Split: number
+  formwork: string
+  /** 部位Ⅲ（部屋名） */
+  part3: string
+  ceilingHeight: number | null
+  multiplier: number
+  note: string
+  calcType: CalcType
+  displayOrder: number
+}
+
+export type EstimateRowDraft = Omit<EstimateRow, 'id' | 'projectId' | 'displayOrder'> & {
+  id: number | null
+}
+
+export interface SaveEstimateRowsRequest {
+  projectId: number
+  rows: EstimateRowDraft[]
 }
 
 /** basic: 全物件共通の基本セット / project: 積算入力時に自動登録される物件固有セット */

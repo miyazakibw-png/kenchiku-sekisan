@@ -21,11 +21,13 @@ import {
 } from './services/projectService'
 import { listSubjects, saveSubjects } from './services/subjectService'
 import { listFittings, saveFittings } from './services/fittingService'
+import { listEstimateRows, saveEstimateRows } from './services/estimateRowService'
 import { IPC } from '../shared/ipc'
 import type {
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
+  SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveProjectRequest,
   SubjectDraft
@@ -63,6 +65,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()))
   ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
     saveSubjects(getDatabase(), rows)
+  )
+  ipcMain.handle(IPC.estimateRowsList, (_event, projectId: number) =>
+    listEstimateRows(getDatabase(), projectId)
+  )
+  ipcMain.handle(IPC.estimateRowsSave, (_event, request: SaveEstimateRowsRequest) =>
+    saveEstimateRows(getDatabase(), request)
   )
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
     listFittings(getDatabase(), projectId)

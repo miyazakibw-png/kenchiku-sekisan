@@ -4,6 +4,7 @@ import type {
   AssemblyItem,
   AssemblyMasterOptions,
   Detail,
+  EstimateRow,
   FinishAssembly,
   Fitting,
   MasterOptions,
@@ -13,6 +14,7 @@ import type {
   SaveAssemblyRequest,
   SaveAssemblyResult,
   SaveDetailsRequest,
+  SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveProjectRequest,
   SaveSubjectsResult,
@@ -41,6 +43,10 @@ const api = {
     ipcRenderer.invoke(IPC.assemblyMerge, keepId, mergedId),
   promoteAssembly: (id: number): Promise<FinishAssembly> =>
     ipcRenderer.invoke(IPC.assemblyPromote, id),
+  listEstimateRows: (projectId: number): Promise<EstimateRow[]> =>
+    ipcRenderer.invoke(IPC.estimateRowsList, projectId),
+  saveEstimateRows: (request: SaveEstimateRowsRequest): Promise<EstimateRow[]> =>
+    ipcRenderer.invoke(IPC.estimateRowsSave, request),
   listFittings: (projectId: number): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>

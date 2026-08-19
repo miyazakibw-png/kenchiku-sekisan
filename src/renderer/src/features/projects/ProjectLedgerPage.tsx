@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ProjectField, ProjectSummary } from '@shared/types'
+import type { MasterOptions, ProjectField, ProjectSummary } from '@shared/types'
 import {
   copyName,
   moveProject,
@@ -10,7 +10,7 @@ import {
 import ProjectWorkspacePage from './ProjectWorkspacePage'
 import './ProjectLedgerPage.css'
 
-export default function ProjectLedgerPage(): JSX.Element {
+export default function ProjectLedgerPage({ options }: { options: MasterOptions }): JSX.Element {
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [fields, setFields] = useState<ProjectField[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -126,6 +126,7 @@ export default function ProjectLedgerPage(): JSX.Element {
       <ProjectWorkspacePage
         project={opened}
         fields={fields}
+        options={options}
         onSave={(project) => void saveProject(project)}
         onBack={() => setOpenedId(null)}
       />

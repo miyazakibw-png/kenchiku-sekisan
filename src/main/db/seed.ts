@@ -1,7 +1,6 @@
 import type { AppDatabase } from './index'
 import {
   calcSheetDefinitions,
-  mAggregationCategories,
   mAggregationParts,
   mFormworkCategories,
   mMaterialCategories,
@@ -63,8 +62,6 @@ const UNITS = [
   { id: 7, name: 'kg' },
   { id: 9, name: '式' }
 ]
-
-const AGGREGATION_CATEGORIES = [{ id: 2, name: '部位Ⅱ科目内区分' }]
 
 const FORMWORK_CATEGORIES = [
   { id: 1, name: '基礎階' },
@@ -137,9 +134,9 @@ const PART_BRACKET_FORMATS = [
 ]
 
 const CALC_SHEETS = [
-  { key: 'room', name: '部屋別拾い' },
-  { key: 'frame', name: '軸組拾い' },
-  { key: 'simple', name: '簡易拾い' }
+  { key: 'room', name: '部屋別計算書' },
+  { key: 'frame', name: '軸組計算書' },
+  { key: 'general', name: '汎用計算書' }
 ]
 
 /** 初回起動時のみ基礎マスターを投入する（既存データがある場合は何もしない） */
@@ -162,11 +159,6 @@ export function seedInitialData(db: AppDatabase): void {
   if (db.select().from(mUnits).limit(1).all().length === 0) {
     db.insert(mUnits)
       .values(UNITS.map((u) => ({ ...u, displayOrder: u.id })))
-      .run()
-  }
-  if (db.select().from(mAggregationCategories).limit(1).all().length === 0) {
-    db.insert(mAggregationCategories)
-      .values(AGGREGATION_CATEGORIES.map((c) => ({ ...c, displayOrder: c.id })))
       .run()
   }
   if (db.select().from(mFormworkCategories).limit(1).all().length === 0) {

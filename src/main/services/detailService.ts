@@ -1,6 +1,13 @@
 import { asc, eq, inArray } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
-import { mDetails, mMaterialCategories, mSubjects, mUnits } from '../db/schema'
+import {
+  calcSheetDefinitions,
+  mDetails,
+  mFormworkCategories,
+  mMaterialCategories,
+  mSubjects,
+  mUnits
+} from '../db/schema'
 import type { Detail, MasterOptions, SaveDetailsRequest } from '../../shared/types'
 import { DETAIL_NUMBER_DECIMALS } from '../../shared/detailNumber'
 
@@ -18,7 +25,21 @@ export function listMasterOptions(db: AppDatabase): MasterOptions {
       .from(mMaterialCategories)
       .orderBy(asc(mMaterialCategories.displayOrder))
       .all(),
-    units: db.select().from(mUnits).orderBy(asc(mUnits.displayOrder)).all()
+    units: db.select().from(mUnits).orderBy(asc(mUnits.displayOrder)).all(),
+    formworkCategories: db
+      .select({ id: mFormworkCategories.id, name: mFormworkCategories.name })
+      .from(mFormworkCategories)
+      .orderBy(asc(mFormworkCategories.displayOrder))
+      .all(),
+    calcSheets: db
+      .select({
+        id: calcSheetDefinitions.id,
+        key: calcSheetDefinitions.key,
+        name: calcSheetDefinitions.name
+      })
+      .from(calcSheetDefinitions)
+      .orderBy(asc(calcSheetDefinitions.displayOrder))
+      .all()
   }
 }
 

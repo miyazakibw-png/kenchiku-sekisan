@@ -5,6 +5,7 @@ import {
   mFinishAssemblies,
   mFinishAssemblyItems,
   mProjectFields,
+  projectEstimateRows,
   projectFieldValues,
   projectFittings,
   projectRoomFinishes,
@@ -146,6 +147,16 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
       .all()
       .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
         tx.insert(projectFittings)
+          .values({ ...rest, projectId: newId })
+          .run()
+      })
+
+    tx.select()
+      .from(projectEstimateRows)
+      .where(eq(projectEstimateRows.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
+        tx.insert(projectEstimateRows)
           .values({ ...rest, projectId: newId })
           .run()
       })

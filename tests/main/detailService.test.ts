@@ -48,10 +48,7 @@ beforeEach(() => {
 })
 
 describe('基本マスター群のシード', () => {
-  it('集計分類・型枠分類・部位・カッコ書式が投入される', () => {
-    expect(db.select().from(schema.mAggregationCategories).all()).toEqual([
-      { id: 2, name: '部位Ⅱ科目内区分', displayOrder: 2 }
-    ])
+  it('型枠分類・部位・カッコ書式が投入される', () => {
     expect(db.select().from(schema.mFormworkCategories).all().map((c) => c.name)).toEqual([
       '基礎階',
       '地下階',

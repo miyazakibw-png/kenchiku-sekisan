@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ProjectField, ProjectSummary } from '@shared/types'
+import type { MasterOptions, ProjectField, ProjectSummary } from '@shared/types'
 import { normalizeDate } from './projectLedger'
 import {
   ALWAYS_VISIBLE,
@@ -11,11 +11,13 @@ import {
   type WorkspaceMenuItem
 } from './workspaceMenu'
 import FittingsPage from '../fittings/FittingsPage'
+import EstimatePartsPage from '../estimate/EstimatePartsPage'
 import './ProjectWorkspacePage.css'
 
 interface Props {
   project: ProjectSummary
   fields: ProjectField[]
+  options: MasterOptions
   /** 工事名称などの変更は物件管理台帳と同じレコードを更新する（相互連携） */
   onSave: (project: ProjectSummary) => void
   onBack: () => void
@@ -36,6 +38,7 @@ const keepAsIs = (project: ProjectSummary): ProjectSummary => project
 export default function ProjectWorkspacePage({
   project,
   fields,
+  options,
   onSave,
   onBack
 }: Props): JSX.Element {
@@ -144,6 +147,16 @@ export default function ProjectWorkspacePage({
 
   if (openedMenu === 'fittings') {
     return <FittingsPage project={draft} onBack={() => setOpenedMenu(null)} />
+  }
+
+  if (openedMenu === 'roomFinishes') {
+    return (
+      <EstimatePartsPage
+        project={draft}
+        options={options}
+        onBack={() => setOpenedMenu(null)}
+      />
+    )
   }
 
   return (

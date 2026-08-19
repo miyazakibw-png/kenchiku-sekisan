@@ -41,8 +41,8 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: 'roomFinishes',
     label: '部位別入力表',
     group: 'input',
-    note: 'メイン積算の管理画面（部屋別等）',
-    ready: false
+    note: 'メイン積算の管理画面（部位Ⅰ〜Ⅲ・天井高さ・倍率・計算書の書式指定）',
+    ready: true
   },
   {
     key: 'transferInput',

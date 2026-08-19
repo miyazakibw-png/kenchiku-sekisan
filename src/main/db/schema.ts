@@ -238,6 +238,31 @@ export const projectFittings = sqliteTable('project_fittings', {
   displayOrder: integer('display_order').notNull().default(0)
 })
 
+/** 部位別入力表（積算管理）の1行 */
+export const projectEstimateRows = sqliteTable('project_estimate_rows', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  /** room: 部屋の行 / subtotal: 小計行 */
+  rowType: text('row_type').notNull().default('room'),
+  /** 空欄の場合は入力のある上の行を引き継ぐ */
+  part1: text('part1').notNull().default(''),
+  part2: text('part2').notNull().default(''),
+  /** 1: 集計時に部位Ⅱ別で仕分ける */
+  part2Split: integer('part2_split').notNull().default(0),
+  /** 型枠分類（ID入力で種類名に変換。マスターに無い文字も可） */
+  formwork: text('formwork').notNull().default(''),
+  /** 部位Ⅲ（部屋名）。記号を含め自由入力 */
+  part3: text('part3').notNull().default(''),
+  ceilingHeight: real('ceiling_height'),
+  multiplier: real('multiplier').notNull().default(1),
+  note: text('note').notNull().default(''),
+  /** room:部屋別計算書 frame:軸組計算書 general:汎用計算書 */
+  calcType: text('calc_type').notNull().default('room'),
+  displayOrder: integer('display_order').notNull().default(0)
+})
+
 /** 部位別入力（部屋別仕上） */
 export const projectRoomFinishes = sqliteTable(
   'project_room_finishes',
@@ -303,13 +328,6 @@ export const calcSheetEntries = sqliteTable(
 export const appSettings = sqliteTable('app_settings', {
   key: text('key').primaryKey(),
   valueJson: text('value_json').notNull().default('{}')
-})
-
-/** 集計分類マスタ（内訳の階層化・部位Ⅱ科目内区分などを制御） */
-export const mAggregationCategories = sqliteTable('m_aggregation_categories', {
-  id: integer('id').primaryKey(),
-  name: text('name').notNull(),
-  displayOrder: integer('display_order').notNull().default(0)
 })
 
 /** 型枠分類マスタ（左官の打放補修から型枠を算出する際の仕様決定に使用） */

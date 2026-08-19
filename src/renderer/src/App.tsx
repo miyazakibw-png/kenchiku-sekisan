@@ -49,7 +49,7 @@ export default function App(): JSX.Element {
         ) : nav === 'assemblies' ? (
           <AssemblyMasterPage options={options} />
         ) : nav === 'projects' ? (
-          <ProjectLedgerPage />
+          <ProjectLedgerPage options={options} />
         ) : (
           <div className="placeholder">
             {NAV.find((item) => item.key === nav)?.label} は今後実装予定です。
