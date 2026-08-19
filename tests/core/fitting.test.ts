@@ -81,6 +81,12 @@ describe('建具表の自動計算', () => {
     )
     expect(calc.reinforcement).toBe(1.5 * 2 - 0.6 + 0.9 * 2)
   })
+
+  it('軸組横補強：腰高が無くても巾木減を変えたら W*2-巾木減', () => {
+    const calc = computeFitting(row({ width: 1.8, height: 2, baseboardFormula: '1.8-0.3' }))
+    expect(calc.baseboardDeduction).toBe(1.5)
+    expect(calc.reinforcement).toBe(1.8 * 2 - 1.5)
+  })
 })
 
 describe('建具記号', () => {

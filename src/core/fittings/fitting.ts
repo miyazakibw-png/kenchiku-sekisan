@@ -42,7 +42,7 @@ function variables(row: FittingInput): Record<string, number> {
  * 建具表の派生値を求める。
  * - 面積：W*H（面積計算に式があればその結果）
  * - 巾木減：腰高が無いときの W（巾木長さに式があればその結果）
- * - 軸組横補強：腰高なし=W／腰高あり=W*2／腰高ありで巾木減がWと異なる=W*2-巾木減+腰高*2
+ * - 軸組横補強：巾木減がWと異なる=W*2-巾木減+腰高*2／それ以外は腰高あり=W*2・腰高なし=W
  */
 export function computeFitting(row: FittingInput): FittingComputed {
   const vars = variables(row)
@@ -67,11 +67,11 @@ export function computeFitting(row: FittingInput): FittingComputed {
   const reinforcement =
     row.width === null
       ? null
-      : !hasSill
-        ? round2(row.width)
-        : baseboardDeduction !== null && baseboardDeduction !== row.width
-          ? round2(row.width * 2 - baseboardDeduction + (row.sillHeight ?? 0) * 2)
-          : round2(row.width * 2)
+      : baseboardDeduction !== null && baseboardDeduction !== row.width
+        ? round2(row.width * 2 - baseboardDeduction + (row.sillHeight ?? 0) * 2)
+        : hasSill
+          ? round2(row.width * 2)
+          : round2(row.width)
 
   return { area, baseboardDeduction, reinforcement, areaFormulaError, baseboardFormulaError }
 }
