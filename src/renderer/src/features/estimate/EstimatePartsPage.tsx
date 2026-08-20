@@ -17,6 +17,7 @@ import {
   toDrafts,
   updateRow
 } from './estimateRows'
+import RoomSheetPage from './RoomSheetPage'
 import './EstimatePartsPage.css'
 
 interface Props {
@@ -34,6 +35,8 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
   const [message, setMessage] = useState('')
   const [clipboard, setClipboard] = useState<EstimateRowDraft[]>([])
   const [others, setOthers] = useState<ProjectSummary[] | null>(null)
+  /** 計算書を開いている行（部位別入力表の行が1部屋＝1計算書） */
+  const [openedSheet, setOpenedSheet] = useState<number | null>(null)
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
   const [checkCategory, setCheckCategory] = useState(
     options.materialCategories[0]?.name ?? '仕上'
@@ -83,6 +86,21 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
     setOthers(ledger.projects.filter((row) => row.id !== project.id))
   }, [project.id])
 
+  /** 計算書は保存済みの行にしか作れないので、必要なら先に保存する */
+  const openCalcSheet = useCallback(
+    async (index: number) => {
+      const row = rows[index]
+      if (!row || row.rowType === 'subtotal') return
+      if (row.id === null) {
+        setRows(toDrafts(await window.sekisan.saveEstimateRows({ projectId: project.id, rows })))
+        setMessage('保存してから計算書を開いてください')
+        return
+      }
+      setOpenedSheet(index)
+    },
+    [project.id, rows]
+  )
+
   const numberCell = (
     index: number,
     value: number | null,
@@ -104,6 +122,20 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
       }}
     />
   )
+
+  if (openedSheet !== null && rows[openedSheet]) {
+    return (
+      <RoomSheetPage
+        project={project}
+        row={rows[openedSheet]}
+        roomName={rows[openedSheet].part3}
+        onBack={() => {
+          setOpenedSheet(null)
+          void reload()
+        }}
+      />
+    )
+  }
 
   return (
     <div className="estimate-page">
@@ -169,6 +201,9 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
         </button>
         <button type="button" onClick={() => void openOtherProjects()}>
           🏢 他物件から
+        </button>
+        <button type="button" onClick={() => void openCalcSheet(selected)}>
+          📐 計算書を開く
         </button>
         <button type="button" onClick={() => void pasteFromExcel()}>
           📋 Excelから貼り付け
@@ -243,6 +278,7 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
                     .join(' ') || undefined
                 }
                 onClick={() => setSelected(index)}
+                onDoubleClick={() => void openCalcSheet(index)}
               >
                 <td className="no">{index + 1}</td>
                 <td>

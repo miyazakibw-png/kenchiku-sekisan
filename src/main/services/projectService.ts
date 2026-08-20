@@ -9,6 +9,7 @@ import {
   projectFieldValues,
   projectFittings,
   projectRoomFinishes,
+  projectRoomSheets,
   projects
 } from '../db/schema'
 import type {
@@ -151,13 +152,30 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
           .run()
       })
 
+    // 部位別入力表と、その行にぶら下がる部屋計算書（部屋形状）を一緒に複製する
+    const estimateRowIdMap = new Map<number, number>()
     tx.select()
       .from(projectEstimateRows)
       .where(eq(projectEstimateRows.projectId, sourceId))
       .all()
-      .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
-        tx.insert(projectEstimateRows)
+      .forEach(({ id: oldId, projectId: _projectId, ...rest }) => {
+        const copied = tx
+          .insert(projectEstimateRows)
           .values({ ...rest, projectId: newId })
+          .returning({ id: projectEstimateRows.id })
+          .get()
+        estimateRowIdMap.set(oldId, copied.id)
+      })
+
+    tx.select()
+      .from(projectRoomSheets)
+      .where(eq(projectRoomSheets.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, estimateRowId, ...rest }) => {
+        const copiedRowId = estimateRowIdMap.get(estimateRowId)
+        if (copiedRowId === undefined) return
+        tx.insert(projectRoomSheets)
+          .values({ ...rest, projectId: newId, estimateRowId: copiedRowId })
           .run()
       })
 

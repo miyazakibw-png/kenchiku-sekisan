@@ -16,7 +16,9 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  RoomSheet,
   SaveProjectRequest,
+  SaveRoomSheetRequest,
   SaveSubjectsResult,
   Subject,
   SubjectDraft
@@ -31,8 +33,7 @@ const api = {
     ipcRenderer.invoke(IPC.detailsList, subjectId),
   saveDetails: (request: SaveDetailsRequest): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsSave, request),
-  getAssemblyOptions: (): Promise<AssemblyMasterOptions> =>
-    ipcRenderer.invoke(IPC.assemblyOptions),
+  getAssemblyOptions: (): Promise<AssemblyMasterOptions> => ipcRenderer.invoke(IPC.assemblyOptions),
   listAssemblies: (projectId: number | null): Promise<FinishAssembly[]> =>
     ipcRenderer.invoke(IPC.assemblyList, projectId),
   saveAssembly: (request: SaveAssemblyRequest): Promise<SaveAssemblyResult> =>
@@ -47,6 +48,15 @@ const api = {
     ipcRenderer.invoke(IPC.estimateRowsList, projectId),
   saveEstimateRows: (request: SaveEstimateRowsRequest): Promise<EstimateRow[]> =>
     ipcRenderer.invoke(IPC.estimateRowsSave, request),
+  /** 部屋計算書の上段。まだ無ければ部位別入力表の行から作られる */
+  getRoomSheet: (estimateRowId: number): Promise<RoomSheet> =>
+    ipcRenderer.invoke(IPC.roomSheetGet, estimateRowId),
+  saveRoomSheet: (request: SaveRoomSheetRequest): Promise<RoomSheet> =>
+    ipcRenderer.invoke(IPC.roomSheetSave, request),
+  /** 取り合いの欠除：この面積以下は差し引かない */
+  getDeductionLimit: (): Promise<number> => ipcRenderer.invoke(IPC.deductionLimitGet),
+  saveDeductionLimit: (limit: number): Promise<number> =>
+    ipcRenderer.invoke(IPC.deductionLimitSave, limit),
   listFittings: (projectId: number): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>

@@ -169,6 +169,20 @@ export interface SaveEstimateRowsRequest {
   rows: EstimateRowDraft[]
 }
 
+/** 部屋計算書の上段（部屋形状の単線図・天井高さ） */
+export interface RoomSheet {
+  id: number
+  projectId: number
+  /** 部位別入力表の行（1行＝1部屋＝1計算書） */
+  estimateRowId: number
+  /** 部屋形状（辺の並び）のJSON */
+  shapeJson: string
+  ceilingHeight: number | null
+  note: string
+}
+
+export type SaveRoomSheetRequest = Omit<RoomSheet, 'projectId' | 'estimateRowId'>
+
 /** basic: 全物件共通の基本セット / project: 積算入力時に自動登録される物件固有セット */
 export type AssemblyScope = 'basic' | 'project'
 

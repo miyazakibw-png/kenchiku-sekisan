@@ -288,6 +288,22 @@ export const projectRoomFinishes = sqliteTable(
   })
 )
 
+/** 部屋計算書の上段（部屋形状の単線図・天井高さ）。1行の部位別入力表に1つ対応する */
+export const projectRoomSheets = sqliteTable('project_room_sheets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id')
+    .notNull()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  estimateRowId: integer('estimate_row_id')
+    .notNull()
+    .references(() => projectEstimateRows.id, { onDelete: 'cascade' }),
+  /** 部屋形状（辺の並び）。辺のIDを保持して数量根拠を追えるようにする */
+  shapeJson: text('shape_json').notNull().default('{"edges":[]}'),
+  ceilingHeight: real('ceiling_height'),
+  note: text('note').notNull().default(''),
+  updatedAt: text('updated_at').notNull().default(now)
+})
+
 /**
  * 動的計算書スキーマ。
  * 計算書（シート）のUIレイアウトと計算式定義をJSONで保持し、

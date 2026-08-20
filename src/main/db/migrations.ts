@@ -398,5 +398,23 @@ CREATE INDEX idx_per_project_order ON project_estimate_rows(project_id, display_
 UPDATE calc_sheet_definitions SET name = '部屋別計算書' WHERE key = 'room';
 UPDATE calc_sheet_definitions SET name = '軸組計算書' WHERE key = 'frame';
 UPDATE calc_sheet_definitions SET key = 'general', name = '汎用計算書' WHERE key = 'simple';
+`,
+  /* 011: 部屋計算書の上段（部屋形状の単線図・天井高さ）。数量根拠を追えるように辺のIDごと保持する */ `
+CREATE TABLE project_room_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  -- 部位別入力表の行（1行＝1部屋＝1計算書）
+  estimate_row_id INTEGER NOT NULL REFERENCES project_estimate_rows(id) ON DELETE CASCADE,
+  -- 部屋形状（辺の並び）。辺は作成時のIDを保持し、集計・印刷から図面位置を追える
+  shape_json TEXT NOT NULL DEFAULT '{"edges":[]}',
+  -- 天井高さ（部位別入力表と相互連動）
+  ceiling_height REAL,
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_room_sheet_row ON project_room_sheets(estimate_row_id);
+
+-- 取り合いの欠除：この面積以下は差し引かない（設定画面で変更する）
+INSERT OR IGNORE INTO app_settings(key, value_json) VALUES ('deductionLimit', '0.5');
 `
 ]

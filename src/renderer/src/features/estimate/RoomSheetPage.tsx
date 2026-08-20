@@ -1,0 +1,400 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { EstimateRowDraft, Fitting, ProjectSummary, RoomSheet } from '@shared/types'
+import {
+  edge,
+  lShape,
+  rectangleShape,
+  roomQuantities,
+  roomSymbols,
+  solveShape,
+  splitEdge,
+  updateEdge,
+  uShape,
+  type EdgeDirection,
+  type EdgeKind,
+  type RoomShape,
+  type SolvedShape
+} from '../../../../core/room/shape'
+import { computeFitting } from '../../../../core/fittings/fitting'
+import { formatNumber } from './estimateRows'
+import './RoomSheetPage.css'
+
+interface Props {
+  project: ProjectSummary
+  row: EstimateRowDraft
+  roomName: string
+  onBack: () => void
+}
+
+const DIRECTION_LABEL: Record<EdgeDirection, string> = {
+  E: '→ 右',
+  S: '↓ 下',
+  W: '← 左',
+  N: '↑ 上'
+}
+
+const KIND_LABEL: Record<EdgeKind, string> = {
+  wall: '壁',
+  opening: '開口（壁なし）',
+  column: '柱'
+}
+
+function parseShape(json: string): RoomShape {
+  try {
+    const parsed = JSON.parse(json) as RoomShape
+    return Array.isArray(parsed.edges) ? parsed : { edges: [] }
+  } catch {
+    return { edges: [] }
+  }
+}
+
+/** 表示スペースいっぱいに、縦横の大きい方に合わせて描く（1m角も100m角も同じ大きさで見える） */
+function viewBox(solved: SolvedShape): { box: string; span: number } {
+  if (solved.points.length === 0) return { box: '0 0 100 100', span: 100 }
+  const xs = solved.points.map((point) => point.x)
+  const ys = solved.points.map((point) => point.y)
+  const width = Math.max(...xs) - Math.min(...xs)
+  const height = Math.max(...ys) - Math.min(...ys)
+  const size = Math.max(width, height, 0.001)
+  const margin = size * 0.18
+  const left = Math.min(...xs) - (size - width) / 2 - margin
+  const top = Math.min(...ys) - (size - height) / 2 - margin
+  const span = size + margin * 2
+  return { box: `${left} ${top} ${span} ${span}`, span }
+}
+
+export default function RoomSheetPage({ project, row, roomName, onBack }: Props): JSX.Element {
+  const [sheet, setSheet] = useState<RoomSheet | null>(null)
+  const [shape, setShape] = useState<RoomShape>({ edges: [] })
+  const [ceilingHeight, setCeilingHeight] = useState<number | null>(row.ceilingHeight)
+  const [fittings, setFittings] = useState<Fitting[]>([])
+  const [deductionLimit, setDeductionLimit] = useState(0.5)
+  const [selectedEdge, setSelectedEdge] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    if (row.id === null) return
+    void (async () => {
+      const loaded = await window.sekisan.getRoomSheet(row.id as number)
+      setSheet(loaded)
+      setShape(parseShape(loaded.shapeJson))
+      setCeilingHeight(loaded.ceilingHeight)
+      setFittings(await window.sekisan.listFittings(project.id))
+      setDeductionLimit(await window.sekisan.getDeductionLimit())
+    })()
+  }, [project.id, row.id])
+
+  const solved = useMemo(() => solveShape(shape), [shape])
+  const view = useMemo(() => viewBox(solved), [solved])
+  const quantities = useMemo(() => roomQuantities(solved, ceilingHeight), [solved, ceilingHeight])
+  const symbols = useMemo(() => roomSymbols(solved, ceilingHeight), [solved, ceilingHeight])
+
+  const save = useCallback(async () => {
+    if (!sheet) return
+    const saved = await window.sekisan.saveRoomSheet({
+      id: sheet.id,
+      shapeJson: JSON.stringify(shape),
+      ceilingHeight,
+      note: sheet.note
+    })
+    setSheet(saved)
+    setMessage('保存しました（天井高さは部位別入力表にも反映します）')
+  }, [ceilingHeight, shape, sheet])
+
+  /** 記号は計算式にそのまま入力できる。クリックでコピーする */
+  const copySymbol = useCallback(async (symbol: string) => {
+    await navigator.clipboard.writeText(symbol)
+    setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`)
+  }, [])
+
+  const startShape = (next: RoomShape): void => {
+    setShape(next)
+    setSelectedEdge(null)
+  }
+
+  return (
+    <div className="room-sheet-page">
+      <div className="toolbar">
+        <button type="button" onClick={onBack}>
+          ← 部位別入力表へ
+        </button>
+        <h2>部屋別計算書</h2>
+        <span className="project">
+          {project.managementNo} {roomName || '（部屋名なし）'}
+        </span>
+        <label>
+          天井高さ
+          <input
+            className="num"
+            defaultValue={formatNumber(ceilingHeight, 2)}
+            key={`ch-${sheet?.id ?? 'new'}`}
+            onBlur={(e) => {
+              const value = e.target.value.trim()
+              setCeilingHeight(value === '' ? null : Number(value))
+            }}
+          />
+        </label>
+        <button type="button" onClick={() => void save()}>
+          💾 保存
+        </button>
+        <span className="status">{message}</span>
+      </div>
+
+      <div className="upper">
+        <section className="drawing">
+          <div className="section-bar">
+            <span>部屋形状イメージ（平面図）</span>
+            <button type="button" onClick={() => startShape(rectangleShape(4, 3))}>
+              □ 四角
+            </button>
+            <button type="button" onClick={() => startShape(lShape(5, 4, 2, 1))}>
+              L型
+            </button>
+            <button type="button" onClick={() => startShape(uShape(6, 4, 2, 1, 1))}>
+              コ型
+            </button>
+            <button type="button" onClick={() => setZoom(Math.min(zoom * 1.25, 8))}>
+              ＋
+            </button>
+            <button type="button" onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}>
+              －
+            </button>
+            <button type="button" onClick={() => setZoom(1)}>
+              全体
+            </button>
+          </div>
+          <div className="canvas">
+            <svg
+              viewBox={view.box}
+              style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+            >
+              {solved.points.map((point, index) => {
+                const line = solved.edges[index]
+                const next = solved.points[(index + 1) % solved.points.length]
+                const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
+                const vertical = point.x === next.x
+                return (
+                  <g key={line.id} onClick={() => setSelectedEdge(line.id)}>
+                    <line
+                      x1={point.x}
+                      y1={point.y}
+                      x2={next.x}
+                      y2={next.y}
+                      className={['edge', line.kind, selectedEdge === line.id ? 'selected' : '']
+                        .filter(Boolean)
+                        .join(' ')}
+                    />
+                    <text
+                      x={vertical ? middle.x + view.span * 0.035 : middle.x}
+                      y={vertical ? middle.y : middle.y - view.span * 0.035}
+                      className={line.auto ? 'dim auto' : 'dim'}
+                      fontSize={view.span * 0.05}
+                    >
+                      {formatNumber(line.resolved, 2)}
+                    </text>
+                  </g>
+                )
+              })}
+            </svg>
+            {solved.points.length === 0 && (
+              <p className="empty">
+                {solved.missing.length > 0
+                  ? '寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。'
+                  : '□・L型・コ型から始めて、寸法を入れてください。'}
+              </p>
+            )}
+          </div>
+          {solved.error && <p className="error">{solved.error}</p>}
+        </section>
+
+        <section className="edges">
+          <div className="section-bar">
+            <span>寸法入力（空欄は自動算出）</span>
+            <button
+              type="button"
+              onClick={() => setShape({ edges: [...shape.edges, edge('E', null)] })}
+            >
+              ＋ 辺追加
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null}
+              onClick={() => {
+                if (selectedEdge === null) return
+                const target = shape.edges.find((item) => item.id === selectedEdge)
+                const half = target?.length === null ? 1 : (target?.length ?? 2) / 2
+                setShape(splitEdge(shape, selectedEdge, Number(half.toFixed(2))))
+              }}
+            >
+              ✂ 線分割
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null}
+              onClick={() =>
+                selectedEdge !== null &&
+                setShape({
+                  edges: shape.edges.filter((item) => item.id !== selectedEdge)
+                })
+              }
+            >
+              🗑 辺削除
+            </button>
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th className="no">No</th>
+                <th>向き</th>
+                <th className="num">寸法</th>
+                <th>種別</th>
+              </tr>
+            </thead>
+            <tbody>
+              {solved.edges.map((line, index) => (
+                <tr
+                  key={line.id}
+                  className={[
+                    selectedEdge === line.id ? 'selected' : '',
+                    solved.missing.includes(line.id) ? 'missing' : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => setSelectedEdge(line.id)}
+                >
+                  <td className="no">{index + 1}</td>
+                  <td>
+                    <select
+                      value={line.direction}
+                      onChange={(e) =>
+                        setShape(
+                          updateEdge(shape, line.id, {
+                            direction: e.target.value as EdgeDirection
+                          })
+                        )
+                      }
+                    >
+                      {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map((key) => (
+                        <option key={key} value={key}>
+                          {DIRECTION_LABEL[key]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="num"
+                      defaultValue={line.length === null ? '' : formatNumber(line.length, 2)}
+                      key={`${line.id}-${line.length ?? 'auto'}`}
+                      placeholder={line.auto ? formatNumber(line.resolved, 2) : ''}
+                      title="空欄にすると、閉じた形になるように自動算出します"
+                      onBlur={(e) => {
+                        const text = e.target.value.trim()
+                        setShape(
+                          updateEdge(shape, line.id, {
+                            length: text === '' ? null : Number(text)
+                          })
+                        )
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={line.kind}
+                      onChange={(e) =>
+                        setShape(updateEdge(shape, line.id, { kind: e.target.value as EdgeKind }))
+                      }
+                    >
+                      {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
+                        <option key={key} value={key}>
+                          {KIND_LABEL[key]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="symbols">
+          <div className="section-bar">
+            <span>記号（クリックでコピー：計算式に使えます）</span>
+          </div>
+          <table className="grid">
+            <tbody>
+              {symbols.map((item) => (
+                <tr key={item.symbol} onClick={() => void copySymbol(item.symbol)}>
+                  <td className="symbol">{item.symbol}</td>
+                  <td className="label">{item.label}</td>
+                  <td className="num">{formatNumber(item.value, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="totals">
+            床面積 {formatNumber(quantities.floorArea, 2)}／壁長さ{' '}
+            {formatNumber(quantities.wallLength, 2)}／柱長さ{' '}
+            {formatNumber(quantities.columnLength, 2)}
+          </p>
+        </section>
+
+        <section className="fittings">
+          <div className="section-bar">
+            <span>建具（クリックで &lt;記号&gt; をコピー）</span>
+            <label className="deduction">
+              取合欠除
+              <input
+                className="num"
+                defaultValue={String(deductionLimit)}
+                onBlur={(e) => {
+                  const value = Number(e.target.value)
+                  if (!Number.isFinite(value)) return
+                  setDeductionLimit(value)
+                  void window.sekisan.saveDeductionLimit(value)
+                  setMessage(`${value}m2以下は差し引かない設定にしました`)
+                }}
+              />
+              m2以下は引かない
+            </label>
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th>記号</th>
+                <th className="num">W</th>
+                <th className="num">H</th>
+                <th className="num">腰高</th>
+                <th className="num">面積</th>
+                <th className="num">巾木減</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fittings.map((fitting) => {
+                const computed = computeFitting(fitting)
+                return (
+                  <tr key={fitting.id} onClick={() => void copySymbol(`<${fitting.symbol}>`)}>
+                    <td>{fitting.symbol}</td>
+                    <td className="num">{formatNumber(fitting.width, 2)}</td>
+                    <td className="num">{formatNumber(fitting.height, 2)}</td>
+                    <td className="num">{formatNumber(fitting.sillHeight, 2)}</td>
+                    <td className="num">{formatNumber(computed.area, 2)}</td>
+                    <td className="num">{formatNumber(computed.baseboardDeduction, 2)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <p className="hint">
+        辺の寸法は空欄にすると、閉じた形になるように自動算出します（同じ方向に未入力が2辺あると寸法不足として
+        赤く点滅します）。「開口（壁なし）」にした辺は壁長さ・壁面積に入れません。「柱」にした辺は柱長さ・柱面積として
+        分けて数え、巾木長さには含めます。記号は計算式にそのまま使えます（下段のセット明細計算表は次に作ります）。
+      </p>
+    </div>
+  )
+}

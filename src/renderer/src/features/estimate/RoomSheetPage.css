@@ -1,0 +1,220 @@
+.room-sheet-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.room-sheet-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.room-sheet-page .toolbar h2 {
+  margin: 0 4px;
+  font-size: 15px;
+}
+
+.room-sheet-page .project {
+  color: #475569;
+  font-size: 13px;
+}
+
+.room-sheet-page .status {
+  margin-left: auto;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+
+.room-sheet-page .upper {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.4fr) minmax(240px, 1fr) minmax(200px, 0.9fr);
+  grid-template-rows: auto auto;
+  gap: 8px;
+  padding: 8px;
+}
+
+.room-sheet-page .drawing {
+  grid-row: span 2;
+}
+
+.room-sheet-page section {
+  border: 1px solid #d5d9e0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.room-sheet-page .section-bar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4px 6px;
+  background: #eef2f7;
+  border-bottom: 1px solid #d5d9e0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.room-sheet-page .canvas {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-sheet-page svg {
+  overflow: visible;
+}
+
+.room-sheet-page .edge {
+  stroke: #111827;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+/* 壁の無い開口は点線 */
+.room-sheet-page .edge.opening {
+  stroke: #64748b;
+  stroke-dasharray: 8 5;
+}
+
+/* 柱は太い赤線 */
+.room-sheet-page .edge.column {
+  stroke: #b91c1c;
+  stroke-width: 6;
+}
+
+.room-sheet-page .edge.selected {
+  stroke: #2563eb;
+  stroke-width: 5;
+}
+
+.room-sheet-page .dim {
+  fill: #111827;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+/* 自動算出した寸法は入力値と区別する */
+.room-sheet-page .dim.auto {
+  fill: #2563eb;
+}
+
+.room-sheet-page .empty {
+  position: absolute;
+  padding: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.room-sheet-page .error {
+  margin: 0;
+  padding: 4px 8px;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.room-sheet-page table.grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.room-sheet-page table.grid th,
+.room-sheet-page table.grid td {
+  border: 1px solid #d5d9e0;
+  padding: 1px 3px;
+}
+
+.room-sheet-page table.grid th {
+  background: #f6f8fb;
+}
+
+.room-sheet-page td.no,
+.room-sheet-page th.no {
+  width: 32px;
+  text-align: center;
+  color: #64748b;
+}
+
+.room-sheet-page .num {
+  text-align: right;
+}
+
+.room-sheet-page input,
+.room-sheet-page select {
+  width: 100%;
+  border: none;
+  font: inherit;
+  background: transparent;
+}
+
+.room-sheet-page .toolbar input.num {
+  width: 70px;
+  border: 1px solid #cbd5e1;
+  text-align: right;
+}
+
+.room-sheet-page tr.selected {
+  background: #e0ecff;
+}
+
+/* 寸法が足りない辺は点滅させて入力を促す */
+.room-sheet-page tr.missing {
+  animation: room-sheet-blink 1s steps(2, start) infinite;
+}
+
+@keyframes room-sheet-blink {
+  to {
+    background: #fecaca;
+  }
+}
+
+.room-sheet-page .symbols tr,
+.room-sheet-page .fittings tbody tr {
+  cursor: pointer;
+}
+
+.room-sheet-page .symbols td.symbol {
+  width: 48px;
+  font-weight: 700;
+}
+
+.room-sheet-page .totals {
+  margin: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.room-sheet-page .deduction {
+  margin-left: auto;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.room-sheet-page .deduction input.num {
+  width: 46px;
+  border: 1px solid #cbd5e1;
+}
+
+.room-sheet-page .hint {
+  margin: 0;
+  padding: 6px 10px 12px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
