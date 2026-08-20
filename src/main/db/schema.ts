@@ -299,6 +299,8 @@ export const projectRoomSheets = sqliteTable('project_room_sheets', {
     .references(() => projectEstimateRows.id, { onDelete: 'cascade' }),
   /** 部屋形状（辺の並び）。辺のIDを保持して数量根拠を追えるようにする */
   shapeJson: text('shape_json').notNull().default('{"edges":[]}'),
+  /** 上段の自動計算に使う建具（記号・数・取り付く壁）。寸法は建具表から引用する */
+  fittingsJson: text('fittings_json').notNull().default('[]'),
   ceilingHeight: real('ceiling_height'),
   note: text('note').notNull().default(''),
   updatedAt: text('updated_at').notNull().default(now)

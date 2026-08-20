@@ -14,6 +14,7 @@ export const IPC = {
   estimateRowsSave: 'estimateRows:save',
   roomSheetGet: 'roomSheet:get',
   roomSheetSave: 'roomSheet:save',
+  roomFittingRegister: 'roomSheet:fittingRegister',
   deductionLimitGet: 'settings:deductionLimitGet',
   deductionLimitSave: 'settings:deductionLimitSave',
   fittingsList: 'fittings:list',

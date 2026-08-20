@@ -416,5 +416,9 @@ CREATE UNIQUE INDEX uq_room_sheet_row ON project_room_sheets(estimate_row_id);
 
 -- 取り合いの欠除：この面積以下は差し引かない（設定画面で変更する）
 INSERT OR IGNORE INTO app_settings(key, value_json) VALUES ('deductionLimit', '0.5');
+`,
+  /* 012: 部屋計算書の上段で使う建具（上段の自動計算用）。
+     記号・数・取り付く壁だけを持ち、W/H/面積/巾木減は常に建具表から引用する */ `
+ALTER TABLE project_room_sheets ADD COLUMN fittings_json TEXT NOT NULL DEFAULT '[]';
 `
 ]
