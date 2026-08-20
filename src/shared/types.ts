@@ -185,6 +185,8 @@ export interface RoomSheet {
   shapeJson: string;
   /** 上段の自動計算に使う建具（RoomSheetFittingの配列）のJSON */
   fittingsJson: string;
+  /** 天井伏図の線（CeilingElementの配列）のJSON */
+  ceilingJson: string;
   ceilingHeight: number | null;
   note: string;
 }

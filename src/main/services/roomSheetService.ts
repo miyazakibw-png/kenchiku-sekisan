@@ -23,6 +23,7 @@ function toSheet(row: typeof projectRoomSheets.$inferSelect): RoomSheet {
     estimateRowId: row.estimateRowId,
     shapeJson: row.shapeJson,
     fittingsJson: row.fittingsJson,
+    ceilingJson: row.ceilingJson,
     ceilingHeight: row.ceilingHeight,
     note: row.note,
   };
@@ -72,6 +73,7 @@ export function saveRoomSheet(
       .set({
         shapeJson: request.shapeJson,
         fittingsJson: request.fittingsJson,
+        ceilingJson: request.ceilingJson,
         ceilingHeight: request.ceilingHeight,
         note: request.note,
       })

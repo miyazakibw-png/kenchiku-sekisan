@@ -420,5 +420,9 @@ INSERT OR IGNORE INTO app_settings(key, value_json) VALUES ('deductionLimit', '0
   /* 012: 部屋計算書の上段で使う建具（上段の自動計算用）。
      記号・数・取り付く壁だけを持ち、W/H/面積/巾木減は常に建具表から引用する */ `
 ALTER TABLE project_room_sheets ADD COLUMN fittings_json TEXT NOT NULL DEFAULT '[]';
-`
-]
+`,
+  /* 013: 天井伏図（平面図に足す梁型・下がり壁・下がり天井の線）。
+     線ごとに範囲の天井高さを持ち、部屋の天井高さとの差から下がり高さを自動算出する */ `
+ALTER TABLE project_room_sheets ADD COLUMN ceiling_json TEXT NOT NULL DEFAULT '[]';
+`,
+];

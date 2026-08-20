@@ -32,7 +32,10 @@
 
 .room-sheet-page .upper {
   display: grid;
-  grid-template-columns: minmax(320px, 1.4fr) minmax(240px, 1fr) minmax(200px, 0.9fr);
+  grid-template-columns: minmax(320px, 1.4fr) minmax(240px, 1fr) minmax(
+      200px,
+      0.9fr
+    );
   grid-template-rows: auto auto auto;
   gap: 8px;
   padding: 8px;
@@ -245,4 +248,36 @@
   color: #475569;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.room-sheet-page .ceiling {
+  grid-column: span 2;
+}
+
+.room-sheet-page .section-bar button.on {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+.room-sheet-page .ceiling-line {
+  fill: none;
+  stroke-width: 0.04;
+  vector-effect: non-scaling-stroke;
+}
+
+.room-sheet-page .ceiling-line.wallBeam,
+.room-sheet-page .ceiling-line.ceilingBeam {
+  stroke: #b45309;
+}
+
+.room-sheet-page .ceiling-line.dropWall {
+  stroke: #7c3aed;
+}
+
+.room-sheet-page .ceiling-line.dropCeiling {
+  stroke: #0f766e;
+}
+
+.room-sheet-page text.dim.ceiling {
+  fill: #0f766e;
 }

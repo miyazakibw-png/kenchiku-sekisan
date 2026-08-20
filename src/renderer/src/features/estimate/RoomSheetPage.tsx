@@ -22,6 +22,13 @@ import {
   type RoomShape,
   type SolvedShape,
 } from "../../../../core/room/shape";
+import {
+  ceilingElement,
+  ceilingQuantities,
+  ceilingSymbols,
+  type CeilingElement,
+  type CeilingElementKind,
+} from "../../../../core/room/ceiling";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
@@ -57,6 +64,22 @@ function parseRoomFittings(json: string): RoomSheetFitting[] {
 
 function newRoomFittingId(): string {
   return `f${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+}
+
+const CEILING_KIND_LABEL: Record<CeilingElementKind, string> = {
+  wallBeam: "壁付き梁型",
+  ceilingBeam: "天井付梁型",
+  dropWall: "下がり壁",
+  dropCeiling: "下がり天井",
+};
+
+function parseCeiling(json: string): CeilingElement[] {
+  try {
+    const parsed = JSON.parse(json) as CeilingElement[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function parseShape(json: string): RoomShape {
@@ -102,6 +125,8 @@ export default function RoomSheetPage({
     height: "",
     sill: "",
   });
+  const [ceiling, setCeiling] = useState<CeilingElement[]>([]);
+  const [showCeiling, setShowCeiling] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -114,6 +139,7 @@ export default function RoomSheetPage({
       setSheet(loaded);
       setShape(parseShape(loaded.shapeJson));
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
+      setCeiling(parseCeiling(loaded.ceilingJson));
       setCeilingHeight(loaded.ceilingHeight);
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());
@@ -146,10 +172,64 @@ export default function RoomSheetPage({
     () => roomQuantities(solved, ceilingHeight, resolvedFittings),
     [solved, ceilingHeight, resolvedFittings],
   );
-  const symbols = useMemo(
-    () => roomSymbols(solved, ceilingHeight, resolvedFittings),
-    [solved, ceilingHeight, resolvedFittings],
+  const ceilingResult = useMemo(
+    () => ceilingQuantities(ceiling, solved, ceilingHeight),
+    [ceiling, solved, ceilingHeight],
   );
+  const symbols = useMemo(
+    () => [
+      ...roomSymbols(solved, ceilingHeight, resolvedFittings),
+      ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
+    ],
+    [solved, ceilingHeight, resolvedFittings, ceiling.length, ceilingResult],
+  );
+
+  /** 天井伏図の線を描く位置（平面図の辺から内側へ離す） */
+  const ceilingLines = useMemo(() => {
+    if (solved.points.length === 0) return [];
+    const area = solved.points.reduce((sum, point, index) => {
+      const next = solved.points[(index + 1) % solved.points.length];
+      return sum + (point.x * next.y - next.x * point.y);
+    }, 0);
+    const inward = area >= 0 ? 1 : -1;
+    return ceilingResult.items.flatMap((item) => {
+      const index = solved.edges.findIndex(
+        (line) => line.id === item.element.edgeId,
+      );
+      if (index < 0) return [];
+      const from = solved.points[index];
+      const to = solved.points[(index + 1) % solved.points.length];
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const size = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / size) * inward;
+      const ny = (dx / size) * inward;
+      const width = item.element.width ?? 0;
+      const offset =
+        item.element.kind === "wallBeam" || item.element.kind === "dropWall"
+          ? 0
+          : (item.element.offset ?? 0);
+      const distances =
+        item.element.kind === "ceilingBeam"
+          ? [offset, offset + width]
+          : item.element.kind === "dropCeiling"
+            ? [offset]
+            : [width];
+      return distances.map((distance, no) => ({
+        key: `${item.element.id}-${no}`,
+        elementId: item.element.id,
+        kind: item.element.kind,
+        x1: from.x + nx * distance,
+        y1: from.y + ny * distance,
+        x2: to.x + nx * distance,
+        y2: to.y + ny * distance,
+        label:
+          no === 0 && item.element.ceilingHeight !== null
+            ? formatNumber(item.element.ceilingHeight, 2)
+            : "",
+      }));
+    });
+  }, [ceilingResult.items, solved.edges, solved.points]);
 
   /** 壁の辺だけ（建具の取付先の選択肢） */
   const wallEdges = useMemo(
@@ -163,12 +243,21 @@ export default function RoomSheetPage({
       id: sheet.id,
       shapeJson: JSON.stringify(shape),
       fittingsJson: JSON.stringify(roomFittings),
+      ceilingJson: JSON.stringify(ceiling),
       ceilingHeight,
       note: sheet.note,
     });
     setSheet(saved);
     setMessage("保存しました（天井高さは部位別入力表にも反映します）");
-  }, [ceilingHeight, roomFittings, shape, sheet]);
+  }, [ceiling, ceilingHeight, roomFittings, shape, sheet]);
+
+  const updateCeiling = useCallback(
+    (id: string, patch: Partial<CeilingElement>): void =>
+      setCeiling((current) =>
+        current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      ),
+    [],
+  );
 
   /** 建具表の行をこの部屋の自動計算へ加える */
   const addRoomFitting = useCallback((symbol: string) => {
@@ -244,7 +333,16 @@ export default function RoomSheetPage({
       <div className="upper">
         <section className="drawing">
           <div className="section-bar">
-            <span>部屋形状イメージ（平面図）</span>
+            <span>
+              部屋形状イメージ（{showCeiling ? "天井伏図" : "平面図"}）
+            </span>
+            <button
+              type="button"
+              className={showCeiling ? "on" : ""}
+              onClick={() => setShowCeiling(!showCeiling)}
+            >
+              {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+            </button>
             <button
               type="button"
               onClick={() => startShape(rectangleShape(4, 3))}
@@ -318,6 +416,29 @@ export default function RoomSheetPage({
                   </g>
                 );
               })}
+              {showCeiling &&
+                ceilingLines.map((line) => (
+                  <g key={line.key}>
+                    <line
+                      x1={line.x1}
+                      y1={line.y1}
+                      x2={line.x2}
+                      y2={line.y2}
+                      className={`ceiling-line ${line.kind}`}
+                      strokeDasharray={`${view.span * 0.02} ${view.span * 0.015}`}
+                    />
+                    {line.label !== "" && (
+                      <text
+                        x={(line.x1 + line.x2) / 2}
+                        y={(line.y1 + line.y2) / 2 + view.span * 0.045}
+                        className="dim ceiling"
+                        fontSize={view.span * 0.045}
+                      >
+                        CH {line.label}
+                      </text>
+                    )}
+                  </g>
+                ))}
             </svg>
             {solved.points.length === 0 && (
               <p className="empty">
@@ -636,6 +757,201 @@ export default function RoomSheetPage({
             など）は、ここに書かなくても建具表から数量を引用します。
           </p>
         </section>
+
+        {showCeiling && (
+          <section className="ceiling">
+            <div className="section-bar">
+              <span>天井伏図（平面図の壁沿いに線を追加します）</span>
+              {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
+                (kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    disabled={wallEdges.length === 0}
+                    onClick={() =>
+                      setCeiling((current) => [
+                        ...current,
+                        ceilingElement(
+                          kind,
+                          selectedEdge ?? wallEdges[0]?.id ?? null,
+                        ),
+                      ])
+                    }
+                  >
+                    ＋ {CEILING_KIND_LABEL[kind]}
+                  </button>
+                ),
+              )}
+            </div>
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>種別</th>
+                  <th>沿う壁</th>
+                  <th className="num">長さ</th>
+                  <th className="num">幅</th>
+                  <th className="num">壁からの離れ</th>
+                  <th className="num">範囲の天井高さ</th>
+                  <th className="num">下がり</th>
+                  <th className="num">面積</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {ceilingResult.items.map((item) => {
+                  const element = item.element;
+                  return (
+                    <tr key={element.id}>
+                      <td>
+                        <select
+                          value={element.kind}
+                          onChange={(e) =>
+                            updateCeiling(element.id, {
+                              kind: e.target.value as CeilingElementKind,
+                            })
+                          }
+                        >
+                          {(
+                            Object.keys(
+                              CEILING_KIND_LABEL,
+                            ) as CeilingElementKind[]
+                          ).map((kind) => (
+                            <option key={kind} value={kind}>
+                              {CEILING_KIND_LABEL[kind]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          value={element.edgeId ?? ""}
+                          onChange={(e) =>
+                            updateCeiling(element.id, {
+                              edgeId:
+                                e.target.value === "" ? null : e.target.value,
+                            })
+                          }
+                        >
+                          <option value="">指定なし</option>
+                          {wallEdges.map((line, wallIndex) => (
+                            <option key={line.id} value={line.id}>
+                              壁{wallIndex + 1}（
+                              {formatNumber(line.resolved, 2)}）
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.length === null
+                              ? ""
+                              : formatNumber(element.length, 2)
+                          }
+                          placeholder={formatNumber(item.length, 2)}
+                          title="空欄なら沿う壁の長さを使います"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              length: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.width === null
+                              ? ""
+                              : formatNumber(element.width, 2)
+                          }
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              width: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.offset === null
+                              ? ""
+                              : formatNumber(element.offset, 2)
+                          }
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              offset: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.ceilingHeight === null
+                              ? ""
+                              : formatNumber(element.ceilingHeight, 2)
+                          }
+                          title="この線で囲まれる範囲の天井高さ"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              ceilingHeight: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="num">{formatNumber(item.drop, 2)}</td>
+                      <td className="num">
+                        {element.kind === "dropCeiling" ? (
+                          <input
+                            className="num"
+                            defaultValue={
+                              element.area === null
+                                ? ""
+                                : formatNumber(element.area, 2)
+                            }
+                            title="下がり天井の範囲面積"
+                            onBlur={(e) => {
+                              const text = e.target.value.trim();
+                              updateCeiling(element.id, {
+                                area: text === "" ? null : Number(text),
+                              });
+                            }}
+                          />
+                        ) : (
+                          formatNumber(item.area, 2)
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCeiling((current) =>
+                              current.filter((each) => each.id !== element.id),
+                            )
+                          }
+                        >
+                          🗑
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="note">
+              範囲の天井高さを入れると、部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+            </p>
+          </section>
+        )}
 
         <section className="fittings">
           <div className="section-bar">
