@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FittingDraft, ProjectSummary } from "@shared/types";
+import type { FittingDraft, MasterEntry, ProjectSummary } from "@shared/types";
 import {
   computeFitting,
   duplicateSymbolIndexes,
   expandSymbols,
 } from "../../../../core/fittings/fitting";
+import {
+  DEFAULT_FITTING_PART_VALUES,
+  FITTING_VALUE_LABELS,
+  fittingKindForPart,
+  fittingSuffix,
+  type FittingPartValue,
+  type FittingValueKind,
+} from "../../../../core/fittings/partValue";
 import {
   buildFittingColumns,
   emptyRow,
@@ -45,6 +53,12 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   const [selected, setSelected] = useState(0);
   const [message, setMessage] = useState("");
   const [series, setSeries] = useState<SeriesForm | null>(null);
+  /** 部位ごとの採用値の設定を開いているか */
+  const [showPartValues, setShowPartValues] = useState(false);
+  const [partValues, setPartValues] = useState<FittingPartValue[]>(
+    DEFAULT_FITTING_PART_VALUES,
+  );
+  const [parts, setParts] = useState<MasterEntry[]>([]);
   const columns = useMemo(() => buildFittingColumns(), []);
 
   const reload = useCallback(async () => {
@@ -54,6 +68,31 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    void (async () => {
+      setPartValues(await window.sekisan.getFittingPartValues());
+      const options = await window.sekisan.getMasterOptions();
+      setParts(options.aggregationParts);
+    })();
+  }, []);
+
+  /** 部位ごとの採用値を保存する（全工事共通の設定） */
+  const savePartValues = useCallback(async (values: FittingPartValue[]) => {
+    setPartValues(await window.sekisan.saveFittingPartValues(values));
+    setMessage("部位ごとの採用値を保存しました");
+  }, []);
+
+  /** 1つの部位の採用値を差し替える */
+  const changePartValue = useCallback(
+    (partName: string, kind: FittingValueKind) => {
+      const others = partValues.filter(
+        (value) => value.partName.trim() !== partName.trim(),
+      );
+      void savePartValues([...others, { partName, kind }]);
+    },
+    [partValues, savePartValues],
+  );
 
   const save = useCallback(async () => {
     const saved = await window.sekisan.saveFittings({
@@ -216,6 +255,13 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
         >
           ⧉ 行コピー
         </button>
+        <button
+          type="button"
+          title="建具記号を計算式へ入れるとき、部位ごとにどの数値を採るかを決めます"
+          onClick={() => setShowPartValues((current) => !current)}
+        >
+          ⚙ 部位ごとの採用値
+        </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
         </button>
@@ -264,6 +310,69 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
           <button type="button" onClick={() => setSeries(null)}>
             取消
           </button>
+        </div>
+      )}
+
+      {showPartValues && (
+        <div className="part-values">
+          <div className="section-bar">
+            <span>
+              部位ごとの採用値（計算書の建具表を押したとき、そのセットの部位に合わせて入る数値）
+            </span>
+            <button
+              type="button"
+              onClick={() => void savePartValues(DEFAULT_FITTING_PART_VALUES)}
+            >
+              初期の決まりに戻す
+            </button>
+            <button type="button" onClick={() => setShowPartValues(false)}>
+              閉じる
+            </button>
+          </div>
+          <table className="grid part-values">
+            <thead>
+              <tr>
+                <th className="part">部位（管理用）</th>
+                <th className="value">採用する数値</th>
+                <th className="symbol">計算式に入る形</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parts.map((part) => {
+                const kind = fittingKindForPart(part.name, partValues);
+                return (
+                  <tr key={part.id}>
+                    <td>{part.name}</td>
+                    <td>
+                      <select
+                        value={kind}
+                        onChange={(e) =>
+                          changePartValue(
+                            part.name,
+                            e.target.value as FittingValueKind,
+                          )
+                        }
+                      >
+                        {FITTING_VALUE_LABELS.map((item) => (
+                          <option key={item.kind} value={item.kind}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="symbol">
+                      &lt;記号{fittingSuffix(kind)}&gt;
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="hint">
+            初期の決まりは 壁＝面積・巾木＝巾木減・補強＝軸組横補強
+            です。ここに無い部位は面積を採ります。 計算式に直接 &lt;AW1:HL&gt;
+            のように書いたときはこの設定よりも式の方を優先します。
+          </p>
         </div>
       )}
 

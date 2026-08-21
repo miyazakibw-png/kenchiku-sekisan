@@ -1,4 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "fs";
 import { dirname, join } from "path";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
@@ -48,7 +55,12 @@ import {
   listBasicMasters,
   saveBasicMaster,
 } from "./services/basicMasterService";
-import { listFittings, saveFittings } from "./services/fittingService";
+import {
+  getFittingPartValues,
+  listFittings,
+  saveFittingPartValues,
+  saveFittings,
+} from "./services/fittingService";
 import {
   listEstimateRows,
   saveEstimateRows,
@@ -91,11 +103,9 @@ import {
   saveBreakdownSettings,
   transferBreakdown,
 } from "./services/breakdownService";
-import {
-  buildExport,
-  writeExport,
-} from "./services/breakdownExportService";
+import { buildExport, writeExport } from "./services/breakdownExportService";
 import { toScreenXml } from "../core/export/screenSheet";
+import type { FittingPartValue } from "../core/fittings/partValue";
 import { IPC } from "../shared/ipc";
 import type {
   BackupInfo,
@@ -301,6 +311,14 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
     saveFittings(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.fittingPartValuesGet, () =>
+    getFittingPartValues(getDatabase()),
+  );
+  ipcMain.handle(
+    IPC.fittingPartValuesSave,
+    (_event, values: FittingPartValue[]) =>
+      saveFittingPartValues(getDatabase(), values),
   );
   ipcMain.handle(
     IPC.detailsList,
@@ -512,7 +530,10 @@ function keepAutoBackup(dbFile: string): void {
     mkdirSync(folder, { recursive: true });
     const today = join(folder, autoBackupFileName(new Date()));
     if (!existsSync(today)) copyFileSync(dbFile, today);
-    for (const name of expiredAutoBackups(readdirSync(folder), AUTO_BACKUP_KEEP)) {
+    for (const name of expiredAutoBackups(
+      readdirSync(folder),
+      AUTO_BACKUP_KEEP,
+    )) {
       rmSync(join(folder, name), { force: true });
     }
   } catch {

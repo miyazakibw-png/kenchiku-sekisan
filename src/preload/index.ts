@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc";
+import type { FittingPartValue } from "../core/fittings/partValue";
 import type {
   AggregateRun,
   AggregateView,
@@ -192,6 +193,13 @@ const api = {
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsSave, request),
+  /** 建具記号を計算式へ入れるときに、部位ごとにどの数値を採るか */
+  getFittingPartValues: (): Promise<FittingPartValue[]> =>
+    ipcRenderer.invoke(IPC.fittingPartValuesGet),
+  saveFittingPartValues: (
+    values: FittingPartValue[],
+  ): Promise<FittingPartValue[]> =>
+    ipcRenderer.invoke(IPC.fittingPartValuesSave, values),
   getProjectLedger: (): Promise<ProjectLedger> =>
     ipcRenderer.invoke(IPC.projectLedger),
   createProject: (name: string): Promise<ProjectSummary> =>

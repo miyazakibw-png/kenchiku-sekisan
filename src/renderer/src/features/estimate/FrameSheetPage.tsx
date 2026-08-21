@@ -27,8 +27,16 @@ import {
   type RoomShape,
   type SolvedShape,
 } from "../../../../core/room/shape";
-import { evaluateCalcSheet, type CalcSet } from "../../../../core/room/calcSheet";
+import {
+  evaluateCalcSheet,
+  type CalcSet,
+} from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
+import {
+  DEFAULT_FITTING_PART_VALUES,
+  fittingSymbolForPart,
+  type FittingPartValue,
+} from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
@@ -79,9 +87,10 @@ function newId(prefix: string): string {
 }
 
 /** 図の表示範囲（線が無いときは10m四方） */
-function viewBox(
-  points: { x: number; y: number }[],
-): { box: string; span: number } {
+function viewBox(points: { x: number; y: number }[]): {
+  box: string;
+  span: number;
+} {
   if (points.length === 0) return { box: "-1 -1 12 12", span: 12 };
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
@@ -115,6 +124,10 @@ export default function FrameSheetPage({
   const [workHeight, setWorkHeight] = useState<number | null>(null);
   const [rooms, setRooms] = useState<FrameRoomOption[]>([]);
   const [fittings, setFittings] = useState<Fitting[]>([]);
+  /** 建具記号を計算式へ入れるときの、部位ごとの採用値 */
+  const [partValues, setPartValues] = useState<FittingPartValue[]>(
+    DEFAULT_FITTING_PART_VALUES,
+  );
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
@@ -143,7 +156,10 @@ export default function FrameSheetPage({
       setPlacements(parseJson<FramePlacement[]>(loaded.layoutJson, []));
       setManualLines(parseJson<FrameManualLine[]>(loaded.linesJson, []));
       setAttributes(
-        parseJson<Record<string, FrameLineAttribute>>(loaded.attributesJson, {}),
+        parseJson<Record<string, FrameLineAttribute>>(
+          loaded.attributesJson,
+          {},
+        ),
       );
       setFrameFittings(
         parseJson<
@@ -159,6 +175,7 @@ export default function FrameSheetPage({
       setWorkHeight(loaded.workHeight);
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
+      setPartValues(await window.sekisan.getFittingPartValues());
       setOptions(await window.sekisan.getMasterOptions());
     })();
   }, [project.id, row.id]);
@@ -405,7 +422,9 @@ export default function FrameSheetPage({
       const dx = Math.abs(next.x - drawStart.x);
       const dy = Math.abs(next.y - drawStart.y);
       const end =
-        dx >= dy ? { x: next.x, y: drawStart.y } : { x: drawStart.x, y: next.y };
+        dx >= dy
+          ? { x: next.x, y: drawStart.y }
+          : { x: drawStart.x, y: next.y };
       if (dx < 0.05 && dy < 0.05) {
         setDrawStart(null);
         return;
@@ -431,9 +450,7 @@ export default function FrameSheetPage({
     (keepId: string, dropId: string, share: boolean) => {
       updateAttribute(dropId, { sharedWithId: share ? keepId : null });
       setMessage(
-        share
-          ? "壁を共有しました（1本として拾います）"
-          : "壁を別々に拾います",
+        share ? "壁を共有しました（1本として拾います）" : "壁を別々に拾います",
       );
     },
     [updateAttribute],
@@ -467,6 +484,15 @@ export default function FrameSheetPage({
       setMessage(`${symbol} を計算式に入れました`);
     },
     [calcFocus],
+  );
+
+  /** 建具表クリック：入れる先のセットの部位に合わせて採る数値を変える */
+  const insertFittingSymbol = useCallback(
+    (symbol: string) => {
+      const set = lower.find((each) => each.id === calcFocus?.setId);
+      useSymbol(fittingSymbolForPart(symbol, set?.partName ?? "", partValues));
+    },
+    [calcFocus, lower, partValues, useSymbol],
   );
 
   const [warned, setWarned] = useState(false);
@@ -812,7 +838,8 @@ export default function FrameSheetPage({
             <span>軸組寸法表（拾わない線はチェックを外します）</span>
             {shared.length > 0 && (
               <span className="shared-note">
-                重なっている壁が{shared.length}か所あります（確認モードで共有を決められます）
+                重なっている壁が{shared.length}
+                か所あります（確認モードで共有を決められます）
               </span>
             )}
           </div>
@@ -1057,7 +1084,8 @@ export default function FrameSheetPage({
             ))}
           </datalist>
           <p className="note">
-            開口部補強は ①ドア類＝W＋施工高さ×2／②窓類＝W×2＋施工高さ×2／③窓＋ドア等＝W×2−巾木差し引き＋施工高さ×2＋腰高×2
+            開口部補強は
+            ①ドア類＝W＋施工高さ×2／②窓類＝W×2＋施工高さ×2／③窓＋ドア等＝W×2−巾木差し引き＋施工高さ×2＋腰高×2
             で自動判別します（タテ補強筋は施工高さで変わるため算出しません）。計算式では
             &lt;SD2:RF&gt; で補強長さを使えます。
           </p>
@@ -1085,7 +1113,7 @@ export default function FrameSheetPage({
                 return (
                   <tr
                     key={fitting.id}
-                    onClick={() => useSymbol(`<${fitting.symbol}>`)}
+                    onClick={() => insertFittingSymbol(fitting.symbol)}
                   >
                     <td>{fitting.symbol}</td>
                     <td className="num">{formatNumber(fitting.width, 2)}</td>

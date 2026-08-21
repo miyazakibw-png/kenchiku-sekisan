@@ -89,7 +89,7 @@ table.fittings input.num {
 
 table.fittings td.calc {
   background: #fffbe6;
-  font-family: 'Consolas', 'Menlo', monospace;
+  font-family: "Consolas", "Menlo", monospace;
 }
 
 table.fittings th.formula,
@@ -129,4 +129,51 @@ table.fittings tr.from-estimate td.no {
   color: #6b7280;
   max-width: 900px;
   line-height: 1.6;
+}
+
+.fittings-page .part-values {
+  margin: 8px;
+  border: 1px solid #c9ced6;
+  background: #f8fafc;
+  max-width: 620px;
+}
+
+.fittings-page .part-values .section-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  background: #e2e8f0;
+  color: #111827;
+  font-size: 12px;
+}
+
+.fittings-page table.part-values {
+  border-collapse: collapse;
+  margin: 6px;
+  width: auto;
+}
+
+.fittings-page table.part-values th,
+.fittings-page table.part-values td {
+  border: 1px solid #c9ced6;
+  padding: 1px 6px;
+  font-size: 12px;
+  background: #fff;
+}
+
+.fittings-page table.part-values th {
+  background: #e2e8f0;
+  color: #111827;
+  font-weight: normal;
+}
+
+.fittings-page table.part-values th.part,
+.fittings-page table.part-values td:first-child {
+  min-width: 12ch;
+}
+
+.fittings-page table.part-values td.symbol {
+  font-family: "Consolas", "Menlo", monospace;
+  color: #1f3864;
 }

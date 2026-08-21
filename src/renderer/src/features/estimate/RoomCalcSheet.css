@@ -417,3 +417,34 @@
   background: #e0ecff;
   outline: none;
 }
+
+/* 部位欄は「番号」と「名称」を並べ、番号を選ぶと名称も同時に入る */
+.room-calc-sheet table.calc td.part .part-pair {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-calc-sheet table.calc td.part .part-pair input {
+  position: static;
+  inset: auto;
+  flex: 1;
+  width: 100%;
+}
+
+.room-calc-sheet table.calc td.part .part-pair input.part-no {
+  border-bottom: 1px dotted #cbd5e1;
+}
+
+.room-calc-sheet table.calc .part-pair {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.room-calc-sheet table.calc .part-pair input.part-no {
+  width: 5ch;
+  flex: none;
+  text-align: right;
+}

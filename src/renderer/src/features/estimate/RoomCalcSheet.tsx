@@ -69,6 +69,31 @@ function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   }));
 }
 
+/** 部位名から部位マスターの番号を引く（番号欄の表示用） */
+function partNumberOf(
+  parts: { id: number; name: string }[],
+  partName: string,
+): string {
+  const found = parts.find((part) => part.name === partName.trim());
+  return found ? String(found.id) : "";
+}
+
+/** 番号欄の入力から、番号と名称を同時に決める */
+function partByNumber(
+  parts: { id: number; name: string }[],
+  input: string,
+  currentName: string,
+): { partNumber: number | null; partName: string } {
+  const text = input.trim();
+  if (text === "") return { partNumber: null, partName: "" };
+  const found = parts.find((part) => String(part.id) === text);
+  if (found) return { partNumber: found.id, partName: found.name };
+  return {
+    partNumber: /^\d+$/.test(text) ? Number(text) : null,
+    partName: currentName,
+  };
+}
+
 /** セット明細計算表の列（列幅はドラッグで変えられます） */
 const CALC_COLUMNS: { label: string; title: string; width: number }[] = [
   { label: "部位", title: "部位マスターの番号で入力します", width: 90 },
@@ -705,25 +730,48 @@ export default function RoomCalcSheet({
                   >
                     {rowIndex === 0 && (
                       <td className="part dcell" rowSpan={rowCount}>
-                        <input
-                          list="calc-parts"
-                          value={set.partName}
-                          placeholder="番号／一覧"
-                          title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
-                          onChange={(e) => {
-                            const parts = options?.aggregationParts ?? [];
-                            const name = resolveMasterName(
-                              parts,
-                              e.target.value,
-                            );
-                            updateSet(set.id, {
-                              partName: name,
-                              partNumber:
-                                parts.find((part) => part.name === name)?.id ??
-                                null,
-                            });
-                          }}
-                        />
+                        <div className="part-pair">
+                          <input
+                            className="part-no"
+                            list="calc-part-numbers"
+                            value={
+                              set.partNumber === null
+                                ? ""
+                                : String(set.partNumber)
+                            }
+                            placeholder="番号"
+                            title="管理用部位の番号。選ぶと部位名称も同時に入ります"
+                            onChange={(e) =>
+                              updateSet(
+                                set.id,
+                                partByNumber(
+                                  options?.aggregationParts ?? [],
+                                  e.target.value,
+                                  set.partName,
+                                ),
+                              )
+                            }
+                          />
+                          <input
+                            list="calc-parts"
+                            value={set.partName}
+                            placeholder="番号／一覧"
+                            title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
+                            onChange={(e) => {
+                              const parts = options?.aggregationParts ?? [];
+                              const name = resolveMasterName(
+                                parts,
+                                e.target.value,
+                              );
+                              updateSet(set.id, {
+                                partName: name,
+                                partNumber:
+                                  parts.find((part) => part.name === name)
+                                    ?.id ?? null,
+                              });
+                            }}
+                          />
+                        </div>
                       </td>
                     )}
                     {detail ? (
@@ -821,38 +869,68 @@ export default function RoomCalcSheet({
                           )}
                         </td>
                         <td className="dcell">
-                          <input
-                            lang={isUpper ? undefined : "ja"}
-                            list={isUpper ? "calc-detail-parts" : undefined}
-                            value={isUpper ? detail.partName : detail.name}
-                            placeholder={isUpper ? "番号／一覧" : "名称"}
-                            title={
-                              isUpper
-                                ? "明細用部位の番号を入力するか一覧から選びます"
-                                : undefined
-                            }
-                            onFocus={() =>
-                              onFocus({
-                                setId: set.id,
-                                area: "detail",
-                                index: detailIndex,
-                              })
-                            }
-                            onChange={(e) =>
-                              updateDetail(
-                                set.id,
-                                detailIndex,
+                          <div className={isUpper ? "part-pair" : undefined}>
+                            {isUpper && (
+                              <input
+                                className="part-no"
+                                list="calc-detail-part-numbers"
+                                value={partNumberOf(
+                                  options?.pickupParts ?? [],
+                                  detail.partName,
+                                )}
+                                placeholder="番号"
+                                title="明細用部位の番号。選ぶと部位名称も同時に入ります"
+                                onFocus={() =>
+                                  onFocus({
+                                    setId: set.id,
+                                    area: "detail",
+                                    index: detailIndex,
+                                  })
+                                }
+                                onChange={(e) =>
+                                  updateDetail(set.id, detailIndex, {
+                                    partName: partByNumber(
+                                      options?.pickupParts ?? [],
+                                      e.target.value,
+                                      detail.partName,
+                                    ).partName,
+                                  })
+                                }
+                              />
+                            )}
+                            <input
+                              lang={isUpper ? undefined : "ja"}
+                              list={isUpper ? "calc-detail-parts" : undefined}
+                              value={isUpper ? detail.partName : detail.name}
+                              placeholder={isUpper ? "番号／一覧" : "名称"}
+                              title={
                                 isUpper
-                                  ? {
-                                      partName: resolveMasterName(
-                                        options?.pickupParts ?? [],
-                                        e.target.value,
-                                      ),
-                                    }
-                                  : { name: e.target.value },
-                              )
-                            }
-                          />
+                                  ? "明細用部位の番号を入力するか一覧から選びます"
+                                  : undefined
+                              }
+                              onFocus={() =>
+                                onFocus({
+                                  setId: set.id,
+                                  area: "detail",
+                                  index: detailIndex,
+                                })
+                              }
+                              onChange={(e) =>
+                                updateDetail(
+                                  set.id,
+                                  detailIndex,
+                                  isUpper
+                                    ? {
+                                        partName: resolveMasterName(
+                                          options?.pickupParts ?? [],
+                                          e.target.value,
+                                        ),
+                                      }
+                                    : { name: e.target.value },
+                                )
+                              }
+                            />
+                          </div>
                         </td>
                         <td className="dcell">
                           <input
@@ -1178,6 +1256,20 @@ export default function RoomCalcSheet({
         {(options?.pickupParts ?? []).map((part) => (
           <option key={part.id} value={part.name}>
             {part.id}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="calc-detail-part-numbers">
+        {(options?.pickupParts ?? []).map((part) => (
+          <option key={part.id} value={String(part.id)}>
+            {part.name}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="calc-part-numbers">
+        {(options?.aggregationParts ?? []).map((part) => (
+          <option key={part.id} value={String(part.id)}>
+            {part.name}
           </option>
         ))}
       </datalist>

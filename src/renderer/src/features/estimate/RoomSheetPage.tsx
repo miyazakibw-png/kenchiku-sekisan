@@ -37,6 +37,11 @@ import {
 } from "../../../../core/room/calcSheet";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
+import {
+  DEFAULT_FITTING_PART_VALUES,
+  fittingSymbolForPart,
+  type FittingPartValue,
+} from "../../../../core/fittings/partValue";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 
@@ -148,6 +153,10 @@ export default function RoomSheetPage({
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [showCheck, setShowCheck] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
+  /** 建具記号を計算式へ入れるときの、部位ごとの採用値 */
+  const [partValues, setPartValues] = useState<FittingPartValue[]>(
+    DEFAULT_FITTING_PART_VALUES,
+  );
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   /** L型・コ型を足す場所（角の番号＝その角から出ていく辺の番号） */
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
@@ -174,6 +183,7 @@ export default function RoomSheetPage({
       setCeilingHeight(loaded.ceilingHeight);
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());
+      setPartValues(await window.sekisan.getFittingPartValues());
     })();
   }, [project.id, row.id]);
 
@@ -394,6 +404,8 @@ export default function RoomSheetPage({
         values[`<${fitting.symbol}:H>`] = fitting.height;
       if (computed.baseboardDeduction !== null)
         values[`<${fitting.symbol}:HL>`] = computed.baseboardDeduction;
+      if (computed.reinforcement !== null)
+        values[`<${fitting.symbol}:RF>`] = computed.reinforcement;
     });
     return values;
   }, [fittings, symbols]);
@@ -430,6 +442,18 @@ export default function RoomSheetPage({
       setMessage(`${symbol} を計算式に入れました`);
     },
     [calcFocus, copySymbol],
+  );
+
+  /**
+   * 建具表クリック：入れる先のセットの部位に合わせて採る数値を変える。
+   * 例：壁＝面積 &lt;AW1&gt;／巾木＝巾木減 &lt;AW1:HL&gt;／補強＝軸組横補強 &lt;AW1:RF&gt;
+   */
+  const insertFittingSymbol = useCallback(
+    (symbol: string) => {
+      const set = lower.find((each) => each.id === calcFocus?.setId);
+      useSymbol(fittingSymbolForPart(symbol, set?.partName ?? "", partValues));
+    },
+    [calcFocus, lower, partValues, useSymbol],
   );
 
   /** 画面を閉じるとき、式の誤りがあれば注意して該当箇所へ飛ぶ */
@@ -1273,7 +1297,9 @@ export default function RoomSheetPage({
 
         <section className="fittings">
           <div className="section-bar">
-            <span>建具表（クリックで &lt;記号&gt; をコピー）</span>
+            <span>
+              建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
+            </span>
             <label className="deduction">
               取合欠除
               <input
@@ -1309,7 +1335,7 @@ export default function RoomSheetPage({
                 return (
                   <tr
                     key={fitting.id}
-                    onClick={() => useSymbol(`<${fitting.symbol}>`)}
+                    onClick={() => insertFittingSymbol(fitting.symbol)}
                   >
                     <td>{fitting.symbol}</td>
                     <td className="num">{formatNumber(fitting.width, 2)}</td>
