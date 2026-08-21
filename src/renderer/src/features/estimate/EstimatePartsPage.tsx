@@ -19,6 +19,7 @@ import {
 } from './estimateRows'
 import RoomSheetPage from './RoomSheetPage'
 import FrameSheetPage from './FrameSheetPage'
+import GeneralSheetPage from './GeneralSheetPage'
 import './EstimatePartsPage.css'
 
 interface Props {
@@ -127,6 +128,20 @@ export default function EstimatePartsPage({ project, options, onBack }: Props): 
   if (openedSheet !== null && rows[openedSheet]?.calcType === 'frame') {
     return (
       <FrameSheetPage
+        project={project}
+        row={rows[openedSheet]}
+        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        onBack={() => {
+          setOpenedSheet(null)
+          void reload()
+        }}
+      />
+    )
+  }
+
+  if (openedSheet !== null && rows[openedSheet]?.calcType === 'general') {
+    return (
+      <GeneralSheetPage
         project={project}
         row={rows[openedSheet]}
         roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}

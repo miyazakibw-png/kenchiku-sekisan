@@ -450,4 +450,15 @@ CREATE TABLE project_frame_sheets (
 );
 CREATE UNIQUE INDEX uq_frame_sheet_row ON project_frame_sheets(estimate_row_id);
 `,
+  /* 016: 汎用計算書（上段が無く、セット明細計算表だけで自由に拾う計算書） */ `
+CREATE TABLE project_general_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  estimate_row_id INTEGER NOT NULL REFERENCES project_estimate_rows(id) ON DELETE CASCADE,
+  lower_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_general_sheet_row ON project_general_sheets(estimate_row_id);
+`,
 ];

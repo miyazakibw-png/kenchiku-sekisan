@@ -1166,6 +1166,7 @@ export default function RoomSheetPage({
                 <th className="num">腰高</th>
                 <th className="num">面積</th>
                 <th className="num">巾木減</th>
+                <th className="num">横補強</th>
                 <th />
               </tr>
             </thead>
@@ -1186,6 +1187,12 @@ export default function RoomSheetPage({
                     <td className="num">{formatNumber(computed.area, 2)}</td>
                     <td className="num">
                       {formatNumber(computed.baseboardDeduction, 2)}
+                    </td>
+                    <td
+                      className="num"
+                      title="軸組の開口部横補強（自動計算には使いません）"
+                    >
+                      {formatNumber(computed.reinforcement, 2)}
                     </td>
                     <td>
                       <button

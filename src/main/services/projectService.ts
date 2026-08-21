@@ -9,6 +9,7 @@ import {
   projectFieldValues,
   projectFittings,
   projectFrameSheets,
+  projectGeneralSheets,
   projectRoomFinishes,
   projectRoomSheets,
   projects
@@ -213,6 +214,18 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
             projectId: newId,
             estimateRowId: copiedRowId
           })
+          .run()
+      })
+
+    tx.select()
+      .from(projectGeneralSheets)
+      .where(eq(projectGeneralSheets.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, estimateRowId, ...rest }) => {
+        const copiedRowId = estimateRowIdMap.get(estimateRowId)
+        if (copiedRowId === undefined) return
+        tx.insert(projectGeneralSheets)
+          .values({ ...rest, projectId: newId, estimateRowId: copiedRowId })
           .run()
       })
 

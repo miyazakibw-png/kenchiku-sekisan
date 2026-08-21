@@ -9,6 +9,7 @@ import type {
   Fitting,
   FrameRoomOption,
   FrameSheet,
+  GeneralSheet,
   MasterOptions,
   ProjectField,
   ProjectLedger,
@@ -19,6 +20,7 @@ import type {
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveFrameSheetRequest,
+  SaveGeneralSheetRequest,
   RoomSheet,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -82,6 +84,11 @@ const api = {
   /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
   listFrameRooms: (projectId: number): Promise<FrameRoomOption[]> =>
     ipcRenderer.invoke(IPC.frameRoomsList, projectId),
+  /** 汎用計算書（上段が無く、セット明細計算表だけの計算書） */
+  getGeneralSheet: (estimateRowId: number): Promise<GeneralSheet> =>
+    ipcRenderer.invoke(IPC.generalSheetGet, estimateRowId),
+  saveGeneralSheet: (request: SaveGeneralSheetRequest): Promise<GeneralSheet> =>
+    ipcRenderer.invoke(IPC.generalSheetSave, request),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

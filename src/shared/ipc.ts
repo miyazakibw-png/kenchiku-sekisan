@@ -18,6 +18,8 @@ export const IPC = {
   frameSheetGet: 'frameSheet:get',
   frameSheetSave: 'frameSheet:save',
   frameRoomsList: 'frameSheet:rooms',
+  generalSheetGet: 'generalSheet:get',
+  generalSheetSave: 'generalSheet:save',
   deductionLimitGet: 'settings:deductionLimitGet',
   deductionLimitSave: 'settings:deductionLimitSave',
   fittingsList: 'fittings:list',

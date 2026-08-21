@@ -354,6 +354,21 @@ export const projectFrameSheets = sqliteTable("project_frame_sheets", {
   updatedAt: text("updated_at").notNull().default(now),
 });
 
+/** 汎用計算書（上段が無く、セット明細計算表だけで拾う計算書） */
+export const projectGeneralSheets = sqliteTable("project_general_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  estimateRowId: integer("estimate_row_id")
+    .notNull()
+    .references(() => projectEstimateRows.id, { onDelete: "cascade" }),
+  /** セット明細計算表 */
+  lowerJson: text("lower_json").notNull().default("[]"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 /**
  * 動的計算書スキーマ。
  * 計算書（シート）のUIレイアウトと計算式定義をJSONで保持し、

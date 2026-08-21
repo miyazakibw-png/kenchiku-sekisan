@@ -41,6 +41,10 @@ import {
   listFrameRooms,
   saveFrameSheet,
 } from "./services/frameSheetService";
+import {
+  getGeneralSheet,
+  saveGeneralSheet,
+} from "./services/generalSheetService";
 import { IPC } from "../shared/ipc";
 import type {
   ProjectField,
@@ -49,6 +53,7 @@ import type {
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveFrameSheetRequest,
+  SaveGeneralSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SubjectDraft,
@@ -132,6 +137,14 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.frameRoomsList, (_event, projectId: number) =>
     listFrameRooms(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.generalSheetGet, (_event, estimateRowId: number) =>
+    getGeneralSheet(getDatabase(), estimateRowId),
+  );
+  ipcMain.handle(
+    IPC.generalSheetSave,
+    (_event, request: SaveGeneralSheetRequest) =>
+      saveGeneralSheet(getDatabase(), request),
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>

@@ -239,6 +239,22 @@ export type SaveFrameSheetRequest = Omit<
   "projectId" | "estimateRowId"
 >;
 
+/** 汎用計算書（上段が無く、セット明細計算表だけで拾う計算書） */
+export interface GeneralSheet {
+  id: number;
+  projectId: number;
+  /** 部位別入力表の行（1行＝1汎用計算書） */
+  estimateRowId: number;
+  /** セット明細計算表 */
+  lowerJson: string;
+  note: string;
+}
+
+export type SaveGeneralSheetRequest = Omit<
+  GeneralSheet,
+  "projectId" | "estimateRowId"
+>;
+
 /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
 export interface FrameRoomOption {
   estimateRowId: number;

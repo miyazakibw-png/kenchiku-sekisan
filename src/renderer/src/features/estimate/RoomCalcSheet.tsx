@@ -41,6 +41,8 @@ interface Props {
   onFocus: (focus: CalcFocus | null) => void;
   result: CalcSheetResult;
   onMessage: (message: string) => void;
+  /** 上段（図・記号表）を持つ計算書か。汎用計算書は false */
+  hasUpper?: boolean;
 }
 
 type CallSource = "basic" | "project" | "assembly";
@@ -69,6 +71,7 @@ export default function RoomCalcSheet({
   onFocus,
   result,
   onMessage,
+  hasUpper = true,
 }: Props): JSX.Element {
   const [callOpen, setCallOpen] = useState(false);
   const [source, setSource] = useState<CallSource>("basic");
@@ -269,7 +272,9 @@ export default function RoomCalcSheet({
           📂 マスター呼出
         </button>
         <span className="hint">
-          記号は上段の表をクリックすると計算式へ入ります
+          {hasUpper
+            ? "記号は上段の表をクリックすると計算式へ入ります"
+            : "建具記号は建具表から直接引用します（例 <SD2>）"}
         </span>
       </div>
 
@@ -807,23 +812,25 @@ export default function RoomCalcSheet({
       )}
 
       <p className="note">
-        計算式には上段の記号（FA・WA1 など）、建具記号（&lt;AW1&gt;
+        計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}建具記号（&lt;AW1&gt;
         …建具表から直接引用）、他セットの累計（B1〜B100）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
       </p>
-      <CalcVariablesHint variables={variables} />
+      <CalcVariablesHint variables={variables} hasUpper={hasUpper} />
     </div>
   );
 }
 
 function CalcVariablesHint({
   variables,
+  hasUpper,
 }: {
   variables: Record<string, number>;
+  hasUpper: boolean;
 }): JSX.Element {
   const count = Object.keys(variables).length;
   return (
     <p className="note dim">
-      計算式に使える記号：{count}件（上段の表と建具表）
+      計算式に使える記号：{count}件（{hasUpper ? "上段の表と建具表" : "建具表"}）
     </p>
   );
 }
