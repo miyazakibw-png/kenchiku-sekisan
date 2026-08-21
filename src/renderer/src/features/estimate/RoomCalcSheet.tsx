@@ -14,7 +14,9 @@ import {
   displayedValue,
   evaluateCalcSheet,
   nextBSymbol,
+  padLines,
   setRowCount,
+  syncLines,
   usedBSymbols,
   type CalcDetail,
   type CalcSet,
@@ -172,10 +174,26 @@ export default function RoomCalcSheet({
 
   const used = useMemo(() => usedBSymbols(sets), [sets]);
 
+  // 保存済みのデータで明細に対して計算式行が足りない場合に足す（3明細目以降が入力できるように）
+  useEffect(() => {
+    const short = sets.some(
+      (set) => set.lines.length < Math.max(set.details.length * 2, 2),
+    );
+    if (!short) return;
+    onChange(
+      sets.map((set) => ({ ...set, lines: padLines(set.details, set.lines) })),
+    );
+  }, [onChange, sets]);
+
+  /** セットを書き換える（明細の数に計算式行を合わせてから反映する） */
   const updateSet = useCallback(
     (setId: string, patch: Partial<CalcSet>): void =>
       onChange(
-        sets.map((set) => (set.id === setId ? { ...set, ...patch } : set)),
+        sets.map((set) => {
+          if (set.id !== setId) return set;
+          const next = { ...set, ...patch };
+          return { ...next, lines: padLines(next.details, next.lines) };
+        }),
       ),
     [onChange, sets],
   );
@@ -260,9 +278,11 @@ export default function RoomCalcSheet({
     (setId: string, index: number): void => {
       const target = sets.find((set) => set.id === setId);
       if (!target) return;
-      updateSet(setId, {
-        details: target.details.filter((_, rowIndex) => rowIndex !== index),
-      });
+      const details = target.details.filter(
+        (_, rowIndex) => rowIndex !== index,
+      );
+      // 明細を消したぶん、末尾の空いた計算式行も詰める
+      updateSet(setId, { details, lines: syncLines(details, target.lines) });
       onFocus(null);
     },
     [onFocus, sets, updateSet],
@@ -368,14 +388,14 @@ export default function RoomCalcSheet({
           coefficient: item.coefficient,
         }),
       );
-      created.lines = [calcLine()];
+      created.lines = syncLines(created.details, []);
       const at = sets.findIndex((set) => set.id === currentSet?.id);
       const next = [...sets];
       if (insertMode || at < 0) {
         next.splice(at < 0 ? next.length : at, 0, created);
       } else {
         // 上書きは元のセット1つ分を丸ごと置き換える（計算式は残す）
-        created.lines = sets[at].lines;
+        created.lines = syncLines(created.details, sets[at].lines);
         next[at] = created;
       }
       onChange(next);

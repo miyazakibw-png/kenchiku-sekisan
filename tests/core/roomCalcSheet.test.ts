@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  calcDetail,
   calcLine,
   calcSet,
   displayQuantity,
   evaluateCalcSheet,
   nextBSymbol,
+  padLines,
   quantityByPart,
+  syncLines,
   setRowCount,
   type CalcSet,
 } from "../../src/core/room/calcSheet";
@@ -108,5 +111,22 @@ describe("下段セット明細計算表", () => {
     expect(setRowCount(set)).toBe(4);
     set.lines = [...set.lines, calcLine(), calcLine()];
     expect(setRowCount(set)).toBe(6);
+  });
+
+  it("明細を増やすと計算式行も明細1件＝2行に足りるまで足す", () => {
+    const set = calcSet(2);
+    set.details = [...set.details, calcDetail()];
+    const lines = padLines(set.details, set.lines);
+    expect(lines).toHaveLength(6);
+    expect(setRowCount({ ...set, lines })).toBe(6);
+  });
+
+  it("明細を減らすと末尾の空いた計算式行は詰める（入力済みは残す）", () => {
+    const set = calcSet(2);
+    set.details = [set.details[0]];
+    expect(syncLines(set.details, set.lines)).toHaveLength(2);
+    const kept = [...set.lines];
+    kept[3] = calcLine({ formulaA: "1+1" });
+    expect(syncLines(set.details, kept)).toHaveLength(4);
   });
 });

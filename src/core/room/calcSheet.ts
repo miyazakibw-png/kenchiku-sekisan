@@ -94,6 +94,38 @@ export function calcSet(detailCount = 2): CalcSet {
   };
 }
 
+/** 計算式行に何か入っているか（詰めてよい空行かの判定） */
+function isEmptyLine(line: CalcLine): boolean {
+  return (
+    line.formulaA.trim() === "" &&
+    line.formulaB.trim() === "" &&
+    line.comment.trim() === "" &&
+    line.bSymbol.trim() === ""
+  );
+}
+
+/** 明細1件＝計算式2行になるよう、足りない計算式行を足す（3明細目以降も式が入れられるように） */
+export function padLines(details: CalcDetail[], lines: CalcLine[]): CalcLine[] {
+  const need = Math.max(details.length * 2, 2);
+  const next = [...lines];
+  while (next.length < need) next.push(calcLine());
+  return next;
+}
+
+/**
+ * 明細の数に計算式行を合わせる（明細1件＝計算式2行）。
+ * 余った末尾の空行は詰め、足りなければ足す（入力済みの行は残す）。
+ */
+export function syncLines(
+  details: CalcDetail[],
+  lines: CalcLine[],
+): CalcLine[] {
+  const need = Math.max(details.length * 2, 2);
+  const next = [...lines];
+  while (next.length > need && isEmptyLine(next[next.length - 1])) next.pop();
+  return padLines(details, next);
+}
+
 /** セット内で表示する行数（明細は1件2行。明細と計算式の多い方に合わせる） */
 export function setRowCount(set: CalcSet): number {
   return Math.max(set.details.length * 2, set.lines.length, 1);
