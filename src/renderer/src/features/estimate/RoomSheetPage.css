@@ -261,7 +261,8 @@
 
 .room-sheet-page .ceiling-line {
   fill: none;
-  stroke-width: 0.04;
+  stroke-width: 2;
+  stroke-dasharray: 7 4;
   vector-effect: non-scaling-stroke;
 }
 

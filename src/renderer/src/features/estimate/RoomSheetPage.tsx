@@ -425,7 +425,6 @@ export default function RoomSheetPage({
                       x2={line.x2}
                       y2={line.y2}
                       className={`ceiling-line ${line.kind}`}
-                      strokeDasharray={`${view.span * 0.02} ${view.span * 0.015}`}
                     />
                     {line.label !== "" && (
                       <text
