@@ -5,6 +5,13 @@ import type {
   AggregateView,
   AssemblyItem,
   AssemblyMasterOptions,
+  BreakdownExportRequest,
+  BreakdownExportResult,
+  BreakdownSettingsRecord,
+  BreakdownVersion,
+  BreakdownView,
+  BreakdownRowRecord,
+  SaveBreakdownRowsRequest,
   Detail,
   EstimateRow,
   FinishAssembly,
@@ -107,6 +114,32 @@ const api = {
     ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
   listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>
     ipcRenderer.invoke(IPC.aggregateRuns, projectId),
+  /** 内訳書（集計書兼工事マスターからの変換転記） */
+  getBreakdown: (
+    projectId: number,
+    versionId?: number,
+  ): Promise<BreakdownView> =>
+    ipcRenderer.invoke(IPC.breakdownGet, projectId, versionId),
+  listBreakdownVersions: (projectId: number): Promise<BreakdownVersion[]> =>
+    ipcRenderer.invoke(IPC.breakdownVersions, projectId),
+  transferBreakdown: (projectId: number): Promise<BreakdownView> =>
+    ipcRenderer.invoke(IPC.breakdownTransfer, projectId),
+  saveBreakdownRows: (
+    request: SaveBreakdownRowsRequest,
+  ): Promise<BreakdownRowRecord[]> =>
+    ipcRenderer.invoke(IPC.breakdownSaveRows, request),
+  saveBreakdownSettings: (
+    settings: BreakdownSettingsRecord,
+  ): Promise<BreakdownSettingsRecord> =>
+    ipcRenderer.invoke(IPC.breakdownSaveSettings, settings),
+  confirmBreakdownVersion: (
+    versionId: number,
+  ): Promise<BreakdownVersion | null> =>
+    ipcRenderer.invoke(IPC.breakdownConfirm, versionId),
+  exportBreakdown: (
+    request: BreakdownExportRequest,
+  ): Promise<BreakdownExportResult> =>
+    ipcRenderer.invoke(IPC.breakdownExport, request),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

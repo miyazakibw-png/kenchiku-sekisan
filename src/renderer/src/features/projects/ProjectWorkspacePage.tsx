@@ -16,6 +16,7 @@ import EstimatePartsPage from '../estimate/EstimatePartsPage'
 import TransferSheetPage from '../estimate/TransferSheetPage'
 import AggregatePage from '../aggregate/AggregatePage'
 import RoomAggregatePage from '../aggregate/RoomAggregatePage'
+import BreakdownPage from '../breakdown/BreakdownPage'
 import './ProjectWorkspacePage.css'
 
 interface Props {
@@ -176,6 +177,14 @@ export default function ProjectWorkspacePage({
 
   if (openedMenu === 'roomAggregate') {
     return <RoomAggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
+  }
+
+  if (
+    openedMenu === 'statement' ||
+    openedMenu === 'statementSingle' ||
+    openedMenu === 'statementSettings'
+  ) {
+    return <BreakdownPage project={draft} onBack={() => setOpenedMenu(null)} />
   }
 
   return (

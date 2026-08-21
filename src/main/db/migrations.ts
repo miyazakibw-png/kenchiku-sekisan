@@ -588,4 +588,68 @@ CREATE TABLE project_transfer_rules (
 );
 CREATE UNIQUE INDEX uq_transfer_rules_key ON project_transfer_rules(project_id, master_key, rule_kind);
 `,
+  /* 019: 内訳書（集計書兼工事マスターからの変換転記・提出回ごとの版・比較） */ `
+-- 内訳書の設定（物件ごとに1件。2回目以降はこの設定を読み込んでから転記する）
+CREATE TABLE project_breakdown_settings (
+  project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  -- 書式 1:2段1行 2:1段 3:エクセル転記用（2段を1行で掃き出す）
+  layout INTEGER NOT NULL DEFAULT 1,
+  -- 名称欄 1:そのまま 2:部位＋半角スペース＋名称
+  name_pattern INTEGER NOT NULL DEFAULT 1,
+  -- 名称（下段）の表示 half:半角 full:全角 raw:そのまま
+  name_width TEXT NOT NULL DEFAULT 'raw',
+  -- 数量の丸め（閾値以上はその桁数。0桁になって0と出る場合は数字が出る桁まで）
+  round_threshold1 REAL NOT NULL DEFAULT 100,
+  round_decimals1 INTEGER NOT NULL DEFAULT 0,
+  round_threshold2 REAL NOT NULL DEFAULT 0,
+  round_decimals2 INTEGER NOT NULL DEFAULT 1,
+  round_decimals3 INTEGER NOT NULL DEFAULT 2,
+  -- 工種科目の並び（科目IDの配列）と摘要の文字置き換え（[{from,to}]）
+  subject_order_json TEXT NOT NULL DEFAULT '[]',
+  replacements_json TEXT NOT NULL DEFAULT '[]',
+  -- 単位の並び（集計書から抜き出して自動準備する）
+  unit_order_json TEXT NOT NULL DEFAULT '[]',
+  -- BCS・印刷で使う2層目の工事区分
+  work_category TEXT NOT NULL DEFAULT '建築主体工事'
+);
+
+-- 内訳書の版（1回目・2回目…。1回目は確定するまで何度転記しても1回目）
+CREATE TABLE project_breakdown_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- 確定すると次は新しい回になる
+  confirmed INTEGER NOT NULL DEFAULT 0,
+  aggregate_run_id INTEGER REFERENCES project_aggregate_runs(id) ON DELETE SET NULL,
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX uq_breakdown_versions_round ON project_breakdown_versions(project_id, round);
+
+-- 内訳書の行（3層目＝科目見出し、4層目＝明細）
+CREATE TABLE project_breakdown_rows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  version_id INTEGER NOT NULL REFERENCES project_breakdown_versions(id) ON DELETE CASCADE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  -- subject:科目見出し detail:明細 note:注記 blank:比較用の空行
+  row_kind TEXT NOT NULL DEFAULT 'detail',
+  subject_id INTEGER,
+  subject_name TEXT NOT NULL DEFAULT '',
+  -- 集計書兼工事マスターの明細（数量根拠を追うため）
+  master_key TEXT NOT NULL DEFAULT '',
+  aggregate_item_id INTEGER,
+  part_name TEXT NOT NULL DEFAULT '',
+  name_upper TEXT NOT NULL DEFAULT '',
+  name_lower TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  quantity REAL,
+  unit TEXT NOT NULL DEFAULT '',
+  unit_price REAL,
+  amount REAL,
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_breakdown_rows_version ON project_breakdown_rows(version_id, display_order);
+`,
 ];

@@ -620,6 +620,91 @@ export const projectTransferRules = sqliteTable(
   }),
 );
 
+/** 内訳書の設定（物件ごとに1件） */
+export const projectBreakdownSettings = sqliteTable(
+  "project_breakdown_settings",
+  {
+    projectId: integer("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** 1:2段1行 2:1段 3:エクセル転記用 */
+    layout: integer("layout").notNull().default(1),
+    /** 1:そのまま 2:部位＋半角スペース＋名称 */
+    namePattern: integer("name_pattern").notNull().default(1),
+    /** half:半角 full:全角 raw:そのまま */
+    nameWidth: text("name_width").notNull().default("raw"),
+    roundThreshold1: real("round_threshold1").notNull().default(100),
+    roundDecimals1: integer("round_decimals1").notNull().default(0),
+    roundThreshold2: real("round_threshold2").notNull().default(0),
+    roundDecimals2: integer("round_decimals2").notNull().default(1),
+    roundDecimals3: integer("round_decimals3").notNull().default(2),
+    subjectOrderJson: text("subject_order_json").notNull().default("[]"),
+    replacementsJson: text("replacements_json").notNull().default("[]"),
+    unitOrderJson: text("unit_order_json").notNull().default("[]"),
+    workCategory: text("work_category").notNull().default("建築主体工事"),
+  },
+);
+
+/** 内訳書の版（提出の回） */
+export const projectBreakdownVersions = sqliteTable(
+  "project_breakdown_versions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    round: integer("round").notNull().default(1),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    confirmed: integer("confirmed").notNull().default(0),
+    aggregateRunId: integer("aggregate_run_id").references(
+      () => projectAggregateRuns.id,
+      { onDelete: "set null" },
+    ),
+    note: text("note").notNull().default(""),
+  },
+  (t) => ({
+    roundUq: uniqueIndex("uq_breakdown_versions_round").on(
+      t.projectId,
+      t.round,
+    ),
+  }),
+);
+
+/** 内訳書の行（科目見出し・明細） */
+export const projectBreakdownRows = sqliteTable(
+  "project_breakdown_rows",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    versionId: integer("version_id")
+      .notNull()
+      .references(() => projectBreakdownVersions.id, { onDelete: "cascade" }),
+    displayOrder: integer("display_order").notNull().default(0),
+    /** subject / detail / note / blank */
+    rowKind: text("row_kind").notNull().default("detail"),
+    subjectId: integer("subject_id"),
+    subjectName: text("subject_name").notNull().default(""),
+    masterKey: text("master_key").notNull().default(""),
+    aggregateItemId: integer("aggregate_item_id"),
+    partName: text("part_name").notNull().default(""),
+    nameUpper: text("name_upper").notNull().default(""),
+    nameLower: text("name_lower").notNull().default(""),
+    descriptionUpper: text("description_upper").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
+    quantity: real("quantity"),
+    unit: text("unit").notNull().default(""),
+    unitPrice: real("unit_price"),
+    amount: real("amount"),
+    remarksUpper: text("remarks_upper").notNull().default(""),
+    remarksLower: text("remarks_lower").notNull().default(""),
+  },
+  (t) => ({
+    versionIdx: index("idx_breakdown_rows_version").on(
+      t.versionId,
+      t.displayOrder,
+    ),
+  }),
+);
+
 export type MDetail = typeof mDetails.$inferSelect;
 export type MDetailInsert = typeof mDetails.$inferInsert;
 export type MSubject = typeof mSubjects.$inferSelect;

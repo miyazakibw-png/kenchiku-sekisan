@@ -91,21 +91,21 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: '内訳書',
     group: 'output',
     note: '集計書兼工事マスターからの転記',
-    ready: false
+    ready: true
   },
   {
     key: 'statementSingle',
     label: '内訳書（1行）',
     group: 'output',
-    note: '2段明細を1段へ変換して転記',
-    ready: false
+    note: '2段明細を1段へ変換して転記（内訳書の設定で書式②を選ぶ）',
+    ready: true
   },
   {
     key: 'statementSettings',
     label: '設定',
     group: 'output',
     note: '内訳書形式・表示に関する設定',
-    ready: false
+    ready: true
   },
   {
     key: 'finishCheck',

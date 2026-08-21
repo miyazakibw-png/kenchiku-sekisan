@@ -1,0 +1,143 @@
+.breakdown-page .breakdown-body {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  overflow: auto;
+}
+
+.breakdown-page .subject-list {
+  flex: 0 0 220px;
+  border: 1px solid #bbb;
+  background: #fafafa;
+  padding: 4px;
+  position: sticky;
+  top: 0;
+}
+
+.breakdown-page .subject-list .subject-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.breakdown-page .subject-list button {
+  flex: 1 1 auto;
+  text-align: left;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.breakdown-page .subject-list button.selected {
+  background: #cde3ff;
+  font-weight: bold;
+}
+
+.breakdown-page .subject-list .order button {
+  flex: 0 0 auto;
+  width: 20px;
+  text-align: center;
+}
+
+.breakdown-page .subject-list .hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #666;
+}
+
+.breakdown-page table.breakdown {
+  flex: 1 1 auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.breakdown-page table.breakdown th,
+.breakdown-page table.breakdown td {
+  border: 1px solid #999;
+  padding: 1px 3px;
+  vertical-align: top;
+}
+
+.breakdown-page table.breakdown th.mark,
+.breakdown-page table.breakdown td.mark {
+  width: 32px;
+  text-align: center;
+}
+
+.breakdown-page table.breakdown td.qty,
+.breakdown-page table.breakdown td.unit {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.breakdown-page table.breakdown tr.subject td {
+  background: #eee;
+  font-weight: bold;
+}
+
+/* 2段1行：1明細の中には罫線を引かない */
+.breakdown-page table.breakdown tr.two-line td div.upper,
+.breakdown-page table.breakdown tr.two-line td div.lower {
+  min-height: 15px;
+}
+
+.breakdown-page .breakdown-settings {
+  border: 1px solid #bbb;
+  background: #f4f8ff;
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.breakdown-page .breakdown-settings input[type="number"] {
+  width: 60px;
+}
+
+.breakdown-page .breakdown-settings .rule input {
+  width: 70px;
+}
+
+.breakdown-page .breakdown-compare {
+  overflow: auto;
+}
+
+.breakdown-page table.compare {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.breakdown-page table.compare th,
+.breakdown-page table.compare td {
+  border: 1px solid #999;
+  padding: 1px 3px;
+}
+
+.breakdown-page table.compare td.ops button {
+  width: 20px;
+  padding: 0;
+}
+
+/* 違うところだけ色を付ける（行を合わせ直すと色が消える） */
+.breakdown-page table.compare td.changed {
+  background: #ffe08a;
+  color: #a03000;
+  font-weight: bold;
+}
+
+.breakdown-page table.compare td.only {
+  background: #ffd0d0;
+}
+
+.breakdown-page .compare-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.breakdown-page .compare-toolbar .note {
+  color: #666;
+}

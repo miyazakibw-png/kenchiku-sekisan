@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "better-sqlite3": "11.6.0",
-    "drizzle-orm": "0.36.4"
+    "drizzle-orm": "0.36.4",
+    "iconv-lite": "^0.6.3"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "3.0.1",

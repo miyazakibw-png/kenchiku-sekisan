@@ -498,3 +498,87 @@ export interface AggregateView {
   items: AggregateItem[];
   details: AggregateDetail[];
 }
+
+/** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
+export interface BreakdownSettingsRecord {
+  projectId: number;
+  /** 1:2段1行 2:1段 3:エクセル転記用 */
+  layout: number;
+  /** 1:そのまま 2:部位＋半角スペース＋名称 */
+  namePattern: number;
+  /** half / full / raw */
+  nameWidth: string;
+  roundThreshold1: number;
+  roundDecimals1: number;
+  roundThreshold2: number;
+  roundDecimals2: number;
+  roundDecimals3: number;
+  /** 工種科目の並び（科目ID） */
+  subjectOrder: number[];
+  /** 摘要の文字置き換え */
+  replacements: { from: string; to: string }[];
+  /** 単位の並び */
+  unitOrder: string[];
+  /** BCS・印刷で使う2層目の工事区分 */
+  workCategory: string;
+}
+
+/** 内訳書の版（提出の回） */
+export interface BreakdownVersion {
+  id: number;
+  projectId: number;
+  round: number;
+  createdAt: string;
+  /** 1で確定（次の転記は新しい回になる） */
+  confirmed: number;
+  aggregateRunId: number | null;
+  note: string;
+}
+
+/** 内訳書の1行 */
+export interface BreakdownRowRecord {
+  id: number | null;
+  displayOrder: number;
+  /** subject / detail / note / blank */
+  rowKind: string;
+  subjectId: number | null;
+  subjectName: string;
+  masterKey: string;
+  aggregateItemId: number | null;
+  partName: string;
+  nameUpper: string;
+  nameLower: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  quantity: number | null;
+  unit: string;
+  unitPrice: number | null;
+  amount: number | null;
+  remarksUpper: string;
+  remarksLower: string;
+}
+
+export interface BreakdownView {
+  version: BreakdownVersion | null;
+  rows: BreakdownRowRecord[];
+  settings: BreakdownSettingsRecord;
+}
+
+export interface SaveBreakdownRowsRequest {
+  versionId: number;
+  rows: BreakdownRowRecord[];
+}
+
+/** 掃き出しの種類 */
+export type BreakdownExportKind = "bcs" | "excelAll" | "excelBySubject";
+
+export interface BreakdownExportRequest {
+  projectId: number;
+  versionId: number;
+  kind: BreakdownExportKind;
+}
+
+export interface BreakdownExportResult {
+  /** 保存したファイル。取り消した場合は null */
+  filePath: string | null;
+}

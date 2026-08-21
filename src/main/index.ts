@@ -1,5 +1,5 @@
 import { join } from "path";
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { closeDatabase, getDatabase, initDatabase } from "./db";
 import {
@@ -18,6 +18,7 @@ import {
 import {
   copyProject,
   createProject,
+  getProject,
   listProjectLedger,
   reorderProjects,
   saveProject,
@@ -54,8 +55,24 @@ import {
   listAggregateRuns,
   runAggregation,
 } from "./services/aggregationService";
+import {
+  confirmBreakdownVersion,
+  getBreakdown,
+  listBreakdownVersions,
+  saveBreakdownRows,
+  saveBreakdownSettings,
+  transferBreakdown,
+} from "./services/breakdownService";
+import {
+  buildExport,
+  writeExport,
+} from "./services/breakdownExportService";
 import { IPC } from "../shared/ipc";
 import type {
+  BreakdownExportRequest,
+  BreakdownExportResult,
+  BreakdownSettingsRecord,
+  SaveBreakdownRowsRequest,
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
@@ -174,6 +191,54 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
     listAggregateRuns(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.breakdownGet,
+    (_event, projectId: number, versionId?: number) =>
+      getBreakdown(getDatabase(), projectId, versionId),
+  );
+  ipcMain.handle(IPC.breakdownVersions, (_event, projectId: number) =>
+    listBreakdownVersions(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.breakdownTransfer, (_event, projectId: number) =>
+    transferBreakdown(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.breakdownSaveRows,
+    (_event, request: SaveBreakdownRowsRequest) =>
+      saveBreakdownRows(getDatabase(), request.versionId, request.rows),
+  );
+  ipcMain.handle(
+    IPC.breakdownSaveSettings,
+    (_event, settings: BreakdownSettingsRecord) =>
+      saveBreakdownSettings(getDatabase(), settings),
+  );
+  ipcMain.handle(IPC.breakdownConfirm, (_event, versionId: number) =>
+    confirmBreakdownVersion(getDatabase(), versionId),
+  );
+  ipcMain.handle(
+    IPC.breakdownExport,
+    async (
+      event,
+      request: BreakdownExportRequest,
+    ): Promise<BreakdownExportResult> => {
+      const db = getDatabase();
+      const view = getBreakdown(db, request.projectId, request.versionId);
+      const project = getProject(db, request.projectId);
+      const { content, defaultName } = buildExport(
+        request.kind,
+        view.rows,
+        view.settings,
+        project.name,
+      );
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const result = window
+        ? await dialog.showSaveDialog(window, { defaultPath: defaultName })
+        : await dialog.showSaveDialog({ defaultPath: defaultName });
+      if (result.canceled || !result.filePath) return { filePath: null };
+      writeExport(result.filePath, content);
+      return { filePath: result.filePath };
+    },
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
