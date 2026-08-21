@@ -5,13 +5,15 @@ import DetailMasterPage from './features/details/DetailMasterPage'
 import AssemblyMasterPage from './features/assemblies/AssemblyMasterPage'
 import ProjectLedgerPage from './features/projects/ProjectLedgerPage'
 import SubjectMasterPage from './features/subjects/SubjectMasterPage'
+import BasicMasterPage from './features/masters/BasicMasterPage'
 
-type NavKey = 'subjects' | 'details' | 'assemblies' | 'projects' | 'settings'
+type NavKey = 'subjects' | 'details' | 'assemblies' | 'masters' | 'projects' | 'settings'
 
 const NAV: { key: NavKey; label: string; icon: string; ready: boolean }[] = [
   { key: 'subjects', label: '工種科目マスター', icon: '🗂', ready: true },
   { key: 'details', label: '明細マスター', icon: '📋', ready: true },
   { key: 'assemblies', label: '仕上明細セット', icon: '🧱', ready: true },
+  { key: 'masters', label: '基本マスター', icon: '🧾', ready: true },
   { key: 'projects', label: '物件管理台帳', icon: '🏢', ready: true },
   { key: 'settings', label: '設定', icon: '⚙️', ready: false }
 ]
@@ -70,6 +72,8 @@ export default function App(): JSX.Element {
             <DetailMasterPage options={options} />
           ) : nav === 'assemblies' ? (
             <AssemblyMasterPage options={options} />
+          ) : nav === 'masters' ? (
+            <BasicMasterPage />
           ) : nav === 'projects' ? (
             <ProjectLedgerPage options={options} />
           ) : (

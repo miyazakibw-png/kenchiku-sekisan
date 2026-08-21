@@ -25,6 +25,10 @@ import {
   saveProjectFields,
 } from "./services/projectService";
 import { listSubjects, saveSubjects } from "./services/subjectService";
+import {
+  listBasicMasters,
+  saveBasicMaster,
+} from "./services/basicMasterService";
 import { listFittings, saveFittings } from "./services/fittingService";
 import {
   listEstimateRows,
@@ -69,6 +73,7 @@ import {
 } from "./services/breakdownExportService";
 import { IPC } from "../shared/ipc";
 import type {
+  SaveBasicMasterRequest,
   BreakdownExportRequest,
   BreakdownExportResult,
   BreakdownSettingsRecord,
@@ -125,6 +130,12 @@ function createWindow(projectId?: number): void {
 
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC.masterOptions, () => listMasterOptions(getDatabase()));
+  ipcMain.handle(IPC.basicMastersList, () => listBasicMasters(getDatabase()));
+  ipcMain.handle(
+    IPC.basicMasterSave,
+    (_event, request: SaveBasicMasterRequest) =>
+      saveBasicMaster(getDatabase(), request.kind, request.rows),
+  );
   ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()));
   ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
     saveSubjects(getDatabase(), rows),

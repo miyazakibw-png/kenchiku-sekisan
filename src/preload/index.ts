@@ -5,6 +5,9 @@ import type {
   AggregateView,
   AssemblyItem,
   AssemblyMasterOptions,
+  BasicMasters,
+  SaveBasicMasterRequest,
+  SaveBasicMasterResult,
   BreakdownExportRequest,
   BreakdownExportResult,
   BreakdownSettingsRecord,
@@ -43,6 +46,12 @@ import type {
 const api = {
   getMasterOptions: (): Promise<MasterOptions> =>
     ipcRenderer.invoke(IPC.masterOptions),
+  listBasicMasters: (): Promise<BasicMasters> =>
+    ipcRenderer.invoke(IPC.basicMastersList),
+  saveBasicMaster: (
+    request: SaveBasicMasterRequest,
+  ): Promise<SaveBasicMasterResult> =>
+    ipcRenderer.invoke(IPC.basicMasterSave, request),
   listSubjects: (): Promise<Subject[]> => ipcRenderer.invoke(IPC.subjectsList),
   saveSubjects: (rows: SubjectDraft[]): Promise<SaveSubjectsResult> =>
     ipcRenderer.invoke(IPC.subjectsSave, rows),

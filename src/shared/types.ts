@@ -1,3 +1,10 @@
+import type {
+  BasicMasterKind,
+  BasicMasterRow,
+} from "../core/masters/basicMaster";
+
+export type { BasicMasterKind, BasicMasterRow };
+
 export interface Subject {
   id: number;
   code: string;
@@ -581,4 +588,24 @@ export interface BreakdownExportRequest {
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;
+}
+
+/** その他マスター（明細用部位・材種区分・単位・管理用部位・型枠分類） */
+export interface BasicMasters {
+  pickupParts: BasicMasterRow[];
+  materialCategories: BasicMasterRow[];
+  units: BasicMasterRow[];
+  aggregationParts: BasicMasterRow[];
+  formworkCategories: BasicMasterRow[];
+}
+
+export interface SaveBasicMasterRequest {
+  kind: BasicMasterKind;
+  rows: BasicMasterRow[];
+}
+
+export interface SaveBasicMasterResult {
+  masters: BasicMasters;
+  /** 番号・名称の不備。1件でもあれば保存しない */
+  errors: string[];
 }
