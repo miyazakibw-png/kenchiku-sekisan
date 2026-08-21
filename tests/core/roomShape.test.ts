@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  cutCorner,
   deducts,
   edge,
   floorArea,
   lShape,
+  notchEdge,
   rectangleShape,
   roomQuantities,
   roomSymbols,
@@ -48,6 +50,45 @@ describe("部屋形状（単線図）", () => {
   it("コ型は凹み分を差し引いた床面積になる", () => {
     const solved = solveShape(uShape(6, 4, 2, 1, 1));
     expect(floorArea(solved)).toBe(6 * 4 - 2 * 1);
+  });
+
+  it("指定した角をL型に欠き取っても他の辺の寸法は残る", () => {
+    const shape = rectangleShape(5, 4);
+    const cut = cutCorner(shape, 2, 1, 2);
+    expect(cut.error).toBeNull();
+    expect(cut.shape.edges).toHaveLength(6);
+    expect(cut.shape.edges[0].length).toBe(5);
+    expect(floorArea(solveShape(cut.shape))).toBe(5 * 4 - 2 * 1);
+  });
+
+  it("角を続けて欠き取っても先の欠き取りは残る", () => {
+    const first = cutCorner(rectangleShape(6, 4), 2, 1, 2);
+    const second = cutCorner(first.shape, 0, 1, 1);
+    expect(second.error).toBeNull();
+    expect(second.shape.edges).toHaveLength(8);
+    expect(floorArea(solveShape(second.shape))).toBe(6 * 4 - 2 * 1 - 1 * 1);
+  });
+
+  it("欠き取りが元の辺より長いときはエラーにして形を変えない", () => {
+    const shape = rectangleShape(5, 4);
+    const cut = cutCorner(shape, 2, 4, 2);
+    expect(cut.error).not.toBeNull();
+    expect(cut.shape).toBe(shape);
+  });
+
+  it("指定した辺の途中をコ型に凹ませる", () => {
+    const shape = rectangleShape(6, 4);
+    const notched = notchEdge(shape, 2, 2, 1);
+    expect(notched.error).toBeNull();
+    expect(notched.shape.edges).toHaveLength(8);
+    expect(floorArea(solveShape(notched.shape))).toBe(6 * 4 - 2 * 1);
+  });
+
+  it("凹み位置を指定できる", () => {
+    const notched = notchEdge(rectangleShape(6, 4), 2, 2, 1, 1);
+    expect(notched.shape.edges[2].length).toBe(1);
+    expect(notched.shape.edges[6].length).toBe(3);
+    expect(floorArea(solveShape(notched.shape))).toBe(6 * 4 - 2 * 1);
   });
 
   it("壁の無い開口は壁長さに入れない", () => {

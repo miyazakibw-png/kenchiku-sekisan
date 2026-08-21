@@ -126,6 +126,111 @@ export function uShape(
   };
 }
 
+/** 辺を進む向きから見た内側の向き（E→S→W→N の並びで一周する形が前提） */
+const INSIDE: Record<EdgeDirection, EdgeDirection> = {
+  E: "S",
+  S: "W",
+  W: "N",
+  N: "E",
+};
+
+export function insideDirection(direction: EdgeDirection): EdgeDirection {
+  return INSIDE[direction];
+}
+
+function opposite(direction: EdgeDirection): EdgeDirection {
+  return INSIDE[INSIDE[direction]];
+}
+
+/**
+ * 指定した角（辺と辺のつなぎ目）をL型に欠き取る。
+ * いまの形と入れた寸法はそのまま残し、欠き取った分だけ両隣の辺を短くする。
+ * cornerIndex は「その角から出ていく辺」の番号。
+ */
+export function cutCorner(
+  shape: RoomShape,
+  cornerIndex: number,
+  cutAlong: number,
+  cutAcross: number,
+): { shape: RoomShape; error: string | null } {
+  const count = shape.edges.length;
+  if (count < 3) return { shape, error: "先に部屋の形を作ってください" };
+  if (cutAlong <= 0 || cutAcross <= 0) {
+    return { shape, error: "欠き取り寸法は0より大きい値を入れてください" };
+  }
+  const outIndex = ((cornerIndex % count) + count) % count;
+  const inIndex = (outIndex - 1 + count) % count;
+  const solved = solveShape(shape);
+  const inEdge = shape.edges[inIndex];
+  const outEdge = shape.edges[outIndex];
+  const inLength = solved.edges[inIndex].resolved;
+  const outLength = solved.edges[outIndex].resolved;
+  if (inLength !== null && cutAlong >= inLength) {
+    return { shape, error: "欠き取りが元の辺より長くなります" };
+  }
+  if (outLength !== null && cutAcross >= outLength) {
+    return { shape, error: "欠き取りが元の辺より長くなります" };
+  }
+
+  const edges = [...shape.edges];
+  const shortenedIn: RoomEdge = {
+    ...inEdge,
+    length: inLength === null ? null : round2(inLength - cutAlong),
+  };
+  const shortenedOut: RoomEdge = {
+    ...outEdge,
+    length: outLength === null ? null : round2(outLength - cutAcross),
+  };
+  const inserted = [
+    edge(outEdge.direction, cutAcross, inEdge.kind),
+    edge(inEdge.direction, cutAlong, outEdge.kind),
+  ];
+  edges.splice(inIndex, 1, shortenedIn);
+  edges.splice(outIndex, 0, ...inserted);
+  edges[outIndex + inserted.length] = shortenedOut;
+  return { shape: { edges }, error: null };
+}
+
+/**
+ * 指定した辺の途中をコ型に凹ませる。
+ * offset を省くと中央に置く。いまの形と入れた寸法は残す。
+ */
+export function notchEdge(
+  shape: RoomShape,
+  edgeIndex: number,
+  notchWidth: number,
+  notchDepth: number,
+  offset?: number,
+): { shape: RoomShape; error: string | null } {
+  const target = shape.edges[edgeIndex];
+  if (!target) return { shape, error: "凹ませる辺を選んでください" };
+  if (notchWidth <= 0 || notchDepth <= 0) {
+    return { shape, error: "凹み寸法は0より大きい値を入れてください" };
+  }
+  const length = solveShape(shape).edges[edgeIndex].resolved;
+  if (length === null) return { shape, error: "先に辺の寸法を決めてください" };
+  if (notchWidth >= length) {
+    return { shape, error: "凹みが元の辺より長くなります" };
+  }
+  const head = offset ?? round2((length - notchWidth) / 2);
+  const tail = round2(length - notchWidth - head);
+  if (head <= 0 || tail <= 0) {
+    return { shape, error: "凹みの位置が辺からはみ出します" };
+  }
+  const inside = insideDirection(target.direction);
+  const edges = [...shape.edges];
+  edges.splice(
+    edgeIndex,
+    1,
+    { ...target, length: head },
+    edge(inside, notchDepth, target.kind),
+    edge(target.direction, notchWidth, target.kind),
+    edge(opposite(inside), notchDepth, target.kind),
+    edge(target.direction, tail, target.kind),
+  );
+  return { shape: { edges }, error: null };
+}
+
 /**
  * 未入力の寸法を閉じた形になるように自動算出する。
  * X方向・Y方向それぞれ、未入力が1辺までなら自動算出できる。

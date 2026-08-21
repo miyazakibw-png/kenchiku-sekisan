@@ -133,6 +133,24 @@
   stroke-width: 5;
 }
 
+/* 角（L型を足す場所） */
+.room-sheet-page .corner {
+  fill: #ffffff;
+  stroke: #94a3b8;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.room-sheet-page .corner.selected {
+  fill: #2563eb;
+  stroke: #1d4ed8;
+}
+
+.room-sheet-page input.num.cut {
+  width: 56px;
+}
+
 .room-sheet-page .dim {
   fill: #111827;
   text-anchor: middle;

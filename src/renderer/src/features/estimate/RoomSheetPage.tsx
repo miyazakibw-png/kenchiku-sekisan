@@ -8,15 +8,15 @@ import type {
   RoomSheetFitting,
 } from "@shared/types";
 import {
+  cutCorner,
   edge,
-  lShape,
+  notchEdge,
   rectangleShape,
   roomQuantities,
   roomSymbols,
   solveShape,
   splitEdge,
   updateEdge,
-  uShape,
   type EdgeDirection,
   type EdgeKind,
   type RoomFitting,
@@ -149,6 +149,10 @@ export default function RoomSheetPage({
   const [showCheck, setShowCheck] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  /** L型・コ型を足す場所（角の番号＝その角から出ていく辺の番号） */
+  const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
+  const [cutAcross, setCutAcross] = useState("1.00");
+  const [cutAlong, setCutAlong] = useState("1.00");
   const [zoom, setZoom] = useState(1);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
@@ -455,8 +459,72 @@ export default function RoomSheetPage({
   }, [calcResult, lower, quantities]);
 
   const startShape = (next: RoomShape): void => {
+    if (
+      shape.edges.length > 0 &&
+      !window.confirm("いまの形と寸法を消して、四角から作り直しますか？")
+    ) {
+      return;
+    }
     setShape(next);
     setSelectedEdge(null);
+    setSelectedCorner(null);
+  };
+
+  const cutValues = (): { across: number; along: number } => ({
+    across: Number(cutAcross),
+    along: Number(cutAlong),
+  });
+
+  /** 選んだ角をL型に欠き取る（いまの形と寸法は残す） */
+  const addCorner = (): void => {
+    if (selectedCorner === null) {
+      setMessage("図の角（○印）を選んでからL型を押してください");
+      return;
+    }
+    const count = shape.edges.length;
+    const incoming = shape.edges[(selectedCorner - 1 + count) % count];
+    const vertical = incoming.direction === "N" || incoming.direction === "S";
+    const { across, along } = cutValues();
+    const result = cutCorner(
+      shape,
+      selectedCorner,
+      vertical ? along : across,
+      vertical ? across : along,
+    );
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+    setShape(result.shape);
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setMessage("選んだ角をL型に欠き取りました");
+  };
+
+  /** 選んだ辺の途中をコ型に凹ませる（いまの形と寸法は残す） */
+  const addNotch = (): void => {
+    const index = shape.edges.findIndex((item) => item.id === selectedEdge);
+    if (index < 0) {
+      setMessage("凹ませる辺を選んでからコ型を押してください");
+      return;
+    }
+    const target = shape.edges[index];
+    const vertical = target.direction === "N" || target.direction === "S";
+    const { across, along } = cutValues();
+    const result = notchEdge(
+      shape,
+      index,
+      vertical ? along : across,
+      vertical ? across : along,
+    );
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+    setShape(result.shape);
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setMessage("選んだ辺をコ型に凹ませました");
   };
 
   return (
@@ -509,17 +577,37 @@ export default function RoomSheetPage({
             >
               □ 四角
             </button>
+            <label title="欠き取り・凹みの横寸法">
+              横
+              <input
+                className="num cut"
+                value={cutAcross}
+                onChange={(e) => setCutAcross(e.target.value)}
+              />
+            </label>
+            <label title="欠き取り・凹みの縦寸法">
+              縦
+              <input
+                className="num cut"
+                value={cutAlong}
+                onChange={(e) => setCutAlong(e.target.value)}
+              />
+            </label>
             <button
               type="button"
-              onClick={() => startShape(lShape(5, 4, 2, 1))}
+              disabled={selectedCorner === null}
+              title="図の角（○印）を選んでから押すと、その角を欠き取ります"
+              onClick={addCorner}
             >
-              L型
+              L型を角に追加
             </button>
             <button
               type="button"
-              onClick={() => startShape(uShape(6, 4, 2, 1, 1))}
+              disabled={selectedEdge === null}
+              title="辺を選んでから押すと、その辺の中央を凹ませます"
+              onClick={addNotch}
             >
-              コ型
+              コ型を辺に追加
             </button>
             <button
               type="button"
@@ -551,7 +639,13 @@ export default function RoomSheetPage({
                 };
                 const vertical = point.x === next.x;
                 return (
-                  <g key={line.id} onClick={() => setSelectedEdge(line.id)}>
+                  <g
+                    key={line.id}
+                    onClick={() => {
+                      setSelectedEdge(line.id);
+                      setSelectedCorner(null);
+                    }}
+                  >
                     <line
                       x1={point.x}
                       y1={point.y}
@@ -581,6 +675,19 @@ export default function RoomSheetPage({
                   </g>
                 );
               })}
+              {solved.points.map((point, index) => (
+                <circle
+                  key={`corner-${solved.edges[index].id}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={view.span * 0.035}
+                  className={`corner ${selectedCorner === index ? "selected" : ""}`}
+                  onClick={() => {
+                    setSelectedCorner(index);
+                    setSelectedEdge(null);
+                  }}
+                />
+              ))}
               {showCeiling &&
                 ceilingLines.map((line) => (
                   <g key={line.key}>
@@ -608,7 +715,7 @@ export default function RoomSheetPage({
               <p className="empty">
                 {solved.missing.length > 0
                   ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
-                  : "□・L型・コ型から始めて、寸法を入れてください。"}
+                  : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
               </p>
             )}
           </div>
