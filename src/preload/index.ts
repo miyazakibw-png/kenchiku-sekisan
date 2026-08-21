@@ -5,6 +5,8 @@ import type {
   AggregateView,
   AssemblyItem,
   AssemblyMasterOptions,
+  BackupInfo,
+  BackupResult,
   BasicMasters,
   SaveBasicMasterRequest,
   SaveBasicMasterResult,
@@ -205,6 +207,14 @@ const api = {
   /** 物件を別ウィンドウで開く（複数物件の同時作業） */
   openProjectWindow: (projectId: number): Promise<void> =>
     ipcRenderer.invoke(IPC.projectOpenWindow, projectId),
+  /** 積算データの保存場所と件数 */
+  getBackupInfo: (): Promise<BackupInfo> => ipcRenderer.invoke(IPC.backupInfo),
+  /** 積算データを1ファイルに保存（バックアップ） */
+  createBackup: (): Promise<BackupResult> =>
+    ipcRenderer.invoke(IPC.backupCreate),
+  /** 保存した積算データから復元 */
+  restoreBackup: (): Promise<BackupResult> =>
+    ipcRenderer.invoke(IPC.backupRestore),
   /** 今の画面をA3横でプリンターへ */
   printPaper: (): Promise<PrintResult> => ipcRenderer.invoke(IPC.printPaper),
   /** 今の画面をA3横のPDFで保存 */

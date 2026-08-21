@@ -1,7 +1,18 @@
-import { join } from "path";
+import { statSync } from "fs";
+import { dirname, join } from "path";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import { closeDatabase, getDatabase, initDatabase } from "./db";
+import {
+  backupDatabaseTo,
+  checkBackupFile,
+  closeDatabase,
+  getDatabase,
+  getDatabasePath,
+  initDatabase,
+  restoreDatabaseFrom,
+  schema,
+} from "./db";
+import { backupFileName, rollbackFileName } from "../core/backup/backupName";
 import {
   copyBasicDetailsToProject,
   listDetailChangeLogs,
@@ -82,6 +93,8 @@ import {
 import { toScreenXml } from "../core/export/screenSheet";
 import { IPC } from "../shared/ipc";
 import type {
+  BackupInfo,
+  BackupResult,
   PrintResult,
   ScreenExcelRequest,
   SaveBasicMasterRequest,
@@ -344,6 +357,96 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
     createWindow(projectId),
   );
+  ipcMain.handle(IPC.backupInfo, (): BackupInfo => {
+    const databasePath = getDatabasePath();
+    const projectCount = getDatabase()
+      .select()
+      .from(schema.projects)
+      .all().length;
+    let size = 0;
+    try {
+      size = statSync(databasePath).size;
+    } catch {
+      size = 0;
+    }
+    return { databasePath, size, projectCount };
+  });
+  ipcMain.handle(IPC.backupCreate, async (event): Promise<BackupResult> => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const defaultPath = join(
+      app.getPath("documents"),
+      backupFileName(new Date()),
+    );
+    const options = {
+      title: "積算データの保存先を選んでください",
+      defaultPath,
+      filters: [{ name: "積算データ", extensions: ["db"] }],
+    };
+    const result = window
+      ? await dialog.showSaveDialog(window, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath)
+      return { done: false, filePath: null, message: "取り消しました。" };
+    await backupDatabaseTo(result.filePath);
+    return {
+      done: true,
+      filePath: result.filePath,
+      message: `積算データを保存しました：${result.filePath}`,
+    };
+  });
+  ipcMain.handle(IPC.backupRestore, async (event): Promise<BackupResult> => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: "復元する積算データを選んでください",
+      properties: ["openFile" as const],
+      filters: [{ name: "積算データ", extensions: ["db"] }],
+    };
+    const picked = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
+    if (picked.canceled || picked.filePaths.length === 0)
+      return { done: false, filePath: null, message: "取り消しました。" };
+    const sourcePath = picked.filePaths[0];
+    const checked = checkBackupFile(sourcePath);
+    if (!checked.ok)
+      return { done: false, filePath: sourcePath, message: checked.message };
+    const confirmOptions = {
+      type: "warning" as const,
+      buttons: ["復元する", "やめる"],
+      defaultId: 1,
+      cancelId: 1,
+      title: "積算データの復元",
+      message: "今の積算データを、選んだファイルの内容に置き換えます。",
+      detail: `復元するデータ：${checked.message}\n今のデータは自動で退避してから置き換えます。復元後はソフトを開き直してください。`,
+    };
+    const answer = window
+      ? await dialog.showMessageBox(window, confirmOptions)
+      : await dialog.showMessageBox(confirmOptions);
+    if (answer.response !== 0)
+      return { done: false, filePath: sourcePath, message: "取り消しました。" };
+    const rollbackPath = join(
+      dirname(getDatabasePath()),
+      rollbackFileName(new Date()),
+    );
+    await restoreDatabaseFrom(sourcePath, rollbackPath);
+    const doneOptions = {
+      type: "info" as const,
+      buttons: ["OK"],
+      title: "積算データの復元",
+      message: `復元しました（${checked.message}）。`,
+      detail: `復元前のデータは次の場所に退避しています。\n${rollbackPath}`,
+    };
+    if (window) await dialog.showMessageBox(window, doneOptions);
+    else await dialog.showMessageBox(doneOptions);
+    for (const opened of BrowserWindow.getAllWindows()) {
+      opened.webContents.reload();
+    }
+    return {
+      done: true,
+      filePath: sourcePath,
+      message: `復元しました（${checked.message}）。復元前のデータは ${rollbackPath} に退避しています。`,
+    };
+  });
   ipcMain.handle(IPC.printPaper, async (event): Promise<PrintResult> => {
     await new Promise<void>((resolve) => {
       event.sender.print(

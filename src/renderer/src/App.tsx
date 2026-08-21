@@ -7,6 +7,7 @@ import ProjectLedgerPage from './features/projects/ProjectLedgerPage'
 import SubjectMasterPage from './features/subjects/SubjectMasterPage'
 import BasicMasterPage from './features/masters/BasicMasterPage'
 import PrintBar from './features/print/PrintBar'
+import SettingsPage from './features/settings/SettingsPage'
 
 type NavKey = 'subjects' | 'details' | 'assemblies' | 'masters' | 'projects' | 'settings'
 
@@ -16,7 +17,7 @@ const NAV: { key: NavKey; label: string; icon: string; ready: boolean }[] = [
   { key: 'assemblies', label: '仕上明細セット', icon: '🧱', ready: true },
   { key: 'masters', label: '基本マスター', icon: '🧾', ready: true },
   { key: 'projects', label: '物件管理台帳', icon: '🏢', ready: true },
-  { key: 'settings', label: '設定', icon: '⚙️', ready: false }
+  { key: 'settings', label: '設定', icon: '⚙️', ready: true }
 ]
 
 /** 物件専用ウィンドウは #project=<ID> で開かれる */
@@ -78,6 +79,8 @@ export default function App(): JSX.Element {
             <BasicMasterPage />
           ) : nav === 'projects' ? (
             <ProjectLedgerPage options={options} />
+          ) : nav === 'settings' ? (
+            <SettingsPage />
           ) : (
             <div className="placeholder">
               {NAV.find((item) => item.key === nav)?.label} は今後実装予定です。

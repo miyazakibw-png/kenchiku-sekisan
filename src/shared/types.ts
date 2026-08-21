@@ -675,6 +675,26 @@ export interface PrintResult {
   filePath: string | null;
 }
 
+/** 積算データ（バックアップ／復元）の状態 */
+export interface BackupInfo {
+  /** 積算データの保存場所 */
+  databasePath: string;
+  /** データの大きさ（バイト） */
+  size: number;
+  /** 工事件数 */
+  projectCount: number;
+}
+
+/** データ保存・復元の結果 */
+export interface BackupResult {
+  /** 取り消した場合は false */
+  done: boolean;
+  /** 保存先／復元元のファイル */
+  filePath: string | null;
+  /** 画面に出す説明 */
+  message: string;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;
