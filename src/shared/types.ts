@@ -143,6 +143,37 @@ export interface SyncDetailsResult {
   added: number;
 }
 
+/** 修正履歴に残す明細の内容（修正前・修正後で同じ形） */
+export interface DetailSnapshot {
+  detailNumber: number | null;
+  materialCategory: string;
+  partName: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+  remarksUpper: string;
+  remarksLower: string;
+  estimateDisplay: string;
+  isActive: boolean;
+}
+
+/** 明細マスターの修正履歴1件（修正前と修正後の組） */
+export interface DetailChangeLog {
+  id: number;
+  changedAt: string;
+  scope: string;
+  projectId: number | null;
+  subjectId: number;
+  detailId: number | null;
+  /** add:追加 edit:修正 delete:削除 */
+  changeKind: "add" | "edit" | "delete";
+  before: DetailSnapshot | null;
+  after: DetailSnapshot | null;
+  /** 変わった項目（赤文字にする欄） */
+  changedFields: (keyof DetailSnapshot)[];
+}
+
 export interface MasterOptions {
   subjects: Subject[];
   materialCategories: MaterialCategory[];

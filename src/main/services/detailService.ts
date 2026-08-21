@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
 import {
   calcSheetDefinitions,
+  detailChangeLogs,
   mDetails,
   mFormworkCategories,
   mMaterialCategories,
@@ -11,6 +12,8 @@ import {
 } from '../db/schema'
 import type {
   Detail,
+  DetailChangeLog,
+  DetailSnapshot,
   MasterOptions,
   SaveDetailsRequest,
   SyncDetailsResult
@@ -21,6 +24,85 @@ import { DETAIL_NUMBER_DECIMALS } from '../../shared/detailNumber'
 function normalizeDetailNumber(value: number | null): number | null {
   if (value === null || Number.isNaN(value)) return null
   return Number(value.toFixed(DETAIL_NUMBER_DECIMALS))
+}
+
+/** 修正履歴に残す項目だけ取り出す（並び順や更新日時は履歴に出さない） */
+function snapshotOf(row: {
+  detailNumber: number | null
+  materialCategory: string
+  partName: string
+  name: string
+  descriptionUpper: string
+  descriptionLower: string
+  unit: string
+  remarksUpper: string
+  remarksLower: string
+  estimateDisplay: string
+  isActive: boolean
+}): DetailSnapshot {
+  return {
+    detailNumber: row.detailNumber,
+    materialCategory: row.materialCategory,
+    partName: row.partName,
+    name: row.name,
+    descriptionUpper: row.descriptionUpper,
+    descriptionLower: row.descriptionLower,
+    unit: row.unit,
+    remarksUpper: row.remarksUpper,
+    remarksLower: row.remarksLower,
+    estimateDisplay: row.estimateDisplay,
+    isActive: row.isActive
+  }
+}
+
+/** 修正前と修正後で違う項目（画面で赤文字にする欄） */
+export function changedFieldsOf(
+  before: DetailSnapshot | null,
+  after: DetailSnapshot | null
+): (keyof DetailSnapshot)[] {
+  if (before === null || after === null) return []
+  return (Object.keys(after) as (keyof DetailSnapshot)[]).filter(
+    (key) => before[key] !== after[key]
+  )
+}
+
+function parseSnapshot(text: string): DetailSnapshot | null {
+  if (text === '') return null
+  const parsed: unknown = JSON.parse(text)
+  return parsed as DetailSnapshot
+}
+
+/** 修正履歴一覧（新しい修正が上）。物件専用は projectId、基本マスターは null */
+export function listDetailChangeLogs(
+  db: AppDatabase,
+  projectId: number | null = null
+): DetailChangeLog[] {
+  return db
+    .select()
+    .from(detailChangeLogs)
+    .where(
+      projectId === null
+        ? isNull(detailChangeLogs.projectId)
+        : eq(detailChangeLogs.projectId, projectId)
+    )
+    .orderBy(desc(detailChangeLogs.changedAt), desc(detailChangeLogs.id))
+    .all()
+    .map((row) => {
+      const before = parseSnapshot(row.beforeJson)
+      const after = parseSnapshot(row.afterJson)
+      return {
+        id: row.id,
+        changedAt: row.changedAt,
+        scope: row.scope,
+        projectId: row.projectId,
+        subjectId: row.subjectId,
+        detailId: row.detailId,
+        changeKind: row.changeKind as DetailChangeLog['changeKind'],
+        before,
+        after,
+        changedFields: changedFieldsOf(before, after)
+      }
+    })
 }
 
 export function listMasterOptions(db: AppDatabase): MasterOptions {
@@ -178,8 +260,34 @@ export function syncProjectDetailsToBasic(
 export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detail[] {
   const { subjectId, rows, deletedIds } = request
   const projectId = request.projectId ?? null
+  const scope = projectId === null ? 'basic' : 'project'
+  const existing = new Map(
+    listDetails(db, subjectId, projectId).map((row) => [row.id, row])
+  )
   db.transaction((tx) => {
+    const log = (
+      detailId: number | null,
+      changeKind: DetailChangeLog['changeKind'],
+      before: DetailSnapshot | null,
+      after: DetailSnapshot | null
+    ): void => {
+      tx.insert(detailChangeLogs)
+        .values({
+          scope,
+          projectId,
+          subjectId,
+          detailId,
+          changeKind,
+          beforeJson: before === null ? '' : JSON.stringify(before),
+          afterJson: after === null ? '' : JSON.stringify(after)
+        })
+        .run()
+    }
     if (deletedIds.length > 0) {
+      deletedIds.forEach((id) => {
+        const before = existing.get(id)
+        if (before) log(id, 'delete', snapshotOf(before), null)
+      })
       tx.delete(mDetails).where(inArray(mDetails.id, deletedIds)).run()
     }
     rows.forEach((row, index) => {
@@ -200,10 +308,13 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
         isActive: row.isActive,
         displayOrder: index
       }
+      const after = snapshotOf(values)
       if (row.id === null) {
-        tx.insert(mDetails).values(values).run()
+        const createdId = Number(tx.insert(mDetails).values(values).run().lastInsertRowid)
+        log(createdId, 'add', null, after)
         return
       }
+      const before = existing.get(row.id)
       const updated = tx
         .update(mDetails)
         .set({ ...values, updatedAt: new Date().toISOString() })
@@ -213,6 +324,14 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
         tx.insert(mDetails)
           .values({ ...values, id: row.id })
           .run()
+      }
+      if (!before) {
+        log(row.id, 'add', null, after)
+        return
+      }
+      const beforeSnapshot = snapshotOf(before)
+      if (changedFieldsOf(beforeSnapshot, after).length > 0) {
+        log(row.id, 'edit', beforeSnapshot, after)
       }
     })
   })

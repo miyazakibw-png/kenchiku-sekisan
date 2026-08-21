@@ -661,4 +661,20 @@ ALTER TABLE m_details ADD COLUMN project_id INTEGER;
 ALTER TABLE m_details ADD COLUMN source_detail_id INTEGER;
 CREATE INDEX idx_m_details_scope ON m_details(scope, project_id, subject_id, display_order);
 `,
+  /* 022: 明細マスターの修正履歴（修正前・修正後を1件ずつ残す） */ `
+CREATE TABLE detail_change_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  changed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  -- basic:基本マスター project:物件専用（工事マスター）
+  scope TEXT NOT NULL DEFAULT 'basic',
+  project_id INTEGER,
+  subject_id INTEGER NOT NULL,
+  detail_id INTEGER,
+  -- add:追加 edit:修正 delete:削除
+  change_kind TEXT NOT NULL DEFAULT 'edit',
+  before_json TEXT NOT NULL DEFAULT '',
+  after_json TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_detail_change_logs ON detail_change_logs(project_id, changed_at);
+`,
 ];

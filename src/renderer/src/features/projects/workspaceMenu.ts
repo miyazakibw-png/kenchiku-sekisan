@@ -90,8 +90,8 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: 'changeHistory',
     label: '明細マスター変更履歴',
     group: 'aggregate',
-    note: '集計書兼工事マスターで変更した内容のみ記録',
-    ready: false
+    note: 'この工事の明細マスターを直した記録。修正前と修正後を続けて表示する',
+    ready: true
   },
   {
     key: 'statement',

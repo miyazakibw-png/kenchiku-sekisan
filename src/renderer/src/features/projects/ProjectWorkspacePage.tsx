@@ -12,6 +12,7 @@ import {
 } from './workspaceMenu'
 import { useActiveProjectName } from '../../activeProject'
 import DetailMasterPage from '../details/DetailMasterPage'
+import DetailChangeHistoryPage from '../details/DetailChangeHistoryPage'
 import FittingsPage from '../fittings/FittingsPage'
 import EstimatePartsPage from '../estimate/EstimatePartsPage'
 import TransferSheetPage from '../estimate/TransferSheetPage'
@@ -165,6 +166,12 @@ export default function ProjectWorkspacePage({
         projectId={draft.id}
         onBack={() => setOpenedMenu(null)}
       />
+    )
+  }
+
+  if (openedMenu === 'changeHistory') {
+    return (
+      <DetailChangeHistoryPage projectId={draft.id} onBack={() => setOpenedMenu(null)} />
     )
   }
 

@@ -8,6 +8,7 @@ export const IPC = {
   detailsSave: 'details:save',
   detailsSyncToBasic: 'details:syncToBasic',
   detailsCopyFromBasic: 'details:copyFromBasic',
+  detailChangeLogsList: 'details:changeLogs',
   assemblyOptions: 'assembly:options',
   assemblyList: 'assembly:list',
   assemblySave: 'assembly:save',

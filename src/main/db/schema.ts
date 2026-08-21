@@ -163,6 +163,27 @@ export const mDetails = sqliteTable(
   }),
 );
 
+/** 明細マスターの修正履歴（1回の修正につき修正前・修正後を1件で残す） */
+export const detailChangeLogs = sqliteTable(
+  "detail_change_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    changedAt: text("changed_at").notNull().default(now),
+    /** basic: 基本マスター / project: 物件専用（工事マスター） */
+    scope: text("scope").notNull().default("basic"),
+    projectId: integer("project_id"),
+    subjectId: integer("subject_id").notNull(),
+    detailId: integer("detail_id"),
+    /** add:追加 edit:修正 delete:削除 */
+    changeKind: text("change_kind").notNull().default("edit"),
+    beforeJson: text("before_json").notNull().default(""),
+    afterJson: text("after_json").notNull().default(""),
+  },
+  (t) => ({
+    logIdx: index("idx_detail_change_logs").on(t.projectId, t.changedAt),
+  }),
+);
+
 /** 仕上明細（セット）管理ユニット。assembly_name は重複を許容する */
 export const mFinishAssemblies = sqliteTable(
   "m_finish_assemblies",

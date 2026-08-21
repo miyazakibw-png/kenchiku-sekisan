@@ -37,6 +37,7 @@ import {
 } from "../grid/gridClipboard";
 import { useColumnWidths } from "../grid/useColumnWidths";
 import { buildDetailColumns, sortDetailRows } from "./detailColumns";
+import DetailChangeHistoryPage from "./DetailChangeHistoryPage";
 import "./DetailMasterPage.css";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -99,6 +100,7 @@ export default function DetailMasterPage({
   onBack,
 }: Props): JSX.Element {
   const [syncMessage, setSyncMessage] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [subject, setSubject] = useState<Subject | null>(
     options.subjects[0] ?? null,
   );
@@ -479,6 +481,15 @@ export default function DetailMasterPage({
     );
   }, [filter, options.subjects]);
 
+  if (historyOpen) {
+    return (
+      <DetailChangeHistoryPage
+        projectId={projectId}
+        onBack={() => setHistoryOpen(false)}
+      />
+    );
+  }
+
   return (
     <div className="detail-master">
       <aside className="subject-pane">
@@ -539,6 +550,13 @@ export default function DetailMasterPage({
                 ⇪ 大元へ同期
               </button>
             )}
+            <button
+              type="button"
+              title="この明細マスターを直した記録を見ます"
+              onClick={() => setHistoryOpen(true)}
+            >
+              📝 修正履歴
+            </button>
             {syncMessage && <span className="status">{syncMessage}</span>}
             <button
               type="button"

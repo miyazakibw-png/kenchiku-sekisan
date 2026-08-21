@@ -16,6 +16,7 @@ import type {
   BreakdownRowRecord,
   SaveBreakdownRowsRequest,
   Detail,
+  DetailChangeLog,
   EstimateRow,
   FinishAssembly,
   Fitting,
@@ -66,6 +67,11 @@ const api = {
     ipcRenderer.invoke(IPC.detailsList, subjectId, projectId),
   saveDetails: (request: SaveDetailsRequest): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsSave, request),
+  /** 明細マスターの修正履歴（新しい修正が上） */
+  listDetailChangeLogs: (
+    projectId: number | null = null,
+  ): Promise<DetailChangeLog[]> =>
+    ipcRenderer.invoke(IPC.detailChangeLogsList, projectId),
   /** 既存工事で物件専用明細が無いときに基本マスターから複製する */
   copyBasicDetailsToProject: (projectId: number): Promise<number> =>
     ipcRenderer.invoke(IPC.detailsCopyFromBasic, projectId),

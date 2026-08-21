@@ -6,6 +6,7 @@ import * as schema from '../../src/main/db/schema'
 import { seedInitialData } from '../../src/main/db/seed'
 import type { AppDatabase } from '../../src/main/db'
 import {
+  listDetailChangeLogs,
   listDetails,
   listMasterOptions,
   saveDetails,
@@ -225,5 +226,52 @@ describe('物件専用マスター（工事マスター）', () => {
     const result = syncProjectDetailsToBasic(db, projectId, subjectId)
     expect(result).toEqual({ updated: 1, added: 1 })
     expect(listDetails(db, subjectId).map((d) => d.name)).toEqual(['床シート（変更）', '新規明細'])
+  })
+})
+
+
+describe('修正履歴一覧', () => {
+  it('追加・修正・削除を修正前と修正後の組で残す', () => {
+    const [added] = saveDetails(db, { subjectId, rows: [draft('床シート')], deletedIds: [] })
+    saveDetails(db, {
+      subjectId,
+      rows: [{ ...added, name: '床シート（変更）', unit: 'm2' }],
+      deletedIds: []
+    })
+    saveDetails(db, { subjectId, rows: [], deletedIds: [added.id] })
+
+    const logs = listDetailChangeLogs(db)
+    expect(logs.map((log) => log.changeKind)).toEqual(['delete', 'edit', 'add'])
+
+    const edit = logs[1]
+    expect(edit.before?.name).toBe('床シート')
+    expect(edit.after?.name).toBe('床シート（変更）')
+    expect(edit.changedFields.sort()).toEqual(['name', 'unit'])
+
+    expect(logs[0].before?.name).toBe('床シート（変更）')
+    expect(logs[0].after).toBeNull()
+    expect(logs[2].before).toBeNull()
+  })
+
+  it('内容が変わらない保存は履歴に残さない', () => {
+    const [row] = saveDetails(db, { subjectId, rows: [draft('床シート')], deletedIds: [] })
+    saveDetails(db, { subjectId, rows: [row], deletedIds: [] })
+    expect(listDetailChangeLogs(db).map((log) => log.changeKind)).toEqual(['add'])
+  })
+
+  it('物件専用マスターの履歴は工事ごとに分かれる', () => {
+    saveDetails(db, { subjectId, rows: [draft('床シート')], deletedIds: [] })
+    const projectId = createProject(db, '履歴テスト工事').id
+    const [row] = listDetails(db, subjectId, projectId)
+    saveDetails(db, {
+      subjectId,
+      projectId,
+      rows: [{ ...row, name: '床シート（工事）' }],
+      deletedIds: []
+    })
+
+    const projectLogs = listDetailChangeLogs(db, projectId)
+    expect(projectLogs.map((log) => log.after?.name)).toEqual(['床シート（工事）'])
+    expect(listDetailChangeLogs(db).map((log) => log.after?.name)).toEqual(['床シート'])
   })
 })

@@ -4,6 +4,7 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { closeDatabase, getDatabase, initDatabase } from "./db";
 import {
   copyBasicDetailsToProject,
+  listDetailChangeLogs,
   listDetails,
   listMasterOptions,
   saveDetails,
@@ -292,6 +293,11 @@ function registerIpcHandlers(): void {
     IPC.detailsSyncToBasic,
     (_event, projectId: number, subjectId: number) =>
       syncProjectDetailsToBasic(getDatabase(), projectId, subjectId),
+  );
+  ipcMain.handle(
+    IPC.detailChangeLogsList,
+    (_event, projectId: number | null = null) =>
+      listDetailChangeLogs(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.detailsSave, (_event, request: SaveDetailsRequest) =>
     saveDetails(getDatabase(), request),
