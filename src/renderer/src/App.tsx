@@ -11,6 +11,7 @@ import { useGridKeyNav } from "./features/grid/useGridKeyNav";
 import { useHalfWidthFields } from "./hooks/useHalfWidthFields";
 import { useStickyHeaders } from "./features/grid/useStickyHeaders";
 import SettingsPage from "./features/settings/SettingsPage";
+import CalcWindowPage from "./features/estimate/CalcWindowPage";
 
 type NavKey =
   "subjects" | "details" | "assemblies" | "masters" | "projects" | "settings";
@@ -30,8 +31,15 @@ function openedProjectId(): number | null {
   return matched ? Number(matched[1]) : null;
 }
 
+/** 明細入力ウィンドウは #calc=<元の画面のID> で開かれる */
+function calcWindowParentId(): number | null {
+  const matched = /calc=(\d+)/.exec(window.location.hash);
+  return matched ? Number(matched[1]) : null;
+}
+
 export default function App(): JSX.Element {
   const projectId = openedProjectId();
+  const calcParentId = calcWindowParentId();
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [nav, setNav] = useState<NavKey>("details");
   const [projectName, setProjectName] = useState("");
@@ -54,6 +62,15 @@ export default function App(): JSX.Element {
       ? `建築積算システム　${projectName}`
       : "建築積算システム";
   }, [projectName]);
+
+  if (calcParentId !== null)
+    return (
+      <div className="app calc-window">
+        <main className="app-main" onKeyDown={onGridKeyDown}>
+          <CalcWindowPage parentId={calcParentId} />
+        </main>
+      </div>
+    );
 
   return (
     <ActiveProjectContext.Provider value={setActiveProjectName}>

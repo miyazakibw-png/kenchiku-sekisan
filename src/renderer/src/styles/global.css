@@ -4,7 +4,7 @@
   --hover: #e8ebf0;
   --selected: #e3f0ff;
   --accent: #1f6feb;
-  font-family: 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   font-size: 14px;
   color: #1f2328;
 }
@@ -30,6 +30,33 @@ body,
 /* 物件専用ウィンドウは基準マスターのメニューを出さない */
 .app.project-window {
   grid-template-columns: 1fr;
+}
+
+/* 明細入力ウィンドウ（独立した画面）は明細入力だけを出す */
+.app.calc-window {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.app.calc-window .app-main {
+  overflow: hidden;
+}
+
+.calc-window-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.calc-window-page > .message {
+  margin: 4px 8px 0;
+  color: #b91c1c;
+}
+
+.calc-window-page > .room-calc-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* 最上部：左端にソフト名、中央に開いている工事名称のみ */

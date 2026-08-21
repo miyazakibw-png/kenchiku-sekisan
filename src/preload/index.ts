@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc";
 import type { FittingPartValue } from "../core/fittings/partValue";
+import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import type {
   AggregateRun,
   AggregateView,
@@ -232,6 +233,47 @@ const api = {
   exportScreenExcel: (request: ScreenExcelRequest): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.screenExcel, request),
   closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose),
+
+  /** 明細入力を独立したウィンドウで開く */
+  openCalcWindow: (title: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.calcWindowOpen, title),
+  /** 元の画面 → 明細入力ウィンドウへ内容を渡す */
+  pushCalcWindow: (state: CalcWindowState): Promise<void> =>
+    ipcRenderer.invoke(IPC.calcWindowPush, state),
+  /** 明細入力ウィンドウ → 元の画面へ入力を返す */
+  applyCalcWindow: (parentId: number, input: CalcWindowInput): Promise<void> =>
+    ipcRenderer.invoke(IPC.calcWindowApply, parentId, input),
+  /** 明細入力ウィンドウの読み込み完了を元の画面へ伝える */
+  readyCalcWindow: (parentId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.calcWindowReady, parentId),
+  /** 明細入力ウィンドウ側で内容を受け取る */
+  onCalcWindowState: (
+    handler: (state: CalcWindowState) => void,
+  ): (() => void) => {
+    const listener = (_event: unknown, state: CalcWindowState): void =>
+      handler(state);
+    ipcRenderer.on(IPC.calcWindowState, listener);
+    return () => ipcRenderer.removeListener(IPC.calcWindowState, listener);
+  },
+  /** 元の画面側で入力・読み込み完了・ウィンドウの終了を受け取る */
+  onCalcWindowInput: (
+    handler: (input: CalcWindowInput) => void,
+  ): (() => void) => {
+    const listener = (_event: unknown, input: CalcWindowInput): void =>
+      handler(input);
+    ipcRenderer.on(IPC.calcWindowInput, listener);
+    return () => ipcRenderer.removeListener(IPC.calcWindowInput, listener);
+  },
+  onCalcWindowReady: (handler: () => void): (() => void) => {
+    const listener = (): void => handler();
+    ipcRenderer.on(IPC.calcWindowReady, listener);
+    return () => ipcRenderer.removeListener(IPC.calcWindowReady, listener);
+  },
+  onCalcWindowClosed: (handler: () => void): (() => void) => {
+    const listener = (): void => handler();
+    ipcRenderer.on(IPC.calcWindowClosed, listener);
+    return () => ipcRenderer.removeListener(IPC.calcWindowClosed, listener);
+  },
 };
 
 export type SekisanApi = typeof api;

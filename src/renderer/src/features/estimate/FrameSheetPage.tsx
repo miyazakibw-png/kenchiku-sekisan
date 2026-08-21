@@ -1260,6 +1260,7 @@ export default function FrameSheetPage({
         onFocus={setCalcFocus}
         result={calcResult}
         onMessage={setMessage}
+        windowTitle={`軸組・梁計算書　${project.managementNo}`}
       />
 
       <p className="hint">

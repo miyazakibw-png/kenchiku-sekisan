@@ -1383,6 +1383,7 @@ export default function RoomSheetPage({
         onFocus={setCalcFocus}
         result={calcResult}
         onMessage={setMessage}
+        windowTitle={`部屋計算書　${project.managementNo} ${roomName || "（部屋名なし）"}`}
       />
 
       {showCheck && (

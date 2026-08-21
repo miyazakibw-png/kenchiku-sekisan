@@ -53,6 +53,18 @@ export const IPC = {
   projectReorder: "project:reorder",
   projectFieldsSave: "project:fieldsSave",
   projectOpenWindow: "project:openWindow",
+  /** 明細入力を独立したウィンドウで開く */
+  calcWindowOpen: "calc:openWindow",
+  /** 元の画面 → 明細入力ウィンドウへ内容を渡す */
+  calcWindowPush: "calc:push",
+  /** 明細入力ウィンドウ → 元の画面へ入力を返す */
+  calcWindowApply: "calc:apply",
+  /** 明細入力ウィンドウの読み込み完了（最新の内容を要求する） */
+  calcWindowReady: "calc:ready",
+  /** 明細入力ウィンドウ側のイベント名（送信専用） */
+  calcWindowState: "calc:state",
+  calcWindowInput: "calc:input",
+  calcWindowClosed: "calc:closed",
   backupInfo: "backup:info",
   backupCreate: "backup:create",
   backupRestore: "backup:restore",

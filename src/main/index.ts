@@ -7,7 +7,15 @@ import {
   statSync,
 } from "fs";
 import { dirname, join } from "path";
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  webContents,
+  type WebContents,
+} from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import {
   backupDatabaseTo,
@@ -106,6 +114,7 @@ import {
 import { buildExport, writeExport } from "./services/breakdownExportService";
 import { toScreenXml } from "../core/export/screenSheet";
 import type { FittingPartValue } from "../core/fittings/partValue";
+import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import { IPC } from "../shared/ipc";
 import type {
   BackupInfo,
@@ -165,6 +174,48 @@ function createWindow(projectId?: number): void {
       join(__dirname, "../renderer/index.html"),
       hash ? { hash } : undefined,
     );
+  }
+}
+
+/** 明細入力ウィンドウ（親のwebContents ID → 子ウィンドウ） */
+const calcWindows = new Map<number, BrowserWindow>();
+
+/**
+ * 明細入力（セット明細計算表）を独立したウィンドウで開く。
+ * 入力の中身は元の画面が持ち、ウィンドウとは表示（親→子）と入力（子→親）をやり取りする。
+ */
+function openCalcWindow(parent: WebContents, title: string): void {
+  const opened = calcWindows.get(parent.id);
+  if (opened && !opened.isDestroyed()) {
+    opened.focus();
+    return;
+  }
+
+  const window = new BrowserWindow({
+    width: 1180,
+    height: 620,
+    show: false,
+    title,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      sandbox: false,
+      contextIsolation: true,
+    },
+  });
+  calcWindows.set(parent.id, window);
+
+  window.on("ready-to-show", () => window.show());
+  window.on("closed", () => {
+    calcWindows.delete(parent.id);
+    if (!parent.isDestroyed()) parent.send(IPC.calcWindowClosed);
+  });
+
+  const hash = `calc=${parent.id}`;
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    void window.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}#${hash}`);
+  } else {
+    void window.loadFile(join(__dirname, "../renderer/index.html"), { hash });
   }
 }
 
@@ -380,6 +431,26 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
     createWindow(projectId),
   );
+  ipcMain.handle(IPC.calcWindowOpen, (event, title: string) =>
+    openCalcWindow(event.sender, title),
+  );
+  ipcMain.handle(IPC.calcWindowPush, (event, state: CalcWindowState) => {
+    const window = calcWindows.get(event.sender.id);
+    if (window && !window.isDestroyed())
+      window.webContents.send(IPC.calcWindowState, state);
+  });
+  ipcMain.handle(
+    IPC.calcWindowApply,
+    (_event, parentId: number, input: CalcWindowInput) => {
+      const parent = webContents.fromId(parentId);
+      if (parent && !parent.isDestroyed())
+        parent.send(IPC.calcWindowInput, input);
+    },
+  );
+  ipcMain.handle(IPC.calcWindowReady, (_event, parentId: number) => {
+    const parent = webContents.fromId(parentId);
+    if (parent && !parent.isDestroyed()) parent.send(IPC.calcWindowReady);
+  });
   ipcMain.handle(IPC.backupInfo, (): BackupInfo => {
     const databasePath = getDatabasePath();
     const projectCount = getDatabase()

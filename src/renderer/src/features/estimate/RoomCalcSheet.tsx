@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Detail,
   FinishAssembly,
@@ -33,16 +33,10 @@ import {
 } from "../../../../core/room/calcClipboard";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
-import { useFloatingWindow } from "../../hooks/useFloatingWindow";
+import type { CalcFocus } from "@shared/calcWindow";
 import "./RoomCalcSheet.css";
 
-/** いま入力しているセル（記号クリックの差し込み先・呼出の位置に使う） */
-export interface CalcFocus {
-  setId: string;
-  /** detail: 明細欄 / formulaA・formulaB: 計算式欄 */
-  area: "detail" | "formulaA" | "formulaB";
-  index: number;
-}
+export type { CalcFocus };
 
 interface Props {
   sets: CalcSet[];
@@ -57,6 +51,10 @@ interface Props {
   onMessage: (message: string) => void;
   /** 上段（図・記号表）を持つ計算書か。汎用計算書は false */
   hasUpper?: boolean;
+  /** 別画面（明細入力ウィンドウ）の見出し。別画面で開けないときは省く */
+  windowTitle?: string;
+  /** 明細入力ウィンドウの中に表示しているか */
+  inWindow?: boolean;
 }
 
 type CallSource = "basic" | "project" | "assembly";
@@ -155,6 +153,8 @@ export default function RoomCalcSheet({
   result,
   onMessage,
   hasUpper = true,
+  windowTitle,
+  inWindow = false,
 }: Props): JSX.Element {
   const [callOpen, setCallOpen] = useState(false);
   const [source, setSource] = useState<CallSource>("basic");
@@ -178,13 +178,52 @@ export default function RoomCalcSheet({
 
   const subjects: Subject[] = options?.subjects ?? [];
 
-  // 明細入力だけを切り離して、図や寸法を見ながら入力できる小窓にする
-  const calcWindow = useFloatingWindow("calc-sheet-window", {
-    x: 60,
-    y: 90,
-    w: 1100,
-    h: 420,
-  });
+  // 明細入力を別画面（独立したウィンドウ）で開いている間は、ここには案内だけを出す
+  const [inOtherWindow, setInOtherWindow] = useState(false);
+  /** 別画面から最後に受け取った入力の版 */
+  const calcRev = useRef(0);
+
+  useEffect(() => {
+    if (!inOtherWindow) return;
+    const state = {
+      title: windowTitle ?? "セット明細計算表",
+      projectId,
+      hasUpper,
+      variables,
+      result,
+      sets,
+      echo: calcRev.current,
+    };
+    void window.sekisan.pushCalcWindow(state);
+    const offReady = window.sekisan.onCalcWindowReady(() => {
+      void window.sekisan.pushCalcWindow(state);
+    });
+    return offReady;
+  }, [
+    hasUpper,
+    inOtherWindow,
+    projectId,
+    result,
+    sets,
+    variables,
+    windowTitle,
+  ]);
+
+  useEffect(() => {
+    if (!inOtherWindow) return;
+    const offInput = window.sekisan.onCalcWindowInput((input) => {
+      calcRev.current = input.rev;
+      onChange(input.sets);
+      onFocus(input.focus);
+    });
+    const offClosed = window.sekisan.onCalcWindowClosed(() =>
+      setInOtherWindow(false),
+    );
+    return () => {
+      offInput();
+      offClosed();
+    };
+  }, [inOtherWindow, onChange, onFocus]);
 
   useEffect(() => {
     if (!callOpen) return;
@@ -573,21 +612,33 @@ export default function RoomCalcSheet({
     );
   }, [currentSet, focus, onChange, onFocus, onMessage, sets, updateSet]);
 
+  if (inOtherWindow)
+    return (
+      <div className="room-calc-sheet in-other-window">
+        <div className="section-bar">
+          <span>セット明細計算表は別画面で開いています</span>
+          <button
+            type="button"
+            title="別画面を前へ出します"
+            onClick={() =>
+              void window.sekisan.openCalcWindow(
+                windowTitle ?? "セット明細計算表",
+              )
+            }
+          >
+            ⌷ 別画面を前へ
+          </button>
+        </div>
+        <p className="note">
+          別画面で入力した内容はこの画面にそのまま入ります（保存はこの画面の「保存」です）。
+          別画面を閉じると、ここに表が戻ります。
+        </p>
+      </div>
+    );
+
   return (
     <div
-      className={
-        calcWindow.floating ? "room-calc-sheet floating" : "room-calc-sheet"
-      }
-      style={
-        calcWindow.floating
-          ? {
-              left: `${calcWindow.rect.x}px`,
-              top: `${calcWindow.rect.y}px`,
-              width: `${calcWindow.rect.w}px`,
-              height: `${calcWindow.rect.h}px`,
-            }
-          : undefined
-      }
+      className="room-calc-sheet"
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
         if (e.key === "c") {
@@ -607,37 +658,29 @@ export default function RoomCalcSheet({
         }
       }}
     >
-      <div
-        className="section-bar"
-        onMouseDown={(e) => {
-          // 小窓のときは見出しをつかんで動かせる（ボタンや入力は普通に押せる）
-          if (!calcWindow.floating) return;
-          if (
-            e.target instanceof HTMLElement &&
-            e.target.closest("button,input")
-          )
-            return;
-          calcWindow.startMove(e);
-        }}
-      >
-        <span className={calcWindow.floating ? "grip" : ""}>
-          セット明細計算表（部位のある行がセットの先頭です）
-        </span>
-        <button
-          type="button"
-          className={calcWindow.floating ? "on" : ""}
-          title="明細入力だけを切り離して、動かせる小窓にします（図や寸法を見ながら入力できます）"
-          onClick={() => calcWindow.setFloating(!calcWindow.floating)}
-        >
-          {calcWindow.floating ? "⤡ 元の位置へ戻す" : "⧉ 切り離す"}
-        </button>
-        {calcWindow.floating && (
+      <div className="section-bar">
+        <span>セット明細計算表（部位のある行がセットの先頭です）</span>
+        {!inWindow && (
           <button
             type="button"
-            title="小窓を画面いっぱいに広げます（もう一度押すと元の大きさ）"
-            onClick={calcWindow.toggleMaximize}
+            title="明細入力だけを独立したウィンドウで開きます（図や寸法を見ながら入力できます）"
+            onClick={() => {
+              void window.sekisan.openCalcWindow(
+                windowTitle ?? "セット明細計算表",
+              );
+              setInOtherWindow(true);
+            }}
           >
-            ⬜ 画面いっぱい
+            ⧉ 別画面で開く
+          </button>
+        )}
+        {inWindow && (
+          <button
+            type="button"
+            title="このウィンドウを閉じて、元の画面で入力します"
+            onClick={() => void window.sekisan.closeWindow()}
+          >
+            ✕ このウィンドウを閉じる
           </button>
         )}
         <button type="button" onClick={() => onChange([...sets, calcSet()])}>
@@ -1225,25 +1268,6 @@ export default function RoomCalcSheet({
           ))}
         </table>
       </div>
-      {calcWindow.floating && (
-        <>
-          <span
-            className="resize-edge east"
-            title="ドラッグで横幅を変えられます"
-            onMouseDown={(e) => calcWindow.startResize(e, "e")}
-          />
-          <span
-            className="resize-edge south"
-            title="ドラッグで高さを変えられます"
-            onMouseDown={(e) => calcWindow.startResize(e, "s")}
-          />
-          <span
-            className="resize-grip"
-            title="ドラッグで小窓の大きさを変えられます"
-            onMouseDown={(e) => calcWindow.startResize(e, "se")}
-          />
-        </>
-      )}
 
       <datalist id="calc-detail-numbers">
         {numberOptions.map((item) => (

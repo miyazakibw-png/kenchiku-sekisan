@@ -141,6 +141,7 @@ export default function GeneralSheetPage({
         result={calcResult}
         onMessage={setMessage}
         hasUpper={false}
+        windowTitle={`汎用計算書　${project.managementNo}`}
       />
 
       <p className="hint">
