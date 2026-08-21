@@ -79,8 +79,11 @@ import {
   buildExport,
   writeExport,
 } from "./services/breakdownExportService";
+import { toScreenXml } from "../core/export/screenSheet";
 import { IPC } from "../shared/ipc";
 import type {
+  PrintResult,
+  ScreenExcelRequest,
   SaveBasicMasterRequest,
   BreakdownExportRequest,
   BreakdownExportResult,
@@ -340,6 +343,51 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
     createWindow(projectId),
+  );
+  ipcMain.handle(IPC.printPaper, async (event): Promise<PrintResult> => {
+    await new Promise<void>((resolve) => {
+      event.sender.print(
+        { landscape: true, pageSize: "A3", printBackground: true },
+        () => resolve(),
+      );
+    });
+    return { filePath: null };
+  });
+  ipcMain.handle(
+    IPC.printPdf,
+    async (event, defaultName: string): Promise<PrintResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const result = window
+        ? await dialog.showSaveDialog(window, {
+            defaultPath: `${defaultName}.pdf`,
+          })
+        : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
+      if (result.canceled || !result.filePath) return { filePath: null };
+      const pdf = await event.sender.printToPDF({
+        landscape: true,
+        pageSize: "A3",
+        printBackground: true,
+        preferCSSPageSize: true,
+      });
+      writeExport(result.filePath, pdf);
+      return { filePath: result.filePath };
+    },
+  );
+  ipcMain.handle(
+    IPC.screenExcel,
+    async (event, request: ScreenExcelRequest): Promise<PrintResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const defaultPath = `${request.defaultName}.xls`;
+      const result = window
+        ? await dialog.showSaveDialog(window, { defaultPath })
+        : await dialog.showSaveDialog({ defaultPath });
+      if (result.canceled || !result.filePath) return { filePath: null };
+      writeExport(
+        result.filePath,
+        Buffer.from(toScreenXml(request.sheets), "utf8"),
+      );
+      return { filePath: result.filePath };
+    },
   );
   ipcMain.handle(IPC.windowClose, (event) =>
     BrowserWindow.fromWebContents(event.sender)?.close(),

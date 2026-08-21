@@ -6,6 +6,7 @@ import AssemblyMasterPage from './features/assemblies/AssemblyMasterPage'
 import ProjectLedgerPage from './features/projects/ProjectLedgerPage'
 import SubjectMasterPage from './features/subjects/SubjectMasterPage'
 import BasicMasterPage from './features/masters/BasicMasterPage'
+import PrintBar from './features/print/PrintBar'
 
 type NavKey = 'subjects' | 'details' | 'assemblies' | 'masters' | 'projects' | 'settings'
 
@@ -45,6 +46,7 @@ export default function App(): JSX.Element {
         <header className="app-bar">
           <div className="app-bar-title">🏗 建築積算システム</div>
           <div className="app-bar-project">{projectName}</div>
+          <PrintBar projectName={projectName} />
         </header>
         {projectId === null && (
           <nav className="app-nav">

@@ -26,8 +26,10 @@ import type {
   GeneralSheet,
   MasterOptions,
   ProjectField,
+  PrintResult,
   ProjectLedger,
   ProjectSummary,
+  ScreenExcelRequest,
   SaveAssemblyRequest,
   SaveAssemblyResult,
   SaveDetailsRequest,
@@ -203,6 +205,14 @@ const api = {
   /** 物件を別ウィンドウで開く（複数物件の同時作業） */
   openProjectWindow: (projectId: number): Promise<void> =>
     ipcRenderer.invoke(IPC.projectOpenWindow, projectId),
+  /** 今の画面をA3横でプリンターへ */
+  printPaper: (): Promise<PrintResult> => ipcRenderer.invoke(IPC.printPaper),
+  /** 今の画面をA3横のPDFで保存 */
+  printPdf: (defaultName: string): Promise<PrintResult> =>
+    ipcRenderer.invoke(IPC.printPdf, defaultName),
+  /** 今の画面の表を入力表ごとのシートでエクセル保存（式なし・数字のみ） */
+  exportScreenExcel: (request: ScreenExcelRequest): Promise<PrintResult> =>
+    ipcRenderer.invoke(IPC.screenExcel, request),
   closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose),
 };
 

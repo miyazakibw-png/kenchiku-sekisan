@@ -51,6 +51,9 @@ export const IPC = {
   projectReorder: 'project:reorder',
   projectFieldsSave: 'project:fieldsSave',
   projectOpenWindow: 'project:openWindow',
+  printPaper: 'print:paper',
+  printPdf: 'print:pdf',
+  screenExcel: 'print:excel',
   windowClose: 'window:close'
 } as const
 

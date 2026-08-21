@@ -658,6 +658,23 @@ export interface BreakdownExportRequest {
   kind: BreakdownExportKind;
 }
 
+/** 画面の表1つ分（エクセル掃き出し用） */
+export interface ScreenSheetData {
+  name: string;
+  rows: string[][];
+}
+
+export interface ScreenExcelRequest {
+  /** 既定のファイル名（拡張子なし） */
+  defaultName: string;
+  sheets: ScreenSheetData[];
+}
+
+/** 印刷・PDF・エクセルの結果。取り消した場合は filePath が null */
+export interface PrintResult {
+  filePath: string | null;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;

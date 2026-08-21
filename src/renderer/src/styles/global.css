@@ -36,7 +36,7 @@ body,
 .app-bar {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 180px 1fr 180px;
+  grid-template-columns: 180px 1fr 220px;
   align-items: center;
   background: #111827;
   color: #e5e7eb;
@@ -99,4 +99,90 @@ body,
 .placeholder {
   padding: 32px;
   color: #666;
+}
+
+/* 最上部右端の 印刷／PDF／エクセル */
+.print-bar {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.print-bar button {
+  background: #374151;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.print-bar button:hover:enabled {
+  background: #4b5563;
+}
+
+.print-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 印刷・PDFはA3横1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
+@page {
+  size: A3 landscape;
+  margin: 8mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .app-bar,
+  .app-nav,
+  .print-bar,
+  .toolbar {
+    display: none !important;
+  }
+
+  /* 操作用のボタンは紙に出さない */
+  .app-main button {
+    display: none !important;
+  }
+
+  .app-main {
+    overflow: visible !important;
+    transform: scale(var(--print-scale, 1));
+    transform-origin: top left;
+    width: calc(100% / var(--print-scale, 1));
+  }
+
+  .app-main * {
+    overflow: visible !important;
+  }
+
+  input,
+  select,
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  tr,
+  td,
+  th {
+    page-break-inside: avoid;
+  }
 }

@@ -125,7 +125,7 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: 'print',
     label: '印刷',
     group: 'output',
-    note: '計算書・集計書のプリンター／PDF／Excel出力',
+    note: '各画面の右上「🖨 印刷／📄 PDF／📊 Excel」から、A3横1枚の幅で出せます',
     ready: false
   }
 ]
