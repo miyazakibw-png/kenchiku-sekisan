@@ -716,6 +716,7 @@ export default function RoomCalcSheet({
                       </td>
                       <td className="dcell">
                         <input
+                          lang="ja"
                           value={isUpper ? detail.partName : detail.name}
                           placeholder={isUpper ? "部位名" : "名称"}
                           onFocus={() =>
@@ -738,6 +739,7 @@ export default function RoomCalcSheet({
                       </td>
                       <td className="dcell">
                         <input
+                          lang="ja"
                           value={
                             isUpper
                               ? detail.descriptionUpper
@@ -807,6 +809,7 @@ export default function RoomCalcSheet({
                     <>
                       <td className="comment">
                         <input
+                          lang="ja"
                           maxLength={20}
                           value={line.comment}
                           onChange={(e) =>
@@ -922,6 +925,7 @@ export default function RoomCalcSheet({
                     <>
                       <td className="dcell">
                         <input
+                          lang="ja"
                           value={
                             isUpper ? detail.remarksUpper : detail.remarksLower
                           }
@@ -939,6 +943,7 @@ export default function RoomCalcSheet({
                       <td className="estimate dcell">
                         {!isUpper && (
                           <input
+                            lang="ja"
                             value={detail.estimateDisplay}
                             title="内訳書へ出すときの表示（明細マスターと同じ欄）"
                             onChange={(e) =>

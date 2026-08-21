@@ -438,6 +438,7 @@ export default function TransferSheetPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     list="transfer-parts"
                     value={row.partName}
                     placeholder="部位名"
@@ -448,6 +449,7 @@ export default function TransferSheetPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.descriptionUpper}
                     onChange={(e) =>
                       update(index, { descriptionUpper: e.target.value })
@@ -460,12 +462,14 @@ export default function TransferSheetPage({
                 <td className="num future" />
                 <td rowSpan={2}>
                   <input
+                    lang="ja"
                     value={row.remarks}
                     onChange={(e) => update(index, { remarks: e.target.value })}
                   />
                 </td>
                 <td className="memo" rowSpan={2}>
                   <input
+                    lang="ja"
                     value={row.memo}
                     title="ここに書くだけで、どこにも連動しません"
                     onChange={(e) => update(index, { memo: e.target.value })}
@@ -478,6 +482,7 @@ export default function TransferSheetPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.name}
                     placeholder="名称"
                     onChange={(e) => update(index, { name: e.target.value })}
@@ -485,6 +490,7 @@ export default function TransferSheetPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.descriptionLower}
                     onChange={(e) =>
                       update(index, { descriptionLower: e.target.value })

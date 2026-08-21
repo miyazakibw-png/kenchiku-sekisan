@@ -1,23 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from "react";
 import type {
   FormworkTransferRule,
   FormworkTransferView,
   ProjectSummary,
-  Subject
-} from '@shared/types'
-import '../estimate/EstimatePartsPage.css'
-import './CheckSheetPage.css'
+  Subject,
+} from "@shared/types";
+import "../estimate/EstimatePartsPage.css";
+import "./CheckSheetPage.css";
 
 interface Props {
-  project: ProjectSummary
-  onBack: () => void
+  project: ProjectSummary;
+  onBack: () => void;
 }
 
-const EMPTY: FormworkTransferView = { rules: [], groups: [], rows: [] }
+const EMPTY: FormworkTransferView = { rules: [], groups: [], rows: [] };
 
 function numberOrNull(value: string): number | null {
-  const parsed = Number(value)
-  return value.trim() === '' || Number.isNaN(parsed) ? null : parsed
+  const parsed = Number(value);
+  return value.trim() === "" || Number.isNaN(parsed) ? null : parsed;
 }
 
 /**
@@ -26,45 +26,58 @@ function numberOrNull(value: string): number | null {
  * 転記入力表の最終行へ追記する。次の集計に含まれる。
  * この機能で作った行は転記し直すと作り直すので、二重に増えない。
  */
-export default function FormworkTransferPage({ project, onBack }: Props): JSX.Element {
-  const [view, setView] = useState<FormworkTransferView>(EMPTY)
-  const [subjects, setSubjects] = useState<Subject[]>([])
-  const [message, setMessage] = useState('')
+export default function FormworkTransferPage({
+  project,
+  onBack,
+}: Props): JSX.Element {
+  const [view, setView] = useState<FormworkTransferView>(EMPTY);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [message, setMessage] = useState("");
 
   const reload = useCallback(async () => {
-    setView(await window.sekisan.getFormworkTransfer(project.id))
-  }, [project.id])
+    setView(await window.sekisan.getFormworkTransfer(project.id));
+  }, [project.id]);
 
   useEffect(() => {
     void (async () => {
-      setSubjects(await window.sekisan.listSubjects())
-      await reload()
-    })()
-  }, [reload])
+      setSubjects(await window.sekisan.listSubjects());
+      await reload();
+    })();
+  }, [reload]);
 
-  const update = (index: number, patch: Partial<FormworkTransferRule>): void => {
-    const rules = view.rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule))
-    setView({ ...view, rules })
-  }
+  const update = (
+    index: number,
+    patch: Partial<FormworkTransferRule>,
+  ): void => {
+    const rules = view.rules.map((rule, i) =>
+      i === index ? { ...rule, ...patch } : rule,
+    );
+    setView({ ...view, rules });
+  };
 
   const save = async (): Promise<void> => {
-    setView(await window.sekisan.saveFormworkRules({ projectId: project.id, rules: view.rules }))
-    setMessage('転記先を保存しました')
-  }
+    setView(
+      await window.sekisan.saveFormworkRules({
+        projectId: project.id,
+        rules: view.rules,
+      }),
+    );
+    setMessage("転記先を保存しました");
+  };
 
   const run = async (): Promise<void> => {
     const saved = await window.sekisan.saveFormworkRules({
       projectId: project.id,
-      rules: view.rules
-    })
-    const result = await window.sekisan.runFormworkTransfer(project.id)
-    setView(result)
+      rules: view.rules,
+    });
+    const result = await window.sekisan.runFormworkTransfer(project.id);
+    setView(result);
     setMessage(
       saved.rows.length === 0
-        ? '転記先（名称）を入力してから転記してください。'
-        : `転記入力表へ ${result.rows.length} 行を追記しました（次の集計に含まれます）`
-    )
-  }
+        ? "転記先（名称）を入力してから転記してください。"
+        : `転記入力表へ ${result.rows.length} 行を追記しました（次の集計に含まれます）`,
+    );
+  };
 
   return (
     <div className="estimate-page check-sheet-page">
@@ -83,7 +96,9 @@ export default function FormworkTransferPage({ project, onBack }: Props): JSX.El
           ▶ 転記入力表へ転記
         </button>
         <span className="message">
-          {view.groups.length === 0 ? '型枠分類の付いた集計明細がありません。' : message}
+          {view.groups.length === 0
+            ? "型枠分類の付いた集計明細がありません。"
+            : message}
         </span>
       </div>
 
@@ -110,8 +125,10 @@ export default function FormworkTransferPage({ project, onBack }: Props): JSX.El
               <td>{rule.formwork}</td>
               <td>
                 <select
-                  value={rule.subjectId ?? ''}
-                  onChange={(e) => update(index, { subjectId: numberOrNull(e.target.value) })}
+                  value={rule.subjectId ?? ""}
+                  onChange={(e) =>
+                    update(index, { subjectId: numberOrNull(e.target.value) })
+                  }
                 >
                   <option value="">（未設定）</option>
                   {subjects.map((subject) => (
@@ -124,37 +141,50 @@ export default function FormworkTransferPage({ project, onBack }: Props): JSX.El
               <td>
                 <input
                   value={rule.materialCategory}
-                  onChange={(e) => update(index, { materialCategory: e.target.value })}
+                  onChange={(e) =>
+                    update(index, { materialCategory: e.target.value })
+                  }
                 />
               </td>
               <td className="number">
                 <input
-                  value={rule.partNumber ?? ''}
-                  onChange={(e) => update(index, { partNumber: numberOrNull(e.target.value) })}
+                  value={rule.partNumber ?? ""}
+                  onChange={(e) =>
+                    update(index, { partNumber: numberOrNull(e.target.value) })
+                  }
                 />
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={rule.partName}
                   onChange={(e) => update(index, { partName: e.target.value })}
                 />
               </td>
               <td className="number">
                 <input
-                  value={rule.detailNumber ?? ''}
-                  onChange={(e) => update(index, { detailNumber: numberOrNull(e.target.value) })}
+                  value={rule.detailNumber ?? ""}
+                  onChange={(e) =>
+                    update(index, {
+                      detailNumber: numberOrNull(e.target.value),
+                    })
+                  }
                 />
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={rule.name}
                   onChange={(e) => update(index, { name: e.target.value })}
                 />
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={rule.description}
-                  onChange={(e) => update(index, { description: e.target.value })}
+                  onChange={(e) =>
+                    update(index, { description: e.target.value })
+                  }
                 />
               </td>
               <td>
@@ -166,11 +196,14 @@ export default function FormworkTransferPage({ project, onBack }: Props): JSX.El
               <td className="number">
                 <input
                   value={rule.coefficient}
-                  onChange={(e) => update(index, { coefficient: Number(e.target.value) || 0 })}
+                  onChange={(e) =>
+                    update(index, { coefficient: Number(e.target.value) || 0 })
+                  }
                 />
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={rule.remarks}
                   onChange={(e) => update(index, { remarks: e.target.value })}
                 />
@@ -210,11 +243,14 @@ export default function FormworkTransferPage({ project, onBack }: Props): JSX.El
         </tbody>
       </table>
       {view.rows.length === 0 && view.groups.length > 0 && (
-        <p className="note">転記先の名称を入力すると、ここに転記する行が表示されます。</p>
+        <p className="note">
+          転記先の名称を入力すると、ここに転記する行が表示されます。
+        </p>
       )}
       <p className="note">
-        型枠分類ごとに 部位Ⅰ・部位Ⅱ（仕分け✔のある行のみ）で合算します。転記し直すと前回この画面で作った行だけを作り直すので、二重に増えません。
+        型枠分類ごとに
+        部位Ⅰ・部位Ⅱ（仕分け✔のある行のみ）で合算します。転記し直すと前回この画面で作った行だけを作り直すので、二重に増えません。
       </p>
     </div>
-  )
+  );
 }

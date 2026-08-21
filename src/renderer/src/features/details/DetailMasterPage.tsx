@@ -805,6 +805,7 @@ export default function DetailMasterPage({
                   </td>
                   <td {...cellProps(index, 5)}>
                     <input
+                      lang="ja"
                       placeholder="摘要（上段）"
                       value={row.descriptionUpper}
                       onChange={(e) =>
@@ -815,6 +816,7 @@ export default function DetailMasterPage({
                   <td className="col-unit part-number" />
                   <td {...cellProps(index, 8)}>
                     <input
+                      lang="ja"
                       placeholder="備考（上段）"
                       value={row.remarksUpper}
                       onChange={(e) =>
@@ -828,6 +830,7 @@ export default function DetailMasterPage({
                     rowSpan={2}
                   >
                     <input
+                      lang="ja"
                       value={row.estimateDisplay}
                       onChange={(e) =>
                         handleChange(index, "estimateDisplay", e.target.value)
@@ -863,6 +866,7 @@ export default function DetailMasterPage({
                   </td>
                   <td {...cellProps(index, 4)}>
                     <input
+                      lang="ja"
                       placeholder="名称"
                       value={row.name}
                       onChange={(e) =>
@@ -872,6 +876,7 @@ export default function DetailMasterPage({
                   </td>
                   <td {...cellProps(index, 6)}>
                     <input
+                      lang="ja"
                       placeholder="摘要（下段）"
                       value={row.descriptionLower}
                       onChange={(e) =>
@@ -891,6 +896,7 @@ export default function DetailMasterPage({
                   </td>
                   <td {...cellProps(index, 9)}>
                     <input
+                      lang="ja"
                       placeholder="備考（下段）"
                       value={row.remarksLower}
                       onChange={(e) =>
