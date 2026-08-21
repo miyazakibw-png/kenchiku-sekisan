@@ -10,15 +10,29 @@ import { sortDetails, type SortableDetail } from '../../../../core/sort/detailSo
 import type { GridColumn } from '../grid/gridClipboard'
 import type { DraftRow } from './rowOperations'
 
+/** 画面の見た目の列（上段／下段の組）。Excelが1明細＝上下2行のときの対応表 */
+export const DETAIL_SCREEN_COLUMNS = [
+  { label: '部位／明細番号', upper: true, lower: true },
+  { label: '材種区分', upper: true, lower: false },
+  { label: '部位名／名称', upper: true, lower: true },
+  { label: '摘要', upper: true, lower: true },
+  { label: '単位', upper: false, lower: true },
+  { label: '備考', upper: true, lower: true },
+  { label: '積算用表示', upper: true, lower: false }
+] as const
+
 /**
  * Excelとの範囲コピー／貼り付けで用いる論理列。
+ * 画面の左からの並び（各列は上段→下段の順）で並べ、
  * 1明細（上下2段）を1行として扱う。
+ * 部位・部位名は表示専用なので、貼り付けても値は入れない。
  */
 export function buildDetailColumns(
   materialCategories: MaterialCategory[],
   units: Unit[]
 ): GridColumn<DraftRow>[] {
   return [
+    { key: 'part', label: '部位（表示専用）', get: () => '', set: (row) => ({ row }) },
     {
       key: 'detailNumber',
       label: '明細番号',
@@ -34,7 +48,28 @@ export function buildDetailColumns(
         }
       }
     },
-    { key: 'partName', label: '部位名（上段）', get: (row) => row.partName, set: (row, value) => ({ row: { ...row, partName: value } }) },
+    {
+      key: 'materialCategory',
+      label: '材種区分',
+      get: (row) => row.materialCategory,
+      // 数量チェック用の区分。マスタ番号で入力補助するが、マスタに無い文字も取り込む
+      set: (row, value) => {
+        const resolved = resolveMasterName(materialCategories, value)
+        if (resolved !== value || value === '' || materialCategories.some((c) => c.name === value)) {
+          return { row: { ...row, materialCategory: resolved } }
+        }
+        return {
+          row: { ...row, materialCategory: value },
+          warning: '材種区分マスタに存在しません（取り込みます）'
+        }
+      }
+    },
+    {
+      key: 'partName',
+      label: '部位名（上段・表示専用）',
+      get: (row) => row.partName,
+      set: (row) => ({ row })
+    },
     { key: 'name', label: '名称（下段）', get: (row) => row.name, set: (row, value) => ({ row: { ...row, name: value } }) },
     {
       key: 'descriptionUpper',
@@ -72,22 +107,6 @@ export function buildDetailColumns(
       label: '備考（下段）',
       get: (row) => row.remarksLower,
       set: (row, value) => ({ row: { ...row, remarksLower: value } })
-    },
-    {
-      key: 'materialCategory',
-      label: '材種区分',
-      get: (row) => row.materialCategory,
-      // 数量チェック用の区分。マスタ番号で入力補助するが、マスタに無い文字も取り込む
-      set: (row, value) => {
-        const resolved = resolveMasterName(materialCategories, value)
-        if (resolved !== value || value === '' || materialCategories.some((c) => c.name === value)) {
-          return { row: { ...row, materialCategory: resolved } }
-        }
-        return {
-          row: { ...row, materialCategory: value },
-          warning: '材種区分マスタに存在しません（取り込みます）'
-        }
-      }
     },
     {
       key: 'estimateDisplay',

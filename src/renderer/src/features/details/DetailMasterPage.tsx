@@ -5,6 +5,7 @@ import type {
   MasterOptions,
   Subject,
 } from "@shared/types";
+import { parseTsv } from "@shared/tsv";
 import { useAutoSave } from "../../hooks/useAutoSave";
 import {
   assignSavedIds,
@@ -36,7 +37,16 @@ import {
   type PastePreview,
 } from "../grid/gridClipboard";
 import { useColumnWidths } from "../grid/useColumnWidths";
-import { buildDetailColumns, sortDetailRows } from "./detailColumns";
+import {
+  foldTwoRowPaste,
+  screenColToLogicalCol,
+  toTsvText,
+} from "../grid/twoRowPaste";
+import {
+  DETAIL_SCREEN_COLUMNS,
+  buildDetailColumns,
+  sortDetailRows,
+} from "./detailColumns";
 import DetailChangeHistoryPage from "./DetailChangeHistoryPage";
 import "./DetailMasterPage.css";
 
@@ -84,6 +94,12 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   active: 48,
 };
 
+/** 論理列番号から、画面の見た目の列番号を引く表 */
+const LOGICAL_TO_SCREEN_COL: number[] = DETAIL_SCREEN_COLUMNS.flatMap(
+  (column, index) =>
+    Array<number>((column.upper ? 1 : 0) + (column.lower ? 1 : 0)).fill(index),
+);
+
 /** 列幅の自動調整で参照するセル文字列 */
 const COLUMN_TEXTS: Record<string, (row: DraftRow) => string[]> = {
   number: (row) => [row.detailNumberInput],
@@ -113,6 +129,9 @@ export default function DetailMasterPage({
   const [range, setRange] = useState<CellRange | null>(null);
   const [sortAscending, setSortAscending] = useState(false);
   const [preview, setPreview] = useState<PastePreview<DraftRow> | null>(null);
+  /** 直前に読んだクリップボードの中身（上下2行の切り替えで見直す） */
+  const [pasteText, setPasteText] = useState("");
+  const [twoRowPaste, setTwoRowPaste] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const history = useUndoRedo<HistorySnapshot>();
   const columnWidths = useColumnWidths(
@@ -339,20 +358,52 @@ export default function DetailMasterPage({
     );
   }, [columns, range, rows, selectedCol, selectedIndex]);
 
+  /** 選んでいるセルの位置で、クリップボードのTSVから下見を作る */
+  const previewFor = useCallback(
+    (text: string, twoRow: boolean): PastePreview<DraftRow> => {
+      if (!twoRow) {
+        return buildPastePreview(
+          rows,
+          columns,
+          text,
+          selectedIndex,
+          selectedCol,
+          createEmptyRow,
+        );
+      }
+      const screenCol = LOGICAL_TO_SCREEN_COL[selectedCol] ?? 0;
+      const folded = foldTwoRowPaste(
+        parseTsv(text),
+        DETAIL_SCREEN_COLUMNS,
+        screenCol,
+      );
+      return buildPastePreview(
+        rows,
+        columns,
+        toTsvText(folded.matrix),
+        selectedIndex,
+        screenColToLogicalCol(DETAIL_SCREEN_COLUMNS, screenCol),
+        createEmptyRow,
+      );
+    },
+    [columns, rows, selectedCol, selectedIndex],
+  );
+
   const handlePasteRequest = useCallback(async () => {
     const text = await navigator.clipboard.readText();
     if (!text) return;
-    setPreview(
-      buildPastePreview(
-        rows,
-        columns,
-        text,
-        selectedIndex,
-        selectedCol,
-        createEmptyRow,
-      ),
-    );
-  }, [columns, rows, selectedCol, selectedIndex]);
+    setPasteText(text);
+    setPreview(previewFor(text, twoRowPaste));
+  }, [previewFor, twoRowPaste]);
+
+  /** 「Excelは1明細＝上下2行」の切り替え。同じ内容をすぐに見直す */
+  const handleTwoRowToggle = useCallback(
+    (checked: boolean) => {
+      setTwoRowPaste(checked);
+      if (pasteText) setPreview(previewFor(pasteText, checked));
+    },
+    [pasteText, previewFor],
+  );
 
   const handlePasteConfirm = useCallback(() => {
     if (!preview) return;
@@ -726,10 +777,15 @@ export default function DetailMasterPage({
                   <td className="col-no" rowSpan={2}>
                     {index + 1}
                   </td>
-                  <td className="col-number part-number" />
                   <td
-                    {...cellProps(index, 8)}
-                    className={`col-category ${cellProps(index, 8).className}`}
+                    {...cellProps(index, 0)}
+                    className={`col-number part-number ${cellProps(index, 0).className}`}
+                    tabIndex={0}
+                    title="部位（表示専用）。Excelはこのセルから貼り付けます"
+                  />
+                  <td
+                    {...cellProps(index, 2)}
+                    className={`col-category ${cellProps(index, 2).className}`}
                     rowSpan={2}
                   >
                     <MasterCodeInput
@@ -742,12 +798,12 @@ export default function DetailMasterPage({
                       }
                     />
                   </td>
-                  <td {...cellProps(index, 1)}>
+                  <td {...cellProps(index, 3)}>
                     <span className="readonly-cell" title="部位名（表示専用）">
                       {row.partName}
                     </span>
                   </td>
-                  <td {...cellProps(index, 3)}>
+                  <td {...cellProps(index, 5)}>
                     <input
                       placeholder="摘要（上段）"
                       value={row.descriptionUpper}
@@ -757,7 +813,7 @@ export default function DetailMasterPage({
                     />
                   </td>
                   <td className="col-unit part-number" />
-                  <td {...cellProps(index, 6)}>
+                  <td {...cellProps(index, 8)}>
                     <input
                       placeholder="備考（上段）"
                       value={row.remarksUpper}
@@ -767,8 +823,8 @@ export default function DetailMasterPage({
                     />
                   </td>
                   <td
-                    {...cellProps(index, 9)}
-                    className={`col-estimate ${cellProps(index, 9).className}`}
+                    {...cellProps(index, 10)}
+                    className={`col-estimate ${cellProps(index, 10).className}`}
                     rowSpan={2}
                   >
                     <input
@@ -790,8 +846,8 @@ export default function DetailMasterPage({
                 </tr>
                 <tr className="lower-row">
                   <td
-                    {...cellProps(index, 0)}
-                    className={`col-number ${cellProps(index, 0).className}`}
+                    {...cellProps(index, 1)}
+                    className={`col-number ${cellProps(index, 1).className}`}
                   >
                     <input
                       className="num"
@@ -805,7 +861,7 @@ export default function DetailMasterPage({
                       onBlur={() => handleDetailNumberBlur(index)}
                     />
                   </td>
-                  <td {...cellProps(index, 2)}>
+                  <td {...cellProps(index, 4)}>
                     <input
                       placeholder="名称"
                       value={row.name}
@@ -814,7 +870,7 @@ export default function DetailMasterPage({
                       }
                     />
                   </td>
-                  <td {...cellProps(index, 4)}>
+                  <td {...cellProps(index, 6)}>
                     <input
                       placeholder="摘要（下段）"
                       value={row.descriptionLower}
@@ -824,8 +880,8 @@ export default function DetailMasterPage({
                     />
                   </td>
                   <td
-                    {...cellProps(index, 5)}
-                    className={`col-unit ${cellProps(index, 5).className}`}
+                    {...cellProps(index, 7)}
+                    className={`col-unit ${cellProps(index, 7).className}`}
                   >
                     <UnitInput
                       units={options.units}
@@ -833,7 +889,7 @@ export default function DetailMasterPage({
                       onChange={(value) => handleChange(index, "unit", value)}
                     />
                   </td>
-                  <td {...cellProps(index, 7)}>
+                  <td {...cellProps(index, 9)}>
                     <input
                       placeholder="備考（下段）"
                       value={row.remarksLower}
@@ -887,6 +943,7 @@ export default function DetailMasterPage({
               {preview.startRow + 1}行目・「
               {preview.columns[preview.startCol]?.label ?? ""}」列から
               貼り付けます（新規追加 {preview.addedRows} 行）。
+              部位・部位名は表示専用なので変わりません。
               {preview.errorCount > 0 && (
                 <strong className="error">
                   {" "}
@@ -936,6 +993,14 @@ export default function DetailMasterPage({
               </table>
             </div>
             <div className="preview-actions">
+              <label title="Excelの表が1明細＝上下2行のとき（画面と同じ形）">
+                <input
+                  type="checkbox"
+                  checked={twoRowPaste}
+                  onChange={(e) => handleTwoRowToggle(e.target.checked)}
+                />
+                Excelは1明細＝上下2行
+              </label>
               <button type="button" onClick={() => setPreview(null)}>
                 ✖ キャンセル
               </button>
