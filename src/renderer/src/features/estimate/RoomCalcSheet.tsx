@@ -143,6 +143,8 @@ export default function RoomCalcSheet({
     text: string;
   } | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
+  /** 明細番号欄の一覧候補（選んだ科目の明細） */
+  const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   const {
     widths,
     startResize,
@@ -180,6 +182,27 @@ export default function RoomCalcSheet({
       );
     })();
   }, [callOpen, projectId, source, subjectId]);
+
+  /** 明細番号欄に入ったとき、その科目の明細を一覧候補として読み込む */
+  const loadNumberOptions = useCallback(
+    async (detailSubjectId: number | null): Promise<void> => {
+      if (detailSubjectId === null) {
+        setNumberOptions([]);
+        return;
+      }
+      const project = await window.sekisan.listDetails(
+        detailSubjectId,
+        projectId,
+      );
+      const basic = await window.sekisan.listDetails(detailSubjectId, null);
+      const numbers = new Set(project.map((row) => row.detailNumber));
+      setNumberOptions([
+        ...project,
+        ...basic.filter((row) => !numbers.has(row.detailNumber)),
+      ]);
+    },
+    [projectId],
+  );
 
   const used = useMemo(() => usedBSymbols(sets), [sets]);
 
@@ -583,6 +606,15 @@ export default function RoomCalcSheet({
         >
           {calcWindow.floating ? "⤡ 元の位置へ戻す" : "⧉ 切り離す"}
         </button>
+        {calcWindow.floating && (
+          <button
+            type="button"
+            title="小窓を画面いっぱいに広げます（もう一度押すと元の大きさ）"
+            onClick={calcWindow.toggleMaximize}
+          >
+            ⬜ 画面いっぱい
+          </button>
+        )}
         <button type="button" onClick={() => onChange([...sets, calcSet()])}>
           ＋ セット明細（2明細）
         </button>
@@ -750,15 +782,17 @@ export default function RoomCalcSheet({
                                   ? numberEdit.text
                                   : (detail.detailNumber?.toFixed(2) ?? "")
                               }
-                              placeholder="番号"
-                              title="明細番号を入れるとマスターの明細を呼び出します（科目IDが空でも探します）"
-                              onFocus={() =>
+                              list="calc-detail-numbers"
+                              placeholder="番号／一覧"
+                              title="明細番号を入れるとマスターの明細を呼び出します（科目IDを入れると一覧から選べます）"
+                              onFocus={() => {
                                 onFocus({
                                   setId: set.id,
                                   area: "detail",
                                   index: detailIndex,
-                                })
-                              }
+                                });
+                                void loadNumberOptions(detail.subjectId);
+                              }}
                               onChange={(e) =>
                                 setNumberEdit({
                                   key: `${set.id}:${detailIndex}`,
@@ -788,9 +822,15 @@ export default function RoomCalcSheet({
                         </td>
                         <td className="dcell">
                           <input
-                            lang="ja"
+                            lang={isUpper ? undefined : "ja"}
+                            list={isUpper ? "calc-detail-parts" : undefined}
                             value={isUpper ? detail.partName : detail.name}
-                            placeholder={isUpper ? "部位名" : "名称"}
+                            placeholder={isUpper ? "番号／一覧" : "名称"}
+                            title={
+                              isUpper
+                                ? "明細用部位の番号を入力するか一覧から選びます"
+                                : undefined
+                            }
                             onFocus={() =>
                               onFocus({
                                 setId: set.id,
@@ -803,7 +843,12 @@ export default function RoomCalcSheet({
                                 set.id,
                                 detailIndex,
                                 isUpper
-                                  ? { partName: e.target.value }
+                                  ? {
+                                      partName: resolveMasterName(
+                                        options?.pickupParts ?? [],
+                                        e.target.value,
+                                      ),
+                                    }
                                   : { name: e.target.value },
                               )
                             }
@@ -1103,13 +1148,39 @@ export default function RoomCalcSheet({
         </table>
       </div>
       {calcWindow.floating && (
-        <span
-          className="resize-grip"
-          title="ドラッグで小窓の大きさを変えられます"
-          onMouseDown={calcWindow.startResize}
-        />
+        <>
+          <span
+            className="resize-edge east"
+            title="ドラッグで横幅を変えられます"
+            onMouseDown={(e) => calcWindow.startResize(e, "e")}
+          />
+          <span
+            className="resize-edge south"
+            title="ドラッグで高さを変えられます"
+            onMouseDown={(e) => calcWindow.startResize(e, "s")}
+          />
+          <span
+            className="resize-grip"
+            title="ドラッグで小窓の大きさを変えられます"
+            onMouseDown={(e) => calcWindow.startResize(e, "se")}
+          />
+        </>
       )}
 
+      <datalist id="calc-detail-numbers">
+        {numberOptions.map((item) => (
+          <option key={item.id} value={item.detailNumber?.toFixed(2) ?? ""}>
+            {`${item.partName} ${item.name}`.trim()}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="calc-detail-parts">
+        {(options?.pickupParts ?? []).map((part) => (
+          <option key={part.id} value={part.name}>
+            {part.id}
+          </option>
+        ))}
+      </datalist>
       <datalist id="calc-parts">
         {(options?.aggregationParts ?? []).map((part) => (
           <option key={part.id} value={part.name}>

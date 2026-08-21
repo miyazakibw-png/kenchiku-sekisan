@@ -11,7 +11,12 @@ export interface FloatingRect {
 interface Stored {
   floating: boolean;
   rect: FloatingRect;
+  /** 画面いっぱいにする前の大きさ（元に戻すときに使う） */
+  restore: FloatingRect | null;
 }
+
+/** 大きさ変更でつかむ場所（右端・下端・右下角） */
+export type ResizeEdge = "e" | "s" | "se";
 
 interface FloatingWindow {
   floating: boolean;
@@ -19,8 +24,10 @@ interface FloatingWindow {
   rect: FloatingRect;
   /** 見出し部分の押し下げで移動を始める */
   startMove: (event: React.MouseEvent) => void;
-  /** 右下のつまみの押し下げで大きさ変更を始める */
-  startResize: (event: React.MouseEvent) => void;
+  /** 端のつまみの押し下げで大きさ変更を始める */
+  startResize: (event: React.MouseEvent, edge: ResizeEdge) => void;
+  /** 画面いっぱいに広げる（もう一度押すと元の大きさ） */
+  toggleMaximize: () => void;
 }
 
 const MIN_WIDTH = 420;
@@ -29,12 +36,16 @@ const MIN_HEIGHT = 160;
 function load(key: string, initial: FloatingRect): Stored {
   try {
     const text = window.localStorage.getItem(key);
-    if (!text) return { floating: false, rect: initial };
+    if (!text) return { floating: false, rect: initial, restore: null };
     const value = JSON.parse(text) as Partial<Stored>;
     const rect = { ...initial, ...(value.rect ?? {}) };
-    return { floating: value.floating === true, rect };
+    return {
+      floating: value.floating === true,
+      rect,
+      restore: value.restore ?? null,
+    };
   } catch {
-    return { floating: false, rect: initial };
+    return { floating: false, rect: initial, restore: null };
   }
 }
 
@@ -48,7 +59,7 @@ export function useFloatingWindow(
 ): FloatingWindow {
   const [state, setState] = useState<Stored>(() => load(key, initial));
   const drag = useRef<{
-    mode: "move" | "resize";
+    mode: "move" | ResizeEdge;
     x: number;
     y: number;
     rect: FloatingRect;
@@ -82,8 +93,14 @@ export function useFloatingWindow(
               }
             : {
                 ...start.rect,
-                w: Math.max(MIN_WIDTH, start.rect.w + dx),
-                h: Math.max(MIN_HEIGHT, start.rect.h + dy),
+                w:
+                  start.mode === "s"
+                    ? start.rect.w
+                    : Math.max(MIN_WIDTH, start.rect.w + dx),
+                h:
+                  start.mode === "e"
+                    ? start.rect.h
+                    : Math.max(MIN_HEIGHT, start.rect.h + dy),
               },
       }));
     };
@@ -99,7 +116,7 @@ export function useFloatingWindow(
   }, []);
 
   const begin = useCallback(
-    (mode: "move" | "resize", event: React.MouseEvent): void => {
+    (mode: "move" | ResizeEdge, event: React.MouseEvent): void => {
       if (event.button !== 0) return;
       event.preventDefault();
       drag.current = {
@@ -118,6 +135,19 @@ export function useFloatingWindow(
       setState((prev) => ({ ...prev, floating: on })),
     rect: state.rect,
     startMove: (event) => begin("move", event),
-    startResize: (event) => begin("resize", event),
+    startResize: (event, edge) => begin(edge, event),
+    toggleMaximize: () =>
+      setState((prev) => {
+        const full: FloatingRect = {
+          x: 0,
+          y: 0,
+          w: window.innerWidth,
+          h: window.innerHeight,
+        };
+        const isFull = prev.rect.w >= full.w - 4 && prev.rect.h >= full.h - 4;
+        if (isFull)
+          return { ...prev, rect: prev.restore ?? initial, restore: null };
+        return { ...prev, rect: full, restore: prev.rect };
+      }),
   };
 }
