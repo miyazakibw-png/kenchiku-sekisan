@@ -86,6 +86,18 @@ describe('その他マスター', () => {
     ])
   })
 
+  it('入力した並びのまま保存して読み出す（番号順に並べ替えない）', () => {
+    const rows = [
+      { id: 9, name: '九', note: '' },
+      { id: 3, name: '三', note: '' },
+      { id: 74, name: '七四', note: '' }
+    ]
+    const result = saveBasicMaster(db, 'pickupParts', rows)
+    expect(result.errors).toEqual([])
+    expect(result.masters.pickupParts.map((row) => row.id)).toEqual([9, 3, 74])
+    expect(listBasicMasters(db).pickupParts.map((row) => row.id)).toEqual([9, 3, 74])
+  })
+
   it('上限を超える件数・番号は保存しない', () => {
     const rows = Array.from({ length: 31 }, (_, i) => ({
       id: i + 1,

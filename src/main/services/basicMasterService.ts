@@ -11,35 +11,36 @@ import type { BasicMasterKind, BasicMasterRow } from '../../core/masters/basicMa
 import { dropBlankBasicMasterRows, validateBasicMaster } from '../../core/masters/basicMaster'
 import type { BasicMasters, SaveBasicMasterResult } from '../../shared/types'
 
+/** 画面に出す並びは、人が入力した並び（表示順）をそのまま使う */
 export function listBasicMasters(db: AppDatabase): BasicMasters {
   return {
     pickupParts: db
       .select({ id: mPickupParts.id, name: mPickupParts.name, note: mPickupParts.note })
       .from(mPickupParts)
-      .orderBy(asc(mPickupParts.id))
+      .orderBy(asc(mPickupParts.displayOrder), asc(mPickupParts.id))
       .all(),
     materialCategories: db
       .select({ id: mMaterialCategories.id, name: mMaterialCategories.name })
       .from(mMaterialCategories)
-      .orderBy(asc(mMaterialCategories.id))
+      .orderBy(asc(mMaterialCategories.displayOrder), asc(mMaterialCategories.id))
       .all()
       .map((row) => ({ ...row, note: '' })),
     units: db
       .select({ id: mUnits.id, name: mUnits.name })
       .from(mUnits)
-      .orderBy(asc(mUnits.id))
+      .orderBy(asc(mUnits.displayOrder), asc(mUnits.id))
       .all()
       .map((row) => ({ ...row, note: '' })),
     aggregationParts: db
       .select({ id: mAggregationParts.id, name: mAggregationParts.name })
       .from(mAggregationParts)
-      .orderBy(asc(mAggregationParts.id))
+      .orderBy(asc(mAggregationParts.displayOrder), asc(mAggregationParts.id))
       .all()
       .map((row) => ({ ...row, note: '' })),
     formworkCategories: db
       .select({ id: mFormworkCategories.id, name: mFormworkCategories.name })
       .from(mFormworkCategories)
-      .orderBy(asc(mFormworkCategories.id))
+      .orderBy(asc(mFormworkCategories.displayOrder), asc(mFormworkCategories.id))
       .all()
       .map((row) => ({ ...row, note: '' }))
   }
