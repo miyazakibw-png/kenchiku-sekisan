@@ -1,57 +1,66 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { SubjectDraft } from '@shared/types'
+import { useCallback, useEffect, useState } from "react";
+import type { SubjectDraft } from "@shared/types";
 import {
   displayCode,
   insertRow,
   moveRow,
   removeRow,
   toDrafts,
-  updateRow
-} from './subjectRows'
-import './SubjectMasterPage.css'
+  updateRow,
+} from "./subjectRows";
+import "./SubjectMasterPage.css";
 
 export default function SubjectMasterPage(): JSX.Element {
-  const [rows, setRows] = useState<SubjectDraft[]>([])
-  const [selected, setSelected] = useState(0)
-  const [toast, setToast] = useState('')
+  const [rows, setRows] = useState<SubjectDraft[]>([]);
+  const [selected, setSelected] = useState(0);
+  const [toast, setToast] = useState("");
 
   const reload = useCallback(async () => {
-    setRows(toDrafts(await window.sekisan.listSubjects()))
-  }, [])
+    setRows(toDrafts(await window.sekisan.listSubjects()));
+  }, []);
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void reload();
+  }, [reload]);
 
   const save = useCallback(async () => {
-    const result = await window.sekisan.saveSubjects(rows)
-    setRows(toDrafts(result.subjects))
+    const result = await window.sekisan.saveSubjects(rows);
+    setRows(toDrafts(result.subjects));
     setToast(
       result.blockedDeletes.length > 0
-        ? `明細が登録されているため削除できませんでした：${result.blockedDeletes.join('、')}（末尾へ移動しました）`
-        : '保存しました'
-    )
-  }, [rows])
+        ? `明細が登録されているため削除できませんでした：${result.blockedDeletes.join("、")}（末尾へ移動しました）`
+        : "保存しました",
+    );
+  }, [rows]);
 
   return (
     <div className="subject-page">
       <div className="toolbar">
         <h2>工種科目マスター</h2>
-        <button type="button" onClick={() => setRows(insertRow(rows, selected))}>
+        <button
+          type="button"
+          onClick={() => setRows(insertRow(rows, selected))}
+        >
           ➕ 行挿入
         </button>
-        <button type="button" onClick={() => setRows(insertRow(rows, rows.length))}>
+        <button
+          type="button"
+          onClick={() => setRows(insertRow(rows, rows.length))}
+        >
           ⤓ 最終行に追加
         </button>
-        <button type="button" onClick={() => setRows(removeRow(rows, selected))}>
+        <button
+          type="button"
+          onClick={() => setRows(removeRow(rows, selected))}
+        >
           🗑 行削除
         </button>
         <button
           type="button"
           disabled={selected <= 0}
           onClick={() => {
-            setRows(moveRow(rows, selected, selected - 1))
-            setSelected(selected - 1)
+            setRows(moveRow(rows, selected, selected - 1));
+            setSelected(selected - 1);
           }}
         >
           ↑ 上へ
@@ -60,8 +69,8 @@ export default function SubjectMasterPage(): JSX.Element {
           type="button"
           disabled={selected >= rows.length - 1}
           onClick={() => {
-            setRows(moveRow(rows, selected, selected + 1))
-            setSelected(selected + 1)
+            setRows(moveRow(rows, selected, selected + 1));
+            setSelected(selected + 1);
           }}
         >
           ↓ 下へ
@@ -90,20 +99,24 @@ export default function SubjectMasterPage(): JSX.Element {
           {rows.map((row, index) => (
             <tr
               key={row.id ?? `new-${index}`}
-              className={index === selected ? 'selected' : undefined}
+              className={index === selected ? "selected" : undefined}
               onClick={() => setSelected(index)}
             >
               <td className="no">{displayCode(index)}</td>
               <td>
                 <input
                   value={row.name}
-                  onChange={(e) => setRows(updateRow(rows, index, { name: e.target.value }))}
+                  onChange={(e) =>
+                    setRows(updateRow(rows, index, { name: e.target.value }))
+                  }
                 />
               </td>
               <td>
                 <input
                   value={row.note}
-                  onChange={(e) => setRows(updateRow(rows, index, { note: e.target.value }))}
+                  onChange={(e) =>
+                    setRows(updateRow(rows, index, { note: e.target.value }))
+                  }
                 />
               </td>
               <td className="flag">
@@ -112,20 +125,28 @@ export default function SubjectMasterPage(): JSX.Element {
                   checked={row.skipPart2 === 1}
                   title="集計時に部位Ⅱの仕分けを行わない"
                   onChange={(e) =>
-                    setRows(updateRow(rows, index, { skipPart2: e.target.checked ? 1 : 0 }))
+                    setRows(
+                      updateRow(rows, index, {
+                        skipPart2: e.target.checked ? 1 : 0,
+                      }),
+                    )
                   }
                 />
               </td>
               <td>
                 <input
                   value={row.spare1}
-                  onChange={(e) => setRows(updateRow(rows, index, { spare1: e.target.value }))}
+                  onChange={(e) =>
+                    setRows(updateRow(rows, index, { spare1: e.target.value }))
+                  }
                 />
               </td>
               <td>
                 <input
                   value={row.spare2}
-                  onChange={(e) => setRows(updateRow(rows, index, { spare2: e.target.value }))}
+                  onChange={(e) =>
+                    setRows(updateRow(rows, index, { spare2: e.target.value }))
+                  }
                 />
               </td>
             </tr>
@@ -133,5 +154,5 @@ export default function SubjectMasterPage(): JSX.Element {
         </tbody>
       </table>
     </div>
-  )
+  );
 }

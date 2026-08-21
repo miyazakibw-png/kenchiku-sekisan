@@ -89,7 +89,7 @@ table.fittings input.num {
 
 table.fittings td.calc {
   background: #fffbe6;
-  font-family: 'Consolas', 'Menlo', monospace;
+  font-family: "Consolas", "Menlo", monospace;
 }
 
 table.fittings th.formula,

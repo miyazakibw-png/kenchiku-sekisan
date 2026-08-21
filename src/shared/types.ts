@@ -122,6 +122,8 @@ export interface MasterOptions {
   units: Unit[];
   /** 型枠分類（部位別入力表の型枠欄で番号入力に使う） */
   formworkCategories: MasterEntry[];
+  /** 入力拾い用の部位（計算書の下段で番号入力に使う） */
+  pickupParts: MasterEntry[];
   /** 計算書の書式（将来の追加はこのマスターを増やす） */
   calcSheets: CalcSheetOption[];
 }
@@ -187,6 +189,8 @@ export interface RoomSheet {
   fittingsJson: string;
   /** 天井伏図の線（CeilingElementの配列）のJSON */
   ceilingJson: string;
+  /** 下段のセット明細計算表 */
+  lowerJson: string;
   ceilingHeight: number | null;
   note: string;
 }

@@ -1,0 +1,176 @@
+.room-calc-sheet {
+  border-top: 2px solid #cbd5e1;
+  padding: 6px 8px 12px;
+  position: relative;
+}
+
+.room-calc-sheet .section-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0 4px;
+}
+
+.room-calc-sheet .section-bar .hint {
+  color: #64748b;
+}
+
+.room-calc-sheet .section-bar button.on {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+.room-calc-sheet table.calc {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.room-calc-sheet table.calc th,
+.room-calc-sheet table.calc td {
+  border: 1px solid #d7dde5;
+  padding: 0;
+}
+
+.room-calc-sheet table.calc th {
+  background: #eef2f7;
+  padding: 2px 4px;
+  font-weight: normal;
+}
+
+.room-calc-sheet table.calc input {
+  width: 100%;
+  border: none;
+  padding: 2px 4px;
+  background: transparent;
+  font: inherit;
+}
+
+.room-calc-sheet table.calc input:focus {
+  background: #fff7cc;
+  outline: 1px solid #1e3a8a;
+}
+
+.room-calc-sheet tbody.set.even {
+  background: #ffffff;
+}
+
+.room-calc-sheet tbody.set.odd {
+  background: #f3f7fb;
+}
+
+.room-calc-sheet td.num {
+  text-align: right;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+
+.room-calc-sheet td.num.minus {
+  color: #dc2626;
+}
+
+.room-calc-sheet td.num.error {
+  color: #7c3aed;
+  text-align: left;
+  font-size: 11px;
+}
+
+.room-calc-sheet td.empty {
+  background: repeating-linear-gradient(
+    45deg,
+    #f8fafc,
+    #f8fafc 6px,
+    #eef2f7 6px,
+    #eef2f7 12px
+  );
+}
+
+.room-calc-sheet .part {
+  width: 90px;
+}
+
+.room-calc-sheet .no {
+  width: 60px;
+  text-align: right;
+  padding-right: 4px;
+}
+
+.room-calc-sheet .unit {
+  width: 50px;
+}
+
+.room-calc-sheet .formula {
+  width: 220px;
+}
+
+.room-calc-sheet .formula-b {
+  width: 80px;
+}
+
+.room-calc-sheet .comment {
+  width: 130px;
+}
+
+.room-calc-sheet .bsym {
+  width: 58px;
+  display: flex;
+}
+
+.room-calc-sheet .bsym button {
+  padding: 0 4px;
+}
+
+.room-calc-sheet .note {
+  font-size: 11px;
+  color: #475569;
+  margin: 4px 0 0;
+}
+
+.room-calc-sheet .note.dim {
+  color: #94a3b8;
+}
+
+.room-calc-sheet .call-window {
+  position: absolute;
+  right: 10px;
+  top: 30px;
+  width: 420px;
+  max-height: 60vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+  padding: 6px 8px;
+  z-index: 20;
+}
+
+.room-calc-sheet .call-subject {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.room-calc-sheet .call-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.room-calc-sheet .call-list li {
+  display: grid;
+  grid-template-columns: 48px 80px 1fr 60px;
+  gap: 4px;
+  padding: 2px 4px;
+  border-bottom: 1px solid #eef2f7;
+  cursor: pointer;
+}
+
+.room-calc-sheet .call-list li:hover,
+.room-calc-sheet .call-list li:focus {
+  background: #e0ecff;
+  outline: none;
+}

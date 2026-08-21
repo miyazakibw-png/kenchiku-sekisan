@@ -152,7 +152,7 @@ body.col-resizing {
   white-space: nowrap;
 }
 
-.grid td input[type='text'],
+.grid td input[type="text"],
 .grid td input:not([type]),
 .grid td select {
   width: 100%;

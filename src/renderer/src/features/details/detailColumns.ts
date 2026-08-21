@@ -1,14 +1,17 @@
-import type { MaterialCategory, Unit } from '@shared/types'
+import type { MaterialCategory, Unit } from "@shared/types";
 import {
   formatDetailNumber,
   isValidDetailNumberInput,
-  parseDetailNumber
-} from '@shared/detailNumber'
-import { resolveMasterName } from '@shared/masters'
-import { resolveUnitName } from '@shared/units'
-import { sortDetails, type SortableDetail } from '../../../../core/sort/detailSortKey'
-import type { GridColumn } from '../grid/gridClipboard'
-import type { DraftRow } from './rowOperations'
+  parseDetailNumber,
+} from "@shared/detailNumber";
+import { resolveMasterName } from "@shared/masters";
+import { resolveUnitName } from "@shared/units";
+import {
+  sortDetails,
+  type SortableDetail,
+} from "../../../../core/sort/detailSortKey";
+import type { GridColumn } from "../grid/gridClipboard";
+import type { DraftRow } from "./rowOperations";
 
 /**
  * Excelとの範囲コピー／貼り付けで用いる論理列。
@@ -16,86 +19,108 @@ import type { DraftRow } from './rowOperations'
  */
 export function buildDetailColumns(
   materialCategories: MaterialCategory[],
-  units: Unit[]
+  units: Unit[],
 ): GridColumn<DraftRow>[] {
   return [
     {
-      key: 'detailNumber',
-      label: '明細番号',
+      key: "detailNumber",
+      label: "明細番号",
       get: (row) => row.detailNumberInput,
       set: (row, value) => {
-        if (value === '') return { row: { ...row, detailNumberInput: '', detailNumber: null } }
+        if (value === "")
+          return { row: { ...row, detailNumberInput: "", detailNumber: null } };
         if (!isValidDetailNumberInput(value)) {
-          return { row, error: '明細番号は小数点以下2桁までの数値です' }
+          return { row, error: "明細番号は小数点以下2桁までの数値です" };
         }
-        const parsed = parseDetailNumber(value)
+        const parsed = parseDetailNumber(value);
         return {
-          row: { ...row, detailNumber: parsed, detailNumberInput: formatDetailNumber(parsed) }
-        }
-      }
+          row: {
+            ...row,
+            detailNumber: parsed,
+            detailNumberInput: formatDetailNumber(parsed),
+          },
+        };
+      },
     },
-    { key: 'partName', label: '部位名（上段）', get: (row) => row.partName, set: (row, value) => ({ row: { ...row, partName: value } }) },
-    { key: 'name', label: '名称（下段）', get: (row) => row.name, set: (row, value) => ({ row: { ...row, name: value } }) },
     {
-      key: 'descriptionUpper',
-      label: '摘要（上段）',
+      key: "partName",
+      label: "部位名（上段）",
+      get: (row) => row.partName,
+      set: (row, value) => ({ row: { ...row, partName: value } }),
+    },
+    {
+      key: "name",
+      label: "名称（下段）",
+      get: (row) => row.name,
+      set: (row, value) => ({ row: { ...row, name: value } }),
+    },
+    {
+      key: "descriptionUpper",
+      label: "摘要（上段）",
       get: (row) => row.descriptionUpper,
-      set: (row, value) => ({ row: { ...row, descriptionUpper: value } })
+      set: (row, value) => ({ row: { ...row, descriptionUpper: value } }),
     },
     {
-      key: 'descriptionLower',
-      label: '摘要（下段）',
+      key: "descriptionLower",
+      label: "摘要（下段）",
       get: (row) => row.descriptionLower,
-      set: (row, value) => ({ row: { ...row, descriptionLower: value } })
+      set: (row, value) => ({ row: { ...row, descriptionLower: value } }),
     },
     {
-      key: 'unit',
-      label: '単位',
+      key: "unit",
+      label: "単位",
       get: (row) => row.unit,
       set: (row, value) => {
-        const resolved = resolveUnitName(units, value)
-        if (resolved !== value) return { row: { ...row, unit: resolved } }
-        if (value !== '' && !units.some((u) => u.name === value)) {
-          return { row: { ...row, unit: value }, warning: '単位マスタに存在しません（取り込みます）' }
+        const resolved = resolveUnitName(units, value);
+        if (resolved !== value) return { row: { ...row, unit: resolved } };
+        if (value !== "" && !units.some((u) => u.name === value)) {
+          return {
+            row: { ...row, unit: value },
+            warning: "単位マスタに存在しません（取り込みます）",
+          };
         }
-        return { row: { ...row, unit: value } }
-      }
+        return { row: { ...row, unit: value } };
+      },
     },
     {
-      key: 'remarksUpper',
-      label: '備考（上段）',
+      key: "remarksUpper",
+      label: "備考（上段）",
       get: (row) => row.remarksUpper,
-      set: (row, value) => ({ row: { ...row, remarksUpper: value } })
+      set: (row, value) => ({ row: { ...row, remarksUpper: value } }),
     },
     {
-      key: 'remarksLower',
-      label: '備考（下段）',
+      key: "remarksLower",
+      label: "備考（下段）",
       get: (row) => row.remarksLower,
-      set: (row, value) => ({ row: { ...row, remarksLower: value } })
+      set: (row, value) => ({ row: { ...row, remarksLower: value } }),
     },
     {
-      key: 'materialCategory',
-      label: '材種区分',
+      key: "materialCategory",
+      label: "材種区分",
       get: (row) => row.materialCategory,
       // 数量チェック用の区分。マスタ番号で入力補助するが、マスタに無い文字も取り込む
       set: (row, value) => {
-        const resolved = resolveMasterName(materialCategories, value)
-        if (resolved !== value || value === '' || materialCategories.some((c) => c.name === value)) {
-          return { row: { ...row, materialCategory: resolved } }
+        const resolved = resolveMasterName(materialCategories, value);
+        if (
+          resolved !== value ||
+          value === "" ||
+          materialCategories.some((c) => c.name === value)
+        ) {
+          return { row: { ...row, materialCategory: resolved } };
         }
         return {
           row: { ...row, materialCategory: value },
-          warning: '材種区分マスタに存在しません（取り込みます）'
-        }
-      }
+          warning: "材種区分マスタに存在しません（取り込みます）",
+        };
+      },
     },
     {
-      key: 'estimateDisplay',
-      label: '積算用表示',
+      key: "estimateDisplay",
+      label: "積算用表示",
       get: (row) => row.estimateDisplay,
-      set: (row, value) => ({ row: { ...row, estimateDisplay: value } })
-    }
-  ]
+      set: (row, value) => ({ row: { ...row, estimateDisplay: value } }),
+    },
+  ];
 }
 
 /** 明細番号の昇順（未設定は末尾）。同値は元の並びを維持する */
@@ -103,13 +128,13 @@ export function buildDetailColumns(
 function toSortable(
   row: DraftRow,
   units: Unit[],
-  materialCategories: MaterialCategory[]
+  materialCategories: MaterialCategory[],
 ): SortableDetail {
   return {
     subjectOrder: null,
-    part1: '',
+    part1: "",
     part2SortOrder: null,
-    part2Name: '',
+    part2Name: "",
     partNumber: null,
     detailNumber: row.detailNumber,
     partName: row.partName,
@@ -120,8 +145,9 @@ function toSortable(
     remarksLower: row.remarksLower,
     remarksUpper: row.remarksUpper,
     materialCategoryOrder:
-      materialCategories.find((c) => c.name === row.materialCategory)?.displayOrder ?? null
-  }
+      materialCategories.find((c) => c.name === row.materialCategory)
+        ?.displayOrder ?? null,
+  };
 }
 
 /**
@@ -131,7 +157,7 @@ function toSortable(
 export function sortDetailRows(
   rows: DraftRow[],
   units: Unit[] = [],
-  materialCategories: MaterialCategory[] = []
+  materialCategories: MaterialCategory[] = [],
 ): DraftRow[] {
-  return sortDetails(rows, (row) => toSortable(row, units, materialCategories))
+  return sortDetails(rows, (row) => toSortable(row, units, materialCategories));
 }

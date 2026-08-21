@@ -425,4 +425,7 @@ ALTER TABLE project_room_sheets ADD COLUMN fittings_json TEXT NOT NULL DEFAULT '
      線ごとに範囲の天井高さを持ち、部屋の天井高さとの差から下がり高さを自動算出する */ `
 ALTER TABLE project_room_sheets ADD COLUMN ceiling_json TEXT NOT NULL DEFAULT '[]';
 `,
+  /* 014: 下段のセット明細計算表（部位ごとのセット・明細・計算式A/B・B1〜B100） */ `
+ALTER TABLE project_room_sheets ADD COLUMN lower_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];

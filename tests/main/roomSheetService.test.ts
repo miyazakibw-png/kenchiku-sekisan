@@ -91,6 +91,7 @@ describe("部屋計算書（上段）", () => {
         '{"edges":[{"id":"a","direction":"E","length":3,"kind":"wall"}]}',
       fittingsJson: "[]",
       ceilingJson: "[]",
+      lowerJson: "[]",
       ceilingHeight: 3.05,
       note: "",
     });
@@ -113,6 +114,8 @@ describe("部屋計算書（上段）", () => {
       fittingsJson: '[{"id":"f1","symbol":"AW1","multiplier":2,"edgeId":"a"}]',
       ceilingJson:
         '[{"id":"c1","kind":"wallBeam","edgeId":"a","length":null,"width":0.4,"offset":0,"ceilingHeight":2.2,"area":null,"note":""}]',
+      lowerJson:
+        '[{"id":"s1","partNumber":10,"partName":"床","details":[],"lines":[{"id":"l1","formulaA":"FA","formulaB":"","comment":"","bSymbol":"B1"}]}]',
       ceilingHeight: 2.4,
       note: "",
     });
@@ -125,6 +128,7 @@ describe("部屋計算書（上段）", () => {
     expect(copiedSheet.shapeJson).toContain('"length":4');
     expect(copiedSheet.fittingsJson).toContain('"AW1"');
     expect(copiedSheet.ceilingJson).toContain('"wallBeam"');
+    expect(copiedSheet.lowerJson).toContain('"B1"');
 
     // コピー先を直してもコピー元は変わらない
     saveRoomSheet(db, {

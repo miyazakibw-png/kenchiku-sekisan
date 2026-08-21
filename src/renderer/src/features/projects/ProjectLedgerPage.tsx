@@ -1,55 +1,63 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MasterOptions, ProjectField, ProjectSummary } from '@shared/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  MasterOptions,
+  ProjectField,
+  ProjectSummary,
+} from "@shared/types";
 import {
   copyName,
   moveProject,
   normalizeDate,
   sortProjects,
-  type LedgerSortKey
-} from './projectLedger'
-import ProjectWorkspacePage from './ProjectWorkspacePage'
-import './ProjectLedgerPage.css'
+  type LedgerSortKey,
+} from "./projectLedger";
+import ProjectWorkspacePage from "./ProjectWorkspacePage";
+import "./ProjectLedgerPage.css";
 
 interface LedgerProps {
-  options: MasterOptions
+  options: MasterOptions;
   /** 物件専用ウィンドウのときは、その工事を最初から開く */
-  initialProjectId?: number | null
+  initialProjectId?: number | null;
 }
 
 export default function ProjectLedgerPage({
   options,
-  initialProjectId = null
+  initialProjectId = null,
 }: LedgerProps): JSX.Element {
-  const [projects, setProjects] = useState<ProjectSummary[]>([])
-  const [fields, setFields] = useState<ProjectField[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [fields, setFields] = useState<ProjectField[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   /** 開いている工事（積算操作画面） */
-  const [openedId, setOpenedId] = useState<number | null>(initialProjectId)
-  const projectWindow = initialProjectId !== null
-  const [fieldEditor, setFieldEditor] = useState<ProjectField[] | null>(null)
-  const [sortDescending, setSortDescending] = useState(false)
-  const [toast, setToast] = useState('')
-  const dragIndex = useRef<number | null>(null)
+  const [openedId, setOpenedId] = useState<number | null>(initialProjectId);
+  const projectWindow = initialProjectId !== null;
+  const [fieldEditor, setFieldEditor] = useState<ProjectField[] | null>(null);
+  const [sortDescending, setSortDescending] = useState(false);
+  const [toast, setToast] = useState("");
+  const dragIndex = useRef<number | null>(null);
 
   const reload = useCallback(async () => {
-    const ledger = await window.sekisan.getProjectLedger()
-    setProjects(ledger.projects)
-    setFields(ledger.fields)
-  }, [])
+    const ledger = await window.sekisan.getProjectLedger();
+    setProjects(ledger.projects);
+    setFields(ledger.fields);
+  }, []);
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void reload();
+  }, [reload]);
 
   const selected = useMemo(
     () => projects.find((project) => project.id === selectedId) ?? null,
-    [projects, selectedId]
-  )
+    [projects, selectedId],
+  );
 
   const persistOrder = useCallback(async (ordered: ProjectSummary[]) => {
-    setProjects(ordered)
-    setProjects(await window.sekisan.reorderProjects(ordered.map((project) => project.id)))
-  }, [])
+    setProjects(ordered);
+    setProjects(
+      await window.sekisan.reorderProjects(
+        ordered.map((project) => project.id),
+      ),
+    );
+  }, []);
 
   const saveProject = useCallback(async (project: ProjectSummary) => {
     const saved = await window.sekisan.saveProject({
@@ -59,79 +67,88 @@ export default function ProjectLedgerPage({
       builderName: project.builderName,
       designerName: project.designerName,
       note: project.note,
-      fieldValues: project.fieldValues
-    })
-    setProjects((prev) => prev.map((row) => (row.id === saved.id ? saved : row)))
-    setToast('保存しました')
-  }, [])
+      fieldValues: project.fieldValues,
+    });
+    setProjects((prev) =>
+      prev.map((row) => (row.id === saved.id ? saved : row)),
+    );
+    setToast("保存しました");
+  }, []);
 
   /** 画面上の編集は行だけを差し替え、確定（フォーカスアウト）で保存する */
   const editRow = useCallback((id: number, patch: Partial<ProjectSummary>) => {
-    setProjects((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
-  }, [])
+    setProjects((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
+  }, []);
 
   const editFieldValue = useCallback(
     (project: ProjectSummary, fieldId: number, value: string) =>
       editRow(project.id, {
-        fieldValues: { ...project.fieldValues, [fieldId]: value }
+        fieldValues: { ...project.fieldValues, [fieldId]: value },
       }),
-    [editRow]
-  )
+    [editRow],
+  );
 
   const create = useCallback(async () => {
-    const created = await window.sekisan.createProject('新規工事')
-    await reload()
-    setSelectedId(created.id)
-    setToast(`管理番号 ${created.managementNo} を作成しました`)
-  }, [reload])
+    const created = await window.sekisan.createProject("新規工事");
+    await reload();
+    setSelectedId(created.id);
+    setToast(`管理番号 ${created.managementNo} を作成しました`);
+  }, [reload]);
 
   const copy = useCallback(async () => {
-    if (!selected) return
-    const created = await window.sekisan.copyProject(selected.id, copyName(selected.name))
-    await reload()
-    setSelectedId(created.id)
-    setToast(`${selected.name} をコピーしました（${created.managementNo}）`)
-  }, [reload, selected])
+    if (!selected) return;
+    const created = await window.sekisan.copyProject(
+      selected.id,
+      copyName(selected.name),
+    );
+    await reload();
+    setSelectedId(created.id);
+    setToast(`${selected.name} をコピーしました（${created.managementNo}）`);
+  }, [reload, selected]);
 
   const sortBy = useCallback(
     (key: LedgerSortKey) => {
-      const descending = !sortDescending
-      setSortDescending(descending)
-      void persistOrder(sortProjects(projects, key, descending))
+      const descending = !sortDescending;
+      setSortDescending(descending);
+      void persistOrder(sortProjects(projects, key, descending));
     },
-    [persistOrder, projects, sortDescending]
-  )
+    [persistOrder, projects, sortDescending],
+  );
 
   const move = useCallback(
     (from: number, to: number) => {
-      const moved = moveProject(projects, from, to)
-      if (moved !== projects) void persistOrder(moved)
+      const moved = moveProject(projects, from, to);
+      if (moved !== projects) void persistOrder(moved);
     },
-    [persistOrder, projects]
-  )
+    [persistOrder, projects],
+  );
 
   const commitDate = useCallback(
     (project: ProjectSummary, input: string) => {
-      const normalized = normalizeDate(input)
+      const normalized = normalizeDate(input);
       if (!normalized) {
-        setToast('日付は 2026-08-17 の形式で入力してください')
-        return
+        setToast("日付は 2026-08-17 の形式で入力してください");
+        return;
       }
-      void saveProject({ ...project, projectDate: normalized })
+      void saveProject({ ...project, projectDate: normalized });
     },
-    [saveProject]
-  )
+    [saveProject],
+  );
 
   const saveFields = useCallback(async () => {
-    if (!fieldEditor) return
-    setFields(await window.sekisan.saveProjectFields(fieldEditor))
-    setFieldEditor(null)
-    await reload()
-    setToast('表示項目を保存しました')
-  }, [fieldEditor, reload])
+    if (!fieldEditor) return;
+    setFields(await window.sekisan.saveProjectFields(fieldEditor));
+    setFieldEditor(null);
+    await reload();
+    setToast("表示項目を保存しました");
+  }, [fieldEditor, reload]);
 
-  const selectedIndex = projects.findIndex((project) => project.id === selectedId)
-  const opened = projects.find((project) => project.id === openedId) ?? null
+  const selectedIndex = projects.findIndex(
+    (project) => project.id === selectedId,
+  );
+  const opened = projects.find((project) => project.id === openedId) ?? null;
 
   if (opened) {
     return (
@@ -141,12 +158,12 @@ export default function ProjectLedgerPage({
         options={options}
         onSave={(project) => void saveProject(project)}
         onBack={() => {
-          if (projectWindow) void window.sekisan.closeWindow()
-          else setOpenedId(null)
+          if (projectWindow) void window.sekisan.closeWindow();
+          else setOpenedId(null);
         }}
-        backLabel={projectWindow ? '✕ この工事を閉じる' : undefined}
+        backLabel={projectWindow ? "✕ この工事を閉じる" : undefined}
       />
-    )
+    );
   }
 
   return (
@@ -173,13 +190,18 @@ export default function ProjectLedgerPage({
         >
           ↓ 下へ
         </button>
-        <button type="button" onClick={() => setFieldEditor(fields.map((field) => ({ ...field })))}>
+        <button
+          type="button"
+          onClick={() => setFieldEditor(fields.map((field) => ({ ...field })))}
+        >
           ⚙ 表示項目
         </button>
         <button
           type="button"
           disabled={!selected}
-          onClick={() => selected && void window.sekisan.openProjectWindow(selected.id)}
+          onClick={() =>
+            selected && void window.sekisan.openProjectWindow(selected.id)
+          }
         >
           🗔 工事を開く
         </button>
@@ -193,12 +215,12 @@ export default function ProjectLedgerPage({
         <thead>
           <tr>
             <th className="handle" />
-            <th onClick={() => sortBy('projectDate')}>日付</th>
-            <th onClick={() => sortBy('managementNo')}>管理番号</th>
-            <th onClick={() => sortBy('name')}>工事名称</th>
-            <th onClick={() => sortBy('builderName')}>建設会社</th>
-            <th onClick={() => sortBy('designerName')}>設計事務所</th>
-            <th onClick={() => sortBy('note')}>備考</th>
+            <th onClick={() => sortBy("projectDate")}>日付</th>
+            <th onClick={() => sortBy("managementNo")}>管理番号</th>
+            <th onClick={() => sortBy("name")}>工事名称</th>
+            <th onClick={() => sortBy("builderName")}>建設会社</th>
+            <th onClick={() => sortBy("designerName")}>設計事務所</th>
+            <th onClick={() => sortBy("note")}>備考</th>
             {fields.map((field) => (
               <th key={field.id}>{field.title}</th>
             ))}
@@ -216,19 +238,22 @@ export default function ProjectLedgerPage({
             <tr
               key={project.id}
               draggable
-              className={selectedId === project.id ? 'selected' : ''}
+              className={selectedId === project.id ? "selected" : ""}
               onClick={() => setSelectedId(project.id)}
-              onDoubleClick={() => void window.sekisan.openProjectWindow(project.id)}
+              onDoubleClick={() =>
+                void window.sekisan.openProjectWindow(project.id)
+              }
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void window.sekisan.openProjectWindow(project.id)
+                if (e.key === "Enter")
+                  void window.sekisan.openProjectWindow(project.id);
               }}
               onDragStart={() => {
-                dragIndex.current = index
+                dragIndex.current = index;
               }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => {
-                if (dragIndex.current !== null) move(dragIndex.current, index)
-                dragIndex.current = null
+                if (dragIndex.current !== null) move(dragIndex.current, index);
+                dragIndex.current = null;
               }}
             >
               <td className="handle" title="ドラッグで並べ替え">
@@ -238,38 +263,51 @@ export default function ProjectLedgerPage({
                 <input
                   className="date"
                   value={project.projectDate}
-                  onChange={(e) => editRow(project.id, { projectDate: e.target.value })}
+                  onChange={(e) =>
+                    editRow(project.id, { projectDate: e.target.value })
+                  }
                   onBlur={(e) => commitDate(project, e.target.value)}
                 />
               </td>
-              <td className="management-no" title="管理用の自動採番のため変更できません">
+              <td
+                className="management-no"
+                title="管理用の自動採番のため変更できません"
+              >
                 {project.managementNo}
               </td>
               <td>
                 <input
                   value={project.name}
-                  onChange={(e) => editRow(project.id, { name: e.target.value })}
+                  onChange={(e) =>
+                    editRow(project.id, { name: e.target.value })
+                  }
                   onBlur={() => void saveProject(project)}
                 />
               </td>
               <td>
                 <input
                   value={project.builderName}
-                  onChange={(e) => editRow(project.id, { builderName: e.target.value })}
+                  onChange={(e) =>
+                    editRow(project.id, { builderName: e.target.value })
+                  }
                   onBlur={() => void saveProject(project)}
                 />
               </td>
               <td>
                 <input
                   value={project.designerName}
-                  onChange={(e) => editRow(project.id, { designerName: e.target.value })}
+                  onChange={(e) =>
+                    editRow(project.id, { designerName: e.target.value })
+                  }
                   onBlur={() => void saveProject(project)}
                 />
               </td>
               <td>
                 <input
                   value={project.note}
-                  onChange={(e) => editRow(project.id, { note: e.target.value })}
+                  onChange={(e) =>
+                    editRow(project.id, { note: e.target.value })
+                  }
                   onBlur={() => void saveProject(project)}
                 />
               </td>
@@ -277,8 +315,10 @@ export default function ProjectLedgerPage({
                 <td key={field.id}>
                   <input
                     style={{ width: `${field.displayWidth}ch` }}
-                    value={project.fieldValues[field.id] ?? ''}
-                    onChange={(e) => editFieldValue(project, field.id, e.target.value)}
+                    value={project.fieldValues[field.id] ?? ""}
+                    onChange={(e) =>
+                      editFieldValue(project, field.id, e.target.value)
+                    }
                     onBlur={() => void saveProject(project)}
                   />
                 </td>
@@ -315,8 +355,10 @@ export default function ProjectLedgerPage({
                           onChange={(e) =>
                             setFieldEditor(
                               fieldEditor.map((row, i) =>
-                                i === index ? { ...row, title: e.target.value } : row
-                              )
+                                i === index
+                                  ? { ...row, title: e.target.value }
+                                  : row,
+                              ),
                             )
                           }
                         />
@@ -331,10 +373,10 @@ export default function ProjectLedgerPage({
                                 i === index
                                   ? {
                                       ...row,
-                                      displayWidth: Number(e.target.value) || 0
+                                      displayWidth: Number(e.target.value) || 0,
                                     }
-                                  : row
-                              )
+                                  : row,
+                              ),
                             )
                           }
                         />
@@ -343,7 +385,9 @@ export default function ProjectLedgerPage({
                         <button
                           type="button"
                           onClick={() =>
-                            setFieldEditor(fieldEditor.filter((_row, i) => i !== index))
+                            setFieldEditor(
+                              fieldEditor.filter((_row, i) => i !== index),
+                            )
                           }
                         >
                           🗑
@@ -362,10 +406,10 @@ export default function ProjectLedgerPage({
                     ...fieldEditor,
                     {
                       id: 0,
-                      title: '追加項目',
+                      title: "追加項目",
                       displayWidth: 30,
-                      displayOrder: fieldEditor.length + 1
-                    }
+                      displayOrder: fieldEditor.length + 1,
+                    },
                   ])
                 }
               >
@@ -375,7 +419,11 @@ export default function ProjectLedgerPage({
               <button type="button" onClick={() => setFieldEditor(null)}>
                 閉じる
               </button>
-              <button type="button" className="primary" onClick={() => void saveFields()}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void saveFields()}
+              >
                 💾 保存
               </button>
             </footer>
@@ -383,5 +431,5 @@ export default function ProjectLedgerPage({
         </div>
       )}
     </div>
-  )
+  );
 }

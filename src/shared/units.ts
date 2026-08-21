@@ -1,5 +1,5 @@
-import { resolveMasterName } from './masters'
-import type { Unit } from './types'
+import { resolveMasterName } from "./masters";
+import type { Unit } from "./types";
 
 /**
  * 単位欄の入力値を解決する。
@@ -7,5 +7,5 @@ import type { Unit } from './types'
  * 該当IDが無い場合や単位名の直接入力はそのまま返す。
  */
 export function resolveUnitName(units: Unit[], input: string): string {
-  return resolveMasterName(units, input)
+  return resolveMasterName(units, input);
 }

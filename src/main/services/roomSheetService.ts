@@ -24,6 +24,7 @@ function toSheet(row: typeof projectRoomSheets.$inferSelect): RoomSheet {
     shapeJson: row.shapeJson,
     fittingsJson: row.fittingsJson,
     ceilingJson: row.ceilingJson,
+    lowerJson: row.lowerJson,
     ceilingHeight: row.ceilingHeight,
     note: row.note,
   };
@@ -74,6 +75,7 @@ export function saveRoomSheet(
         shapeJson: request.shapeJson,
         fittingsJson: request.fittingsJson,
         ceilingJson: request.ceilingJson,
+        lowerJson: request.lowerJson,
         ceilingHeight: request.ceilingHeight,
         note: request.note,
       })

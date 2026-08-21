@@ -1,25 +1,34 @@
-import { asc, eq, inArray } from 'drizzle-orm'
-import type { AppDatabase } from '../db'
+import { asc, eq, inArray } from "drizzle-orm";
+import type { AppDatabase } from "../db";
 import {
   calcSheetDefinitions,
   mDetails,
   mFormworkCategories,
   mMaterialCategories,
+  mPickupParts,
   mSubjects,
-  mUnits
-} from '../db/schema'
-import type { Detail, MasterOptions, SaveDetailsRequest } from '../../shared/types'
-import { DETAIL_NUMBER_DECIMALS } from '../../shared/detailNumber'
+  mUnits,
+} from "../db/schema";
+import type {
+  Detail,
+  MasterOptions,
+  SaveDetailsRequest,
+} from "../../shared/types";
+import { DETAIL_NUMBER_DECIMALS } from "../../shared/detailNumber";
 
 /** 明細番号は小数2桁に丸めて保持する */
 function normalizeDetailNumber(value: number | null): number | null {
-  if (value === null || Number.isNaN(value)) return null
-  return Number(value.toFixed(DETAIL_NUMBER_DECIMALS))
+  if (value === null || Number.isNaN(value)) return null;
+  return Number(value.toFixed(DETAIL_NUMBER_DECIMALS));
 }
 
 export function listMasterOptions(db: AppDatabase): MasterOptions {
   return {
-    subjects: db.select().from(mSubjects).orderBy(asc(mSubjects.displayOrder)).all(),
+    subjects: db
+      .select()
+      .from(mSubjects)
+      .orderBy(asc(mSubjects.displayOrder))
+      .all(),
     materialCategories: db
       .select()
       .from(mMaterialCategories)
@@ -31,16 +40,21 @@ export function listMasterOptions(db: AppDatabase): MasterOptions {
       .from(mFormworkCategories)
       .orderBy(asc(mFormworkCategories.displayOrder))
       .all(),
+    pickupParts: db
+      .select({ id: mPickupParts.id, name: mPickupParts.name })
+      .from(mPickupParts)
+      .orderBy(asc(mPickupParts.displayOrder), asc(mPickupParts.id))
+      .all(),
     calcSheets: db
       .select({
         id: calcSheetDefinitions.id,
         key: calcSheetDefinitions.key,
-        name: calcSheetDefinitions.name
+        name: calcSheetDefinitions.name,
       })
       .from(calcSheetDefinitions)
       .orderBy(asc(calcSheetDefinitions.displayOrder))
-      .all()
-  }
+      .all(),
+  };
 }
 
 export function listDetails(db: AppDatabase, subjectId: number): Detail[] {
@@ -49,7 +63,7 @@ export function listDetails(db: AppDatabase, subjectId: number): Detail[] {
     .from(mDetails)
     .where(eq(mDetails.subjectId, subjectId))
     .orderBy(asc(mDetails.displayOrder), asc(mDetails.id))
-    .all()
+    .all();
 }
 
 /**
@@ -57,11 +71,14 @@ export function listDetails(db: AppDatabase, subjectId: number): Detail[] {
  * 画面の行順をそのまま display_order として採番し、削除行を物理削除する。
  * Undoで復活した行（IDを持つが既にDBに無い行）は同じIDで再作成する。
  */
-export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detail[] {
-  const { subjectId, rows, deletedIds } = request
+export function saveDetails(
+  db: AppDatabase,
+  request: SaveDetailsRequest,
+): Detail[] {
+  const { subjectId, rows, deletedIds } = request;
   db.transaction((tx) => {
     if (deletedIds.length > 0) {
-      tx.delete(mDetails).where(inArray(mDetails.id, deletedIds)).run()
+      tx.delete(mDetails).where(inArray(mDetails.id, deletedIds)).run();
     }
     rows.forEach((row, index) => {
       const values = {
@@ -77,23 +94,23 @@ export function saveDetails(db: AppDatabase, request: SaveDetailsRequest): Detai
         remarksLower: row.remarksLower,
         estimateDisplay: row.estimateDisplay,
         isActive: row.isActive,
-        displayOrder: index
-      }
+        displayOrder: index,
+      };
       if (row.id === null) {
-        tx.insert(mDetails).values(values).run()
-        return
+        tx.insert(mDetails).values(values).run();
+        return;
       }
       const updated = tx
         .update(mDetails)
         .set({ ...values, updatedAt: new Date().toISOString() })
         .where(eq(mDetails.id, row.id))
-        .run()
+        .run();
       if (updated.changes === 0) {
         tx.insert(mDetails)
           .values({ ...values, id: row.id })
-          .run()
+          .run();
       }
-    })
-  })
-  return listDetails(db, subjectId)
+    });
+  });
+  return listDetails(db, subjectId);
 }

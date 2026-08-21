@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   EstimateRowDraft,
   Fitting,
+  MasterOptions,
   ProjectSummary,
   RoomSheet,
   RoomSheetFitting,
@@ -29,6 +30,12 @@ import {
   type CeilingElement,
   type CeilingElementKind,
 } from "../../../../core/room/ceiling";
+import {
+  evaluateCalcSheet,
+  quantityByPart,
+  type CalcSet,
+} from "../../../../core/room/calcSheet";
+import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
@@ -82,6 +89,15 @@ function parseCeiling(json: string): CeilingElement[] {
   }
 }
 
+function parseLower(json: string): CalcSet[] {
+  try {
+    const parsed = JSON.parse(json) as CalcSet[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseShape(json: string): RoomShape {
   try {
     const parsed = JSON.parse(json) as RoomShape;
@@ -127,6 +143,10 @@ export default function RoomSheetPage({
   });
   const [ceiling, setCeiling] = useState<CeilingElement[]>([]);
   const [showCeiling, setShowCeiling] = useState(false);
+  const [lower, setLower] = useState<CalcSet[]>([]);
+  const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
+  const [options, setOptions] = useState<MasterOptions | null>(null);
+  const [showCheck, setShowCheck] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -140,6 +160,8 @@ export default function RoomSheetPage({
       setShape(parseShape(loaded.shapeJson));
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson));
+      setLower(parseLower(loaded.lowerJson));
+      setOptions(await window.sekisan.getMasterOptions());
       setCeilingHeight(loaded.ceilingHeight);
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());
@@ -249,12 +271,13 @@ export default function RoomSheetPage({
       shapeJson: JSON.stringify(shape),
       fittingsJson: JSON.stringify(roomFittings),
       ceilingJson: JSON.stringify(ceiling),
+      lowerJson: JSON.stringify(lower),
       ceilingHeight,
       note: sheet.note,
     });
     setSheet(saved);
     setMessage("保存しました（天井高さは部位別入力表にも反映します）");
-  }, [ceiling, ceilingHeight, roomFittings, shape, sheet]);
+  }, [ceiling, ceilingHeight, lower, roomFittings, shape, sheet]);
 
   const updateCeiling = useCallback(
     (id: string, patch: Partial<CeilingElement>): void =>
@@ -302,6 +325,100 @@ export default function RoomSheetPage({
     setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`);
   }, []);
 
+  /** 計算式に使える数量（上段の記号＋建具表の記号） */
+  const calcVariables = useMemo(() => {
+    const values: Record<string, number> = {};
+    symbols.forEach((item) => {
+      if (item.value !== null) values[item.symbol] = item.value;
+    });
+    fittings.forEach((fitting) => {
+      const computed = computeFitting(fitting);
+      // 下段の建具記号は上段に書かなくても建具表から引用する
+      if (computed.area !== null) values[`<${fitting.symbol}>`] = computed.area;
+      if (fitting.width !== null)
+        values[`<${fitting.symbol}:W>`] = fitting.width;
+      if (fitting.height !== null)
+        values[`<${fitting.symbol}:H>`] = fitting.height;
+      if (computed.baseboardDeduction !== null)
+        values[`<${fitting.symbol}:HL>`] = computed.baseboardDeduction;
+    });
+    return values;
+  }, [fittings, symbols]);
+
+  const calcResult = useMemo(
+    () => evaluateCalcSheet(lower, calcVariables),
+    [calcVariables, lower],
+  );
+
+  /** 記号クリック：計算式にカーソルがあればそこへ入れる。無ければコピーする */
+  const useSymbol = useCallback(
+    (symbol: string) => {
+      const target = calcFocus;
+      if (!target || target.area === "detail") {
+        void copySymbol(symbol);
+        return;
+      }
+      setLower((current) =>
+        current.map((set) =>
+          set.id !== target.setId
+            ? set
+            : {
+                ...set,
+                lines: set.lines.map((line, index) =>
+                  index !== target.index
+                    ? line
+                    : target.area === "formulaA"
+                      ? { ...line, formulaA: line.formulaA + symbol }
+                      : { ...line, formulaB: line.formulaB + symbol },
+                ),
+              },
+        ),
+      );
+      setMessage(`${symbol} を計算式に入れました`);
+    },
+    [calcFocus, copySymbol],
+  );
+
+  /** 画面を閉じるとき、式の誤りがあれば注意して該当箇所へ飛ぶ */
+  const [warned, setWarned] = useState(false);
+  const closePage = useCallback(() => {
+    if (calcResult.errors.length > 0 && !warned) {
+      const first = calcResult.errors[0];
+      const set = lower.find((each) => each.id === first.setId);
+      const index =
+        set?.lines.findIndex((line) => line.id === first.lineId) ?? 0;
+      setCalcFocus({ setId: first.setId, area: "formulaA", index });
+      setWarned(true);
+      setMessage(
+        `計算式の誤りが${calcResult.errors.length}件あります（${first.message}）。もう一度押すと戻ります`,
+      );
+      return;
+    }
+    onBack();
+  }, [calcResult.errors, lower, onBack, warned]);
+
+  /** チェック表：上段の自動計算と下段の計算式合計を見比べる */
+  const checkRows = useMemo(() => {
+    const byPart = quantityByPart(lower, calcResult);
+    const auto: { partName: string; quantity: number | null }[] = [
+      { partName: "床", quantity: quantities.floorArea },
+      { partName: "天井", quantity: quantities.ceilingArea },
+      { partName: "壁", quantity: quantities.wallArea },
+      { partName: "巾木", quantity: quantities.baseboardLength },
+    ];
+    return auto.map((item) => {
+      const manual = byPart
+        .filter((each) => each.partName.startsWith(item.partName))
+        .reduce((sum, each) => sum + each.quantity, 0);
+      return {
+        partName: item.partName,
+        auto: item.quantity,
+        manual,
+        diff: item.quantity === null ? null : manual - item.quantity,
+      };
+    });
+  }, [calcResult, lower, quantities]);
+
   const startShape = (next: RoomShape): void => {
     setShape(next);
     setSelectedEdge(null);
@@ -310,7 +427,7 @@ export default function RoomSheetPage({
   return (
     <div className="room-sheet-page">
       <div className="toolbar">
-        <button type="button" onClick={onBack}>
+        <button type="button" onClick={closePage}>
           ← 部位別入力表へ
         </button>
         <h2>部屋別計算書</h2>
@@ -331,6 +448,9 @@ export default function RoomSheetPage({
         </label>
         <button type="button" onClick={() => void save()}>
           💾 保存
+        </button>
+        <button type="button" onClick={() => setShowCheck(!showCheck)}>
+          ✓ チェック表
         </button>
         <span className="status">{message}</span>
       </div>
@@ -590,10 +710,7 @@ export default function RoomSheetPage({
           <table className="grid">
             <tbody>
               {symbols.map((item) => (
-                <tr
-                  key={item.symbol}
-                  onClick={() => void copySymbol(item.symbol)}
-                >
+                <tr key={item.symbol} onClick={() => useSymbol(item.symbol)}>
                   <td className="symbol">{item.symbol}</td>
                   <td className="label">{item.label}</td>
                   <td className="num">{formatNumber(item.value, 2)}</td>
@@ -994,7 +1111,7 @@ export default function RoomSheetPage({
                 return (
                   <tr
                     key={fitting.id}
-                    onClick={() => void copySymbol(`<${fitting.symbol}>`)}
+                    onClick={() => useSymbol(`<${fitting.symbol}>`)}
                   >
                     <td>{fitting.symbol}</td>
                     <td className="num">{formatNumber(fitting.width, 2)}</td>
@@ -1026,10 +1143,63 @@ export default function RoomSheetPage({
         </section>
       </div>
 
+      <RoomCalcSheet
+        sets={lower}
+        onChange={setLower}
+        variables={calcVariables}
+        options={options}
+        projectId={project.id}
+        focus={calcFocus}
+        onFocus={setCalcFocus}
+        result={calcResult}
+        onMessage={setMessage}
+      />
+
+      {showCheck && (
+        <div className="check-window">
+          <div className="section-bar">
+            <span>チェック表（上段の自動計算と下段の計算式合計）</span>
+            <button type="button" onClick={() => setShowCheck(false)}>
+              ✕ 閉じる
+            </button>
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th>部位</th>
+                <th className="num">自動計算</th>
+                <th className="num">計算式合計</th>
+                <th className="num">差</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checkRows.map((item) => (
+                <tr
+                  key={item.partName}
+                  className={
+                    item.diff !== null && Math.abs(item.diff) > 0.005
+                      ? "differ"
+                      : ""
+                  }
+                >
+                  <td>{item.partName}</td>
+                  <td className="num">{formatNumber(item.auto, 2)}</td>
+                  <td className="num">{formatNumber(item.manual, 2)}</td>
+                  <td className="num">{formatNumber(item.diff, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">
+            印刷には出しません。入力ミスを見つけるための画面です。
+          </p>
+        </div>
+      )}
+
       <p className="hint">
         辺の寸法は空欄にすると、閉じた形になるように自動算出します（同じ方向に未入力が2辺あると寸法不足として
         赤く点滅します）。「開口（壁なし）」にした辺は壁長さ・壁面積に入れません。「柱」にした辺は柱長さ・柱面積として
-        分けて数え、巾木長さには含めます。記号は計算式にそのまま使えます（下段のセット明細計算表は次に作ります）。
+        分けて数え、巾木長さには含めます。記号は下段の計算式にそのまま使えます（計算式にカーソルがあるときに記号をクリックすると差し込みます）。
       </p>
     </div>
   );
