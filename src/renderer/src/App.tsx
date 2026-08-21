@@ -38,9 +38,10 @@ export default function App(): JSX.Element {
   const mainRef = useRef<HTMLElement>(null)
   useStickyHeaders(mainRef)
 
+  // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
   useEffect(() => {
     void window.sekisan.getMasterOptions().then(setOptions)
-  }, [])
+  }, [nav])
 
   useEffect(() => {
     document.title = projectName ? `建築積算システム　${projectName}` : '建築積算システム'
