@@ -370,6 +370,56 @@ export const projectGeneralSheets = sqliteTable("project_general_sheets", {
 });
 
 /**
+ * 転記入力表の1行（1明細）。
+ * 集計書兼工事マスターへ直接計上する入力で、根拠集計（計算書の数量根拠）には含めない。
+ */
+export const projectTransferRows = sqliteTable(
+  "project_transfer_rows",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** A〜G: 空欄なら入力のある上の行を引き継ぐ */
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part2Split: integer("part2_split").notNull().default(0),
+    formwork: text("formwork").notNull().default(""),
+    part3: text("part3").notNull().default(""),
+    /** H: 科目ID */
+    subjectId: integer("subject_id").references(() => mSubjects.id, {
+      onDelete: "set null",
+    }),
+    /** I: 仕上（材種）区分 */
+    materialCategory: text("material_category").notNull().default(""),
+    /** J〜N: 明細（セット明細は使わず、全て1明細入力） */
+    partId: integer("part_id"),
+    partName: text("part_name").notNull().default(""),
+    detailNumber: real("detail_number"),
+    name: text("name").notNull().default(""),
+    /** 呼び出し元の明細レコードID（名称変更で切り離さないための内部ID） */
+    sourceDetailId: integer("source_detail_id"),
+    descriptionUpper: text("description_upper").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
+    quantity: real("quantity"),
+    unit: text("unit").notNull().default(""),
+    /** O・P: 将来用（単価・金額） */
+    unitPrice: real("unit_price"),
+    amount: real("amount"),
+    /** Q・R: 備考とメモ（メモはどこにも連動しない） */
+    remarks: text("remarks").notNull().default(""),
+    memo: text("memo").notNull().default(""),
+    displayOrder: integer("display_order").notNull().default(0),
+  },
+  (t) => ({
+    projectIdx: index("idx_transfer_rows_project").on(
+      t.projectId,
+      t.displayOrder,
+    ),
+  }),
+);
+
+/**
  * 動的計算書スキーマ。
  * 計算書（シート）のUIレイアウトと計算式定義をJSONで保持し、
  * コア改修なしに新しい計算書を追加できるようにする。

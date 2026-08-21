@@ -49,7 +49,7 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: '転記入力表',
     group: 'input',
     note: '集計書へ直接集計。1明細で複数行の仕様書きが可能。根拠集計・セット明細には登録しない',
-    ready: false
+    ready: true
   },
   {
     key: 'aggregate',

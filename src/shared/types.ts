@@ -255,6 +255,57 @@ export type SaveGeneralSheetRequest = Omit<
   "projectId" | "estimateRowId"
 >;
 
+/**
+ * 転記入力表の1行（1明細）。
+ * 集計書兼工事マスターへ直接計上し、根拠集計（計算書の数量根拠）には含めない。
+ */
+export interface TransferRow {
+  id: number;
+  projectId: number;
+  /** A〜G: 空欄なら入力のある上の行を引き継ぐ */
+  part1: string;
+  part2: string;
+  /** 1: 集計時に部位Ⅱ別で仕分ける */
+  part2Split: number;
+  formwork: string;
+  part3: string;
+  /** H: 科目ID */
+  subjectId: number | null;
+  /** I: 仕上（材種）区分 */
+  materialCategory: string;
+  /** J〜N: 明細（セット明細は使わず、全て1明細入力） */
+  partId: number | null;
+  partName: string;
+  detailNumber: number | null;
+  name: string;
+  /** 呼び出し元の明細レコードID */
+  sourceDetailId: number | null;
+  descriptionUpper: string;
+  descriptionLower: string;
+  quantity: number | null;
+  unit: string;
+  /** O・P: 将来用（単価・金額） */
+  unitPrice: number | null;
+  amount: number | null;
+  /** Q: 備考 */
+  remarks: string;
+  /** R: メモ（どこにも連動しない） */
+  memo: string;
+  displayOrder: number;
+}
+
+export type TransferRowDraft = Omit<
+  TransferRow,
+  "id" | "projectId" | "displayOrder"
+> & {
+  id: number | null;
+};
+
+export interface SaveTransferRowsRequest {
+  projectId: number;
+  rows: TransferRowDraft[];
+}
+
 /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
 export interface FrameRoomOption {
   estimateRowId: number;

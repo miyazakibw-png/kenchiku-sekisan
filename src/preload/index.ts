@@ -25,8 +25,10 @@ import type {
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SaveSubjectsResult,
+  SaveTransferRowsRequest,
   Subject,
   SubjectDraft,
+  TransferRow,
 } from "../shared/types";
 
 const api = {
@@ -89,6 +91,13 @@ const api = {
     ipcRenderer.invoke(IPC.generalSheetGet, estimateRowId),
   saveGeneralSheet: (request: SaveGeneralSheetRequest): Promise<GeneralSheet> =>
     ipcRenderer.invoke(IPC.generalSheetSave, request),
+  /** 転記入力表（集計書兼工事マスターへ直接計上する1明細入力） */
+  listTransferRows: (projectId: number): Promise<TransferRow[]> =>
+    ipcRenderer.invoke(IPC.transferRowsList, projectId),
+  saveTransferRows: (
+    request: SaveTransferRowsRequest,
+  ): Promise<TransferRow[]> =>
+    ipcRenderer.invoke(IPC.transferRowsSave, request),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

@@ -1,0 +1,154 @@
+table.transfer {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+table.transfer th,
+table.transfer td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+table.transfer th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+}
+
+table.transfer th.future {
+  background: #7f9db9;
+}
+
+table.transfer td.future {
+  background: #f1f3f6;
+}
+
+table.transfer th.no,
+table.transfer td.no {
+  width: 6ch;
+  text-align: right;
+  color: #6b7280;
+}
+
+table.transfer th.part,
+table.transfer th.room,
+table.transfer th.name {
+  min-width: 12ch;
+}
+
+table.transfer th.flag,
+table.transfer td.flag {
+  width: 8ch;
+  text-align: center;
+}
+
+table.transfer th.subject,
+table.transfer td.subject {
+  width: 6ch;
+}
+
+table.transfer th.unit,
+table.transfer td.unit,
+table.transfer th.num,
+table.transfer td.num {
+  width: 8ch;
+}
+
+table.transfer th.memo {
+  min-width: 14ch;
+}
+
+table.transfer input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+}
+
+table.transfer input.num {
+  text-align: right;
+}
+
+table.transfer input::placeholder {
+  color: #c3c9d2;
+}
+
+/* 1明細＝上下2行。明細の中は罫線を出さず、明細どうしの区切りだけ残す */
+table.transfer tr.detail-upper > td:not([rowspan]) {
+  border-bottom: none;
+}
+
+table.transfer tr.detail-lower > td:not([rowspan]) {
+  border-top: none;
+}
+
+table.transfer tbody.row.selected {
+  background: #e8f0fe;
+}
+
+.transfer-page .call-window {
+  position: fixed;
+  right: 24px;
+  top: 90px;
+  width: 420px;
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+  padding: 6px 8px;
+  z-index: 20;
+}
+
+.transfer-page .section-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0 4px;
+  flex-wrap: wrap;
+}
+
+.transfer-page .section-bar button.on,
+.transfer-page .toolbar button.on {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+.transfer-page .call-subject {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.transfer-page .call-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.transfer-page .call-list li {
+  display: grid;
+  grid-template-columns: 60px 80px 1fr 60px;
+  gap: 4px;
+  padding: 2px 4px;
+  border-bottom: 1px solid #eef2f7;
+  cursor: pointer;
+}
+
+.transfer-page .call-list li:hover,
+.transfer-page .call-list li:focus {
+  background: #e0ecff;
+  outline: none;
+}
+
+.transfer-page .note {
+  font-size: 11px;
+  color: #475569;
+  margin: 4px 0 0;
+}

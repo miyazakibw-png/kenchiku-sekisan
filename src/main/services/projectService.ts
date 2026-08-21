@@ -12,6 +12,7 @@ import {
   projectGeneralSheets,
   projectRoomFinishes,
   projectRoomSheets,
+  projectTransferRows,
   projects
 } from '../db/schema'
 import type {
@@ -226,6 +227,16 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
         if (copiedRowId === undefined) return
         tx.insert(projectGeneralSheets)
           .values({ ...rest, projectId: newId, estimateRowId: copiedRowId })
+          .run()
+      })
+
+    tx.select()
+      .from(projectTransferRows)
+      .where(eq(projectTransferRows.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
+        tx.insert(projectTransferRows)
+          .values({ ...rest, projectId: newId })
           .run()
       })
 

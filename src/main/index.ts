@@ -45,6 +45,10 @@ import {
   getGeneralSheet,
   saveGeneralSheet,
 } from "./services/generalSheetService";
+import {
+  listTransferRows,
+  saveTransferRows,
+} from "./services/transferRowService";
 import { IPC } from "../shared/ipc";
 import type {
   ProjectField,
@@ -56,6 +60,7 @@ import type {
   SaveGeneralSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
+  SaveTransferRowsRequest,
   SubjectDraft,
 } from "../shared/types";
 
@@ -145,6 +150,14 @@ function registerIpcHandlers(): void {
     IPC.generalSheetSave,
     (_event, request: SaveGeneralSheetRequest) =>
       saveGeneralSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.transferRowsList, (_event, projectId: number) =>
+    listTransferRows(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.transferRowsSave,
+    (_event, request: SaveTransferRowsRequest) =>
+      saveTransferRows(getDatabase(), request),
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>

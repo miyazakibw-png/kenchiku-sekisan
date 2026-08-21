@@ -13,6 +13,7 @@ import {
 import { useActiveProjectName } from '../../activeProject'
 import FittingsPage from '../fittings/FittingsPage'
 import EstimatePartsPage from '../estimate/EstimatePartsPage'
+import TransferSheetPage from '../estimate/TransferSheetPage'
 import './ProjectWorkspacePage.css'
 
 interface Props {
@@ -158,6 +159,12 @@ export default function ProjectWorkspacePage({
   if (openedMenu === 'roomFinishes') {
     return (
       <EstimatePartsPage project={draft} options={options} onBack={() => setOpenedMenu(null)} />
+    )
+  }
+
+  if (openedMenu === 'transferInput') {
+    return (
+      <TransferSheetPage project={draft} options={options} onBack={() => setOpenedMenu(null)} />
     )
   }
 

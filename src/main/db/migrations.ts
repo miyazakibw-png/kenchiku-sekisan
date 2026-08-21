@@ -461,4 +461,37 @@ CREATE TABLE project_general_sheets (
 );
 CREATE UNIQUE INDEX uq_general_sheet_row ON project_general_sheets(estimate_row_id);
 `,
+  /* 017: 転記入力表（集計書兼工事マスターへ直接計上する1明細入力） */ `
+CREATE TABLE project_transfer_rows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  -- A〜G: 部位別入力表と同じ扱い（空欄なら入力のある上の行を引き継ぐ）
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  formwork TEXT NOT NULL DEFAULT '',
+  part3 TEXT NOT NULL DEFAULT '',
+  -- H・I: 科目ID・仕上（材種）区分
+  subject_id INTEGER REFERENCES m_subjects(id) ON DELETE SET NULL,
+  material_category TEXT NOT NULL DEFAULT '',
+  -- J〜N: 入力する明細（セット明細は使わず、全て1明細入力）
+  part_id INTEGER,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  source_detail_id INTEGER,
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  quantity REAL,
+  unit TEXT NOT NULL DEFAULT '',
+  -- O・P: 将来用（単価・金額）
+  unit_price REAL,
+  amount REAL,
+  -- Q・R: 備考とメモ（メモはどこにも連動しない）
+  remarks TEXT NOT NULL DEFAULT '',
+  memo TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, display_order);
+`,
 ];
