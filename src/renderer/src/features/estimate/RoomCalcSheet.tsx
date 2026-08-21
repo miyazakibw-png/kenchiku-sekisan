@@ -30,6 +30,7 @@ import {
   setAsTsv,
 } from "../../../../core/room/calcClipboard";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
+import { useColumnWidths } from "../../hooks/useColumnWidths";
 import "./RoomCalcSheet.css";
 
 /** いま入力しているセル（記号クリックの差し込み先・呼出の位置に使う） */
@@ -65,6 +66,50 @@ function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   }));
 }
 
+/** セット明細計算表の列（列幅はドラッグで変えられます） */
+const CALC_COLUMNS: { label: string; title: string; width: number }[] = [
+  { label: "部位", title: "部位マスターの番号で入力します", width: 90 },
+  { label: "科目ID", title: "工種科目のID（番号で入力します）", width: 46 },
+  { label: "材種区分", title: "材種区分マスター", width: 66 },
+  { label: "明細番号", title: "呼び出した明細の番号", width: 56 },
+  {
+    label: "部位名／名称",
+    title: "上段に部位名、下段に名称（1明細＝上下2行）",
+    width: 200,
+  },
+  { label: "摘要", title: "上段・下段の摘要", width: 200 },
+  { label: "単位", title: "単位マスター", width: 50 },
+  {
+    label: "掛け率",
+    title: "セットで拾うが計上単位が異なるときに使います",
+    width: 50,
+  },
+  {
+    label: "部位合計",
+    title: "このセットの累計×掛け率（集計に出る数量）",
+    width: 72,
+  },
+  { label: "コメント", title: "計算式のコメント", width: 120 },
+  { label: "計算式Ａ", title: "計算式Ａ", width: 200 },
+  {
+    label: "Ｂ",
+    title: "ＡとＢの両方に入力すると Ａ×Ｂ になります",
+    width: 80,
+  },
+  { label: "結果", title: "計算式の結果", width: 70 },
+  { label: "累計", title: "このセットの累計", width: 70 },
+  {
+    label: "記号",
+    title: "セット全体で1つ（このセットの累計を他で使う記号）",
+    width: 58,
+  },
+  { label: "備考", title: "上段・下段の備考", width: 120 },
+  { label: "積算用表示", title: "内訳書へ出すときの表示", width: 90 },
+  { label: "操作", title: "明細の並べ替え・削除", width: 92 },
+];
+
+const CALC_COLUMN_WIDTHS = CALC_COLUMNS.map((column) => column.width);
+
 const SOURCE_LABEL: Record<CallSource, string> = {
   basic: "基本マスター（明細）",
   project: "工事マスター（明細）",
@@ -87,8 +132,14 @@ export default function RoomCalcSheet({
   const [source, setSource] = useState<CallSource>("basic");
   const [insertMode, setInsertMode] = useState(false);
   const [subjectId, setSubjectId] = useState<number | null>(null);
+  const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
+  const {
+    widths,
+    startResize,
+    reset: resetWidths,
+  } = useColumnWidths("calc-sheet-columns", CALC_COLUMN_WIDTHS);
 
   const subjects: Subject[] = options?.subjects ?? [];
 
@@ -136,6 +187,34 @@ export default function RoomCalcSheet({
       });
     },
     [sets, updateSet],
+  );
+
+  /** セットの中の明細を1件だけ削除する（他の明細と計算式は残す） */
+  const removeDetail = useCallback(
+    (setId: string, index: number): void => {
+      const target = sets.find((set) => set.id === setId);
+      if (!target) return;
+      updateSet(setId, {
+        details: target.details.filter((_, rowIndex) => rowIndex !== index),
+      });
+      onFocus(null);
+    },
+    [onFocus, sets, updateSet],
+  );
+
+  /** セットの中の明細を上下に入れ替える */
+  const moveDetail = useCallback(
+    (setId: string, index: number, step: number): void => {
+      const target = sets.find((set) => set.id === setId);
+      if (!target) return;
+      const to = index + step;
+      if (to < 0 || to >= target.details.length) return;
+      const details = [...target.details];
+      [details[index], details[to]] = [details[to], details[index]];
+      updateSet(setId, { details });
+      onFocus({ setId, area: "detail", index: to });
+    },
+    [onFocus, sets, updateSet],
   );
 
   /** カーソルのあるセット（無ければ最後のセット） */
@@ -282,7 +361,9 @@ export default function RoomCalcSheet({
       const text = detailAsTsv(currentDetail);
       await navigator.clipboard.writeText(text);
       setCalcClip({ kind: "detail", text, detail: currentDetail });
-      onMessage(`明細「${currentDetail.name || "（名称なし）"}」をコピーしました`);
+      onMessage(
+        `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
+      );
       return;
     }
     const text = setAsTsv(currentSet);
@@ -403,6 +484,13 @@ export default function RoomCalcSheet({
         >
           📂 マスター呼出
         </button>
+        <button
+          type="button"
+          title="見出しの境目をドラッグすると列幅を変えられます。押すと元の幅に戻します"
+          onClick={resetWidths}
+        >
+          ↔ 列幅リセット
+        </button>
         <span className="hint">
           {hasUpper
             ? "記号は上段の表をクリックすると計算式へ入ります"
@@ -411,48 +499,23 @@ export default function RoomCalcSheet({
       </div>
 
       <table className="grid calc">
+        <colgroup>
+          {CALC_COLUMNS.map((column, index) => (
+            <col key={column.label} style={{ width: `${widths[index]}px` }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th className="part">部位</th>
-            <th className="subject" title="工種科目のID（番号で入力します）">
-              科目ID
-            </th>
-            <th className="material">材種区分</th>
-            <th className="no">明細番号</th>
-            <th
-              className="name"
-              title="上段に部位名、下段に名称（1明細＝上下2行）"
-            >
-              部位名／名称
-            </th>
-            <th>摘要</th>
-            <th className="unit">単位</th>
-            <th
-              className="coef"
-              title="セットで拾うが計上単位が異なるときに使います"
-            >
-              掛け率
-            </th>
-            <th
-              className="num total"
-              title="このセットの累計×掛け率（集計に出る数量）"
-            >
-              部位合計
-            </th>
-            <th className="comment">コメント</th>
-            <th className="formula">計算式Ａ</th>
-            <th className="formula-b">Ｂ</th>
-            <th className="num">結果</th>
-            <th className="num">累計</th>
-            <th
-              className="bsym"
-              title="セット全体で1つ（このセットの累計を他で使う記号）"
-            >
-              記号
-            </th>
-            <th>備考</th>
-            <th className="estimate">積算用表示</th>
-            <th />
+            {CALC_COLUMNS.map((column, index) => (
+              <th key={column.label} title={column.title}>
+                {column.label}
+                <span
+                  className="col-resize"
+                  title="ドラッグで列幅を変えられます"
+                  onMouseDown={(e) => startResize(index, e)}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         {sets.map((set, setIndex) => (
@@ -789,17 +852,63 @@ export default function RoomCalcSheet({
                   ) : (
                     <td className="empty" colSpan={2} />
                   )}
-                  {rowIndex === 0 && (
-                    <td rowSpan={rowCount}>
-                      <button
-                        type="button"
-                        title="このセット明細を削除します"
-                        onClick={() =>
-                          onChange(sets.filter((each) => each.id !== set.id))
-                        }
+                  {detail ? (
+                    isUpper && (
+                      <td
+                        className="ops"
+                        rowSpan={rowIndex + 1 < rowCount ? 2 : 1}
                       >
-                        🗑
-                      </button>
+                        <button
+                          type="button"
+                          title="この明細を1つ上へ移動します"
+                          disabled={detailIndex === 0}
+                          onClick={() => moveDetail(set.id, detailIndex, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          title="この明細を1つ下へ移動します"
+                          disabled={detailIndex === set.details.length - 1}
+                          onClick={() => moveDetail(set.id, detailIndex, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          title="この明細1件だけを削除します"
+                          onClick={() => removeDetail(set.id, detailIndex)}
+                        >
+                          ✕
+                        </button>
+                        {detailIndex === 0 && (
+                          <button
+                            type="button"
+                            title="このセット明細をまるごと削除します"
+                            onClick={() =>
+                              onChange(
+                                sets.filter((each) => each.id !== set.id),
+                              )
+                            }
+                          >
+                            🗑
+                          </button>
+                        )}
+                      </td>
+                    )
+                  ) : (
+                    <td className="ops">
+                      {rowIndex === 0 && (
+                        <button
+                          type="button"
+                          title="このセット明細をまるごと削除します"
+                          onClick={() =>
+                            onChange(sets.filter((each) => each.id !== set.id))
+                          }
+                        >
+                          🗑
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -890,47 +999,74 @@ export default function RoomCalcSheet({
           ) : (
             <>
               <div className="call-subject">
-                <span>工種科目（番号で入力）</span>
+                <span>工種科目</span>
                 <input
-                  list="calc-subjects"
+                  className="num"
+                  placeholder="番号"
+                  value={subjectNumber}
+                  title="工種科目の番号を入れると、その科目の明細を出します"
                   onChange={(e) => {
                     const text = e.target.value.trim();
-                    const byNumber = subjects.find(
+                    setSubjectNumber(e.target.value);
+                    const found = subjects.find(
                       (subject) => String(subject.id) === text,
                     );
-                    const byName = subjects.find(
-                      (subject) => subject.name === text,
-                    );
-                    setSubjectId((byNumber ?? byName)?.id ?? null);
+                    setSubjectId(found?.id ?? null);
                   }}
                 />
-                <datalist id="calc-subjects">
+                <select
+                  value={subjectId === null ? "" : String(subjectId)}
+                  title="一覧から選び直せます（何回でも選べます）"
+                  onChange={(e) => {
+                    const id = Number.parseInt(e.target.value, 10);
+                    setSubjectId(Number.isNaN(id) ? null : id);
+                    setSubjectNumber(Number.isNaN(id) ? "" : String(id));
+                  }}
+                >
+                  <option value="">（工種科目を選ぶ）</option>
                   {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.name}>
-                      {subject.id}
+                    <option key={subject.id} value={subject.id}>
+                      {subject.id}：{subject.name}
                     </option>
                   ))}
-                </datalist>
+                </select>
+                <span className="count">{details.length}件</span>
               </div>
-              <ul className="call-list">
-                {details.map((detail) => (
-                  <li
-                    key={detail.id}
-                    tabIndex={0}
-                    onDoubleClick={() => callDetail(detail)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") callDetail(detail);
-                    }}
-                  >
-                    <span className="scope">
-                      {detail.detailNumber?.toFixed(2) ?? ""}
-                    </span>
-                    <span className="part">{detail.partName}</span>
-                    <span className="name">{detail.name}</span>
-                    <span className="count">{detail.unit}</span>
-                  </li>
-                ))}
-              </ul>
+              <table className="call-table">
+                <thead>
+                  <tr>
+                    <th className="no">番号</th>
+                    <th>部位名／名称</th>
+                    <th>摘要</th>
+                    <th className="unit">単位</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {details.map((detail) => (
+                    <tr
+                      key={detail.id}
+                      tabIndex={0}
+                      onDoubleClick={() => callDetail(detail)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") callDetail(detail);
+                      }}
+                    >
+                      <td className="no">
+                        {detail.detailNumber?.toFixed(2) ?? ""}
+                      </td>
+                      <td>
+                        <div className="upper">{detail.partName}</div>
+                        <div className="lower">{detail.name}</div>
+                      </td>
+                      <td>
+                        <div className="upper">{detail.descriptionUpper}</div>
+                        <div className="lower">{detail.descriptionLower}</div>
+                      </td>
+                      <td className="unit">{detail.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
           <p className="note">
@@ -940,14 +1076,16 @@ export default function RoomCalcSheet({
       )}
 
       <p className="note">
-        計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}建具記号（&lt;AW1&gt;
+        計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}
+        建具記号（&lt;AW1&gt;
         …建具表から直接引用）、他セットの累計（B1〜B100）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
       </p>
       <p className="note dim">
         コピー・貼り付け（Ctrl+C／Ctrl+V）：明細欄にカーソルがあれば明細1件、計算式欄なら
         セット1つを写します。Excelの表は、明細欄にカーソルがあれば
         部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順、
-        計算式欄なら コメント／計算式Ａ／計算式Ｂ の順（1列だけなら計算式Ａ）で取り込みます。
+        計算式欄なら コメント／計算式Ａ／計算式Ｂ
+        の順（1列だけなら計算式Ａ）で取り込みます。
       </p>
       <CalcVariablesHint variables={variables} hasUpper={hasUpper} />
     </div>
@@ -964,7 +1102,8 @@ function CalcVariablesHint({
   const count = Object.keys(variables).length;
   return (
     <p className="note dim">
-      計算式に使える記号：{count}件（{hasUpper ? "上段の表と建具表" : "建具表"}）
+      計算式に使える記号：{count}件（{hasUpper ? "上段の表と建具表" : "建具表"}
+      ）
     </p>
   );
 }

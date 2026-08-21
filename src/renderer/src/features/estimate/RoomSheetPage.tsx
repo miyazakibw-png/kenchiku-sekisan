@@ -154,6 +154,8 @@ export default function RoomSheetPage({
   const [cutAcross, setCutAcross] = useState("1.00");
   const [cutAlong, setCutAlong] = useState("1.00");
   const [zoom, setZoom] = useState(1);
+  /** 角の○印を出すか（形が決まったら消して寸法を見やすくできます） */
+  const [showCorners, setShowCorners] = useState(true);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
@@ -195,6 +197,18 @@ export default function RoomSheetPage({
     const drawnSize = Math.max(canvasSize * zoom, 1);
     return (view.span / drawnSize) * 12;
   }, [canvasSize, view.span, zoom]);
+
+  /** 角の○印の大きさ（短い辺や寸法文字にかからないように小さくする） */
+  const cornerRadius = useMemo(() => {
+    const points = solved.points;
+    if (points.length === 0) return 0;
+    const shortest = points.reduce((min, point, index) => {
+      const next = points[(index + 1) % points.length];
+      const length = Math.abs(next.x - point.x) + Math.abs(next.y - point.y);
+      return length > 0 ? Math.min(min, length) : min;
+    }, Number.POSITIVE_INFINITY);
+    return Math.min(view.span * 0.025, shortest * 0.18, dimFontSize * 0.7);
+  }, [dimFontSize, solved.points, view.span]);
 
   /** 上段の建具は寸法を保持せず、常に建具表から引用する */
   const resolvedFittings = useMemo<RoomFitting[]>(
@@ -624,6 +638,17 @@ export default function RoomSheetPage({
             <button type="button" onClick={() => setZoom(1)}>
               全体
             </button>
+            <button
+              type="button"
+              className={showCorners ? "on" : ""}
+              title="角の○印を出す／消す（形が決まったら消せます）"
+              onClick={() => {
+                if (showCorners) setSelectedCorner(null);
+                setShowCorners(!showCorners);
+              }}
+            >
+              {showCorners ? "○角を消す" : "○角を出す"}
+            </button>
           </div>
           <div className="canvas" ref={canvasRef}>
             <svg
@@ -675,19 +700,20 @@ export default function RoomSheetPage({
                   </g>
                 );
               })}
-              {solved.points.map((point, index) => (
-                <circle
-                  key={`corner-${solved.edges[index].id}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={view.span * 0.035}
-                  className={`corner ${selectedCorner === index ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedCorner(index);
-                    setSelectedEdge(null);
-                  }}
-                />
-              ))}
+              {showCorners &&
+                solved.points.map((point, index) => (
+                  <circle
+                    key={`corner-${solved.edges[index].id}`}
+                    cx={point.x}
+                    cy={point.y}
+                    r={cornerRadius}
+                    className={`corner ${selectedCorner === index ? "selected" : ""}`}
+                    onClick={() => {
+                      setSelectedCorner(index);
+                      setSelectedEdge(null);
+                    }}
+                  />
+                ))}
               {showCeiling &&
                 ceilingLines.map((line) => (
                   <g key={line.key}>

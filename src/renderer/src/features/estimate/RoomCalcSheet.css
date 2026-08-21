@@ -22,9 +22,39 @@
 }
 
 .room-calc-sheet table.calc {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
+}
+
+.room-calc-sheet table.calc th {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* 見出しの右端。ドラッグで列幅を変える */
+.room-calc-sheet .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.room-calc-sheet .col-resize:hover {
+  background: #94a3b8;
+}
+
+.room-calc-sheet td.ops {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.room-calc-sheet td.ops button {
+  padding: 0 3px;
 }
 
 .room-calc-sheet table.calc th,
@@ -187,8 +217,9 @@
   position: fixed;
   right: 24px;
   top: 90px;
-  width: 420px;
-  max-height: 70vh;
+  width: 760px;
+  max-width: calc(100vw - 48px);
+  max-height: 78vh;
   overflow: auto;
   background: #fff;
   border: 1px solid #94a3b8;
@@ -209,9 +240,69 @@
   white-space: nowrap;
 }
 
-.room-calc-sheet .call-subject input {
+.room-calc-sheet .call-subject input.num {
+  flex: 0 0 auto;
+  width: 60px;
+  text-align: right;
+}
+
+.room-calc-sheet .call-subject select {
   flex: 1 1 auto;
-  min-width: 90px;
+  min-width: 160px;
+}
+
+/* 呼出一覧（1明細＝上下2行。摘要まで見えるようにする） */
+.room-calc-sheet .call-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.room-calc-sheet .call-table th {
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: normal;
+  border: 1px solid #cbd5e1;
+  padding: 2px 4px;
+}
+
+.room-calc-sheet .call-table td {
+  border: 1px solid #e2e8f0;
+  border-bottom-color: #cbd5e1;
+  padding: 1px 4px;
+  vertical-align: top;
+}
+
+.room-calc-sheet .call-table tbody tr {
+  cursor: pointer;
+}
+
+.room-calc-sheet .call-table tbody tr:hover,
+.room-calc-sheet .call-table tbody tr:focus {
+  background: #e0ecff;
+  outline: none;
+}
+
+/* 1明細は上下2段（上段＝部位名・摘要（上）、下段＝名称・摘要（下）） */
+.room-calc-sheet .call-table td .upper,
+.room-calc-sheet .call-table td .lower {
+  min-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+.room-calc-sheet .call-table td .lower {
+  border-top: 1px dotted #e2e8f0;
+}
+
+.room-calc-sheet .call-table .no {
+  width: 60px;
+  text-align: right;
+}
+
+.room-calc-sheet .call-table .unit {
+  width: 50px;
 }
 
 .room-calc-sheet .call-list {
