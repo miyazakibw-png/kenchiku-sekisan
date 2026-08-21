@@ -67,13 +67,26 @@ function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   }));
 }
 
-/** 部位名から部位マスターの番号を引く（番号欄の表示用） */
+/** 部位番号（無ければ部位名）から部位マスターの番号を引く（番号欄の表示用） */
 function partNumberOf(
   parts: { id: number; name: string }[],
   partName: string,
+  partNumber?: number | null,
 ): string {
+  if (partNumber !== null && partNumber !== undefined)
+    return String(partNumber);
   const found = parts.find((part) => part.name === partName.trim());
   return found ? String(found.id) : "";
+}
+
+/** 番号が入っていれば、表示する名称はマスターの今の名称に合わせる */
+function partNameOf(
+  parts: { id: number; name: string }[],
+  partName: string,
+  partNumber?: number | null,
+): string {
+  if (partNumber === null || partNumber === undefined) return partName;
+  return parts.find((part) => part.id === partNumber)?.name ?? partName;
 }
 
 /** 番号欄の入力から、番号と名称を同時に決める */
@@ -853,7 +866,11 @@ export default function RoomCalcSheet({
                           />
                           <PickInput
                             listId="calc-parts"
-                            value={set.partName}
+                            value={partNameOf(
+                              options?.aggregationParts ?? [],
+                              set.partName,
+                              set.partNumber,
+                            )}
                             placeholder="番号／一覧"
                             title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
                             onCommit={(text) => {
@@ -925,6 +942,7 @@ export default function RoomCalcSheet({
                               value={partNumberOf(
                                 options?.pickupParts ?? [],
                                 detail.partName,
+                                detail.partNumber,
                               )}
                               placeholder="部位ID"
                               title="明細用部位のID。選ぶと右の部位名も同時に入ります"
@@ -935,15 +953,17 @@ export default function RoomCalcSheet({
                                   index: detailIndex,
                                 })
                               }
-                              onCommit={(text) =>
+                              onCommit={(text) => {
+                                const picked = partByNumber(
+                                  options?.pickupParts ?? [],
+                                  text,
+                                  detail.partName,
+                                );
                                 updateDetail(set.id, detailIndex, {
-                                  partName: partByNumber(
-                                    options?.pickupParts ?? [],
-                                    text,
-                                    detail.partName,
-                                  ).partName,
-                                })
-                              }
+                                  partNumber: picked.partNumber,
+                                  partName: picked.partName,
+                                });
+                              }}
                             />
                           )}
                           {!isUpper && (
@@ -1002,7 +1022,11 @@ export default function RoomCalcSheet({
                           {isUpper ? (
                             <PickInput
                               listId="calc-detail-parts"
-                              value={detail.partName}
+                              value={partNameOf(
+                                options?.pickupParts ?? [],
+                                detail.partName,
+                                detail.partNumber,
+                              )}
                               placeholder="部位名／一覧"
                               title="明細用部位の名称（左の部位IDでも選べます）"
                               onFocus={() =>
@@ -1012,14 +1036,16 @@ export default function RoomCalcSheet({
                                   index: detailIndex,
                                 })
                               }
-                              onCommit={(text) =>
+                              onCommit={(text) => {
+                                const parts = options?.pickupParts ?? [];
+                                const name = resolveMasterName(parts, text);
                                 updateDetail(set.id, detailIndex, {
-                                  partName: resolveMasterName(
-                                    options?.pickupParts ?? [],
-                                    text,
-                                  ),
-                                })
-                              }
+                                  partNumber:
+                                    parts.find((part) => part.name === name)
+                                      ?.id ?? null,
+                                  partName: name,
+                                });
+                              }}
                             />
                           ) : (
                             <input

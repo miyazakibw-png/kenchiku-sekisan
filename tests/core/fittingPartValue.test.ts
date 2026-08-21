@@ -48,6 +48,21 @@ describe("建具記号の部位ごとの採用値", () => {
     );
     expect(
       parseFittingPartValues('[{"partName":"壁","kind":"baseboard"}]'),
-    ).toEqual([{ partName: "壁", kind: "baseboard" }]);
+    ).toEqual([{ partId: null, partName: "壁", kind: "baseboard" }]);
+  });
+
+  it("同じ名前の部位が複数あっても部位番号で取り違えない", () => {
+    const values = [
+      { partId: 3, partName: "壁", kind: "area" as const },
+      { partId: 13, partName: "壁", kind: "baseboard" as const },
+    ];
+    expect(fittingSymbolForPart("AW1", "壁", values, 3)).toBe("<AW1>");
+    expect(fittingSymbolForPart("AW1", "壁", values, 13)).toBe("<AW1:HL>");
+  });
+
+  it("番号が設定に無いときは名前で当てはめる", () => {
+    expect(fittingKindForPart("補強", DEFAULT_FITTING_PART_VALUES, 999)).toBe(
+      "reinforcement",
+    );
   });
 });

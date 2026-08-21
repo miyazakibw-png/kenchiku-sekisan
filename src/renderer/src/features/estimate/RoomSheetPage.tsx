@@ -33,6 +33,7 @@ import {
 import {
   evaluateCalcSheet,
   quantityByPart,
+  syncPartNames,
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
@@ -40,6 +41,8 @@ import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import {
   DEFAULT_FITTING_PART_VALUES,
+  fittingKindForPart,
+  fittingSuffix,
   fittingSymbolForPart,
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
@@ -187,6 +190,14 @@ export default function RoomSheetPage({
       setPartValues(await window.sekisan.getFittingPartValues());
     })();
   }, [project.id, row.id]);
+
+  // 部位マスターで名前を直したら、明細の部位表示もその名前に合わせる
+  useEffect(() => {
+    if (!options) return;
+    setLower((current) =>
+      syncPartNames(current, options.aggregationParts, options.pickupParts),
+    );
+  }, [options]);
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const view = useMemo(() => viewBox(solved), [solved]);
@@ -414,9 +425,28 @@ export default function RoomSheetPage({
     return values;
   }, [fittings, symbols]);
 
+  /**
+   * 建具記号を <AW1> と書いただけのときは、そのセットの部位に合った数値を採る。
+   * 例：巾木のセットは巾木減、補強のセットは軸組横補強。
+   */
+  const partFittingVariables = useCallback(
+    (set: CalcSet): Record<string, number> => {
+      const kind = fittingKindForPart(set.partName, partValues, set.partNumber);
+      const suffix = fittingSuffix(kind);
+      if (suffix === "") return {};
+      const values: Record<string, number> = {};
+      fittings.forEach((fitting) => {
+        const value = calcVariables[`<${fitting.symbol}${suffix}>`];
+        if (value !== undefined) values[`<${fitting.symbol}>`] = value;
+      });
+      return values;
+    },
+    [calcVariables, fittings, partValues],
+  );
+
   const calcResult = useMemo(
-    () => evaluateCalcSheet(lower, calcVariables),
-    [calcVariables, lower],
+    () => evaluateCalcSheet(lower, calcVariables, partFittingVariables),
+    [calcVariables, lower, partFittingVariables],
   );
 
   /** 記号クリック：計算式にカーソルがあればそこへ入れる。無ければコピーする */
@@ -455,7 +485,14 @@ export default function RoomSheetPage({
   const insertFittingSymbol = useCallback(
     (symbol: string) => {
       const set = lower.find((each) => each.id === calcFocus?.setId);
-      useSymbol(fittingSymbolForPart(symbol, set?.partName ?? "", partValues));
+      useSymbol(
+        fittingSymbolForPart(
+          symbol,
+          set?.partName ?? "",
+          partValues,
+          set?.partNumber ?? null,
+        ),
+      );
     },
     [calcFocus, lower, partValues, useSymbol],
   );

@@ -29,12 +29,15 @@ import {
 } from "../../../../core/room/shape";
 import {
   evaluateCalcSheet,
+  syncPartNames,
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import {
   DEFAULT_FITTING_PART_VALUES,
+  fittingKindForPart,
+  fittingSuffix,
   fittingSymbolForPart,
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
@@ -181,6 +184,14 @@ export default function FrameSheetPage({
     })();
   }, [project.id, row.id]);
 
+  // 部位マスターで名前を直したら、明細の部位表示もその名前に合わせる
+  useEffect(() => {
+    if (!options) return;
+    setLower((current) =>
+      syncPartNames(current, options.aggregationParts, options.pickupParts),
+    );
+  }, [options]);
+
   /** 置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = useMemo(() => {
     const map = new Map<number, SolvedShape>();
@@ -284,9 +295,25 @@ export default function FrameSheetPage({
     return values;
   }, [fittings, symbols, workHeight]);
 
+  /** <AW1> だけのときは、そのセットの部位に合った数値を採る */
+  const partFittingVariables = useCallback(
+    (set: CalcSet): Record<string, number> => {
+      const kind = fittingKindForPart(set.partName, partValues, set.partNumber);
+      const suffix = fittingSuffix(kind);
+      if (suffix === "") return {};
+      const values: Record<string, number> = {};
+      fittings.forEach((fitting) => {
+        const value = calcVariables[`<${fitting.symbol}${suffix}>`];
+        if (value !== undefined) values[`<${fitting.symbol}>`] = value;
+      });
+      return values;
+    },
+    [calcVariables, fittings, partValues],
+  );
+
   const calcResult = useMemo(
-    () => evaluateCalcSheet(lower, calcVariables),
-    [calcVariables, lower],
+    () => evaluateCalcSheet(lower, calcVariables, partFittingVariables),
+    [calcVariables, lower, partFittingVariables],
   );
 
   const save = useCallback(async () => {
@@ -494,7 +521,14 @@ export default function FrameSheetPage({
   const insertFittingSymbol = useCallback(
     (symbol: string) => {
       const set = lower.find((each) => each.id === calcFocus?.setId);
-      useSymbol(fittingSymbolForPart(symbol, set?.partName ?? "", partValues));
+      useSymbol(
+        fittingSymbolForPart(
+          symbol,
+          set?.partName ?? "",
+          partValues,
+          set?.partNumber ?? null,
+        ),
+      );
     },
     [calcFocus, lower, partValues, useSymbol],
   );

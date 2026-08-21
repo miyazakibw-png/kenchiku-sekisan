@@ -85,11 +85,19 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
 
   /** 1つの部位の採用値を差し替える */
   const changePartValue = useCallback(
-    (partName: string, kind: FittingValueKind) => {
+    (part: MasterEntry, kind: FittingValueKind) => {
       const others = partValues.filter(
-        (value) => value.partName.trim() !== partName.trim(),
+        (value) =>
+          value.partId !== part.id &&
+          !(
+            (value.partId === null || value.partId === undefined) &&
+            value.partName.trim() === part.name.trim()
+          ),
       );
-      void savePartValues([...others, { partName, kind }]);
+      void savePartValues([
+        ...others,
+        { partId: part.id, partName: part.name, kind },
+      ]);
     },
     [partValues, savePartValues],
   );
@@ -339,7 +347,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
             </thead>
             <tbody>
               {parts.map((part) => {
-                const kind = fittingKindForPart(part.name, partValues);
+                const kind = fittingKindForPart(part.name, partValues, part.id);
                 return (
                   <tr key={part.id}>
                     <td>{part.name}</td>
@@ -348,7 +356,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                         value={kind}
                         onChange={(e) =>
                           changePartValue(
-                            part.name,
+                            part,
                             e.target.value as FittingValueKind,
                           )
                         }

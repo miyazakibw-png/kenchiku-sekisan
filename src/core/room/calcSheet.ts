@@ -14,6 +14,8 @@ export interface CalcDetail {
   subjectId: number | null;
   detailNumber: number | null;
   materialCategory: string;
+  /** 明細用部位マスターの番号（番号があれば表示名はマスターに合わせる） */
+  partNumber: number | null;
   /** 上段に出す部位名（明細マスターと同じ上下2段の構成） */
   partName: string;
   name: string;
@@ -59,6 +61,7 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
     subjectId: null,
     detailNumber: null,
     materialCategory: "",
+    partNumber: null,
     partName: "",
     name: "",
     descriptionUpper: "",
@@ -131,6 +134,7 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
   return (
     detail.subjectId === null &&
     detail.detailNumber === null &&
+    (detail.partNumber ?? null) === null &&
     detail.materialCategory.trim() === "" &&
     detail.partName.trim() === "" &&
     detail.name.trim() === "" &&
@@ -245,6 +249,8 @@ function unknownSymbols(
 export function evaluateCalcSheet(
   sets: CalcSet[],
   variables: Record<string, number>,
+  /** セットの部位によって値が変わる記号（建具記号の採用値など） */
+  setVariables?: (set: CalcSet) => Record<string, number>,
 ): CalcSheetResult {
   const bValues: Record<string, number> = {};
   const pending = new Set(sets.map((set) => set.id));
@@ -255,8 +261,9 @@ export function evaluateCalcSheet(
   ): { results: LineResult[]; resolved: boolean } => {
     let total = 0;
     let resolved = true;
+    const perSet = setVariables ? setVariables(set) : {};
     const results = set.lines.map((line) => {
-      const all = { ...variables, ...bValues };
+      const all = { ...variables, ...perSet, ...bValues };
       const a = line.formulaA.trim();
       const b = line.formulaB.trim();
       if (a === "") {
@@ -391,4 +398,44 @@ export function quantityByPart(
     const [partName, materialCategory] = key.split("\u0000");
     return { partName, materialCategory, quantity };
   });
+}
+
+/**
+ * 部位番号が入っている行の部位名を、部位マスターの今の名称に合わせる。
+ * 基本マスターで部位名を直したとき、明細の表示・集計もその名前になる。
+ * 変わるところが無ければ元の配列をそのまま返す。
+ */
+export function syncPartNames(
+  sets: CalcSet[],
+  aggregationParts: { id: number; name: string }[],
+  pickupParts: { id: number; name: string }[],
+): CalcSet[] {
+  const nameOf = (
+    parts: { id: number; name: string }[],
+    id: number | null | undefined,
+    current: string,
+  ): string => {
+    if (id === null || id === undefined) return current;
+    return parts.find((part) => part.id === id)?.name ?? current;
+  };
+
+  let changed = false;
+  const next = sets.map((set) => {
+    const partName = nameOf(aggregationParts, set.partNumber, set.partName);
+    let detailChanged = false;
+    const details = set.details.map((detail) => {
+      const detailPart = nameOf(
+        pickupParts,
+        detail.partNumber,
+        detail.partName,
+      );
+      if (detailPart === detail.partName) return detail;
+      detailChanged = true;
+      return { ...detail, partName: detailPart };
+    });
+    if (partName === set.partName && !detailChanged) return set;
+    changed = true;
+    return { ...set, partName, details };
+  });
+  return changed ? next : sets;
 }

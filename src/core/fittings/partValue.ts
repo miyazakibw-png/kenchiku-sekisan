@@ -9,6 +9,8 @@ export type FittingValueKind =
 
 /** 部位ごとの採用値 */
 export interface FittingPartValue {
+  /** 管理用部位の番号（同じ名前の部位が複数あっても取り違えない） */
+  partId?: number | null;
   /** 部位名（セット先頭の部位欄と突き合わせる） */
   partName: string;
   kind: FittingValueKind;
@@ -47,11 +49,16 @@ export function fittingSuffix(kind: FittingValueKind): string {
   }
 }
 
-/** 部位名に当てはまる採用値を探す（同じ名前→名前を含む→既定は面積） */
+/** 部位に当てはまる採用値を探す（番号→同じ名前→名前を含む→既定は面積） */
 export function fittingKindForPart(
   partName: string,
   values: FittingPartValue[],
+  partId?: number | null,
 ): FittingValueKind {
+  if (partId !== null && partId !== undefined) {
+    const byId = values.find((value) => value.partId === partId);
+    if (byId) return byId.kind;
+  }
   const name = partName.trim();
   if (name === "") return "area";
   const exact = values.find((value) => value.partName.trim() === name);
@@ -68,8 +75,10 @@ export function fittingSymbolForPart(
   symbol: string,
   partName: string,
   values: FittingPartValue[],
+  partId?: number | null,
 ): string {
-  return `<${symbol}${fittingSuffix(fittingKindForPart(partName, values))}>`;
+  const kind = fittingKindForPart(partName, values, partId);
+  return `<${symbol}${fittingSuffix(kind)}>`;
 }
 
 /** 保存されている値を読み込む（壊れた値は初期の決まりに戻す） */
@@ -84,9 +93,14 @@ export function parseFittingPartValues(text: string): FittingPartValue[] {
       const record = row as Record<string, unknown>;
       const partName = record.partName;
       const kind = record.kind;
+      const partId = record.partId;
       if (typeof partName !== "string" || typeof kind !== "string") return;
       if (!kinds.includes(kind as FittingValueKind)) return;
-      values.push({ partName, kind: kind as FittingValueKind });
+      values.push({
+        partId: typeof partId === "number" ? partId : null,
+        partName,
+        kind: kind as FittingValueKind,
+      });
     });
     return values;
   } catch {

@@ -9,6 +9,7 @@ import {
   padLines,
   quantityByPart,
   syncLines,
+  syncPartNames,
   setRowCount,
   trimEmptySets,
   type CalcSet,
@@ -63,6 +64,17 @@ describe("下段セット明細計算表", () => {
     const set = sheet([["WA-<AW1>", ""]]);
     const result = evaluateCalcSheet([set], { WA: 34.2, "<AW1>": 3.6 });
     expect(result.lines.get(set.lines[0].id)?.text).toBe("30.60");
+  });
+
+  it("部位に合わせた数値を建具記号に使える（補強＝軸組横補強）", () => {
+    const wall = sheet([["<AW1>", ""]], "壁");
+    const brace = sheet([["<AW1>", ""]], "補強");
+    const variables = { "<AW1>": 3.6, "<AW1:RF>": 5.4 };
+    const result = evaluateCalcSheet([wall, brace], variables, (set) =>
+      set.partName === "補強" ? { "<AW1>": variables["<AW1:RF>"] } : {},
+    );
+    expect(result.lines.get(wall.lines[0].id)?.text).toBe("3.60");
+    expect(result.lines.get(brace.lines[0].id)?.text).toBe("5.40");
   });
 
   it("分からない記号・誤った式は理由を返す", () => {
@@ -148,5 +160,30 @@ describe("下段セット明細計算表", () => {
     const trimmed = trimEmptySets([set]);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].details).toHaveLength(2);
+  });
+});
+
+describe("部位マスターとの連動", () => {
+  it("部位マスターで名前を直すと明細の部位表示も変わる", () => {
+    const set = calcSet(1);
+    set.partNumber = 10;
+    set.partName = "その他";
+    set.details = [
+      calcDetail({ partNumber: 3, partName: "旧かべ", name: "クロス" }),
+    ];
+    const [synced] = syncPartNames(
+      [set],
+      [{ id: 10, name: "補強" }],
+      [{ id: 3, name: "壁" }],
+    );
+    expect(synced.partName).toBe("補強");
+    expect(synced.details[0].partName).toBe("壁");
+  });
+
+  it("番号が無い行はそのままにする", () => {
+    const set = calcSet(1);
+    set.partName = "手入力部位";
+    const sets = [set];
+    expect(syncPartNames(sets, [{ id: 10, name: "補強" }], [])).toBe(sets);
   });
 });
