@@ -1,4 +1,4 @@
-import { statSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
@@ -12,7 +12,12 @@ import {
   restoreDatabaseFrom,
   schema,
 } from "./db";
-import { backupFileName, rollbackFileName } from "../core/backup/backupName";
+import {
+  autoBackupFileName,
+  backupFileName,
+  expiredAutoBackups,
+  rollbackFileName,
+} from "../core/backup/backupName";
 import {
   copyBasicDetailsToProject,
   listDetailChangeLogs,
@@ -497,13 +502,33 @@ function registerIpcHandlers(): void {
   );
 }
 
+const AUTO_BACKUP_KEEP = 10;
+
+/** 起動のたびに、その日の控えを1つ残す（古い控えは10日分まで） */
+function keepAutoBackup(dbFile: string): void {
+  if (!existsSync(dbFile)) return;
+  const folder = join(dirname(dbFile), "自動バックアップ");
+  try {
+    mkdirSync(folder, { recursive: true });
+    const today = join(folder, autoBackupFileName(new Date()));
+    if (!existsSync(today)) copyFileSync(dbFile, today);
+    for (const name of expiredAutoBackups(readdirSync(folder), AUTO_BACKUP_KEEP)) {
+      rmSync(join(folder, name), { force: true });
+    }
+  } catch {
+    // 控えを作れなくても、ソフトは起動する
+  }
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId("jp.billswork.sekisan");
   app.on("browser-window-created", (_, window) =>
     optimizer.watchWindowShortcuts(window),
   );
 
-  initDatabase(join(app.getPath("userData"), "sekisan.db"));
+  const dbFile = join(app.getPath("userData"), "sekisan.db");
+  keepAutoBackup(dbFile);
+  initDatabase(dbFile);
   registerIpcHandlers();
   createWindow();
 
