@@ -10,6 +10,7 @@ import {
   quantityByPart,
   syncLines,
   setRowCount,
+  trimEmptySets,
   type CalcSet,
 } from "../../src/core/room/calcSheet";
 
@@ -128,5 +129,24 @@ describe("下段セット明細計算表", () => {
     const kept = [...set.lines];
     kept[3] = calcLine({ formulaA: "1+1" });
     expect(syncLines(set.details, kept)).toHaveLength(4);
+  });
+
+  it("入力の無い明細・セットは取り除く（入力済みは残す）", () => {
+    const empty = calcSet(2);
+    const used = calcSet(2);
+    used.partName = "床";
+    used.details[0] = calcDetail({ name: "ビニル床タイル" });
+    const trimmed = trimEmptySets([empty, used]);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].details).toHaveLength(1);
+    expect(trimmed[0].lines).toHaveLength(2);
+  });
+
+  it("計算式だけ入っている明細は残す", () => {
+    const set = calcSet(2);
+    set.lines[2] = calcLine({ formulaA: "2*3" });
+    const trimmed = trimEmptySets([set]);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].details).toHaveLength(2);
   });
 });

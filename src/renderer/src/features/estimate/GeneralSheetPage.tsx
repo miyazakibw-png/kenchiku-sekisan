@@ -8,6 +8,7 @@ import type {
 } from "@shared/types";
 import {
   evaluateCalcSheet,
+  trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
@@ -51,7 +52,7 @@ export default function GeneralSheetPage({
     void (async () => {
       const loaded = await window.sekisan.getGeneralSheet(row.id as number);
       setSheet(loaded);
-      setLower(parseJson<CalcSet[]>(loaded.lowerJson, []));
+      setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
       setNote(loaded.note);
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions());
@@ -81,9 +82,12 @@ export default function GeneralSheetPage({
 
   const save = useCallback(async () => {
     if (!sheet) return;
+    // 入力の無いセット明細は保存時に取り除く（画面からも消す）
+    const trimmed = trimEmptySets(lower);
+    setLower(trimmed);
     const saved = await window.sekisan.saveGeneralSheet({
       id: sheet.id,
-      lowerJson: JSON.stringify(lower),
+      lowerJson: JSON.stringify(trimmed),
       note,
     });
     setSheet(saved);

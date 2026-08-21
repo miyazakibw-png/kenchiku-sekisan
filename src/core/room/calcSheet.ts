@@ -126,6 +126,54 @@ export function syncLines(
   return padLines(details, next);
 }
 
+/** 明細に何か入力されているか（入力の無い明細は保存時に取り除く） */
+export function isEmptyDetail(detail: CalcDetail): boolean {
+  return (
+    detail.subjectId === null &&
+    detail.detailNumber === null &&
+    detail.materialCategory.trim() === "" &&
+    detail.partName.trim() === "" &&
+    detail.name.trim() === "" &&
+    detail.descriptionUpper.trim() === "" &&
+    detail.descriptionLower.trim() === "" &&
+    detail.unit.trim() === "" &&
+    detail.remarksUpper.trim() === "" &&
+    detail.remarksLower.trim() === "" &&
+    detail.estimateDisplay.trim() === ""
+  );
+}
+
+/**
+ * 入力の無い明細・セットを取り除く（保存・読み込みのときに使う）。
+ * 明細1件＝計算式2行の対応を崩さないよう、末尾の空明細だけを詰める。
+ */
+export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
+  const trimmed: CalcSet[] = [];
+  for (const set of sets) {
+    const details = [...set.details];
+    while (
+      details.length > 0 &&
+      isEmptyDetail(details[details.length - 1]) &&
+      isEmptyLine(set.lines[details.length * 2 - 2] ?? calcLine()) &&
+      isEmptyLine(set.lines[details.length * 2 - 1] ?? calcLine())
+    )
+      details.pop();
+    const lines = [...set.lines];
+    while (
+      lines.length > details.length * 2 &&
+      isEmptyLine(lines[lines.length - 1])
+    )
+      lines.pop();
+    const empty =
+      details.length === 0 &&
+      lines.every(isEmptyLine) &&
+      set.partNumber === null &&
+      set.partName.trim() === "";
+    if (!empty) trimmed.push({ ...set, details, lines });
+  }
+  return trimmed;
+}
+
 /** セット内で表示する行数（明細は1件2行。明細と計算式の多い方に合わせる） */
 export function setRowCount(set: CalcSet): number {
   return Math.max(set.details.length * 2, set.lines.length, 1);

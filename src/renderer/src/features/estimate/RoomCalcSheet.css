@@ -372,7 +372,7 @@
   outline: none;
 }
 
-/* 部位欄は「番号」と「名称」を並べ、番号を選ぶと名称も同時に入る */
+/* 部位欄（セットの先頭）は、上に番号・下に名称。枠はセット明細いっぱいに広がる */
 .room-calc-sheet table.calc td.part .part-pair {
   position: absolute;
   inset: 0;
@@ -383,22 +383,21 @@
 .room-calc-sheet table.calc td.part .part-pair input {
   position: static;
   inset: auto;
-  flex: 1;
   width: 100%;
 }
 
 .room-calc-sheet table.calc td.part .part-pair input.part-no {
+  flex: 0 0 20px;
+  height: 20px;
+  text-align: right;
   border-bottom: 1px dotted #cbd5e1;
 }
 
-.room-calc-sheet table.calc .part-pair {
-  display: flex;
-  gap: 2px;
-  align-items: center;
+.room-calc-sheet table.calc td.part .part-pair input:not(.part-no) {
+  flex: 1 1 auto;
 }
 
-.room-calc-sheet table.calc .part-pair input.part-no {
-  width: 5ch;
-  flex: none;
+/* 明細の部位IDは明細番号欄の上段に置く */
+.room-calc-sheet table.calc td.no input.part-id {
   text-align: right;
 }

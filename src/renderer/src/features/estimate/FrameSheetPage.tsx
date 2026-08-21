@@ -29,6 +29,7 @@ import {
 } from "../../../../core/room/shape";
 import {
   evaluateCalcSheet,
+  trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
@@ -171,7 +172,7 @@ export default function FrameSheetPage({
           }[]
         >(loaded.fittingsJson, []),
       );
-      setLower(parseJson<CalcSet[]>(loaded.lowerJson, []));
+      setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
       setWorkHeight(loaded.workHeight);
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
@@ -290,13 +291,16 @@ export default function FrameSheetPage({
 
   const save = useCallback(async () => {
     if (!sheet) return;
+    // 入力の無いセット明細は保存時に取り除く（画面からも消す）
+    const trimmed = trimEmptySets(lower);
+    setLower(trimmed);
     const saved = await window.sekisan.saveFrameSheet({
       id: sheet.id,
       layoutJson: JSON.stringify(placements),
       linesJson: JSON.stringify(manualLines),
       attributesJson: JSON.stringify(attributes),
       fittingsJson: JSON.stringify(frameFittings),
-      lowerJson: JSON.stringify(lower),
+      lowerJson: JSON.stringify(trimmed),
       workHeight,
       note: sheet.note,
     });

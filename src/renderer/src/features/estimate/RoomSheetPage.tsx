@@ -33,6 +33,7 @@ import {
 import {
   evaluateCalcSheet,
   quantityByPart,
+  trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
@@ -97,7 +98,7 @@ function parseCeiling(json: string): CeilingElement[] {
 function parseLower(json: string): CalcSet[] {
   try {
     const parsed = JSON.parse(json) as CalcSet[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? trimEmptySets(parsed) : [];
   } catch {
     return [];
   }
@@ -329,12 +330,15 @@ export default function RoomSheetPage({
 
   const save = useCallback(async () => {
     if (!sheet) return;
+    // 入力の無いセット明細は保存時に取り除く（画面からも消す）
+    const trimmed = trimEmptySets(lower);
+    setLower(trimmed);
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
       shapeJson: JSON.stringify(shape),
       fittingsJson: JSON.stringify(roomFittings),
       ceilingJson: JSON.stringify(ceiling),
-      lowerJson: JSON.stringify(lower),
+      lowerJson: JSON.stringify(trimmed),
       ceilingHeight,
       note: sheet.note,
     });
