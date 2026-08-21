@@ -3,6 +3,7 @@ import type { AppDatabase } from '../db'
 import {
   calcSheetDefinitions,
   detailChangeLogs,
+  mAggregationParts,
   mDetails,
   mFormworkCategories,
   mMaterialCategories,
@@ -123,6 +124,11 @@ export function listMasterOptions(db: AppDatabase): MasterOptions {
       .select({ id: mPickupParts.id, name: mPickupParts.name })
       .from(mPickupParts)
       .orderBy(asc(mPickupParts.displayOrder), asc(mPickupParts.id))
+      .all(),
+    aggregationParts: db
+      .select({ id: mAggregationParts.id, name: mAggregationParts.name })
+      .from(mAggregationParts)
+      .orderBy(asc(mAggregationParts.displayOrder), asc(mAggregationParts.id))
       .all(),
     calcSheets: db
       .select({

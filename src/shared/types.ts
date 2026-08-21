@@ -182,6 +182,8 @@ export interface MasterOptions {
   formworkCategories: MasterEntry[];
   /** 入力拾い用の部位（計算書の下段で番号入力に使う） */
   pickupParts: MasterEntry[];
+  /** 管理用の部位（計算書のセット先頭の部位欄で使う） */
+  aggregationParts: MasterEntry[];
   /** 計算書の書式（将来の追加はこのマスターを増やす） */
   calcSheets: CalcSheetOption[];
 }

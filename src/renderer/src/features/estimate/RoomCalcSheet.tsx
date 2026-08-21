@@ -679,7 +679,7 @@ export default function RoomCalcSheet({
                           placeholder="番号／一覧"
                           title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
                           onChange={(e) => {
-                            const parts = options?.pickupParts ?? [];
+                            const parts = options?.aggregationParts ?? [];
                             const name = resolveMasterName(
                               parts,
                               e.target.value,
@@ -1111,7 +1111,7 @@ export default function RoomCalcSheet({
       )}
 
       <datalist id="calc-parts">
-        {(options?.pickupParts ?? []).map((part) => (
+        {(options?.aggregationParts ?? []).map((part) => (
           <option key={part.id} value={part.name}>
             {part.id}
           </option>

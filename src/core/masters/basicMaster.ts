@@ -33,7 +33,7 @@ export const BASIC_MASTER_LIMITS: Record<BasicMasterKind, BasicMasterLimit> = {
     maxId: 200,
     maxRows: 200,
     uniqueName: false,
-    hint: '計算書のセット明細の先頭（部位）で番号入力して使います'
+    hint: '転記入力表などの部位欄で番号入力して使います'
   },
   materialCategories: {
     label: '材種区分',
@@ -54,7 +54,7 @@ export const BASIC_MASTER_LIMITS: Record<BasicMasterKind, BasicMasterLimit> = {
     maxId: 20,
     maxRows: 20,
     uniqueName: false,
-    hint: 'チェック数量の読み込みに使う管理用の部位'
+    hint: '計算書のセット先頭の部位欄・チェック数量の読み込みに使う管理用の部位'
   },
   formworkCategories: {
     label: '型枠分類',
