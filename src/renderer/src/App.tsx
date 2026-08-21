@@ -7,6 +7,7 @@ import ProjectLedgerPage from './features/projects/ProjectLedgerPage'
 import SubjectMasterPage from './features/subjects/SubjectMasterPage'
 import BasicMasterPage from './features/masters/BasicMasterPage'
 import PrintBar from './features/print/PrintBar'
+import { useGridKeyNav } from './features/grid/useGridKeyNav'
 import SettingsPage from './features/settings/SettingsPage'
 
 type NavKey = 'subjects' | 'details' | 'assemblies' | 'masters' | 'projects' | 'settings'
@@ -32,6 +33,7 @@ export default function App(): JSX.Element {
   const [nav, setNav] = useState<NavKey>('details')
   const [projectName, setProjectName] = useState('')
   const setActiveProjectName = useCallback((name: string) => setProjectName(name), [])
+  const onGridKeyDown = useGridKeyNav()
 
   useEffect(() => {
     void window.sekisan.getMasterOptions().then(setOptions)
@@ -64,7 +66,7 @@ export default function App(): JSX.Element {
             ))}
           </nav>
         )}
-        <main className="app-main">
+        <main className="app-main" onKeyDown={onGridKeyDown}>
           {!options ? (
             <div className="placeholder">読み込み中…</div>
           ) : projectId !== null ? (
