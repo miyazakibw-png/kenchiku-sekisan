@@ -4,6 +4,12 @@ import type {
   TransferRow,
   TransferRowDraft,
 } from "@shared/types";
+import {
+  inheritTransferRows,
+  type InheritedTransfer,
+} from "../../../../core/aggregate/transferInherit";
+
+export type { InheritedTransfer };
 
 export function toTransferDrafts(rows: TransferRow[]): TransferRowDraft[] {
   return rows.map(
@@ -40,43 +46,11 @@ export function emptyTransferRow(): TransferRowDraft {
   };
 }
 
-/** A〜Iは入力がない場合、入力のある上の行と同じ入力があるものとして扱う */
-export interface InheritedTransfer {
-  part1: string;
-  part2: string;
-  part2Split: number;
-  formwork: string;
-  part3: string;
-  subjectId: number | null;
-  materialCategory: string;
-}
-
+/** A〜Iは入力がない場合、入力のある上の行と同じ入力があるものとして扱う（集計と同じ規則） */
 export function resolveTransferInherited(
   rows: TransferRowDraft[],
 ): InheritedTransfer[] {
-  const current: InheritedTransfer = {
-    part1: "",
-    part2: "",
-    part2Split: 0,
-    formwork: "",
-    part3: "",
-    subjectId: null,
-    materialCategory: "",
-  };
-  return rows.map((row) => {
-    if (row.part1.trim() !== "") current.part1 = row.part1;
-    if (row.part2.trim() !== "") {
-      current.part2 = row.part2;
-      current.part2Split = row.part2Split;
-    }
-    if (row.formwork.trim() !== "") current.formwork = row.formwork;
-    if (row.part3.trim() !== "") current.part3 = row.part3;
-    if (row.subjectId !== null) current.subjectId = row.subjectId;
-    if (row.materialCategory.trim() !== "") {
-      current.materialCategory = row.materialCategory;
-    }
-    return { ...current };
-  });
+  return inheritTransferRows(rows);
 }
 
 export function insertTransferRow(

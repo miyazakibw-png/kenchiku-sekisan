@@ -494,4 +494,98 @@ CREATE TABLE project_transfer_rows (
 );
 CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, display_order);
 `,
+  /* 018: 集計処理（集計詳細データ・集計書兼工事マスター・型枠転記の連動記憶） */ `
+CREATE TABLE project_aggregate_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_aggregate_runs_project ON project_aggregate_runs(project_id, id);
+
+-- 集計詳細データ（合算前の1件。数量根拠を追うために残す）
+CREATE TABLE project_aggregate_details (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL REFERENCES project_aggregate_runs(id) ON DELETE CASCADE,
+  trace_id TEXT NOT NULL,
+  master_key TEXT NOT NULL DEFAULT '',
+  -- room / frame / general / transfer
+  source_kind TEXT NOT NULL DEFAULT 'room',
+  estimate_row_id INTEGER,
+  transfer_row_id INTEGER,
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_raw TEXT NOT NULL DEFAULT '',
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  part2_order INTEGER NOT NULL DEFAULT 0,
+  part3 TEXT NOT NULL DEFAULT '',
+  formwork TEXT NOT NULL DEFAULT '',
+  multiplier REAL NOT NULL DEFAULT 1,
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  coefficient REAL NOT NULL DEFAULT 1,
+  set_total REAL NOT NULL DEFAULT 0,
+  quantity REAL NOT NULL DEFAULT 0,
+  source_detail_id INTEGER
+);
+CREATE INDEX idx_aggregate_details_run ON project_aggregate_details(run_id, master_key);
+
+-- 集計書兼工事マスター（合算後の1明細＝画面では上下2行）
+CREATE TABLE project_aggregate_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL REFERENCES project_aggregate_runs(id) ON DELETE CASCADE,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  master_key TEXT NOT NULL,
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_raw TEXT NOT NULL DEFAULT '',
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  formwork TEXT NOT NULL DEFAULT '',
+  quantity REAL NOT NULL DEFAULT 0,
+  -- 根拠（部屋別の内訳）。転記入力表の分は入れない
+  rooms_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX idx_aggregate_items_run ON project_aggregate_items(run_id, display_order);
+
+-- 転記用書式（打放型枠など）。明細自体が転記情報を持ち、集計をかけ直しても残る
+CREATE TABLE project_transfer_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  master_key TEXT NOT NULL,
+  -- 転記の種類（formwork: 型枠転記）
+  rule_kind TEXT NOT NULL DEFAULT 'formwork',
+  coefficient REAL NOT NULL DEFAULT 1,
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX uq_transfer_rules_key ON project_transfer_rules(project_id, master_key, rule_kind);
+`,
 ];

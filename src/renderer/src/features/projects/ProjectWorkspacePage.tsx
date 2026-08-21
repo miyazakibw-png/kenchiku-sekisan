@@ -14,6 +14,8 @@ import { useActiveProjectName } from '../../activeProject'
 import FittingsPage from '../fittings/FittingsPage'
 import EstimatePartsPage from '../estimate/EstimatePartsPage'
 import TransferSheetPage from '../estimate/TransferSheetPage'
+import AggregatePage from '../aggregate/AggregatePage'
+import RoomAggregatePage from '../aggregate/RoomAggregatePage'
 import './ProjectWorkspacePage.css'
 
 interface Props {
@@ -166,6 +168,14 @@ export default function ProjectWorkspacePage({
     return (
       <TransferSheetPage project={draft} options={options} onBack={() => setOpenedMenu(null)} />
     )
+  }
+
+  if (openedMenu === 'aggregate' || openedMenu === 'projectMaster') {
+    return <AggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
+  }
+
+  if (openedMenu === 'roomAggregate') {
+    return <RoomAggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
   }
 
   return (

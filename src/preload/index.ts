@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc";
 import type {
+  AggregateRun,
+  AggregateView,
   AssemblyItem,
   AssemblyMasterOptions,
   Detail,
@@ -98,6 +100,13 @@ const api = {
     request: SaveTransferRowsRequest,
   ): Promise<TransferRow[]> =>
     ipcRenderer.invoke(IPC.transferRowsSave, request),
+  /** 集計処理（集計書兼工事マスターと集計詳細データを作る） */
+  runAggregation: (projectId: number): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateRun, projectId),
+  getAggregate: (projectId: number, runId?: number): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
+  listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>
+    ipcRenderer.invoke(IPC.aggregateRuns, projectId),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

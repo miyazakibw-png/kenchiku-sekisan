@@ -56,14 +56,14 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: '集計処理',
     group: 'aggregate',
     note: '科目集計＋根拠展開はまとめて実行。部位別集計は独立',
-    ready: false
+    ready: true
   },
   {
     key: 'projectMaster',
     label: '集計書兼工事マスター',
     group: 'aggregate',
     note: '物件専用明細マスター（集計数量も表示）。削除不可・計上不要明細は科目末尾へ',
-    ready: false
+    ready: true
   },
   {
     key: 'basisSheet',
@@ -77,7 +77,7 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: '部屋別集計',
     group: 'aggregate',
     note: '部位Ⅲの名称を工種科目代わりに集計（明細は科目順に並べる）',
-    ready: false
+    ready: true
   },
   {
     key: 'changeHistory',

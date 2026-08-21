@@ -420,3 +420,81 @@ export interface ProjectLedger {
   projects: ProjectSummary[];
   fields: ProjectField[];
 }
+
+/** 集計を実行した回（集計書兼工事マスターの版） */
+export interface AggregateRun {
+  id: number;
+  projectId: number;
+  createdAt: string;
+  note: string;
+}
+
+/** 集計書兼工事マスターの1明細（画面では上下2行） */
+export interface AggregateItem {
+  id: number;
+  runId: number;
+  displayOrder: number;
+  /** 同じ明細をまとめるキー。集計をかけ直しても変わらない（型枠転記の連動に使う） */
+  masterKey: string;
+  part1: string;
+  part2: string;
+  part2Raw: string;
+  subjectId: number | null;
+  materialCategory: string;
+  partNumber: number | null;
+  partName: string;
+  detailNumber: number | null;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+  remarksUpper: string;
+  remarksLower: string;
+  estimateDisplay: string;
+  formwork: string;
+  quantity: number;
+  /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
+  rooms: { roomName: string; quantity: number }[];
+}
+
+/** 集計詳細データ（合算前の1件。数量根拠） */
+export interface AggregateDetail {
+  id: number;
+  runId: number;
+  traceId: string;
+  masterKey: string;
+  /** room / frame / general / transfer */
+  sourceKind: string;
+  estimateRowId: number | null;
+  transferRowId: number | null;
+  part1: string;
+  part2: string;
+  part2Raw: string;
+  part2Split: number;
+  part2Order: number;
+  part3: string;
+  formwork: string;
+  multiplier: number;
+  subjectId: number | null;
+  materialCategory: string;
+  partNumber: number | null;
+  partName: string;
+  detailNumber: number | null;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+  remarksUpper: string;
+  remarksLower: string;
+  estimateDisplay: string;
+  coefficient: number;
+  setTotal: number;
+  quantity: number;
+  sourceDetailId: number | null;
+}
+
+export interface AggregateView {
+  run: AggregateRun | null;
+  items: AggregateItem[];
+  details: AggregateDetail[];
+}

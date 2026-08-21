@@ -500,6 +500,126 @@ export const mPartBracketFormats = sqliteTable("m_part_bracket_formats", {
   rightBracket: text("right_bracket").notNull().default(""),
 });
 
+/** 集計を実行した回（集計書兼工事マスターと集計詳細データの版） */
+export const projectAggregateRuns = sqliteTable("project_aggregate_runs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  createdAt: text("created_at").notNull().default(now),
+  note: text("note").notNull().default(""),
+});
+
+/** 集計詳細データ（合算前の1件。数量根拠を追うために残す） */
+export const projectAggregateDetails = sqliteTable(
+  "project_aggregate_details",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => projectAggregateRuns.id, { onDelete: "cascade" }),
+    traceId: text("trace_id").notNull(),
+    masterKey: text("master_key").notNull().default(""),
+    /** room / frame / general / transfer */
+    sourceKind: text("source_kind").notNull().default("room"),
+    estimateRowId: integer("estimate_row_id"),
+    transferRowId: integer("transfer_row_id"),
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part2Raw: text("part2_raw").notNull().default(""),
+    part2Split: integer("part2_split").notNull().default(0),
+    part2Order: integer("part2_order").notNull().default(0),
+    part3: text("part3").notNull().default(""),
+    formwork: text("formwork").notNull().default(""),
+    multiplier: real("multiplier").notNull().default(1),
+    subjectId: integer("subject_id"),
+    materialCategory: text("material_category").notNull().default(""),
+    partNumber: real("part_number"),
+    partName: text("part_name").notNull().default(""),
+    detailNumber: real("detail_number"),
+    name: text("name").notNull().default(""),
+    descriptionUpper: text("description_upper").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
+    unit: text("unit").notNull().default(""),
+    remarksUpper: text("remarks_upper").notNull().default(""),
+    remarksLower: text("remarks_lower").notNull().default(""),
+    estimateDisplay: text("estimate_display").notNull().default(""),
+    coefficient: real("coefficient").notNull().default(1),
+    setTotal: real("set_total").notNull().default(0),
+    quantity: real("quantity").notNull().default(0),
+    sourceDetailId: integer("source_detail_id"),
+  },
+  (t) => ({
+    runIdx: index("idx_aggregate_details_run").on(t.runId, t.masterKey),
+  }),
+);
+
+/** 集計書兼工事マスター（合算後の1明細＝画面では上下2行） */
+export const projectAggregateItems = sqliteTable(
+  "project_aggregate_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => projectAggregateRuns.id, { onDelete: "cascade" }),
+    displayOrder: integer("display_order").notNull().default(0),
+    masterKey: text("master_key").notNull(),
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part2Raw: text("part2_raw").notNull().default(""),
+    subjectId: integer("subject_id"),
+    materialCategory: text("material_category").notNull().default(""),
+    partNumber: real("part_number"),
+    partName: text("part_name").notNull().default(""),
+    detailNumber: real("detail_number"),
+    name: text("name").notNull().default(""),
+    descriptionUpper: text("description_upper").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
+    unit: text("unit").notNull().default(""),
+    remarksUpper: text("remarks_upper").notNull().default(""),
+    remarksLower: text("remarks_lower").notNull().default(""),
+    estimateDisplay: text("estimate_display").notNull().default(""),
+    formwork: text("formwork").notNull().default(""),
+    quantity: real("quantity").notNull().default(0),
+    /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
+    roomsJson: text("rooms_json").notNull().default("[]"),
+  },
+  (t) => ({
+    runIdx: index("idx_aggregate_items_run").on(t.runId, t.displayOrder),
+  }),
+);
+
+/** 転記用書式（打放型枠など）。明細自体が転記情報を持ち、集計をかけ直しても残る */
+export const projectTransferRules = sqliteTable(
+  "project_transfer_rules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    masterKey: text("master_key").notNull(),
+    /** formwork: 型枠転記 */
+    ruleKind: text("rule_kind").notNull().default("formwork"),
+    coefficient: real("coefficient").notNull().default(1),
+    subjectId: integer("subject_id"),
+    materialCategory: text("material_category").notNull().default(""),
+    partNumber: real("part_number"),
+    partName: text("part_name").notNull().default(""),
+    detailNumber: real("detail_number"),
+    name: text("name").notNull().default(""),
+    description: text("description").notNull().default(""),
+    unit: text("unit").notNull().default(""),
+    remarks: text("remarks").notNull().default(""),
+  },
+  (t) => ({
+    keyUq: uniqueIndex("uq_transfer_rules_key").on(
+      t.projectId,
+      t.masterKey,
+      t.ruleKind,
+    ),
+  }),
+);
+
 export type MDetail = typeof mDetails.$inferSelect;
 export type MDetailInsert = typeof mDetails.$inferInsert;
 export type MSubject = typeof mSubjects.$inferSelect;

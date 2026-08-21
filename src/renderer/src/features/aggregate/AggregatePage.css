@@ -1,0 +1,87 @@
+.aggregate-page .aggregate-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: auto;
+}
+
+table.aggregate {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+table.aggregate th,
+table.aggregate td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+table.aggregate th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+}
+
+table.aggregate th.no,
+table.aggregate td.no {
+  width: 6ch;
+  text-align: right;
+}
+
+table.aggregate td.number {
+  text-align: right;
+  width: 10ch;
+}
+
+/* 1明細＝上下2行。明細の中は罫線を出さず、明細どうしの区切りだけ残す */
+table.aggregate tr.detail-upper > td:not([rowspan]) {
+  border-bottom: none;
+}
+
+table.aggregate tr.detail-lower > td:not([rowspan]) {
+  border-top: none;
+}
+
+table.aggregate tbody.heading td {
+  background: #eef2f7;
+  font-weight: bold;
+}
+
+table.aggregate tbody.heading.subject td {
+  background: #d9e6f2;
+}
+
+/* 数量・単位チェック：赤＝要修正、黄＝単位未入力 */
+table.aggregate tbody.row.error td {
+  background: #ffcccc;
+}
+
+table.aggregate tbody.row.warn td {
+  background: #ffffcc;
+}
+
+table.aggregate tbody.row.selected td {
+  outline: 2px solid #1f4e79;
+  outline-offset: -2px;
+}
+
+.aggregate-page .basis {
+  min-width: 44ch;
+  margin: 8px 8px 8px 0;
+}
+
+.aggregate-page .basis .title {
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.aggregate-page .basis .note {
+  font-size: 11px;
+  color: #6b7280;
+}

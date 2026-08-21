@@ -49,6 +49,11 @@ import {
   listTransferRows,
   saveTransferRows,
 } from "./services/transferRowService";
+import {
+  getAggregate,
+  listAggregateRuns,
+  runAggregation,
+} from "./services/aggregationService";
 import { IPC } from "../shared/ipc";
 import type {
   ProjectField,
@@ -158,6 +163,17 @@ function registerIpcHandlers(): void {
     IPC.transferRowsSave,
     (_event, request: SaveTransferRowsRequest) =>
       saveTransferRows(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.aggregateRun, (_event, projectId: number) =>
+    runAggregation(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.aggregateGet,
+    (_event, projectId: number, runId?: number) =>
+      getAggregate(getDatabase(), projectId, runId),
+  );
+  ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
+    listAggregateRuns(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
