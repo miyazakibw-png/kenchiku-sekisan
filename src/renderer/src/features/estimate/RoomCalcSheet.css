@@ -134,6 +134,15 @@
   width: 90px;
 }
 
+.room-calc-sheet .total {
+  width: 72px;
+}
+
+/* 1明細＝上下2行なので、明細欄は上下段の間に罫線を引かない */
+.room-calc-sheet tr.detail-upper td.dcell {
+  border-bottom: none;
+}
+
 .room-calc-sheet .formula {
   width: 220px;
 }

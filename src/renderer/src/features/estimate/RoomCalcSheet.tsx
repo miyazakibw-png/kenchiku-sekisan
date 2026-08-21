@@ -10,6 +10,8 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  displayQuantity,
+  displayedValue,
   evaluateCalcSheet,
   nextBSymbol,
   setRowCount,
@@ -42,6 +44,14 @@ interface Props {
 }
 
 type CallSource = "basic" | "project" | "assembly";
+
+/** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
+function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
+  return set.lines.map((line, index) => ({
+    ...line,
+    bSymbol: index === 0 ? symbol : "",
+  }));
+}
 
 const SOURCE_LABEL: Record<CallSource, string> = {
   basic: "基本マスター（明細）",
@@ -286,14 +296,25 @@ export default function RoomCalcSheet({
             >
               掛け率
             </th>
-            <th>備考</th>
-            <th className="estimate">積算用表示</th>
+            <th
+              className="num total"
+              title="このセットの累計×掛け率（集計に出る数量）"
+            >
+              部位合計
+            </th>
+            <th className="comment">コメント</th>
             <th className="formula">計算式Ａ</th>
             <th className="formula-b">Ｂ</th>
-            <th className="comment">コメント</th>
             <th className="num">結果</th>
             <th className="num">累計</th>
-            <th className="bsym">記号</th>
+            <th
+              className="bsym"
+              title="セット全体で1つ（このセットの累計を他で使う記号）"
+            >
+              記号
+            </th>
+            <th>備考</th>
+            <th className="estimate">積算用表示</th>
             <th />
           </tr>
         </thead>
@@ -303,6 +324,12 @@ export default function RoomCalcSheet({
             className={setIndex % 2 === 0 ? "set even" : "set odd"}
           >
             {Array.from({ length: setRowCount(set) }, (_, rowIndex) => {
+              const rowCount = setRowCount(set);
+              // 記号は行ごとではなくセット全体で1つ（先頭の計算式行に持たせる）
+              const setSymbol =
+                set.lines.find((row) => row.bSymbol.trim() !== "")?.bSymbol ??
+                "";
+              const setTotal = result.setTotals.get(set.id) ?? null;
               // 明細1件は上下2行セット（偶数行＝上段、奇数行＝下段）
               const detailIndex = Math.floor(rowIndex / 2);
               const isUpper = rowIndex % 2 === 0;
@@ -314,8 +341,8 @@ export default function RoomCalcSheet({
                   key={`${set.id}-${rowIndex}`}
                   className={isUpper ? "detail-upper" : "detail-lower"}
                 >
-                  <td className="part">
-                    {rowIndex === 0 ? (
+                  {rowIndex === 0 && (
+                    <td className="part dcell" rowSpan={rowCount}>
                       <input
                         list="calc-parts"
                         value={set.partName}
@@ -332,11 +359,11 @@ export default function RoomCalcSheet({
                           });
                         }}
                       />
-                    ) : null}
-                  </td>
+                    </td>
+                  )}
                   {detail ? (
                     <>
-                      <td className="subject">
+                      <td className="subject dcell">
                         {!isUpper && (
                           <input
                             value={
@@ -360,7 +387,7 @@ export default function RoomCalcSheet({
                           />
                         )}
                       </td>
-                      <td className="material">
+                      <td className="material dcell">
                         {!isUpper && (
                           <input
                             list="calc-materials"
@@ -381,12 +408,12 @@ export default function RoomCalcSheet({
                           />
                         )}
                       </td>
-                      <td className="no">
+                      <td className="no dcell">
                         {!isUpper && detail.detailNumber !== null
                           ? detail.detailNumber.toFixed(2)
                           : ""}
                       </td>
-                      <td>
+                      <td className="dcell">
                         <input
                           value={isUpper ? detail.partName : detail.name}
                           placeholder={isUpper ? "部位名" : "名称"}
@@ -408,7 +435,7 @@ export default function RoomCalcSheet({
                           }
                         />
                       </td>
-                      <td>
+                      <td className="dcell">
                         <input
                           value={
                             isUpper
@@ -426,7 +453,7 @@ export default function RoomCalcSheet({
                           }
                         />
                       </td>
-                      <td className="unit">
+                      <td className="unit dcell">
                         {!isUpper && (
                           <input
                             list="calc-units"
@@ -445,7 +472,7 @@ export default function RoomCalcSheet({
                           />
                         )}
                       </td>
-                      <td className="coef">
+                      <td className="coef dcell">
                         {!isUpper && (
                           <input
                             key={detail.id}
@@ -462,41 +489,36 @@ export default function RoomCalcSheet({
                           />
                         )}
                       </td>
-                      <td>
-                        <input
-                          value={
-                            isUpper ? detail.remarksUpper : detail.remarksLower
-                          }
-                          onChange={(e) =>
-                            updateDetail(
-                              set.id,
-                              detailIndex,
-                              isUpper
-                                ? { remarksUpper: e.target.value }
-                                : { remarksLower: e.target.value },
+                      <td className="num total dcell">
+                        {!isUpper && setTotal !== null
+                          ? displayQuantity(
+                              displayedValue(
+                                setTotal * (detail.coefficient || 1),
+                              ),
                             )
-                          }
-                        />
-                      </td>
-                      <td className="estimate">
-                        {!isUpper && (
-                          <input
-                            value={detail.estimateDisplay}
-                            title="内訳書へ出すときの表示（明細マスターと同じ欄）"
-                            onChange={(e) =>
-                              updateDetail(set.id, detailIndex, {
-                                estimateDisplay: e.target.value,
-                              })
-                            }
-                          />
-                        )}
+                          : ""}
                       </td>
                     </>
                   ) : (
-                    <td className="empty" colSpan={9} />
+                    <td className="empty" colSpan={8} />
                   )}
                   {line ? (
                     <>
+                      <td className="comment">
+                        <input
+                          maxLength={20}
+                          value={line.comment}
+                          onChange={(e) =>
+                            updateSet(set.id, {
+                              lines: set.lines.map((row, index) =>
+                                index === rowIndex
+                                  ? { ...row, comment: e.target.value }
+                                  : row,
+                              ),
+                            })
+                          }
+                        />
+                      </td>
                       <td className="formula">
                         <input
                           value={line.formulaA}
@@ -540,21 +562,6 @@ export default function RoomCalcSheet({
                           }
                         />
                       </td>
-                      <td className="comment">
-                        <input
-                          maxLength={20}
-                          value={line.comment}
-                          onChange={(e) =>
-                            updateSet(set.id, {
-                              lines: set.lines.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, comment: e.target.value }
-                                  : row,
-                              ),
-                            })
-                          }
-                        />
-                      </td>
                       <td
                         className={[
                           "num",
@@ -570,54 +577,79 @@ export default function RoomCalcSheet({
                           : lineResult?.text}
                       </td>
                       <td className="num">{lineResult?.totalText ?? ""}</td>
-                      <td className="bsym">
+                    </>
+                  ) : (
+                    <td className="empty" colSpan={5} />
+                  )}
+                  {rowIndex === 0 && (
+                    <td className="bsym" rowSpan={rowCount}>
+                      <input
+                        value={setSymbol}
+                        placeholder="B1"
+                        title="このセットの累計を他のセットで使うための記号（セットに1つ）"
+                        onChange={(e) => {
+                          const symbol = e.target.value.trim().toUpperCase();
+                          if (
+                            symbol !== "" &&
+                            symbol !== setSymbol &&
+                            used.has(symbol)
+                          ) {
+                            onMessage(`${symbol} は既に使われています`);
+                            return;
+                          }
+                          updateSet(set.id, { lines: setBSymbol(set, symbol) });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        title="空いている番号を割り当てます"
+                        onClick={() =>
+                          updateSet(set.id, {
+                            lines: setBSymbol(set, nextBSymbol(sets)),
+                          })
+                        }
+                      >
+                        B
+                      </button>
+                    </td>
+                  )}
+                  {detail ? (
+                    <>
+                      <td className="dcell">
                         <input
-                          value={line.bSymbol}
-                          placeholder="B1"
-                          title="この計算結果を他のセットで使うための記号（B1〜B100）"
-                          onChange={(e) => {
-                            const symbol = e.target.value.trim().toUpperCase();
-                            if (
-                              symbol !== "" &&
-                              symbol !== line.bSymbol &&
-                              used.has(symbol)
-                            ) {
-                              onMessage(`${symbol} は既に使われています`);
-                              return;
-                            }
-                            updateSet(set.id, {
-                              lines: set.lines.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, bSymbol: symbol }
-                                  : row,
-                              ),
-                            });
-                          }}
+                          value={
+                            isUpper ? detail.remarksUpper : detail.remarksLower
+                          }
+                          onChange={(e) =>
+                            updateDetail(
+                              set.id,
+                              detailIndex,
+                              isUpper
+                                ? { remarksUpper: e.target.value }
+                                : { remarksLower: e.target.value },
+                            )
+                          }
                         />
-                        {rowIndex === 0 && (
-                          <button
-                            type="button"
-                            title="空いている番号を割り当てます"
-                            onClick={() =>
-                              updateSet(set.id, {
-                                lines: set.lines.map((row, index) =>
-                                  index === rowIndex
-                                    ? { ...row, bSymbol: nextBSymbol(sets) }
-                                    : row,
-                                ),
+                      </td>
+                      <td className="estimate dcell">
+                        {!isUpper && (
+                          <input
+                            value={detail.estimateDisplay}
+                            title="内訳書へ出すときの表示（明細マスターと同じ欄）"
+                            onChange={(e) =>
+                              updateDetail(set.id, detailIndex, {
+                                estimateDisplay: e.target.value,
                               })
                             }
-                          >
-                            B
-                          </button>
+                          />
                         )}
                       </td>
                     </>
                   ) : (
-                    <td className="empty" colSpan={6} />
+                    <td className="empty" colSpan={2} />
                   )}
-                  <td>
-                    {rowIndex === 0 && (
+                  {rowIndex === 0 && (
+                    <td rowSpan={rowCount}>
                       <button
                         type="button"
                         title="このセット明細を削除します"
@@ -627,8 +659,8 @@ export default function RoomCalcSheet({
                       >
                         🗑
                       </button>
-                    )}
-                  </td>
+                    </td>
+                  )}
                 </tr>
               );
             })}
