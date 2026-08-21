@@ -16,7 +16,7 @@ import {
   toDrafts,
   updateRow
 } from './fittingRows'
-import { buildPastePreview } from '../grid/gridClipboard'
+import { buildPastePreview, copyRangeAsTsv } from '../grid/gridClipboard'
 import './FittingsPage.css'
 
 interface Props {
@@ -77,6 +77,23 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
     [columns, rows]
   )
 
+  /** 選んだ行をExcelへ貼れる形（TSV）でコピーする */
+  const copyRow = useCallback(
+    async (index: number) => {
+      if (index < 0 || index >= rows.length) return
+      await navigator.clipboard.writeText(
+        copyRangeAsTsv(rows, columns, {
+          startRow: index,
+          startCol: 0,
+          endRow: index,
+          endCol: columns.length - 1
+        })
+      )
+      setMessage('1行コピーしました')
+    },
+    [columns, rows]
+  )
+
   const addSeries = (form: SeriesForm): void => {
     const symbols = expandSymbols({
       prefix: form.prefix.trim(),
@@ -115,7 +132,23 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   )
 
   return (
-    <div className="fittings-page">
+    <div
+      className="fittings-page"
+      onKeyDown={(e) => {
+        if (!e.ctrlKey) return
+        if (e.key === 'v') {
+          e.preventDefault()
+          void paste(selected)
+        } else if (e.key === 'c') {
+          const active = document.activeElement
+          // 文字を選んでいるときは通常の文字コピーを邪魔しない
+          if (active instanceof HTMLInputElement && active.selectionStart !== active.selectionEnd)
+            return
+          e.preventDefault()
+          void copyRow(selected)
+        }
+      }}
+    >
       <div className="toolbar">
         <button type="button" onClick={onBack}>
           ← 工事管理画面へ
@@ -139,8 +172,15 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
         <button type="button" onClick={() => setRows(sortBySymbol(rows))}>
           ⇅ 記号で昇順
         </button>
-        <button type="button" onClick={() => void paste(selected)}>
+        <button
+          type="button"
+          title="選んだ行から下へ、Excelの表をまとめて取り込みます（Ctrl+V）"
+          onClick={() => void paste(selected)}
+        >
           📋 Excelから貼り付け
+        </button>
+        <button type="button" title="選んだ行をExcelへコピーします（Ctrl+C）" onClick={() => void copyRow(selected)}>
+          ⧉ 行コピー
         </button>
         <button type="button" onClick={() => void save()}>
           💾 保存

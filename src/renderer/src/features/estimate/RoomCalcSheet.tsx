@@ -20,6 +20,16 @@ import {
   type CalcSet,
   type CalcSheetResult,
 } from "../../../../core/room/calcSheet";
+import {
+  detailAsTsv,
+  duplicateDetail,
+  duplicateSet,
+  fillLines,
+  pasteDetails,
+  pasteLines,
+  setAsTsv,
+} from "../../../../core/room/calcClipboard";
+import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import "./RoomCalcSheet.css";
 
 /** いま入力しているセル（記号クリックの差し込み先・呼出の位置に使う） */
@@ -256,8 +266,111 @@ export default function RoomCalcSheet({
     [currentSet, focus, onChange, sets, updateSet],
   );
 
+  /** いま選んでいる明細（明細欄にカーソルがあるときだけ） */
+  const currentDetail = useMemo(() => {
+    if (!focus || focus.area !== "detail" || !currentSet) return null;
+    return currentSet.details[focus.index] ?? null;
+  }, [currentSet, focus]);
+
+  /**
+   * コピー。明細欄にカーソルがあれば明細1件、それ以外はセット1つ。
+   * Excelへも貼れるようクリップボードへは表形式（TSV）で入れる。
+   */
+  const copy = useCallback(async () => {
+    if (!currentSet) return;
+    if (currentDetail) {
+      const text = detailAsTsv(currentDetail);
+      await navigator.clipboard.writeText(text);
+      setCalcClip({ kind: "detail", text, detail: currentDetail });
+      onMessage(`明細「${currentDetail.name || "（名称なし）"}」をコピーしました`);
+      return;
+    }
+    const text = setAsTsv(currentSet);
+    await navigator.clipboard.writeText(text);
+    setCalcClip({ kind: "set", text, set: currentSet });
+    onMessage(
+      `セット「${currentSet.partName || "（部位なし）"}」をコピーしました`,
+    );
+  }, [currentDetail, currentSet, onMessage]);
+
+  /**
+   * 貼り付け。この画面でコピーしたセット・明細ならそのまま写し、
+   * Excelなど他から持ってきた表なら、カーソルの欄（明細／計算式）へ取り込む。
+   */
+  const paste = useCallback(async () => {
+    const text = await navigator.clipboard.readText();
+    if (text.trim() === "") return;
+    const clip = getCalcClip(text);
+
+    if (clip?.kind === "set") {
+      const created = duplicateSet(clip.set);
+      const at = sets.findIndex((set) => set.id === currentSet?.id);
+      const next = [...sets];
+      next.splice(at < 0 ? next.length : at + 1, 0, created);
+      onChange(next);
+      onFocus({ setId: created.id, area: "detail", index: 0 });
+      onMessage("コピーしたセットを貼り付けました");
+      return;
+    }
+
+    if (!currentSet) {
+      onMessage("貼り付ける場所を選んでください");
+      return;
+    }
+
+    if (clip?.kind === "detail") {
+      const details = [...currentSet.details];
+      const at = focus?.area === "detail" ? focus.index + 1 : details.length;
+      details.splice(at, 0, duplicateDetail(clip.detail));
+      updateSet(currentSet.id, {
+        details,
+        lines: fillLines(details, currentSet.lines),
+      });
+      onMessage("コピーした明細を貼り付けました");
+      return;
+    }
+
+    if (focus?.area === "detail") {
+      const details = pasteDetails(currentSet.details, focus.index, text);
+      updateSet(currentSet.id, {
+        details,
+        lines: fillLines(details, currentSet.lines),
+      });
+      onMessage(
+        `Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順）`,
+      );
+      return;
+    }
+
+    const lines = pasteLines(currentSet.lines, focus?.index ?? 0, text);
+    updateSet(currentSet.id, { lines });
+    onMessage(
+      "Excelの数量表を計算式へ貼り付けました（コメント／計算式Ａ／計算式Ｂの順。1列だけなら計算式Ａ）",
+    );
+  }, [currentSet, focus, onChange, onFocus, onMessage, sets, updateSet]);
+
   return (
-    <div className="room-calc-sheet">
+    <div
+      className="room-calc-sheet"
+      onKeyDown={(e) => {
+        if (!e.ctrlKey) return;
+        if (e.key === "c") {
+          // 文字を選んでいるときは通常の文字コピーを邪魔しない
+          if ((window.getSelection()?.toString() ?? "") !== "") return;
+          const active = document.activeElement;
+          if (
+            active instanceof HTMLInputElement &&
+            active.selectionStart !== active.selectionEnd
+          )
+            return;
+          e.preventDefault();
+          void copy();
+        } else if (e.key === "v") {
+          e.preventDefault();
+          void paste();
+        }
+      }}
+    >
       <div className="section-bar">
         <span>セット明細計算表（部位のある行がセットの先頭です）</span>
         <button type="button" onClick={() => onChange([...sets, calcSet()])}>
@@ -268,6 +381,20 @@ export default function RoomCalcSheet({
         </button>
         <button type="button" onClick={() => addRow(true)}>
           ↥ 行挿入
+        </button>
+        <button
+          type="button"
+          title="明細欄にカーソルがあれば明細1件、それ以外はセット1つをコピーします（Ctrl+C）"
+          onClick={() => void copy()}
+        >
+          ⧉ コピー
+        </button>
+        <button
+          type="button"
+          title="コピーしたセット・明細、またはExcelの表を貼り付けます（Ctrl+V）"
+          onClick={() => void paste()}
+        >
+          📋 貼り付け
         </button>
         <button
           type="button"
@@ -815,6 +942,12 @@ export default function RoomCalcSheet({
       <p className="note">
         計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}建具記号（&lt;AW1&gt;
         …建具表から直接引用）、他セットの累計（B1〜B100）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
+      </p>
+      <p className="note dim">
+        コピー・貼り付け（Ctrl+C／Ctrl+V）：明細欄にカーソルがあれば明細1件、計算式欄なら
+        セット1つを写します。Excelの表は、明細欄にカーソルがあれば
+        部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順、
+        計算式欄なら コメント／計算式Ａ／計算式Ｂ の順（1列だけなら計算式Ａ）で取り込みます。
       </p>
       <CalcVariablesHint variables={variables} hasUpper={hasUpper} />
     </div>
