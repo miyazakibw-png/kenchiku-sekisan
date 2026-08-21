@@ -214,6 +214,41 @@ export type SaveRoomSheetRequest = Omit<
   "projectId" | "estimateRowId"
 >;
 
+/** 軸組計算書の上段（建物レイアウト・軸組ライン） */
+export interface FrameSheet {
+  id: number;
+  projectId: number;
+  /** 部位別入力表の行（1行＝1軸組計算書） */
+  estimateRowId: number;
+  /** 配置した部屋（FramePlacementの配列）のJSON */
+  layoutJson: string;
+  /** 直接引いた軸組ライン（FrameManualLineの配列）のJSON */
+  linesJson: string;
+  /** 軸組ラインごとの指定（FrameLineAttribute）のJSON */
+  attributesJson: string;
+  /** 軸組で拾う建具のJSON */
+  fittingsJson: string;
+  /** 下段のセット明細計算表 */
+  lowerJson: string;
+  workHeight: number | null;
+  note: string;
+}
+
+export type SaveFrameSheetRequest = Omit<
+  FrameSheet,
+  "projectId" | "estimateRowId"
+>;
+
+/** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
+export interface FrameRoomOption {
+  estimateRowId: number;
+  /** 部位Ⅱ＋半角スペース＋部位Ⅲ */
+  roomName: string;
+  /** 部屋形状（辺の並び）のJSON */
+  shapeJson: string;
+  ceilingHeight: number | null;
+}
+
 /** basic: 全物件共通の基本セット / project: 積算入力時に自動登録される物件固有セット */
 export type AssemblyScope = "basic" | "project";
 

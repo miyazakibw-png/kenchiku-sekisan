@@ -428,4 +428,26 @@ ALTER TABLE project_room_sheets ADD COLUMN ceiling_json TEXT NOT NULL DEFAULT '[
   /* 014: 下段のセット明細計算表（部位ごとのセット・明細・計算式A/B・B1〜B100） */ `
 ALTER TABLE project_room_sheets ADD COLUMN lower_json TEXT NOT NULL DEFAULT '[]';
 `,
+  /* 015: 軸組計算書の上段（部屋計算書で作った部屋を並べる建物レイアウトと軸組ライン）。
+     数量根拠を追えるように「部屋 → 壁 → 軸組ライン → 数量」の関係をIDで保持する */ `
+CREATE TABLE project_frame_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  estimate_row_id INTEGER NOT NULL REFERENCES project_estimate_rows(id) ON DELETE CASCADE,
+  -- 配置した部屋（部屋計算書の平面図を1オブジェクトとして置く）
+  layout_json TEXT NOT NULL DEFAULT '[]',
+  -- 直接引いた軸組ライン（始点・終点）
+  lines_json TEXT NOT NULL DEFAULT '[]',
+  -- 軸組ラインごとの指定（壁種・サイズ種類・施工高さ・拾う／拾わない・壁の共有）
+  attributes_json TEXT NOT NULL DEFAULT '{}',
+  -- 軸組で拾う建具（開口の差し引きと開口部補強に使う）
+  fittings_json TEXT NOT NULL DEFAULT '[]',
+  lower_json TEXT NOT NULL DEFAULT '[]',
+  -- 軸組の施工高さ（1か所直すと全体が再計算される）
+  work_height REAL,
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_frame_sheet_row ON project_frame_sheets(estimate_row_id);
+`,
 ];

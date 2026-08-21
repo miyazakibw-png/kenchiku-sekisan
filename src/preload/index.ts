@@ -7,6 +7,8 @@ import type {
   EstimateRow,
   FinishAssembly,
   Fitting,
+  FrameRoomOption,
+  FrameSheet,
   MasterOptions,
   ProjectField,
   ProjectLedger,
@@ -16,6 +18,7 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  SaveFrameSheetRequest,
   RoomSheet,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -71,6 +74,14 @@ const api = {
     },
   ): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.roomFittingRegister, projectId, fitting),
+  /** 軸組計算書の上段。まだ無ければ部位別入力表の行から作られる */
+  getFrameSheet: (estimateRowId: number): Promise<FrameSheet> =>
+    ipcRenderer.invoke(IPC.frameSheetGet, estimateRowId),
+  saveFrameSheet: (request: SaveFrameSheetRequest): Promise<FrameSheet> =>
+    ipcRenderer.invoke(IPC.frameSheetSave, request),
+  /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
+  listFrameRooms: (projectId: number): Promise<FrameRoomOption[]> =>
+    ipcRenderer.invoke(IPC.frameRoomsList, projectId),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

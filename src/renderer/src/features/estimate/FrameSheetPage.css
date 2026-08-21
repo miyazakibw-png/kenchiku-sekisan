@@ -1,0 +1,93 @@
+/* 軸組計算書は部屋計算書と同じ見た目にする（RoomSheetPage.css を土台に足すだけ） */
+.frame-sheet-page .upper {
+  grid-template-columns: minmax(240px, 1.1fr) minmax(200px, 0.8fr) minmax(
+      240px,
+      1fr
+    );
+}
+
+.frame-sheet-page .drawing {
+  grid-row: span 2;
+}
+
+.frame-sheet-page .canvas {
+  min-height: 220px;
+  max-height: 300px;
+}
+
+.frame-sheet-page .frame-line {
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+/* 拾わない線（外周・共有された側・拾わない指定） */
+.frame-sheet-page .frame-line.skip {
+  stroke-dasharray: 7 4;
+}
+
+.frame-sheet-page .frame-line.selected {
+  stroke-width: 6;
+}
+
+/* 重なっている壁の目印 */
+.frame-sheet-page .frame-line.shared-mark {
+  stroke: #ea580c;
+  stroke-width: 8;
+  stroke-opacity: 0.25;
+  pointer-events: none;
+}
+
+.frame-sheet-page .draw-start {
+  fill: #2563eb;
+}
+
+.frame-sheet-page .shared-note {
+  margin-left: auto;
+  color: #b45309;
+  font-weight: 400;
+}
+
+.frame-sheet-page tr.skip td {
+  color: #94a3b8;
+}
+
+.frame-sheet-page th.pick,
+.frame-sheet-page td.pick {
+  width: 34px;
+  text-align: center;
+}
+
+.frame-sheet-page td.pick input {
+  width: auto;
+}
+
+.frame-sheet-page .frame-lines,
+.frame-sheet-page .frame-fittings,
+.frame-sheet-page .check {
+  grid-column: span 2;
+}
+
+.frame-sheet-page .toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.frame-sheet-page .frame-room {
+  fill-opacity: 0.08;
+  stroke: none;
+  cursor: move;
+}
+
+.frame-sheet-page .frame-room.selected {
+  fill-opacity: 0.16;
+}
+
+.frame-sheet-page .frame-room-name {
+  fill: #334155;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}

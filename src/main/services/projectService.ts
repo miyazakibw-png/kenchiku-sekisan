@@ -8,6 +8,7 @@ import {
   projectEstimateRows,
   projectFieldValues,
   projectFittings,
+  projectFrameSheets,
   projectRoomFinishes,
   projectRoomSheets,
   projects
@@ -104,6 +105,24 @@ export function createProject(db: AppDatabase, name: string): ProjectSummary {
   return getProject(db, id)
 }
 
+/** 軸組計算書に置いた部屋の参照（部位別入力表の行ID）をコピー先の行に付け替える */
+function remapLayout(layoutJson: string, rowIdMap: Map<number, number>): string {
+  try {
+    const placements: unknown = JSON.parse(layoutJson)
+    if (!Array.isArray(placements)) return layoutJson
+    const mapped = placements.map((placement: { estimateRowId?: number }) => {
+      const copiedRowId =
+        placement.estimateRowId === undefined
+          ? undefined
+          : rowIdMap.get(placement.estimateRowId)
+      return copiedRowId === undefined ? placement : { ...placement, estimateRowId: copiedRowId }
+    })
+    return JSON.stringify(mapped)
+  } catch {
+    return layoutJson
+  }
+}
+
 /**
  * 既存物件をコピーして新規作成する。
  * 物件専用マスター（物件セット）と入力データも複製し、コピー元とは完全に切り離す。
@@ -176,6 +195,24 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
         if (copiedRowId === undefined) return
         tx.insert(projectRoomSheets)
           .values({ ...rest, projectId: newId, estimateRowId: copiedRowId })
+          .run()
+      })
+
+    // 軸組計算書も一緒に複製する。置いた部屋の参照はコピー先の行に付け替える
+    tx.select()
+      .from(projectFrameSheets)
+      .where(eq(projectFrameSheets.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, estimateRowId, ...rest }) => {
+        const copiedRowId = estimateRowIdMap.get(estimateRowId)
+        if (copiedRowId === undefined) return
+        tx.insert(projectFrameSheets)
+          .values({
+            ...rest,
+            layoutJson: remapLayout(rest.layoutJson, estimateRowIdMap),
+            projectId: newId,
+            estimateRowId: copiedRowId
+          })
           .run()
       })
 

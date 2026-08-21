@@ -329,6 +329,31 @@ export const projectRoomSheets = sqliteTable("project_room_sheets", {
   updatedAt: text("updated_at").notNull().default(now),
 });
 
+/** 軸組計算書の上段（建物レイアウト・軸組ライン）。1行の部位別入力表に1つ対応する */
+export const projectFrameSheets = sqliteTable("project_frame_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  estimateRowId: integer("estimate_row_id")
+    .notNull()
+    .references(() => projectEstimateRows.id, { onDelete: "cascade" }),
+  /** 配置した部屋（FramePlacementの配列） */
+  layoutJson: text("layout_json").notNull().default("[]"),
+  /** 直接引いた軸組ライン（FrameManualLineの配列） */
+  linesJson: text("lines_json").notNull().default("[]"),
+  /** 軸組ラインごとの指定（壁種・サイズ種類・拾う／拾わない・壁の共有） */
+  attributesJson: text("attributes_json").notNull().default("{}"),
+  /** 軸組で拾う建具（記号・数・付く軸組ライン） */
+  fittingsJson: text("fittings_json").notNull().default("[]"),
+  /** 下段のセット明細計算表 */
+  lowerJson: text("lower_json").notNull().default("[]"),
+  /** 軸組の施工高さ（1か所直すと全体が再計算される） */
+  workHeight: real("work_height"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 /**
  * 動的計算書スキーマ。
  * 計算書（シート）のUIレイアウトと計算式定義をJSONで保持し、

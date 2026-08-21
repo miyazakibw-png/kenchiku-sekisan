@@ -36,6 +36,11 @@ import {
   saveDeductionLimit,
   saveRoomSheet,
 } from "./services/roomSheetService";
+import {
+  getFrameSheet,
+  listFrameRooms,
+  saveFrameSheet,
+} from "./services/frameSheetService";
 import { IPC } from "../shared/ipc";
 import type {
   ProjectField,
@@ -43,6 +48,7 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  SaveFrameSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SubjectDraft,
@@ -117,6 +123,15 @@ function registerIpcHandlers(): void {
         sillHeight: number | null;
       },
     ) => registerRoomFitting(getDatabase(), projectId, fitting),
+  );
+  ipcMain.handle(IPC.frameSheetGet, (_event, estimateRowId: number) =>
+    getFrameSheet(getDatabase(), estimateRowId),
+  );
+  ipcMain.handle(IPC.frameSheetSave, (_event, request: SaveFrameSheetRequest) =>
+    saveFrameSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.frameRoomsList, (_event, projectId: number) =>
+    listFrameRooms(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
