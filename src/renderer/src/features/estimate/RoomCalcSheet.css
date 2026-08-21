@@ -138,9 +138,14 @@
   width: 72px;
 }
 
-/* 1明細＝上下2行なので、明細欄は上下段の間に罫線を引かない */
-.room-calc-sheet tr.detail-upper td.dcell {
+/* 1明細＝上下2行なので、明細欄は上下段の間に罫線を引かない
+   （罫線は結合表示なので上段の下側と下段の上側の両方を消す） */
+.room-calc-sheet table.calc tr.detail-upper td.dcell {
   border-bottom: none;
+}
+
+.room-calc-sheet table.calc tr.detail-lower td.dcell {
+  border-top: none;
 }
 
 .room-calc-sheet .formula {
