@@ -16,7 +16,7 @@
     "test": "vitest run",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3 --build-from-source",
     "rebuild:node": "npm rebuild better-sqlite3",
-    "package:win": "npm run build && npm run rebuild:electron && electron-builder --win --config electron-builder.yml"
+    "package:win": "npm run build && node scripts/prepare-win-native.mjs && electron-builder --win --config electron-builder.yml"
   },
   "dependencies": {
     "better-sqlite3": "11.6.0",
