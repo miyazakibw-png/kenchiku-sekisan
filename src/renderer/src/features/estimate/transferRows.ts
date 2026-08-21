@@ -43,6 +43,7 @@ export function emptyTransferRow(): TransferRowDraft {
     amount: null,
     remarks: "",
     memo: "",
+    formworkKey: "",
   };
 }
 

@@ -80,6 +80,13 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true
   },
   {
+    key: 'formworkTransfer',
+    label: '型枠転記',
+    group: 'aggregate',
+    note: '集計した型枠分類別の数量を転記入力表の最終行へ追記（次の集計に含まれる）',
+    ready: true
+  },
+  {
     key: 'changeHistory',
     label: '明細マスター変更履歴',
     group: 'aggregate',

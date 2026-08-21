@@ -652,4 +652,7 @@ CREATE TABLE project_breakdown_rows (
 );
 CREATE INDEX idx_breakdown_rows_version ON project_breakdown_rows(version_id, display_order);
 `,
+  /* 020: 型枠転記で作った転記入力表の行に、生成元の型枠分類を持たせる */ `
+ALTER TABLE project_transfer_rows ADD COLUMN formwork_key TEXT NOT NULL DEFAULT '';
+`,
 ];

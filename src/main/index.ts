@@ -60,6 +60,11 @@ import {
   runAggregation,
 } from "./services/aggregationService";
 import {
+  getFormworkTransfer,
+  runFormworkTransfer,
+  saveFormworkRules,
+} from "./services/formworkTransferService";
+import {
   confirmBreakdownVersion,
   getBreakdown,
   listBreakdownVersions,
@@ -87,6 +92,7 @@ import type {
   SaveGeneralSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
+  SaveFormworkRulesRequest,
   SaveTransferRowsRequest,
   SubjectDraft,
 } from "../shared/types";
@@ -202,6 +208,17 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
     listAggregateRuns(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.formworkTransferGet, (_event, projectId: number) =>
+    getFormworkTransfer(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.formworkTransferSaveRules,
+    (_event, request: SaveFormworkRulesRequest) =>
+      saveFormworkRules(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.formworkTransferRun, (_event, projectId: number) =>
+    runFormworkTransfer(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.breakdownGet,

@@ -409,6 +409,8 @@ export const projectTransferRows = sqliteTable(
     /** Q・R: 備考とメモ（メモはどこにも連動しない） */
     remarks: text("remarks").notNull().default(""),
     memo: text("memo").notNull().default(""),
+    /** 型枠転記で作った行の生成元（型枠分類）。転記し直すときの目印 */
+    formworkKey: text("formwork_key").notNull().default(""),
     displayOrder: integer("display_order").notNull().default(0),
   },
   (t) => ({

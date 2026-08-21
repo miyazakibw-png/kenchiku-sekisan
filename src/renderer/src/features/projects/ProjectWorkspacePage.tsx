@@ -17,6 +17,7 @@ import TransferSheetPage from '../estimate/TransferSheetPage'
 import AggregatePage from '../aggregate/AggregatePage'
 import RoomAggregatePage from '../aggregate/RoomAggregatePage'
 import CheckSheetPage from '../aggregate/CheckSheetPage'
+import FormworkTransferPage from '../aggregate/FormworkTransferPage'
 import BreakdownPage from '../breakdown/BreakdownPage'
 import './ProjectWorkspacePage.css'
 
@@ -178,6 +179,10 @@ export default function ProjectWorkspacePage({
 
   if (openedMenu === 'roomAggregate') {
     return <RoomAggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
+  }
+
+  if (openedMenu === 'formworkTransfer') {
+    return <FormworkTransferPage project={draft} onBack={() => setOpenedMenu(null)} />
   }
 
   if (openedMenu === 'finishCheck') {

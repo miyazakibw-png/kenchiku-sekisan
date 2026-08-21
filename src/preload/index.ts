@@ -19,6 +19,7 @@ import type {
   EstimateRow,
   FinishAssembly,
   Fitting,
+  FormworkTransferView,
   FrameRoomOption,
   FrameSheet,
   GeneralSheet,
@@ -31,6 +32,7 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
   RoomSheet,
@@ -123,6 +125,15 @@ const api = {
     ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
   listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>
     ipcRenderer.invoke(IPC.aggregateRuns, projectId),
+  /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
+  getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferGet, projectId),
+  saveFormworkRules: (
+    request: SaveFormworkRulesRequest,
+  ): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferSaveRules, request),
+  runFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferRun, projectId),
   /** 内訳書（集計書兼工事マスターからの変換転記） */
   getBreakdown: (
     projectId: number,

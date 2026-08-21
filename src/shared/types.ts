@@ -2,8 +2,13 @@ import type {
   BasicMasterKind,
   BasicMasterRow,
 } from "../core/masters/basicMaster";
+import type {
+  FormworkTransferRow,
+  FormworkTransferRule,
+} from "../core/aggregate/formworkTransfer";
 
 export type { BasicMasterKind, BasicMasterRow };
+export type { FormworkTransferRow, FormworkTransferRule };
 
 export interface Subject {
   id: number;
@@ -298,14 +303,18 @@ export interface TransferRow {
   remarks: string;
   /** R: メモ（どこにも連動しない） */
   memo: string;
+  /** 型枠転記で作った行の生成元（型枠分類） */
+  formworkKey: string;
   displayOrder: number;
 }
 
 export type TransferRowDraft = Omit<
   TransferRow,
-  "id" | "projectId" | "displayOrder"
+  "id" | "projectId" | "displayOrder" | "formworkKey"
 > & {
   id: number | null;
+  /** 型枠転記で作った行だけ持つ（画面で作る行は空欄） */
+  formworkKey?: string;
 };
 
 export interface SaveTransferRowsRequest {
@@ -504,6 +513,24 @@ export interface AggregateView {
   run: AggregateRun | null;
   items: AggregateItem[];
   details: AggregateDetail[];
+}
+
+/** 型枠転記（集計した型枠分類別の数量→転記入力表の最終行へ追記） */
+export interface FormworkTransferView {
+  rules: FormworkTransferRule[];
+  groups: {
+    formwork: string;
+    part1: string;
+    part2: string;
+    part2Split: boolean;
+    quantity: number;
+  }[];
+  rows: FormworkTransferRow[];
+}
+
+export interface SaveFormworkRulesRequest {
+  projectId: number;
+  rules: FormworkTransferRule[];
 }
 
 /** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
