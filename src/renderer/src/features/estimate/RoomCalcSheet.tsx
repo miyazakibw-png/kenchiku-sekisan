@@ -583,34 +583,38 @@ export default function RoomCalcSheet({
                   )}
                   {rowIndex === 0 && (
                     <td className="bsym" rowSpan={rowCount}>
-                      <input
-                        value={setSymbol}
-                        placeholder="B1"
-                        title="このセットの累計を他のセットで使うための記号（セットに1つ）"
-                        onChange={(e) => {
-                          const symbol = e.target.value.trim().toUpperCase();
-                          if (
-                            symbol !== "" &&
-                            symbol !== setSymbol &&
-                            used.has(symbol)
-                          ) {
-                            onMessage(`${symbol} は既に使われています`);
-                            return;
+                      <div className="cell">
+                        <input
+                          value={setSymbol}
+                          placeholder="B1"
+                          title="このセットの累計を他のセットで使うための記号（セットに1つ）"
+                          onChange={(e) => {
+                            const symbol = e.target.value.trim().toUpperCase();
+                            if (
+                              symbol !== "" &&
+                              symbol !== setSymbol &&
+                              used.has(symbol)
+                            ) {
+                              onMessage(`${symbol} は既に使われています`);
+                              return;
+                            }
+                            updateSet(set.id, {
+                              lines: setBSymbol(set, symbol),
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          title="空いている番号を割り当てます"
+                          onClick={() =>
+                            updateSet(set.id, {
+                              lines: setBSymbol(set, nextBSymbol(sets)),
+                            })
                           }
-                          updateSet(set.id, { lines: setBSymbol(set, symbol) });
-                        }}
-                      />
-                      <button
-                        type="button"
-                        title="空いている番号を割り当てます"
-                        onClick={() =>
-                          updateSet(set.id, {
-                            lines: setBSymbol(set, nextBSymbol(sets)),
-                          })
-                        }
-                      >
-                        B
-                      </button>
+                        >
+                          B
+                        </button>
+                      </div>
                     </td>
                   )}
                   {detail ? (

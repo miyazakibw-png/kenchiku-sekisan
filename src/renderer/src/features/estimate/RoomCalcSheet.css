@@ -162,6 +162,10 @@
 
 .room-calc-sheet .bsym {
   width: 58px;
+  vertical-align: middle;
+}
+
+.room-calc-sheet .bsym .cell {
   display: flex;
 }
 
