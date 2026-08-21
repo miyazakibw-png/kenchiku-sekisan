@@ -192,7 +192,8 @@ export default function RoomSheetPage({
       return sum + (point.x * next.y - next.x * point.y);
     }, 0);
     const inward = area >= 0 ? 1 : -1;
-    return ceilingResult.items.flatMap((item) => {
+    const count = ceilingResult.items.length;
+    return ceilingResult.items.flatMap((item, itemIndex) => {
       const index = solved.edges.findIndex(
         (line) => line.id === item.element.edgeId,
       );
@@ -215,6 +216,8 @@ export default function RoomSheetPage({
           : item.element.kind === "dropCeiling"
             ? [offset]
             : [width];
+      // 同じ壁に何本も線を置いても天井高さの文字が重ならないように、線の上で位置をずらす
+      const at = (itemIndex + 1) / (count + 1);
       return distances.map((distance, no) => ({
         key: `${item.element.id}-${no}`,
         elementId: item.element.id,
@@ -223,6 +226,8 @@ export default function RoomSheetPage({
         y1: from.y + ny * distance,
         x2: to.x + nx * distance,
         y2: to.y + ny * distance,
+        labelX: from.x + dx * at + nx * distance,
+        labelY: from.y + dy * at + ny * distance,
         label:
           no === 0 && item.element.ceilingHeight !== null
             ? formatNumber(item.element.ceilingHeight, 2)
@@ -428,8 +433,8 @@ export default function RoomSheetPage({
                     />
                     {line.label !== "" && (
                       <text
-                        x={(line.x1 + line.x2) / 2}
-                        y={(line.y1 + line.y2) / 2 + view.span * 0.045}
+                        x={line.labelX}
+                        y={line.labelY + view.span * 0.045}
                         className="dim ceiling"
                         fontSize={view.span * 0.045}
                       >
