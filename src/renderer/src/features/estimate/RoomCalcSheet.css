@@ -132,11 +132,11 @@
 }
 
 .room-calc-sheet .call-window {
-  position: absolute;
-  right: 10px;
-  top: 30px;
+  position: fixed;
+  right: 24px;
+  top: 90px;
   width: 420px;
-  max-height: 60vh;
+  max-height: 70vh;
   overflow: auto;
   background: #fff;
   border: 1px solid #94a3b8;

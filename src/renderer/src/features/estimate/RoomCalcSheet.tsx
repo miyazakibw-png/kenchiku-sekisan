@@ -282,14 +282,16 @@ export default function RoomCalcSheet({
                         value={set.partName}
                         placeholder="番号で入力"
                         title="部位マスターの番号を入力すると名称に変換します。空欄にすると上のセットに含まれます"
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const parts = options?.pickupParts ?? [];
+                          const name = resolveMasterName(parts, e.target.value);
                           updateSet(set.id, {
-                            partName: resolveMasterName(
-                              options?.pickupParts ?? [],
-                              e.target.value,
-                            ),
-                          })
-                        }
+                            partName: name,
+                            partNumber:
+                              parts.find((part) => part.name === name)?.id ??
+                              null,
+                          });
+                        }}
                       />
                     ) : null}
                   </td>
