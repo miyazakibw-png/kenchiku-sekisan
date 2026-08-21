@@ -6,6 +6,7 @@ import {
   evaluateCalcSheet,
   nextBSymbol,
   quantityByPart,
+  setRowCount,
   type CalcSet,
 } from "../../src/core/room/calcSheet";
 
@@ -99,5 +100,13 @@ describe("下段セット明細計算表", () => {
     expect(quantityByPart([set], result)).toEqual([
       { partName: "床", materialCategory: "仕上", quantity: 6 },
     ]);
+  });
+
+  it("明細1件は上下2行で表示する（計算式が多ければその行数に合わせる）", () => {
+    const set = calcSet(2);
+    expect(set.details).toHaveLength(2);
+    expect(setRowCount(set)).toBe(4);
+    set.lines = [...set.lines, calcLine(), calcLine()];
+    expect(setRowCount(set)).toBe(6);
   });
 });

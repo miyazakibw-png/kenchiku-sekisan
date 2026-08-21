@@ -218,8 +218,29 @@
 }
 
 .room-sheet-page .symbols td.symbol {
-  width: 48px;
+  width: 40px;
   font-weight: 700;
+}
+
+/* 記号表は2組ずつ横に並べる（高さを半分にして下段の表示行を増やす） */
+.room-sheet-page .symbols table.two-up {
+  font-size: 11px;
+}
+
+.room-sheet-page .symbols table.two-up td {
+  padding: 0 3px;
+  line-height: 1.35;
+}
+
+.room-sheet-page .symbols table.two-up td.label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.room-sheet-page .symbols table.two-up td:nth-child(4) {
+  border-left: 2px solid #cbd5e1;
 }
 
 .room-sheet-page .totals {

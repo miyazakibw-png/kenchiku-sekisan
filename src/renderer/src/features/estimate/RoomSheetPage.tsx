@@ -206,6 +206,20 @@ export default function RoomSheetPage({
     [solved, ceilingHeight, resolvedFittings, ceiling.length, ceilingResult],
   );
 
+  /** 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため） */
+  const symbolPairs = useMemo(() => {
+    const half = Math.ceil(symbols.length / 2);
+    return symbols
+      .slice(0, half)
+      .map(
+        (item, index) =>
+          [item, symbols[half + index] ?? null] as [
+            (typeof symbols)[number],
+            (typeof symbols)[number] | null,
+          ],
+      );
+  }, [symbols]);
+
   /** 天井伏図の線を描く位置（平面図の辺から内側へ離す） */
   const ceilingLines = useMemo(() => {
     if (solved.points.length === 0) return [];
@@ -707,13 +721,37 @@ export default function RoomSheetPage({
           <div className="section-bar">
             <span>記号（クリックでコピー：計算式に使えます）</span>
           </div>
-          <table className="grid">
+          <table className="grid two-up">
             <tbody>
-              {symbols.map((item) => (
-                <tr key={item.symbol} onClick={() => useSymbol(item.symbol)}>
-                  <td className="symbol">{item.symbol}</td>
-                  <td className="label">{item.label}</td>
-                  <td className="num">{formatNumber(item.value, 2)}</td>
+              {symbolPairs.map(([left, right]) => (
+                <tr key={left.symbol}>
+                  <td className="symbol" onClick={() => useSymbol(left.symbol)}>
+                    {left.symbol}
+                  </td>
+                  <td className="label" onClick={() => useSymbol(left.symbol)}>
+                    {left.label}
+                  </td>
+                  <td className="num" onClick={() => useSymbol(left.symbol)}>
+                    {formatNumber(left.value, 2)}
+                  </td>
+                  <td
+                    className="symbol"
+                    onClick={() => right && useSymbol(right.symbol)}
+                  >
+                    {right?.symbol ?? ""}
+                  </td>
+                  <td
+                    className="label"
+                    onClick={() => right && useSymbol(right.symbol)}
+                  >
+                    {right?.label ?? ""}
+                  </td>
+                  <td
+                    className="num"
+                    onClick={() => right && useSymbol(right.symbol)}
+                  >
+                    {right ? formatNumber(right.value, 2) : ""}
+                  </td>
                 </tr>
               ))}
             </tbody>

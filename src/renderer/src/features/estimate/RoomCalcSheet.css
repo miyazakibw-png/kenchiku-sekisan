@@ -60,6 +60,15 @@
   background: #f3f7fb;
 }
 
+/* 明細1件は上下2行セット。上段の行の上に区切り線を引く */
+.room-calc-sheet tr.detail-upper td {
+  border-top: 1px solid #b6c2d1;
+}
+
+.room-calc-sheet tr.detail-lower td {
+  border-top: 1px dotted #e2e8f0;
+}
+
 .room-calc-sheet td.num {
   text-align: right;
   padding: 2px 4px;
@@ -90,8 +99,12 @@
   width: 90px;
 }
 
+.room-calc-sheet .name {
+  min-width: 150px;
+}
+
 .room-calc-sheet .no {
-  width: 60px;
+  width: 56px;
   text-align: right;
   padding-right: 4px;
 }

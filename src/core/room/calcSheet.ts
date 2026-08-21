@@ -14,6 +14,8 @@ export interface CalcDetail {
   subjectId: number | null;
   detailNumber: number | null;
   materialCategory: string;
+  /** 上段に出す部位名（明細マスターと同じ上下2段の構成） */
+  partName: string;
   name: string;
   descriptionUpper: string;
   descriptionLower: string;
@@ -57,6 +59,7 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
     subjectId: null,
     detailNumber: null,
     materialCategory: "",
+    partName: "",
     name: "",
     descriptionUpper: "",
     descriptionLower: "",
@@ -80,20 +83,20 @@ export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
   };
 }
 
-/** 空のセット明細（初期は2明細分） */
+/** 空のセット明細（初期は2明細分＝表示は4行） */
 export function calcSet(detailCount = 2): CalcSet {
   return {
     id: newId("s"),
     partNumber: null,
     partName: "",
     details: Array.from({ length: detailCount }, () => calcDetail()),
-    lines: Array.from({ length: detailCount }, () => calcLine()),
+    lines: Array.from({ length: detailCount * 2 }, () => calcLine()),
   };
 }
 
-/** セット内で表示する行数（明細と計算式の多い方） */
+/** セット内で表示する行数（明細は1件2行。明細と計算式の多い方に合わせる） */
 export function setRowCount(set: CalcSet): number {
-  return Math.max(set.details.length, set.lines.length, 1);
+  return Math.max(set.details.length * 2, set.lines.length, 1);
 }
 
 /**

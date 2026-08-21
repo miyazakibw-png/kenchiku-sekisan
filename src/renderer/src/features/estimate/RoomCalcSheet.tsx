@@ -14,6 +14,7 @@ import {
   nextBSymbol,
   setRowCount,
   usedBSymbols,
+  type CalcDetail,
   type CalcSet,
   type CalcSheetResult,
 } from "../../../../core/room/calcSheet";
@@ -95,6 +96,20 @@ export default function RoomCalcSheet({
     [onChange, sets],
   );
 
+  /** 明細1件（上下2段）の一部を書き換える */
+  const updateDetail = useCallback(
+    (setId: string, index: number, patch: Partial<CalcDetail>): void => {
+      const target = sets.find((set) => set.id === setId);
+      if (!target) return;
+      updateSet(setId, {
+        details: target.details.map((row, rowIndex) =>
+          rowIndex === index ? { ...row, ...patch } : row,
+        ),
+      });
+    },
+    [sets, updateSet],
+  );
+
   /** カーソルのあるセット（無ければ最後のセット） */
   const currentSet = useMemo(
     () =>
@@ -113,6 +128,7 @@ export default function RoomCalcSheet({
         subjectId: detail.subjectId,
         detailNumber: detail.detailNumber,
         materialCategory: detail.materialCategory,
+        partName: detail.partName,
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
         descriptionLower: detail.descriptionLower,
@@ -168,6 +184,7 @@ export default function RoomCalcSheet({
           subjectId: item.subjectId,
           detailNumber: item.detailNumber,
           materialCategory: item.materialCategory,
+          partName: item.partName,
           name: item.name,
           descriptionUpper: item.descriptionUpper,
           descriptionLower: item.descriptionLower,
@@ -251,7 +268,12 @@ export default function RoomCalcSheet({
           <tr>
             <th className="part">部位</th>
             <th className="no">明細番号</th>
-            <th>名称</th>
+            <th
+              className="name"
+              title="上段に部位名、下段に名称（1明細＝上下2行）"
+            >
+              部位名／名称
+            </th>
             <th>摘要</th>
             <th className="unit">単位</th>
             <th>備考</th>
@@ -270,11 +292,17 @@ export default function RoomCalcSheet({
             className={setIndex % 2 === 0 ? "set even" : "set odd"}
           >
             {Array.from({ length: setRowCount(set) }, (_, rowIndex) => {
-              const detail = set.details[rowIndex];
+              // 明細1件は上下2行セット（偶数行＝上段、奇数行＝下段）
+              const detailIndex = Math.floor(rowIndex / 2);
+              const isUpper = rowIndex % 2 === 0;
+              const detail = set.details[detailIndex];
               const line = set.lines[rowIndex];
               const lineResult = line ? result.lines.get(line.id) : undefined;
               return (
-                <tr key={`${set.id}-${rowIndex}`}>
+                <tr
+                  key={`${set.id}-${rowIndex}`}
+                  className={isUpper ? "detail-upper" : "detail-lower"}
+                >
                   <td className="part">
                     {rowIndex === 0 ? (
                       <input
@@ -298,80 +326,82 @@ export default function RoomCalcSheet({
                   {detail ? (
                     <>
                       <td className="no">
-                        {detail.detailNumber === null
-                          ? ""
-                          : detail.detailNumber.toFixed(2)}
+                        {isUpper && detail.detailNumber !== null
+                          ? detail.detailNumber.toFixed(2)
+                          : ""}
                       </td>
                       <td>
                         <input
-                          value={detail.name}
+                          value={isUpper ? detail.partName : detail.name}
+                          placeholder={isUpper ? "部位名" : "名称"}
                           onFocus={() =>
                             onFocus({
                               setId: set.id,
                               area: "detail",
-                              index: rowIndex,
+                              index: detailIndex,
                             })
                           }
                           onChange={(e) =>
-                            updateSet(set.id, {
-                              details: set.details.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, name: e.target.value }
-                                  : row,
-                              ),
-                            })
+                            updateDetail(
+                              set.id,
+                              detailIndex,
+                              isUpper
+                                ? { partName: e.target.value }
+                                : { name: e.target.value },
+                            )
                           }
                         />
                       </td>
                       <td>
                         <input
-                          value={detail.descriptionUpper}
+                          value={
+                            isUpper
+                              ? detail.descriptionUpper
+                              : detail.descriptionLower
+                          }
                           onChange={(e) =>
-                            updateSet(set.id, {
-                              details: set.details.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, descriptionUpper: e.target.value }
-                                  : row,
-                              ),
-                            })
+                            updateDetail(
+                              set.id,
+                              detailIndex,
+                              isUpper
+                                ? { descriptionUpper: e.target.value }
+                                : { descriptionLower: e.target.value },
+                            )
                           }
                         />
                       </td>
                       <td className="unit">
-                        <input
-                          list="calc-units"
-                          value={detail.unit}
-                          onChange={(e) =>
-                            updateSet(set.id, {
-                              details: set.details.map((row, index) =>
-                                index === rowIndex
-                                  ? {
-                                      ...row,
-                                      unit: resolveMasterName(
-                                        (options?.units ?? []).map((unit) => ({
-                                          id: unit.id,
-                                          name: unit.name,
-                                        })),
-                                        e.target.value,
-                                      ),
-                                    }
-                                  : row,
-                              ),
-                            })
-                          }
-                        />
+                        {isUpper && (
+                          <input
+                            list="calc-units"
+                            value={detail.unit}
+                            onChange={(e) =>
+                              updateDetail(set.id, detailIndex, {
+                                unit: resolveMasterName(
+                                  (options?.units ?? []).map((unit) => ({
+                                    id: unit.id,
+                                    name: unit.name,
+                                  })),
+                                  e.target.value,
+                                ),
+                              })
+                            }
+                          />
+                        )}
                       </td>
                       <td>
                         <input
-                          value={detail.remarksUpper}
+                          value={
+                            isUpper ? detail.remarksUpper : detail.remarksLower
+                          }
                           onChange={(e) =>
-                            updateSet(set.id, {
-                              details: set.details.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, remarksUpper: e.target.value }
-                                  : row,
-                              ),
-                            })
+                            updateDetail(
+                              set.id,
+                              detailIndex,
+                              isUpper
+                                ? { remarksUpper: e.target.value }
+                                : { remarksLower: e.target.value },
+                            )
                           }
                         />
                       </td>
