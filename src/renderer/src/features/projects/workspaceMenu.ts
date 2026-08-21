@@ -109,10 +109,10 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
   },
   {
     key: 'finishCheck',
-    label: '仕上チェック表',
+    label: 'チェック表',
     group: 'output',
-    note: '集計書兼工事マスターから仕上のみ抜き出した部位別チェック',
-    ready: false
+    note: '集計書兼工事マスターから材種区分別に抜き出した部位別チェック（Excel貼り付け可）',
+    ready: true
   },
   {
     key: 'print',

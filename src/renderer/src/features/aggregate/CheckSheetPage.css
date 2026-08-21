@@ -1,0 +1,40 @@
+.check-sheet-page .note {
+  margin: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+table.check-sheet {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+table.check-sheet th,
+table.check-sheet td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+table.check-sheet th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+}
+
+table.check-sheet td {
+  min-width: 8ch;
+}
+
+table.check-sheet td.number {
+  text-align: right;
+  width: 10ch;
+}
+
+/* Excelの書式に合わせて部位のかたまりの間に空行を残す */
+table.check-sheet tr.spacer td {
+  border: none;
+  height: 14px;
+}
