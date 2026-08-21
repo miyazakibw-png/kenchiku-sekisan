@@ -32,7 +32,7 @@
 
 .room-sheet-page .upper {
   display: grid;
-  grid-template-columns: minmax(320px, 1.4fr) minmax(240px, 1fr) minmax(
+  grid-template-columns: minmax(200px, 0.7fr) minmax(240px, 1fr) minmax(
       200px,
       0.9fr
     );
@@ -96,7 +96,9 @@
 .room-sheet-page .canvas {
   position: relative;
   flex: 1;
-  min-height: 320px;
+  /* 図は小さくてよい（下段の表示行を増やすため） */
+  min-height: 160px;
+  max-height: 220px;
   overflow: auto;
   display: flex;
   align-items: center;

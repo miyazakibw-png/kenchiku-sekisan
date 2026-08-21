@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EstimateRowDraft,
   Fitting,
@@ -150,6 +150,9 @@ export default function RoomSheetPage({
   const [deductionLimit, setDeductionLimit] = useState(0.5);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
+  const [canvasSize, setCanvasSize] = useState(200);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -170,6 +173,24 @@ export default function RoomSheetPage({
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const view = useMemo(() => viewBox(solved), [solved]);
+
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    // 図は正方形のviewBoxを枠に収めて描くので、短い辺が実際の縮尺を決める
+    const measure = (): void =>
+      setCanvasSize(Math.min(element.clientWidth, element.clientHeight));
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
+  /** 寸法文字の大きさ（画面上で表と同じ12px相当になるようにする） */
+  const dimFontSize = useMemo(() => {
+    const drawnSize = Math.max(canvasSize * zoom, 1);
+    return (view.span / drawnSize) * 12;
+  }, [canvasSize, view.span, zoom]);
 
   /** 上段の建具は寸法を保持せず、常に建具表から引用する */
   const resolvedFittings = useMemo<RoomFitting[]>(
@@ -516,7 +537,7 @@ export default function RoomSheetPage({
               全体
             </button>
           </div>
-          <div className="canvas">
+          <div className="canvas" ref={canvasRef}>
             <svg
               viewBox={view.box}
               style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
@@ -545,10 +566,15 @@ export default function RoomSheetPage({
                         .join(" ")}
                     />
                     <text
-                      x={vertical ? middle.x + view.span * 0.035 : middle.x}
-                      y={vertical ? middle.y : middle.y - view.span * 0.035}
+                      x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
+                      y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
                       className={line.auto ? "dim auto" : "dim"}
-                      fontSize={view.span * 0.05}
+                      fontSize={dimFontSize}
+                      transform={
+                        vertical
+                          ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
+                          : undefined
+                      }
                     >
                       {formatNumber(line.resolved, 2)}
                     </text>
@@ -568,9 +594,9 @@ export default function RoomSheetPage({
                     {line.label !== "" && (
                       <text
                         x={line.labelX}
-                        y={line.labelY + view.span * 0.045}
+                        y={line.labelY + dimFontSize * 0.9}
                         className="dim ceiling"
-                        fontSize={view.span * 0.045}
+                        fontSize={dimFontSize}
                       >
                         CH {line.label}
                       </text>
