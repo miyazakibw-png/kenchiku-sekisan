@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MasterOptions } from '@shared/types'
 import { ActiveProjectContext } from './activeProject'
 import DetailMasterPage from './features/details/DetailMasterPage'
@@ -8,6 +8,7 @@ import SubjectMasterPage from './features/subjects/SubjectMasterPage'
 import BasicMasterPage from './features/masters/BasicMasterPage'
 import PrintBar from './features/print/PrintBar'
 import { useGridKeyNav } from './features/grid/useGridKeyNav'
+import { useStickyHeaders } from './features/grid/useStickyHeaders'
 import SettingsPage from './features/settings/SettingsPage'
 
 type NavKey = 'subjects' | 'details' | 'assemblies' | 'masters' | 'projects' | 'settings'
@@ -34,6 +35,8 @@ export default function App(): JSX.Element {
   const [projectName, setProjectName] = useState('')
   const setActiveProjectName = useCallback((name: string) => setProjectName(name), [])
   const onGridKeyDown = useGridKeyNav()
+  const mainRef = useRef<HTMLElement>(null)
+  useStickyHeaders(mainRef)
 
   useEffect(() => {
     void window.sekisan.getMasterOptions().then(setOptions)
@@ -66,7 +69,7 @@ export default function App(): JSX.Element {
             ))}
           </nav>
         )}
-        <main className="app-main" onKeyDown={onGridKeyDown}>
+        <main className="app-main" ref={mainRef} onKeyDown={onGridKeyDown}>
           {!options ? (
             <div className="placeholder">読み込み中…</div>
           ) : projectId !== null ? (

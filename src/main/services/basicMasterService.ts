@@ -8,7 +8,7 @@ import {
   mUnits
 } from '../db/schema'
 import type { BasicMasterKind, BasicMasterRow } from '../../core/masters/basicMaster'
-import { validateBasicMaster } from '../../core/masters/basicMaster'
+import { dropBlankBasicMasterRows, validateBasicMaster } from '../../core/masters/basicMaster'
 import type { BasicMasters, SaveBasicMasterResult } from '../../shared/types'
 
 export function listBasicMasters(db: AppDatabase): BasicMasters {
@@ -57,7 +57,11 @@ export function saveBasicMaster(
   const errors = validateBasicMaster(kind, rows)
   if (errors.length > 0) return { masters: listBasicMasters(db), errors }
 
-  const trimmed = rows.map((row) => ({ id: row.id, name: row.name.trim(), note: row.note }))
+  const trimmed = dropBlankBasicMasterRows(rows).map((row) => ({
+    id: row.id,
+    name: row.name.trim(),
+    note: row.note
+  }))
   const keptIds = new Set(trimmed.map((row) => row.id))
 
   db.transaction((tx) => {

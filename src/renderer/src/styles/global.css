@@ -129,6 +129,22 @@ body,
   cursor: default;
 }
 
+/* 操作ボタンの行と表の見出し行は、画面を下げても上に残す */
+.app-main .toolbar,
+.app-main .grid-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #fff;
+}
+
+.app-main thead th,
+.app-main thead td {
+  position: sticky;
+  z-index: 4;
+  background: var(--surface);
+}
+
 /* 印刷・PDFはA3横1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
 @page {
   size: A3 landscape;

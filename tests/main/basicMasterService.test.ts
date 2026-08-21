@@ -11,6 +11,7 @@ import {
 } from '../../src/main/services/basicMasterService'
 import {
   BASIC_MASTER_LIMITS,
+  dropBlankBasicMasterRows,
   nextBasicMasterId,
   validateBasicMaster
 } from '../../src/core/masters/basicMaster'
@@ -62,14 +63,27 @@ describe('その他マスター', () => {
     expect(result.masters.pickupParts).toEqual([{ id: 1, name: '床', note: '仕上' }])
   })
 
-  it('番号重複・名称空欄は保存せずエラーを返す', () => {
+  it('番号重複は保存せずエラーを返す', () => {
     const before = listBasicMasters(db).units
     const result = saveBasicMaster(db, 'units', [
       { id: 1, name: 'm', note: '' },
-      { id: 1, name: '', note: '' }
+      { id: 1, name: 'n', note: '' }
     ])
-    expect(result.errors.length).toBe(2)
+    expect(result.errors.length).toBe(1)
     expect(result.masters.units).toEqual(before)
+  })
+
+  it('名称が空の行は行間を空ける行として保存する', () => {
+    const result = saveBasicMaster(db, 'pickupParts', [
+      { id: 1, name: '床', note: '' },
+      { id: 2, name: '', note: '' },
+      { id: 0, name: '', note: '' }
+    ])
+    expect(result.errors).toEqual([])
+    expect(result.masters.pickupParts).toEqual([
+      { id: 1, name: '床', note: '' },
+      { id: 2, name: '', note: '' }
+    ])
   })
 
   it('上限を超える件数・番号は保存しない', () => {
@@ -107,5 +121,15 @@ describe('その他マスターの共通規則', () => {
     ]
     expect(validateBasicMaster('units', rows)).toHaveLength(1)
     expect(validateBasicMaster('pickupParts', rows)).toEqual([])
+  })
+
+  it('名称が空の行は番号があれば保存でき、何も無い行は数えない', () => {
+    const rows = [
+      { id: 1, name: '床', note: '' },
+      { id: 2, name: '', note: '' },
+      { id: 0, name: '', note: '' }
+    ]
+    expect(validateBasicMaster('pickupParts', rows)).toEqual([])
+    expect(dropBlankBasicMasterRows(rows)).toHaveLength(2)
   })
 })

@@ -65,16 +65,32 @@ export const BASIC_MASTER_LIMITS: Record<BasicMasterKind, BasicMasterLimit> = {
   }
 }
 
-/** 保存前の検証。問題があればエラーメッセージを返す（空なら保存可） */
+/** 番号も名称も備考も無い行。保存時に取り除く */
+export function isBlankBasicMasterRow(row: BasicMasterRow): boolean {
+  return (
+    (!Number.isInteger(row.id) || row.id < 1) && row.name.trim() === '' && row.note.trim() === ''
+  )
+}
+
+/** 何も入っていない行を除いた並び */
+export function dropBlankBasicMasterRows(rows: readonly BasicMasterRow[]): BasicMasterRow[] {
+  return rows.filter((row) => !isBlankBasicMasterRow(row))
+}
+
+/**
+ * 保存前の検証。問題があればエラーメッセージを返す（空なら保存可）。
+ * 名称が空の行は行間を空ける目的で使うため、番号さえあれば保存できる。
+ */
 export function validateBasicMaster(kind: BasicMasterKind, rows: readonly BasicMasterRow[]): string[] {
   const limit = BASIC_MASTER_LIMITS[kind]
   const errors: string[] = []
-  if (rows.length > limit.maxRows) {
-    errors.push(`${limit.label}は${limit.maxRows}件までです（${rows.length}件）`)
+  const filled = dropBlankBasicMasterRows(rows)
+  if (filled.length > limit.maxRows) {
+    errors.push(`${limit.label}は${limit.maxRows}件までです（${filled.length}件）`)
   }
   const ids = new Set<number>()
   const names = new Set<string>()
-  rows.forEach((row) => {
+  filled.forEach((row) => {
     if (!Number.isInteger(row.id) || row.id < 1 || row.id > limit.maxId) {
       errors.push(`番号は1〜${limit.maxId}で入力してください（${row.id || '空欄'}）`)
     } else if (ids.has(row.id)) {
@@ -82,10 +98,7 @@ export function validateBasicMaster(kind: BasicMasterKind, rows: readonly BasicM
     }
     ids.add(row.id)
     const name = row.name.trim()
-    if (name === '') {
-      errors.push(`名称が空の行があります（番号 ${row.id}）`)
-      return
-    }
+    if (name === '') return
     if (limit.uniqueName && names.has(name)) {
       errors.push(`名称が重複しています：${name}`)
     }
