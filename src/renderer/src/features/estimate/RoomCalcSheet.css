@@ -113,6 +113,27 @@
   width: 50px;
 }
 
+.room-calc-sheet .subject {
+  width: 46px;
+}
+
+.room-calc-sheet .material {
+  width: 66px;
+}
+
+.room-calc-sheet .coef {
+  width: 50px;
+}
+
+.room-calc-sheet .coef input,
+.room-calc-sheet .no {
+  text-align: right;
+}
+
+.room-calc-sheet .estimate {
+  width: 90px;
+}
+
 .room-calc-sheet .formula {
   width: 220px;
 }

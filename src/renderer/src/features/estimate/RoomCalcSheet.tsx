@@ -267,6 +267,10 @@ export default function RoomCalcSheet({
         <thead>
           <tr>
             <th className="part">部位</th>
+            <th className="subject" title="工種科目のID（番号で入力します）">
+              科目ID
+            </th>
+            <th className="material">材種区分</th>
             <th className="no">明細番号</th>
             <th
               className="name"
@@ -276,7 +280,14 @@ export default function RoomCalcSheet({
             </th>
             <th>摘要</th>
             <th className="unit">単位</th>
+            <th
+              className="coef"
+              title="セットで拾うが計上単位が異なるときに使います"
+            >
+              掛け率
+            </th>
             <th>備考</th>
+            <th className="estimate">積算用表示</th>
             <th className="formula">計算式Ａ</th>
             <th className="formula-b">Ｂ</th>
             <th className="comment">コメント</th>
@@ -325,8 +336,53 @@ export default function RoomCalcSheet({
                   </td>
                   {detail ? (
                     <>
+                      <td className="subject">
+                        {!isUpper && (
+                          <input
+                            value={
+                              detail.subjectId === null
+                                ? ""
+                                : String(detail.subjectId)
+                            }
+                            placeholder="番号"
+                            title={
+                              subjects.find(
+                                (item) => item.id === detail.subjectId,
+                              )?.name ?? "工種科目のID"
+                            }
+                            onChange={(e) => {
+                              const value = e.target.value.trim();
+                              const id = Number.parseInt(value, 10);
+                              updateDetail(set.id, detailIndex, {
+                                subjectId: Number.isNaN(id) ? null : id,
+                              });
+                            }}
+                          />
+                        )}
+                      </td>
+                      <td className="material">
+                        {!isUpper && (
+                          <input
+                            list="calc-materials"
+                            value={detail.materialCategory}
+                            onChange={(e) =>
+                              updateDetail(set.id, detailIndex, {
+                                materialCategory: resolveMasterName(
+                                  (options?.materialCategories ?? []).map(
+                                    (item) => ({
+                                      id: item.id,
+                                      name: item.name,
+                                    }),
+                                  ),
+                                  e.target.value,
+                                ),
+                              })
+                            }
+                          />
+                        )}
+                      </td>
                       <td className="no">
-                        {isUpper && detail.detailNumber !== null
+                        {!isUpper && detail.detailNumber !== null
                           ? detail.detailNumber.toFixed(2)
                           : ""}
                       </td>
@@ -371,7 +427,7 @@ export default function RoomCalcSheet({
                         />
                       </td>
                       <td className="unit">
-                        {isUpper && (
+                        {!isUpper && (
                           <input
                             list="calc-units"
                             value={detail.unit}
@@ -386,6 +442,23 @@ export default function RoomCalcSheet({
                                 ),
                               })
                             }
+                          />
+                        )}
+                      </td>
+                      <td className="coef">
+                        {!isUpper && (
+                          <input
+                            key={detail.id}
+                            className="num"
+                            defaultValue={String(detail.coefficient)}
+                            title="集計時にこの掛け率を掛けます"
+                            onBlur={(e) => {
+                              const value = Number(e.target.value);
+                              if (!Number.isFinite(value)) return;
+                              updateDetail(set.id, detailIndex, {
+                                coefficient: value,
+                              });
+                            }}
                           />
                         )}
                       </td>
@@ -405,9 +478,22 @@ export default function RoomCalcSheet({
                           }
                         />
                       </td>
+                      <td className="estimate">
+                        {!isUpper && (
+                          <input
+                            value={detail.estimateDisplay}
+                            title="内訳書へ出すときの表示（明細マスターと同じ欄）"
+                            onChange={(e) =>
+                              updateDetail(set.id, detailIndex, {
+                                estimateDisplay: e.target.value,
+                              })
+                            }
+                          />
+                        )}
+                      </td>
                     </>
                   ) : (
-                    <td className="empty" colSpan={5} />
+                    <td className="empty" colSpan={9} />
                   )}
                   {line ? (
                     <>
@@ -554,6 +640,13 @@ export default function RoomCalcSheet({
         {(options?.pickupParts ?? []).map((part) => (
           <option key={part.id} value={part.name}>
             {part.id}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="calc-materials">
+        {(options?.materialCategories ?? []).map((item) => (
+          <option key={item.id} value={item.name}>
+            {item.id}
           </option>
         ))}
       </datalist>
