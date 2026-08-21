@@ -125,6 +125,15 @@ table.transfer tbody.row.selected {
   padding: 2px 0;
 }
 
+.transfer-page .call-subject > span {
+  white-space: nowrap;
+}
+
+.transfer-page .call-subject input {
+  flex: 1 1 auto;
+  min-width: 90px;
+}
+
 .transfer-page .call-list {
   list-style: none;
   margin: 4px 0;

@@ -205,6 +205,15 @@
   padding: 2px 0;
 }
 
+.room-calc-sheet .call-subject > span {
+  white-space: nowrap;
+}
+
+.room-calc-sheet .call-subject input {
+  flex: 1 1 auto;
+  min-width: 90px;
+}
+
 .room-calc-sheet .call-list {
   list-style: none;
   margin: 4px 0;
