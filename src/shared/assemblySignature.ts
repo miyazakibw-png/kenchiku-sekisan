@@ -1,4 +1,4 @@
-import type { AssemblyItem } from "./types";
+import type { AssemblyItem } from './types'
 
 /**
  * セットの内容を表す照合キー。
@@ -10,8 +10,8 @@ export function assemblySignature(items: AssemblyItem[]): string {
     .map((item) =>
       [
         item.subjectId,
-        item.partNumber ?? "",
-        item.detailNumber ?? "",
+        item.partNumber ?? '',
+        item.detailNumber ?? '',
         item.materialCategory,
         item.partName,
         item.name,
@@ -22,10 +22,10 @@ export function assemblySignature(items: AssemblyItem[]): string {
         item.remarksLower,
         item.estimateDisplay,
         item.formula,
-        item.coefficient,
+        item.coefficient
       ]
         .map((value) => String(value).trim())
-        .join("\u001f"),
+        .join('\u001f')
     )
-    .join("\u001e");
+    .join('\u001e')
 }

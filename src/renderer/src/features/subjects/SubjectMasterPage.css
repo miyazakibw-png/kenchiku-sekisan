@@ -49,7 +49,7 @@
 .subject-list td.no {
   width: 6ch;
   text-align: right;
-  font-family: "Consolas", "Menlo", monospace;
+  font-family: 'Consolas', 'Menlo', monospace;
 }
 
 .subject-list th.name,
@@ -75,7 +75,7 @@
   width: 12ch;
 }
 
-.subject-list input[type="text"],
+.subject-list input[type='text'],
 .subject-list input:not([type]) {
   width: 100%;
   border: none;

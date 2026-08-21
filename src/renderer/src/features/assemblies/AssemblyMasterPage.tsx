@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   AssemblyMasterOptions,
   Detail,
   FinishAssembly,
-  Subject,
-} from "@shared/types";
-import { formatDetailNumber } from "@shared/detailNumber";
-import UnitInput, { UnitOptions } from "../../components/UnitInput";
-import MasterCodeInput, {
-  MasterCodeOptions,
-} from "../../components/MasterCodeInput";
+  Subject
+} from '@shared/types'
+import { formatDetailNumber } from '@shared/detailNumber'
+import UnitInput, { UnitOptions } from '../../components/UnitInput'
+import MasterCodeInput, { MasterCodeOptions } from '../../components/MasterCodeInput'
 import {
   addItem,
   createEmptyItem,
@@ -23,51 +21,49 @@ import {
   updateCoefficientInput,
   updateItem,
   updateNumberInput,
-  type DraftItem,
-} from "./assemblyEditor";
-import "./AssemblyMasterPage.css";
+  type DraftItem
+} from './assemblyEditor'
+import './AssemblyMasterPage.css'
 
 interface Props {
-  options: AssemblyMasterOptions;
+  options: AssemblyMasterOptions
 }
 
 interface EditorState {
   /** 既存セットのID。新規は null */
-  id: number | null;
-  note: string;
-  items: DraftItem[];
+  id: number | null
+  note: string
+  items: DraftItem[]
 }
 
 /** 統合確認（内容がまったく同じセットができた場合） */
 interface MergeState {
-  keepId: number;
-  mergedId: number;
-  message: string;
+  keepId: number
+  mergedId: number
+  message: string
 }
 
 export default function AssemblyMasterPage({ options }: Props): JSX.Element {
-  const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
-  const [subject, setSubject] = useState<Subject | null>(
-    options.subjects[0] ?? null,
-  );
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editor, setEditor] = useState<EditorState | null>(null);
-  const [picker, setPicker] = useState<Detail[] | null>(null);
-  const [merge, setMerge] = useState<MergeState | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [assemblies, setAssemblies] = useState<FinishAssembly[]>([])
+  const [subject, setSubject] = useState<Subject | null>(options.subjects[0] ?? null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [picker, setPicker] = useState<Detail[] | null>(null)
+  const [merge, setMerge] = useState<MergeState | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    setAssemblies(await window.sekisan.listAssemblies(null));
-  }, []);
+    setAssemblies(await window.sekisan.listAssemblies(null))
+  }, [])
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void reload()
+  }, [reload])
 
   const subjectOrderById = useMemo(
     () => new Map(options.subjects.map((s) => [s.id, s.displayOrder])),
-    [options.subjects],
-  );
+    [options.subjects]
+  )
 
   /** 科目で絞り込んだうえで、共通ソートキーによる昇順（切替なし） */
   const visible = useMemo(
@@ -76,80 +72,72 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
         filterBySubject(assemblies, subject?.id ?? null),
         subjectOrderById,
         options.units,
-        options.materialCategories,
+        options.materialCategories
       ),
-    [
-      assemblies,
-      subject,
-      subjectOrderById,
-      options.units,
-      options.materialCategories,
-    ],
-  );
+    [assemblies, subject, subjectOrderById, options.units, options.materialCategories]
+  )
 
   const openEditor = useCallback((assembly: FinishAssembly) => {
-    setSelectedId(assembly.id);
-    setEditor({
-      id: assembly.id,
-      note: assembly.note,
-      items: toDraftItems(assembly.items),
-    });
-  }, []);
+    setSelectedId(assembly.id)
+    setEditor({ id: assembly.id, note: assembly.note, items: toDraftItems(assembly.items) })
+  }, [])
 
   const openPicker = useCallback(async () => {
-    if (!subject) return;
-    setPicker(await window.sekisan.listDetails(subject.id));
-  }, [subject]);
+    if (!subject) return
+    setPicker(await window.sekisan.listDetails(subject.id))
+  }, [subject])
 
   /** 明細マスターから内容を写し取る（参照ではなく複製なので以後は連動しない） */
-  const pickDetail = useCallback(async (detail: Detail) => {
-    const item = await window.sekisan.buildAssemblyItem(detail.id);
-    const [draft] = toDraftItems([item]);
-    setPicker(null);
-    setEditor((prev) =>
-      prev === null
-        ? { id: null, note: "", items: [draft] }
-        : { ...prev, items: addItem(prev.items, draft) },
-    );
-  }, []);
+  const pickDetail = useCallback(
+    async (detail: Detail) => {
+      const item = await window.sekisan.buildAssemblyItem(detail.id)
+      const [draft] = toDraftItems([item])
+      setPicker(null)
+      setEditor((prev) =>
+        prev === null
+          ? { id: null, note: '', items: [draft] }
+          : { ...prev, items: addItem(prev.items, draft) }
+      )
+    },
+    []
+  )
 
   const save = useCallback(async () => {
-    if (!editor) return;
+    if (!editor) return
     const result = await window.sekisan.saveAssembly({
       id: editor.id,
-      scope: "basic",
+      scope: 'basic',
       projectId: null,
       note: editor.note,
-      items: toAssemblyItems(editor.items),
-    });
-    await reload();
-    setEditor(null);
-    setSelectedId(result.assembly.id);
+      items: toAssemblyItems(editor.items)
+    })
+    await reload()
+    setEditor(null)
+    setSelectedId(result.assembly.id)
     if (result.duplicateOf) {
       setMerge({
         keepId: result.duplicateOf.id,
         mergedId: result.assembly.id,
-        message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ""}）。既存セットへ統合しますか。`,
-      });
+        message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ''}）。既存セットへ統合しますか。`
+      })
     } else {
-      setToast("保存しました");
+      setToast('保存しました')
     }
-  }, [editor, reload]);
+  }, [editor, reload])
 
   const applyMerge = useCallback(async () => {
-    if (!merge) return;
-    await window.sekisan.mergeAssemblies(merge.keepId, merge.mergedId);
-    setMerge(null);
-    setSelectedId(merge.keepId);
-    await reload();
-    setToast("同じ内容のセットへ統合しました");
-  }, [merge, reload]);
+    if (!merge) return
+    await window.sekisan.mergeAssemblies(merge.keepId, merge.mergedId)
+    setMerge(null)
+    setSelectedId(merge.keepId)
+    await reload()
+    setToast('同じ内容のセットへ統合しました')
+  }, [merge, reload])
 
   const editItems = useCallback(
-    (next: DraftItem[]) =>
-      setEditor((prev) => (prev === null ? prev : { ...prev, items: next })),
-    [],
-  );
+    (next: DraftItem[]) => setEditor((prev) => (prev === null ? prev : { ...prev, items: next })),
+    []
+  )
 
   return (
     <div className="assembly-page">
@@ -159,7 +147,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
           <button
             key={s.id}
             type="button"
-            className={`tree-item ${subject?.id === s.id ? "active" : ""}`}
+            className={`tree-item ${subject?.id === s.id ? 'active' : ''}`}
             onClick={() => setSubject(s)}
           >
             {s.code} {s.name}
@@ -170,17 +158,11 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
       <section className="assembly-main">
         <div className="toolbar">
           <h2>仕上明細セットマスター</h2>
-          <button
-            type="button"
-            onClick={() => void openPicker()}
-            disabled={!subject}
-          >
+          <button type="button" onClick={() => void openPicker()} disabled={!subject}>
             ➕ 新規セット（明細マスターから）
           </button>
-          <span className="hint">
-            行をダブルクリック／Enterでセット明細を開きます
-          </span>
-          <span className="status">{toast ?? ""}</span>
+          <span className="hint">行をダブルクリック／Enterでセット明細を開きます</span>
+          <span className="status">{toast ?? ''}</span>
         </div>
 
         <div className="assembly-body">
@@ -208,25 +190,23 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
               </tbody>
             ) : (
               visible.map((assembly, index) => {
-                const head = headItem(assembly);
-                if (!head) return null;
+                const head = headItem(assembly)
+                if (!head) return null
                 return (
                   <tbody
                     key={assembly.id}
-                    className={`detail-group ${selectedId === assembly.id ? "selected" : ""}`}
+                    className={`detail-group ${selectedId === assembly.id ? 'selected' : ''}`}
                     tabIndex={0}
                     onClick={() => setSelectedId(assembly.id)}
                     onDoubleClick={() => openEditor(assembly)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") openEditor(assembly);
+                      if (e.key === 'Enter') openEditor(assembly)
                     }}
                   >
                     <tr className="upper-row">
                       <td rowSpan={2}>{index + 1}</td>
                       <td rowSpan={2}>{head.materialCategory}</td>
-                      <td className="num">
-                        {formatDetailNumber(head.partNumber)}
-                      </td>
+                      <td className="num">{formatDetailNumber(head.partNumber)}</td>
                       <td>{head.partName}</td>
                       <td>{head.descriptionUpper}</td>
                       <td rowSpan={2}>{head.unit}</td>
@@ -239,15 +219,13 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                       </td>
                     </tr>
                     <tr>
-                      <td className="num">
-                        {formatDetailNumber(head.detailNumber)}
-                      </td>
+                      <td className="num">{formatDetailNumber(head.detailNumber)}</td>
                       <td>{head.name}</td>
                       <td>{head.descriptionLower}</td>
                       <td>{head.remarksLower}</td>
                     </tr>
                   </tbody>
-                );
+                )
               })
             )}
           </table>
@@ -258,15 +236,13 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
         <div className="modal-backdrop" role="dialog">
           <div className="modal assembly-editor">
             <header>
-              <h3>セット明細{editor.id === null ? "（新規）" : ""}</h3>
+              <h3>セット明細{editor.id === null ? '（新規）' : ''}</h3>
               <label className="note">
                 備考
                 <input
                   value={editor.note}
                   onChange={(e) =>
-                    setEditor((prev) =>
-                      prev === null ? prev : { ...prev, note: e.target.value },
-                    )
+                    setEditor((prev) => (prev === null ? prev : { ...prev, note: e.target.value }))
                   }
                 />
               </label>
@@ -298,11 +274,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           listId="material-category-options"
                           value={item.materialCategory}
                           onChange={(value) =>
-                            editItems(
-                              updateItem(editor.items, index, {
-                                materialCategory: value,
-                              }),
-                            )
+                            editItems(updateItem(editor.items, index, { materialCategory: value }))
                           }
                         />
                       </td>
@@ -312,12 +284,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.partNumberInput}
                           onChange={(e) =>
                             editItems(
-                              updateNumberInput(
-                                editor.items,
-                                index,
-                                "partNumber",
-                                e.target.value,
-                              ),
+                              updateNumberInput(editor.items, index, 'partNumber', e.target.value)
                             )
                           }
                         />
@@ -326,11 +293,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                         <input
                           value={item.partName}
                           onChange={(e) =>
-                            editItems(
-                              updateItem(editor.items, index, {
-                                partName: e.target.value,
-                              }),
-                            )
+                            editItems(updateItem(editor.items, index, { partName: e.target.value }))
                           }
                         />
                       </td>
@@ -339,9 +302,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.descriptionUpper}
                           onChange={(e) =>
                             editItems(
-                              updateItem(editor.items, index, {
-                                descriptionUpper: e.target.value,
-                              }),
+                              updateItem(editor.items, index, { descriptionUpper: e.target.value })
                             )
                           }
                         />
@@ -351,9 +312,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           units={options.units}
                           value={item.unit}
                           onChange={(value) =>
-                            editItems(
-                              updateItem(editor.items, index, { unit: value }),
-                            )
+                            editItems(updateItem(editor.items, index, { unit: value }))
                           }
                         />
                       </td>
@@ -362,13 +321,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           className="num"
                           value={item.coefficientInput}
                           onChange={(e) =>
-                            editItems(
-                              updateCoefficientInput(
-                                editor.items,
-                                index,
-                                e.target.value,
-                              ),
-                            )
+                            editItems(updateCoefficientInput(editor.items, index, e.target.value))
                           }
                         />
                       </td>
@@ -377,11 +330,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.formula}
                           placeholder="例: P*3"
                           onChange={(e) =>
-                            editItems(
-                              updateItem(editor.items, index, {
-                                formula: e.target.value,
-                              }),
-                            )
+                            editItems(updateItem(editor.items, index, { formula: e.target.value }))
                           }
                         />
                       </td>
@@ -390,9 +339,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.remarksUpper}
                           onChange={(e) =>
                             editItems(
-                              updateItem(editor.items, index, {
-                                remarksUpper: e.target.value,
-                              }),
+                              updateItem(editor.items, index, { remarksUpper: e.target.value })
                             )
                           }
                         />
@@ -401,18 +348,14 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                         <button
                           type="button"
                           title="上へ"
-                          onClick={() =>
-                            editItems(moveItem(editor.items, index, index - 1))
-                          }
+                          onClick={() => editItems(moveItem(editor.items, index, index - 1))}
                         >
                           ↑
                         </button>
                         <button
                           type="button"
                           title="下へ"
-                          onClick={() =>
-                            editItems(moveItem(editor.items, index, index + 1))
-                          }
+                          onClick={() => editItems(moveItem(editor.items, index, index + 1))}
                         >
                           ↓
                         </button>
@@ -420,9 +363,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           type="button"
                           title="この明細を削除（最低1明細は残ります）"
                           disabled={editor.items.length <= 1}
-                          onClick={() =>
-                            editItems(removeItem(editor.items, index))
-                          }
+                          onClick={() => editItems(removeItem(editor.items, index))}
                         >
                           🗑
                         </button>
@@ -435,12 +376,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.detailNumberInput}
                           onChange={(e) =>
                             editItems(
-                              updateNumberInput(
-                                editor.items,
-                                index,
-                                "detailNumber",
-                                e.target.value,
-                              ),
+                              updateNumberInput(editor.items, index, 'detailNumber', e.target.value)
                             )
                           }
                         />
@@ -449,11 +385,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                         <input
                           value={item.name}
                           onChange={(e) =>
-                            editItems(
-                              updateItem(editor.items, index, {
-                                name: e.target.value,
-                              }),
-                            )
+                            editItems(updateItem(editor.items, index, { name: e.target.value }))
                           }
                         />
                       </td>
@@ -462,9 +394,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.descriptionLower}
                           onChange={(e) =>
                             editItems(
-                              updateItem(editor.items, index, {
-                                descriptionLower: e.target.value,
-                              }),
+                              updateItem(editor.items, index, { descriptionLower: e.target.value })
                             )
                           }
                         />
@@ -474,9 +404,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                           value={item.remarksLower}
                           onChange={(e) =>
                             editItems(
-                              updateItem(editor.items, index, {
-                                remarksLower: e.target.value,
-                              }),
+                              updateItem(editor.items, index, { remarksLower: e.target.value })
                             )
                           }
                         />
@@ -497,8 +425,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
               <button
                 type="button"
                 onClick={() =>
-                  subject &&
-                  editItems(addItem(editor.items, createEmptyItem(subject.id)))
+                  subject && editItems(addItem(editor.items, createEmptyItem(subject.id)))
                 }
               >
                 ➕ 空行を追加
@@ -507,11 +434,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
               <button type="button" onClick={() => setEditor(null)}>
                 閉じる
               </button>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void save()}
-              >
+              <button type="button" className="primary" onClick={() => void save()}>
                 💾 保存
               </button>
             </footer>
@@ -542,12 +465,10 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                       tabIndex={0}
                       onDoubleClick={() => void pickDetail(detail)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") void pickDetail(detail);
+                        if (e.key === 'Enter') void pickDetail(detail)
                       }}
                     >
-                      <td className="num">
-                        {formatDetailNumber(detail.detailNumber)}
-                      </td>
+                      <td className="num">{formatDetailNumber(detail.detailNumber)}</td>
                       <td>
                         {detail.partName} / {detail.name}
                       </td>
@@ -561,9 +482,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
               </table>
             </div>
             <footer>
-              <span className="hint">
-                行をダブルクリック／Enterで取り込みます
-              </span>
+              <span className="hint">行をダブルクリック／Enterで取り込みます</span>
               <span className="spacer" />
               <button type="button" onClick={() => setPicker(null)}>
                 閉じる
@@ -581,11 +500,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
               <button type="button" onClick={() => setMerge(null)}>
                 統合しない
               </button>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void applyMerge()}
-              >
+              <button type="button" className="primary" onClick={() => void applyMerge()}>
                 統合する
               </button>
             </footer>
@@ -594,10 +509,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
       )}
 
       <UnitOptions units={options.units} />
-      <MasterCodeOptions
-        entries={options.materialCategories}
-        listId="material-category-options"
-      />
+      <MasterCodeOptions entries={options.materialCategories} listId="material-category-options" />
     </div>
-  );
+  )
 }

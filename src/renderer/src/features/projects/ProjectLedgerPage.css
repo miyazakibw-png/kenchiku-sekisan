@@ -54,7 +54,7 @@
 .project-page .date,
 .project-page .management-no {
   font-variant-numeric: tabular-nums;
-  font-family: "Consolas", "Menlo", monospace;
+  font-family: 'Consolas', 'Menlo', monospace;
   width: 11ch;
 }
 

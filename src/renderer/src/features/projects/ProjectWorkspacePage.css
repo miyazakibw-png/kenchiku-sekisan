@@ -69,12 +69,12 @@
 
 .workspace-page .date {
   font-variant-numeric: tabular-nums;
-  font-family: "Consolas", "Menlo", monospace;
+  font-family: 'Consolas', 'Menlo', monospace;
   width: 11ch;
 }
 
 .workspace-page .management-no {
-  font-family: "Consolas", "Menlo", monospace;
+  font-family: 'Consolas', 'Menlo', monospace;
   font-weight: 600;
 }
 
