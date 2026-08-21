@@ -33,6 +33,7 @@ import {
 } from "../../../../core/room/calcClipboard";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
+import { useFloatingWindow } from "../../hooks/useFloatingWindow";
 import "./RoomCalcSheet.css";
 
 /** いま入力しているセル（記号クリックの差し込み先・呼出の位置に使う） */
@@ -149,6 +150,14 @@ export default function RoomCalcSheet({
   } = useColumnWidths("calc-sheet-columns", CALC_COLUMN_WIDTHS);
 
   const subjects: Subject[] = options?.subjects ?? [];
+
+  // 明細入力だけを切り離して、図や寸法を見ながら入力できる小窓にする
+  const calcWindow = useFloatingWindow("calc-sheet-window", {
+    x: 60,
+    y: 90,
+    w: 1100,
+    h: 420,
+  });
 
   useEffect(() => {
     if (!callOpen) return;
@@ -518,7 +527,19 @@ export default function RoomCalcSheet({
 
   return (
     <div
-      className="room-calc-sheet"
+      className={
+        calcWindow.floating ? "room-calc-sheet floating" : "room-calc-sheet"
+      }
+      style={
+        calcWindow.floating
+          ? {
+              left: `${calcWindow.rect.x}px`,
+              top: `${calcWindow.rect.y}px`,
+              width: `${calcWindow.rect.w}px`,
+              height: `${calcWindow.rect.h}px`,
+            }
+          : undefined
+      }
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
         if (e.key === "c") {
@@ -538,8 +559,30 @@ export default function RoomCalcSheet({
         }
       }}
     >
-      <div className="section-bar">
-        <span>セット明細計算表（部位のある行がセットの先頭です）</span>
+      <div
+        className="section-bar"
+        onMouseDown={(e) => {
+          // 小窓のときは見出しをつかんで動かせる（ボタンや入力は普通に押せる）
+          if (!calcWindow.floating) return;
+          if (
+            e.target instanceof HTMLElement &&
+            e.target.closest("button,input")
+          )
+            return;
+          calcWindow.startMove(e);
+        }}
+      >
+        <span className={calcWindow.floating ? "grip" : ""}>
+          セット明細計算表（部位のある行がセットの先頭です）
+        </span>
+        <button
+          type="button"
+          className={calcWindow.floating ? "on" : ""}
+          title="明細入力だけを切り離して、動かせる小窓にします（図や寸法を見ながら入力できます）"
+          onClick={() => calcWindow.setFloating(!calcWindow.floating)}
+        >
+          {calcWindow.floating ? "⤡ 元の位置へ戻す" : "⧉ 切り離す"}
+        </button>
         <button type="button" onClick={() => onChange([...sets, calcSet()])}>
           ＋ セット明細（2明細）
         </button>
@@ -584,126 +627,170 @@ export default function RoomCalcSheet({
         </span>
       </div>
 
-      <table className="grid calc">
-        <colgroup>
-          {CALC_COLUMNS.map((column, index) => (
-            <col key={column.label} style={{ width: `${widths[index]}px` }} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr>
+      <div className="calc-body">
+        <table className="grid calc">
+          <colgroup>
             {CALC_COLUMNS.map((column, index) => (
-              <th key={column.label} title={column.title}>
-                {column.label}
-                <span
-                  className="col-resize"
-                  title="ドラッグで列幅を変えられます"
-                  onMouseDown={(e) => startResize(index, e)}
-                />
-              </th>
+              <col key={column.label} style={{ width: `${widths[index]}px` }} />
             ))}
-          </tr>
-        </thead>
-        {sets.map((set, setIndex) => (
-          <tbody
-            key={set.id}
-            className={setIndex % 2 === 0 ? "set even" : "set odd"}
-          >
-            {Array.from({ length: setRowCount(set) }, (_, rowIndex) => {
-              const rowCount = setRowCount(set);
-              // 記号は行ごとではなくセット全体で1つ（先頭の計算式行に持たせる）
-              const setSymbol =
-                set.lines.find((row) => row.bSymbol.trim() !== "")?.bSymbol ??
-                "";
-              const setTotal = result.setTotals.get(set.id) ?? null;
-              // 明細1件は上下2行セット（偶数行＝上段、奇数行＝下段）
-              const detailIndex = Math.floor(rowIndex / 2);
-              const isUpper = rowIndex % 2 === 0;
-              const detail = set.details[detailIndex];
-              const line = set.lines[rowIndex];
-              const lineResult = line ? result.lines.get(line.id) : undefined;
-              return (
-                <tr
-                  key={`${set.id}-${rowIndex}`}
-                  className={isUpper ? "detail-upper" : "detail-lower"}
-                >
-                  {rowIndex === 0 && (
-                    <td className="part dcell" rowSpan={rowCount}>
-                      <input
-                        list="calc-parts"
-                        value={set.partName}
-                        placeholder="番号で入力"
-                        title="部位マスターの番号を入力すると名称に変換します。空欄にすると上のセットに含まれます"
-                        onChange={(e) => {
-                          const parts = options?.pickupParts ?? [];
-                          const name = resolveMasterName(parts, e.target.value);
-                          updateSet(set.id, {
-                            partName: name,
-                            partNumber:
-                              parts.find((part) => part.name === name)?.id ??
-                              null,
-                          });
-                        }}
-                      />
-                    </td>
-                  )}
-                  {detail ? (
-                    <>
-                      <td className="subject dcell">
-                        {!isUpper && (
-                          <input
-                            value={
-                              detail.subjectId === null
-                                ? ""
-                                : String(detail.subjectId)
-                            }
-                            placeholder="番号"
-                            title={
-                              subjects.find(
-                                (item) => item.id === detail.subjectId,
-                              )?.name ?? "工種科目のID"
-                            }
-                            onChange={(e) => {
-                              const value = e.target.value.trim();
-                              const id = Number.parseInt(value, 10);
-                              updateDetail(set.id, detailIndex, {
-                                subjectId: Number.isNaN(id) ? null : id,
-                              });
-                            }}
-                          />
-                        )}
+          </colgroup>
+          <thead>
+            <tr>
+              {CALC_COLUMNS.map((column, index) => (
+                <th key={column.label} title={column.title}>
+                  {column.label}
+                  <span
+                    className="col-resize"
+                    title="ドラッグで列幅を変えられます"
+                    onMouseDown={(e) => startResize(index, e)}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          {sets.map((set, setIndex) => (
+            <tbody
+              key={set.id}
+              className={setIndex % 2 === 0 ? "set even" : "set odd"}
+            >
+              {Array.from({ length: setRowCount(set) }, (_, rowIndex) => {
+                const rowCount = setRowCount(set);
+                // 記号は行ごとではなくセット全体で1つ（先頭の計算式行に持たせる）
+                const setSymbol =
+                  set.lines.find((row) => row.bSymbol.trim() !== "")?.bSymbol ??
+                  "";
+                const setTotal = result.setTotals.get(set.id) ?? null;
+                // 明細1件は上下2行セット（偶数行＝上段、奇数行＝下段）
+                const detailIndex = Math.floor(rowIndex / 2);
+                const isUpper = rowIndex % 2 === 0;
+                const detail = set.details[detailIndex];
+                const line = set.lines[rowIndex];
+                const lineResult = line ? result.lines.get(line.id) : undefined;
+                return (
+                  <tr
+                    key={`${set.id}-${rowIndex}`}
+                    className={isUpper ? "detail-upper" : "detail-lower"}
+                  >
+                    {rowIndex === 0 && (
+                      <td className="part dcell" rowSpan={rowCount}>
+                        <input
+                          list="calc-parts"
+                          value={set.partName}
+                          placeholder="番号／一覧"
+                          title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
+                          onChange={(e) => {
+                            const parts = options?.pickupParts ?? [];
+                            const name = resolveMasterName(
+                              parts,
+                              e.target.value,
+                            );
+                            updateSet(set.id, {
+                              partName: name,
+                              partNumber:
+                                parts.find((part) => part.name === name)?.id ??
+                                null,
+                            });
+                          }}
+                        />
                       </td>
-                      <td className="material dcell">
-                        {!isUpper && (
-                          <input
-                            list="calc-materials"
-                            value={detail.materialCategory}
-                            onChange={(e) =>
-                              updateDetail(set.id, detailIndex, {
-                                materialCategory: resolveMasterName(
-                                  (options?.materialCategories ?? []).map(
-                                    (item) => ({
-                                      id: item.id,
-                                      name: item.name,
-                                    }),
+                    )}
+                    {detail ? (
+                      <>
+                        {isUpper && (
+                          <td className="subject dcell" rowSpan={2}>
+                            <input
+                              list="calc-subjects"
+                              value={
+                                detail.subjectId === null
+                                  ? ""
+                                  : String(detail.subjectId)
+                              }
+                              placeholder="番号"
+                              title={
+                                subjects.find(
+                                  (item) => item.id === detail.subjectId,
+                                )?.name ?? "工種科目のID（一覧から選べます）"
+                              }
+                              onChange={(e) => {
+                                const value = e.target.value.trim();
+                                const id = Number.parseInt(value, 10);
+                                updateDetail(set.id, detailIndex, {
+                                  subjectId: Number.isNaN(id) ? null : id,
+                                });
+                              }}
+                            />
+                          </td>
+                        )}
+                        <td className="material dcell">
+                          {!isUpper && (
+                            <input
+                              list="calc-materials"
+                              value={detail.materialCategory}
+                              onChange={(e) =>
+                                updateDetail(set.id, detailIndex, {
+                                  materialCategory: resolveMasterName(
+                                    (options?.materialCategories ?? []).map(
+                                      (item) => ({
+                                        id: item.id,
+                                        name: item.name,
+                                      }),
+                                    ),
+                                    e.target.value,
                                   ),
-                                  e.target.value,
-                                ),
-                              })
-                            }
-                          />
-                        )}
-                      </td>
-                      <td className="no dcell">
-                        {!isUpper && (
+                                })
+                              }
+                            />
+                          )}
+                        </td>
+                        <td className="no dcell">
+                          {!isUpper && (
+                            <input
+                              value={
+                                numberEdit?.key === `${set.id}:${detailIndex}`
+                                  ? numberEdit.text
+                                  : (detail.detailNumber?.toFixed(2) ?? "")
+                              }
+                              placeholder="番号"
+                              title="明細番号を入れるとマスターの明細を呼び出します（科目IDが空でも探します）"
+                              onFocus={() =>
+                                onFocus({
+                                  setId: set.id,
+                                  area: "detail",
+                                  index: detailIndex,
+                                })
+                              }
+                              onChange={(e) =>
+                                setNumberEdit({
+                                  key: `${set.id}:${detailIndex}`,
+                                  text: e.target.value,
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                e.currentTarget.blur();
+                              }}
+                              onBlur={(e) => {
+                                const text = e.target.value;
+                                setNumberEdit(null);
+                                if (
+                                  text.trim() ===
+                                  (detail.detailNumber?.toFixed(2) ?? "")
+                                )
+                                  return;
+                                void applyDetailNumber(
+                                  set.id,
+                                  detailIndex,
+                                  text,
+                                );
+                              }}
+                            />
+                          )}
+                        </td>
+                        <td className="dcell">
                           <input
-                            value={
-                              numberEdit?.key === `${set.id}:${detailIndex}`
-                                ? numberEdit.text
-                                : (detail.detailNumber?.toFixed(2) ?? "")
-                            }
-                            placeholder="番号"
-                            title="明細番号を入れるとマスターの明細を呼び出します（科目IDが空でも探します）"
+                            lang="ja"
+                            value={isUpper ? detail.partName : detail.name}
+                            placeholder={isUpper ? "部位名" : "名称"}
                             onFocus={() =>
                               onFocus({
                                 setId: set.id,
@@ -712,302 +799,288 @@ export default function RoomCalcSheet({
                               })
                             }
                             onChange={(e) =>
-                              setNumberEdit({
-                                key: `${set.id}:${detailIndex}`,
-                                text: e.target.value,
-                              })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key !== "Enter") return;
-                              e.currentTarget.blur();
-                            }}
-                            onBlur={(e) => {
-                              const text = e.target.value;
-                              setNumberEdit(null);
-                              if (
-                                text.trim() ===
-                                (detail.detailNumber?.toFixed(2) ?? "")
+                              updateDetail(
+                                set.id,
+                                detailIndex,
+                                isUpper
+                                  ? { partName: e.target.value }
+                                  : { name: e.target.value },
                               )
-                                return;
-                              void applyDetailNumber(set.id, detailIndex, text);
-                            }}
+                            }
                           />
-                        )}
-                      </td>
-                      <td className="dcell">
-                        <input
-                          lang="ja"
-                          value={isUpper ? detail.partName : detail.name}
-                          placeholder={isUpper ? "部位名" : "名称"}
-                          onFocus={() =>
-                            onFocus({
-                              setId: set.id,
-                              area: "detail",
-                              index: detailIndex,
-                            })
-                          }
-                          onChange={(e) =>
-                            updateDetail(
-                              set.id,
-                              detailIndex,
-                              isUpper
-                                ? { partName: e.target.value }
-                                : { name: e.target.value },
-                            )
-                          }
-                        />
-                      </td>
-                      <td className="dcell">
-                        <input
-                          lang="ja"
-                          value={
-                            isUpper
-                              ? detail.descriptionUpper
-                              : detail.descriptionLower
-                          }
-                          onChange={(e) =>
-                            updateDetail(
-                              set.id,
-                              detailIndex,
-                              isUpper
-                                ? { descriptionUpper: e.target.value }
-                                : { descriptionLower: e.target.value },
-                            )
-                          }
-                        />
-                      </td>
-                      <td className="unit dcell">
-                        {!isUpper && (
+                        </td>
+                        <td className="dcell">
                           <input
-                            list="calc-units"
-                            value={detail.unit}
+                            lang="ja"
+                            value={
+                              isUpper
+                                ? detail.descriptionUpper
+                                : detail.descriptionLower
+                            }
                             onChange={(e) =>
-                              updateDetail(set.id, detailIndex, {
-                                unit: resolveMasterName(
-                                  (options?.units ?? []).map((unit) => ({
-                                    id: unit.id,
-                                    name: unit.name,
-                                  })),
-                                  e.target.value,
+                              updateDetail(
+                                set.id,
+                                detailIndex,
+                                isUpper
+                                  ? { descriptionUpper: e.target.value }
+                                  : { descriptionLower: e.target.value },
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="unit dcell">
+                          {!isUpper && (
+                            <input
+                              list="calc-units"
+                              value={detail.unit}
+                              onChange={(e) =>
+                                updateDetail(set.id, detailIndex, {
+                                  unit: resolveMasterName(
+                                    (options?.units ?? []).map((unit) => ({
+                                      id: unit.id,
+                                      name: unit.name,
+                                    })),
+                                    e.target.value,
+                                  ),
+                                })
+                              }
+                            />
+                          )}
+                        </td>
+                        <td className="coef dcell">
+                          {!isUpper && (
+                            <input
+                              key={detail.id}
+                              className="num"
+                              defaultValue={String(detail.coefficient)}
+                              title="集計時にこの掛け率を掛けます"
+                              onBlur={(e) => {
+                                const value = Number(e.target.value);
+                                if (!Number.isFinite(value)) return;
+                                updateDetail(set.id, detailIndex, {
+                                  coefficient: value,
+                                });
+                              }}
+                            />
+                          )}
+                        </td>
+                        <td className="num total dcell">
+                          {!isUpper && setTotal !== null
+                            ? displayQuantity(
+                                displayedValue(
+                                  setTotal * (detail.coefficient || 1),
+                                ),
+                              )
+                            : ""}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="empty" colSpan={8} />
+                    )}
+                    {line ? (
+                      <>
+                        <td className="comment">
+                          <input
+                            lang="ja"
+                            maxLength={20}
+                            value={line.comment}
+                            onChange={(e) =>
+                              updateSet(set.id, {
+                                lines: set.lines.map((row, index) =>
+                                  index === rowIndex
+                                    ? { ...row, comment: e.target.value }
+                                    : row,
                                 ),
                               })
                             }
                           />
-                        )}
-                      </td>
-                      <td className="coef dcell">
-                        {!isUpper && (
+                        </td>
+                        <td className="formula">
                           <input
-                            key={detail.id}
-                            className="num"
-                            defaultValue={String(detail.coefficient)}
-                            title="集計時にこの掛け率を掛けます"
-                            onBlur={(e) => {
-                              const value = Number(e.target.value);
-                              if (!Number.isFinite(value)) return;
-                              updateDetail(set.id, detailIndex, {
-                                coefficient: value,
-                              });
-                            }}
-                          />
-                        )}
-                      </td>
-                      <td className="num total dcell">
-                        {!isUpper && setTotal !== null
-                          ? displayQuantity(
-                              displayedValue(
-                                setTotal * (detail.coefficient || 1),
-                              ),
-                            )
-                          : ""}
-                      </td>
-                    </>
-                  ) : (
-                    <td className="empty" colSpan={8} />
-                  )}
-                  {line ? (
-                    <>
-                      <td className="comment">
-                        <input
-                          lang="ja"
-                          maxLength={20}
-                          value={line.comment}
-                          onChange={(e) =>
-                            updateSet(set.id, {
-                              lines: set.lines.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, comment: e.target.value }
-                                  : row,
-                              ),
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="formula">
-                        <input
-                          value={line.formulaA}
-                          onFocus={() =>
-                            onFocus({
-                              setId: set.id,
-                              area: "formulaA",
-                              index: rowIndex,
-                            })
-                          }
-                          onChange={(e) =>
-                            updateSet(set.id, {
-                              lines: set.lines.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, formulaA: e.target.value }
-                                  : row,
-                              ),
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="formula-b">
-                        <input
-                          value={line.formulaB}
-                          title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
-                          onFocus={() =>
-                            onFocus({
-                              setId: set.id,
-                              area: "formulaB",
-                              index: rowIndex,
-                            })
-                          }
-                          onChange={(e) =>
-                            updateSet(set.id, {
-                              lines: set.lines.map((row, index) =>
-                                index === rowIndex
-                                  ? { ...row, formulaB: e.target.value }
-                                  : row,
-                              ),
-                            })
-                          }
-                        />
-                      </td>
-                      <td
-                        className={[
-                          "num",
-                          (lineResult?.value ?? 0) < 0 ? "minus" : "",
-                          lineResult?.error ? "error" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        title={lineResult?.error}
-                      >
-                        {lineResult?.error !== ""
-                          ? lineResult?.error
-                          : lineResult?.text}
-                      </td>
-                      <td className="num">{lineResult?.totalText ?? ""}</td>
-                    </>
-                  ) : (
-                    <td className="empty" colSpan={5} />
-                  )}
-                  {rowIndex === 0 && (
-                    <td className="bsym" rowSpan={rowCount}>
-                      <div className="cell">
-                        <input
-                          value={setSymbol}
-                          placeholder="B1"
-                          title="このセットの累計を他のセットで使うための記号（セットに1つ）"
-                          onChange={(e) => {
-                            const symbol = e.target.value.trim().toUpperCase();
-                            if (
-                              symbol !== "" &&
-                              symbol !== setSymbol &&
-                              used.has(symbol)
-                            ) {
-                              onMessage(`${symbol} は既に使われています`);
-                              return;
+                            value={line.formulaA}
+                            onFocus={() =>
+                              onFocus({
+                                setId: set.id,
+                                area: "formulaA",
+                                index: rowIndex,
+                              })
                             }
-                            updateSet(set.id, {
-                              lines: setBSymbol(set, symbol),
-                            });
-                          }}
-                        />
-                        <button
-                          type="button"
-                          title="空いている番号を割り当てます"
-                          onClick={() =>
-                            updateSet(set.id, {
-                              lines: setBSymbol(set, nextBSymbol(sets)),
-                            })
-                          }
-                        >
-                          B
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                  {detail ? (
-                    <>
-                      <td className="dcell">
-                        <input
-                          lang="ja"
-                          value={
-                            isUpper ? detail.remarksUpper : detail.remarksLower
-                          }
-                          onChange={(e) =>
-                            updateDetail(
-                              set.id,
-                              detailIndex,
-                              isUpper
-                                ? { remarksUpper: e.target.value }
-                                : { remarksLower: e.target.value },
-                            )
-                          }
-                        />
-                      </td>
-                      <td className="estimate dcell">
-                        {!isUpper && (
-                          <input
-                            lang="ja"
-                            value={detail.estimateDisplay}
-                            title="内訳書へ出すときの表示（明細マスターと同じ欄）"
                             onChange={(e) =>
-                              updateDetail(set.id, detailIndex, {
-                                estimateDisplay: e.target.value,
+                              updateSet(set.id, {
+                                lines: set.lines.map((row, index) =>
+                                  index === rowIndex
+                                    ? { ...row, formulaA: e.target.value }
+                                    : row,
+                                ),
                               })
                             }
                           />
-                        )}
+                        </td>
+                        <td className="formula-b">
+                          <input
+                            value={line.formulaB}
+                            title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
+                            onFocus={() =>
+                              onFocus({
+                                setId: set.id,
+                                area: "formulaB",
+                                index: rowIndex,
+                              })
+                            }
+                            onChange={(e) =>
+                              updateSet(set.id, {
+                                lines: set.lines.map((row, index) =>
+                                  index === rowIndex
+                                    ? { ...row, formulaB: e.target.value }
+                                    : row,
+                                ),
+                              })
+                            }
+                          />
+                        </td>
+                        <td
+                          className={[
+                            "num",
+                            (lineResult?.value ?? 0) < 0 ? "minus" : "",
+                            lineResult?.error ? "error" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          title={lineResult?.error}
+                        >
+                          {lineResult?.error !== ""
+                            ? lineResult?.error
+                            : lineResult?.text}
+                        </td>
+                        <td className="num">{lineResult?.totalText ?? ""}</td>
+                      </>
+                    ) : (
+                      <td className="empty" colSpan={5} />
+                    )}
+                    {rowIndex === 0 && (
+                      <td className="bsym" rowSpan={rowCount}>
+                        <div className="cell">
+                          <input
+                            value={setSymbol}
+                            placeholder="B1"
+                            title="このセットの累計を他のセットで使うための記号（セットに1つ）"
+                            onChange={(e) => {
+                              const symbol = e.target.value
+                                .trim()
+                                .toUpperCase();
+                              if (
+                                symbol !== "" &&
+                                symbol !== setSymbol &&
+                                used.has(symbol)
+                              ) {
+                                onMessage(`${symbol} は既に使われています`);
+                                return;
+                              }
+                              updateSet(set.id, {
+                                lines: setBSymbol(set, symbol),
+                              });
+                            }}
+                          />
+                          <button
+                            type="button"
+                            title="空いている番号を割り当てます"
+                            onClick={() =>
+                              updateSet(set.id, {
+                                lines: setBSymbol(set, nextBSymbol(sets)),
+                              })
+                            }
+                          >
+                            B
+                          </button>
+                        </div>
                       </td>
-                    </>
-                  ) : (
-                    <td className="empty" colSpan={2} />
-                  )}
-                  {detail ? (
-                    isUpper && (
-                      <td
-                        className="ops"
-                        rowSpan={rowIndex + 1 < rowCount ? 2 : 1}
-                      >
-                        <button
-                          type="button"
-                          title="この明細を1つ上へ移動します"
-                          disabled={detailIndex === 0}
-                          onClick={() => moveDetail(set.id, detailIndex, -1)}
+                    )}
+                    {detail ? (
+                      <>
+                        <td className="dcell">
+                          <input
+                            lang="ja"
+                            value={
+                              isUpper
+                                ? detail.remarksUpper
+                                : detail.remarksLower
+                            }
+                            onChange={(e) =>
+                              updateDetail(
+                                set.id,
+                                detailIndex,
+                                isUpper
+                                  ? { remarksUpper: e.target.value }
+                                  : { remarksLower: e.target.value },
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="estimate dcell">
+                          {!isUpper && (
+                            <input
+                              lang="ja"
+                              value={detail.estimateDisplay}
+                              title="内訳書へ出すときの表示（明細マスターと同じ欄）"
+                              onChange={(e) =>
+                                updateDetail(set.id, detailIndex, {
+                                  estimateDisplay: e.target.value,
+                                })
+                              }
+                            />
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="empty" colSpan={2} />
+                    )}
+                    {detail ? (
+                      isUpper && (
+                        <td
+                          className="ops"
+                          rowSpan={rowIndex + 1 < rowCount ? 2 : 1}
                         >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          title="この明細を1つ下へ移動します"
-                          disabled={detailIndex === set.details.length - 1}
-                          onClick={() => moveDetail(set.id, detailIndex, 1)}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          title="この明細1件だけを削除します"
-                          onClick={() => removeDetail(set.id, detailIndex)}
-                        >
-                          ✕
-                        </button>
-                        {detailIndex === 0 && (
+                          <button
+                            type="button"
+                            title="この明細を1つ上へ移動します"
+                            disabled={detailIndex === 0}
+                            onClick={() => moveDetail(set.id, detailIndex, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            title="この明細を1つ下へ移動します"
+                            disabled={detailIndex === set.details.length - 1}
+                            onClick={() => moveDetail(set.id, detailIndex, 1)}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            title="この明細1件だけを削除します"
+                            onClick={() => removeDetail(set.id, detailIndex)}
+                          >
+                            ✕
+                          </button>
+                          {detailIndex === 0 && (
+                            <button
+                              type="button"
+                              title="このセット明細をまるごと削除します"
+                              onClick={() =>
+                                onChange(
+                                  sets.filter((each) => each.id !== set.id),
+                                )
+                              }
+                            >
+                              🗑
+                            </button>
+                          )}
+                        </td>
+                      )
+                    ) : (
+                      <td className="ops">
+                        {rowIndex === 0 && (
                           <button
                             type="button"
                             title="このセット明細をまるごと削除します"
@@ -1021,33 +1094,33 @@ export default function RoomCalcSheet({
                           </button>
                         )}
                       </td>
-                    )
-                  ) : (
-                    <td className="ops">
-                      {rowIndex === 0 && (
-                        <button
-                          type="button"
-                          title="このセット明細をまるごと削除します"
-                          onClick={() =>
-                            onChange(sets.filter((each) => each.id !== set.id))
-                          }
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        ))}
-      </table>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
+        </table>
+      </div>
+      {calcWindow.floating && (
+        <span
+          className="resize-grip"
+          title="ドラッグで小窓の大きさを変えられます"
+          onMouseDown={calcWindow.startResize}
+        />
+      )}
 
       <datalist id="calc-parts">
         {(options?.pickupParts ?? []).map((part) => (
           <option key={part.id} value={part.name}>
             {part.id}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="calc-subjects">
+        {subjects.map((subject) => (
+          <option key={subject.id} value={String(subject.id)}>
+            {subject.name}
           </option>
         ))}
       </datalist>

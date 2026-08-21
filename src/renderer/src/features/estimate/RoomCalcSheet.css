@@ -4,6 +4,59 @@
   position: relative;
 }
 
+/* 切り離した小窓。移動・大きさ変更ができ、ボタンと見出し行は常に見えるようにする */
+.room-calc-sheet.floating {
+  position: fixed;
+  z-index: 40;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-top: 3px solid #1e3a8a;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px 10px;
+  resize: none;
+  overflow: hidden;
+}
+
+.room-calc-sheet.floating .section-bar {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  cursor: move;
+}
+
+.room-calc-sheet.floating .section-bar .grip {
+  cursor: move;
+}
+
+.room-calc-sheet.floating .calc-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 小窓は表を広く使うので、説明文は出さない */
+.room-calc-sheet.floating .note {
+  display: none;
+}
+
+/* 小窓の中をスクロールしても見出し行は残す */
+.room-calc-sheet.floating .calc-body table.calc thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.room-calc-sheet .resize-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, #94a3b8 50%);
+}
+
 .room-calc-sheet .section-bar {
   display: flex;
   align-items: center;
@@ -145,6 +198,19 @@
 
 .room-calc-sheet .subject {
   width: 46px;
+}
+
+/* 部位・科目IDは縦に結合した広い枠なので、どこをクリックしても入力できるようにする */
+.room-calc-sheet table.calc td.part,
+.room-calc-sheet table.calc td.subject {
+  position: relative;
+}
+
+.room-calc-sheet table.calc td.part input,
+.room-calc-sheet table.calc td.subject input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
 }
 
 .room-calc-sheet .material {
