@@ -21,7 +21,7 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: '明細マスター',
     group: 'master',
     note: 'この物件専用の複製。最初の入力に使う。修正は大元へ同期できる',
-    ready: false
+    ready: true
   },
   {
     key: 'assemblies',

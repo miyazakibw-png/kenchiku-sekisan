@@ -138,10 +138,23 @@ export const mDetails = sqliteTable(
     estimateDisplay: text("estimate_display").notNull().default(""),
     displayOrder: integer("display_order").notNull().default(0),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    /** basic: 全物件共通の基本マスター / project: 物件専用（工事マスター） */
+    scope: text("scope").notNull().default("basic"),
+    projectId: integer("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    /** 複製元の基本マスター明細（大元へ同期するときの目印） */
+    sourceDetailId: integer("source_detail_id"),
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),
   },
   (t) => ({
+    scopeIdx: index("idx_m_details_scope").on(
+      t.scope,
+      t.projectId,
+      t.subjectId,
+      t.displayOrder,
+    ),
     subjectOrderIdx: index("idx_m_details_subject_order").on(
       t.subjectId,
       t.displayOrder,

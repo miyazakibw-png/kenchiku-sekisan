@@ -42,6 +42,7 @@ import type {
   SaveTransferRowsRequest,
   Subject,
   SubjectDraft,
+  SyncDetailsResult,
   TransferRow,
 } from "../shared/types";
 
@@ -57,10 +58,22 @@ const api = {
   listSubjects: (): Promise<Subject[]> => ipcRenderer.invoke(IPC.subjectsList),
   saveSubjects: (rows: SubjectDraft[]): Promise<SaveSubjectsResult> =>
     ipcRenderer.invoke(IPC.subjectsSave, rows),
-  listDetails: (subjectId: number): Promise<Detail[]> =>
-    ipcRenderer.invoke(IPC.detailsList, subjectId),
+  /** projectId を渡すと物件専用マスター（工事マスター）の明細を返す */
+  listDetails: (
+    subjectId: number,
+    projectId: number | null = null,
+  ): Promise<Detail[]> =>
+    ipcRenderer.invoke(IPC.detailsList, subjectId, projectId),
   saveDetails: (request: SaveDetailsRequest): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsSave, request),
+  /** 既存工事で物件専用明細が無いときに基本マスターから複製する */
+  copyBasicDetailsToProject: (projectId: number): Promise<number> =>
+    ipcRenderer.invoke(IPC.detailsCopyFromBasic, projectId),
+  syncProjectDetailsToBasic: (
+    projectId: number,
+    subjectId: number,
+  ): Promise<SyncDetailsResult> =>
+    ipcRenderer.invoke(IPC.detailsSyncToBasic, projectId, subjectId),
   getAssemblyOptions: (): Promise<AssemblyMasterOptions> =>
     ipcRenderer.invoke(IPC.assemblyOptions),
   listAssemblies: (projectId: number | null): Promise<FinishAssembly[]> =>

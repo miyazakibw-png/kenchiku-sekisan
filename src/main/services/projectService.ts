@@ -2,6 +2,7 @@ import { asc, eq, sql } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
 import {
   calcSheetEntries,
+  mDetails,
   mFinishAssemblies,
   mFinishAssemblyItems,
   mProjectFields,
@@ -21,6 +22,7 @@ import type {
   ProjectSummary,
   SaveProjectRequest
 } from '../../shared/types'
+import { copyBasicDetailsToProject } from './detailService'
 
 /** 管理番号は連番で自動採番し、以後変更しない */
 function nextManagementNo(db: AppDatabase): string {
@@ -104,6 +106,8 @@ export function createProject(db: AppDatabase, name: string): ProjectSummary {
       })
       .run().lastInsertRowid
   )
+  // 工事ごとに基本マスターの明細を複製し、この工事専用のマスターとして使う
+  copyBasicDetailsToProject(db, id)
   return getProject(db, id)
 }
 
@@ -237,6 +241,17 @@ export function copyProject(db: AppDatabase, sourceId: number, name: string): Pr
       .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
         tx.insert(projectTransferRows)
           .values({ ...rest, projectId: newId })
+          .run()
+      })
+
+    // 物件専用の明細マスターもコピー先へ複製する（複製元の基本マスターIDはそのまま引き継ぐ）
+    tx.select()
+      .from(mDetails)
+      .where(eq(mDetails.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
+        tx.insert(mDetails)
+          .values({ ...rest, scope: 'project', projectId: newId })
           .run()
       })
 

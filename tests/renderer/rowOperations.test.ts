@@ -30,7 +30,10 @@ function detail(id: number, name: string): Detail {
     remarksLower: '',
     estimateDisplay: '',
     displayOrder: id,
-    isActive: true
+    isActive: true,
+    scope: 'basic',
+    projectId: null,
+    sourceDetailId: null
   }
 }
 

@@ -95,7 +95,12 @@ export default function RoomCalcSheet({
         setDetails([]);
         return;
       }
-      setDetails(await window.sekisan.listDetails(subjectId));
+      setDetails(
+        await window.sekisan.listDetails(
+          subjectId,
+          source === "project" ? projectId : null,
+        ),
+      );
     })();
   }, [callOpen, projectId, source, subjectId]);
 
@@ -755,10 +760,6 @@ export default function RoomCalcSheet({
                 </li>
               ))}
             </ul>
-          ) : source === "project" ? (
-            <p className="note">
-              工事マスターは基本マスターからの複製機能を作る工程でつなぎます。今は基本マスターとセット明細マスターから呼び出せます。
-            </p>
           ) : (
             <>
               <div className="call-subject">

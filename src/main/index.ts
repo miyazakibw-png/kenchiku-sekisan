@@ -3,9 +3,11 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { closeDatabase, getDatabase, initDatabase } from "./db";
 import {
+  copyBasicDetailsToProject,
   listDetails,
   listMasterOptions,
   saveDetails,
+  syncProjectDetailsToBasic,
 } from "./services/detailService";
 import {
   buildItemFromDetail,
@@ -278,8 +280,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
     saveFittings(getDatabase(), request),
   );
-  ipcMain.handle(IPC.detailsList, (_event, subjectId: number) =>
-    listDetails(getDatabase(), subjectId),
+  ipcMain.handle(
+    IPC.detailsList,
+    (_event, subjectId: number, projectId: number | null = null) =>
+      listDetails(getDatabase(), subjectId, projectId),
+  );
+  ipcMain.handle(IPC.detailsCopyFromBasic, (_event, projectId: number) =>
+    copyBasicDetailsToProject(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.detailsSyncToBasic,
+    (_event, projectId: number, subjectId: number) =>
+      syncProjectDetailsToBasic(getDatabase(), projectId, subjectId),
   );
   ipcMain.handle(IPC.detailsSave, (_event, request: SaveDetailsRequest) =>
     saveDetails(getDatabase(), request),

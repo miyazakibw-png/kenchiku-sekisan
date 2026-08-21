@@ -102,6 +102,11 @@ export interface Detail {
   estimateDisplay: string;
   displayOrder: number;
   isActive: boolean;
+  /** basic: 基本マスター / project: 物件専用（工事マスター） */
+  scope: string;
+  projectId: number | null;
+  /** 複製元の基本マスター明細（大元へ同期するときの目印） */
+  sourceDetailId: number | null;
 }
 
 /** 明細マスター画面から一括保存する編集済み行 */
@@ -126,6 +131,16 @@ export interface SaveDetailsRequest {
   rows: DetailDraft[];
   /** 画面上で削除された既存行のID */
   deletedIds: number[];
+  /** 物件専用マスターを編集するときの物件ID（基本マスターは null） */
+  projectId?: number | null;
+}
+
+/** 物件専用マスターの明細を基本マスターへ同期した結果 */
+export interface SyncDetailsResult {
+  /** 大元を書き換えた件数 */
+  updated: number;
+  /** 大元へ新しく追加した件数 */
+  added: number;
 }
 
 export interface MasterOptions {

@@ -655,4 +655,10 @@ CREATE INDEX idx_breakdown_rows_version ON project_breakdown_rows(version_id, di
   /* 020: 型枠転記で作った転記入力表の行に、生成元の型枠分類を持たせる */ `
 ALTER TABLE project_transfer_rows ADD COLUMN formwork_key TEXT NOT NULL DEFAULT '';
 `,
+  /* 021: 明細マスターを物件専用（工事マスター）にも持てるようにする */ `
+ALTER TABLE m_details ADD COLUMN scope TEXT NOT NULL DEFAULT 'basic';
+ALTER TABLE m_details ADD COLUMN project_id INTEGER;
+ALTER TABLE m_details ADD COLUMN source_detail_id INTEGER;
+CREATE INDEX idx_m_details_scope ON m_details(scope, project_id, subject_id, display_order);
+`,
 ];

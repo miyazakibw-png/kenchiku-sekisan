@@ -8,8 +8,10 @@ import type { AppDatabase } from '../../src/main/db'
 import {
   listDetails,
   listMasterOptions,
-  saveDetails
+  saveDetails,
+  syncProjectDetailsToBasic
 } from '../../src/main/services/detailService'
+import { createProject } from '../../src/main/services/projectService'
 import type { DetailDraft } from '../../src/shared/types'
 
 function createDb(): AppDatabase {
@@ -176,5 +178,52 @@ describe('Undoで復活した行の保存', () => {
       [saved[0].id, '残す'],
       [removed.id, '消す']
     ])
+  })
+})
+
+describe('物件専用マスター（工事マスター）', () => {
+  function createProjectRow(): number {
+    return createProject(db, 'テスト工事').id
+  }
+
+  it('工事を作ると基本マスターの明細を物件専用へ複製する', () => {
+    saveDetails(db, { subjectId, rows: [draft('床シート'), draft('巾木')], deletedIds: [] })
+    const projectId = createProjectRow()
+    const copied = listDetails(db, subjectId, projectId)
+    expect(copied.map((row) => row.name)).toEqual(['床シート', '巾木'])
+    expect(copied.every((row) => row.scope === 'project')).toBe(true)
+    expect(copied.map((row) => row.sourceDetailId)).toEqual(
+      listDetails(db, subjectId).map((row) => row.id)
+    )
+  })
+
+  it('物件専用の修正は基本マスターに影響しない', () => {
+    saveDetails(db, { subjectId, rows: [draft('床シート')], deletedIds: [] })
+    const projectId = createProjectRow()
+    const [row] = listDetails(db, subjectId, projectId)
+    saveDetails(db, {
+      subjectId,
+      projectId,
+      rows: [{ ...row, name: '床シート（変更）' }],
+      deletedIds: []
+    })
+    expect(listDetails(db, subjectId, projectId)[0].name).toBe('床シート（変更）')
+    expect(listDetails(db, subjectId)[0].name).toBe('床シート')
+  })
+
+  it('大元へ同期すると既存明細を上書きし、物件で追加した明細は基本マスターへ追加する', () => {
+    saveDetails(db, { subjectId, rows: [draft('床シート')], deletedIds: [] })
+    const projectId = createProjectRow()
+    const [row] = listDetails(db, subjectId, projectId)
+    saveDetails(db, {
+      subjectId,
+      projectId,
+      rows: [{ ...row, name: '床シート（変更）' }, draft('新規明細')],
+      deletedIds: []
+    })
+
+    const result = syncProjectDetailsToBasic(db, projectId, subjectId)
+    expect(result).toEqual({ updated: 1, added: 1 })
+    expect(listDetails(db, subjectId).map((d) => d.name)).toEqual(['床シート（変更）', '新規明細'])
   })
 })

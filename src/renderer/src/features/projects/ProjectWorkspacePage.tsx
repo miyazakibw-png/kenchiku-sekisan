@@ -11,6 +11,7 @@ import {
   type WorkspaceMenuItem
 } from './workspaceMenu'
 import { useActiveProjectName } from '../../activeProject'
+import DetailMasterPage from '../details/DetailMasterPage'
 import FittingsPage from '../fittings/FittingsPage'
 import EstimatePartsPage from '../estimate/EstimatePartsPage'
 import TransferSheetPage from '../estimate/TransferSheetPage'
@@ -155,6 +156,16 @@ export default function ProjectWorkspacePage({
   const widthOf = (field: HeaderField): string | undefined => {
     const defined = fields.find((row) => row.id === field.fieldId)
     return defined ? `${defined.displayWidth}ch` : undefined
+  }
+
+  if (openedMenu === 'details') {
+    return (
+      <DetailMasterPage
+        options={options}
+        projectId={draft.id}
+        onBack={() => setOpenedMenu(null)}
+      />
+    )
   }
 
   if (openedMenu === 'fittings') {

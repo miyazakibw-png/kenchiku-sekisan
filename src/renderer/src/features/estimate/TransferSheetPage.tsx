@@ -56,7 +56,9 @@ export default function TransferSheetPage({
   const inherited = useMemo(() => resolveTransferInherited(rows), [rows]);
 
   const reload = useCallback(async () => {
-    setRows(toTransferDrafts(await window.sekisan.listTransferRows(project.id)));
+    setRows(
+      toTransferDrafts(await window.sekisan.listTransferRows(project.id)),
+    );
   }, [project.id]);
 
   useEffect(() => {
@@ -68,8 +70,14 @@ export default function TransferSheetPage({
       setDetails([]);
       return;
     }
-    void (async () => setDetails(await window.sekisan.listDetails(subjectId)))();
-  }, [callOpen, subjectId]);
+    void (async () =>
+      setDetails(
+        await window.sekisan.listDetails(
+          subjectId,
+          source === "project" ? project.id : null,
+        ),
+      ))();
+  }, [callOpen, project.id, source, subjectId]);
 
   const save = useCallback(async () => {
     const saved = await window.sekisan.saveTransferRows({
@@ -173,7 +181,10 @@ export default function TransferSheetPage({
         entries={options.formworkCategories}
         listId="transfer-formwork"
       />
-      <MasterCodeOptions entries={materialEntries} listId="transfer-materials" />
+      <MasterCodeOptions
+        entries={materialEntries}
+        listId="transfer-materials"
+      />
       <MasterCodeOptions entries={unitEntries} listId="transfer-units" />
       <MasterCodeOptions
         entries={options.pickupParts}
@@ -241,55 +252,47 @@ export default function TransferSheetPage({
               ✕ 閉じる
             </button>
           </div>
-          {source === "project" ? (
-            <p className="note">
-              物件専用マスターは基本マスターからの複製機能を作る工程でつなぎます。今は基本マスターから呼び出せます。
-            </p>
-          ) : (
-            <>
-              <div className="call-subject">
-                <span>工種科目（番号で入力）</span>
-                <input
-                  list="transfer-subjects"
-                  onChange={(e) => {
-                    const text = e.target.value.trim();
-                    const found =
-                      options.subjects.find(
-                        (subject) => String(subject.id) === text,
-                      ) ??
-                      options.subjects.find((subject) => subject.name === text);
-                    setSubjectId(found?.id ?? null);
-                  }}
-                />
-                <datalist id="transfer-subjects">
-                  {options.subjects.map((subject) => (
-                    <option key={subject.id} value={subject.name}>
-                      {subject.id}
-                    </option>
-                  ))}
-                </datalist>
-              </div>
-              <ul className="call-list">
-                {details.map((detail) => (
-                  <li
-                    key={detail.id}
-                    tabIndex={0}
-                    onDoubleClick={() => callDetail(detail)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") callDetail(detail);
-                    }}
-                  >
-                    <span className="scope">
-                      {detail.detailNumber?.toFixed(2) ?? ""}
-                    </span>
-                    <span className="part">{detail.partName}</span>
-                    <span className="name">{detail.name}</span>
-                    <span className="count">{detail.unit}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          <div className="call-subject">
+            <span>工種科目（番号で入力）</span>
+            <input
+              list="transfer-subjects"
+              onChange={(e) => {
+                const text = e.target.value.trim();
+                const found =
+                  options.subjects.find(
+                    (subject) => String(subject.id) === text,
+                  ) ??
+                  options.subjects.find((subject) => subject.name === text);
+                setSubjectId(found?.id ?? null);
+              }}
+            />
+            <datalist id="transfer-subjects">
+              {options.subjects.map((subject) => (
+                <option key={subject.id} value={subject.name}>
+                  {subject.id}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          <ul className="call-list">
+            {details.map((detail) => (
+              <li
+                key={detail.id}
+                tabIndex={0}
+                onDoubleClick={() => callDetail(detail)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") callDetail(detail);
+                }}
+              >
+                <span className="scope">
+                  {detail.detailNumber?.toFixed(2) ?? ""}
+                </span>
+                <span className="part">{detail.partName}</span>
+                <span className="name">{detail.name}</span>
+                <span className="count">{detail.unit}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -382,7 +385,9 @@ export default function TransferSheetPage({
                   <input
                     value={row.subjectId === null ? "" : String(row.subjectId)}
                     placeholder={
-                      shown.subjectId === null ? "番号" : String(shown.subjectId)
+                      shown.subjectId === null
+                        ? "番号"
+                        : String(shown.subjectId)
                     }
                     title={
                       options.subjects.find(
@@ -436,7 +441,9 @@ export default function TransferSheetPage({
                     list="transfer-parts"
                     value={row.partName}
                     placeholder="部位名"
-                    onChange={(e) => update(index, { partName: e.target.value })}
+                    onChange={(e) =>
+                      update(index, { partName: e.target.value })
+                    }
                   />
                 </td>
                 <td>

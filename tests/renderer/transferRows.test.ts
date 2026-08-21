@@ -94,6 +94,9 @@ describe("転記入力表の行操作", () => {
       estimateDisplay: "",
       displayOrder: 0,
       isActive: true,
+      scope: "basic",
+      projectId: null,
+      sourceDetailId: null,
     };
     const row = applyDetail(emptyTransferRow(), detail);
     expect(row.sourceDetailId).toBe(42);
