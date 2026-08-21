@@ -134,6 +134,11 @@ export default function RoomCalcSheet({
   const [subjectId, setSubjectId] = useState<number | null>(null);
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
+  /** 明細番号を打っている途中の文字（確定するまで表示に使う） */
+  const [numberEdit, setNumberEdit] = useState<{
+    key: string;
+    text: string;
+  } | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const {
     widths,
@@ -187,6 +192,67 @@ export default function RoomCalcSheet({
       });
     },
     [sets, updateSet],
+  );
+
+  /**
+   * 明細番号を入れたら、その番号の明細をマスターから呼び出して差し込む。
+   * 科目IDが入っていればその科目から、空欄なら全科目から探す。
+   * 工事マスターを先に見て、無ければ基本マスターを見る。
+   */
+  const applyDetailNumber = useCallback(
+    async (setId: string, index: number, text: string): Promise<void> => {
+      const target = sets.find((set) => set.id === setId);
+      const row = target?.details[index];
+      if (!row) return;
+      const value = text.trim();
+      if (value === "") {
+        updateDetail(setId, index, { detailNumber: null });
+        return;
+      }
+      const number = Number.parseFloat(value);
+      if (Number.isNaN(number)) {
+        onMessage("明細番号は数字で入れてください");
+        return;
+      }
+      updateDetail(setId, index, { detailNumber: number });
+      const targets =
+        row.subjectId === null
+          ? subjects.map((subject) => subject.id)
+          : [row.subjectId];
+      let found: Detail | undefined;
+      for (const subjectKey of targets) {
+        for (const scope of [projectId, null]) {
+          const list = await window.sekisan.listDetails(subjectKey, scope);
+          found = list.find(
+            (item) =>
+              item.detailNumber !== null &&
+              Math.abs(item.detailNumber - number) < 0.005,
+          );
+          if (found) break;
+        }
+        if (found) break;
+      }
+      if (!found) {
+        onMessage(`明細番号 ${value} の明細が見つかりません`);
+        return;
+      }
+      updateDetail(setId, index, {
+        sourceDetailId: found.id,
+        subjectId: found.subjectId,
+        detailNumber: found.detailNumber,
+        materialCategory: found.materialCategory,
+        partName: found.partName,
+        name: found.name,
+        descriptionUpper: found.descriptionUpper,
+        descriptionLower: found.descriptionLower,
+        unit: found.unit,
+        remarksUpper: found.remarksUpper,
+        remarksLower: found.remarksLower,
+        estimateDisplay: found.estimateDisplay,
+      });
+      onMessage(`${found.name} を呼び出しました`);
+    },
+    [onMessage, projectId, sets, subjects, updateDetail],
   );
 
   /** セットの中の明細を1件だけ削除する（他の明細と計算式は残す） */
@@ -609,9 +675,44 @@ export default function RoomCalcSheet({
                         )}
                       </td>
                       <td className="no dcell">
-                        {!isUpper && detail.detailNumber !== null
-                          ? detail.detailNumber.toFixed(2)
-                          : ""}
+                        {!isUpper && (
+                          <input
+                            value={
+                              numberEdit?.key === `${set.id}:${detailIndex}`
+                                ? numberEdit.text
+                                : (detail.detailNumber?.toFixed(2) ?? "")
+                            }
+                            placeholder="番号"
+                            title="明細番号を入れるとマスターの明細を呼び出します（科目IDが空でも探します）"
+                            onFocus={() =>
+                              onFocus({
+                                setId: set.id,
+                                area: "detail",
+                                index: detailIndex,
+                              })
+                            }
+                            onChange={(e) =>
+                              setNumberEdit({
+                                key: `${set.id}:${detailIndex}`,
+                                text: e.target.value,
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter") return;
+                              e.currentTarget.blur();
+                            }}
+                            onBlur={(e) => {
+                              const text = e.target.value;
+                              setNumberEdit(null);
+                              if (
+                                text.trim() ===
+                                (detail.detailNumber?.toFixed(2) ?? "")
+                              )
+                                return;
+                              void applyDetailNumber(set.id, detailIndex, text);
+                            }}
+                          />
+                        )}
                       </td>
                       <td className="dcell">
                         <input
