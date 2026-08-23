@@ -55,7 +55,7 @@ const keepAsIs = (project: ProjectSummary): ProjectSummary => project;
 export default function ProjectWorkspacePage({
   project,
   fields,
-  options,
+  options: initialOptions,
   onSave,
   onBack,
   backLabel = "← 物件管理台帳",
@@ -65,6 +65,14 @@ export default function ProjectWorkspacePage({
   const [showPicker, setShowPicker] = useState(false);
   const [message, setMessage] = useState("");
   const [openedMenu, setOpenedMenu] = useState<string | null>(null);
+  const [options, setOptions] = useState<MasterOptions>(initialOptions);
+
+  useEffect(() => setOptions(initialOptions), [initialOptions]);
+
+  // この工事のマスターを直した内容を、戻ってきたときに他の画面へ反映する
+  useEffect(() => {
+    void window.sekisan.getMasterOptions(draft.id).then(setOptions);
+  }, [draft.id, openedMenu]);
 
   useEffect(() => setDraft(project), [project]);
 
