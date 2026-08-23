@@ -53,9 +53,10 @@ export default function App(): JSX.Element {
   useHalfWidthFields();
 
   // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
+  // 工事の画面ではその工事専用のマスター（無い種類は基本マスター）を使う
   useEffect(() => {
-    void window.sekisan.getMasterOptions().then(setOptions);
-  }, [nav]);
+    void window.sekisan.getMasterOptions(projectId).then(setOptions);
+  }, [nav, projectId]);
 
   useEffect(() => {
     document.title = projectName

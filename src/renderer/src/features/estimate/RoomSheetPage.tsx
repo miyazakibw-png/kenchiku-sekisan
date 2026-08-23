@@ -183,7 +183,7 @@ export default function RoomSheetPage({
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson));
       setLower(parseLower(loaded.lowerJson));
-      setOptions(await window.sekisan.getMasterOptions());
+      setOptions(await window.sekisan.getMasterOptions(project.id));
       setCeilingHeight(loaded.ceilingHeight);
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());

@@ -7,7 +7,6 @@
 import { asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
-  mSubjects,
   projectBreakdownRows,
   projectBreakdownSettings,
   projectBreakdownVersions,
@@ -23,6 +22,7 @@ import {
   type TextReplacement,
 } from "../../core/breakdown/breakdown";
 import { getAggregate } from "./aggregationService";
+import { listProjectSubjects } from "./projectMasterService";
 import type {
   BreakdownRowRecord,
   BreakdownSettingsRecord,
@@ -175,17 +175,13 @@ export function getBreakdown(
   return { version, rows: listRows(db, version.id), settings };
 }
 
-function subjectList(db: AppDatabase): BreakdownSubject[] {
-  return db
-    .select()
-    .from(mSubjects)
-    .orderBy(asc(mSubjects.displayOrder))
-    .all()
-    .map((subject) => ({
-      id: subject.id,
-      name: subject.name,
-      displayOrder: subject.displayOrder,
-    }));
+/** 工事専用の科目マスター（無ければ基本マスター）を使う */
+function subjectList(db: AppDatabase, projectId: number): BreakdownSubject[] {
+  return listProjectSubjects(db, projectId).map((subject) => ({
+    id: subject.id,
+    name: subject.name,
+    displayOrder: subject.displayOrder,
+  }));
 }
 
 /**
@@ -197,7 +193,7 @@ export function transferBreakdown(
   projectId: number,
 ): BreakdownView {
   const aggregate = getAggregate(db, projectId);
-  const subjects = subjectList(db);
+  const subjects = subjectList(db, projectId);
   const items: BreakdownSourceItem[] = aggregate.items.map((item) => ({
     id: item.id,
     masterKey: item.masterKey,

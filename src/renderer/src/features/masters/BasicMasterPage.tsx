@@ -31,7 +31,16 @@ const EMPTY: BasicMasters = {
   formworkCategories: [],
 };
 
-export default function BasicMasterPage(): JSX.Element {
+interface Props {
+  /** 工事専用マスターを直すときの工事ID（未指定なら基本マスター） */
+  projectId?: number | null;
+  onBack?: () => void;
+}
+
+export default function BasicMasterPage({
+  projectId = null,
+  onBack,
+}: Props = {}): JSX.Element {
   const [masters, setMasters] = useState<BasicMasters>(EMPTY);
   const [kind, setKind] = useState<BasicMasterKind>("pickupParts");
   const [rows, setRows] = useState<BasicMasterRow[]>([]);
@@ -49,9 +58,17 @@ export default function BasicMasterPage(): JSX.Element {
 
   useEffect(() => {
     void window.sekisan
-      .listBasicMasters()
+      .listBasicMasters(projectId)
       .then((data) => load(data, "pickupParts"));
-  }, [load]);
+  }, [load, projectId]);
+
+  /** 基準（基本）マスターをこの工事へ取り込む */
+  const copyFromBasic = async (): Promise<void> => {
+    if (projectId === null) return;
+    await window.sekisan.copyProjectMasters(projectId, true);
+    load(await window.sekisan.listBasicMasters(projectId), kind);
+    setMessages(["基準マスターから複製しました"]);
+  };
 
   const limit = BASIC_MASTER_LIMITS[kind];
 
@@ -140,7 +157,11 @@ export default function BasicMasterPage(): JSX.Element {
   };
 
   const save = async (): Promise<void> => {
-    const result = await window.sekisan.saveBasicMaster({ kind, rows });
+    const result = await window.sekisan.saveBasicMaster({
+      kind,
+      rows,
+      projectId,
+    });
     setMasters(result.masters);
     setMessages(result.errors.length > 0 ? result.errors : ["保存しました"]);
     if (result.errors.length === 0)
@@ -169,7 +190,14 @@ export default function BasicMasterPage(): JSX.Element {
       }}
     >
       <div className="toolbar">
-        <h2>基本マスター</h2>
+        {onBack ? (
+          <button type="button" onClick={onBack}>
+            ← 戻る
+          </button>
+        ) : null}
+        <h2>
+          {projectId === null ? "基本マスター" : "この工事の基準マスター"}
+        </h2>
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -181,6 +209,11 @@ export default function BasicMasterPage(): JSX.Element {
           </button>
         ))}
         <span className="spacer" />
+        {projectId === null ? null : (
+          <button type="button" onClick={() => void copyFromBasic()}>
+            ↻ 基準マスターから複製
+          </button>
+        )}
         <button type="button" onClick={() => addRow(selected)}>
           ➕ 行挿入
         </button>

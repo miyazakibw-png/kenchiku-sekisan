@@ -4,6 +4,8 @@ export const IPC = {
   basicMasterSave: "basicMasters:save",
   subjectsList: "subjects:list",
   subjectsSave: "subjects:save",
+  projectMastersCopy: "projectMasters:copy",
+  projectMastersKinds: "projectMasters:kinds",
   detailsList: "details:list",
   detailsSave: "details:save",
   detailsSyncToBasic: "details:syncToBasic",

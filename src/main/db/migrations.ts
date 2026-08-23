@@ -677,4 +677,94 @@ CREATE TABLE detail_change_logs (
 );
 CREATE INDEX idx_detail_change_logs ON detail_change_logs(project_id, changed_at);
 `,
+  /* 023: 基準マスター（科目・明細用部位・管理用部位・材種区分・単位・型枠分類）を工事ごとに持てるようにする */ `
+CREATE TABLE project_masters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  -- subjects / pickupParts / materialCategories / units / aggregationParts / formworkCategories
+  kind TEXT NOT NULL,
+  -- 画面に出る番号（科目IDや部位番号。基準マスターから複製したときは同じ番号）
+  number INTEGER NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  -- 科目だけで使う項目
+  skip_part2 INTEGER NOT NULL DEFAULT 0,
+  aggregate_order INTEGER NOT NULL DEFAULT 1,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX uq_project_masters ON project_masters(project_id, kind, number);
+
+-- 工事ごとに科目を足せるよう、科目への外部キーを外す（列と値はそのまま）
+CREATE TABLE m_details_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject_id INTEGER NOT NULL,
+  detail_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  material_category TEXT NOT NULL DEFAULT '',
+  scope TEXT NOT NULL DEFAULT 'basic',
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  source_detail_id INTEGER
+);
+INSERT INTO m_details_new (
+  id, subject_id, detail_number, part_name, name, description_upper, description_lower,
+  unit, remarks_upper, remarks_lower, estimate_display, display_order, is_active,
+  created_at, updated_at, material_category, scope, project_id, source_detail_id
+)
+SELECT
+  id, subject_id, detail_number, part_name, name, description_upper, description_lower,
+  unit, remarks_upper, remarks_lower, estimate_display, display_order, is_active,
+  created_at, updated_at, material_category, scope, project_id, source_detail_id
+FROM m_details;
+DROP TABLE m_details;
+ALTER TABLE m_details_new RENAME TO m_details;
+CREATE INDEX idx_m_details_subject_order ON m_details(subject_id, display_order);
+CREATE INDEX idx_m_details_number ON m_details(detail_number);
+CREATE INDEX idx_m_details_scope ON m_details(scope, project_id, subject_id, display_order);
+
+CREATE TABLE m_finish_assembly_items_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  assembly_id INTEGER NOT NULL REFERENCES m_finish_assemblies(id) ON DELETE CASCADE,
+  source_detail_id INTEGER,
+  subject_id INTEGER NOT NULL,
+  part_number REAL,
+  detail_number REAL,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_name TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  formula TEXT NOT NULL DEFAULT '',
+  coefficient REAL NOT NULL DEFAULT 1,
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO m_finish_assembly_items_new (
+  id, assembly_id, source_detail_id, subject_id, part_number, detail_number, material_category,
+  part_name, name, description_upper, description_lower, unit, remarks_upper, remarks_lower,
+  estimate_display, formula, coefficient, display_order
+)
+SELECT
+  id, assembly_id, source_detail_id, subject_id, part_number, detail_number, material_category,
+  part_name, name, description_upper, description_lower, unit, remarks_upper, remarks_lower,
+  estimate_display, formula, coefficient, display_order
+FROM m_finish_assembly_items;
+DROP TABLE m_finish_assembly_items;
+ALTER TABLE m_finish_assembly_items_new RENAME TO m_finish_assembly_items;
+CREATE INDEX idx_m_fa_items_assembly_order ON m_finish_assembly_items(assembly_id, display_order);
+CREATE INDEX idx_m_fa_items_subject ON m_finish_assembly_items(subject_id, display_order);
+`,
 ];

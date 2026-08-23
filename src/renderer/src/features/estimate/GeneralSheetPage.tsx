@@ -55,7 +55,7 @@ export default function GeneralSheetPage({
       setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
       setNote(loaded.note);
       setFittings(await window.sekisan.listFittings(project.id));
-      setOptions(await window.sekisan.getMasterOptions());
+      setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [project.id, row.id]);
 

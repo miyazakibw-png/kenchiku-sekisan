@@ -54,17 +54,31 @@ import type {
 } from "../shared/types";
 
 const api = {
-  getMasterOptions: (): Promise<MasterOptions> =>
-    ipcRenderer.invoke(IPC.masterOptions),
-  listBasicMasters: (): Promise<BasicMasters> =>
-    ipcRenderer.invoke(IPC.basicMastersList),
+  /** projectId を渡すと、その工事のマスター（無い種類は基本マスター）を返す */
+  getMasterOptions: (projectId: number | null = null): Promise<MasterOptions> =>
+    ipcRenderer.invoke(IPC.masterOptions, projectId),
+  listBasicMasters: (projectId: number | null = null): Promise<BasicMasters> =>
+    ipcRenderer.invoke(IPC.basicMastersList, projectId),
   saveBasicMaster: (
     request: SaveBasicMasterRequest,
   ): Promise<SaveBasicMasterResult> =>
     ipcRenderer.invoke(IPC.basicMasterSave, request),
-  listSubjects: (): Promise<Subject[]> => ipcRenderer.invoke(IPC.subjectsList),
-  saveSubjects: (rows: SubjectDraft[]): Promise<SaveSubjectsResult> =>
-    ipcRenderer.invoke(IPC.subjectsSave, rows),
+  listSubjects: (projectId: number | null = null): Promise<Subject[]> =>
+    ipcRenderer.invoke(IPC.subjectsList, projectId),
+  saveSubjects: (
+    rows: SubjectDraft[],
+    projectId: number | null = null,
+  ): Promise<SaveSubjectsResult> =>
+    ipcRenderer.invoke(IPC.subjectsSave, rows, projectId),
+  /** 基準マスターを工事へ複製する。複製できた種類を返す */
+  copyProjectMasters: (
+    projectId: number,
+    overwrite = false,
+  ): Promise<string[]> =>
+    ipcRenderer.invoke(IPC.projectMastersCopy, projectId, overwrite),
+  /** その工事が自前で持っているマスターの種類 */
+  listProjectMasterKinds: (projectId: number): Promise<string[]> =>
+    ipcRenderer.invoke(IPC.projectMastersKinds, projectId),
   /** projectId を渡すと物件専用マスター（工事マスター）の明細を返す */
   listDetails: (
     subjectId: number,

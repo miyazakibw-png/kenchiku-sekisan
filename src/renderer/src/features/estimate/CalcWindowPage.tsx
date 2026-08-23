@@ -23,7 +23,6 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
   const sent = useRef(0);
 
   useEffect(() => {
-    void window.sekisan.getMasterOptions().then(setOptions);
     const off = window.sekisan.onCalcWindowState((next) => {
       setState((prev) => {
         // 自分の入力が戻ってきただけのときは、入力中の明細を上書きしない
@@ -39,6 +38,12 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
   useEffect(() => {
     if (state) document.title = state.title;
   }, [state]);
+
+  // その工事のマスター（無い種類は基本マスター）を候補に使う
+  const projectId = state?.projectId ?? null;
+  useEffect(() => {
+    void window.sekisan.getMasterOptions(projectId).then(setOptions);
+  }, [projectId]);
 
   const onChange = useCallback(
     (sets: CalcSet[]) => {

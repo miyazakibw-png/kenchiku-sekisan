@@ -10,33 +10,64 @@ import {
 } from "./subjectRows";
 import "./SubjectMasterPage.css";
 
-export default function SubjectMasterPage(): JSX.Element {
+interface Props {
+  /** 工事専用の科目マスターを直すときの工事ID（未指定なら基本マスター） */
+  projectId?: number | null;
+  onBack?: () => void;
+}
+
+export default function SubjectMasterPage({
+  projectId = null,
+  onBack,
+}: Props = {}): JSX.Element {
   const [rows, setRows] = useState<SubjectDraft[]>([]);
   const [selected, setSelected] = useState(0);
   const [toast, setToast] = useState("");
 
   const reload = useCallback(async () => {
-    setRows(toDrafts(await window.sekisan.listSubjects()));
-  }, []);
+    setRows(toDrafts(await window.sekisan.listSubjects(projectId)));
+  }, [projectId]);
+
+  /** 基準（基本）マスターの科目をこの工事へ取り込む */
+  const copyFromBasic = useCallback(async () => {
+    if (projectId === null) return;
+    await window.sekisan.copyProjectMasters(projectId, true);
+    await reload();
+    setToast("基準マスターから複製しました");
+  }, [projectId, reload]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const save = useCallback(async () => {
-    const result = await window.sekisan.saveSubjects(rows);
+    const result = await window.sekisan.saveSubjects(rows, projectId);
     setRows(toDrafts(result.subjects));
     setToast(
       result.blockedDeletes.length > 0
         ? `明細が登録されているため削除できませんでした：${result.blockedDeletes.join("、")}（末尾へ移動しました）`
         : "保存しました",
     );
-  }, [rows]);
+  }, [projectId, rows]);
 
   return (
     <div className="subject-page">
       <div className="toolbar">
-        <h2>工種科目マスター</h2>
+        {onBack ? (
+          <button type="button" onClick={onBack}>
+            ← 戻る
+          </button>
+        ) : null}
+        <h2>
+          {projectId === null
+            ? "工種科目マスター"
+            : "この工事の工種科目マスター"}
+        </h2>
+        {projectId === null ? null : (
+          <button type="button" onClick={() => void copyFromBasic()}>
+            ↻ 基準マスターから複製
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setRows(insertRow(rows, selected))}
@@ -79,7 +110,9 @@ export default function SubjectMasterPage(): JSX.Element {
           💾 保存
         </button>
         <span className="hint">
-          科目IDは行位置で自動採番します。明細は科目の内部IDに付くため、番号や名称を変えても所属は変わりません（集計順は列のみ用意して未使用）
+          {projectId === null
+            ? "科目IDは行位置で自動採番します。明細は科目の内部IDに付くため、番号や名称を変えても所属は変わりません（集計順は列のみ用意して未使用）"
+            : "この工事だけの科目です。科目IDは一度決まると並べ替えても変わりません。追加した行には空き番号を割り当てます"}
         </span>
         <span className="status">{toast}</span>
       </div>
@@ -102,7 +135,9 @@ export default function SubjectMasterPage(): JSX.Element {
               className={index === selected ? "selected" : undefined}
               onClick={() => setSelected(index)}
             >
-              <td className="no">{displayCode(index)}</td>
+              <td className="no">
+                {projectId === null ? displayCode(index) : (row.id ?? "新規")}
+              </td>
               <td>
                 <input
                   lang="ja"

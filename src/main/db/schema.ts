@@ -118,9 +118,8 @@ export const mDetails = sqliteTable(
   "m_details",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    subjectId: integer("subject_id")
-      .notNull()
-      .references(() => mSubjects.id, { onDelete: "cascade" }),
+    /** 科目ID（工事ごとに科目を足せるよう外部キーは持たない） */
+    subjectId: integer("subject_id").notNull(),
     /** 明細番号（小数点以下2桁の数値。例: 302.00） */
     detailNumber: real("detail_number"),
     /** 材種区分（数量チェック用の区分。マスタ番号で入力補助するが自由入力も可） */
@@ -231,9 +230,8 @@ export const mFinishAssemblyItems = sqliteTable(
       .references(() => mFinishAssemblies.id, { onDelete: "cascade" }),
     /** 写し取り元の明細（追跡用。連動はしない） */
     sourceDetailId: integer("source_detail_id"),
-    subjectId: integer("subject_id")
-      .notNull()
-      .references(() => mSubjects.id, { onDelete: "cascade" }),
+    /** 科目ID（工事ごとに科目を足せるよう外部キーは持たない） */
+    subjectId: integer("subject_id").notNull(),
     /** 部位番号（上段） */
     partNumber: real("part_number"),
     /** 明細番号（下段） */
@@ -527,6 +525,26 @@ export const mAggregationParts = sqliteTable("m_aggregation_parts", {
   displayOrder: integer("display_order").notNull().default(0),
 });
 
+/**
+ * 工事ごとの基準マスター（科目・明細用部位・管理用部位・材種区分・単位・型枠分類）。
+ * 行が1件も無い種類は基本マスターをそのまま使う。
+ */
+export const projectMasters = sqliteTable("project_masters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  /** 画面に出る番号（科目ID・部位番号など） */
+  number: integer("number").notNull(),
+  name: text("name").notNull().default(""),
+  note: text("note").notNull().default(""),
+  /** 科目のみ使用 */
+  skipPart2: integer("skip_part2").notNull().default(0),
+  aggregateOrder: integer("aggregate_order").notNull().default(1),
+  displayOrder: integer("display_order").notNull().default(0),
+});
+
 /** 集計部位表示マスタ（部位階層ごとのカッコ書式） */
 export const mPartBracketFormats = sqliteTable("m_part_bracket_formats", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -690,7 +708,9 @@ export const projectBreakdownVersions = sqliteTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     round: integer("round").notNull().default(1),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
     confirmed: integer("confirmed").notNull().default(0),
     aggregateRunId: integer("aggregate_run_id").references(
       () => projectAggregateRuns.id,

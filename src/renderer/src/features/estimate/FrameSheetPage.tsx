@@ -180,7 +180,7 @@ export default function FrameSheetPage({
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
       setPartValues(await window.sekisan.getFittingPartValues());
-      setOptions(await window.sekisan.getMasterOptions());
+      setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [project.id, row.id]);
 

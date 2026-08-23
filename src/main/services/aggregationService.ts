@@ -8,7 +8,6 @@
 import { asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
-  mSubjects,
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
@@ -28,6 +27,7 @@ import {
 } from "../../core/aggregate/aggregate";
 import { calcVariables } from "../../core/aggregate/variables";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
+import { listProjectSubjects } from "./projectMasterService";
 import {
   displayedValue,
   evaluateCalcSheet,
@@ -90,10 +90,7 @@ export function runAggregation(
 ): AggregateView {
   const entries = collectEntries(db, projectId);
   const skipPart2 = new Set(
-    db
-      .select({ id: mSubjects.id, skipPart2: mSubjects.skipPart2 })
-      .from(mSubjects)
-      .all()
+    listProjectSubjects(db, projectId)
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
@@ -179,7 +176,9 @@ export function runAggregation(
 }
 
 /** 詳細データがどの集計行になったかを引く（部位Ⅱ分不要の科目は部位Ⅱを外して探す） */
-function keyResolver(items: AggregatedItem[]): (entry: AggregateEntry) => string {
+function keyResolver(
+  items: AggregatedItem[],
+): (entry: AggregateEntry) => string {
   const known = new Set(items.map((item) => item.masterKey));
   return (entry: AggregateEntry): string => {
     const withPart2 = masterKeyOf(entry);
@@ -247,7 +246,11 @@ export function collectEntries(
     // 部位Ⅰ・部位Ⅱは空欄なら入力のある上の行を引き継ぐ
     if (row.part1.trim() !== "") inherited = { ...inherited, part1: row.part1 };
     if (row.part2.trim() !== "")
-      inherited = { ...inherited, part2: row.part2, part2Split: row.part2Split };
+      inherited = {
+        ...inherited,
+        part2: row.part2,
+        part2Split: row.part2Split,
+      };
     if (row.rowType === "subtotal") return;
     if (!part2Order.has(inherited.part2))
       part2Order.set(inherited.part2, part2Order.size);
@@ -275,7 +278,11 @@ export function collectEntries(
       const sets = parseJson<CalcSet[]>(sheet.lowerJson, []);
       const variables = calcVariables([], fittings);
       entries.push(
-        ...entriesFromCalcSheet(context, sets, evaluateCalcSheet(sets, variables)),
+        ...entriesFromCalcSheet(
+          context,
+          sets,
+          evaluateCalcSheet(sets, variables),
+        ),
       );
       return;
     }
@@ -312,14 +319,22 @@ export function collectEntries(
           baseboardDeduction: computed?.baseboardDeduction ?? null,
         };
       });
-      const quantities = frameQuantities(lines, sheetFittings, sheet.workHeight);
+      const quantities = frameQuantities(
+        lines,
+        sheetFittings,
+        sheet.workHeight,
+      );
       const variables = calcVariables(
         frameSymbols(quantities, sheet.workHeight),
         fittings,
         sheet.workHeight,
       );
       entries.push(
-        ...entriesFromCalcSheet(context, sets, evaluateCalcSheet(sets, variables)),
+        ...entriesFromCalcSheet(
+          context,
+          sets,
+          evaluateCalcSheet(sets, variables),
+        ),
       );
       return;
     }
@@ -346,12 +361,18 @@ export function collectEntries(
     const symbols = [
       ...roomSymbols(solved, sheet.ceilingHeight, sheetFittings),
       ...(ceiling.length > 0
-        ? ceilingSymbols(ceilingQuantities(ceiling, solved, sheet.ceilingHeight))
+        ? ceilingSymbols(
+            ceilingQuantities(ceiling, solved, sheet.ceilingHeight),
+          )
         : []),
     ];
     const variables = calcVariables(symbols, fittings);
     entries.push(
-      ...entriesFromCalcSheet(context, sets, evaluateCalcSheet(sets, variables)),
+      ...entriesFromCalcSheet(
+        context,
+        sets,
+        evaluateCalcSheet(sets, variables),
+      ),
     );
   });
 

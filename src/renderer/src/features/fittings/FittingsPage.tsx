@@ -72,7 +72,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   useEffect(() => {
     void (async () => {
       setPartValues(await window.sekisan.getFittingPartValues());
-      const options = await window.sekisan.getMasterOptions();
+      const options = await window.sekisan.getMasterOptions(project.id);
       setParts(options.aggregationParts);
     })();
   }, []);

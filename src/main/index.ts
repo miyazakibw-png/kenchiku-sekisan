@@ -64,6 +64,14 @@ import {
   saveBasicMaster,
 } from "./services/basicMasterService";
 import {
+  copyBasicMastersToProject,
+  listProjectBasicMasters,
+  listProjectSubjects,
+  projectMasterKinds,
+  saveProjectBasicMaster,
+  saveProjectSubjects,
+} from "./services/projectMasterService";
+import {
   getFittingPartValues,
   listFittings,
   saveFittingPartValues,
@@ -220,16 +228,49 @@ function openCalcWindow(parent: WebContents, title: string): void {
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle(IPC.masterOptions, () => listMasterOptions(getDatabase()));
-  ipcMain.handle(IPC.basicMastersList, () => listBasicMasters(getDatabase()));
+  ipcMain.handle(IPC.masterOptions, (_event, projectId: number | null = null) =>
+    listMasterOptions(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.basicMastersList,
+    (_event, projectId: number | null = null) =>
+      projectId === null
+        ? listBasicMasters(getDatabase())
+        : listProjectBasicMasters(getDatabase(), projectId),
+  );
   ipcMain.handle(
     IPC.basicMasterSave,
-    (_event, request: SaveBasicMasterRequest) =>
-      saveBasicMaster(getDatabase(), request.kind, request.rows),
+    (_event, request: SaveBasicMasterRequest) => {
+      const projectId = request.projectId ?? null;
+      return projectId === null
+        ? saveBasicMaster(getDatabase(), request.kind, request.rows)
+        : saveProjectBasicMaster(
+            getDatabase(),
+            projectId,
+            request.kind,
+            request.rows,
+          );
+    },
   );
-  ipcMain.handle(IPC.subjectsList, () => listSubjects(getDatabase()));
-  ipcMain.handle(IPC.subjectsSave, (_event, rows: SubjectDraft[]) =>
-    saveSubjects(getDatabase(), rows),
+  ipcMain.handle(IPC.subjectsList, (_event, projectId: number | null = null) =>
+    projectId === null
+      ? listSubjects(getDatabase())
+      : listProjectSubjects(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.subjectsSave,
+    (_event, rows: SubjectDraft[], projectId: number | null = null) =>
+      projectId === null
+        ? saveSubjects(getDatabase(), rows)
+        : saveProjectSubjects(getDatabase(), projectId, rows),
+  );
+  ipcMain.handle(
+    IPC.projectMastersCopy,
+    (_event, projectId: number, overwrite = false) =>
+      copyBasicMastersToProject(getDatabase(), projectId, overwrite),
+  );
+  ipcMain.handle(IPC.projectMastersKinds, (_event, projectId: number) =>
+    projectMasterKinds(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.estimateRowsList, (_event, projectId: number) =>
     listEstimateRows(getDatabase(), projectId),

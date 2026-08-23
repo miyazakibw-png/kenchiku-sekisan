@@ -714,6 +714,8 @@ export interface BasicMasters {
 export interface SaveBasicMasterRequest {
   kind: BasicMasterKind;
   rows: BasicMasterRow[];
+  /** 工事専用マスターを直すときの工事ID（基本マスターは省略） */
+  projectId?: number | null;
 }
 
 export interface SaveBasicMasterResult {
