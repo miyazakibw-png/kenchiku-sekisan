@@ -111,6 +111,11 @@ export function edgeVector(row: RoomEdge, length: number | null): Point {
     : { x: 0, y: SIGN[row.direction] * value };
 }
 
+/** 案内文に出す寸法（小数2桁） */
+function formatLength(value: number): string {
+  return value.toFixed(2);
+}
+
 export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
@@ -472,6 +477,37 @@ export function notchEdge(
 }
 
 /**
+ * 「辺追加」で足す辺の向き。
+ * 形が閉じていない方向へ戻す向きを選び（無ければ最後の辺と直角の向き）、
+ * 向きの取り違えを減らす。
+ */
+export function nextEdgeDirection(shape: RoomShape): AxisDirection {
+  const gap = { x: 0, y: 0 };
+  shape.edges.forEach((row) => {
+    if (isDiagonal(row.direction)) {
+      const vector = diagonalVector(row);
+      gap.x += vector.x;
+      gap.y += vector.y;
+      return;
+    }
+    gap[AXIS[row.direction]] += SIGN[row.direction] * (row.length ?? 0);
+  });
+
+  const last = shape.edges[shape.edges.length - 1];
+  const lastAxis = last === undefined ? null : axisOf(last.direction);
+  const across: "x" | "y" = lastAxis === "x" ? "y" : "x";
+  // 開きの大きい方向から閉じる。どちらも閉じていれば最後の辺と直角にする
+  const axis =
+    round2(gap.x) === 0 && round2(gap.y) === 0
+      ? across
+      : Math.abs(gap.y) > Math.abs(gap.x)
+        ? "y"
+        : "x";
+  if (axis === "x") return gap.x > 0 ? "W" : "E";
+  return gap.y > 0 ? "N" : "S";
+}
+
+/**
  * 未入力の寸法を閉じた形になるように自動算出する。
  * X方向・Y方向それぞれ、未入力が1辺までなら自動算出できる。
  */
@@ -503,11 +539,12 @@ export function solveShape(shape: RoomShape): SolvedShape {
     );
 
     if (blanks.length === 0) {
-      if (round2(total) !== 0) {
-        error =
-          axis === "x"
-            ? "横方向の寸法が閉じていません"
-            : "縦方向の寸法が閉じていません";
+      const gap = round2(total);
+      if (gap !== 0) {
+        // どちら向きへ何m足りないかを出して、向きの取り違えに気付けるようにする
+        const back =
+          axis === "x" ? (gap > 0 ? "← 左" : "→ 右") : gap > 0 ? "↑ 上" : "↓ 下";
+        error = `${axis === "x" ? "横" : "縦"}方向の寸法が閉じていません（${back}へ ${formatLength(Math.abs(gap))} 足りません）`;
       }
       continue;
     }

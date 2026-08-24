@@ -9,6 +9,7 @@ import {
   floorArea,
   lShape,
   moveCorner,
+  nextEdgeDirection,
   notchEdge,
   rectangleShape,
   roomQuantities,
@@ -137,7 +138,9 @@ describe("部屋形状（単線図）", () => {
     const shape = {
       edges: [edge("E", 4), edge("S", 3), edge("W", 3.5), edge("N", 3)],
     };
-    expect(solveShape(shape).error).toBe("横方向の寸法が閉じていません");
+    expect(solveShape(shape).error).toBe(
+      "横方向の寸法が閉じていません（← 左へ 0.50 足りません）",
+    );
     const closed = closeShape(shape);
     expect(closed.changed).toBe(true);
     expect(solveShape(closed.shape).error).toBeNull();
@@ -287,7 +290,41 @@ describe("部屋形状（単線図）", () => {
     const shape = {
       edges: [edge("E", 3), edge("S", 3), edge("W", 2), edge("N", 3)],
     };
-    expect(solveShape(shape).error).toBe("横方向の寸法が閉じていません");
+    expect(solveShape(shape).error).toBe(
+      "横方向の寸法が閉じていません（← 左へ 1.00 足りません）",
+    );
+  });
+
+  it("縦の寸法が合っていれば閉じていないと言わない", () => {
+    // 1.45+0.50+3.50+9.45 = 14.90（戻りが14.90なので閉じている）
+    const shape = {
+      edges: [
+        edge("S", 14.9),
+        edge("W", 1.9),
+        edge("N", 1.45),
+        edge("E", 0.3),
+        edge("N", 0.5),
+        edge("N", 3.5),
+        edge("N", 9.45),
+        edge("E", 1.6),
+      ],
+    };
+    expect(solveShape(shape).error).toBeNull();
+  });
+
+  it("辺追加は閉じていない方向へ戻る向きを選ぶ", () => {
+    // 縦は 14.90 下って 5.45 戻った状態。次の辺は「↑ 上」になる
+    const shape = {
+      edges: [
+        edge("S", 14.9),
+        edge("W", 1.9),
+        edge("N", 1.45),
+        edge("E", 0.3),
+        edge("N", 0.5),
+        edge("N", 3.5),
+      ],
+    };
+    expect(nextEdgeDirection(shape)).toBe("N");
   });
 
   it("曲面壁は弦の長さと矢から弧長を出して壁長さに使う", () => {

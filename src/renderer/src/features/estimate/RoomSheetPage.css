@@ -64,7 +64,7 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(400px, 1.3fr) minmax(200px, 0.6fr)
+    minmax(340px, 0.95fr) minmax(280px, 0.95fr)
     minmax(200px, 0.6fr) minmax(270px, 0.9fr);
   grid-auto-rows: auto;
   gap: 8px;

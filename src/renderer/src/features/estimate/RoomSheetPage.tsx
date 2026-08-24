@@ -14,6 +14,7 @@ import {
   incomingIsVertical,
   isDiagonal,
   moveCorner,
+  nextEdgeDirection,
   notchEdge,
   rectangleShape,
   roomQuantities,
@@ -1208,8 +1209,11 @@ export default function RoomSheetPage({
             <span>寸法入力（空欄は自動算出）</span>
             <button
               type="button"
+              title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
               onClick={() =>
-                applyShape({ edges: [...shape.edges, edge("E", null)] })
+                applyShape({
+                  edges: [...shape.edges, edge(nextEdgeDirection(shape), null)],
+                })
               }
             >
               ＋ 辺追加
