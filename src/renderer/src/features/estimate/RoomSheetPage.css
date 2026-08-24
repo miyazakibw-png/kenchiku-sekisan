@@ -118,9 +118,14 @@
   width: 78px;
 }
 
+/* 寸法欄は広くとり、その分を向き・種別から回す */
 .room-sheet-page .edges table.grid th:nth-child(3),
 .room-sheet-page .edges table.grid td:nth-child(3) {
-  width: 48px;
+  width: 96px;
+}
+
+.room-sheet-page .edges table.grid td:nth-child(3) input.num {
+  width: 100%;
 }
 
 /* 向き・種別は選択肢が読める幅を取る */
@@ -417,6 +422,31 @@
 .room-sheet-page table.grid th {
   background: #f6f8fb;
   color: #1f2937;
+}
+
+/* 寸法入力・この部屋の建具は行の高さを詰める */
+.room-sheet-page .edges table.grid th,
+.room-sheet-page .edges table.grid td,
+.room-sheet-page .room-fittings table.grid th,
+.room-sheet-page .room-fittings table.grid td {
+  padding: 0 3px;
+  height: 15px;
+  line-height: 1.1;
+}
+
+.room-sheet-page .edges table.grid input,
+.room-sheet-page .edges table.grid select,
+.room-sheet-page .room-fittings table.grid input,
+.room-sheet-page .room-fittings table.grid select {
+  height: 15px;
+  padding: 0;
+  line-height: 1.1;
+}
+
+.room-sheet-page .edges table.grid button,
+.room-sheet-page .room-fittings table.grid button {
+  padding: 0 2px;
+  line-height: 1.1;
 }
 
 .room-sheet-page td.no,
