@@ -19,7 +19,24 @@ function caretRange(field: Field): { atStart: boolean; atEnd: boolean } {
   const start = field.selectionStart
   const end = field.selectionEnd
   if (start === null || end === null) return { atStart: true, atEnd: true }
+  // 移動してきた直後は文字が全選択になっているので、そのまま左右へ動けるようにする
+  if (start === 0 && end === field.value.length) return { atStart: true, atEnd: true }
   return { atStart: start === 0 && end === 0, atEnd: start === field.value.length && start === end }
+}
+
+/** 同じ行の中で、今の欄と横の位置が一番近い欄を選ぶ */
+function nearestByLeft(line: readonly Field[], field: Field): Field {
+  const left = field.getBoundingClientRect().left
+  let best = line[0]
+  let bestGap = Number.POSITIVE_INFINITY
+  line.forEach((cell) => {
+    const gap = Math.abs(cell.getBoundingClientRect().left - left)
+    if (gap < bestGap) {
+      best = cell
+      bestGap = gap
+    }
+  })
+  return best
 }
 
 /**
@@ -53,7 +70,9 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
       lines.map((line) => line.length)
     )
     if (!next) return
-    const target = lines[next.row][next.col]
+    // 上下は見た目の位置が一番近い欄へ移る（上下2行組の表でも真っ直ぐ動くように）
+    const target =
+      move === 'up' || move === 'down' ? nearestByLeft(lines[next.row], field) : lines[next.row][next.col]
     event.preventDefault()
     target.focus()
     if (target instanceof HTMLInputElement && target.type === 'text') target.select()
