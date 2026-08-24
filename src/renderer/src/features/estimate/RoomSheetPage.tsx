@@ -225,6 +225,7 @@ export default function RoomSheetPage({
   /** 辺をクリックした位置に角を足すモード */
   const [addCornerMode, setAddCornerMode] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const promptInputRef = useRef<HTMLInputElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
   const [message, setMessage] = useState("");
@@ -255,6 +256,21 @@ export default function RoomSheetPage({
       syncPartNames(current, options.aggregationParts, options.pickupParts),
     );
   }, [options]);
+
+  // 小窓（四角・L型・コ型・角の追加）を開いたら、必ず寸法欄へカーソルを入れる
+  const promptOpen = prompt !== null;
+  useEffect(() => {
+    if (!promptOpen) return;
+    const focusInput = (): void => {
+      const input = promptInputRef.current;
+      if (!input || document.activeElement === input) return;
+      input.focus();
+      input.select();
+    };
+    focusInput();
+    const timer = window.setTimeout(focusInput, 50);
+    return () => window.clearTimeout(timer);
+  }, [promptOpen]);
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const extents = useMemo(() => shapeExtents(solved), [solved]);
@@ -1866,6 +1882,7 @@ export default function RoomSheetPage({
                   角までの寸法
                   <input
                     className="num"
+                    ref={promptInputRef}
                     autoFocus
                     onFocus={(e) => e.currentTarget.select()}
                     onMouseDown={selectWholeOnFirstClick}
@@ -1885,6 +1902,7 @@ export default function RoomSheetPage({
                     横
                     <input
                       className="num"
+                      ref={promptInputRef}
                       autoFocus
                       onFocus={(e) => e.currentTarget.select()}
                       onMouseDown={selectWholeOnFirstClick}

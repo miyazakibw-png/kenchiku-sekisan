@@ -408,4 +408,37 @@ describe("工事マスター（明細）の呼出一覧", () => {
       listProjectDetailsInUse(db, subjectId, projectId).map((row) => row.name),
     ).toEqual(["床シート", "工事で足した明細"]);
   });
+
+  it("集計書に出ている明細は、部位ごとに出す（複製元IDで残っていても出す）", () => {
+    saveDetails(db, { subjectId, rows: [draft("石膏ボード")], deletedIds: [] });
+    const [basic] = listDetails(db, subjectId, null);
+    const projectId = createProject(db, "集計テスト工事").id;
+    const [copied] = listDetails(db, subjectId, projectId);
+    const run = db
+      .insert(schema.projectAggregateRuns)
+      .values({ projectId })
+      .returning()
+      .all()[0];
+    for (const partName of ["壁", "柱型"]) {
+      db.insert(schema.projectAggregateDetails)
+        .values({
+          runId: run.id,
+          traceId: `t-${partName}`,
+          subjectId,
+          partName,
+          detailNumber: copied.detailNumber,
+          name: copied.name,
+          unit: copied.unit,
+          // 集計は複製元（基本マスター）のIDで残ることがある
+          sourceDetailId: basic.id,
+        })
+        .run();
+    }
+
+    expect(
+      listProjectDetailsInUse(db, subjectId, projectId).map(
+        (row) => `${row.partName}/${row.name}`,
+      ),
+    ).toEqual(["壁/石膏ボード", "柱型/石膏ボード"]);
+  });
 });

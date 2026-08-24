@@ -234,26 +234,104 @@ export function listProjectDetailsInUse(
       .all()
       .map((row) => [row.id, row]),
   );
-  const usedIds = new Set(
-    db
-      .select({ sourceDetailId: projectAggregateDetails.sourceDetailId })
-      .from(projectAggregateDetails)
-      .innerJoin(
-        projectAggregateRuns,
-        eq(projectAggregateDetails.runId, projectAggregateRuns.id),
-      )
-      .where(eq(projectAggregateRuns.projectId, projectId))
-      .all()
-      .map((row) => row.sourceDetailId)
-      .filter((id): id is number => id !== null),
+  // 集計は工種科目をまたぐことがあるので、工事の明細は全科目分を引けるようにする
+  const projectRows = db
+    .select()
+    .from(mDetails)
+    .where(scopeCondition(projectId))
+    .all();
+  const projectById = new Map(projectRows.map((row) => [row.id, row]));
+  // 集計は基本マスターのIDで残ることがあるので、複製元IDからも工事の明細を引けるようにする
+  const projectBySource = new Map<number, Detail>();
+  for (const row of projectRows) {
+    if (row.sourceDetailId !== null) projectBySource.set(row.sourceDetailId, row);
+  }
+
+  // 集計書兼工事マスターは最新の集計結果を出しているので、呼出も最新の集計に揃える
+  const latestRun = db
+    .select({ id: projectAggregateRuns.id })
+    .from(projectAggregateRuns)
+    .where(eq(projectAggregateRuns.projectId, projectId))
+    .orderBy(desc(projectAggregateRuns.id))
+    .limit(1)
+    .all();
+  const aggregated =
+    latestRun.length === 0
+      ? []
+      : db
+          .select()
+          .from(projectAggregateDetails)
+          .where(
+            and(
+              eq(projectAggregateDetails.runId, latestRun[0].id),
+              eq(projectAggregateDetails.subjectId, subjectId),
+            ),
+          )
+          .orderBy(asc(projectAggregateDetails.id))
+          .all();
+
+  const result: Detail[] = [];
+  const seen = new Set<string>();
+  const usedRowIds = new Set<number>();
+  const push = (row: Detail) => {
+    const key = [
+      row.detailNumber ?? "",
+      row.materialCategory,
+      row.partName,
+      row.name,
+      row.descriptionUpper,
+      row.descriptionLower,
+      row.unit,
+      row.remarksUpper,
+      row.remarksLower,
+    ].join("\u0001");
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(row);
+  };
+
+  // 集計書兼工事マスターに出ている明細（部位ごとに1件）
+  for (const item of aggregated) {
+    const source =
+      item.sourceDetailId === null
+        ? undefined
+        : (projectById.get(item.sourceDetailId) ??
+          projectBySource.get(item.sourceDetailId));
+    if (source === undefined) continue;
+    usedRowIds.add(source.id);
+    push({
+      ...source,
+      subjectId: item.subjectId ?? source.subjectId,
+      detailNumber: item.detailNumber,
+      materialCategory: item.materialCategory,
+      partName: item.partName,
+      name: item.name,
+      descriptionUpper: item.descriptionUpper,
+      descriptionLower: item.descriptionLower,
+      unit: item.unit,
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+      estimateDisplay: item.estimateDisplay,
+    });
+  }
+
+  // 工事で足した明細・工事で直した明細（まだ集計に出ていないもの）
+  for (const row of rows) {
+    if (row.detailNumber === null && row.name.trim() === "") continue;
+    if (usedRowIds.has(row.id)) continue;
+    if (row.sourceDetailId !== null) {
+      const basic = basicById.get(row.sourceDetailId);
+      if (basic !== undefined && sameContent(row, basic)) continue;
+    }
+    push(row);
+  }
+
+  return result.sort(
+    (a, b) =>
+      a.displayOrder - b.displayOrder ||
+      a.id - b.id ||
+      a.partName.localeCompare(b.partName),
   );
-  return rows.filter((row) => {
-    if (row.detailNumber === null && row.name.trim() === "") return false;
-    if (usedIds.has(row.id)) return true;
-    if (row.sourceDetailId === null) return true;
-    const basic = basicById.get(row.sourceDetailId);
-    return basic === undefined || !sameContent(row, basic);
-  });
 }
 
 /**

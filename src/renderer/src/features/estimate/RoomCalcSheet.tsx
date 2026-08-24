@@ -2051,9 +2051,9 @@ export default function RoomCalcSheet({
                     </tr>
                   </thead>
                   <tbody>
-                    {details.map((detail) => (
+                    {details.map((detail, detailIndex) => (
                       <tr
-                        key={detail.id}
+                        key={`${detail.id}-${detailIndex}`}
                         tabIndex={0}
                         onDoubleClick={() => callDetail(detail)}
                         onKeyDown={(e) => {

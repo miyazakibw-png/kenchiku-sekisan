@@ -307,9 +307,9 @@ export default function TransferSheetPage({
             </datalist>
           </div>
           <ul className="call-list">
-            {details.map((detail) => (
+            {details.map((detail, detailIndex) => (
               <li
-                key={detail.id}
+                key={`${detail.id}-${detailIndex}`}
                 tabIndex={0}
                 onDoubleClick={() => callDetail(detail)}
                 onKeyDown={(e) => {
