@@ -134,7 +134,7 @@ describe("明細マスターの保存", () => {
     expect(after.map((d) => d.name)).toEqual(["A"]);
   });
 
-  it("上下2段の各項目を保存・復元する（部位は工事側だけ）", () => {
+  it("上下2段の各項目を保存・復元する（部位は明細マスターに持たない）", () => {
     const projectId = createProject(db, "部位テスト").id;
     const [saved] = saveDetails(db, {
       subjectId,
@@ -151,7 +151,7 @@ describe("明細マスターの保存", () => {
       ],
       deletedIds: [],
     });
-    expect(saved.partName).toBe("同上切欠合せボーダー");
+    expect(saved.partName).toBe("");
     expect(saved.descriptionLower).toBe("端部専用支持脚及び補強用金物共");
     expect(saved.remarksLower).toBe("備考下");
     expect(saved.estimateDisplay).toBe("フリーアクセスフロア");

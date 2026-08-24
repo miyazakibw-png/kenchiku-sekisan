@@ -606,7 +606,8 @@ export function saveAggregateEdits(
         const values = {
           subjectId: edit.subjectId ?? target.subjectId,
           materialCategory: edit.materialCategory,
-          partName: edit.partName,
+          // 明細マスターは部位を持たない（部位は計算書・集計書側で決める）
+          partName: "",
           detailNumber: edit.detailNumber,
           name: edit.name,
           descriptionUpper: edit.descriptionUpper,

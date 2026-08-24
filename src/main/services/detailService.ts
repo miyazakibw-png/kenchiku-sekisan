@@ -406,8 +406,8 @@ export function saveDetails(
         projectId,
         detailNumber: normalizeDetailNumber(row.detailNumber),
         materialCategory: row.materialCategory,
-        // 基本マスターは部位を持たない
-        partName: projectId === null ? "" : row.partName,
+        // 明細マスターは部位を持たない（部位は計算書・集計書側で決める）
+        partName: "",
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,

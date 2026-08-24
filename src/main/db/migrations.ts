@@ -781,4 +781,8 @@ ALTER TABLE detail_change_logs ADD COLUMN origin TEXT NOT NULL DEFAULT '';
   `
 UPDATE m_details SET part_name = '' WHERE scope = 'basic' AND part_name <> '';
 `,
+  // 明細マスターは基本マスターからの一方通行。工事側の明細マスターも部位を持たない
+  `
+UPDATE m_details SET part_name = '' WHERE part_name <> '';
+`,
 ];
