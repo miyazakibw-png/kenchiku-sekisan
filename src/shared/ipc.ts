@@ -7,6 +7,7 @@ export const IPC = {
   projectMastersCopy: "projectMasters:copy",
   projectMastersKinds: "projectMasters:kinds",
   detailsList: "details:list",
+  detailsListInUse: "details:listInUse",
   detailsSave: "details:save",
   detailsSyncToBasic: "details:syncToBasic",
   detailsCopyFromBasic: "details:copyFromBasic",

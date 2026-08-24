@@ -37,6 +37,7 @@ import {
   copyBasicDetailsToProject,
   listDetailChangeLogs,
   listDetails,
+  listProjectDetailsInUse,
   listMasterOptions,
   saveDetails,
   syncProjectDetailsToBasic,
@@ -433,6 +434,11 @@ function registerIpcHandlers(): void {
     IPC.detailsList,
     (_event, subjectId: number, projectId: number | null = null) =>
       listDetails(getDatabase(), subjectId, projectId),
+  );
+  ipcMain.handle(
+    IPC.detailsListInUse,
+    (_event, subjectId: number, projectId: number) =>
+      listProjectDetailsInUse(getDatabase(), subjectId, projectId),
   );
   ipcMain.handle(IPC.detailsCopyFromBasic, (_event, projectId: number) =>
     copyBasicDetailsToProject(getDatabase(), projectId),

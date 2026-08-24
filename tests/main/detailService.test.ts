@@ -9,12 +9,13 @@ import {
   listDetailChangeLogs,
   listDetails,
   listMasterOptions,
+  listProjectDetailsInUse,
   saveDetails,
   syncProjectDetailsToBasic,
   copyBasicDetailsToProject,
 } from "../../src/main/services/detailService";
 import { createProject } from "../../src/main/services/projectService";
-import type { DetailDraft } from "../../src/shared/types";
+import type { Detail, DetailDraft } from "../../src/shared/types";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -43,6 +44,24 @@ function draft(
     estimateDisplay: "",
     isActive: true,
     ...overrides,
+  };
+}
+
+/** 保存済みの明細を、そのまま保存し直せる形にする */
+function toDraft(row: Detail): DetailDraft {
+  return {
+    id: row.id,
+    detailNumber: row.detailNumber,
+    materialCategory: row.materialCategory,
+    partName: row.partName,
+    name: row.name,
+    descriptionUpper: row.descriptionUpper,
+    descriptionLower: row.descriptionLower,
+    unit: row.unit,
+    remarksUpper: row.remarksUpper,
+    remarksLower: row.remarksLower,
+    estimateDisplay: row.estimateDisplay,
+    isActive: row.isActive,
   };
 }
 
@@ -134,7 +153,7 @@ describe("明細マスターの保存", () => {
     expect(after.map((d) => d.name)).toEqual(["A"]);
   });
 
-  it("上下2段の各項目を保存・復元する（部位は明細マスターに持たない）", () => {
+  it("上下2段の各項目を保存・復元する（部位は工事側だけ）", () => {
     const projectId = createProject(db, "部位テスト").id;
     const [saved] = saveDetails(db, {
       subjectId,
@@ -151,7 +170,7 @@ describe("明細マスターの保存", () => {
       ],
       deletedIds: [],
     });
-    expect(saved.partName).toBe("");
+    expect(saved.partName).toBe("同上切欠合せボーダー");
     expect(saved.descriptionLower).toBe("端部専用支持脚及び補強用金物共");
     expect(saved.remarksLower).toBe("備考下");
     expect(saved.estimateDisplay).toBe("フリーアクセスフロア");
@@ -360,5 +379,33 @@ describe("基本マスターから工事への複製", () => {
     expect(
       listDetails(db, subjectId, projectId).map((row) => row.name),
     ).toEqual(["床シート", "巾木"]);
+  });
+});
+
+describe("工事マスター（明細）の呼出一覧", () => {
+  it("工事で直した明細と工事で足した明細だけを出す", () => {
+    saveDetails(db, {
+      subjectId,
+      rows: [draft("床シート"), draft("巾木")],
+      deletedIds: [],
+    });
+    const projectId = createProject(db, "呼出テスト工事").id;
+    const copied = listDetails(db, subjectId, projectId);
+    saveDetails(db, {
+      subjectId,
+      projectId,
+      rows: [
+        ...copied.map((row) => ({
+          ...toDraft(row),
+          partName: row.name === "床シート" ? "床" : "",
+        })),
+        draft("工事で足した明細"),
+      ],
+      deletedIds: [],
+    });
+
+    expect(
+      listProjectDetailsInUse(db, subjectId, projectId).map((row) => row.name),
+    ).toEqual(["床シート", "工事で足した明細"]);
   });
 });

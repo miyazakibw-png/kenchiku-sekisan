@@ -1,6 +1,12 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { AppDatabase } from "../db";
-import { calcSheetDefinitions, detailChangeLogs, mDetails } from "../db/schema";
+import {
+  calcSheetDefinitions,
+  detailChangeLogs,
+  mDetails,
+  projectAggregateDetails,
+  projectAggregateRuns,
+} from "../db/schema";
 import type {
   Detail,
   DetailChangeLog,
@@ -190,6 +196,64 @@ export function listDetails(
     .where(and(eq(mDetails.subjectId, subjectId), scopeCondition(projectId)))
     .orderBy(asc(mDetails.displayOrder), asc(mDetails.id))
     .all();
+}
+
+/** 明細の中身が同じか（並び順や更新日時は見ない） */
+function sameContent(a: Detail, b: Detail): boolean {
+  return (
+    a.detailNumber === b.detailNumber &&
+    a.materialCategory === b.materialCategory &&
+    a.partName === b.partName &&
+    a.name === b.name &&
+    a.descriptionUpper === b.descriptionUpper &&
+    a.descriptionLower === b.descriptionLower &&
+    a.unit === b.unit &&
+    a.remarksUpper === b.remarksUpper &&
+    a.remarksLower === b.remarksLower &&
+    a.estimateDisplay === b.estimateDisplay
+  );
+}
+
+/**
+ * 工事専用としてできた明細だけを返す（マスター呼出の「工事マスター（明細）」用）。
+ * 集計書兼工事マスターに出ている明細、工事側で直した明細、工事で足した明細が対象。
+ * 基本マスターを複製したまま手つかずの行は出さない。
+ */
+export function listProjectDetailsInUse(
+  db: AppDatabase,
+  subjectId: number,
+  projectId: number,
+): Detail[] {
+  const rows = listDetails(db, subjectId, projectId);
+  if (rows.length === 0) return rows;
+  const basicById = new Map(
+    db
+      .select()
+      .from(mDetails)
+      .where(scopeCondition(null))
+      .all()
+      .map((row) => [row.id, row]),
+  );
+  const usedIds = new Set(
+    db
+      .select({ sourceDetailId: projectAggregateDetails.sourceDetailId })
+      .from(projectAggregateDetails)
+      .innerJoin(
+        projectAggregateRuns,
+        eq(projectAggregateDetails.runId, projectAggregateRuns.id),
+      )
+      .where(eq(projectAggregateRuns.projectId, projectId))
+      .all()
+      .map((row) => row.sourceDetailId)
+      .filter((id): id is number => id !== null),
+  );
+  return rows.filter((row) => {
+    if (row.detailNumber === null && row.name.trim() === "") return false;
+    if (usedIds.has(row.id)) return true;
+    if (row.sourceDetailId === null) return true;
+    const basic = basicById.get(row.sourceDetailId);
+    return basic === undefined || !sameContent(row, basic);
+  });
 }
 
 /**
@@ -406,8 +470,8 @@ export function saveDetails(
         projectId,
         detailNumber: normalizeDetailNumber(row.detailNumber),
         materialCategory: row.materialCategory,
-        // 明細マスターは部位を持たない（部位は計算書・集計書側で決める）
-        partName: "",
+        // 基本マスターは部位を持たない。工事マスターは工事で決めた部位を持つ
+        partName: projectId === null ? "" : row.partName,
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,

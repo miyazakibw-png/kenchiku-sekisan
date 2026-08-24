@@ -87,6 +87,12 @@ const api = {
     projectId: number | null = null,
   ): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsList, subjectId, projectId),
+  /** 工事専用としてできた明細だけ（集計書に出ている・工事で直した／足した明細） */
+  listProjectDetailsInUse: (
+    subjectId: number,
+    projectId: number,
+  ): Promise<Detail[]> =>
+    ipcRenderer.invoke(IPC.detailsListInUse, subjectId, projectId),
   saveDetails: (request: SaveDetailsRequest): Promise<Detail[]> =>
     ipcRenderer.invoke(IPC.detailsSave, request),
   /** 明細マスターの修正履歴（新しい修正が上） */

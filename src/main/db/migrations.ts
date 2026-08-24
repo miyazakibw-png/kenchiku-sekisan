@@ -781,8 +781,20 @@ ALTER TABLE detail_change_logs ADD COLUMN origin TEXT NOT NULL DEFAULT '';
   `
 UPDATE m_details SET part_name = '' WHERE scope = 'basic' AND part_name <> '';
 `,
-  // 明細マスターは基本マスターからの一方通行。工事側の明細マスターも部位を持たない
+  // （欠番）工事側の明細マスターからも部位を消していたが、部位は工事マスターに持たせる
   `
-UPDATE m_details SET part_name = '' WHERE part_name <> '';
+SELECT 1;
+`,
+  // 部位を消してしまった工事の明細マスターへ、集計書に残っている部位を戻す
+  `
+UPDATE m_details SET part_name = (
+  SELECT d.part_name FROM project_aggregate_details d
+  WHERE d.source_detail_id = m_details.id AND d.part_name <> ''
+  ORDER BY d.id DESC LIMIT 1
+)
+WHERE scope = 'project' AND part_name = '' AND EXISTS (
+  SELECT 1 FROM project_aggregate_details d
+  WHERE d.source_detail_id = m_details.id AND d.part_name <> ''
+);
 `,
 ];

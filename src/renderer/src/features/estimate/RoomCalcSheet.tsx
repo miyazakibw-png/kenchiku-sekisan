@@ -541,10 +541,9 @@ export default function RoomCalcSheet({
         return;
       }
       setDetails(
-        await window.sekisan.listDetails(
-          subjectId,
-          source === "project" ? projectId : null,
-        ),
+        source === "project"
+          ? await window.sekisan.listProjectDetailsInUse(subjectId, projectId)
+          : await window.sekisan.listDetails(subjectId, null),
       );
     })();
   }, [callOpen, projectId, source, subjectId]);
