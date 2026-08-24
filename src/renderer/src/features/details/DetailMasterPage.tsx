@@ -224,6 +224,10 @@ export default function DetailMasterPage({
   /** 以前に作った工事など、物件専用明細がまだ無いときに基本マスターから複製する */
   const handleCopyFromBasic = useCallback(async () => {
     if (projectId === null || !subject) return;
+    const ok = window.confirm(
+      "基本マスターから複製します。中身の違う行は基本マスターの内容に戻ります（この画面で直した分も戻ります）。よろしいですか。",
+    );
+    if (!ok) return;
     const result = await window.sekisan.copyBasicDetailsToProject(projectId);
     setRows(
       toDraftRows(await window.sekisan.listDetails(subject.id, projectId)),
@@ -231,9 +235,13 @@ export default function DetailMasterPage({
     setDeletedIds([]);
     history.clear();
     setSyncMessage(
-      result.removed === 0
-        ? `基本マスターから${result.copied}件複製しました`
-        : `基本マスターから${result.copied}件複製し、二重になっていた${result.removed}件を取り除きました`,
+      `基本マスターから${result.copied}件複製しました` +
+        (result.restored === 0
+          ? ""
+          : `（中身の違う${result.restored}件を基本マスターの内容に戻しました）`) +
+        (result.removed === 0
+          ? ""
+          : `（二重になっていた${result.removed}件を取り除きました）`),
     );
   }, [history, projectId, subject]);
 
@@ -590,7 +598,7 @@ export default function DetailMasterPage({
             {projectId !== null && (
               <button
                 type="button"
-                title="基本マスターの明細をこの工事へ複製します"
+                title="基本マスターの明細をこの工事へ複製します（中身の違う行は基本マスターの内容に戻します）"
                 onClick={() => void handleCopyFromBasic()}
               >
                 ⧉ 基本マスターから複製

@@ -801,4 +801,22 @@ WHERE scope = 'project' AND part_name = '' AND EXISTS (
   `
 UPDATE m_details SET part_name = '' WHERE part_name <> '';
 `,
+  // 集計書兼工事マスターから書き戻された明細を、基本マスターの内容へ戻す
+  `
+UPDATE m_details SET
+  detail_number = (SELECT b.detail_number FROM m_details b WHERE b.id = m_details.source_detail_id),
+  material_category = (SELECT b.material_category FROM m_details b WHERE b.id = m_details.source_detail_id),
+  name = (SELECT b.name FROM m_details b WHERE b.id = m_details.source_detail_id),
+  description_upper = (SELECT b.description_upper FROM m_details b WHERE b.id = m_details.source_detail_id),
+  description_lower = (SELECT b.description_lower FROM m_details b WHERE b.id = m_details.source_detail_id),
+  unit = (SELECT b.unit FROM m_details b WHERE b.id = m_details.source_detail_id),
+  remarks_upper = (SELECT b.remarks_upper FROM m_details b WHERE b.id = m_details.source_detail_id),
+  remarks_lower = (SELECT b.remarks_lower FROM m_details b WHERE b.id = m_details.source_detail_id),
+  estimate_display = (SELECT b.estimate_display FROM m_details b WHERE b.id = m_details.source_detail_id)
+WHERE scope = 'project' AND source_detail_id IS NOT NULL
+  AND (
+    SELECT l.origin FROM detail_change_logs l
+    WHERE l.detail_id = m_details.id ORDER BY l.id DESC LIMIT 1
+  ) = '集計書兼工事マスター';
+`,
 ];

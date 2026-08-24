@@ -297,12 +297,12 @@ export function listProjectDetailsInUse(
 /**
  * 工事を作ったときに基本マスターの明細を物件専用へ複製する。
  * 物件側で自由に直せるようにコピーし、複製元IDだけ残して大元への同期に使う。
- * すでに複製済みの明細は二重にならないよう飛ばし、増えた分だけを取り込む。
+ * すでに複製済みの明細は増えた分だけ取り込み、中身が違う行は基本マスターの内容に戻す。
  */
 export function copyBasicDetailsToProject(
   db: AppDatabase,
   projectId: number,
-): { copied: number; removed: number } {
+): { copied: number; removed: number; restored: number } {
   const removed = removeDuplicateProjectDetails(db, projectId);
   const source = db
     .select()
@@ -314,7 +314,7 @@ export function copyBasicDetailsToProject(
       asc(mDetails.id),
     )
     .all();
-  if (source.length === 0) return { copied: 0, removed };
+  if (source.length === 0) return { copied: 0, removed, restored: 0 };
   const already = new Set(
     db
       .select()
@@ -324,8 +324,9 @@ export function copyBasicDetailsToProject(
       .map((row) => row.sourceDetailId)
       .filter((id): id is number => id !== null),
   );
+  const restored = restoreProjectDetailsFromBasic(db, projectId);
   const rows = source.filter((row) => !already.has(row.id));
-  if (rows.length === 0) return { copied: 0, removed };
+  if (rows.length === 0) return { copied: 0, removed, restored };
   db.transaction((tx) => {
     rows.forEach((row) => {
       tx.insert(mDetails)
@@ -351,7 +352,73 @@ export function copyBasicDetailsToProject(
         .run();
     });
   });
-  return { copied: rows.length, removed };
+  return { copied: rows.length, removed, restored };
+}
+
+/**
+ * 物件専用の明細マスターを基本マスターの複製に戻す。
+ * 集計書兼工事マスターの内容が混ざった行を元の内容へ戻し、直した件数を返す。
+ */
+function restoreProjectDetailsFromBasic(
+  db: AppDatabase,
+  projectId: number,
+): number {
+  const basicById = new Map(
+    db
+      .select()
+      .from(mDetails)
+      .where(scopeCondition(null))
+      .all()
+      .map((row) => [row.id, row]),
+  );
+  const targets = db
+    .select()
+    .from(mDetails)
+    .where(scopeCondition(projectId))
+    .all()
+    .flatMap((row) => {
+      const basic =
+        row.sourceDetailId === null
+          ? undefined
+          : basicById.get(row.sourceDetailId);
+      if (basic === undefined) return [];
+      const values = {
+        detailNumber: basic.detailNumber,
+        materialCategory: basic.materialCategory,
+        partName: "",
+        name: basic.name,
+        descriptionUpper: basic.descriptionUpper,
+        descriptionLower: basic.descriptionLower,
+        unit: basic.unit,
+        remarksUpper: basic.remarksUpper,
+        remarksLower: basic.remarksLower,
+        estimateDisplay: basic.estimateDisplay,
+        isActive: basic.isActive,
+      };
+      const same =
+        row.detailNumber === values.detailNumber &&
+        row.materialCategory === values.materialCategory &&
+        row.partName === values.partName &&
+        row.name === values.name &&
+        row.descriptionUpper === values.descriptionUpper &&
+        row.descriptionLower === values.descriptionLower &&
+        row.unit === values.unit &&
+        row.remarksUpper === values.remarksUpper &&
+        row.remarksLower === values.remarksLower &&
+        row.estimateDisplay === values.estimateDisplay &&
+        row.isActive === values.isActive;
+      return same ? [] : [{ id: row.id, values }];
+    });
+  if (targets.length === 0) return 0;
+  db.transaction((tx) => {
+    targets.forEach((target) => {
+      tx.update(mDetails)
+        .set({ ...target.values, updatedAt: new Date().toISOString() })
+        .where(eq(mDetails.id, target.id))
+        .run();
+    });
+  });
+  return targets.length;
 }
 
 /**

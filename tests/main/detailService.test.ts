@@ -363,6 +363,25 @@ describe("基本マスターから工事への複製", () => {
     expect(listDetails(db, subjectId, projectId).length).toBe(before);
   });
 
+  it("中身の違う複製は基本マスターの内容に戻す", () => {
+    saveDetails(db, { subjectId, rows: [draft("床シート")], deletedIds: [] });
+    const projectId = createProject(db, "戻しテスト工事").id;
+    const [copied] = listDetails(db, subjectId, projectId);
+    saveDetails(db, {
+      subjectId,
+      projectId,
+      rows: [{ ...toDraft(copied), name: "集計書で直した床シート" }],
+      deletedIds: [],
+    });
+
+    const result = copyBasicDetailsToProject(db, projectId);
+
+    expect(result.restored).toBe(1);
+    expect(
+      listDetails(db, subjectId, projectId).map((row) => row.name),
+    ).toEqual(["床シート"]);
+  });
+
   it("基本マスターに増えた明細だけを取り込む", () => {
     saveDetails(db, { subjectId, rows: [draft("床シート")], deletedIds: [] });
     const projectId = createProject(db, "追加テスト工事").id;

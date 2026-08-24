@@ -103,7 +103,7 @@ const api = {
   /** 既存工事で物件専用明細が足りないときに基本マスターから複製する（二重複製は取り除く） */
   copyBasicDetailsToProject: (
     projectId: number,
-  ): Promise<{ copied: number; removed: number }> =>
+  ): Promise<{ copied: number; removed: number; restored: number }> =>
     ipcRenderer.invoke(IPC.detailsCopyFromBasic, projectId),
   syncProjectDetailsToBasic: (
     projectId: number,
