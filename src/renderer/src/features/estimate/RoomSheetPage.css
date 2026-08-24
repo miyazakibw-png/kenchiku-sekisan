@@ -6,7 +6,7 @@
 }
 
 .room-sheet-page .toolbar,
-.room-sheet-page .upper,
+.room-sheet-page > .upper,
 .room-sheet-page > .hint {
   flex: 0 0 auto;
 }
@@ -60,7 +60,7 @@
   font-size: 12px;
 }
 
-.room-sheet-page .upper {
+.room-sheet-page > .upper {
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
@@ -76,12 +76,12 @@
   min-height: 0;
 }
 
-.room-sheet-page .upper > section {
+.room-sheet-page > .upper > section {
   min-height: 0;
   overflow: auto;
 }
 
-.room-sheet-page .upper > section > .section-bar {
+.room-sheet-page > .upper > section > .section-bar {
   position: sticky;
   top: 0;
   z-index: 2;

@@ -662,12 +662,19 @@ export default function RoomCalcSheet({
       for (const subjectKey of targets) {
         for (const scope of [projectId, null]) {
           const list = await window.sekisan.listDetails(subjectKey, scope);
-          found = list.find(
+          const hits = list.filter(
             (item) =>
               item.detailNumber !== null &&
               Math.abs(item.detailNumber - number) < 0.005,
           );
-          if (found) break;
+          if (hits.length === 0) continue;
+          // 同じ明細番号が複数あるときは、今入っている部位と同じ明細を選ぶ
+          const part = row.partName.trim();
+          found =
+            (part === ""
+              ? undefined
+              : hits.find((item) => item.partName.trim() === part)) ?? hits[0];
+          break;
         }
         if (found) break;
       }

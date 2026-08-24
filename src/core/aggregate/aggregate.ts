@@ -105,6 +105,9 @@ export function entriesFromCalcSheet(
     set.details.forEach((detail) => {
       if (detail.name.trim() === "" && detail.partName.trim() === "") return;
       const coefficient = detail.coefficient || 1;
+      // 明細に入れた部位をそのまま使う。どちらも空欄のときだけセットの部位を使う
+      const noPart =
+        (detail.partNumber ?? null) === null && detail.partName.trim() === "";
       entries.push({
         traceId: `${context.estimateRowId ?? 0}:${set.id}:${detail.id}`,
         sourceKind: context.sourceKind,
@@ -120,8 +123,8 @@ export function entriesFromCalcSheet(
         multiplier,
         subjectId: detail.subjectId,
         materialCategory: detail.materialCategory,
-        partNumber: set.partNumber,
-        partName: detail.partName === "" ? set.partName : detail.partName,
+        partNumber: noPart ? set.partNumber : detail.partNumber,
+        partName: noPart ? set.partName : detail.partName,
         detailNumber: detail.detailNumber,
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,

@@ -81,6 +81,24 @@ describe("集計処理", () => {
     expect(entries[0].partNumber).toBe(10);
   });
 
+  it("明細に部位を入れてあればセットの部位へ読み替えない", () => {
+    const target = set("s1", 1);
+    target.details[0].partNumber = 110;
+    target.details[0].partName = "";
+    target.details.push({
+      ...target.details[0],
+      id: "s1-d2",
+      partNumber: 40,
+      partName: "柱型",
+      name: "軽鉄下地",
+    });
+    const entries = entriesFromCalcSheet(context(), [target], result("s1", 3));
+    expect(entries[0].partNumber).toBe(110);
+    expect(entries[0].partName).toBe("");
+    expect(entries[1].partNumber).toBe(40);
+    expect(entries[1].partName).toBe("柱型");
+  });
+
   it("仕分け✔なしのときは部位Ⅱを集計キーに使わない", () => {
     const on = entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 1));
     const off = entriesFromCalcSheet(

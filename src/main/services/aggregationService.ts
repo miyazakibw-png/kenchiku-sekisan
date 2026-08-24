@@ -467,7 +467,6 @@ function applyEditToSheet(
     const detail = set?.details.find((current) => current.id === detailId);
     if (!set || !detail) return;
     changed = true;
-    set.partNumber = edit.partNumber;
     detail.subjectId = edit.subjectId;
     detail.materialCategory = edit.materialCategory;
     detail.partNumber = edit.partNumber;

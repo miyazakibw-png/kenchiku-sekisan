@@ -134,9 +134,11 @@ describe("明細マスターの保存", () => {
     expect(after.map((d) => d.name)).toEqual(["A"]);
   });
 
-  it("上下2段の各項目を保存・復元する", () => {
+  it("上下2段の各項目を保存・復元する（部位は工事側だけ）", () => {
+    const projectId = createProject(db, "部位テスト").id;
     const [saved] = saveDetails(db, {
       subjectId,
+      projectId,
       rows: [
         draft("フリーアクセスフロア", {
           partName: "同上切欠合せボーダー",
@@ -153,6 +155,15 @@ describe("明細マスターの保存", () => {
     expect(saved.descriptionLower).toBe("端部専用支持脚及び補強用金物共");
     expect(saved.remarksLower).toBe("備考下");
     expect(saved.estimateDisplay).toBe("フリーアクセスフロア");
+  });
+
+  it("基本マスターには部位名を保存しない", () => {
+    const [saved] = saveDetails(db, {
+      subjectId,
+      rows: [draft("石膏ボード", { partName: "柱型" })],
+      deletedIds: [],
+    });
+    expect(saved.partName).toBe("");
   });
 
   it("明細番号を小数2桁の数値として保持する", () => {

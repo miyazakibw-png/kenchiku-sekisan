@@ -231,7 +231,8 @@ export function copyBasicDetailsToProject(
           subjectId: row.subjectId,
           detailNumber: row.detailNumber,
           materialCategory: row.materialCategory,
-          partName: row.partName,
+          // 部位は工事側で入れる。基本マスターの内容は持ち込まない
+          partName: "",
           name: row.name,
           descriptionUpper: row.descriptionUpper,
           descriptionLower: row.descriptionLower,
@@ -309,7 +310,8 @@ export function syncProjectDetailsToBasic(
         subjectId,
         detailNumber: row.detailNumber,
         materialCategory: row.materialCategory,
-        partName: row.partName,
+        // 部位は工事ごとに決めるもの。基本マスターへは持ち込まない
+        partName: "",
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,
@@ -404,7 +406,8 @@ export function saveDetails(
         projectId,
         detailNumber: normalizeDetailNumber(row.detailNumber),
         materialCategory: row.materialCategory,
-        partName: row.partName,
+        // 基本マスターは部位を持たない
+        partName: projectId === null ? "" : row.partName,
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,

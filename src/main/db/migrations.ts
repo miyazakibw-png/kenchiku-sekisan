@@ -777,4 +777,8 @@ WHERE kind = 'subjects' AND number IN (SELECT id FROM m_subjects);
   `
 ALTER TABLE detail_change_logs ADD COLUMN origin TEXT NOT NULL DEFAULT '';
 `,
+  // 基本マスターは部位を持たない（工事側から入り込んだ部位名を消す）
+  `
+UPDATE m_details SET part_name = '' WHERE scope = 'basic' AND part_name <> '';
+`,
 ];

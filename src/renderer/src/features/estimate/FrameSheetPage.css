@@ -1,5 +1,5 @@
 /* 軸組計算書は部屋計算書と同じ見た目にする（RoomSheetPage.css を土台に足すだけ） */
-.frame-sheet-page .upper {
+.frame-sheet-page > .upper {
   grid-template-columns: minmax(240px, 1.1fr) minmax(200px, 0.8fr) minmax(
       240px,
       1fr
