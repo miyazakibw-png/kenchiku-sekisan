@@ -532,7 +532,16 @@ export default function EstimatePartsPage({
                   setSelected(index);
                   setSelectedEnd(index);
                 }}
-                onDoubleClick={() => void openCalcSheet(index)}
+                onDoubleClick={(e) => {
+                  // 入力欄の中でのダブルクリックは文字を選ぶ操作。計算書は開かない
+                  if (
+                    e.target instanceof HTMLElement &&
+                    e.target.closest("input, select, textarea, button") !== null
+                  ) {
+                    return;
+                  }
+                  void openCalcSheet(index);
+                }}
               >
                 <td className="no">{index + 1}</td>
                 <td>
