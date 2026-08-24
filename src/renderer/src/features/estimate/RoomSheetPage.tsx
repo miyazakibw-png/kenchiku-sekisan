@@ -8,8 +8,10 @@ import type {
   RoomSheetFitting,
 } from "@shared/types";
 import {
+  closeShape,
   cutCorner,
   edge,
+  incomingIsVertical,
   isDiagonal,
   moveCorner,
   notchEdge,
@@ -623,18 +625,32 @@ export default function RoomSheetPage({
     along: Number(cutAlong),
   });
 
+  /**
+   * 図形を直す前に、閉じていない寸法を自動で合わせる。
+   * 合わせた形と、直したことを伝える文言を返す。
+   */
+  const readyShape = (): { shape: RoomShape; note: string } => {
+    if (solveShape(shape).points.length === shape.edges.length) {
+      return { shape, note: "" };
+    }
+    const closed = closeShape(shape);
+    return {
+      shape: closed.shape,
+      note: closed.changed ? "（閉じていない寸法を自動で合わせました）" : "",
+    };
+  };
+
   /** 選んだ角をL型に欠き取る（いまの形と寸法は残す） */
   const addCorner = (): void => {
     if (selectedCorner === null) {
       setMessage("図の角（○印）を選んでからL型を押してください");
       return;
     }
-    const count = shape.edges.length;
-    const incoming = shape.edges[(selectedCorner - 1 + count) % count];
-    const vertical = incoming.direction === "N" || incoming.direction === "S";
+    const base = readyShape();
+    const vertical = incomingIsVertical(base.shape, selectedCorner);
     const { across, along } = cutValues();
     const result = cutCorner(
-      shape,
+      base.shape,
       selectedCorner,
       vertical ? along : across,
       vertical ? across : along,
@@ -646,7 +662,18 @@ export default function RoomSheetPage({
     applyShape(result.shape);
     setSelectedEdge(null);
     setSelectedCorner(null);
-    setMessage("選んだ角をL型に欠き取りました");
+    setMessage(`選んだ角をL型に欠き取りました${base.note}`);
+  };
+
+  /** 閉じていない寸法を自動で合わせる */
+  const fixClosure = (): void => {
+    const closed = closeShape(shape);
+    if (!closed.changed) {
+      setMessage("自動で合わせられる寸法がありません");
+      return;
+    }
+    applyShape(closed.shape);
+    setMessage("閉じていない寸法を自動で合わせました");
   };
 
   /**
@@ -714,11 +741,14 @@ export default function RoomSheetPage({
       setMessage("凹ませる辺を選んでからコ型を押してください");
       return;
     }
-    const target = shape.edges[index];
-    const vertical = target.direction === "N" || target.direction === "S";
+    const base = readyShape();
+    const target = base.shape.edges[index];
+    const vertical = isDiagonal(target.direction)
+      ? Math.abs(target.dy ?? 0) > Math.abs(target.dx ?? 0)
+      : target.direction === "N" || target.direction === "S";
     const { across, along } = cutValues();
     const result = notchEdge(
-      shape,
+      base.shape,
       index,
       vertical ? along : across,
       vertical ? across : along,
@@ -730,7 +760,7 @@ export default function RoomSheetPage({
     applyShape(result.shape);
     setSelectedEdge(null);
     setSelectedCorner(null);
-    setMessage("選んだ辺をコ型に凹ませました");
+    setMessage(`選んだ辺をコ型に凹ませました${base.note}`);
   };
 
   return (
@@ -1082,7 +1112,14 @@ export default function RoomSheetPage({
               </p>
             )}
           </div>
-          {solved.error && <p className="error">{solved.error}</p>}
+          {solved.error && (
+            <p className="error">
+              {solved.error}
+              <button type="button" onClick={fixClosure}>
+                寸法を自動で合わせる
+              </button>
+            </p>
+          )}
         </section>
 
         <section className="edges">

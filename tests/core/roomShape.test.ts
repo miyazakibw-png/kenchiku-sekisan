@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   arcLength,
+  closeShape,
   columnNotches,
   cutCorner,
   deducts,
@@ -78,6 +79,69 @@ describe("部屋形状（単線図）", () => {
     const cut = cutCorner(shape, 2, 4, 2);
     expect(cut.error).not.toBeNull();
     expect(cut.shape).toBe(shape);
+  });
+
+  it("斜め辺に接する角もL型に欠き取れる", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    expect(moved.error).toBeNull();
+    const cut = cutCorner(moved.shape, 3, 1, 1);
+    expect(cut.error).toBeNull();
+    const solved = solveShape(cut.shape);
+    expect(solved.error).toBeNull();
+    expect(solved.points).toHaveLength(cut.shape.edges.length);
+  });
+
+  it("斜め辺を作ったあとでも角の欠き取りを何度でも続けられる", () => {
+    const moved = moveCorner(rectangleShape(8, 6), 1, -1, -1);
+    let shape = moved.shape;
+    for (const corner of [3, 0, 4]) {
+      const cut = cutCorner(shape, corner, 0.3, 0.3);
+      expect(cut.error).toBeNull();
+      shape = cut.shape;
+      expect(solveShape(shape).error).toBeNull();
+    }
+  });
+
+  it("閉じていない寸法を自動で合わせる", () => {
+    const shape = {
+      edges: [edge("E", 4), edge("S", 3), edge("W", 3.5), edge("N", 3)],
+    };
+    expect(solveShape(shape).error).toBe("横方向の寸法が閉じていません");
+    const closed = closeShape(shape);
+    expect(closed.changed).toBe(true);
+    expect(solveShape(closed.shape).error).toBeNull();
+    expect(floorArea(solveShape(closed.shape))).toBe(12);
+  });
+
+  it("閉じている形は自動補正しない", () => {
+    const shape = rectangleShape(3, 3);
+    expect(closeShape(shape).changed).toBe(false);
+    expect(closeShape(shape).shape).toBe(shape);
+  });
+
+  it("斜め辺もコ型に凹ませられる", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const index = moved.shape.edges.findIndex((row) => row.direction === "D");
+    expect(index).toBeGreaterThanOrEqual(0);
+    const notched = notchEdge(moved.shape, index, 0.5, 0.5);
+    expect(notched.error).toBeNull();
+    expect(solveShape(notched.shape).error).toBeNull();
+    expect(notched.shape.edges.length).toBeGreaterThan(
+      moved.shape.edges.length,
+    );
+  });
+
+  it("斜め辺も途中で分けて角を足せる", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const diagonal = moved.shape.edges.find((row) => row.direction === "D");
+    expect(diagonal).toBeDefined();
+    const split = splitEdge(moved.shape, diagonal!.id, 0.5);
+    expect(split.edges).toHaveLength(moved.shape.edges.length + 1);
+    expect(solveShape(split).error).toBeNull();
+    expect(floorArea(solveShape(split))).toBeCloseTo(
+      floorArea(solveShape(moved.shape)) ?? 0,
+      1,
+    );
   });
 
   it("指定した辺の途中をコ型に凹ませる", () => {
