@@ -5,10 +5,17 @@
   overflow: auto;
 }
 
+/* タイトル行の工事名などを黒く（薄い文字を読めるように） */
+.aggregate-page .toolbar .project,
+.aggregate-page .toolbar .message {
+  color: #000;
+}
+
 table.aggregate {
   border-collapse: collapse;
   margin: 8px;
-  width: auto;
+  width: max-content;
+  table-layout: fixed;
 }
 
 table.aggregate th,
@@ -17,25 +24,40 @@ table.aggregate td {
   padding: 1px 4px;
   font-size: 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* 見出しは薄いグレー地に黒文字（白文字は見えにくいため） */
 table.aggregate th {
-  background: #1f4e79;
-  color: #fff;
+  background: #e2e8f0;
+  color: #000;
   font-weight: normal;
   position: sticky;
   top: 0;
+  z-index: 2;
 }
 
-table.aggregate th.no,
+/* 見出しの右端。ドラッグで列幅を変える */
+table.aggregate th .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+table.aggregate th .col-resize:hover {
+  background: #94a3b8;
+}
+
 table.aggregate td.no {
-  width: 6ch;
   text-align: right;
 }
 
 table.aggregate td.number {
   text-align: right;
-  width: 10ch;
 }
 
 /* 1明細＝上下2行。明細の中は罫線を出さず、明細どうしの区切りだけ残す */
@@ -65,9 +87,37 @@ table.aggregate tbody.row.warn td {
   background: #ffffcc;
 }
 
+/* 選んだ明細は枠ではなく薄い黄色の背景で示す */
 table.aggregate tbody.row.selected td {
-  outline: 2px solid #1f4e79;
-  outline-offset: -2px;
+  background: #fff6b8;
+}
+
+/* 左端の工種科目ボタン。押すとその科目の先頭明細へ飛ぶ */
+.aggregate-page .subject-jump {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 8px 4px;
+  background: #fff;
+}
+
+.aggregate-page .subject-jump button {
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.aggregate-page .subject-jump .note {
+  font-size: 11px;
+  color: #6b7280;
 }
 
 .aggregate-page .basis {

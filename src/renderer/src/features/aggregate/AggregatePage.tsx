@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AggregateItem,
   AggregateRun,
@@ -8,6 +8,7 @@ import type {
 } from "@shared/types";
 import { checkQuantityUnit } from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
+import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { sourceLabelOf } from "./aggregateRows";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
@@ -17,6 +18,20 @@ interface Props {
   onBack: () => void;
 }
 
+const COLUMNS = [
+  "科目ID",
+  "科目名称",
+  "材種区分",
+  "部位番号／明細番号",
+  "部位名／名称",
+  "摘要",
+  "数量",
+  "単位",
+  "備考",
+] as const;
+
+const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120];
+
 /** 明細の前に入れる見出し（科目・部位Ⅰ・部位Ⅱ） */
 interface HeadingRow {
   kind: "subject" | "part1" | "part2";
@@ -24,7 +39,9 @@ interface HeadingRow {
   subjectId: number | null;
 }
 
-type Line = { kind: "heading"; heading: HeadingRow } | { kind: "item"; item: AggregateItem };
+type Line =
+  | { kind: "heading"; heading: HeadingRow }
+  | { kind: "item"; item: AggregateItem };
 
 function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
   const lines: Line[] = [];
@@ -52,7 +69,11 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
       if (item.part1 !== "")
         lines.push({
           kind: "heading",
-          heading: { kind: "part1", subjectId: null, text: `（${item.part1}）` },
+          heading: {
+            kind: "part1",
+            subjectId: null,
+            text: `（${item.part1}）`,
+          },
         });
     }
     if (part2 !== item.part2) {
@@ -60,7 +81,11 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
       if (item.part2 !== "")
         lines.push({
           kind: "heading",
-          heading: { kind: "part2", subjectId: null, text: `＜${item.part2}＞` },
+          heading: {
+            kind: "part2",
+            subjectId: null,
+            text: `＜${item.part2}＞`,
+          },
         });
     }
     lines.push({ kind: "item", item });
@@ -84,6 +109,11 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [message, setMessage] = useState("");
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { widths, startResize } = useColumnWidths(
+    "aggregate-columns-v1",
+    COLUMN_WIDTHS,
+  );
 
   const reload = useCallback(
     async (runId?: number) => {
@@ -117,9 +147,36 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     () =>
       selected === null
         ? []
-        : view.details.filter((detail) => detail.masterKey === selected.masterKey),
+        : view.details.filter(
+            (detail) => detail.masterKey === selected.masterKey,
+          ),
     [selected, view.details],
   );
+
+  /** 左端の科目ボタン（計上された工種科目だけを出す） */
+  const usedSubjects = useMemo(() => {
+    const ids: number[] = [];
+    view.items.forEach((item) => {
+      if (item.subjectId !== null && !ids.includes(item.subjectId))
+        ids.push(item.subjectId);
+    });
+    return ids.map((id) => ({
+      id,
+      name: subjects.find((row) => row.id === id)?.name ?? "",
+    }));
+  }, [subjects, view.items]);
+
+  /** 科目ボタンを押すと、その科目の先頭明細まで表を送る */
+  const jumpToSubject = useCallback((subjectId: number) => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const target = body.querySelector<HTMLElement>(
+      `[data-subject-head="${subjectId}"]`,
+    );
+    if (!target) return;
+    body.scrollTop +=
+      target.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  }, []);
 
   const errorCount = useMemo(
     () =>
@@ -163,19 +220,38 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         <span className="message">{message}</span>
       </div>
 
-      <div className="aggregate-body">
+      <div className="aggregate-body" ref={bodyRef}>
+        <nav className="subject-jump">
+          {usedSubjects.map((subject) => (
+            <button
+              key={subject.id}
+              type="button"
+              title={`${subject.id} ${subject.name} の先頭へ`}
+              onClick={() => jumpToSubject(subject.id)}
+            >
+              {subject.id} {subject.name}
+            </button>
+          ))}
+          {usedSubjects.length === 0 && <span className="note">未集計</span>}
+        </nav>
         <table className="parts aggregate">
+          <colgroup>
+            {COLUMNS.map((label, index) => (
+              <col key={label} style={{ width: `${widths[index]}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th className="no">科目ID</th>
-              <th>科目名称</th>
-              <th>材種区分</th>
-              <th>部位番号／明細番号</th>
-              <th>部位名／名称</th>
-              <th>摘要</th>
-              <th>数量</th>
-              <th>単位</th>
-              <th>備考</th>
+              {COLUMNS.map((label, index) => (
+                <th key={label} className={index === 0 ? "no" : undefined}>
+                  {label}
+                  <span
+                    className="col-resize"
+                    title="ドラッグで列幅を変えられます"
+                    onMouseDown={(e) => startResize(index, e)}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           {lines.map((line, index) => {
@@ -184,10 +260,21 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                 (row) => row.id === line.heading.subjectId,
               );
               return (
-                <tbody key={`h${index}`} className={`heading ${line.heading.kind}`}>
-                  <tr>
+                <tbody
+                  key={`h${index}`}
+                  className={`heading ${line.heading.kind}`}
+                >
+                  <tr
+                    data-subject-head={
+                      line.heading.kind === "subject" && subject
+                        ? subject.id
+                        : undefined
+                    }
+                  >
                     <td className="no">
-                      {line.heading.kind === "subject" ? (subject?.id ?? "") : ""}
+                      {line.heading.kind === "subject"
+                        ? (subject?.id ?? "")
+                        : ""}
                     </td>
                     <td colSpan={8}>{line.heading.text}</td>
                   </tr>
@@ -239,7 +326,9 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
           <div className="section-bar">
             <span>数量根拠（部屋ごとの拾い）</span>
           </div>
-          {selected === null && <p className="note">明細をクリックしてください。</p>}
+          {selected === null && (
+            <p className="note">明細をクリックしてください。</p>
+          )}
           {selected !== null && (
             <>
               <p className="title">
@@ -257,7 +346,9 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                   {selected.rooms.map((room) => (
                     <tr key={room.roomName}>
                       <td>{room.roomName}</td>
-                      <td className="number">{displayQuantity(room.quantity)}</td>
+                      <td className="number">
+                        {displayQuantity(room.quantity)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

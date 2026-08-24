@@ -165,11 +165,13 @@ body,
   background: #fff;
 }
 
+/* 見出しの地色はここで薄いグレーに揃えるので、文字は黒にして必ず読めるようにする */
 .app-main thead th,
 .app-main thead td {
   position: sticky;
   z-index: 4;
   background: var(--surface);
+  color: #000;
 }
 
 /* 印刷・PDFはA3横1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
