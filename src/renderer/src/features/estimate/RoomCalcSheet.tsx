@@ -8,6 +8,7 @@ import type {
 } from "@shared/types";
 import { resolveMasterName } from "@shared/masters";
 import {
+  addSetRow,
   calcDetail,
   calcLine,
   calcSet,
@@ -17,8 +18,10 @@ import {
   evaluateCalcSheet,
   isCommentSet,
   mergeWithPreviousSet,
+  openSetDetail,
   padLines,
   removeSet,
+  removeSetLine,
   setRowCount,
   splitSetAt,
   syncLines,
@@ -722,6 +725,29 @@ export default function RoomCalcSheet({
     [onFocus, sets, updateSet],
   );
 
+  /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
+  const openDetail = useCallback(
+    (setId: string, index: number): void => {
+      const target = sets.find((set) => set.id === setId);
+      if (!target) return;
+      const next = openSetDetail(target, index);
+      updateSet(setId, { details: next.details, lines: next.lines });
+      onFocus({ setId, area: "detail", index });
+    },
+    [onFocus, sets, updateSet],
+  );
+
+  /** 明細の無い計算式だけの行を消す（入力も削除もできない行が残らないように） */
+  const removeLine = useCallback(
+    (setId: string, index: number): void => {
+      const target = sets.find((set) => set.id === setId);
+      if (!target) return;
+      updateSet(setId, { lines: removeSetLine(target, index).lines });
+      onFocus(null);
+    },
+    [onFocus, sets, updateSet],
+  );
+
   /** セットの中の明細を上下に入れ替える */
   const moveDetail = useCallback(
     (setId: string, index: number, step: number): void => {
@@ -870,20 +896,9 @@ export default function RoomCalcSheet({
         commit([...sets, calcSet()]);
         return;
       }
-      const area = focus?.area ?? "detail";
-      if (area === "detail") {
-        const details2 = [...target.details];
-        const position = insert ? (focus?.index ?? 0) : details2.length;
-        details2.splice(position, 0, calcDetail());
-        const lines = [...target.lines];
-        lines.splice(Math.min(position, lines.length), 0, calcLine());
-        updateSet(target.id, { details: details2, lines });
-      } else {
-        const lines = [...target.lines];
-        const position = insert ? (focus?.index ?? 0) : lines.length;
-        lines.splice(position, 0, calcLine());
-        updateSet(target.id, { lines });
-      }
+      // 明細欄・計算式欄のどちらから足しても、明細と計算式行は必ず1対1にする
+      const next = addSetRow(target, insert ? (focus?.index ?? 0) : undefined);
+      updateSet(target.id, { details: next.details, lines: next.lines });
     },
     [commit, currentSet, focus, sets, updateSet],
   );
@@ -1860,6 +1875,24 @@ export default function RoomCalcSheet({
                               type="button"
                               title="この明細1件だけを削除します"
                               onClick={() => removeDetail(set.id, rowIndex)}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                        {!detail && line && (
+                          <>
+                            <button
+                              type="button"
+                              title="この行に明細（名称・摘要など）を入れられるようにします"
+                              onClick={() => openDetail(set.id, rowIndex)}
+                            >
+                              ＋
+                            </button>
+                            <button
+                              type="button"
+                              title="この行を削除します"
+                              onClick={() => removeLine(set.id, rowIndex)}
                             >
                               ✕
                             </button>

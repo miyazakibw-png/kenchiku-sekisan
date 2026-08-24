@@ -164,7 +164,8 @@
   background: #fff;
   border: 1px solid #94a3b8;
   box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
-  z-index: 40;
+  /* ID欄の候補一覧（60）より前に出す。後ろに隠れると入力できなくなる */
+  z-index: 80;
 }
 
 .room-sheet-page .shape-prompt .body {
@@ -175,9 +176,19 @@
   font-size: 12px;
 }
 
+/* 入力欄と分かるよう枠を付ける（枠が無いと文字だけに見えて入力できないと思われる） */
 .room-sheet-page .shape-prompt .body input {
-  width: 70px;
+  width: 84px;
+  height: 22px;
   margin-left: 4px;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  text-align: right;
+}
+
+.room-sheet-page .shape-prompt .body input:focus {
+  border-color: #1f4e79;
+  outline: 2px solid #93c5fd;
 }
 
 .room-sheet-page .shape-prompt .hint {
@@ -540,6 +551,12 @@
 
 .room-sheet-page .room-fittings td.symbol input {
   width: 92px;
+}
+
+/* 「数」は狭すぎると押せない・見えないので幅を確保する */
+.room-sheet-page .room-fittings td input.num {
+  width: 34px;
+  text-align: right;
 }
 
 .room-sheet-page .symbols table.two-up td:nth-child(4) {

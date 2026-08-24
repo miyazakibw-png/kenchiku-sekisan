@@ -120,9 +120,17 @@ table.aggregate tbody.row.selected td {
   color: #6b7280;
 }
 
+/* 数量根拠は選んだ明細の行に合わせて上下に動かす（2ページ目以降でも見えるように） */
 .aggregate-page .basis {
   min-width: 44ch;
   margin: 8px 8px 8px 0;
+  align-self: flex-start;
+  position: sticky;
+  right: 8px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #c9ced6;
 }
 
 .aggregate-page .basis .title {

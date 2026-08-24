@@ -140,6 +140,9 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const [applyToSameDetail, setApplyToSameDetail] = useState(true);
   const [message, setMessage] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
+  const basisRef = useRef<HTMLElement>(null);
+  /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
+  const [basisTop, setBasisTop] = useState(0);
   const { widths, startResize } = useColumnWidths(
     "aggregate-columns-v1",
     COLUMN_WIDTHS,
@@ -250,6 +253,41 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
       ).length,
     [view.items],
   );
+
+  /**
+   * 数量根拠は選んだ明細の右隣に出す。
+   * 画面から外れないよう、表を送ったときは見えている範囲に寄せる。
+   */
+  const placeBasis = useCallback(() => {
+    const body = bodyRef.current;
+    const panel = basisRef.current;
+    if (!body || !panel) return;
+    if (selected === null) {
+      setBasisTop(0);
+      return;
+    }
+    const row = body.querySelector<HTMLElement>(
+      `[data-master-key="${CSS.escape(selected.masterKey)}"]`,
+    );
+    if (!row) return;
+    const rowTop =
+      row.getBoundingClientRect().top -
+      body.getBoundingClientRect().top +
+      body.scrollTop;
+    const lowest = Math.max(
+      body.scrollTop,
+      body.scrollTop + body.clientHeight - panel.offsetHeight - 8,
+    );
+    setBasisTop(Math.max(body.scrollTop, Math.min(rowTop, lowest)));
+  }, [selected]);
+
+  useEffect(() => {
+    placeBasis();
+    const body = bodyRef.current;
+    if (!body) return;
+    body.addEventListener("scroll", placeBasis);
+    return () => body.removeEventListener("scroll", placeBasis);
+  }, [basis, placeBasis]);
 
   return (
     <div className="estimate-page aggregate-page">
@@ -372,6 +410,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
               <tbody
                 key={item.id}
                 className={`row ${check} ${isSelected ? "selected" : ""}`}
+                data-master-key={item.masterKey}
                 onClick={() => setSelected(item)}
               >
                 <tr className="detail-upper">
@@ -494,7 +533,11 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
           })}
         </table>
 
-        <aside className="basis">
+        <aside
+          className="basis"
+          ref={basisRef}
+          style={{ transform: `translateY(${basisTop}px)` }}
+        >
           <div className="section-bar">
             <span>数量根拠（部屋ごとの拾い）</span>
           </div>

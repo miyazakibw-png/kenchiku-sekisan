@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addSetRow,
   calcDetail,
   calcLine,
   calcSet,
@@ -8,9 +9,11 @@ import {
   evaluateCalcSheet,
   mergeWithPreviousSet,
   nextBSymbol,
+  openSetDetail,
   padLines,
   quantityByPart,
   removeSet,
+  removeSetLine,
   splitSetAt,
   syncLines,
   syncPartNames,
@@ -281,5 +284,44 @@ describe("部位マスターとの連動", () => {
     set.partName = "手入力部位";
     const sets = [set];
     expect(syncPartNames(sets, [{ id: 10, name: "補強" }], [])).toBe(sets);
+  });
+});
+
+describe("行の追加と削除", () => {
+  it("明細欄・計算式欄のどちらから足しても明細と計算式が1対1で増える", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine({ formulaA: "2*3" }), calcLine({ formulaA: "1*1" })];
+    const added = addSetRow(set);
+    expect(added.details.length).toBe(2);
+    expect(added.lines.length).toBe(3);
+    expect(setRowCount(added)).toBe(3);
+  });
+
+  it("行挿入はその位置に明細と計算式を1組入れる", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const added = addSetRow(set, 1);
+    expect(added.details.map((item) => item.name)).toEqual(["床", "", "壁"]);
+    expect(added.lines.map((item) => item.formulaA)).toEqual(["1", "", "2"]);
+  });
+
+  it("明細の無い行は明細を用意して入力できるようにする", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const opened = openSetDetail(set, 1);
+    expect(opened.details.length).toBe(2);
+    expect(opened.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("明細の無い計算式だけの行を削除できる", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const removed = removeSetLine(set, 1);
+    expect(removed.lines.map((item) => item.formulaA)).toEqual(["1"]);
+    expect(removed.details.length).toBe(1);
   });
 });

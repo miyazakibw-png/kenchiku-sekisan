@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import type {
   EstimateRowDraft,
   Fitting,
@@ -79,6 +86,15 @@ const KIND_LABEL: Record<EdgeKind, string> = {
   column: "柱",
   curve: "曲面壁",
 };
+
+/** まだ選んでいない欄を押したときは、中の数字をまるごと選んで上書きできるようにする */
+function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
+  const input = event.currentTarget;
+  if (document.activeElement === input) return;
+  event.preventDefault();
+  input.focus();
+  input.select();
+}
 
 function parseRoomFittings(json: string): RoomSheetFitting[] {
   try {
@@ -168,6 +184,10 @@ export default function RoomSheetPage({
   );
   const [fittings, setFittings] = useState<Fitting[]>([]);
   const [roomFittings, setRoomFittings] = useState<RoomSheetFitting[]>([]);
+  /** 建具の「数」を打っている途中の文字（打ち直しの邪魔をしないよう別に持つ） */
+  const [fittingCountText, setFittingCountText] = useState<
+    Record<string, string>
+  >({});
   const [newFitting, setNewFitting] = useState({
     symbol: "",
     width: "",
@@ -267,7 +287,9 @@ export default function RoomSheetPage({
       const length = Math.abs(next.x - point.x) + Math.abs(next.y - point.y);
       return length > 0 ? Math.min(min, length) : min;
     }, Number.POSITIVE_INFINITY);
-    return Math.min(view.span * 0.025, shortest * 0.18, dimFontSize * 0.7);
+    // 短い辺があっても見えなくならないよう下限を設ける（○印が押せなくなるため）
+    const largest = Math.min(view.span * 0.025, dimFontSize * 0.7);
+    return Math.max(largest * 0.5, Math.min(largest, shortest * 0.18));
   }, [dimFontSize, solved.points, view.span]);
 
   /** 上段の建具は寸法を保持せず、常に建具表から引用する */
@@ -677,7 +699,11 @@ export default function RoomSheetPage({
     }
     applyShape(result.shape);
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    // 続けてL型を足せるよう、選んである角は残す（形が小さくなったときは最後の角へ寄せる）
+    setShowCorners(true);
+    setSelectedCorner(
+      Math.min(selectedCorner, Math.max(result.shape.edges.length - 1, 0)),
+    );
     setMessage(
       `選んだ角をL型に欠き取りました${
         result.adjusted ? "（隣の辺の長さに合わせました）" : ""
@@ -895,7 +921,10 @@ export default function RoomSheetPage({
                 title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
                 onClick={() => {
                   if (selectedCorner === null) {
-                    setMessage("図の角（○印）を選んでからL型を押してください");
+                    setShowCorners(true);
+                    setMessage(
+                      "図の角（○印）をクリックで選んでから、もう一度L型を押してください",
+                    );
                     return;
                   }
                   setPrompt({
@@ -1504,6 +1533,8 @@ export default function RoomSheetPage({
                     <td className="symbol">
                       <input
                         list="room-fitting-symbols"
+                        onMouseDown={selectWholeOnFirstClick}
+                        onFocus={(e) => e.currentTarget.select()}
                         defaultValue={item.symbol}
                         onBlur={(e) =>
                           setRoomFittings((current) =>
@@ -1519,10 +1550,20 @@ export default function RoomSheetPage({
                     <td>
                       <input
                         className="num"
-                        defaultValue={String(item.multiplier)}
-                        onBlur={(e) => {
-                          const value = Number(e.target.value);
-                          if (!Number.isFinite(value)) return;
+                        value={
+                          fittingCountText[item.id] ?? String(item.multiplier)
+                        }
+                        onMouseDown={selectWholeOnFirstClick}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          setFittingCountText((current) => ({
+                            ...current,
+                            [item.id]: text,
+                          }));
+                          const value = Number(text);
+                          if (text.trim() === "" || !Number.isFinite(value))
+                            return;
                           setRoomFittings((current) =>
                             current.map((each) =>
                               each.id === item.id
@@ -1531,6 +1572,13 @@ export default function RoomSheetPage({
                             ),
                           );
                         }}
+                        onBlur={() =>
+                          setFittingCountText((current) => {
+                            const next = { ...current };
+                            delete next[item.id];
+                            return next;
+                          })
+                        }
                       />
                     </td>
                     <td className="num">
@@ -1819,6 +1867,8 @@ export default function RoomSheetPage({
                   <input
                     className="num"
                     autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onMouseDown={selectWholeOnFirstClick}
                     value={prompt.first}
                     onChange={(e) =>
                       setPrompt({ ...prompt, first: e.target.value })
@@ -1836,6 +1886,8 @@ export default function RoomSheetPage({
                     <input
                       className="num"
                       autoFocus
+                      onFocus={(e) => e.currentTarget.select()}
+                      onMouseDown={selectWholeOnFirstClick}
                       value={prompt.across}
                       onChange={(e) =>
                         setPrompt({ ...prompt, across: e.target.value })
@@ -1847,6 +1899,8 @@ export default function RoomSheetPage({
                     縦
                     <input
                       className="num"
+                      onFocus={(e) => e.currentTarget.select()}
+                      onMouseDown={selectWholeOnFirstClick}
                       value={prompt.along}
                       onChange={(e) =>
                         setPrompt({ ...prompt, along: e.target.value })

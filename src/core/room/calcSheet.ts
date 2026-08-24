@@ -174,6 +174,33 @@ export function syncLines(
   return padLines(details, next);
 }
 
+/**
+ * セットに1行足す（明細と計算式を必ず同じ位置に1組ずつ）。
+ * position を省くと末尾へ足す。入力も削除もできない行ができないよう、
+ * どちらの欄から足しても明細と計算式行の数はそろえる。
+ */
+export function addSetRow(set: CalcSet, position?: number): CalcSet {
+  const details = [...set.details];
+  const lines = [...set.lines];
+  const at = position ?? Math.max(details.length, lines.length);
+  details.splice(Math.min(Math.max(at, 0), details.length), 0, calcDetail());
+  lines.splice(Math.min(Math.max(at, 0), lines.length), 0, calcLine());
+  return { ...set, details, lines: padLines(details, lines) };
+}
+
+/** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
+export function openSetDetail(set: CalcSet, index: number): CalcSet {
+  const details = [...set.details];
+  while (details.length <= index) details.push(calcDetail());
+  return { ...set, details, lines: padLines(details, set.lines) };
+}
+
+/** 明細の無い計算式だけの行を消す */
+export function removeSetLine(set: CalcSet, index: number): CalcSet {
+  const lines = set.lines.filter((_, rowIndex) => rowIndex !== index);
+  return { ...set, lines: syncLines(set.details, lines) };
+}
+
 /** 明細に何か入力されているか（入力の無い明細は保存時に取り除く） */
 export function isEmptyDetail(detail: CalcDetail): boolean {
   return (
