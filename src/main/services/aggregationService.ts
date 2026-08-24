@@ -8,6 +8,7 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
+  detailChangeLogs,
   mDetails,
   projectAggregateDetails,
   projectAggregateItems,
@@ -33,6 +34,7 @@ import {
   listProjectSubjects,
 } from "./projectMasterService";
 import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
+import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import {
   displayedValue,
@@ -586,22 +588,43 @@ export function saveAggregateEdits(
                 )
                 .get();
         if (!target) return;
+        const values = {
+          subjectId: edit.subjectId ?? target.subjectId,
+          materialCategory: edit.materialCategory,
+          partName: edit.partName,
+          detailNumber: edit.detailNumber,
+          name: edit.name,
+          descriptionUpper: edit.descriptionUpper,
+          descriptionLower: edit.descriptionLower,
+          unit: edit.unit,
+          remarksUpper: edit.remarksUpper,
+          remarksLower: edit.remarksLower,
+        };
         tx.update(mDetails)
-          .set({
-            subjectId: edit.subjectId ?? target.subjectId,
-            materialCategory: edit.materialCategory,
-            partName: edit.partName,
-            detailNumber: edit.detailNumber,
-            name: edit.name,
-            descriptionUpper: edit.descriptionUpper,
-            descriptionLower: edit.descriptionLower,
-            unit: edit.unit,
-            remarksUpper: edit.remarksUpper,
-            remarksLower: edit.remarksLower,
-            updatedAt: new Date().toISOString(),
-          })
+          .set({ ...values, updatedAt: new Date().toISOString() })
           .where(eq(mDetails.id, target.id))
           .run();
+
+        // 集計書で直した内容も明細マスターの修正履歴に残す
+        const before = snapshotOf(target);
+        const after = snapshotOf({
+          ...values,
+          estimateDisplay: target.estimateDisplay,
+          isActive: target.isActive,
+        });
+        if (changedFieldsOf(before, after).length > 0) {
+          tx.insert(detailChangeLogs)
+            .values({
+              scope: "project",
+              projectId,
+              subjectId: values.subjectId,
+              detailId: target.id,
+              changeKind: "edit",
+              beforeJson: JSON.stringify(before),
+              afterJson: JSON.stringify(after),
+            })
+            .run();
+        }
       });
     });
   });
@@ -726,41 +749,50 @@ export function getAggregate(
 export function collectEstimateRowChecks(
   db: AppDatabase,
   projectId: number,
-  materialCategory: string
+  materialCategory: string,
 ): EstimateRowCheck[] {
-  const parts = listProjectBasicMasters(db, projectId).aggregationParts
-  const byRow = new Map<number, Map<string, { name: string; quantity: number }>>()
+  const parts = listProjectBasicMasters(db, projectId).aggregationParts;
+  const byRow = new Map<
+    number,
+    Map<string, { name: string; quantity: number }>
+  >();
 
   collectEntries(db, projectId).forEach((entry) => {
-    if (entry.estimateRowId === null) return
-    if (entry.materialCategory !== materialCategory) return
-    if (entry.name.trim() === '') return
-    const partId = aggregationPartIdOf(entry.partNumber)
+    if (entry.estimateRowId === null) return;
+    if (entry.materialCategory !== materialCategory) return;
+    if (entry.name.trim() === "") return;
+    const partId = aggregationPartIdOf(entry.partNumber);
     const part =
       parts.find((row) => row.id === partId) ??
-      parts.find((row) => entry.partName.includes(row.name))
-    if (!part) return
+      parts.find((row) => entry.partName.includes(row.name));
+    if (!part) return;
     const cells =
-      byRow.get(entry.estimateRowId) ?? new Map<string, { name: string; quantity: number }>()
-    byRow.set(entry.estimateRowId, cells)
-    const cell = cells.get(part.name)
+      byRow.get(entry.estimateRowId) ??
+      new Map<string, { name: string; quantity: number }>();
+    byRow.set(entry.estimateRowId, cells);
+    const cell = cells.get(part.name);
     if (cell) {
       // 同じ部位に複数の明細があるときは、名称を並べて数量を合計する
       cells.set(part.name, {
-        name: cell.name.includes(entry.name) ? cell.name : `${cell.name}／${entry.name}`,
-        quantity: displayedValue(cell.quantity + entry.quantity)
-      })
-      return
+        name: cell.name.includes(entry.name)
+          ? cell.name
+          : `${cell.name}／${entry.name}`,
+        quantity: displayedValue(cell.quantity + entry.quantity),
+      });
+      return;
     }
-    cells.set(part.name, { name: entry.name, quantity: displayedValue(entry.quantity) })
-  })
+    cells.set(part.name, {
+      name: entry.name,
+      quantity: displayedValue(entry.quantity),
+    });
+  });
 
   return [...byRow.entries()].map(([estimateRowId, cells]) => ({
     estimateRowId,
     cells: [...cells.entries()].map(([partName, cell]) => ({
       partName,
       name: cell.name,
-      quantity: cell.quantity
-    }))
-  }))
+      quantity: cell.quantity,
+    })),
+  }));
 }

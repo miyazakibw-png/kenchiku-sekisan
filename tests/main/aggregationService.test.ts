@@ -20,6 +20,10 @@ import {
   saveAggregateEdits,
 } from "../../src/main/services/aggregationService";
 import { listTransferRows } from "../../src/main/services/transferRowService";
+import {
+  listDetailChangeLogs,
+  saveDetails,
+} from "../../src/main/services/detailService";
 import type {
   EstimateRowDraft,
   TransferRowDraft,
@@ -292,6 +296,64 @@ describe("集計処理", () => {
     const rows = listTransferRows(db, projectId);
     expect(rows[0].name).toBe("タイルカーペット");
     expect(rows[0].descriptionLower).toBe("t=6.5");
+  });
+
+  it("集計書で直した内容は明細マスターの修正履歴に残る", () => {
+    const saved = saveDetails(db, {
+      subjectId: 5,
+      projectId,
+      rows: [
+        {
+          id: null,
+          detailNumber: 1.01,
+          materialCategory: "仕上",
+          partName: "床",
+          name: "ビニル床シート",
+          descriptionUpper: "",
+          descriptionLower: "t=2.0",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+          estimateDisplay: "",
+          isActive: true,
+        },
+      ],
+      deletedIds: [],
+    });
+    saveTransferRows(db, {
+      projectId,
+      rows: [{ ...transferDraft(3), sourceDetailId: saved[0].id }],
+    });
+    const before = runAggregation(db, projectId);
+
+    saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 5,
+          materialCategory: "仕上",
+          partNumber: 10,
+          partName: "床",
+          detailNumber: 1.01,
+          name: "タイルカーペット",
+          descriptionUpper: "",
+          descriptionLower: "t=6.5",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    const logs = listDetailChangeLogs(db, projectId).filter(
+      (log) => log.changeKind === "edit",
+    );
+    expect(logs).toHaveLength(1);
+    expect(logs[0].before?.name).toBe("ビニル床シート");
+    expect(logs[0].after?.name).toBe("タイルカーペット");
+    expect(logs[0].changedFields).toContain("descriptionLower");
   });
 
   it("小計行は集計しない", () => {

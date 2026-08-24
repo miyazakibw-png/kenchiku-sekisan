@@ -22,7 +22,7 @@ function normalizeDetailNumber(value: number | null): number | null {
 }
 
 /** 修正履歴に残す項目だけ取り出す（並び順や更新日時は履歴に出さない） */
-function snapshotOf(row: {
+export function snapshotOf(row: {
   detailNumber: number | null;
   materialCategory: string;
   partName: string;
@@ -48,6 +48,23 @@ function snapshotOf(row: {
     estimateDisplay: row.estimateDisplay,
     isActive: row.isActive,
   };
+}
+
+/** 明細番号も文字も入っていない行かどうか（履歴に残す価値が無い行） */
+export function isEmptySnapshot(snapshot: DetailSnapshot | null): boolean {
+  if (snapshot === null) return true;
+  if (snapshot.detailNumber !== null) return false;
+  return [
+    snapshot.materialCategory,
+    snapshot.partName,
+    snapshot.name,
+    snapshot.descriptionUpper,
+    snapshot.descriptionLower,
+    snapshot.unit,
+    snapshot.remarksUpper,
+    snapshot.remarksLower,
+    snapshot.estimateDisplay,
+  ].every((text) => text.trim() === "");
 }
 
 /** 修正前と修正後で違う項目（画面で赤文字にする欄） */
@@ -345,6 +362,8 @@ export function saveDetails(
       before: DetailSnapshot | null,
       after: DetailSnapshot | null,
     ): void => {
+      // 中身の無い行（自動保存で入る空行など）は履歴に残さない
+      if (isEmptySnapshot(before) && isEmptySnapshot(after)) return;
       tx.insert(detailChangeLogs)
         .values({
           scope,
