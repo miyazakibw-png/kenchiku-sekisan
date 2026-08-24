@@ -104,6 +104,20 @@ describe("転記入力表の行操作", () => {
     expect(row.detailNumber).toBe(3.02);
     expect(row.name).toBe("ビニル床シート");
     expect(row.unit).toBe("m2");
+
+    // 明細マスター側が空欄なら、先に入れてある部位・区分・単位は消さない
+    const kept = applyDetail(
+      {
+        ...emptyTransferRow(),
+        partName: "壁",
+        materialCategory: "仕上",
+        unit: "m",
+      },
+      { ...detail, partName: "", materialCategory: "", unit: "" },
+    );
+    expect(kept.partName).toBe("壁");
+    expect(kept.materialCategory).toBe("仕上");
+    expect(kept.unit).toBe("m");
   });
 
   it("数量は全角も受け付けて小数2桁で保持する", () => {

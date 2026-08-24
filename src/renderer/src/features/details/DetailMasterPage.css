@@ -147,6 +147,7 @@ body.col-resizing {
   top: 0;
   z-index: 1;
   background: var(--surface);
+  color: #1f2937;
   padding: 6px 4px;
   font-weight: 600;
   white-space: nowrap;

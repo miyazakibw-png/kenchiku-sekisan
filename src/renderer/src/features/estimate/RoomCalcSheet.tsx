@@ -659,18 +659,22 @@ export default function RoomCalcSheet({
         onMessage(`明細番号 ${value} の明細が見つかりません`);
         return;
       }
+      // マスター側が空欄の項目は、先に入れてある部位・区分・単位を消さない
       updateDetail(setId, index, {
         sourceDetailId: found.id,
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
-        materialCategory: found.materialCategory,
+        materialCategory: found.materialCategory || row.materialCategory,
         partNumber:
-          pickupParts.find((part) => part.name === found.partName)?.id ?? null,
-        partName: found.partName,
+          found.partName.trim() === ""
+            ? row.partNumber
+            : (pickupParts.find((part) => part.name === found.partName)?.id ??
+              null),
+        partName: found.partName || row.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
         descriptionLower: found.descriptionLower,
-        unit: found.unit,
+        unit: found.unit || row.unit,
         remarksUpper: found.remarksUpper,
         remarksLower: found.remarksLower,
         estimateDisplay: found.estimateDisplay,
@@ -725,18 +729,29 @@ export default function RoomCalcSheet({
   const callDetail = useCallback(
     (detail: Detail) => {
       const target = currentSet;
+      // 上書きする行に先に入れてある部位・区分・単位は、マスターが空欄なら残す
+      const at0 =
+        focus && focus.setId === target?.id && focus.area === "detail"
+          ? focus.index
+          : -1;
+      const kept =
+        !insertMode && at0 >= 0 ? (target?.details[at0] ?? null) : null;
       const item = calcDetail({
         sourceDetailId: detail.id,
         subjectId: detail.subjectId,
         detailNumber: detail.detailNumber,
-        materialCategory: detail.materialCategory,
+        materialCategory:
+          detail.materialCategory || (kept?.materialCategory ?? ""),
         partNumber:
-          pickupParts.find((part) => part.name === detail.partName)?.id ?? null,
-        partName: detail.partName,
+          detail.partName.trim() === ""
+            ? (kept?.partNumber ?? null)
+            : (pickupParts.find((part) => part.name === detail.partName)?.id ??
+              null),
+        partName: detail.partName || (kept?.partName ?? ""),
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
         descriptionLower: detail.descriptionLower,
-        unit: detail.unit,
+        unit: detail.unit || (kept?.unit ?? ""),
         remarksUpper: detail.remarksUpper,
         remarksLower: detail.remarksLower,
         estimateDisplay: detail.estimateDisplay,

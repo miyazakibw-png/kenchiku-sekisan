@@ -98,17 +98,18 @@ export function applyDetail(
   row: TransferRowDraft,
   detail: Detail,
 ): TransferRowDraft {
+  // マスター側が空欄の項目は、先に入れてある部位・区分・単位を消さない
   return {
     ...row,
     subjectId: detail.subjectId,
-    materialCategory: detail.materialCategory,
+    materialCategory: detail.materialCategory || row.materialCategory,
     detailNumber: detail.detailNumber,
-    partName: detail.partName,
+    partName: detail.partName || row.partName,
     name: detail.name,
     sourceDetailId: detail.id,
     descriptionUpper: detail.descriptionUpper,
     descriptionLower: detail.descriptionLower,
-    unit: detail.unit,
+    unit: detail.unit || row.unit,
   };
 }
 
