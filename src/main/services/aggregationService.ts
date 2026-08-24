@@ -28,7 +28,11 @@ import {
 } from "../../core/aggregate/aggregate";
 import { calcVariables } from "../../core/aggregate/variables";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
-import { listProjectSubjects } from "./projectMasterService";
+import {
+  listProjectBasicMasters,
+  listProjectSubjects,
+} from "./projectMasterService";
+import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
 import { getDeductionLimit } from "./roomSheetService";
 import {
   displayedValue,
@@ -62,6 +66,7 @@ import type {
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  EstimateRowCheck,
   SaveAggregateEditsRequest,
 } from "../../shared/types";
 
@@ -711,4 +716,51 @@ export function getAggregate(
     .map(toDetail);
 
   return { run, items, details };
+}
+
+/**
+ * 部位別入力表のチェック列（1部位＝名称＋数量の2列）。
+ * 各行の計算書で拾った明細を、管理用部位（床・巾木・壁…）ごとにまとめる。
+ * 材種区分は画面で選んだもの（既定は仕上）だけを合計する。
+ */
+export function collectEstimateRowChecks(
+  db: AppDatabase,
+  projectId: number,
+  materialCategory: string
+): EstimateRowCheck[] {
+  const parts = listProjectBasicMasters(db, projectId).aggregationParts
+  const byRow = new Map<number, Map<string, { name: string; quantity: number }>>()
+
+  collectEntries(db, projectId).forEach((entry) => {
+    if (entry.estimateRowId === null) return
+    if (entry.materialCategory !== materialCategory) return
+    if (entry.name.trim() === '') return
+    const partId = aggregationPartIdOf(entry.partNumber)
+    const part =
+      parts.find((row) => row.id === partId) ??
+      parts.find((row) => entry.partName.includes(row.name))
+    if (!part) return
+    const cells =
+      byRow.get(entry.estimateRowId) ?? new Map<string, { name: string; quantity: number }>()
+    byRow.set(entry.estimateRowId, cells)
+    const cell = cells.get(part.name)
+    if (cell) {
+      // 同じ部位に複数の明細があるときは、名称を並べて数量を合計する
+      cells.set(part.name, {
+        name: cell.name.includes(entry.name) ? cell.name : `${cell.name}／${entry.name}`,
+        quantity: displayedValue(cell.quantity + entry.quantity)
+      })
+      return
+    }
+    cells.set(part.name, { name: entry.name, quantity: displayedValue(entry.quantity) })
+  })
+
+  return [...byRow.entries()].map(([estimateRowId, cells]) => ({
+    estimateRowId,
+    cells: [...cells.entries()].map(([partName, cell]) => ({
+      partName,
+      name: cell.name,
+      quantity: cell.quantity
+    }))
+  }))
 }

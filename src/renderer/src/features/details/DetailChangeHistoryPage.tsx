@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { DetailChangeLog, DetailSnapshot, Subject } from '@shared/types'
 import '../estimate/EstimatePartsPage.css'
 import './DetailChangeHistoryPage.css'
+import { useTableResize } from "../../hooks/useTableResize"
 
 interface Props {
   /** 物件専用マスターの履歴は物件ID、基本マスターの履歴は null */
@@ -44,6 +45,7 @@ function cellText(snapshot: DetailSnapshot | null, key: keyof DetailSnapshot): s
  * 修正後の行には背景色を付け、変わった欄は赤文字にする。
  */
 export default function DetailChangeHistoryPage({ projectId, onBack }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-change-history-v1")
   const [logs, setLogs] = useState<DetailChangeLog[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [newestFirst, setNewestFirst] = useState(true)
@@ -77,7 +79,7 @@ export default function DetailChangeHistoryPage({ projectId, onBack }: Props): J
         <span className="message">{logs.length}件</span>
       </div>
 
-      <table className="parts change-history">
+      <table className="parts change-history" ref={tableRef}>
         <thead>
           <tr>
             <th className="when">修正日時</th>

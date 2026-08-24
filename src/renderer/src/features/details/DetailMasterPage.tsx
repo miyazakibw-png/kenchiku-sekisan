@@ -784,7 +784,7 @@ export default function DetailMasterPage({
                   </td>
                   <td
                     {...cellProps(index, 0)}
-                    className={`col-number part-number ${cellProps(index, 0).className}`}
+                    className={`col-number ${cellProps(index, 0).className}`}
                     tabIndex={0}
                     title="部位（表示専用）。Excelはこのセルから貼り付けます"
                   />
@@ -811,18 +811,16 @@ export default function DetailMasterPage({
                   <td {...cellProps(index, 5)}>
                     <input
                       lang="ja"
-                      placeholder="摘要（上段）"
                       value={row.descriptionUpper}
                       onChange={(e) =>
                         handleChange(index, "descriptionUpper", e.target.value)
                       }
                     />
                   </td>
-                  <td className="col-unit part-number" />
+                  <td className="col-unit" />
                   <td {...cellProps(index, 8)}>
                     <input
                       lang="ja"
-                      placeholder="備考（上段）"
                       value={row.remarksUpper}
                       onChange={(e) =>
                         handleChange(index, "remarksUpper", e.target.value)
@@ -860,7 +858,6 @@ export default function DetailMasterPage({
                     <input
                       className="num"
                       inputMode="decimal"
-                      placeholder="0.00"
                       title="明細番号（小数点以下2桁の数値）"
                       value={row.detailNumberInput}
                       onChange={(e) =>
@@ -872,7 +869,6 @@ export default function DetailMasterPage({
                   <td {...cellProps(index, 4)}>
                     <input
                       lang="ja"
-                      placeholder="名称"
                       value={row.name}
                       onChange={(e) =>
                         handleChange(index, "name", e.target.value)
@@ -882,7 +878,6 @@ export default function DetailMasterPage({
                   <td {...cellProps(index, 6)}>
                     <input
                       lang="ja"
-                      placeholder="摘要（下段）"
                       value={row.descriptionLower}
                       onChange={(e) =>
                         handleChange(index, "descriptionLower", e.target.value)
@@ -902,7 +897,6 @@ export default function DetailMasterPage({
                   <td {...cellProps(index, 9)}>
                     <input
                       lang="ja"
-                      placeholder="備考（下段）"
                       value={row.remarksLower}
                       onChange={(e) =>
                         handleChange(index, "remarksLower", e.target.value)

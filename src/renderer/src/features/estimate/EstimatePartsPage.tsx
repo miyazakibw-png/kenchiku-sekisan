@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  EstimateRowCheck,
   EstimateRowDraft,
   MasterOptions,
   ProjectSummary,
@@ -27,6 +28,7 @@ import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
 import "./EstimatePartsPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -42,8 +44,11 @@ export default function EstimatePartsPage({
   options,
   onBack,
 }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-estimate-parts-v1");
   const [rows, setRows] = useState<EstimateRowDraft[]>([]);
   const [selected, setSelected] = useState(0);
+  /** 複数行選択の終わり（Shift+クリックで広げる） */
+  const [selectedEnd, setSelectedEnd] = useState(0);
   const [message, setMessage] = useState("");
   const [clipboard, setClipboard] = useState<EstimateRowDraft[]>([]);
   const [others, setOthers] = useState<ProjectSummary[] | null>(null);
@@ -51,13 +56,36 @@ export default function EstimatePartsPage({
   const [openedSheet, setOpenedSheet] = useState<number | null>(null);
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
   const [checkCategory, setCheckCategory] = useState(
-    options.materialCategories[0]?.name ?? "仕上",
+    options.materialCategories.some((category) => category.name === "仕上")
+      ? "仕上"
+      : (options.materialCategories[0]?.name ?? "仕上"),
   );
   const columns = useMemo(
     () => buildEstimateColumns(options.formworkCategories),
     [options.formworkCategories],
   );
   const inherited = useMemo(() => resolveInherited(rows), [rows]);
+  /** チェック列（1部位＝名称＋数量の2列）。各行の計算書から拾う */
+  const [checks, setChecks] = useState<EstimateRowCheck[]>([]);
+  /** ↶戻る・↷進む用の履歴 */
+  const pastRef = useRef<EstimateRowDraft[][]>([]);
+  const futureRef = useRef<EstimateRowDraft[][]>([]);
+  const [historyTick, setHistoryTick] = useState(0);
+  const checkColumns = useMemo(
+    () =>
+      options.aggregationParts.length > 0
+        ? options.aggregationParts.map((part) => part.name)
+        : CHECK_COLUMNS,
+    [options.aggregationParts],
+  );
+  const checkOf = useCallback(
+    (rowId: number | null, partName: string) => {
+      if (rowId === null) return null;
+      const found = checks.find((check) => check.estimateRowId === rowId);
+      return found?.cells.find((cell) => cell.partName === partName) ?? null;
+    },
+    [checks],
+  );
 
   const reload = useCallback(async () => {
     setRows(toDrafts(await window.sekisan.listEstimateRows(project.id)));
@@ -67,14 +95,92 @@ export default function EstimatePartsPage({
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    void (async () => {
+      setChecks(
+        await window.sekisan.getEstimateRowChecks(project.id, checkCategory),
+      );
+    })();
+  }, [checkCategory, project.id, rows]);
+
+  /** 直したときは1つ前の内容を履歴へ積む（↶戻る・↷進む用） */
+  const editRows = useCallback(
+    (next: EstimateRowDraft[]): void => {
+      pastRef.current = [...pastRef.current.slice(-99), rows];
+      futureRef.current = [];
+      setHistoryTick((tick) => tick + 1);
+      setRows(next);
+    },
+    [rows],
+  );
+
+  const canUndo = useMemo(
+    () => historyTick >= 0 && pastRef.current.length > 0,
+    [historyTick],
+  );
+  const canRedo = useMemo(
+    () => historyTick >= 0 && futureRef.current.length > 0,
+    [historyTick],
+  );
+
+  const undoRows = useCallback((): void => {
+    const previous = pastRef.current[pastRef.current.length - 1];
+    if (previous === undefined) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    pastRef.current = pastRef.current.slice(0, -1);
+    futureRef.current = [rows, ...futureRef.current];
+    setHistoryTick((tick) => tick + 1);
+    setRows(previous);
+    setMessage("1つ前に戻しました（保存すると確定します）");
+  }, [rows]);
+
+  const redoRows = useCallback((): void => {
+    const next = futureRef.current[0];
+    if (next === undefined) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    futureRef.current = futureRef.current.slice(1);
+    pastRef.current = [...pastRef.current, rows];
+    setHistoryTick((tick) => tick + 1);
+    setRows(next);
+    setMessage("1つ先へ進めました（保存すると確定します）");
+  }, [rows]);
+
+  const saveRows = useCallback(
+    async (next: EstimateRowDraft[], note: string) => {
+      const saved = await window.sekisan.saveEstimateRows({
+        projectId: project.id,
+        rows: next,
+      });
+      setRows(toDrafts(saved));
+      setMessage(note);
+    },
+    [project.id],
+  );
+
   const save = useCallback(async () => {
-    const saved = await window.sekisan.saveEstimateRows({
-      projectId: project.id,
-      rows,
-    });
-    setRows(toDrafts(saved));
-    setMessage("保存しました");
-  }, [project.id, rows]);
+    await saveRows(rows, "保存しました");
+  }, [rows, saveRows]);
+
+  const selectionStart = Math.min(selected, selectedEnd);
+  const selectionEnd = Math.max(selected, selectedEnd);
+
+  /** 貼付はその場で保存して、計算書の中身まで複製する */
+  const pasteRows = useCallback(
+    async (count: number) => {
+      const copied = clipboard.slice(0, count);
+      if (copied.length === 0) return;
+      const next = copyRowsInto(rows, selectionEnd + 1, copied);
+      await saveRows(
+        next,
+        `${copied.length} 行を挿入しました（計算書の中身も複製）`,
+      );
+    },
+    [clipboard, rows, saveRows, selectionEnd],
+  );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
   const pasteFromExcel = useCallback(async () => {
@@ -83,7 +189,7 @@ export default function EstimatePartsPage({
     const preview = buildPastePreview(rows, columns, text, selected, 0, () =>
       emptyRow(),
     );
-    setRows(preview.rows);
+    editRows(preview.rows);
     const notes = [
       `${preview.addedRows} 行追加`,
       preview.errorCount > 0 ? `取り込めない値 ${preview.errorCount} 件` : "",
@@ -111,7 +217,7 @@ export default function EstimatePartsPage({
       const row = rows[index];
       if (!row || row.rowType === "subtotal") return;
       if (row.id === null) {
-        setRows(
+        editRows(
           toDrafts(
             await window.sekisan.saveEstimateRows({
               projectId: project.id,
@@ -144,7 +250,7 @@ export default function EstimatePartsPage({
           setMessage(parsed.error);
           return;
         }
-        setRows(updateRow(rows, index, apply(parsed.value)));
+        editRows(updateRow(rows, index, apply(parsed.value)));
       }}
     />
   );
@@ -194,29 +300,58 @@ export default function EstimatePartsPage({
   return (
     <div className="estimate-page">
       <div className="toolbar">
-        <button type="button" onClick={onBack}>
-          ← 工事管理画面へ
-        </button>
+        <div className="left-actions">
+          <button type="button" onClick={onBack}>
+            ← 工事管理画面へ
+          </button>
+          <div className="three">
+            <button type="button" onClick={() => void openCalcSheet(selected)}>
+              📐 計算書を開く
+            </button>
+            <button type="button" onClick={() => void pasteFromExcel()}>
+              📋 Excelから貼り付け
+            </button>
+            <button type="button" onClick={() => void save()}>
+              💾 保存
+            </button>
+          </div>
+        </div>
         <h2>部位別入力表</h2>
         <span className="project">
           {project.managementNo} {project.name}
         </span>
         <button
           type="button"
-          onClick={() => setRows(insertRow(rows, selected))}
+          disabled={!canUndo}
+          title="1つ前の内容に戻します"
+          onClick={undoRows}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={!canRedo}
+          title="戻した内容を1つ先へ進めます"
+          onClick={redoRows}
+        >
+          ↷ 進む
+        </button>
+        <button
+          type="button"
+          onClick={() => editRows(insertRow(rows, selected))}
         >
           ➕ 行挿入
         </button>
         <button
           type="button"
-          onClick={() => setRows(insertRow(rows, rows.length))}
+          onClick={() => editRows(insertRow(rows, rows.length))}
         >
           ⤓ 最終行に追加
         </button>
         <button
           type="button"
           onClick={() =>
-            setRows([
+            editRows([
               ...rows.slice(0, selected + 1),
               subtotalRow(),
               ...rows.slice(selected + 1),
@@ -227,14 +362,14 @@ export default function EstimatePartsPage({
         </button>
         <button
           type="button"
-          onClick={() => setRows(removeRow(rows, selected))}
+          onClick={() => editRows(removeRow(rows, selected))}
         >
           🗑 行削除
         </button>
         <button
           type="button"
           onClick={() => {
-            setRows(moveRow(rows, selected, selected - 1));
+            editRows(moveRow(rows, selected, selected - 1));
             setSelected(Math.max(selected - 1, 0));
           }}
         >
@@ -243,7 +378,7 @@ export default function EstimatePartsPage({
         <button
           type="button"
           onClick={() => {
-            setRows(moveRow(rows, selected, selected + 1));
+            editRows(moveRow(rows, selected, selected + 1));
             setSelected(Math.min(selected + 1, rows.length - 1));
           }}
         >
@@ -253,32 +388,40 @@ export default function EstimatePartsPage({
           type="button"
           onClick={() => {
             setClipboard([rows[selected]].filter(Boolean));
-            setMessage("1 行を控えました（行貼り込みで挿入）");
+            setMessage("1 行を控えました（1行挿入貼付で挿入）");
           }}
         >
-          ⧉ 行コピー
+          ⧉ 1行コピー
+        </button>
+        <button
+          type="button"
+          title="Shift+クリックで選んだ範囲を控えます"
+          onClick={() => {
+            const copied = rows.slice(selectionStart, selectionEnd + 1);
+            setClipboard(copied);
+            setMessage(
+              `${copied.length} 行を控えました（複数行挿入貼付で挿入）`,
+            );
+          }}
+        >
+          ⧉ 複数行コピー
         </button>
         <button
           type="button"
           disabled={clipboard.length === 0}
-          onClick={() => {
-            setRows(copyRowsInto(rows, selected + 1, clipboard));
-            setMessage(`${clipboard.length} 行を貼り込みました`);
-          }}
+          onClick={() => void pasteRows(1)}
         >
-          ⤵ 行貼り込み
+          ⤵ 1行挿入貼付
+        </button>
+        <button
+          type="button"
+          disabled={clipboard.length === 0}
+          onClick={() => void pasteRows(clipboard.length)}
+        >
+          ⤵ 複数行挿入貼付
         </button>
         <button type="button" onClick={() => void openOtherProjects()}>
           🏢 他物件から
-        </button>
-        <button type="button" onClick={() => void openCalcSheet(selected)}>
-          📐 計算書を開く
-        </button>
-        <button type="button" onClick={() => void pasteFromExcel()}>
-          📋 Excelから貼り付け
-        </button>
-        <button type="button" onClick={() => void save()}>
-          💾 保存
         </button>
         <span className="status">{message}</span>
       </div>
@@ -296,9 +439,9 @@ export default function EstimatePartsPage({
           ))}
         </select>
         <span className="note">
-          床・巾木・壁・柱・梁・張天井・廻り縁は、その部屋の計算書で拾った
+          部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
           {checkCategory}
-          を表示します（計算書の作成後に反映）。
+          だけを表示します（計算書の作成後に反映）。
         </span>
       </div>
 
@@ -325,7 +468,7 @@ export default function EstimatePartsPage({
         listId="formwork-list"
       />
 
-      <table className="grid estimate">
+      <table className="grid estimate" ref={tableRef}>
         <thead>
           <tr>
             <th className="no">No</th>
@@ -338,11 +481,22 @@ export default function EstimatePartsPage({
             <th className="num">倍率</th>
             <th className="calc-type">計算書</th>
             <th className="note">備考</th>
-            {CHECK_COLUMNS.map((label) => (
+            {checkColumns.map((label) => (
               <th key={label} className="check" colSpan={2}>
                 {label}
               </th>
             ))}
+          </tr>
+          <tr>
+            <th colSpan={10} />
+            {checkColumns.flatMap((label) => [
+              <th key={`n-${label}`} className="check">
+                {checkCategory}名称
+              </th>,
+              <th key={`q-${label}`} className="check">
+                数量
+              </th>,
+            ])}
           </tr>
         </thead>
         <tbody>
@@ -354,13 +508,22 @@ export default function EstimatePartsPage({
                 key={row.id ?? `new-${index}`}
                 className={
                   [
-                    index === selected ? "selected" : "",
+                    index >= selectionStart && index <= selectionEnd
+                      ? "selected"
+                      : "",
                     isSubtotal ? "subtotal" : "",
                   ]
                     .filter(Boolean)
                     .join(" ") || undefined
                 }
-                onClick={() => setSelected(index)}
+                onClick={(e) => {
+                  if (e.shiftKey) {
+                    setSelectedEnd(index);
+                    return;
+                  }
+                  setSelected(index);
+                  setSelectedEnd(index);
+                }}
                 onDoubleClick={() => void openCalcSheet(index)}
               >
                 <td className="no">{index + 1}</td>
@@ -371,7 +534,9 @@ export default function EstimatePartsPage({
                     placeholder={shown.part1}
                     title="空欄のときは入力のある上の行を引き継ぎます"
                     onChange={(e) =>
-                      setRows(updateRow(rows, index, { part1: e.target.value }))
+                      editRows(
+                        updateRow(rows, index, { part1: e.target.value }),
+                      )
                     }
                   />
                 </td>
@@ -382,7 +547,9 @@ export default function EstimatePartsPage({
                     placeholder={shown.part2}
                     title="空欄のときは入力のある上の行を引き継ぎます"
                     onChange={(e) =>
-                      setRows(updateRow(rows, index, { part2: e.target.value }))
+                      editRows(
+                        updateRow(rows, index, { part2: e.target.value }),
+                      )
                     }
                   />
                 </td>
@@ -392,7 +559,7 @@ export default function EstimatePartsPage({
                     checked={row.part2Split === 1}
                     title="集計時に部位Ⅱ別で仕分ける"
                     onChange={(e) =>
-                      setRows(
+                      editRows(
                         updateRow(rows, index, {
                           part2Split: e.target.checked ? 1 : 0,
                         }),
@@ -407,7 +574,7 @@ export default function EstimatePartsPage({
                     value={row.formwork}
                     title="型枠分類のIDを入力すると種類名に変換されます"
                     onChange={(value) =>
-                      setRows(updateRow(rows, index, { formwork: value }))
+                      editRows(updateRow(rows, index, { formwork: value }))
                     }
                   />
                 </td>
@@ -416,7 +583,9 @@ export default function EstimatePartsPage({
                     lang="ja"
                     value={row.part3}
                     onChange={(e) =>
-                      setRows(updateRow(rows, index, { part3: e.target.value }))
+                      editRows(
+                        updateRow(rows, index, { part3: e.target.value }),
+                      )
                     }
                   />
                 </td>
@@ -451,7 +620,7 @@ export default function EstimatePartsPage({
                     <select
                       value={row.calcType}
                       onChange={(e) =>
-                        setRows(
+                        editRows(
                           updateRow(rows, index, { calcType: e.target.value }),
                         )
                       }
@@ -469,13 +638,21 @@ export default function EstimatePartsPage({
                     lang="ja"
                     value={row.note}
                     onChange={(e) =>
-                      setRows(updateRow(rows, index, { note: e.target.value }))
+                      editRows(updateRow(rows, index, { note: e.target.value }))
                     }
                   />
                 </td>
-                {CHECK_COLUMNS.map((label) => (
-                  <td key={label} className="check" colSpan={2} />
-                ))}
+                {checkColumns.flatMap((label) => {
+                  const cell = checkOf(row.id, label);
+                  return [
+                    <td key={`n-${label}`} className="check">
+                      {cell?.name ?? ""}
+                    </td>,
+                    <td key={`q-${label}`} className="check number">
+                      {cell ? cell.quantity.toFixed(2) : ""}
+                    </td>,
+                  ];
+                })}
               </tr>
             );
           })}

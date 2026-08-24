@@ -4,6 +4,7 @@ import type { FittingPartValue } from "../core/fittings/partValue";
 import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import type {
   AggregateRun,
+  EstimateRowCheck,
   AggregateView,
   AssemblyItem,
   AssemblyMasterOptions,
@@ -167,6 +168,12 @@ const api = {
     ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
   listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>
     ipcRenderer.invoke(IPC.aggregateRuns, projectId),
+  /** 部位別入力表のチェック列（部位ごとの名称と数量） */
+  getEstimateRowChecks: (
+    projectId: number,
+    materialCategory: string
+  ): Promise<EstimateRowCheck[]> =>
+    ipcRenderer.invoke(IPC.estimateRowChecks, projectId, materialCategory),
   /** 集計書兼工事マスターで直した内容を計算書・明細マスターへ書き戻して集計し直す */
   saveAggregateEdits: (
     request: SaveAggregateEditsRequest,

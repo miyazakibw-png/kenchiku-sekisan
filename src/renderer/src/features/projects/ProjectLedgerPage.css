@@ -33,9 +33,38 @@
   overflow: auto;
 }
 
+.project-list {
+  table-layout: fixed;
+}
+
 .project-list th {
   cursor: pointer;
   white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.project-list td {
+  overflow: hidden;
+}
+
+.project-list td input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 見出しの右端。ドラッグで列幅を変える */
+.project-list th .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.project-list th .col-resize:hover {
+  background: #94a3b8;
 }
 
 .project-list th.handle,

@@ -103,6 +103,7 @@ import {
 } from "./services/transferRowService";
 import {
   getAggregate,
+  collectEstimateRowChecks,
   listAggregateRuns,
   runAggregation,
   saveAggregateEdits,
@@ -334,6 +335,11 @@ function registerIpcHandlers(): void {
     (_event, projectId: number, runId?: number) =>
       getAggregate(getDatabase(), projectId, runId),
   );
+  ipcMain.handle(
+    IPC.estimateRowChecks,
+    (_event, projectId: number, materialCategory: string) =>
+      collectEstimateRowChecks(getDatabase(), projectId, materialCategory)
+  )
   ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
     listAggregateRuns(getDatabase(), projectId),
   );

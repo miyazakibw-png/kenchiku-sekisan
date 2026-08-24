@@ -24,6 +24,8 @@ import {
 } from "./transferRows";
 import "./EstimatePartsPage.css";
 import "./TransferSheetPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
+import { useRowsHistory } from "../../hooks/useRowsHistory";
 
 interface Props {
   project: ProjectSummary;
@@ -43,6 +45,7 @@ export default function TransferSheetPage({
   options,
   onBack,
 }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-transfer-sheet-v1");
   const [rows, setRows] = useState<TransferRowDraft[]>([]);
   const [selected, setSelected] = useState(0);
   const [message, setMessage] = useState("");
@@ -52,6 +55,8 @@ export default function TransferSheetPage({
   const [details, setDetails] = useState<Detail[]>([]);
   const [partsOpen, setPartsOpen] = useState(false);
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
+
+  const history = useRowsHistory(rows, setRows);
 
   const inherited = useMemo(() => resolveTransferInherited(rows), [rows]);
 
@@ -100,13 +105,13 @@ export default function TransferSheetPage({
 
   const update = useCallback(
     (index: number, patch: Partial<TransferRowDraft>): void =>
-      setRows((current) => updateTransferRow(current, index, patch)),
-    [],
+      history.edit((current) => updateTransferRow(current, index, patch)),
+    [history],
   );
 
   const callDetail = useCallback(
     (detail: Detail) => {
-      setRows((current) => {
+      history.edit((current) => {
         if (current.length === 0) {
           return [applyDetail(emptyTransferRow(), detail)];
         }
@@ -117,7 +122,7 @@ export default function TransferSheetPage({
       });
       setMessage(`${detail.name} を転記しました`);
     },
-    [selected],
+    [history, selected],
   );
 
   const materialEntries = useMemo(
@@ -145,19 +150,47 @@ export default function TransferSheetPage({
         </span>
         <button
           type="button"
-          onClick={() => setRows(insertTransferRow(rows, selected))}
+          disabled={!history.canUndo}
+          title="1つ前の内容に戻します"
+          onClick={() => {
+            setMessage(
+              history.undo()
+                ? "1つ前に戻しました（保存すると確定します）"
+                : "戻せる操作がありません",
+            );
+          }}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={!history.canRedo}
+          title="戻した内容を1つ先へ進めます"
+          onClick={() => {
+            setMessage(
+              history.redo()
+                ? "1つ先へ進めました（保存すると確定します）"
+                : "進める操作がありません",
+            );
+          }}
+        >
+          ↷ 進む
+        </button>
+        <button
+          type="button"
+          onClick={() => history.edit(insertTransferRow(rows, selected))}
         >
           ➕ 行挿入
         </button>
         <button
           type="button"
-          onClick={() => setRows(insertTransferRow(rows, rows.length))}
+          onClick={() => history.edit(insertTransferRow(rows, rows.length))}
         >
           ⤓ 最終行に追加
         </button>
         <button
           type="button"
-          onClick={() => setRows(removeTransferRow(rows, selected))}
+          onClick={() => history.edit(removeTransferRow(rows, selected))}
         >
           🗑 行削除
         </button>
@@ -296,7 +329,7 @@ export default function TransferSheetPage({
         </div>
       )}
 
-      <table className="grid transfer">
+      <table className="grid transfer" ref={tableRef}>
         <thead>
           <tr>
             <th className="no">No</th>

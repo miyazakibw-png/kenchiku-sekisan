@@ -165,13 +165,19 @@ body,
   background: #fff;
 }
 
-/* 見出しの地色はここで薄いグレーに揃えるので、文字は黒にして必ず読めるようにする */
+/* 表の見出しは全画面で濃紺地＋白文字に統一する */
 .app-main thead th,
 .app-main thead td {
   position: sticky;
   z-index: 4;
-  background: var(--surface);
-  color: #000;
+  background: #1f4e79;
+  color: #fff;
+}
+
+/* 画面のタイトルも見出しと同じ濃紺 */
+.app-main .toolbar h2,
+.app-main .grid-toolbar h2 {
+  color: #1f4e79;
 }
 
 /* 印刷・PDFはA3横1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
@@ -230,4 +236,20 @@ body,
   th {
     page-break-inside: avoid;
   }
+}
+
+/* 表形式画面の共通列幅つまみ（見出しの右端をドラッグ）。
+   見出しは position: sticky なので、つまみはそのまま右端に置ける */
+.table-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.table-col-resize:hover {
+  background: rgba(255, 255, 255, 0.5);
 }

@@ -232,6 +232,8 @@ export type EstimateRowDraft = Omit<
   "id" | "projectId" | "displayOrder"
 > & {
   id: number | null;
+  /** 行コピーの元になった行のID。新しい行として保存するとき計算書の中身も複製する */
+  copySourceId?: number | null;
 };
 
 export interface SaveEstimateRowsRequest {
@@ -585,6 +587,18 @@ export interface SaveAggregateEditsRequest {
   projectId: number;
   runId: number;
   edits: AggregateItemEdit[];
+}
+
+/** 部位別入力表のチェック列（管理用部位ごとの仕上名称と数量） */
+export interface EstimateRowCheckCell {
+  partName: string;
+  name: string;
+  quantity: number;
+}
+
+export interface EstimateRowCheck {
+  estimateRowId: number;
+  cells: EstimateRowCheckCell[];
 }
 
 /** 型枠転記（集計した型枠分類別の数量→転記入力表の最終行へ追記） */

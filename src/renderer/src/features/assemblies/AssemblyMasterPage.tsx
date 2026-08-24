@@ -26,6 +26,7 @@ import {
   type DraftItem,
 } from "./assemblyEditor";
 import "./AssemblyMasterPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -46,6 +47,7 @@ interface MergeState {
 }
 
 export default function AssemblyMasterPage({ options }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-assembly-list-v1");
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const [subject, setSubject] = useState<Subject | null>(
     options.subjects[0] ?? null,
@@ -184,7 +186,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
         </div>
 
         <div className="assembly-body">
-          <table className="grid assembly-list">
+          <table className="grid assembly-list" ref={tableRef}>
             <thead>
               <tr>
                 <th>No.</th>

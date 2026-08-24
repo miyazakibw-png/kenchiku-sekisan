@@ -1,6 +1,11 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
-import { projectEstimateRows } from '../db/schema'
+import {
+  projectEstimateRows,
+  projectFrameSheets,
+  projectGeneralSheets,
+  projectRoomSheets
+} from '../db/schema'
 import type { EstimateRow, SaveEstimateRowsRequest } from '../../shared/types'
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
@@ -52,7 +57,15 @@ export function saveEstimateRows(
         displayOrder: index
       }
       if (row.id === null) {
-        tx.insert(projectEstimateRows).values(values).run()
+        const inserted = tx
+          .insert(projectEstimateRows)
+          .values(values)
+          .returning({ id: projectEstimateRows.id })
+          .all()
+        const newId = inserted[0]?.id
+        if (newId !== undefined && row.copySourceId != null) {
+          copyCalcSheets(tx, projectId, row.copySourceId, newId)
+        }
         return
       }
       tx.update(projectEstimateRows)
@@ -64,4 +77,72 @@ export function saveEstimateRows(
     })
   })
   return listEstimateRows(db, projectId)
+}
+
+/**
+ * 行コピーで作った行に、コピー元の計算書（部屋別・軸組・汎用）の中身をそのまま複製する。
+ * コピー元に計算書が無ければ何もしない。
+ */
+function copyCalcSheets(
+  tx: AppDatabase,
+  projectId: number,
+  sourceRowId: number,
+  targetRowId: number
+): void {
+  const room = tx
+    .select()
+    .from(projectRoomSheets)
+    .where(eq(projectRoomSheets.estimateRowId, sourceRowId))
+    .get()
+  if (room) {
+    tx.insert(projectRoomSheets)
+      .values({
+        projectId,
+        estimateRowId: targetRowId,
+        shapeJson: room.shapeJson,
+        fittingsJson: room.fittingsJson,
+        ceilingJson: room.ceilingJson,
+        lowerJson: room.lowerJson,
+        ceilingHeight: room.ceilingHeight,
+        note: room.note
+      })
+      .run()
+  }
+
+  const frame = tx
+    .select()
+    .from(projectFrameSheets)
+    .where(eq(projectFrameSheets.estimateRowId, sourceRowId))
+    .get()
+  if (frame) {
+    tx.insert(projectFrameSheets)
+      .values({
+        projectId,
+        estimateRowId: targetRowId,
+        layoutJson: frame.layoutJson,
+        linesJson: frame.linesJson,
+        attributesJson: frame.attributesJson,
+        fittingsJson: frame.fittingsJson,
+        lowerJson: frame.lowerJson,
+        workHeight: frame.workHeight,
+        note: frame.note
+      })
+      .run()
+  }
+
+  const general = tx
+    .select()
+    .from(projectGeneralSheets)
+    .where(eq(projectGeneralSheets.estimateRowId, sourceRowId))
+    .get()
+  if (general) {
+    tx.insert(projectGeneralSheets)
+      .values({
+        projectId,
+        estimateRowId: targetRowId,
+        lowerJson: general.lowerJson,
+        note: general.note
+      })
+      .run()
+  }
 }

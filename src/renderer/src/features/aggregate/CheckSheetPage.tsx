@@ -11,6 +11,7 @@ import {
 } from "../../../../core/aggregate/checkSheet";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -26,6 +27,7 @@ export default function CheckSheetPage({
   project,
   onBack,
 }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-check-sheet-v1");
   const [view, setView] = useState<AggregateView>({
     run: null,
     items: [],
@@ -113,7 +115,7 @@ export default function CheckSheetPage({
         </span>
       </div>
 
-      <table className="parts check-sheet">
+      <table className="parts check-sheet" ref={tableRef}>
         <thead>
           <tr>
             <th colSpan={2}>部位</th>

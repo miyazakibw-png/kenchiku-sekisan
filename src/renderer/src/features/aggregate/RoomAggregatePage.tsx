@@ -5,6 +5,7 @@ import { displayQuantity } from "../../../../core/room/calcSheet";
 import { detailsToEntries } from "./aggregateRows";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -20,6 +21,7 @@ export default function RoomAggregatePage({
   project,
   onBack,
 }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-room-aggregate-v1");
   const [view, setView] = useState<AggregateView>({
     run: null,
     items: [],
@@ -81,7 +83,7 @@ export default function RoomAggregatePage({
       </div>
 
       <div className="aggregate-body">
-        <table className="parts aggregate">
+        <table className="parts aggregate" ref={tableRef}>
           <thead>
             <tr>
               <th className="no">科目ID</th>

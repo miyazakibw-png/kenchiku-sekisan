@@ -26,6 +26,7 @@ import {
 } from "./fittingRows";
 import { buildPastePreview, copyRangeAsTsv } from "../grid/gridClipboard";
 import "./FittingsPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -49,6 +50,7 @@ const EMPTY_SERIES: SeriesForm = {
 };
 
 export default function FittingsPage({ project, onBack }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-fittings-v1");
   const [rows, setRows] = useState<FittingDraft[]>([]);
   const [selected, setSelected] = useState(0);
   const [message, setMessage] = useState("");
@@ -384,7 +386,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
         </div>
       )}
 
-      <table className="grid fittings">
+      <table className="grid fittings" ref={tableRef}>
         <thead>
           <tr>
             <th className="no">No</th>

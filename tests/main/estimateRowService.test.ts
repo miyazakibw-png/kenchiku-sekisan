@@ -11,6 +11,7 @@ import {
   saveEstimateRows
 } from '../../src/main/services/estimateRowService'
 import { listMasterOptions } from '../../src/main/services/detailService'
+import { getRoomSheet, saveRoomSheet } from '../../src/main/services/roomSheetService'
 import type { EstimateRowDraft } from '../../src/shared/types'
 
 function createDb(): AppDatabase {
@@ -87,6 +88,46 @@ describe('部位別入力表', () => {
     const other = createProject(db, '別工事').id
     saveEstimateRows(db, { projectId, rows: [draft({ part3: '風除室' })] })
     expect(listEstimateRows(db, other)).toEqual([])
+  })
+
+  it('行コピーの貼付は計算書の中身も複製し、コピー元とは切り離す', () => {
+    const [source] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: '風除室', ceilingHeight: 2.5 })]
+    })
+    const sheet = getRoomSheet(db, source.id)
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: sheet.shapeJson,
+      fittingsJson: sheet.fittingsJson,
+      ceilingJson: sheet.ceilingJson,
+      lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
+      ceilingHeight: 2.5,
+      note: 'もとの計算書'
+    })
+
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        { ...source },
+        draft({ part3: '風除室（コピー）', ceilingHeight: 2.5, copySourceId: source.id })
+      ]
+    })
+    const copiedSheet = getRoomSheet(db, saved[1].id)
+    expect(copiedSheet.lowerJson).toBe('[{"id":"set-1","detail":"床仕上"}]')
+    expect(copiedSheet.note).toBe('もとの計算書')
+    expect(copiedSheet.id).not.toBe(sheet.id)
+
+    saveRoomSheet(db, {
+      id: copiedSheet.id,
+      shapeJson: copiedSheet.shapeJson,
+      fittingsJson: copiedSheet.fittingsJson,
+      ceilingJson: copiedSheet.ceilingJson,
+      lowerJson: '[]',
+      ceilingHeight: 2.5,
+      note: '直した計算書'
+    })
+    expect(getRoomSheet(db, source.id).note).toBe('もとの計算書')
   })
 
   it('物件コピーで部位別入力表も複製し、コピー元とは切り離す', () => {

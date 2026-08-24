@@ -179,6 +179,11 @@ export default function RoomSheetPage({
   const [zoom, setZoom] = useState(1);
   /** 角の○印を出すか（形が決まったら消して寸法を見やすくできます） */
   const [showCorners, setShowCorners] = useState(true);
+  /** 図形の戻る・進む用（1操作ごとの形を覚えておく） */
+  const [shapePast, setShapePast] = useState<RoomShape[]>([]);
+  const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
+  /** 辺をクリックした位置に角を足すモード */
+  const [addCornerMode, setAddCornerMode] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
@@ -190,6 +195,8 @@ export default function RoomSheetPage({
       const loaded = await window.sekisan.getRoomSheet(row.id as number);
       setSheet(loaded);
       setShape(parseShape(loaded.shapeJson));
+      setShapePast([]);
+      setShapeFuture([]);
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson));
       setLower(parseLower(loaded.lowerJson));
@@ -566,6 +573,39 @@ export default function RoomSheetPage({
     });
   }, [calcResult, lower, quantities]);
 
+  /** 図形を書き換える。戻る・進むのために1つ前の形を覚えておく */
+  const applyShape = (next: RoomShape): void => {
+    setShapePast((past) => [...past.slice(-49), shape]);
+    setShapeFuture([]);
+    setShape(next);
+  };
+
+  const undoShape = (): void => {
+    if (shapePast.length === 0) {
+      setMessage("図形で戻せる操作がありません");
+      return;
+    }
+    setShapeFuture((future) => [shape, ...future]);
+    setShape(shapePast[shapePast.length - 1]);
+    setShapePast(shapePast.slice(0, -1));
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setMessage("図形を1つ前に戻しました");
+  };
+
+  const redoShape = (): void => {
+    if (shapeFuture.length === 0) {
+      setMessage("図形で進める操作がありません");
+      return;
+    }
+    setShapePast((past) => [...past, shape]);
+    setShape(shapeFuture[0]);
+    setShapeFuture(shapeFuture.slice(1));
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setMessage("図形を1つ先へ進めました");
+  };
+
   const startShape = (next: RoomShape): void => {
     if (
       shape.edges.length > 0 &&
@@ -573,7 +613,7 @@ export default function RoomSheetPage({
     ) {
       return;
     }
-    setShape(next);
+    applyShape(next);
     setSelectedEdge(null);
     setSelectedCorner(null);
   };
@@ -603,7 +643,7 @@ export default function RoomSheetPage({
       setMessage(result.error);
       return;
     }
-    setShape(result.shape);
+    applyShape(result.shape);
     setSelectedEdge(null);
     setSelectedCorner(null);
     setMessage("選んだ角をL型に欠き取りました");
@@ -623,10 +663,47 @@ export default function RoomSheetPage({
       setMessage(result.error);
       return;
     }
-    setShape(result.shape);
+    applyShape(result.shape);
     setSelectedEdge(null);
     setMessage(
       `角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
+    );
+  };
+
+  /**
+   * 辺をクリックした位置で辺を分けて角を足す。
+   * 位置はだいたいでよく、あとから寸法欄で直せる。
+   */
+  const splitEdgeAt = (
+    id: string,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    event: React.MouseEvent<SVGGElement>,
+  ): void => {
+    const svg = event.currentTarget.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return;
+    const origin = svg.createSVGPoint();
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    const clicked = origin.matrixTransform(matrix.inverse());
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const span = Math.hypot(dx, dy);
+    if (span < 0.02) {
+      setMessage("この辺は短すぎて分けられません");
+      return;
+    }
+    const ratio =
+      ((clicked.x - start.x) * dx + (clicked.y - start.y) * dy) / (span * span);
+    const first =
+      Math.round(span * Math.min(Math.max(ratio, 0.05), 0.95) * 100) / 100;
+    applyShape(splitEdge(shape, id, first));
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setAddCornerMode(false);
+    setMessage(
+      `辺を ${formatNumber(first, 2)} の位置で分けて角を足しました（寸法欄で直せます）`,
     );
   };
 
@@ -650,7 +727,7 @@ export default function RoomSheetPage({
       setMessage(result.error);
       return;
     }
-    setShape(result.shape);
+    applyShape(result.shape);
     setSelectedEdge(null);
     setSelectedCorner(null);
     setMessage("選んだ辺をコ型に凹ませました");
@@ -731,19 +808,47 @@ export default function RoomSheetPage({
             </label>
             <button
               type="button"
-              disabled={selectedCorner === null}
-              title="図の角（○印）を選んでから押すと、その角を欠き取ります"
+              title="図の角（○印）を選んでから押すと、その角を欠き取ります（何度でも使えます）"
               onClick={addCorner}
             >
               L型を角に追加
             </button>
             <button
               type="button"
-              disabled={selectedEdge === null}
-              title="辺を選んでから押すと、その辺の中央を凹ませます"
+              title="辺を選んでから押すと、その辺の中央を凹ませます（何度でも使えます）"
               onClick={addNotch}
             >
               コ型を辺に追加
+            </button>
+            <button
+              type="button"
+              className={addCornerMode ? "on" : ""}
+              title="押してから図の辺をクリックすると、その位置で辺を分けて角を追加します（位置はだいたいでよく、あとで寸法を直せます）"
+              onClick={() => {
+                const next = !addCornerMode;
+                setAddCornerMode(next);
+                setMessage(
+                  next ? "角を足す位置で図の辺をクリックしてください" : "",
+                );
+              }}
+            >
+              ○ 角を追加
+            </button>
+            <button
+              type="button"
+              disabled={shapePast.length === 0}
+              title="図形の操作を1つ前に戻します"
+              onClick={undoShape}
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              disabled={shapeFuture.length === 0}
+              title="戻した図形の操作を1つ先へ進めます"
+              onClick={redoShape}
+            >
+              ↷ 進む
             </button>
             <span className="corner-move">
               <label title="角を動かす寸法（右がプラス・左がマイナス）">
@@ -867,11 +972,24 @@ export default function RoomSheetPage({
                 return (
                   <g
                     key={line.id}
-                    onClick={() => {
+                    onClick={(event) => {
+                      if (addCornerMode) {
+                        splitEdgeAt(line.id, point, next, event);
+                        return;
+                      }
                       setSelectedEdge(line.id);
                       setSelectedCorner(null);
                     }}
                   >
+                    {/* 線は細いので、当たり判定用の太い線を重ねる */}
+                    <line
+                      x1={point.x}
+                      y1={point.y}
+                      x2={next.x}
+                      y2={next.y}
+                      className="edge-hit"
+                      strokeWidth={cornerRadius * 1.6}
+                    />
                     {bulge > 0 ? (
                       <path
                         d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
@@ -905,17 +1023,28 @@ export default function RoomSheetPage({
               })}
               {showCorners &&
                 solved.points.map((point, index) => (
-                  <circle
+                  <g
                     key={`corner-${solved.edges[index].id}`}
-                    cx={point.x}
-                    cy={point.y}
-                    r={cornerRadius}
-                    className={`corner ${selectedCorner === index ? "selected" : ""}`}
                     onClick={() => {
                       setSelectedCorner(index);
                       setSelectedEdge(null);
+                      setAddCornerMode(false);
                     }}
-                  />
+                  >
+                    {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={cornerRadius * 2.6}
+                      className="corner-hit"
+                    />
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={cornerRadius}
+                      className={`corner ${selectedCorner === index ? "selected" : ""}`}
+                    />
+                  </g>
                 ))}
               {showCeiling &&
                 ceilingLines.map((line) => (
@@ -962,7 +1091,7 @@ export default function RoomSheetPage({
             <button
               type="button"
               onClick={() =>
-                setShape({ edges: [...shape.edges, edge("E", null)] })
+                applyShape({ edges: [...shape.edges, edge("E", null)] })
               }
             >
               ＋ 辺追加
@@ -977,7 +1106,7 @@ export default function RoomSheetPage({
                 );
                 const half =
                   target?.length === null ? 1 : (target?.length ?? 2) / 2;
-                setShape(
+                applyShape(
                   splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
                 );
               }}
@@ -989,7 +1118,7 @@ export default function RoomSheetPage({
               disabled={selectedEdge === null}
               onClick={() =>
                 selectedEdge !== null &&
-                setShape({
+                applyShape({
                   edges: shape.edges.filter((item) => item.id !== selectedEdge),
                 })
               }
@@ -1026,7 +1155,7 @@ export default function RoomSheetPage({
                     <select
                       value={line.direction}
                       onChange={(e) =>
-                        setShape(
+                        applyShape(
                           updateEdge(shape, line.id, {
                             direction: e.target.value as EdgeDirection,
                           }),
@@ -1051,7 +1180,7 @@ export default function RoomSheetPage({
                           key={`${line.id}-dx-${line.dx ?? 0}`}
                           title="斜め辺の横移動（右がプラス）"
                           onBlur={(e) =>
-                            setShape(
+                            applyShape(
                               updateEdge(shape, line.id, {
                                 dx: Number(e.target.value.trim() || 0),
                               }),
@@ -1064,7 +1193,7 @@ export default function RoomSheetPage({
                           key={`${line.id}-dy-${line.dy ?? 0}`}
                           title="斜め辺の縦移動（下がプラス）"
                           onBlur={(e) =>
-                            setShape(
+                            applyShape(
                               updateEdge(shape, line.id, {
                                 dy: Number(e.target.value.trim() || 0),
                               }),
@@ -1091,7 +1220,7 @@ export default function RoomSheetPage({
                         }
                         onBlur={(e) => {
                           const text = e.target.value.trim();
-                          setShape(
+                          applyShape(
                             updateEdge(shape, line.id, {
                               length: text === "" ? null : Number(text),
                             }),
@@ -1113,7 +1242,7 @@ export default function RoomSheetPage({
                         title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
                         onBlur={(e) => {
                           const text = e.target.value.trim();
-                          setShape(
+                          applyShape(
                             updateEdge(shape, line.id, {
                               bulge: text === "" ? null : Number(text),
                             }),
@@ -1128,7 +1257,7 @@ export default function RoomSheetPage({
                     <select
                       value={line.kind}
                       onChange={(e) =>
-                        setShape(
+                        applyShape(
                           updateEdge(shape, line.id, {
                             kind: e.target.value as EdgeKind,
                           }),

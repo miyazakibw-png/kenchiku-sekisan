@@ -9,6 +9,7 @@ import {
   updateRow,
 } from "./subjectRows";
 import "./SubjectMasterPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   /** 工事専用の科目マスターを直すときの工事ID（未指定なら基本マスター） */
@@ -20,6 +21,7 @@ export default function SubjectMasterPage({
   projectId = null,
   onBack,
 }: Props = {}): JSX.Element {
+  const tableRef = useTableResize("table-widths-subject-master-v1");
   const [rows, setRows] = useState<SubjectDraft[]>([]);
   const [selected, setSelected] = useState(0);
   const [toast, setToast] = useState("");
@@ -117,7 +119,7 @@ export default function SubjectMasterPage({
         <span className="status">{toast}</span>
       </div>
 
-      <table className="grid subject-list">
+      <table className="grid subject-list" ref={tableRef}>
         <thead>
           <tr>
             <th className="no">科目ID</th>

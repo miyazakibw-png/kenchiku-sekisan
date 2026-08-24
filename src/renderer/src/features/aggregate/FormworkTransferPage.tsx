@@ -7,6 +7,7 @@ import type {
 } from "@shared/types";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -30,6 +31,8 @@ export default function FormworkTransferPage({
   project,
   onBack,
 }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-formwork-rules-v1");
+  const tableRef1 = useTableResize("table-widths-formwork-groups-v1");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [message, setMessage] = useState("");
@@ -103,7 +106,7 @@ export default function FormworkTransferPage({
       </div>
 
       <h3 className="section">転記先（型枠分類ごと）</h3>
-      <table className="parts check-sheet">
+      <table className="parts check-sheet" ref={tableRef}>
         <thead>
           <tr>
             <th>型枠分類</th>
@@ -215,7 +218,7 @@ export default function FormworkTransferPage({
       </table>
 
       <h3 className="section">転記される行（集計数量×掛け率）</h3>
-      <table className="parts check-sheet">
+      <table className="parts check-sheet" ref={tableRef1}>
         <thead>
           <tr>
             <th>型枠分類</th>

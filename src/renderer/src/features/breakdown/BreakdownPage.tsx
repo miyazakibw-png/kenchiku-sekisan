@@ -16,6 +16,7 @@ import { compareBreakdown, moveRow } from "../../../../core/breakdown/compare";
 import "../estimate/EstimatePartsPage.css";
 import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   project: ProjectSummary;
@@ -67,6 +68,8 @@ function blankRow(): BreakdownRowRecord {
  * 提出の回ごとに版を残し、前回との比較ができる。
  */
 export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
+  const tableRef = useTableResize("table-widths-breakdown-compare-v1");
+  const tableRef1 = useTableResize("table-widths-breakdown-v1");
   const [view, setView] = useState<BreakdownView>({
     version: null,
     rows: [],
@@ -416,7 +419,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               行のずれは左右それぞれ「行挿入」「↑」「↓」で合わせます。違う部分に色が付きます。
             </span>
           </div>
-          <table className="parts compare">
+          <table className="parts compare" ref={tableRef}>
             <thead>
               <tr>
                 <th className="ops">操作</th>
@@ -544,7 +547,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </div>
           </div>
 
-          <table className="parts breakdown">
+          <table className="parts breakdown" ref={tableRef1}>
             <thead>
               <tr>
                 <th className="mark">印</th>

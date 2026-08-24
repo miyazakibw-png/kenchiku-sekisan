@@ -106,6 +106,7 @@ export function moveRow(rows: EstimateRowDraft[], from: number, to: number): Est
 /**
  * 他の行（同物件・他物件）を貼り込む。
  * IDを外して新しい行として複製するので、コピー元とは切り離される。
+ * 元の行IDは copySourceId に残し、保存時に計算書の中身も複製する。
  */
 export function copyRowsInto(
   rows: EstimateRowDraft[],
@@ -113,7 +114,11 @@ export function copyRowsInto(
   copied: EstimateRowDraft[]
 ): EstimateRowDraft[] {
   const at = Math.min(Math.max(index, 0), rows.length)
-  const cloned = copied.map((row) => ({ ...row, id: null }))
+  const cloned = copied.map((row) => ({
+    ...row,
+    id: null,
+    copySourceId: row.id ?? row.copySourceId ?? null
+  }))
   return [...rows.slice(0, at), ...cloned, ...rows.slice(at)]
 }
 

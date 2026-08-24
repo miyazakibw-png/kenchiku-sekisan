@@ -28,10 +28,10 @@ table.aggregate td {
   text-overflow: ellipsis;
 }
 
-/* 見出しは薄いグレー地に黒文字（白文字は見えにくいため） */
+/* 見出しは他の積算画面と同じ濃紺地に白文字 */
 table.aggregate th {
-  background: #e2e8f0;
-  color: #000;
+  background: #1f4e79;
+  color: #fff;
   font-weight: normal;
   position: sticky;
   top: 0;

@@ -13,6 +13,7 @@ import {
 } from "../../src/main/services/roomSheetService";
 import { saveTransferRows } from "../../src/main/services/transferRowService";
 import {
+  collectEstimateRowChecks,
   getAggregate,
   listAggregateRuns,
   runAggregation,
@@ -164,6 +165,21 @@ describe("集計処理", () => {
     expect(view.items[0].rooms).toEqual([
       { roomName: "1階：事務室 × 2", quantity: 25.2 },
     ]);
+  });
+
+  it("部位別入力表のチェック列は行ごとに部位別の名称と数量を返す", () => {
+    addRoom("事務室", 2, 1.05);
+    const rowId = drafts[drafts.length - 1].id;
+
+    const checks = collectEstimateRowChecks(db, projectId, "仕上");
+    expect(checks).toHaveLength(1);
+    expect(checks[0].estimateRowId).toBe(rowId);
+    expect(checks[0].cells).toEqual([
+      { partName: "床", name: "ビニル床シート", quantity: 25.2 },
+    ]);
+
+    // 材種区分が違うときは拾わない
+    expect(collectEstimateRowChecks(db, projectId, "下地")).toEqual([]);
   });
 
   it("同じ明細は部屋をまたいで合算し、根拠は1件ずつ残す", () => {

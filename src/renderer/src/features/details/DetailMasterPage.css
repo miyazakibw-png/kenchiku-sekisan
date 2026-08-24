@@ -181,19 +181,6 @@ body.col-resizing {
   border-bottom-style: dotted;
 }
 
-.grid tr.upper-row input {
-  color: #33415c;
-}
-
-.part-number {
-  background: repeating-linear-gradient(
-    135deg,
-    transparent,
-    transparent 4px,
-    #eef0f4 4px,
-    #eef0f4 8px
-  );
-}
 
 .grid td input.num {
   text-align: right;
@@ -240,8 +227,6 @@ body.col-resizing {
   display: block;
   padding: 2px 4px;
   min-height: 20px;
-  color: #33415c;
-  background: #f2f4f8;
 }
 
 .grid td.in-range {

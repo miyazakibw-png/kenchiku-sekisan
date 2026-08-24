@@ -14,6 +14,7 @@ import {
   type GridColumn,
 } from "../grid/gridClipboard";
 import "./BasicMasterPage.css";
+import { useTableResize } from "../../hooks/useTableResize";
 
 const TABS: BasicMasterKind[] = [
   "pickupParts",
@@ -41,6 +42,7 @@ export default function BasicMasterPage({
   projectId = null,
   onBack,
 }: Props = {}): JSX.Element {
+  const tableRef = useTableResize("table-widths-basic-master-v1");
   const [masters, setMasters] = useState<BasicMasters>(EMPTY);
   const [kind, setKind] = useState<BasicMasterKind>("pickupParts");
   const [rows, setRows] = useState<BasicMasterRow[]>([]);
@@ -257,7 +259,7 @@ export default function BasicMasterPage({
         </ul>
       )}
 
-      <table className="basic-master-list">
+      <table className="basic-master-list" ref={tableRef}>
         <thead>
           <tr>
             <th className="no">番号</th>

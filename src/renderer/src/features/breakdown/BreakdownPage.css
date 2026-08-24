@@ -57,6 +57,12 @@
   vertical-align: top;
 }
 
+.breakdown-page table.breakdown th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+}
+
 .breakdown-page table.breakdown th.mark,
 .breakdown-page table.breakdown td.mark {
   width: 32px;

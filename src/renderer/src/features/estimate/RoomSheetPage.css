@@ -71,6 +71,8 @@
   padding: 8px;
   /* 上段は画面の1/3まで。入りきらない分は各欄を別々にスクロールする */
   max-height: 33vh;
+  /* 画面幅が狭いときは横にスクロールして寸法入力・記号・建具を必ず見られるようにする */
+  overflow-x: auto;
   min-height: 0;
 }
 
@@ -230,6 +232,18 @@
 .room-sheet-page .edge.selected {
   stroke: #2563eb;
   stroke-width: 5;
+}
+
+/* 線・○印は細いので、見えない当たり判定を重ねて選びやすくする */
+.room-sheet-page .edge-hit {
+  stroke: transparent;
+  fill: none;
+  cursor: pointer;
+}
+
+.room-sheet-page .corner-hit {
+  fill: transparent;
+  cursor: pointer;
 }
 
 /* 角（L型を足す場所） */
