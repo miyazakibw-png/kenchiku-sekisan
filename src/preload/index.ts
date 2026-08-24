@@ -125,6 +125,11 @@ const api = {
     request: SaveEstimateRowsRequest,
   ): Promise<EstimateRow[]> =>
     ipcRenderer.invoke(IPC.estimateRowsSave, request),
+  /** 行ごとに、中身の入っている計算書の種類（種類を変える前の確認に使う） */
+  listFilledCalcSheets: (
+    projectId: number,
+  ): Promise<Record<number, string[]>> =>
+    ipcRenderer.invoke(IPC.estimateRowsFilledSheets, projectId),
   /** 部屋計算書の上段。まだ無ければ部位別入力表の行から作られる */
   getRoomSheet: (estimateRowId: number): Promise<RoomSheet> =>
     ipcRenderer.invoke(IPC.roomSheetGet, estimateRowId),

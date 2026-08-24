@@ -81,3 +81,11 @@
   border: 1px solid #b9cdf0;
   word-break: break-all;
 }
+
+.settings-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #1f3864;
+}

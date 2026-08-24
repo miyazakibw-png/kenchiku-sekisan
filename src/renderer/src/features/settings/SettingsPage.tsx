@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BackupInfo } from '@shared/types'
+import { isAutoKanaOn, setAutoKana } from '../../hooks/useHalfWidthFields'
 import './SettingsPage.css'
 
 function sizeText(size: number): string {
@@ -13,6 +14,7 @@ export default function SettingsPage(): JSX.Element {
   const [info, setInfo] = useState<BackupInfo | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [autoKana, setAutoKanaState] = useState(isAutoKanaOn())
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo)
@@ -84,6 +86,24 @@ export default function SettingsPage(): JSX.Element {
           復元前のデータは自動で退避するので、間違えても元に戻せます。
         </p>
         {message !== '' && <p className="settings-message">{message}</p>}
+      </section>
+      <section className="settings-card">
+        <h3>文字の入力</h3>
+        <p className="settings-note">
+          部位名・名称・摘要・備考・積算用表示の欄は、日本語入力が切れていても小文字のローマ字をひらがなに直します（大文字と数字はそのまま）。
+          ID・番号・計算式・記号・単位の欄は、日本語入力のまま打っても半角の英数字に直します。
+        </p>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={autoKana}
+            onChange={(e) => {
+              setAutoKana(e.target.checked)
+              setAutoKanaState(e.target.checked)
+            }}
+          />
+          欄に合わせて文字を自動で直す（ひらがな／半角）
+        </label>
       </section>
     </div>
   )

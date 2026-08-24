@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 import { needsHalfWidth, toHalfWidth } from "../../../core/text/halfWidth";
+import { hasKana, kanaToRomaji, romajiToKana } from "../../../core/text/romaji";
 
-/** 日本語で入れる欄（部位名・名称・摘要・備考など）は lang="ja" を付けて除外する */
-function isJapaneseField(input: HTMLInputElement): boolean {
+/** 日本語で入れる欄（部位名・名称・摘要・備考など）は lang="ja" を付けて分ける */
+export function isJapaneseField(input: HTMLInputElement): boolean {
   return input.lang === "ja" || input.closest('[lang="ja"]') !== null;
 }
 
 /** React の管理下にある input の値を書き換える（onChange を通す） */
-function setValue(input: HTMLInputElement, value: string): void {
+export function setValue(input: HTMLInputElement, value: string): void {
   const descriptor = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
     "value",
@@ -16,22 +17,55 @@ function setValue(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+const KANA_SETTING = "sekisan.autoKana";
+
+/** 「日本語入力の自動切替」を使うか（設定画面で切り替える。初期は使う） */
+export function isAutoKanaOn(): boolean {
+  return window.localStorage.getItem(KANA_SETTING) !== "off";
+}
+
+export function setAutoKana(on: boolean): void {
+  window.localStorage.setItem(KANA_SETTING, on ? "on" : "off");
+}
+
+function editable(input: EventTarget | null): input is HTMLInputElement {
+  return (
+    input instanceof HTMLInputElement &&
+    (input.type === "text" || input.type === "search")
+  );
+}
+
 /**
- * ID・番号・計算式など日本語以外の欄は、日本語入力のまま打っても半角英数へ直す。
+ * 欄ごとに入力の文字を自動で合わせる。
+ * ・ID・番号・計算式など半角の欄：全角の英数字を半角へ、かなで打ったらローマ字（半角）へ
+ * ・部位名・名称・摘要・備考など日本語の欄：小文字のローマ字をひらがなへ
  * 変換中（IMEで文字を作っている間）は触らず、確定してから直す。
  */
 export function useHalfWidthFields(): void {
   useEffect(() => {
     const fix = (event: Event): void => {
       const input = event.target;
-      if (!(input instanceof HTMLInputElement)) return;
-      if (input.type !== "text" && input.type !== "search") return;
-      if (isJapaneseField(input)) return;
+      if (!editable(input)) return;
       if (event instanceof InputEvent && event.isComposing) return;
-      if (!needsHalfWidth(input.value)) return;
-      const at = input.selectionStart;
-      setValue(input, toHalfWidth(input.value));
-      if (at !== null) input.setSelectionRange(at, at);
+      const at = input.selectionStart ?? input.value.length;
+
+      if (isJapaneseField(input)) {
+        if (!isAutoKanaOn()) return;
+        const head = input.value.slice(0, at);
+        const converted = romajiToKana(head);
+        if (converted === head) return;
+        setValue(input, converted + input.value.slice(at));
+        input.setSelectionRange(converted.length, converted.length);
+        return;
+      }
+
+      let value = input.value;
+      if (isAutoKanaOn() && hasKana(value)) value = kanaToRomaji(value);
+      if (needsHalfWidth(value)) value = toHalfWidth(value);
+      if (value === input.value) return;
+      setValue(input, value);
+      const caret = Math.min(at, value.length);
+      input.setSelectionRange(caret, caret);
     };
     document.addEventListener("input", fix);
     document.addEventListener("compositionend", fix);

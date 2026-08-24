@@ -10,6 +10,7 @@ import {
   nextBSymbol,
   padLines,
   quantityByPart,
+  removeSet,
   splitSetAt,
   syncLines,
   syncPartNames,
@@ -184,6 +185,35 @@ describe("下段セット明細計算表", () => {
     const trimmed = trimEmptySets([comment, set]);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].id).toBe(comment.id);
+  });
+
+  it("コメント行のすぐ下のセットをまるごと消してもコメント行は残る", () => {
+    const comment = commentSet("外部", "#fef9c3");
+    const set = calcSet(1);
+    set.details[0] = calcDetail({ name: "木巾木" });
+    const next = removeSet([comment, set], set.id);
+    expect(next.map((item) => item.id)).toEqual([comment.id]);
+  });
+
+  it("見出し付きのセットを消しても見出しはコメント行として残る", () => {
+    const set = calcSet(1);
+    set.banner = { text: "1階", color: "#dbeafe" };
+    const next = removeSet([set], set.id);
+    expect(next).toHaveLength(1);
+    expect(next[0].banner?.text).toBe("1階");
+    expect(next[0].details).toHaveLength(0);
+  });
+
+  it("見出し付きのセットを上につなげても見出しはコメント行として残る", () => {
+    const first = calcSet(1);
+    first.partName = "床";
+    const second = calcSet(1);
+    second.partName = "巾木";
+    second.banner = { text: "外部", color: "#fef9c3" };
+    const merged = mergeWithPreviousSet([first, second], second.id);
+    expect(merged).toHaveLength(2);
+    expect(merged[1].banner?.text).toBe("外部");
+    expect(merged[1].details).toHaveLength(0);
   });
 
   it("部位を消したときはコメント行を飛ばして上のセットにつなぐ", () => {

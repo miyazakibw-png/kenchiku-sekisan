@@ -79,6 +79,7 @@ import {
 } from "./services/fittingService";
 import {
   listEstimateRows,
+  listFilledCalcSheets,
   saveEstimateRows,
 } from "./services/estimateRowService";
 import {
@@ -277,6 +278,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.estimateRowsList, (_event, projectId: number) =>
     listEstimateRows(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.estimateRowsFilledSheets, (_event, projectId: number) =>
+    listFilledCalcSheets(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.estimateRowsSave,

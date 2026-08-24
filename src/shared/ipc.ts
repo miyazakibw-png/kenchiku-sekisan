@@ -19,6 +19,7 @@ export const IPC = {
   assemblyPromote: "assembly:promote",
   estimateRowsList: "estimateRows:list",
   estimateRowsSave: "estimateRows:save",
+  estimateRowsFilledSheets: "estimateRows:filledSheets",
   roomSheetGet: "roomSheet:get",
   roomSheetSave: "roomSheet:save",
   roomFittingRegister: "roomSheet:fittingRegister",

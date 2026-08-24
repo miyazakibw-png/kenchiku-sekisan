@@ -6,7 +6,7 @@ import {
   projectGeneralSheets,
   projectRoomSheets
 } from '../db/schema'
-import type { EstimateRow, SaveEstimateRowsRequest } from '../../shared/types'
+import type { CalcType, EstimateRow, SaveEstimateRowsRequest } from '../../shared/types'
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === 'subtotal' ? 'subtotal' : 'room' }
@@ -77,6 +77,70 @@ export function saveEstimateRows(
     })
   })
   return listEstimateRows(db, projectId)
+}
+
+/** 空の計算書（初期値だけ）かどうかを見る。配列は要素数、部屋形状は辺の数で判断する */
+function hasContent(...jsons: string[]): boolean {
+  return jsons.some((json) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(json)
+    } catch {
+      return false
+    }
+    if (Array.isArray(parsed)) return parsed.length > 0
+    if (parsed !== null && typeof parsed === 'object') {
+      const edges = (parsed as { edges?: unknown }).edges
+      if (Array.isArray(edges)) return edges.length > 0
+      return Object.keys(parsed).length > 0
+    }
+    return false
+  })
+}
+
+/**
+ * 行ごとに、中身の入っている計算書の種類を返す。
+ * 種類を変えると集計から外れるので、画面で確認メッセージを出すために使う。
+ */
+export function listFilledCalcSheets(
+  db: AppDatabase,
+  projectId: number
+): Record<number, CalcType[]> {
+  const filled: Record<number, CalcType[]> = {}
+  const add = (rowId: number, calcType: CalcType): void => {
+    const list = filled[rowId] ?? []
+    if (!list.includes(calcType)) filled[rowId] = [...list, calcType]
+  }
+
+  db.select()
+    .from(projectRoomSheets)
+    .where(eq(projectRoomSheets.projectId, projectId))
+    .all()
+    .forEach((sheet) => {
+      if (hasContent(sheet.shapeJson, sheet.lowerJson, sheet.ceilingJson, sheet.fittingsJson)) {
+        add(sheet.estimateRowId, 'room')
+      }
+    })
+
+  db.select()
+    .from(projectFrameSheets)
+    .where(eq(projectFrameSheets.projectId, projectId))
+    .all()
+    .forEach((sheet) => {
+      if (hasContent(sheet.layoutJson, sheet.linesJson, sheet.lowerJson, sheet.fittingsJson)) {
+        add(sheet.estimateRowId, 'frame')
+      }
+    })
+
+  db.select()
+    .from(projectGeneralSheets)
+    .where(eq(projectGeneralSheets.projectId, projectId))
+    .all()
+    .forEach((sheet) => {
+      if (hasContent(sheet.lowerJson)) add(sheet.estimateRowId, 'general')
+    })
+
+  return filled
 }
 
 /**

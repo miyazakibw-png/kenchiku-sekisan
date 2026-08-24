@@ -126,6 +126,22 @@ export function calcSet(detailCount = 1): CalcSet {
   };
 }
 
+/**
+ * 保存済みの計算表を読み込むときに、足りない項目を埋める。
+ * 古い工事のデータには無い項目があり、そのままだと集計で落ちるため。
+ */
+export function normalizeSets(sets: CalcSet[]): CalcSet[] {
+  return sets.map((set) => ({
+    ...set,
+    id: set.id ?? newId("s"),
+    partNumber: set.partNumber ?? null,
+    partName: set.partName ?? "",
+    banner: set.banner ?? null,
+    details: (set.details ?? []).map((detail) => calcDetail(detail)),
+    lines: (set.lines ?? []).map((line) => calcLine(line)),
+  }));
+}
+
 /** 計算式行に何か入っているか（詰めてよい空行かの判定） */
 function isEmptyLine(line: CalcLine): boolean {
   return (
@@ -245,6 +261,23 @@ export function splitSetAt(
   return next;
 }
 
+/**
+ * セットを1つ消す。見出し（コメント行）が付いていたら、コメント行だけ残す。
+ * コメント行は明細とは別のものなので、明細を消しても消えないようにする。
+ */
+export function removeSet(sets: CalcSet[], setId: string): CalcSet[] {
+  const next: CalcSet[] = [];
+  sets.forEach((set) => {
+    if (set.id !== setId) {
+      next.push(set);
+      return;
+    }
+    if (isCommentSet(set)) return;
+    if (set.banner != null) next.push(commentSet(set.banner.text, set.banner.color));
+  });
+  return next;
+}
+
 /** 部位を消したとき、そのセットを一つ上のセットにつなげる（記号は先頭のものを残す） */
 export function mergeWithPreviousSet(
   sets: CalcSet[],
@@ -264,7 +297,14 @@ export function mergeWithPreviousSet(
     lines: [...previous.lines, ...target.lines],
   };
   const next = [...sets];
-  next.splice(at, 1);
+  // つなげたセットに見出しが付いていたら、コメント行として残す
+  next.splice(
+    at,
+    1,
+    ...(target.banner != null
+      ? [commentSet(target.banner.text, target.banner.color)]
+      : []),
+  );
   next[previousAt] = merged;
   return next;
 }

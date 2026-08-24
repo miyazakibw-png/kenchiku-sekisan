@@ -39,6 +39,7 @@ import { getDeductionLimit } from "./roomSheetService";
 import {
   displayedValue,
   evaluateCalcSheet,
+  normalizeSets,
   type CalcSet,
 } from "../../core/room/calcSheet";
 import {
@@ -288,7 +289,7 @@ export function collectEntries(
     if (row.calcType === "general") {
       const sheet = generalSheets.get(row.id);
       if (!sheet) return;
-      const sets = parseJson<CalcSet[]>(sheet.lowerJson, []);
+      const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
       const variables = calcVariables([], fittings);
       entries.push(
         ...entriesFromCalcSheet(
@@ -303,7 +304,7 @@ export function collectEntries(
     if (row.calcType === "frame") {
       const sheet = frameSheets.get(row.id);
       if (!sheet) return;
-      const sets = parseJson<CalcSet[]>(sheet.lowerJson, []);
+      const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
       const lines = buildFrameLines({
         placements: parseJson<FramePlacement[]>(sheet.layoutJson, []),
         shapes,
@@ -354,7 +355,7 @@ export function collectEntries(
 
     const sheet = roomSheets.get(row.id);
     if (!sheet) return;
-    const sets = parseJson<CalcSet[]>(sheet.lowerJson, []);
+    const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
     const solved = shapes.get(row.id) ?? solveShape({ edges: [] });
     const sheetFittings: RoomFitting[] = parseJson<RoomFittingInput[]>(
       sheet.fittingsJson,
@@ -729,7 +730,47 @@ export function listAggregateRuns(
     .all();
 }
 
-/** 集計結果を読む（回を指定しなければ最新） */
+/** 集計結果と今の計算書の中身が同じかを見るための並び（明細と数量） */
+function itemsSignature(
+  items: readonly {
+    masterKey: string;
+    quantity: number;
+    rooms: readonly { roomName: string; quantity: number }[];
+  }[],
+): string {
+  return items
+    .map(
+      (item) =>
+        `${item.masterKey}\t${item.quantity}\t${item.rooms
+          .map((room) => `${room.roomName}=${room.quantity}`)
+          .join(",")}`,
+    )
+    .join("\n");
+}
+
+/** 保存してある集計結果が、今の計算書・転記入力表と食い違っているか */
+function isStale(db: AppDatabase, projectId: number, runId: number): boolean {
+  const skipPart2 = new Set(
+    listProjectSubjects(db, projectId)
+      .filter((subject) => subject.skipPart2 === 1)
+      .map((subject) => subject.id),
+  );
+  const fresh = aggregateItems(collectEntries(db, projectId), skipPart2);
+  const saved = db
+    .select()
+    .from(projectAggregateItems)
+    .where(eq(projectAggregateItems.runId, runId))
+    .orderBy(asc(projectAggregateItems.displayOrder))
+    .all()
+    .map(toItem);
+  return itemsSignature(fresh) !== itemsSignature(saved);
+}
+
+/**
+ * 集計結果を読む（回を指定しなければ最新）。
+ * 計算書を直したあとで集計をかけ忘れていると古い数量が出てしまうので、
+ * 最新の回が今の計算書と食い違っていれば自動でかけ直す。
+ */
 export function getAggregate(
   db: AppDatabase,
   projectId: number,
@@ -738,6 +779,8 @@ export function getAggregate(
   const runs = listAggregateRuns(db, projectId);
   const run = runId ? runs.find((item) => item.id === runId) : runs[0];
   if (!run) return { run: null, items: [], details: [] };
+  if (runId === undefined && isStale(db, projectId, run.id))
+    return runAggregation(db, projectId);
 
   const items = db
     .select()

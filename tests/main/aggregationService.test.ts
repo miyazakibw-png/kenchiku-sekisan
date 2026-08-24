@@ -234,6 +234,25 @@ describe("集計処理", () => {
     expect(second.items[0].quantity).toBe(24);
   });
 
+  it("計算書を直したあとは、集計書を開いたときに自動でかけ直す", () => {
+    addRoom("事務室", 1, 1);
+    const first = runAggregation(db, projectId);
+    expect(first.items[0].quantity).toBe(12);
+
+    // 集計をかけずに計算書だけ足した状態
+    addRoom("会議室", 1, 1);
+
+    const view = getAggregate(db, projectId);
+    expect(view.run?.id).not.toBe(first.run?.id);
+    expect(view.items[0].quantity).toBe(24);
+    // 変わっていなければ版は増やさない
+    expect(getAggregate(db, projectId).run?.id).toBe(view.run?.id);
+    // 過去の回はそのまま読める
+    expect(getAggregate(db, projectId, first.run?.id).items[0].quantity).toBe(
+      12,
+    );
+  });
+
   it("集計書で直した内容を計算書へ書き戻し、集計し直す", () => {
     addRoom("事務室", 1, 1);
     const before = runAggregation(db, projectId);

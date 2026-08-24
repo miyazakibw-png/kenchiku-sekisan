@@ -87,8 +87,14 @@ export default function EstimatePartsPage({
     [checks],
   );
 
+  /** 行ごとに中身の入っている計算書の種類（種類を変える前の確認に使う） */
+  const [filledSheets, setFilledSheets] = useState<Record<number, string[]>>(
+    {},
+  );
+
   const reload = useCallback(async () => {
     setRows(toDrafts(await window.sekisan.listEstimateRows(project.id)));
+    setFilledSheets(await window.sekisan.listFilledCalcSheets(project.id));
   }, [project.id]);
 
   useEffect(() => {
@@ -621,11 +627,20 @@ export default function EstimatePartsPage({
                   ) : (
                     <select
                       value={row.calcType}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const filled =
+                          row.id === null ? [] : (filledSheets[row.id] ?? []);
+                        if (
+                          filled.includes(row.calcType) &&
+                          !window.confirm(
+                            "入力済みの計算書があります。種類を変えると集計に入らなくなります（中身は残ります）。変えますか？",
+                          )
+                        )
+                          return;
                         editRows(
                           updateRow(rows, index, { calcType: e.target.value }),
-                        )
-                      }
+                        );
+                      }}
                     >
                       {options.calcSheets.map((sheet) => (
                         <option key={sheet.key} value={sheet.key}>

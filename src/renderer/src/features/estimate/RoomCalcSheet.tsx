@@ -18,6 +18,7 @@ import {
   isCommentSet,
   mergeWithPreviousSet,
   padLines,
+  removeSet,
   setRowCount,
   splitSetAt,
   syncLines,
@@ -674,18 +675,18 @@ export default function RoomCalcSheet({
         onMessage(`明細番号 ${value} の明細が見つかりません`);
         return;
       }
-      // マスター側が空欄の項目は、先に入れてある部位・区分・単位を消さない
+      // 先に入れてある部位は書き換えない（空欄のときだけマスターの部位を入れる）
+      const keepPart = row.partNumber !== null || row.partName.trim() !== "";
       updateDetail(setId, index, {
         sourceDetailId: found.id,
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
         materialCategory: found.materialCategory || row.materialCategory,
-        partNumber:
-          found.partName.trim() === ""
-            ? row.partNumber
-            : (pickupParts.find((part) => part.name === found.partName)?.id ??
-              null),
-        partName: found.partName || row.partName,
+        partNumber: keepPart
+          ? row.partNumber
+          : (pickupParts.find((part) => part.name === found.partName)?.id ??
+            null),
+        partName: keepPart ? row.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
         descriptionLower: found.descriptionLower,
@@ -1407,7 +1408,7 @@ export default function RoomCalcSheet({
                         title="このコメント行を消します"
                         onClick={() =>
                           isCommentSet(set)
-                            ? commit(sets.filter((item) => item.id !== set.id))
+                            ? commit(removeSet(sets, set.id))
                             : updateSet(set.id, { banner: null })
                         }
                       >
@@ -1860,10 +1861,8 @@ export default function RoomCalcSheet({
                         {rowIndex === 0 && (
                           <button
                             type="button"
-                            title="このセット明細をまるごと削除します"
-                            onClick={() =>
-                              commit(sets.filter((each) => each.id !== set.id))
-                            }
+                            title="このセット明細をまるごと削除します（コメント行は残ります）"
+                            onClick={() => commit(removeSet(sets, set.id))}
                           >
                             🗑
                           </button>
