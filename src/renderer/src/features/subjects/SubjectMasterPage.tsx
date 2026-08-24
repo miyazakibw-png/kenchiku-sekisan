@@ -172,6 +172,7 @@ export default function SubjectMasterPage({
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={row.spare1}
                   onChange={(e) =>
                     setRows(updateRow(rows, index, { spare1: e.target.value }))
@@ -180,6 +181,7 @@ export default function SubjectMasterPage({
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={row.spare2}
                   onChange={(e) =>
                     setRows(updateRow(rows, index, { spare2: e.target.value }))

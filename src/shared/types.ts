@@ -565,6 +565,28 @@ export interface AggregateView {
   details: AggregateDetail[];
 }
 
+/** 集計書兼工事マスターで直した1明細（元の計算書と工事の明細マスターへ書き戻す） */
+export interface AggregateItemEdit {
+  masterKey: string;
+  subjectId: number | null;
+  materialCategory: string;
+  partNumber: number | null;
+  partName: string;
+  detailNumber: number | null;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+  remarksUpper: string;
+  remarksLower: string;
+}
+
+export interface SaveAggregateEditsRequest {
+  projectId: number;
+  runId: number;
+  edits: AggregateItemEdit[];
+}
+
 /** 型枠転記（集計した型枠分類別の数量→転記入力表の最終行へ追記） */
 export interface FormworkTransferView {
   rules: FormworkTransferRule[];

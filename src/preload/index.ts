@@ -39,6 +39,7 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  SaveAggregateEditsRequest,
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
@@ -166,6 +167,11 @@ const api = {
     ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
   listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>
     ipcRenderer.invoke(IPC.aggregateRuns, projectId),
+  /** 集計書兼工事マスターで直した内容を計算書・明細マスターへ書き戻して集計し直す */
+  saveAggregateEdits: (
+    request: SaveAggregateEditsRequest,
+  ): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateSaveEdits, request),
   /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
   getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferGet, projectId),

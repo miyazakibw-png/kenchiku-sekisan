@@ -135,3 +135,24 @@ table.aggregate tbody.row.selected td {
   font-size: 11px;
   color: #6b7280;
 }
+
+/* 集計書の欄はそのまま直せる（保存すると計算書・明細マスターへ書き戻す） */
+table.aggregate td input,
+table.aggregate td select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0;
+}
+
+table.aggregate td input.number {
+  text-align: right;
+}
+
+table.aggregate td input:focus,
+table.aggregate td select:focus {
+  background: #fff;
+  outline: 1px solid #1f4e79;
+}

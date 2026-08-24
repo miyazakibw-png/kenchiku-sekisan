@@ -5,9 +5,10 @@
  * 集計をかけ直しても過去の回は消さず、実行ごとに版を残す。
  */
 
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
+  mDetails,
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
@@ -58,8 +59,10 @@ import { computeFitting } from "../../core/fittings/fitting";
 import type {
   AggregateDetail,
   AggregateItem,
+  AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  SaveAggregateEditsRequest,
 } from "../../shared/types";
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -440,6 +443,165 @@ function transferEntries(
         sourceDetailId: row.sourceDetailId,
       };
     });
+}
+
+/** 計算書の下段（セット明細計算表）の1明細を、集計書で直した内容に書き換える */
+function applyEditToSheet(
+  lowerJson: string,
+  traceIds: readonly string[],
+  edit: AggregateItemEdit,
+): string | null {
+  const sets = parseJson<CalcSet[]>(lowerJson, []);
+  let changed = false;
+  traceIds.forEach((traceId) => {
+    const [, setId, detailId] = traceId.split(":");
+    const set = sets.find((current) => current.id === setId);
+    const detail = set?.details.find((current) => current.id === detailId);
+    if (!set || !detail) return;
+    changed = true;
+    set.partNumber = edit.partNumber;
+    detail.subjectId = edit.subjectId;
+    detail.materialCategory = edit.materialCategory;
+    detail.partNumber = edit.partNumber;
+    detail.partName = edit.partName;
+    detail.detailNumber = edit.detailNumber;
+    detail.name = edit.name;
+    detail.descriptionUpper = edit.descriptionUpper;
+    detail.descriptionLower = edit.descriptionLower;
+    detail.unit = edit.unit;
+    detail.remarksUpper = edit.remarksUpper;
+    detail.remarksLower = edit.remarksLower;
+  });
+  return changed ? JSON.stringify(sets) : null;
+}
+
+/**
+ * 集計書兼工事マスターで直した内容を保存する。
+ * 元の計算書（部屋別・軸組・汎用）と転記入力表を直し、
+ * 呼び出し元が工事の明細マスターなら明細マスターへも書き戻す（基本マスターは変えない）。
+ * 保存したあと集計をかけ直した結果を返す。
+ */
+export function saveAggregateEdits(
+  db: AppDatabase,
+  request: SaveAggregateEditsRequest,
+): AggregateView {
+  const { projectId, runId, edits } = request;
+  const details = db
+    .select()
+    .from(projectAggregateDetails)
+    .where(eq(projectAggregateDetails.runId, runId))
+    .all();
+
+  db.transaction((tx) => {
+    edits.forEach((edit) => {
+      const targets = details.filter(
+        (detail) => detail.masterKey === edit.masterKey,
+      );
+      if (targets.length === 0) return;
+
+      // 転記入力表の行
+      targets.forEach((target) => {
+        if (target.transferRowId === null) return;
+        tx.update(projectTransferRows)
+          .set({
+            subjectId: edit.subjectId,
+            materialCategory: edit.materialCategory,
+            partId: edit.partNumber,
+            partName: edit.partName,
+            detailNumber: edit.detailNumber,
+            name: edit.name,
+            descriptionUpper: edit.descriptionUpper,
+            descriptionLower: edit.descriptionLower,
+            unit: edit.unit,
+            remarks: edit.remarksUpper,
+          })
+          .where(eq(projectTransferRows.id, target.transferRowId))
+          .run();
+      });
+
+      // 計算書（部屋別・軸組・汎用）の下段
+      const sheetTargets = new Map<string, string[]>();
+      targets.forEach((target) => {
+        if (target.estimateRowId === null) return;
+        const key = `${target.sourceKind}:${target.estimateRowId}`;
+        const list = sheetTargets.get(key) ?? [];
+        list.push(target.traceId);
+        sheetTargets.set(key, list);
+      });
+      sheetTargets.forEach((traceIds, key) => {
+        const [sourceKind, rowId] = key.split(":");
+        const estimateRowId = Number(rowId);
+        const table =
+          sourceKind === "frame"
+            ? projectFrameSheets
+            : sourceKind === "general"
+              ? projectGeneralSheets
+              : projectRoomSheets;
+        const sheet = tx
+          .select()
+          .from(table)
+          .where(eq(table.estimateRowId, estimateRowId))
+          .get();
+        if (!sheet) return;
+        const lowerJson = applyEditToSheet(sheet.lowerJson, traceIds, edit);
+        if (lowerJson === null) return;
+        tx.update(table)
+          .set({ lowerJson, updatedAt: new Date().toISOString() })
+          .where(eq(table.id, sheet.id))
+          .run();
+      });
+
+      // 工事の明細マスター（基本マスターは変えない）
+      const sourceIds = [
+        ...new Set(
+          targets
+            .map((target) => target.sourceDetailId)
+            .filter((id): id is number => id !== null),
+        ),
+      ];
+      sourceIds.forEach((sourceId) => {
+        const source = tx
+          .select()
+          .from(mDetails)
+          .where(eq(mDetails.id, sourceId))
+          .get();
+        if (!source) return;
+        const target =
+          source.scope === "project" && source.projectId === projectId
+            ? source
+            : tx
+                .select()
+                .from(mDetails)
+                .where(
+                  and(
+                    eq(mDetails.scope, "project"),
+                    eq(mDetails.projectId, projectId),
+                    eq(mDetails.sourceDetailId, sourceId),
+                  ),
+                )
+                .get();
+        if (!target) return;
+        tx.update(mDetails)
+          .set({
+            subjectId: edit.subjectId ?? target.subjectId,
+            materialCategory: edit.materialCategory,
+            partName: edit.partName,
+            detailNumber: edit.detailNumber,
+            name: edit.name,
+            descriptionUpper: edit.descriptionUpper,
+            descriptionLower: edit.descriptionLower,
+            unit: edit.unit,
+            remarksUpper: edit.remarksUpper,
+            remarksLower: edit.remarksLower,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(mDetails.id, target.id))
+          .run();
+      });
+    });
+  });
+
+  return runAggregation(db, projectId);
 }
 
 function toItem(row: typeof projectAggregateItems.$inferSelect): AggregateItem {

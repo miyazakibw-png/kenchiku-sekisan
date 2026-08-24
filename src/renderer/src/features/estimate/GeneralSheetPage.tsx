@@ -127,6 +127,7 @@ export default function GeneralSheetPage({
         <label className="grow">
           備考
           <input
+            lang="ja"
             key={`note-${sheet?.id ?? "new"}`}
             defaultValue={note}
             onBlur={(e) => setNote(e.target.value)}

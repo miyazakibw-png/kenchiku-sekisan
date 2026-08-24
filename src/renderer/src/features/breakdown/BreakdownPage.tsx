@@ -337,6 +337,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           <label>
             工事区分（BCS 2層目）
             <input
+              lang="ja"
               value={settings.workCategory}
               onChange={(e) =>
                 void saveSettings({ workCategory: e.target.value })
@@ -348,6 +349,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             {settings.replacements.map((rule, index) => (
               <span key={`${rule.from}-${index}`} className="rule">
                 <input
+                  lang="ja"
                   value={rule.from}
                   onChange={(e) => {
                     const next = [...settings.replacements];
@@ -357,6 +359,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 />
                 →
                 <input
+                  lang="ja"
                   value={rule.to}
                   onChange={(e) => {
                     const next = [...settings.replacements];
@@ -382,7 +385,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               type="button"
               onClick={() =>
                 void saveSettings({
-                  replacements: [...settings.replacements, { from: "", to: "" }],
+                  replacements: [
+                    ...settings.replacements,
+                    { from: "", to: "" },
+                  ],
                 })
               }
             >
@@ -390,7 +396,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </button>
           </div>
           <div className="units">
-            単位：{settings.unitOrder.join("・") || "（転記すると自動で並びます）"}
+            単位：
+            {settings.unitOrder.join("・") || "（転記すると自動で並びます）"}
           </div>
         </div>
       )}

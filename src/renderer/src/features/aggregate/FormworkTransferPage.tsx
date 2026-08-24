@@ -140,6 +140,7 @@ export default function FormworkTransferPage({
               </td>
               <td>
                 <input
+                  lang="ja"
                   value={rule.materialCategory}
                   onChange={(e) =>
                     update(index, { materialCategory: e.target.value })

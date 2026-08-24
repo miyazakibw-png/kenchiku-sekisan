@@ -105,6 +105,7 @@ import {
   getAggregate,
   listAggregateRuns,
   runAggregation,
+  saveAggregateEdits,
 } from "./services/aggregationService";
 import {
   getFormworkTransfer,
@@ -143,6 +144,7 @@ import type {
   SaveGeneralSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
+  SaveAggregateEditsRequest,
   SaveFormworkRulesRequest,
   SaveTransferRowsRequest,
   SubjectDraft,
@@ -334,6 +336,11 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
     listAggregateRuns(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.aggregateSaveEdits,
+    (_event, request: SaveAggregateEditsRequest) =>
+      saveAggregateEdits(getDatabase(), request),
   );
   ipcMain.handle(IPC.formworkTransferGet, (_event, projectId: number) =>
     getFormworkTransfer(getDatabase(), projectId),

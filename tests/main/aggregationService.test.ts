@@ -16,8 +16,13 @@ import {
   getAggregate,
   listAggregateRuns,
   runAggregation,
+  saveAggregateEdits,
 } from "../../src/main/services/aggregationService";
-import type { EstimateRowDraft, TransferRowDraft } from "../../src/shared/types";
+import { listTransferRows } from "../../src/main/services/transferRowService";
+import type {
+  EstimateRowDraft,
+  TransferRowDraft,
+} from "../../src/shared/types";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -123,10 +128,17 @@ describe("集計処理", () => {
     drafts = [];
   });
 
-  function addRoom(part3: string, multiplier: number, coefficient: number): void {
+  function addRoom(
+    part3: string,
+    multiplier: number,
+    coefficient: number,
+  ): void {
     drafts = [...drafts, roomRow(part3, multiplier)];
     const rows = saveEstimateRows(db, { projectId, rows: drafts });
-    drafts = rows.map((row) => ({ ...roomRow(row.part3, row.multiplier), id: row.id }));
+    drafts = rows.map((row) => ({
+      ...roomRow(row.part3, row.multiplier),
+      id: row.id,
+    }));
     const row = rows[rows.length - 1];
     const sheet = getRoomSheet(db, row.id);
     saveRoomSheet(db, {
@@ -162,9 +174,9 @@ describe("集計処理", () => {
     expect(view.items).toHaveLength(1);
     expect(view.items[0].quantity).toBe(24);
     expect(view.details).toHaveLength(2);
-    expect(view.details.every((d) => d.masterKey === view.items[0].masterKey)).toBe(
-      true,
-    );
+    expect(
+      view.details.every((d) => d.masterKey === view.items[0].masterKey),
+    ).toBe(true);
     expect(view.details.map((detail) => detail.part3)).toEqual([
       "事務室",
       "会議室",
@@ -200,6 +212,70 @@ describe("集計処理", () => {
     const old = getAggregate(db, projectId, first.run?.id);
     expect(old.items[0].quantity).toBe(12);
     expect(second.items[0].quantity).toBe(24);
+  });
+
+  it("集計書で直した内容を計算書へ書き戻し、集計し直す", () => {
+    addRoom("事務室", 1, 1);
+    const before = runAggregation(db, projectId);
+
+    const after = saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 7,
+          materialCategory: "仕上",
+          partNumber: 10,
+          partName: "床",
+          detailNumber: 1.02,
+          name: "長尺塩ビシート",
+          descriptionUpper: "",
+          descriptionLower: "t=2.5",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0].subjectId).toBe(7);
+    expect(after.items[0].name).toBe("長尺塩ビシート");
+    expect(after.items[0].detailNumber).toBe(1.02);
+    expect(after.items[0].quantity).toBe(12);
+    // 集計をかけ直しても直した内容のまま（計算書に入っている）
+    expect(runAggregation(db, projectId).items[0].name).toBe("長尺塩ビシート");
+  });
+
+  it("集計書で直した内容を転記入力表へ書き戻す", () => {
+    saveTransferRows(db, { projectId, rows: [transferDraft(3)] });
+    const before = runAggregation(db, projectId);
+
+    saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 5,
+          materialCategory: "仕上",
+          partNumber: 10,
+          partName: "床",
+          detailNumber: 1.01,
+          name: "タイルカーペット",
+          descriptionUpper: "",
+          descriptionLower: "t=6.5",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    const rows = listTransferRows(db, projectId);
+    expect(rows[0].name).toBe("タイルカーペット");
+    expect(rows[0].descriptionLower).toBe("t=6.5");
   });
 
   it("小計行は集計しない", () => {

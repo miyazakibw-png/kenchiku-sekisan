@@ -366,6 +366,7 @@ export default function EstimatePartsPage({
                 <td className="no">{index + 1}</td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.part1}
                     placeholder={shown.part1}
                     title="空欄のときは入力のある上の行を引き継ぎます"
@@ -376,6 +377,7 @@ export default function EstimatePartsPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.part2}
                     placeholder={shown.part2}
                     title="空欄のときは入力のある上の行を引き継ぎます"
@@ -411,6 +413,7 @@ export default function EstimatePartsPage({
                 </td>
                 <td>
                   <input
+                    lang="ja"
                     value={row.part3}
                     onChange={(e) =>
                       setRows(updateRow(rows, index, { part3: e.target.value }))

@@ -923,6 +923,7 @@ export default function FrameSheetPage({
                     <td className="num">{formatNumber(line.length, 2)}</td>
                     <td>
                       <input
+                        lang="ja"
                         defaultValue={line.wallKind}
                         onBlur={(e) =>
                           updateAttribute(line.id, {
@@ -933,6 +934,7 @@ export default function FrameSheetPage({
                     </td>
                     <td>
                       <input
+                        lang="ja"
                         defaultValue={line.sizeKind}
                         onBlur={(e) =>
                           updateAttribute(line.id, {
@@ -973,6 +975,7 @@ export default function FrameSheetPage({
                     </td>
                     <td>
                       <input
+                        lang="ja"
                         defaultValue={line.note}
                         onBlur={(e) =>
                           updateAttribute(line.id, { note: e.target.value })

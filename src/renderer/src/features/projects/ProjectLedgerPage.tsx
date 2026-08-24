@@ -318,6 +318,7 @@ export default function ProjectLedgerPage({
               {fields.map((field) => (
                 <td key={field.id}>
                   <input
+                    lang="ja"
                     style={{ width: `${field.displayWidth}ch` }}
                     value={project.fieldValues[field.id] ?? ""}
                     onChange={(e) =>

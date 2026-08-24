@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AggregateItem,
+  AggregateItemEdit,
   AggregateRun,
   AggregateView,
   ProjectSummary,
@@ -31,6 +32,32 @@ const COLUMNS = [
 ] as const;
 
 const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120];
+
+/** 集計書で直す前の内容（直していない欄は集計結果のまま） */
+function initialEdit(item: AggregateItem): AggregateItemEdit {
+  return {
+    masterKey: item.masterKey,
+    subjectId: item.subjectId,
+    materialCategory: item.materialCategory,
+    partNumber: item.partNumber,
+    partName: item.partName,
+    detailNumber: item.detailNumber,
+    name: item.name,
+    descriptionUpper: item.descriptionUpper,
+    descriptionLower: item.descriptionLower,
+    unit: item.unit,
+    remarksUpper: item.remarksUpper,
+    remarksLower: item.remarksLower,
+  };
+}
+
+/** 番号欄の入力（空欄は未入力） */
+function toNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const parsed = Number(trimmed);
+  return Number.isNaN(parsed) ? null : parsed;
+}
 
 /** 明細の前に入れる見出し（科目・部位Ⅰ・部位Ⅱ） */
 interface HeadingRow {
@@ -108,6 +135,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
+  const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
   const [message, setMessage] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const { widths, startResize } = useColumnWidths(
@@ -119,23 +147,57 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     async (runId?: number) => {
       setView(await window.sekisan.getAggregate(project.id, runId));
       setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setEdits({});
     },
     [project.id],
   );
 
   useEffect(() => {
     void (async () => {
-      setSubjects(await window.sekisan.listSubjects());
+      setSubjects(await window.sekisan.listSubjects(project.id));
       await reload();
     })();
-  }, [reload]);
+  }, [project.id, reload]);
 
   const run = useCallback(async () => {
     const result = await window.sekisan.runAggregation(project.id);
     setView(result);
     setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setEdits({});
     setMessage(`集計しました（明細 ${result.items.length} 件）`);
   }, [project.id]);
+
+  /** 集計書の欄を直す（保存を押すまでは画面の中だけ） */
+  const editItem = useCallback(
+    (item: AggregateItem, patch: Partial<AggregateItemEdit>) => {
+      setEdits((current) => ({
+        ...current,
+        [item.masterKey]: {
+          ...(current[item.masterKey] ?? initialEdit(item)),
+          ...patch,
+        },
+      }));
+    },
+    [],
+  );
+
+  /** 直した内容を計算書・工事の明細マスターへ書き戻し、集計をかけ直す */
+  const saveEdits = useCallback(async () => {
+    const list = Object.values(edits);
+    if (view.run === null || list.length === 0) return;
+    const result = await window.sekisan.saveAggregateEdits({
+      projectId: project.id,
+      runId: view.run.id,
+      edits: list,
+    });
+    setView(result);
+    setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setEdits({});
+    setSelected(null);
+    setMessage(
+      `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
+    );
+  }, [edits, project.id, view.run]);
 
   const lines = useMemo(
     () => buildLines(view.items, subjects),
@@ -198,6 +260,14 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         </span>
         <button type="button" onClick={() => void run()}>
           🧮 集計実行
+        </button>
+        <button
+          type="button"
+          disabled={Object.keys(edits).length === 0}
+          onClick={() => void saveEdits()}
+          title="直した内容を元の計算書と工事の明細マスターへ書き戻し、集計をかけ直します"
+        >
+          💾 修正を保存（{Object.keys(edits).length}件）
         </button>
         <button
           type="button"
@@ -286,6 +356,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
               ? checkQuantityUnit(item.quantity, item.unit)
               : "";
             const isSelected = selected?.masterKey === item.masterKey;
+            const draft = edits[item.masterKey] ?? initialEdit(item);
             return (
               <tbody
                 key={item.id}
@@ -294,28 +365,118 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
               >
                 <tr className="detail-upper">
                   <td className="no" rowSpan={2}>
-                    {item.subjectId ?? ""}
+                    {draft.subjectId ?? ""}
                   </td>
-                  <td rowSpan={2} />
-                  <td rowSpan={2}>{item.materialCategory}</td>
-                  <td className="number">
-                    {item.partNumber === null ? "" : item.partNumber}
+                  <td rowSpan={2}>
+                    <select
+                      value={draft.subjectId ?? ""}
+                      title="工種科目を選び直せます"
+                      onChange={(e) =>
+                        editItem(item, { subjectId: toNumber(e.target.value) })
+                      }
+                    >
+                      <option value="">（科目なし）</option>
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.id} {subject.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
-                  <td>{item.partName}</td>
-                  <td>{item.descriptionUpper}</td>
+                  <td rowSpan={2}>
+                    <input
+                      lang="ja"
+                      value={draft.materialCategory}
+                      onChange={(e) =>
+                        editItem(item, { materialCategory: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="number"
+                      value={draft.partNumber === null ? "" : draft.partNumber}
+                      onChange={(e) =>
+                        editItem(item, { partNumber: toNumber(e.target.value) })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.partName}
+                      onChange={(e) =>
+                        editItem(item, { partName: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.descriptionUpper}
+                      onChange={(e) =>
+                        editItem(item, { descriptionUpper: e.target.value })
+                      }
+                    />
+                  </td>
                   <td />
                   <td />
-                  <td>{item.remarksUpper}</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.remarksUpper}
+                      onChange={(e) =>
+                        editItem(item, { remarksUpper: e.target.value })
+                      }
+                    />
+                  </td>
                 </tr>
                 <tr className="detail-lower">
-                  <td className="number">
-                    {item.detailNumber === null ? "" : item.detailNumber}
+                  <td>
+                    <input
+                      className="number"
+                      value={
+                        draft.detailNumber === null ? "" : draft.detailNumber
+                      }
+                      onChange={(e) =>
+                        editItem(item, {
+                          detailNumber: toNumber(e.target.value),
+                        })
+                      }
+                    />
                   </td>
-                  <td>{item.name}</td>
-                  <td>{item.descriptionLower}</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.name}
+                      onChange={(e) => editItem(item, { name: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.descriptionLower}
+                      onChange={(e) =>
+                        editItem(item, { descriptionLower: e.target.value })
+                      }
+                    />
+                  </td>
                   <td className="number">{displayQuantity(item.quantity)}</td>
-                  <td>{item.unit}</td>
-                  <td>{item.remarksLower}</td>
+                  <td>
+                    <input
+                      value={draft.unit}
+                      onChange={(e) => editItem(item, { unit: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={draft.remarksLower}
+                      onChange={(e) =>
+                        editItem(item, { remarksLower: e.target.value })
+                      }
+                    />
+                  </td>
                 </tr>
               </tbody>
             );

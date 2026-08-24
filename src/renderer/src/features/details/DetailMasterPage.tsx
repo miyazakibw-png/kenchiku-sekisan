@@ -549,6 +549,7 @@ export default function DetailMasterPage({
     <div className="detail-master">
       <aside className="subject-pane">
         <input
+          lang="ja"
           className="subject-filter"
           placeholder="🔍 科目を検索"
           value={filter}

@@ -341,6 +341,7 @@ export default function TransferSheetPage({
                 </td>
                 <td rowSpan={2}>
                   <input
+                    lang="ja"
                     value={row.part1}
                     placeholder={shown.part1}
                     title="空欄のときは入力のある上の行を引き継ぎます"
@@ -349,6 +350,7 @@ export default function TransferSheetPage({
                 </td>
                 <td rowSpan={2}>
                   <input
+                    lang="ja"
                     value={row.part2}
                     placeholder={shown.part2}
                     title="空欄のときは入力のある上の行を引き継ぎます"
@@ -376,6 +378,7 @@ export default function TransferSheetPage({
                 </td>
                 <td rowSpan={2}>
                   <input
+                    lang="ja"
                     value={row.part3}
                     placeholder={shown.part3}
                     onChange={(e) => update(index, { part3: e.target.value })}
@@ -404,6 +407,7 @@ export default function TransferSheetPage({
                 </td>
                 <td className="material" rowSpan={2}>
                   <input
+                    lang="ja"
                     list="transfer-materials"
                     value={row.materialCategory}
                     placeholder={shown.materialCategory}
