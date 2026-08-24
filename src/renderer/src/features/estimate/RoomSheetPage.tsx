@@ -16,6 +16,7 @@ import type {
 } from "@shared/types";
 import {
   closeShape,
+  closeShapeAtEdge,
   cutCorner,
   edge,
   incomingIsVertical,
@@ -52,6 +53,7 @@ import {
 } from "../../../../core/room/calcSheet";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
+import { evaluateFormula } from "../../../../core/formula/evaluate";
 import {
   DEFAULT_FITTING_PART_VALUES,
   fittingKindForPart,
@@ -96,10 +98,22 @@ function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
   input.select();
 }
 
-/** 打った文字を数値にする（空欄・数字でないものは未入力） */
+/**
+ * 打った文字を数値にする（空欄・数字でないものは未入力）。
+ * 6.4+0.3 や 3.6/2 のような計算式は答えにする。
+ */
 function textToNumber(text: string): number | null {
-  const value = Number(text.trim());
-  return text.trim() === "" || !Number.isFinite(value) ? null : value;
+  const body = text.trim();
+  if (body === "") return null;
+  const value = Number(body);
+  if (Number.isFinite(value)) return value;
+  return evaluateFormula(body);
+}
+
+/** 寸法欄で計算式を答えに直す（Enter・欄を出たときに使う） */
+function showAnswer(input: HTMLInputElement): void {
+  const value = textToNumber(input.value);
+  if (value !== null) input.value = formatNumber(value, 2);
 }
 
 function parseRoomFittings(json: string): RoomSheetFitting[] {
@@ -826,7 +840,7 @@ export default function RoomSheetPage({
   const submitPrompt = (): void => {
     if (!prompt) return;
     if (prompt.kind === "split") {
-      const first = Number(prompt.first);
+      const first = textToNumber(prompt.first) ?? 0;
       if (!(first > 0) || first >= prompt.span) {
         setMessage(
           `角の位置は 0 より大きく ${prompt.span} 未満で入れてください`,
@@ -837,8 +851,8 @@ export default function RoomSheetPage({
       applySplit(prompt.edgeId, first);
       return;
     }
-    const across = Number(prompt.across);
-    const along = Number(prompt.along);
+    const across = textToNumber(prompt.across) ?? 0;
+    const along = textToNumber(prompt.along) ?? 0;
     if (!(across > 0) || !(along > 0)) {
       setMessage("寸法は0より大きい値を入れてください");
       return;
@@ -855,6 +869,25 @@ export default function RoomSheetPage({
     setCutAlong(formatNumber(along, 2));
     if (prompt.kind === "cut") addCorner(across, along, prompt.edgeKind);
     else addNotch(across, along, prompt.edgeKind);
+  };
+
+  /** 選んだ辺の寸法だけを、閉じた形になるように自動で入れる */
+  const fitEdge = (edgeId: string): void => {
+    const result = closeShapeAtEdge(shape, edgeId);
+    if (result.error !== null) {
+      setMessage(result.error);
+      return;
+    }
+    if (result.shape === shape) {
+      setMessage(
+        "この辺の寸法は合っています（もう一方の向きの辺を選んでください）",
+      );
+      return;
+    }
+    applyShape(result.shape);
+    setMessage(
+      `選んだ辺の寸法を ${formatNumber(result.length, 2)} にして形を閉じました`,
+    );
   };
 
   /** 閉じていない寸法を自動で合わせる */
@@ -1243,6 +1276,8 @@ export default function RoomSheetPage({
                         }
                         setSelectedEdge(line.id);
                         setSelectedCorner(null);
+                        // 閉じていないときは、押した辺の寸法で合わせる
+                        if (solved.error !== null) fitEdge(line.id);
                       }}
                     >
                       {/* 線は細いので、当たり判定用の太い線を重ねる */}
@@ -1353,6 +1388,14 @@ export default function RoomSheetPage({
               <button type="button" onClick={fixClosure}>
                 寸法を自動で合わせる
               </button>
+              <button
+                type="button"
+                disabled={selectedEdge === null}
+                onClick={() => selectedEdge !== null && fitEdge(selectedEdge)}
+              >
+                選んだ辺で合わせる
+              </button>
+              <span>（図の直したい辺をクリックすると、その辺で合わせます）</span>
             </p>
           )}
         </section>
@@ -1453,11 +1496,14 @@ export default function RoomSheetPage({
                           className="num"
                           defaultValue={formatNumber(line.dx ?? 0, 2)}
                           key={`${line.id}-dx-${line.dx ?? 0}`}
-                          title="斜め辺の横移動（右がプラス）"
+                          title="斜め辺の横移動（右がプラス）。計算式も入れられます"
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && e.currentTarget.blur()
+                          }
                           onBlur={(e) =>
                             applyShape(
                               updateEdge(shape, line.id, {
-                                dx: Number(e.target.value.trim() || 0),
+                                dx: textToNumber(e.target.value) ?? 0,
                               }),
                             )
                           }
@@ -1466,11 +1512,14 @@ export default function RoomSheetPage({
                           className="num"
                           defaultValue={formatNumber(line.dy ?? 0, 2)}
                           key={`${line.id}-dy-${line.dy ?? 0}`}
-                          title="斜め辺の縦移動（下がプラス）"
+                          title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && e.currentTarget.blur()
+                          }
                           onBlur={(e) =>
                             applyShape(
                               updateEdge(shape, line.id, {
-                                dy: Number(e.target.value.trim() || 0),
+                                dy: textToNumber(e.target.value) ?? 0,
                               }),
                             )
                           }
@@ -1490,14 +1539,18 @@ export default function RoomSheetPage({
                         }
                         title={
                           line.kind === "curve"
-                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます"
-                            : "空欄にすると、閉じた形になるように自動算出します"
+                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
+                            : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
                         }
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          showAnswer(e.currentTarget);
+                          e.currentTarget.blur();
+                        }}
                         onBlur={(e) => {
-                          const text = e.target.value.trim();
                           applyShape(
                             updateEdge(shape, line.id, {
-                              length: text === "" ? null : Number(text),
+                              length: textToNumber(e.target.value),
                             }),
                           );
                         }}
@@ -1516,13 +1569,18 @@ export default function RoomSheetPage({
                           }
                           key={`${line.id}-bulge-${line.bulge ?? "none"}`}
                           title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            showAnswer(e.currentTarget);
+                            e.currentTarget.blur();
+                          }}
                           onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            const size = Math.abs(Number(text));
+                            const value = textToNumber(e.target.value);
+                            const size = value === null ? null : Math.abs(value);
                             applyShape(
                               updateEdge(shape, line.id, {
                                 bulge:
-                                  text === ""
+                                  size === null
                                     ? null
                                     : (line.bulge ?? 0) < 0
                                       ? -size

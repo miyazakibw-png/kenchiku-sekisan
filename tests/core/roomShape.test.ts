@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   arcLength,
   closeShape,
+  closeShapeAtEdge,
   columnNotches,
   cutCorner,
   deducts,
@@ -145,6 +146,35 @@ describe("部屋形状（単線図）", () => {
     expect(closed.changed).toBe(true);
     expect(solveShape(closed.shape).error).toBeNull();
     expect(floorArea(solveShape(closed.shape))).toBe(12);
+  });
+
+  it("選んだ辺だけを直して形を閉じる", () => {
+    const shape = {
+      edges: [edge("E", 4), edge("S", 3), edge("W", 3.5), edge("N", 3)],
+    };
+
+    const fixed = closeShapeAtEdge(shape, shape.edges[0].id);
+    expect(fixed.error).toBeNull();
+    expect(fixed.length).toBe(3.5);
+    expect(solveShape(fixed.shape).error).toBeNull();
+    // 選んだ辺以外は変えない
+    expect(fixed.shape.edges[2].length).toBe(3.5);
+
+    const other = closeShapeAtEdge(shape, shape.edges[2].id);
+    expect(other.length).toBe(4);
+
+    // 別の向きに空欄（自動算出）があっても合わせられる
+    const withBlank = {
+      edges: [edge("E", 4), edge("S", 3), edge("W", 3.5), edge("N", null)],
+    };
+    const blankFixed = closeShapeAtEdge(withBlank, withBlank.edges[0].id);
+    expect(blankFixed.error).toBeNull();
+    expect(blankFixed.length).toBe(3.5);
+
+    // 縦の辺は縦方向が合っているので変わらない
+    const vertical = closeShapeAtEdge(shape, shape.edges[1].id);
+    expect(vertical.error).toBeNull();
+    expect(vertical.shape).toBe(shape);
   });
 
   it("閉じている形は自動補正しない", () => {

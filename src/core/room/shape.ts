@@ -378,6 +378,65 @@ export function closeShape(shape: RoomShape): {
   return { shape: changed ? { edges } : shape, changed };
 }
 
+/**
+ * 選んだ辺の寸法だけを直して、閉じていない分を合わせる。
+ * その辺の向きの方向で足りない（余っている）分をこの辺で引き受ける。
+ */
+export function closeShapeAtEdge(
+  shape: RoomShape,
+  edgeId: string,
+): { shape: RoomShape; length: number | null; error: string | null } {
+  const index = shape.edges.findIndex((row) => row.id === edgeId);
+  const target = index < 0 ? undefined : shape.edges[index];
+  const axis = target === undefined ? null : axisOf(target.direction);
+  if (target === undefined || axis === null) {
+    return { shape, length: null, error: "斜め辺は自動で合わせられません" };
+  }
+  // 空欄の辺は自動算出した寸法で数える（自動算出できない空欄が残っていたら直せない）
+  const solved = solveShape(shape);
+  const sameAxisBlank = solved.edges.some(
+    (row) =>
+      row.id !== edgeId &&
+      axisOf(row.direction) === axis &&
+      row.resolved === null,
+  );
+  if (sameAxisBlank) {
+    return {
+      shape,
+      length: null,
+      error: "先に他の辺の寸法を入れてください（空欄が残っています）",
+    };
+  }
+
+  const others = solved.edges
+    .filter((row) => row.id !== edgeId)
+    .reduce((sum, row) => {
+      if (isDiagonal(row.direction)) return sum + diagonalVector(row)[axis];
+      return (
+        sum +
+        (axisOf(row.direction) === axis
+          ? signOf(row.direction) * (row.resolved ?? 0)
+          : 0)
+      );
+    }, 0);
+
+  const length = round2(-others * signOf(target.direction));
+  if (!(length > 0.005)) {
+    return {
+      shape,
+      length: null,
+      error: "この辺では合わせられません（向きを直すか別の辺を選んでください）",
+    };
+  }
+  if (length === target.length) {
+    return { shape, length, error: null };
+  }
+
+  const edges = [...shape.edges];
+  edges[index] = { ...target, length };
+  return { shape: { edges }, length, error: null };
+}
+
 /** 斜め辺の途中をコ型に凹ませる（辺と直角の向きへ凹ませる） */
 function notchDiagonalEdge(
   shape: RoomShape,
