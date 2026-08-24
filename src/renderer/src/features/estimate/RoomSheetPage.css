@@ -2,7 +2,37 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+.room-sheet-page .toolbar,
+.room-sheet-page .upper,
+.room-sheet-page > .hint {
+  flex: 0 0 auto;
+}
+
+/* 下段（計算表）を広く使う。見出し行は固定して表だけスクロールする */
+.room-sheet-page .room-calc-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-sheet-page .room-calc-sheet .section-bar {
+  flex: 0 0 auto;
+}
+
+.room-sheet-page .room-calc-sheet .calc-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+}
+
+.room-sheet-page .room-calc-sheet .calc-body table.calc thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .room-sheet-page .toolbar {
@@ -34,11 +64,25 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(200px, 0.9fr) minmax(150px, 0.45fr)
-    minmax(230px, 0.85fr) minmax(210px, 0.8fr);
+    minmax(170px, 0.62fr) minmax(210px, 0.72fr)
+    minmax(200px, 0.66fr) minmax(210px, 0.8fr);
   grid-auto-rows: auto;
   gap: 8px;
   padding: 8px;
+  /* 上段は画面の1/3まで。入りきらない分は各欄を別々にスクロールする */
+  max-height: 33vh;
+  min-height: 0;
+}
+
+.room-sheet-page .upper > section {
+  min-height: 0;
+  overflow: auto;
+}
+
+.room-sheet-page .upper > section > .section-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .room-sheet-page .room-fittings {
@@ -46,11 +90,13 @@
 }
 
 .room-sheet-page .edges input.num {
-  width: 46px;
+  width: 44px;
 }
 
+/* 向き・種別は選択肢が読める幅を取る */
 .room-sheet-page .edges select {
-  max-width: 74px;
+  max-width: 100%;
+  width: 100%;
 }
 
 .room-sheet-page .edges span.diagonal {
@@ -136,8 +182,8 @@
   position: relative;
   flex: 1;
   /* 図は小さくてよい（下段の表示行を増やすため） */
-  min-height: 160px;
-  max-height: 220px;
+  min-height: 130px;
+  max-height: 170px;
   overflow: auto;
   display: flex;
   align-items: center;
@@ -291,13 +337,18 @@
 }
 
 .room-sheet-page .symbols td.symbol {
-  width: 40px;
+  width: 28px;
   font-weight: 700;
+}
+
+/* 記号の数量欄は狭く */
+.room-sheet-page .symbols table.two-up td.num {
+  width: 44px;
 }
 
 /* 記号表は2組ずつ横に並べる（高さを半分にして下段の表示行を増やす） */
 .room-sheet-page .symbols table.two-up {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .room-sheet-page .symbols table.two-up td {
@@ -309,7 +360,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 62px;
+  max-width: 52px;
 }
 
 /* 記号・建具は列幅を詰めて、図と寸法入力に幅をまわす */

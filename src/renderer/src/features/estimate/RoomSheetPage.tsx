@@ -1004,7 +1004,7 @@ export default function RoomSheetPage({
                 <th>向き</th>
                 <th className="num">寸法</th>
                 <th className="num" title="曲面壁のふくらみ（矢）">
-                  矢
+                  Ｒ向き
                 </th>
                 <th>種別</th>
               </tr>
@@ -1110,7 +1110,7 @@ export default function RoomSheetPage({
                             : formatNumber(line.bulge, 2)
                         }
                         key={`${line.id}-bulge-${line.bulge ?? "none"}`}
-                        title={`矢（ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                        title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
                         onBlur={(e) => {
                           const text = e.target.value.trim();
                           setShape(
