@@ -1,18 +1,18 @@
-import { resolveMasterName } from '@shared/masters'
+import { resolveMasterName } from "@shared/masters";
 
 interface Entry {
-  id: number
-  name: string
+  id: number;
+  name: string;
 }
 
 interface Props {
-  entries: Entry[]
-  value: string
-  onChange: (value: string) => void
+  entries: Entry[];
+  value: string;
+  onChange: (value: string) => void;
   /** datalist の id。同じマスターを使う画面で共有する */
-  listId: string
-  className?: string
-  title?: string
+  listId: string;
+  className?: string;
+  title?: string;
 }
 
 /**
@@ -26,26 +26,25 @@ export default function MasterCodeInput({
   onChange,
   listId,
   className,
-  title
+  title,
 }: Props): JSX.Element {
   return (
     <input
       className={className}
       list={listId}
       value={value}
-      title={title ?? 'マスターの番号を入力すると名称に変換されます'}
-      placeholder="番号で入力"
+      title={title ?? "マスターの番号を入力すると名称に変換されます"}
       onChange={(e) => onChange(resolveMasterName(entries, e.target.value))}
     />
-  )
+  );
 }
 
 export function MasterCodeOptions({
   entries,
-  listId
+  listId,
 }: {
-  entries: Entry[]
-  listId: string
+  entries: Entry[];
+  listId: string;
 }): JSX.Element {
   return (
     <datalist id={listId}>
@@ -55,5 +54,5 @@ export function MasterCodeOptions({
         </option>
       ))}
     </datalist>
-  )
+  );
 }

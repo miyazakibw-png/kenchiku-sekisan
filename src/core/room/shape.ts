@@ -199,6 +199,11 @@ function opposite(direction: AxisDirection): AxisDirection {
   return INSIDE[INSIDE[direction]];
 }
 
+/** 辺に収まる欠き取り・凹みの上限（元の辺を少しだけ残して形が潰れないようにする） */
+function fitToEdge(length: number): number {
+  return Math.max(round2(length - 0.01), length / 2);
+}
+
 /** 角へ入ってくる辺が縦向きか（斜め辺は縦の動きが大きいかで決める） */
 export function incomingIsVertical(
   shape: RoomShape,
@@ -225,15 +230,20 @@ export function cutCorner(
   cornerIndex: number,
   cutAlong: number,
   cutAcross: number,
-): { shape: RoomShape; error: string | null } {
+): { shape: RoomShape; error: string | null; adjusted: boolean } {
   const count = shape.edges.length;
-  if (count < 3) return { shape, error: "先に部屋の形を作ってください" };
+  if (count < 3)
+    return { shape, error: "先に部屋の形を作ってください", adjusted: false };
   if (cutAlong <= 0 || cutAcross <= 0) {
-    return { shape, error: "欠き取り寸法は0より大きい値を入れてください" };
+    return {
+      shape,
+      error: "欠き取り寸法は0より大きい値を入れてください",
+      adjusted: false,
+    };
   }
   const solved = solveShape(shape);
   if (solved.points.length !== count) {
-    return { shape, error: "先に部屋の寸法を決めてください" };
+    return { shape, error: "先に部屋の寸法を決めてください", adjusted: false };
   }
   const outIndex = ((cornerIndex % count) + count) % count;
   const inIndex = (outIndex - 1 + count) % count;
@@ -244,17 +254,25 @@ export function cutCorner(
   const next = solved.points[(outIndex + 1) % count];
   const inLength = Math.hypot(corner.x - previous.x, corner.y - previous.y);
   const outLength = Math.hypot(next.x - corner.x, next.y - corner.y);
-  if (cutAlong >= inLength || cutAcross >= outLength) {
-    return { shape, error: "欠き取りが元の辺より長くなります" };
+  if (inLength < 0.005 || outLength < 0.005) {
+    return {
+      shape,
+      error: "先に隣の辺の寸法を決めてください",
+      adjusted: false,
+    };
   }
+  // 欠き取りが隣の辺より大きいときは、辺が無くならない範囲まで縮めて欠き取る
+  const along = Math.min(cutAlong, fitToEdge(inLength));
+  const across = Math.min(cutAcross, fitToEdge(outLength));
+  const adjusted = along < cutAlong || across < cutAcross;
 
   const back = {
-    x: round2(corner.x - ((corner.x - previous.x) / inLength) * cutAlong),
-    y: round2(corner.y - ((corner.y - previous.y) / inLength) * cutAlong),
+    x: round2(corner.x - ((corner.x - previous.x) / inLength) * along),
+    y: round2(corner.y - ((corner.y - previous.y) / inLength) * along),
   };
   const forward = {
-    x: round2(corner.x + ((next.x - corner.x) / outLength) * cutAcross),
-    y: round2(corner.y + ((next.y - corner.y) / outLength) * cutAcross),
+    x: round2(corner.x + ((next.x - corner.x) / outLength) * across),
+    y: round2(corner.y + ((next.y - corner.y) / outLength) * across),
   };
   // L型の折れ点は、角から遠い方（角をそのまま残さない方）を選ぶ
   const candidates = [
@@ -267,12 +285,11 @@ export function cutCorner(
       ? candidates[0]
       : candidates[1];
 
-  const edges = [...shape.edges];
-  edges[inIndex] = edgeFromVector(inEdge, {
+  const shortenedIn = edgeFromVector(inEdge, {
     x: back.x - previous.x,
     y: back.y - previous.y,
   });
-  edges[outIndex] = edgeFromVector(outEdge, {
+  const shortenedOut = edgeFromVector(outEdge, {
     x: next.x - forward.x,
     y: next.y - forward.y,
   });
@@ -285,15 +302,22 @@ export function cutCorner(
     y: forward.y - middle.y,
   });
   const inserted = [first, second].filter((row) => (row.length ?? 0) > 0);
-  if (
-    (edges[inIndex].length ?? 0) <= 0 ||
-    (edges[outIndex].length ?? 0) <= 0 ||
-    inserted.length === 0
-  ) {
-    return { shape, error: "欠き取り寸法が大きすぎます" };
+  if (inserted.length === 0) {
+    return { shape, error: "欠き取り寸法が大きすぎます", adjusted: false };
   }
+  const edges = [...shape.edges];
+  edges[inIndex] = shortenedIn;
+  edges[outIndex] = shortenedOut;
   edges.splice(outIndex, 0, ...inserted);
-  return { shape: { edges }, error: null };
+  // 辺いっぱいに欠き取ったときは、長さ0になった元の辺を残さない
+  const kept = edges.filter(
+    (row) =>
+      (row !== shortenedIn && row !== shortenedOut) || (row.length ?? 0) > 0,
+  );
+  if (kept.length < 3) {
+    return { shape, error: "欠き取り寸法が大きすぎます", adjusted: false };
+  }
+  return { shape: { edges: kept }, error: null, adjusted };
 }
 
 /**
@@ -360,14 +384,12 @@ function notchDiagonalEdge(
   const vector = diagonalVector(target);
   const span = Math.hypot(vector.x, vector.y);
   if (span < 0.005) return { shape, error: "先に辺の寸法を決めてください" };
-  if (notchWidth >= span) {
-    return { shape, error: "凹みが元の辺より長くなります" };
-  }
-  const head = offset ?? (span - notchWidth) / 2;
-  const tail = span - notchWidth - head;
-  if (head <= 0 || tail <= 0) {
-    return { shape, error: "凹みの位置が辺からはみ出します" };
-  }
+  // 凹みが元の辺より大きいときは、辺が無くならない範囲まで縮めて凹ませる
+  const width = Math.min(notchWidth, fitToEdge(span));
+  const head = Math.min(
+    Math.max(offset ?? (span - width) / 2, 0),
+    span - width,
+  );
   const unit = { x: vector.x / span, y: vector.y / span };
   const inside = { x: -unit.y, y: unit.x };
   const along = (value: number): Point => ({
@@ -381,7 +403,7 @@ function notchDiagonalEdge(
   const steps: Point[] = [
     along(head),
     across(notchDepth),
-    along(notchWidth),
+    along(width),
     across(-notchDepth),
   ];
   // 端数で形が開かないように、通る点を丸めてから辺の寸法を出す（最後は元の終点に戻す）
@@ -430,25 +452,21 @@ export function notchEdge(
   }
   const length = solveShape(shape).edges[edgeIndex].resolved;
   if (length === null) return { shape, error: "先に辺の寸法を決めてください" };
-  if (notchWidth >= length) {
-    return { shape, error: "凹みが元の辺より長くなります" };
-  }
-  const head = offset ?? round2((length - notchWidth) / 2);
-  const tail = round2(length - notchWidth - head);
-  if (head <= 0 || tail <= 0) {
-    return { shape, error: "凹みの位置が辺からはみ出します" };
-  }
+  // 凹みが元の辺より大きいときは、辺が無くならない範囲まで縮めて凹ませる
+  const width = Math.min(notchWidth, fitToEdge(length));
+  const rest = round2(length - width);
+  const head = Math.min(Math.max(offset ?? round2(rest / 2), 0), rest);
+  const tail = round2(rest - head);
   const inside = insideDirection(target.direction as AxisDirection);
-  const edges = [...shape.edges];
-  edges.splice(
-    edgeIndex,
-    1,
+  const parts = [
     { ...target, length: head },
     edge(inside, notchDepth, target.kind),
-    edge(target.direction, notchWidth, target.kind),
+    edge(target.direction, width, target.kind),
     edge(opposite(inside), notchDepth, target.kind),
     edge(target.direction, tail, target.kind),
-  );
+  ].filter((row) => (row.length ?? 0) > 0);
+  const edges = [...shape.edges];
+  edges.splice(edgeIndex, 1, ...parts);
   return { shape: { edges }, error: null };
 }
 

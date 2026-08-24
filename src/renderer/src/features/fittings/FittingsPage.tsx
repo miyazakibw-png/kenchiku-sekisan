@@ -283,7 +283,6 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
           <span>記号</span>
           <input
             value={series.prefix}
-            placeholder="SD"
             onChange={(e) => setSeries({ ...series, prefix: e.target.value })}
           />
           <span>番号</span>
@@ -302,7 +301,6 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
           <input
             className="num"
             value={series.suffixFrom}
-            placeholder="A"
             onChange={(e) =>
               setSeries({ ...series, suffixFrom: e.target.value })
             }
@@ -311,7 +309,6 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
           <input
             className="num"
             value={series.suffixTo}
-            placeholder="C"
             onChange={(e) => setSeries({ ...series, suffixTo: e.target.value })}
           />
           <button type="button" onClick={() => addSeries(series)}>

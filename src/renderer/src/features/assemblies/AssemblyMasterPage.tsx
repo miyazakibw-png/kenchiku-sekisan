@@ -380,7 +380,6 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
                       <td rowSpan={2}>
                         <input
                           value={item.formula}
-                          placeholder="例: P*3"
                           onChange={(e) =>
                             editItems(
                               updateItem(editor.items, index, {

@@ -211,20 +211,22 @@ export default function EstimatePartsPage({
     setOthers(ledger.projects.filter((row) => row.id !== project.id));
   }, [project.id]);
 
-  /** 計算書は保存済みの行にしか作れないので、必要なら先に保存する */
+  /**
+   * 計算書は保存済みの行にしか作れないので、開く前に画面の内容を保存する。
+   * 保存しないまま開くと、戻ったときの読み直しで消した行が戻ってしまう。
+   */
   const openCalcSheet = useCallback(
     async (index: number) => {
       const row = rows[index];
       if (!row || row.rowType === "subtotal") return;
-      if (row.id === null) {
-        editRows(
-          toDrafts(
-            await window.sekisan.saveEstimateRows({
-              projectId: project.id,
-              rows,
-            }),
-          ),
-        );
+      const saved = toDrafts(
+        await window.sekisan.saveEstimateRows({
+          projectId: project.id,
+          rows,
+        }),
+      );
+      setRows(saved);
+      if (!saved[index] || saved[index].id === null) {
         setMessage("保存してから計算書を開いてください");
         return;
       }

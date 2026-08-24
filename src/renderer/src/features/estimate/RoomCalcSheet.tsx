@@ -11,9 +11,11 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  commentSet,
   displayQuantity,
   displayedValue,
   evaluateCalcSheet,
+  isCommentSet,
   mergeWithPreviousSet,
   padLines,
   setRowCount,
@@ -63,7 +65,7 @@ interface Props {
 
 type CallSource = "basic" | "project" | "assembly";
 
-/** 見出し行（※行挿入）で選べる色 */
+/** コメント行（※行挿入）で選べる色 */
 const BANNER_COLORS: { label: string; color: string }[] = [
   { label: "緑", color: "#dcfce7" },
   { label: "桃", color: "#fce7f3" },
@@ -71,6 +73,8 @@ const BANNER_COLORS: { label: string; color: string }[] = [
   { label: "黄", color: "#fef9c3" },
   { label: "橙", color: "#ffedd5" },
   { label: "灰", color: "#e2e8f0" },
+  { label: "紫", color: "#ede9fe" },
+  { label: "水", color: "#cffafe" },
 ];
 
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
@@ -366,6 +370,13 @@ export default function RoomCalcSheet({
     setId: string;
     index: number;
   } | null>(null);
+  /** 複数行コピーの範囲の先頭（Shift+クリックでは動かさない） */
+  const [rangeStart, setRangeStart] = useState<{
+    setId: string;
+    index: number;
+  } | null>(null);
+  /** Shift+クリック中は範囲の先頭を動かさないための目印 */
+  const shiftClicking = useRef(false);
   /** 元に戻す・やり直しのための履歴 */
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
@@ -865,20 +876,17 @@ export default function RoomCalcSheet({
     [commit, currentSet, focus, sets, updateSet],
   );
 
-  /** 見出し行を入れる（カーソルのあるセットの上） */
+  /** コメント行を入れる（明細とは別の独立した1行。何行でも続けて入れられる） */
   const insertBanner = useCallback(
     (color: string) => {
       setBannerOpen(false);
-      const target = currentSet;
-      if (!target) {
-        onMessage("見出しを入れる位置を選んでください");
-        return;
-      }
-      updateSet(target.id, {
-        banner: { text: target.partName, color },
-      });
+      const at = sets.findIndex((set) => set.id === currentSet?.id);
+      const next = [...sets];
+      next.splice(at < 0 ? next.length : at, 0, commentSet("", color));
+      commit(next);
+      onMessage("コメント行を入れました");
     },
-    [currentSet, onMessage, updateSet],
+    [commit, currentSet?.id, onMessage, sets],
   );
 
   /** いま選んでいる明細（明細欄にカーソルがあるときだけ） */
@@ -912,18 +920,26 @@ export default function RoomCalcSheet({
     return list;
   }, [sets]);
 
+  // Shift+クリック以外でカーソルが動いたら、範囲の先頭もそこへ合わせる
+  useEffect(() => {
+    if (shiftClicking.current) return;
+    setRangeStart(focus ? { setId: focus.setId, index: focus.index } : null);
+    setRangeEnd(null);
+  }, [focus]);
+
   /** カーソルの行から Shift+クリックした行までの範囲（通し番号） */
   const rangeRows = useMemo(() => {
-    if (!focus || !rangeEnd) return [];
+    const start = rangeStart ?? focus;
+    if (!start || !rangeEnd) return [];
     const from = flatRows.findIndex(
-      (row) => row.setId === focus.setId && row.index === focus.index,
+      (row) => row.setId === start.setId && row.index === start.index,
     );
     const to = flatRows.findIndex(
       (row) => row.setId === rangeEnd.setId && row.index === rangeEnd.index,
     );
     if (from < 0 || to < 0) return [];
     return flatRows.slice(Math.min(from, to), Math.max(from, to) + 1);
-  }, [flatRows, focus, rangeEnd]);
+  }, [flatRows, focus, rangeEnd, rangeStart]);
 
   /** 選んでいる行かどうか（背景色をつける） */
   const isSelectedRow = useCallback(
@@ -1263,7 +1279,7 @@ export default function RoomCalcSheet({
           <button
             type="button"
             className={bannerOpen ? "on" : ""}
-            title="カーソルのセットの上に、色の付いた見出し行を入れます"
+            title="カーソルの行の上に、色の付いたコメント行を1行入れます（何行でも続けて入れられます）"
             onClick={() => setBannerOpen(!bannerOpen)}
           >
             ※ 行挿入
@@ -1373,7 +1389,6 @@ export default function RoomCalcSheet({
                       <input
                         lang="ja"
                         value={set.banner.text}
-                        placeholder="見出し（例 床：1・11）"
                         onChange={(e) =>
                           updateSet(set.id, {
                             banner: {
@@ -1385,8 +1400,12 @@ export default function RoomCalcSheet({
                       />
                       <button
                         type="button"
-                        title="この見出し行を消します"
-                        onClick={() => updateSet(set.id, { banner: null })}
+                        title="このコメント行を消します"
+                        onClick={() =>
+                          isCommentSet(set)
+                            ? commit(sets.filter((item) => item.id !== set.id))
+                            : updateSet(set.id, { banner: null })
+                        }
                       >
                         ✕
                       </button>
@@ -1412,13 +1431,18 @@ export default function RoomCalcSheet({
                       className={
                         isSelectedRow(set.id, rowIndex) ? "row-selected" : ""
                       }
+                      onMouseDownCapture={(e) => {
+                        shiftClicking.current = e.shiftKey;
+                      }}
                       onClick={(e) => {
                         // Shift+クリックで範囲の終わりを決める。ふつうのクリックは選び直し
-                        setRangeEnd(
-                          e.shiftKey
-                            ? { setId: set.id, index: rowIndex }
-                            : null,
-                        );
+                        if (e.shiftKey) {
+                          setRangeEnd({ setId: set.id, index: rowIndex });
+                        } else {
+                          setRangeStart({ setId: set.id, index: rowIndex });
+                          setRangeEnd(null);
+                        }
+                        shiftClicking.current = false;
                       }}
                     >
                       <td className="set-part">
@@ -1428,7 +1452,6 @@ export default function RoomCalcSheet({
                           entries={aggregationPartEntries}
                           commitOnBlur
                           value={rowIndex === 0 ? set.partName : ""}
-                          placeholder={rowIndex === 0 ? "部位" : ""}
                           title="管理用部位。番号を打つと名称に変わります。途中の行に入れると、その行から別のセットになります"
                           onCommit={(text) =>
                             commitSetPart(set.id, rowIndex, text)
@@ -1443,7 +1466,6 @@ export default function RoomCalcSheet({
                               col={1}
                               entries={materialEntries}
                               value={detail.materialCategory}
-                              placeholder="区分"
                               title="材種区分。番号を打つと名称に変わります"
                               onFocus={focusDetail}
                               onCommit={(text) =>
@@ -1471,7 +1493,6 @@ export default function RoomCalcSheet({
                                   ? ""
                                   : String(detail.subjectId)
                               }
-                              placeholder="科目"
                               title={
                                 subjects.find(
                                   (item) => item.id === detail.subjectId,
@@ -1496,7 +1517,6 @@ export default function RoomCalcSheet({
                                   ? ""
                                   : String(detail.partNumber)
                               }
-                              placeholder="部位ID"
                               title="明細用部位のID。入れると右の部位名にマスターの文字が入ります"
                               onFocus={focusDetail}
                               onCommit={(text) => {
@@ -1518,7 +1538,6 @@ export default function RoomCalcSheet({
                               entries={numberEntries}
                               commitOnBlur
                               value={detail.detailNumber?.toFixed(2) ?? ""}
-                              placeholder="名称ID"
                               title="明細番号を入れるとマスターの明細を呼び出します（科目IDを入れると一覧から選べます）"
                               onFocus={() => {
                                 focusDetail();
@@ -1540,7 +1559,6 @@ export default function RoomCalcSheet({
                               data-row={gridRow}
                               data-col={5}
                               value={detail.partName}
-                              placeholder="部位"
                               onFocus={focusDetail}
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
@@ -1555,7 +1573,6 @@ export default function RoomCalcSheet({
                               data-row={gridRow}
                               data-col={6}
                               value={detail.name}
-                              placeholder="名称"
                               onFocus={focusDetail}
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
@@ -1598,7 +1615,6 @@ export default function RoomCalcSheet({
                               col={9}
                               entries={unitEntries}
                               value={detail.unit}
-                              placeholder="単位"
                               title="単位。番号を打つと単位の文字に変わります"
                               onFocus={focusDetail}
                               onCommit={(text) =>
@@ -1738,7 +1754,6 @@ export default function RoomCalcSheet({
                         <td className="bsym" rowSpan={rowCount}>
                           <input
                             value={setSymbol}
-                            placeholder="B1"
                             title="このセットの累計を他のセットで使うための記号（B1〜B99。セットに1つ）"
                             onChange={(e) => {
                               const symbol = e.target.value
@@ -1952,7 +1967,6 @@ export default function RoomCalcSheet({
                 <span>工種科目</span>
                 <input
                   className="num"
-                  placeholder="番号"
                   value={subjectNumber}
                   title="工種科目の番号を入れると、その科目の明細を出します"
                   onChange={(e) => {

@@ -122,6 +122,35 @@
   border-left: 1px solid #cbd5e1;
 }
 
+/* 図形の寸法を入れる小窓 */
+.room-sheet-page .shape-prompt {
+  position: fixed;
+  left: 50%;
+  top: 120px;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid #94a3b8;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
+  z-index: 40;
+}
+
+.room-sheet-page .shape-prompt .body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.room-sheet-page .shape-prompt .body input {
+  width: 70px;
+  margin-left: 4px;
+}
+
+.room-sheet-page .shape-prompt .hint {
+  color: #64748b;
+}
+
 /* 建具表はボタンで開くポップアップ */
 .room-sheet-page .fittings.popup {
   position: fixed;

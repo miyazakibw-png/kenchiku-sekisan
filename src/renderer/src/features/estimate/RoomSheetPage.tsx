@@ -123,6 +123,19 @@ function parseShape(json: string): RoomShape {
   }
 }
 
+/** 図形の寸法を小窓で入れてから確定する（四角・L型・コ型・角の追加） */
+type ShapePrompt =
+  | null
+  | { kind: "rect" | "cut" | "notch"; across: string; along: string }
+  | { kind: "split"; edgeId: string; span: number; first: string };
+
+const PROMPT_TITLE: Record<"rect" | "cut" | "notch" | "split", string> = {
+  rect: "四角を作る",
+  cut: "L型を角に追加",
+  notch: "コ型を辺に追加",
+  split: "角を追加",
+};
+
 /** 表示スペースいっぱいに、縦横の大きい方に合わせて描く（1m角も100m角も同じ大きさで見える） */
 function viewBox(solved: SolvedShape): { box: string; span: number } {
   if (solved.points.length === 0) return { box: "0 0 100 100", span: 100 };
@@ -173,6 +186,7 @@ export default function RoomSheetPage({
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
   const [cutAcross, setCutAcross] = useState("1.00");
   const [cutAlong, setCutAlong] = useState("1.00");
+  const [prompt, setPrompt] = useState<ShapePrompt>(null);
   /** 頂点を動かす寸法（右・下がプラス） */
   const [moveX, setMoveX] = useState("0.00");
   const [moveY, setMoveY] = useState("0.00");
@@ -620,11 +634,6 @@ export default function RoomSheetPage({
     setSelectedCorner(null);
   };
 
-  const cutValues = (): { across: number; along: number } => ({
-    across: Number(cutAcross),
-    along: Number(cutAlong),
-  });
-
   /**
    * 図形を直す前に、閉じていない寸法を自動で合わせる。
    * 合わせた形と、直したことを伝える文言を返す。
@@ -641,14 +650,13 @@ export default function RoomSheetPage({
   };
 
   /** 選んだ角をL型に欠き取る（いまの形と寸法は残す） */
-  const addCorner = (): void => {
+  const addCorner = (across: number, along: number): void => {
     if (selectedCorner === null) {
       setMessage("図の角（○印）を選んでからL型を押してください");
       return;
     }
     const base = readyShape();
     const vertical = incomingIsVertical(base.shape, selectedCorner);
-    const { across, along } = cutValues();
     const result = cutCorner(
       base.shape,
       selectedCorner,
@@ -662,7 +670,46 @@ export default function RoomSheetPage({
     applyShape(result.shape);
     setSelectedEdge(null);
     setSelectedCorner(null);
-    setMessage(`選んだ角をL型に欠き取りました${base.note}`);
+    setMessage(
+      `選んだ角をL型に欠き取りました${
+        result.adjusted ? "（隣の辺の長さに合わせました）" : ""
+      }${base.note}`,
+    );
+  };
+
+  /** 小窓で入れた寸法で、四角・L型・コ型・角の追加を確定する */
+  const submitPrompt = (): void => {
+    if (!prompt) return;
+    if (prompt.kind === "split") {
+      const first = Number(prompt.first);
+      if (!(first > 0) || first >= prompt.span) {
+        setMessage(
+          `角の位置は 0 より大きく ${prompt.span} 未満で入れてください`,
+        );
+        return;
+      }
+      setPrompt(null);
+      applySplit(prompt.edgeId, first);
+      return;
+    }
+    const across = Number(prompt.across);
+    const along = Number(prompt.along);
+    if (!(across > 0) || !(along > 0)) {
+      setMessage("寸法は0より大きい値を入れてください");
+      return;
+    }
+    setPrompt(null);
+    if (prompt.kind === "rect") {
+      startShape(rectangleShape(across, along));
+      setMessage(
+        `横${formatNumber(across, 2)}／縦${formatNumber(along, 2)} の四角を作りました`,
+      );
+      return;
+    }
+    setCutAcross(formatNumber(across, 2));
+    setCutAlong(formatNumber(along, 2));
+    if (prompt.kind === "cut") addCorner(across, along);
+    else addNotch(across, along);
   };
 
   /** 閉じていない寸法を自動で合わせる */
@@ -725,17 +772,27 @@ export default function RoomSheetPage({
       ((clicked.x - start.x) * dx + (clicked.y - start.y) * dy) / (span * span);
     const first =
       Math.round(span * Math.min(Math.max(ratio, 0.05), 0.95) * 100) / 100;
-    applyShape(splitEdge(shape, id, first));
+    setAddCornerMode(false);
+    setPrompt({
+      kind: "split",
+      edgeId: id,
+      span: Math.round(span * 100) / 100,
+      first: formatNumber(first, 2),
+    });
+  };
+
+  /** 角を足す位置を小窓で確かめてから辺を分ける */
+  const applySplit = (edgeId: string, first: number): void => {
+    applyShape(splitEdge(shape, edgeId, first));
     setSelectedEdge(null);
     setSelectedCorner(null);
-    setAddCornerMode(false);
     setMessage(
-      `辺を ${formatNumber(first, 2)} の位置で分けて角を足しました（寸法欄で直せます）`,
+      `辺を ${formatNumber(first, 2)} の位置で分けて角を足しました（寸法欄でも直せます）`,
     );
   };
 
   /** 選んだ辺の途中をコ型に凹ませる（いまの形と寸法は残す） */
-  const addNotch = (): void => {
+  const addNotch = (across: number, along: number): void => {
     const index = shape.edges.findIndex((item) => item.id === selectedEdge);
     if (index < 0) {
       setMessage("凹ませる辺を選んでからコ型を押してください");
@@ -746,7 +803,6 @@ export default function RoomSheetPage({
     const vertical = isDiagonal(target.direction)
       ? Math.abs(target.dy ?? 0) > Math.abs(target.dx ?? 0)
       : target.direction === "N" || target.direction === "S";
-    const { across, along } = cutValues();
     const result = notchEdge(
       base.shape,
       index,
@@ -816,44 +872,47 @@ export default function RoomSheetPage({
             </button>
             <button
               type="button"
-              onClick={() => startShape(rectangleShape(4, 3))}
+              title="小窓で横・縦の寸法を入れて四角を作ります"
+              onClick={() =>
+                setPrompt({ kind: "rect", across: "4.00", along: "3.00" })
+              }
             >
               □ 四角
             </button>
-            <label title="欠き取り・凹みの横寸法">
-              横
-              <input
-                className="num cut"
-                value={cutAcross}
-                onChange={(e) => setCutAcross(e.target.value)}
-              />
-            </label>
-            <label title="欠き取り・凹みの縦寸法">
-              縦
-              <input
-                className="num cut"
-                value={cutAlong}
-                onChange={(e) => setCutAlong(e.target.value)}
-              />
-            </label>
             <button
               type="button"
-              title="図の角（○印）を選んでから押すと、その角を欠き取ります（何度でも使えます）"
-              onClick={addCorner}
+              title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
+              onClick={() => {
+                if (selectedCorner === null) {
+                  setMessage("図の角（○印）を選んでからL型を押してください");
+                  return;
+                }
+                setPrompt({ kind: "cut", across: cutAcross, along: cutAlong });
+              }}
             >
               L型を角に追加
             </button>
             <button
               type="button"
-              title="辺を選んでから押すと、その辺の中央を凹ませます（何度でも使えます）"
-              onClick={addNotch}
+              title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
+              onClick={() => {
+                if (!shape.edges.some((item) => item.id === selectedEdge)) {
+                  setMessage("凹ませる辺を選んでからコ型を押してください");
+                  return;
+                }
+                setPrompt({
+                  kind: "notch",
+                  across: cutAcross,
+                  along: cutAlong,
+                });
+              }}
             >
               コ型を辺に追加
             </button>
             <button
               type="button"
               className={addCornerMode ? "on" : ""}
-              title="押してから図の辺をクリックすると、その位置で辺を分けて角を追加します（位置はだいたいでよく、あとで寸法を直せます）"
+              title="押してから図の辺をクリックすると、小窓で位置の寸法を確かめて辺を分け、角を追加します"
               onClick={() => {
                 const next = !addCornerMode;
                 setAddCornerMode(next);
@@ -1463,7 +1522,6 @@ export default function RoomSheetPage({
           <div className="register">
             <span>建具表に無い建具はここで入力（建具表へ登録します）</span>
             <input
-              placeholder="記号"
               value={newFitting.symbol}
               onChange={(e) =>
                 setNewFitting({ ...newFitting, symbol: e.target.value })
@@ -1471,7 +1529,6 @@ export default function RoomSheetPage({
             />
             <input
               className="num"
-              placeholder="W"
               value={newFitting.width}
               onChange={(e) =>
                 setNewFitting({ ...newFitting, width: e.target.value })
@@ -1479,7 +1536,6 @@ export default function RoomSheetPage({
             />
             <input
               className="num"
-              placeholder="H"
               value={newFitting.height}
               onChange={(e) =>
                 setNewFitting({ ...newFitting, height: e.target.value })
@@ -1487,7 +1543,6 @@ export default function RoomSheetPage({
             />
             <input
               className="num"
-              placeholder="腰高"
               value={newFitting.sill}
               onChange={(e) =>
                 setNewFitting({ ...newFitting, sill: e.target.value })
@@ -1696,6 +1751,65 @@ export default function RoomSheetPage({
               範囲の天井高さを入れると、部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
           </section>
+        )}
+
+        {prompt && (
+          <div className="shape-prompt">
+            <div className="section-bar">
+              <span>{PROMPT_TITLE[prompt.kind]}</span>
+            </div>
+            <div className="body">
+              {prompt.kind === "split" ? (
+                <label>
+                  角までの寸法
+                  <input
+                    className="num"
+                    autoFocus
+                    value={prompt.first}
+                    onChange={(e) =>
+                      setPrompt({ ...prompt, first: e.target.value })
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                  />
+                  <span className="hint">
+                    （辺の長さ {formatNumber(prompt.span, 2)}）
+                  </span>
+                </label>
+              ) : (
+                <>
+                  <label>
+                    横
+                    <input
+                      className="num"
+                      autoFocus
+                      value={prompt.across}
+                      onChange={(e) =>
+                        setPrompt({ ...prompt, across: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                    />
+                  </label>
+                  <label>
+                    縦
+                    <input
+                      className="num"
+                      value={prompt.along}
+                      onChange={(e) =>
+                        setPrompt({ ...prompt, along: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                    />
+                  </label>
+                </>
+              )}
+              <button type="button" onClick={submitPrompt}>
+                OK
+              </button>
+              <button type="button" onClick={() => setPrompt(null)}>
+                取消
+              </button>
+            </div>
+          </div>
         )}
 
         {showFittings && (

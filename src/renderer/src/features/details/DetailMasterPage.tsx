@@ -551,7 +551,6 @@ export default function DetailMasterPage({
         <input
           lang="ja"
           className="subject-filter"
-          placeholder="🔍 科目を検索"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />

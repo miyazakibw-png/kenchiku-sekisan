@@ -458,7 +458,6 @@ export default function TransferSheetPage({
                   <input
                     className="num"
                     value={row.partId === null ? "" : String(row.partId)}
-                    placeholder="部位ID"
                     onChange={(e) => {
                       const text = e.target.value.trim();
                       const parsed = Number.parseInt(text, 10);
@@ -478,7 +477,6 @@ export default function TransferSheetPage({
                     lang="ja"
                     list="transfer-parts"
                     value={row.partName}
-                    placeholder="部位名"
                     onChange={(e) =>
                       update(index, { partName: e.target.value })
                     }
@@ -521,7 +519,6 @@ export default function TransferSheetPage({
                   <input
                     lang="ja"
                     value={row.name}
-                    placeholder="名称"
                     onChange={(e) => update(index, { name: e.target.value })}
                   />
                 </td>

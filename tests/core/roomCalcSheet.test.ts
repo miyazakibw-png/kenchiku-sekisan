@@ -3,6 +3,7 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  commentSet,
   displayQuantity,
   evaluateCalcSheet,
   mergeWithPreviousSet,
@@ -162,6 +163,39 @@ describe("下段セット明細計算表", () => {
     const trimmed = trimEmptySets([set]);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].details).toHaveLength(2);
+  });
+
+  it("コメント行は明細を持たない独立した1行で、連続しても消さない", () => {
+    const first = commentSet("", "#dcfce7");
+    const second = commentSet("1階", "#dbeafe");
+    const used = calcSet(1);
+    used.partName = "床";
+    used.details[0] = calcDetail({ name: "ビニル床タイル" });
+    expect(setRowCount(first)).toBe(0);
+    const trimmed = trimEmptySets([first, second, used]);
+    expect(trimmed).toHaveLength(3);
+    expect(trimmed[0].banner?.color).toBe("#dcfce7");
+    expect(trimmed[1].banner?.text).toBe("1階");
+  });
+
+  it("コメント行の下の明細を消してもコメント行は残る", () => {
+    const comment = commentSet("外部", "#fef9c3");
+    const set = calcSet(1);
+    const trimmed = trimEmptySets([comment, set]);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].id).toBe(comment.id);
+  });
+
+  it("部位を消したときはコメント行を飛ばして上のセットにつなぐ", () => {
+    const first = calcSet(1);
+    first.partName = "床";
+    const comment = commentSet("外部", "#fef9c3");
+    const second = calcSet(1);
+    second.partName = "巾木";
+    second.details[0] = calcDetail({ name: "木巾木" });
+    const merged = mergeWithPreviousSet([first, comment, second], second.id);
+    expect(merged.map((item) => item.id)).toEqual([first.id, comment.id]);
+    expect(merged[0].details).toHaveLength(2);
   });
 
   it("途中の行に部位を入れると、その行から別のセットに分かれる", () => {

@@ -95,6 +95,25 @@ export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
   };
 }
 
+/** コメント行（明細を持たない、色付きの1行だけのセット） */
+export function commentSet(text: string, color: string): CalcSet {
+  return {
+    id: newId("s"),
+    partNumber: null,
+    partName: "",
+    details: [],
+    lines: [],
+    banner: { text, color },
+  };
+}
+
+/** コメント行か（明細も計算式も持たない見出しだけの行） */
+export function isCommentSet(set: CalcSet): boolean {
+  return (
+    set.banner != null && set.details.length === 0 && set.lines.length === 0
+  );
+}
+
 /** 空のセット明細（1明細＝1行） */
 export function calcSet(detailCount = 1): CalcSet {
   return {
@@ -164,6 +183,10 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
 export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
   const trimmed: CalcSet[] = [];
   for (const set of sets) {
+    if (isCommentSet(set)) {
+      trimmed.push(set);
+      continue;
+    }
     const details = [...set.details];
     while (
       details.length > 0 &&
@@ -229,7 +252,11 @@ export function mergeWithPreviousSet(
 ): CalcSet[] {
   const at = sets.findIndex((set) => set.id === setId);
   if (at <= 0) return sets;
-  const previous = sets[at - 1];
+  // コメント行はセットではないので飛ばして、その上の明細セットにつなげる
+  let previousAt = at - 1;
+  while (previousAt >= 0 && isCommentSet(sets[previousAt])) previousAt -= 1;
+  if (previousAt < 0) return sets;
+  const previous = sets[previousAt];
   const target = sets[at];
   const merged: CalcSet = {
     ...previous,
@@ -237,12 +264,14 @@ export function mergeWithPreviousSet(
     lines: [...previous.lines, ...target.lines],
   };
   const next = [...sets];
-  next.splice(at - 1, 2, merged);
+  next.splice(at, 1);
+  next[previousAt] = merged;
   return next;
 }
 
 /** セット内で表示する行数（明細1件＝1行。明細と計算式の多い方に合わせる） */
 export function setRowCount(set: CalcSet): number {
+  if (isCommentSet(set)) return 0;
   return Math.max(set.details.length, set.lines.length, 1);
 }
 

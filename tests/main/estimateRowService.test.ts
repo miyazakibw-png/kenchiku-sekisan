@@ -84,6 +84,27 @@ describe('部位別入力表', () => {
     expect(kept.map((row) => row.part3)).toEqual(['B'])
   })
 
+  it('消した行の計算書も一緒に消える（読み直しで戻らない）', () => {
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: '風除室' }), draft({ part3: '玄関ホール' })]
+    })
+    const sheet = getRoomSheet(db, saved[0].id)
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: sheet.shapeJson,
+      fittingsJson: sheet.fittingsJson,
+      ceilingJson: sheet.ceilingJson,
+      lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
+      ceilingHeight: 2.5,
+      note: '消す部屋の計算書'
+    })
+
+    saveEstimateRows(db, { projectId, rows: [{ ...saved[1] }] })
+    expect(listEstimateRows(db, projectId).map((row) => row.part3)).toEqual(['玄関ホール'])
+    expect(getRoomSheet(db, saved[1].id).note).not.toBe('消す部屋の計算書')
+  })
+
   it('物件ごとに独立している', () => {
     const other = createProject(db, '別工事').id
     saveEstimateRows(db, { projectId, rows: [draft({ part3: '風除室' })] })

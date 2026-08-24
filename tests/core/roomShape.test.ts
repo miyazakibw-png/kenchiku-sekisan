@@ -74,11 +74,42 @@ describe("部屋形状（単線図）", () => {
     expect(floorArea(solveShape(second.shape))).toBe(6 * 4 - 2 * 1 - 1 * 1);
   });
 
-  it("欠き取りが元の辺より長いときはエラーにして形を変えない", () => {
+  it("欠き取りが元の辺より長いときは辺の長さに合わせて欠き取る", () => {
     const shape = rectangleShape(5, 4);
-    const cut = cutCorner(shape, 2, 4, 2);
-    expect(cut.error).not.toBeNull();
-    expect(cut.shape).toBe(shape);
+    const cut = cutCorner(shape, 2, 9, 2);
+    expect(cut.error).toBeNull();
+    expect(cut.adjusted).toBe(true);
+    expect(solveShape(cut.shape).error).toBeNull();
+    expect(floorArea(solveShape(cut.shape))).toBeCloseTo(5 * 4 - 4 * 2, 1);
+  });
+
+  it("両隣の辺いっぱいに欠き取っても形がつぶれない", () => {
+    const cut = cutCorner(rectangleShape(6, 4), 1, 10, 10);
+    expect(cut.error).toBeNull();
+    expect(cut.adjusted).toBe(true);
+    const solved = solveShape(cut.shape);
+    expect(solved.error).toBeNull();
+    expect(floorArea(solved) ?? 0).toBeGreaterThan(0);
+  });
+
+  it("短い辺どうしの角でもL型に欠き取れる", () => {
+    const shape = {
+      edges: [
+        edge("E", 1.1),
+        edge("S", 1),
+        edge("E", 1.7),
+        edge("S", 3.8),
+        edge("W", 2.8),
+        edge("N", 4.8),
+      ],
+    };
+    expect(solveShape(shape).error).toBeNull();
+    const cut = cutCorner(shape, 1, 1, 1);
+    expect(cut.error).toBeNull();
+    expect(solveShape(cut.shape).error).toBeNull();
+    expect(floorArea(solveShape(cut.shape))).toBeLessThan(
+      floorArea(solveShape(shape)) ?? 0,
+    );
   });
 
   it("斜め辺に接する角もL型に欠き取れる", () => {
