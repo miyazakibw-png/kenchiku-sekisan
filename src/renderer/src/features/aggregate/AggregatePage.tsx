@@ -136,8 +136,8 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
-  /** 同じ明細マスターから拾った行をまとめて直す */
-  const [applyToSameDetail, setApplyToSameDetail] = useState(true);
+  /** 同じ明細マスターから拾った行をまとめて直す（既定は直した行だけ） */
+  const [applyToSameDetail, setApplyToSameDetail] = useState(false);
   const [message, setMessage] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const basisRef = useRef<HTMLElement>(null);
@@ -310,7 +310,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         >
           💾 修正を保存（{Object.keys(edits).length}件）
         </button>
-        <label title="同じ工事用明細マスターから拾った行（摘要などが古いまま別の行に分かれている分）も、まとめて同じ内容に直します">
+        <label title="チェックを入れると、同じ工事用明細マスターから拾った他の行（摘要などが古いまま別の行に分かれている分）も、まとめて同じ内容に直します。ふだんは外したまま（直した行だけ変わります）">
           <input
             type="checkbox"
             checked={applyToSameDetail}
