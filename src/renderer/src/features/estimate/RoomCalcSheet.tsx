@@ -567,8 +567,10 @@ export default function RoomCalcSheet({
       const to = index + step;
       if (to < 0 || to >= target.details.length) return;
       const details = [...target.details];
+      const lines = padLines(details, target.lines);
       [details[index], details[to]] = [details[to], details[index]];
-      updateSet(setId, { details });
+      [lines[index], lines[to]] = [lines[to], lines[index]];
+      updateSet(setId, { details, lines });
       onFocus({ setId, area: "detail", index: to });
     },
     [onFocus, sets, updateSet],

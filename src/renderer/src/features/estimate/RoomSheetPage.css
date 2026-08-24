@@ -32,9 +32,10 @@
 
 .room-sheet-page .upper {
   display: grid;
-  grid-template-columns: minmax(200px, 0.7fr) minmax(240px, 1fr) minmax(
-      200px,
-      0.9fr
+  /* 寸法入力表はできるだけ狭くして、図と記号・建具に幅をまわす */
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.42fr) minmax(
+      220px,
+      1fr
     );
   grid-template-rows: auto auto auto;
   gap: 8px;
@@ -45,8 +46,52 @@
   grid-row: span 3;
 }
 
+/* この部屋の建具は右側（記号表の下）に置く */
 .room-sheet-page .room-fittings {
-  grid-column: span 2;
+  grid-column: 3;
+}
+
+.room-sheet-page .edges input.num {
+  width: 46px;
+}
+
+.room-sheet-page .edges select {
+  max-width: 74px;
+}
+
+.room-sheet-page .edges span.diagonal {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.room-sheet-page .edges span.diagonal input.num {
+  width: 34px;
+}
+
+.room-sheet-page .edges span.none {
+  color: #cbd5e1;
+}
+
+.room-sheet-page .corner-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 4px;
+  border-left: 1px solid #cbd5e1;
+}
+
+/* 建具表はボタンで開くポップアップ */
+.room-sheet-page .fittings.popup {
+  position: fixed;
+  right: 24px;
+  top: 72px;
+  width: 520px;
+  max-height: 70vh;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
+  z-index: 30;
 }
 
 .room-sheet-page .room-fittings tr.unknown td:first-child input {

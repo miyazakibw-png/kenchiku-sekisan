@@ -547,8 +547,12 @@ export default function FrameSheetPage({
       );
       return;
     }
-    onBack();
-  }, [calcResult.errors, lower, onBack, warned]);
+    // 閉じるときは必ず自動保存する
+    void (async () => {
+      await save();
+      onBack();
+    })();
+  }, [calcResult.errors, lower, onBack, warned, save]);
 
   return (
     <div className="room-sheet-page frame-sheet-page">

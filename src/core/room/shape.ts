@@ -6,17 +6,27 @@
  * 数量根拠を追えるように、辺は作成時のIDを保持し続ける。
  */
 
-export type EdgeDirection = "E" | "W" | "N" | "S";
+/** E/W/N/S は直交する辺。D は斜め辺（横移動・縦移動で向きを決める） */
+export type EdgeDirection = "E" | "W" | "N" | "S" | "D";
 
-/** 壁：積算対象／開口：壁の無い部分（数量に入れない）／柱：柱1ヶ所分の総幅 */
-export type EdgeKind = "wall" | "opening" | "column";
+/**
+ * 壁：積算対象／開口：壁の無い部分（数量に入れない）／柱：柱1ヶ所分の総幅
+ * 曲面壁：弦の長さと矢（ふくらみ）を入れて弧長を壁長さに使う
+ */
+export type EdgeKind = "wall" | "opening" | "column" | "curve";
 
 export interface RoomEdge {
   id: string;
   direction: EdgeDirection;
-  /** 未入力（自動算出）は null */
+  /** 未入力（自動算出）は null。曲面壁では弦の長さ */
   length: number | null;
   kind: EdgeKind;
+  /** 斜め辺の横移動（右がプラス）。direction が "D" のときに使う */
+  dx?: number | null;
+  /** 斜め辺の縦移動（下がプラス）。direction が "D" のときに使う */
+  dy?: number | null;
+  /** 曲面壁の矢（ふくらみ）。0・未入力なら直線として扱う */
+  bulge?: number | null;
 }
 
 export interface RoomShape {
@@ -24,8 +34,10 @@ export interface RoomShape {
 }
 
 export interface SolvedEdge extends RoomEdge {
-  /** 自動算出した寸法を含む確定値。決められない場合は null */
+  /** 自動算出した寸法を含む確定値。決められない場合は null（曲面壁は弦の長さ） */
   resolved: number | null;
+  /** 数量に使う長さ。曲面壁は弧長、それ以外は resolved と同じ */
+  measured: number | null;
   /** 自動算出した辺 */
   auto: boolean;
 }
@@ -45,13 +57,58 @@ export interface SolvedShape {
   error: string | null;
 }
 
-const AXIS: Record<EdgeDirection, "x" | "y"> = {
+/** 直交する向き（斜め辺 "D" は含まない） */
+export type AxisDirection = "E" | "W" | "N" | "S";
+
+const AXIS: Record<AxisDirection, "x" | "y"> = {
   E: "x",
   W: "x",
   N: "y",
   S: "y",
 };
-const SIGN: Record<EdgeDirection, 1 | -1> = { E: 1, W: -1, N: -1, S: 1 };
+const SIGN: Record<AxisDirection, 1 | -1> = { E: 1, W: -1, N: -1, S: 1 };
+
+export function isDiagonal(direction: EdgeDirection): boolean {
+  return direction === "D";
+}
+
+function axisOf(direction: EdgeDirection): "x" | "y" | null {
+  return direction === "D" ? null : AXIS[direction];
+}
+
+function signOf(direction: EdgeDirection): 1 | -1 {
+  return direction === "D" ? 1 : SIGN[direction];
+}
+
+/** 斜め辺の横移動・縦移動（未入力は0） */
+function diagonalVector(row: RoomEdge): Point {
+  return { x: row.dx ?? 0, y: row.dy ?? 0 };
+}
+
+/**
+ * 曲面壁の弧長。弦の長さ c と矢（ふくらみ）h から求める。
+ *   r = c^2 / (8h) + h / 2
+ *   弧長 = 2 * r * asin(c / (2r))
+ * 矢が0以下なら直線として弦の長さを返す。
+ */
+export function arcLength(chord: number, bulge: number | null): number {
+  const h = bulge ?? 0;
+  if (h <= 0 || chord <= 0) return round2(chord);
+  const r = (chord * chord) / (8 * h) + h / 2;
+  const ratio = Math.min(1, chord / (2 * r));
+  const half = Math.asin(ratio);
+  const angle = h > r ? Math.PI - half : half;
+  return round2(2 * r * angle);
+}
+
+/** 辺の進む向きと長さ（図形を描くときの移動量） */
+export function edgeVector(row: RoomEdge, length: number | null): Point {
+  if (isDiagonal(row.direction)) return diagonalVector(row);
+  const value = length ?? 0;
+  return AXIS[row.direction] === "x"
+    ? { x: SIGN[row.direction] * value, y: 0 }
+    : { x: 0, y: SIGN[row.direction] * value };
+}
 
 export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -127,18 +184,18 @@ export function uShape(
 }
 
 /** 辺を進む向きから見た内側の向き（E→S→W→N の並びで一周する形が前提） */
-const INSIDE: Record<EdgeDirection, EdgeDirection> = {
+const INSIDE: Record<AxisDirection, AxisDirection> = {
   E: "S",
   S: "W",
   W: "N",
   N: "E",
 };
 
-export function insideDirection(direction: EdgeDirection): EdgeDirection {
+export function insideDirection(direction: AxisDirection): AxisDirection {
   return INSIDE[direction];
 }
 
-function opposite(direction: EdgeDirection): EdgeDirection {
+function opposite(direction: AxisDirection): AxisDirection {
   return INSIDE[INSIDE[direction]];
 }
 
@@ -163,6 +220,9 @@ export function cutCorner(
   const solved = solveShape(shape);
   const inEdge = shape.edges[inIndex];
   const outEdge = shape.edges[outIndex];
+  if (isDiagonal(inEdge.direction) || isDiagonal(outEdge.direction)) {
+    return { shape, error: "斜め辺の角はL型に欠き取れません" };
+  }
   const inLength = solved.edges[inIndex].resolved;
   const outLength = solved.edges[outIndex].resolved;
   if (inLength !== null && cutAlong >= inLength) {
@@ -204,6 +264,9 @@ export function notchEdge(
 ): { shape: RoomShape; error: string | null } {
   const target = shape.edges[edgeIndex];
   if (!target) return { shape, error: "凹ませる辺を選んでください" };
+  if (isDiagonal(target.direction)) {
+    return { shape, error: "斜め辺はコ型に凹ませられません" };
+  }
   if (notchWidth <= 0 || notchDepth <= 0) {
     return { shape, error: "凹み寸法は0より大きい値を入れてください" };
   }
@@ -217,7 +280,7 @@ export function notchEdge(
   if (head <= 0 || tail <= 0) {
     return { shape, error: "凹みの位置が辺からはみ出します" };
   }
-  const inside = insideDirection(target.direction);
+  const inside = insideDirection(target.direction as AxisDirection);
   const edges = [...shape.edges];
   edges.splice(
     edgeIndex,
@@ -240,13 +303,26 @@ export function solveShape(shape: RoomShape): SolvedShape {
   const missing: string[] = [];
   let error: string | null = null;
 
+  /** 斜め辺は横・縦の両方へ決まった量だけ進むので、先に足しておく */
+  const diagonalTotal = shape.edges
+    .filter((row) => isDiagonal(row.direction))
+    .reduce(
+      (sum, row) => {
+        const vector = diagonalVector(row);
+        return { x: sum.x + vector.x, y: sum.y + vector.y };
+      },
+      { x: 0, y: 0 },
+    );
+
   for (const axis of ["x", "y"] as const) {
-    const axisEdges = shape.edges.filter((row) => AXIS[row.direction] === axis);
+    const axisEdges = shape.edges.filter(
+      (row) => axisOf(row.direction) === axis,
+    );
     const blanks = axisEdges.filter((row) => row.length === null);
     const total = axisEdges.reduce(
       (sum, row) =>
-        row.length === null ? sum : sum + SIGN[row.direction] * row.length,
-      0,
+        row.length === null ? sum : sum + signOf(row.direction) * row.length,
+      axis === "x" ? diagonalTotal.x : diagonalTotal.y,
     );
 
     if (blanks.length === 0) {
@@ -264,7 +340,7 @@ export function solveShape(shape: RoomShape): SolvedShape {
     }
 
     const blank = blanks[0];
-    const value = round2(-total / SIGN[blank.direction]);
+    const value = round2(-total / signOf(blank.direction));
     if (value <= 0) {
       missing.push(blank.id);
       error = "自動算出した寸法が0以下になります";
@@ -273,11 +349,25 @@ export function solveShape(shape: RoomShape): SolvedShape {
     resolved.set(blank.id, value);
   }
 
-  const edges: SolvedEdge[] = shape.edges.map((row) => ({
-    ...row,
-    resolved: row.length ?? resolved.get(row.id) ?? null,
-    auto: row.length === null && resolved.has(row.id),
-  }));
+  const edges: SolvedEdge[] = shape.edges.map((row) => {
+    const value = isDiagonal(row.direction)
+      ? round2(Math.hypot(row.dx ?? 0, row.dy ?? 0))
+      : (row.length ?? resolved.get(row.id) ?? null);
+    return {
+      ...row,
+      resolved: value,
+      measured:
+        value === null
+          ? null
+          : row.kind === "curve"
+            ? arcLength(value, row.bulge ?? null)
+            : value,
+      auto:
+        !isDiagonal(row.direction) &&
+        row.length === null &&
+        resolved.has(row.id),
+    };
+  });
 
   const points: Point[] = [];
   if (missing.length === 0 && edges.every((row) => row.resolved !== null)) {
@@ -285,9 +375,9 @@ export function solveShape(shape: RoomShape): SolvedShape {
     let y = 0;
     for (const row of edges) {
       points.push({ x, y });
-      const length = row.resolved as number;
-      if (AXIS[row.direction] === "x") x += SIGN[row.direction] * length;
-      else y += SIGN[row.direction] * length;
+      const vector = edgeVector(row, row.resolved);
+      x += vector.x;
+      y += vector.y;
     }
   }
 
@@ -307,7 +397,7 @@ export function floorArea(solved: SolvedShape): number | null {
 }
 
 export interface EdgeLengthTotals {
-  /** 壁の長さ合計（開口・柱は含まない） */
+  /** 壁の長さ合計（曲面壁の弧長を含む。開口・柱は含まない） */
   wall: number;
   /** 柱の長さ合計 */
   column: number;
@@ -318,8 +408,9 @@ export interface EdgeLengthTotals {
 export function edgeTotals(solved: SolvedShape): EdgeLengthTotals {
   const totals: EdgeLengthTotals = { wall: 0, column: 0, opening: 0 };
   for (const row of solved.edges) {
-    if (row.resolved === null) continue;
-    totals[row.kind] += row.resolved;
+    if (row.measured === null) continue;
+    if (row.kind === "curve") totals.wall += row.measured;
+    else totals[row.kind] += row.measured;
   }
   return {
     wall: round2(totals.wall),
@@ -454,14 +545,14 @@ export function roomSymbols(
   let wallIndex = 0;
   let columnIndex = 0;
   for (const row of solved.edges) {
-    if (row.resolved === null) continue;
-    if (row.kind === "wall") {
+    if (row.measured === null) continue;
+    if (row.kind === "wall" || row.kind === "curve") {
       wallIndex += 1;
       const onWall = fittingTotals(fittings, row.id);
       symbols.push({
         symbol: `HL${wallIndex}`,
         label: `壁${wallIndex} 長さ`,
-        value: round2(row.resolved - onWall.baseboard),
+        value: round2(row.measured - onWall.baseboard),
         edgeId: row.id,
       });
       symbols.push({
@@ -470,7 +561,7 @@ export function roomSymbols(
         value:
           ceilingHeight === null
             ? null
-            : round2(row.resolved * ceilingHeight - onWall.area),
+            : round2(row.measured * ceilingHeight - onWall.area),
         edgeId: row.id,
       });
     } else if (row.kind === "column") {
@@ -479,7 +570,7 @@ export function roomSymbols(
         symbol: `HA${columnIndex}`,
         label: `柱${columnIndex} 面積`,
         value:
-          ceilingHeight === null ? null : round2(row.resolved * ceilingHeight),
+          ceilingHeight === null ? null : round2(row.measured * ceilingHeight),
         edgeId: row.id,
       });
     }
@@ -507,6 +598,83 @@ export function splitEdge(
       ...shape.edges.slice(index + 1),
     ],
   };
+}
+
+/** 座標の差から辺の向き・寸法を決める（縦横がそろわない場合は斜め辺にする） */
+function edgeFromVector(base: RoomEdge, vector: Point): RoomEdge {
+  const dx = round2(vector.x);
+  const dy = round2(vector.y);
+  if (Math.abs(dy) < 0.005 && Math.abs(dx) >= 0.005) {
+    return {
+      ...base,
+      direction: dx > 0 ? "E" : "W",
+      length: round2(Math.abs(dx)),
+      dx: null,
+      dy: null,
+    };
+  }
+  if (Math.abs(dx) < 0.005 && Math.abs(dy) >= 0.005) {
+    return {
+      ...base,
+      direction: dy > 0 ? "S" : "N",
+      length: round2(Math.abs(dy)),
+      dx: null,
+      dy: null,
+    };
+  }
+  return {
+    ...base,
+    direction: "D",
+    length: round2(Math.hypot(dx, dy)),
+    dx,
+    dy,
+  };
+}
+
+/**
+ * 頂点（角）を上下左右へ寸法で動かす。
+ * moveX は右がプラス、moveY は下がプラス。
+ * 動かした結果、両隣の辺が縦横でなくなる場合は斜め辺になる。
+ * cornerIndex は「その角から出ていく辺」の番号。
+ */
+export function moveCorner(
+  shape: RoomShape,
+  cornerIndex: number,
+  moveX: number,
+  moveY: number,
+): { shape: RoomShape; error: string | null } {
+  const count = shape.edges.length;
+  if (count < 3) return { shape, error: "先に部屋の形を作ってください" };
+  if (moveX === 0 && moveY === 0) {
+    return { shape, error: "移動する寸法を入れてください" };
+  }
+  const solved = solveShape(shape);
+  if (solved.points.length !== count) {
+    return { shape, error: "先に部屋の寸法を決めてください" };
+  }
+  const outIndex = ((cornerIndex % count) + count) % count;
+  const inIndex = (outIndex - 1 + count) % count;
+  const corner = solved.points[outIndex];
+  const previous = solved.points[inIndex];
+  const next = solved.points[(outIndex + 1) % count];
+  const moved = { x: corner.x + moveX, y: corner.y + moveY };
+
+  const inEdge = edgeFromVector(shape.edges[inIndex], {
+    x: moved.x - previous.x,
+    y: moved.y - previous.y,
+  });
+  const outEdge = edgeFromVector(shape.edges[outIndex], {
+    x: next.x - moved.x,
+    y: next.y - moved.y,
+  });
+  if ((inEdge.length ?? 0) <= 0 || (outEdge.length ?? 0) <= 0) {
+    return { shape, error: "移動すると辺の長さが0以下になります" };
+  }
+
+  const edges = [...shape.edges];
+  edges[inIndex] = inEdge;
+  edges[outIndex] = outEdge;
+  return { shape: { edges }, error: null };
 }
 
 export function updateEdge(

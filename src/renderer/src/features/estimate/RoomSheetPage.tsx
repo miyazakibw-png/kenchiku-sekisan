@@ -10,6 +10,8 @@ import type {
 import {
   cutCorner,
   edge,
+  isDiagonal,
+  moveCorner,
   notchEdge,
   rectangleShape,
   roomQuantities,
@@ -61,12 +63,14 @@ const DIRECTION_LABEL: Record<EdgeDirection, string> = {
   S: "↓ 下",
   W: "← 左",
   N: "↑ 上",
+  D: "╱ 斜め",
 };
 
 const KIND_LABEL: Record<EdgeKind, string> = {
   wall: "壁",
-  opening: "開口（壁なし）",
+  opening: "開口",
   column: "柱",
+  curve: "曲面壁",
 };
 
 function parseRoomFittings(json: string): RoomSheetFitting[] {
@@ -166,6 +170,11 @@ export default function RoomSheetPage({
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
   const [cutAcross, setCutAcross] = useState("1.00");
   const [cutAlong, setCutAlong] = useState("1.00");
+  /** 頂点を動かす寸法（右・下がプラス） */
+  const [moveX, setMoveX] = useState("0.00");
+  const [moveY, setMoveY] = useState("0.00");
+  /** 建具表はボタンでポップアップ表示する */
+  const [showFittings, setShowFittings] = useState(false);
   const [zoom, setZoom] = useState(1);
   /** 角の○印を出すか（形が決まったら消して寸法を見やすくできます） */
   const [showCorners, setShowCorners] = useState(true);
@@ -267,14 +276,20 @@ export default function RoomSheetPage({
     [solved, ceilingHeight, resolvedFittings, ceiling.length, ceilingResult],
   );
 
-  /** 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため） */
+  /**
+   * 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため）。
+   * 壁1・柱1などの辺ごとの記号は一覧には出さない（計算式には引き続き使える）。
+   */
   const symbolPairs = useMemo(() => {
-    const half = Math.ceil(symbols.length / 2);
-    return symbols
+    const shown = symbols.filter(
+      (item) => !("edgeId" in item) || item.edgeId === undefined,
+    );
+    const half = Math.ceil(shown.length / 2);
+    return shown
       .slice(0, half)
       .map(
         (item, index) =>
-          [item, symbols[half + index] ?? null] as [
+          [item, shown[half + index] ?? null] as [
             (typeof symbols)[number],
             (typeof symbols)[number] | null,
           ],
@@ -512,8 +527,12 @@ export default function RoomSheetPage({
       );
       return;
     }
-    onBack();
-  }, [calcResult.errors, lower, onBack, warned]);
+    // 閉じるときは必ず自動保存する
+    void (async () => {
+      await save();
+      onBack();
+    })();
+  }, [calcResult.errors, lower, onBack, warned, save]);
 
   /** チェック表：上段の自動計算と下段の計算式合計を見比べる */
   const checkRows = useMemo(() => {
@@ -580,6 +599,27 @@ export default function RoomSheetPage({
     setMessage("選んだ角をL型に欠き取りました");
   };
 
+  /**
+   * 選んだ角（頂点）を上下左右へ寸法で動かす。
+   * 動かした結果、両隣の辺が縦横でなくなると斜め辺になる。
+   */
+  const moveSelectedCorner = (dx: number, dy: number): void => {
+    if (selectedCorner === null) {
+      setMessage("図の角（○印）を選んでから移動を押してください");
+      return;
+    }
+    const result = moveCorner(shape, selectedCorner, dx, dy);
+    if (result.error) {
+      setMessage(result.error);
+      return;
+    }
+    setShape(result.shape);
+    setSelectedEdge(null);
+    setMessage(
+      `角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
+    );
+  };
+
   /** 選んだ辺の途中をコ型に凹ませる（いまの形と寸法は残す） */
   const addNotch = (): void => {
     const index = shape.edges.findIndex((item) => item.id === selectedEdge);
@@ -630,6 +670,13 @@ export default function RoomSheetPage({
         </label>
         <button type="button" onClick={() => void save()}>
           💾 保存
+        </button>
+        <button
+          type="button"
+          className={showFittings ? "on" : ""}
+          onClick={() => setShowFittings(!showFittings)}
+        >
+          🚪 建具表
         </button>
         <button type="button" onClick={() => setShowCheck(!showCheck)}>
           ✓ チェック表
@@ -688,6 +735,64 @@ export default function RoomSheetPage({
             >
               コ型を辺に追加
             </button>
+            <span className="corner-move">
+              <label title="角を動かす寸法（右がプラス・左がマイナス）">
+                横
+                <input
+                  className="num cut"
+                  value={moveX}
+                  onChange={(e) => setMoveX(e.target.value)}
+                />
+              </label>
+              <label title="角を動かす寸法（下がプラス・上がマイナス）">
+                縦
+                <input
+                  className="num cut"
+                  value={moveY}
+                  onChange={(e) => setMoveY(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を左へ動かします"
+                onClick={() => moveSelectedCorner(-Math.abs(Number(moveX)), 0)}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を右へ動かします"
+                onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
+              >
+                →
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を上へ動かします"
+                onClick={() => moveSelectedCorner(0, -Math.abs(Number(moveY)))}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を下へ動かします"
+                onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="横・縦の両方へ同時に動かします（斜めの辺になります）"
+                onClick={() => moveSelectedCorner(Number(moveX), Number(moveY))}
+              >
+                ╱ 斜めへ
+              </button>
+            </span>
             <button
               type="button"
               onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
@@ -728,6 +833,27 @@ export default function RoomSheetPage({
                   y: (point.y + next.y) / 2,
                 };
                 const vertical = point.x === next.x;
+                const className = [
+                  "edge",
+                  line.kind,
+                  selectedEdge === line.id ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                // 曲面壁は矢（ふくらみ）の分だけ外側へ膨らませて描く
+                const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
+                const span = Math.hypot(next.x - point.x, next.y - point.y);
+                const normal =
+                  span === 0
+                    ? { x: 0, y: 0 }
+                    : {
+                        x: -(next.y - point.y) / span,
+                        y: (next.x - point.x) / span,
+                      };
+                const control = {
+                  x: middle.x - normal.x * bulge * 2,
+                  y: middle.y - normal.y * bulge * 2,
+                };
                 return (
                   <g
                     key={line.id}
@@ -736,19 +862,21 @@ export default function RoomSheetPage({
                       setSelectedCorner(null);
                     }}
                   >
-                    <line
-                      x1={point.x}
-                      y1={point.y}
-                      x2={next.x}
-                      y2={next.y}
-                      className={[
-                        "edge",
-                        line.kind,
-                        selectedEdge === line.id ? "selected" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    />
+                    {bulge > 0 ? (
+                      <path
+                        d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
+                        className={className}
+                        fill="none"
+                      />
+                    ) : (
+                      <line
+                        x1={point.x}
+                        y1={point.y}
+                        x2={next.x}
+                        y2={next.y}
+                        className={className}
+                      />
+                    )}
                     <text
                       x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
                       y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
@@ -860,6 +988,9 @@ export default function RoomSheetPage({
                 <th className="no">No</th>
                 <th>向き</th>
                 <th className="num">寸法</th>
+                <th className="num" title="曲面壁のふくらみ（矢）">
+                  矢
+                </th>
                 <th>種別</th>
               </tr>
             </thead>
@@ -897,25 +1028,86 @@ export default function RoomSheetPage({
                     </select>
                   </td>
                   <td>
-                    <input
-                      className="num"
-                      defaultValue={
-                        line.length === null ? "" : formatNumber(line.length, 2)
-                      }
-                      key={`${line.id}-${line.length ?? "auto"}`}
-                      placeholder={
-                        line.auto ? formatNumber(line.resolved, 2) : ""
-                      }
-                      title="空欄にすると、閉じた形になるように自動算出します"
-                      onBlur={(e) => {
-                        const text = e.target.value.trim();
-                        setShape(
-                          updateEdge(shape, line.id, {
-                            length: text === "" ? null : Number(text),
-                          }),
-                        );
-                      }}
-                    />
+                    {isDiagonal(line.direction) ? (
+                      <span className="diagonal">
+                        <input
+                          className="num"
+                          defaultValue={formatNumber(line.dx ?? 0, 2)}
+                          key={`${line.id}-dx-${line.dx ?? 0}`}
+                          title="斜め辺の横移動（右がプラス）"
+                          onBlur={(e) =>
+                            setShape(
+                              updateEdge(shape, line.id, {
+                                dx: Number(e.target.value.trim() || 0),
+                              }),
+                            )
+                          }
+                        />
+                        <input
+                          className="num"
+                          defaultValue={formatNumber(line.dy ?? 0, 2)}
+                          key={`${line.id}-dy-${line.dy ?? 0}`}
+                          title="斜め辺の縦移動（下がプラス）"
+                          onBlur={(e) =>
+                            setShape(
+                              updateEdge(shape, line.id, {
+                                dy: Number(e.target.value.trim() || 0),
+                              }),
+                            )
+                          }
+                        />
+                      </span>
+                    ) : (
+                      <input
+                        className="num"
+                        defaultValue={
+                          line.length === null
+                            ? ""
+                            : formatNumber(line.length, 2)
+                        }
+                        key={`${line.id}-${line.length ?? "auto"}`}
+                        placeholder={
+                          line.auto ? formatNumber(line.resolved, 2) : ""
+                        }
+                        title={
+                          line.kind === "curve"
+                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます"
+                            : "空欄にすると、閉じた形になるように自動算出します"
+                        }
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          setShape(
+                            updateEdge(shape, line.id, {
+                              length: text === "" ? null : Number(text),
+                            }),
+                          );
+                        }}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {line.kind === "curve" ? (
+                      <input
+                        className="num"
+                        defaultValue={
+                          line.bulge === null || line.bulge === undefined
+                            ? ""
+                            : formatNumber(line.bulge, 2)
+                        }
+                        key={`${line.id}-bulge-${line.bulge ?? "none"}`}
+                        title={`矢（ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          setShape(
+                            updateEdge(shape, line.id, {
+                              bulge: text === "" ? null : Number(text),
+                            }),
+                          );
+                        }}
+                      />
+                    ) : (
+                      <span className="none">－</span>
+                    )}
                   </td>
                   <td>
                     <select
@@ -996,18 +1188,23 @@ export default function RoomSheetPage({
               <tr>
                 <th>記号</th>
                 <th className="num">数</th>
-                <th>取り付く壁</th>
+                <th className="num">W</th>
+                <th className="num">H</th>
+                <th className="num">腰高</th>
                 <th className="num">面積</th>
                 <th className="num">巾木減</th>
+                <th className="num">横補強</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {roomFittings.map((item, index) => {
                 const resolved = resolvedFittings[index];
-                const unknown = !fittings.some(
+                const master = fittings.find(
                   (fitting) => fitting.symbol === item.symbol,
                 );
+                const computed = master ? computeFitting(master) : null;
+                const unknown = master === undefined;
                 return (
                   <tr key={item.id} className={unknown ? "unknown" : ""}>
                     <td>
@@ -1042,39 +1239,23 @@ export default function RoomSheetPage({
                         }}
                       />
                     </td>
-                    <td>
-                      <select
-                        value={item.edgeId ?? ""}
-                        onChange={(e) =>
-                          setRoomFittings((current) =>
-                            current.map((each) =>
-                              each.id === item.id
-                                ? {
-                                    ...each,
-                                    edgeId:
-                                      e.target.value === ""
-                                        ? null
-                                        : e.target.value,
-                                  }
-                                : each,
-                            ),
-                          )
-                        }
-                      >
-                        <option value="">指定なし（合計から減）</option>
-                        {wallEdges.map((line, wallIndex) => (
-                          <option key={line.id} value={line.id}>
-                            壁{wallIndex + 1}（{formatNumber(line.resolved, 2)}
-                            ）
-                          </option>
-                        ))}
-                      </select>
+                    <td className="num">
+                      {formatNumber(master?.width ?? null, 2)}
+                    </td>
+                    <td className="num">
+                      {formatNumber(master?.height ?? null, 2)}
+                    </td>
+                    <td className="num">
+                      {formatNumber(master?.sillHeight ?? null, 2)}
                     </td>
                     <td className="num">
                       {formatNumber(resolved?.area ?? null, 2)}
                     </td>
                     <td className="num">
                       {formatNumber(resolved?.baseboardDeduction ?? null, 2)}
+                    </td>
+                    <td className="num">
+                      {formatNumber(computed?.reinforcement ?? null, 2)}
                     </td>
                     <td>
                       <button
@@ -1336,82 +1517,87 @@ export default function RoomSheetPage({
           </section>
         )}
 
-        <section className="fittings">
-          <div className="section-bar">
-            <span>
-              建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
-            </span>
-            <label className="deduction">
-              取合欠除
-              <input
-                className="num"
-                defaultValue={String(deductionLimit)}
-                onBlur={(e) => {
-                  const value = Number(e.target.value);
-                  if (!Number.isFinite(value)) return;
-                  setDeductionLimit(value);
-                  void window.sekisan.saveDeductionLimit(value);
-                  setMessage(`${value}m2以下は差し引かない設定にしました`);
-                }}
-              />
-              m2以下は引かない
-            </label>
-          </div>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>記号</th>
-                <th className="num">W</th>
-                <th className="num">H</th>
-                <th className="num">腰高</th>
-                <th className="num">面積</th>
-                <th className="num">巾木減</th>
-                <th className="num">横補強</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {fittings.map((fitting) => {
-                const computed = computeFitting(fitting);
-                return (
-                  <tr
-                    key={fitting.id}
-                    onClick={() => insertFittingSymbol(fitting.symbol)}
-                  >
-                    <td>{fitting.symbol}</td>
-                    <td className="num">{formatNumber(fitting.width, 2)}</td>
-                    <td className="num">{formatNumber(fitting.height, 2)}</td>
-                    <td className="num">
-                      {formatNumber(fitting.sillHeight, 2)}
-                    </td>
-                    <td className="num">{formatNumber(computed.area, 2)}</td>
-                    <td className="num">
-                      {formatNumber(computed.baseboardDeduction, 2)}
-                    </td>
-                    <td
-                      className="num"
-                      title="軸組の開口部横補強（自動計算には使いません）"
+        {showFittings && (
+          <section className="fittings popup">
+            <div className="section-bar">
+              <span>
+                建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
+              </span>
+              <label className="deduction">
+                取合欠除
+                <input
+                  className="num"
+                  defaultValue={String(deductionLimit)}
+                  onBlur={(e) => {
+                    const value = Number(e.target.value);
+                    if (!Number.isFinite(value)) return;
+                    setDeductionLimit(value);
+                    void window.sekisan.saveDeductionLimit(value);
+                    setMessage(`${value}m2以下は差し引かない設定にしました`);
+                  }}
+                />
+                m2以下は引かない
+              </label>
+              <button type="button" onClick={() => setShowFittings(false)}>
+                ✕ 閉じる
+              </button>
+            </div>
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>記号</th>
+                  <th className="num">W</th>
+                  <th className="num">H</th>
+                  <th className="num">腰高</th>
+                  <th className="num">面積</th>
+                  <th className="num">巾木減</th>
+                  <th className="num">横補強</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {fittings.map((fitting) => {
+                  const computed = computeFitting(fitting);
+                  return (
+                    <tr
+                      key={fitting.id}
+                      onClick={() => insertFittingSymbol(fitting.symbol)}
                     >
-                      {formatNumber(computed.reinforcement, 2)}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        title="この部屋の自動計算へ加える"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addRoomFitting(fitting.symbol);
-                        }}
+                      <td>{fitting.symbol}</td>
+                      <td className="num">{formatNumber(fitting.width, 2)}</td>
+                      <td className="num">{formatNumber(fitting.height, 2)}</td>
+                      <td className="num">
+                        {formatNumber(fitting.sillHeight, 2)}
+                      </td>
+                      <td className="num">{formatNumber(computed.area, 2)}</td>
+                      <td className="num">
+                        {formatNumber(computed.baseboardDeduction, 2)}
+                      </td>
+                      <td
+                        className="num"
+                        title="軸組の開口部横補強（自動計算には使いません）"
                       >
-                        ＋部屋
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </section>
+                        {formatNumber(computed.reinforcement, 2)}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          title="この部屋の自動計算へ加える"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addRoomFitting(fitting.symbol);
+                          }}
+                        >
+                          ＋部屋
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        )}
       </div>
 
       <RoomCalcSheet

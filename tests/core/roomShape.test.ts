@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  arcLength,
   cutCorner,
   deducts,
   edge,
   floorArea,
   lShape,
+  moveCorner,
   notchEdge,
   rectangleShape,
   roomQuantities,
@@ -189,5 +191,48 @@ describe("部屋形状（単線図）", () => {
       edges: [edge("E", 3), edge("S", 3), edge("W", 2), edge("N", 3)],
     };
     expect(solveShape(shape).error).toBe("横方向の寸法が閉じていません");
+  });
+
+  it("曲面壁は弦の長さと矢から弧長を出して壁長さに使う", () => {
+    // 半円（弦4.00・矢2.00）の弧長は 2π ≒ 6.28
+    expect(arcLength(4, 2)).toBe(6.28);
+    // 矢が無ければ直線として弦の長さを使う
+    expect(arcLength(4, 0)).toBe(4);
+
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    expect(solved.edges[2].measured).toBe(4.16);
+    // 壁長さは曲面壁の弧長で数える（4 + 3 + 4.16 + 3）
+    expect(roomQuantities(solved, 2.5).wallLength).toBe(14.16);
+  });
+
+  it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {
+    const shape = rectangleShape(4, 3);
+    const moved = moveCorner(shape, 1, 1, 0);
+    expect(moved.error).toBeNull();
+    const solved = solveShape(moved.shape);
+    // 右上の角から右へ1.00動かすと上辺が5.00、下辺は斜めになる
+    expect(solved.edges[0].length).toBe(5);
+    expect(solved.edges[1].direction).toBe("D");
+    expect(solved.edges[1].dx).toBe(-1);
+    expect(solved.edges[1].dy).toBe(3);
+    expect(solved.edges[1].resolved).toBe(3.16);
+  });
+
+  it("斜め辺を含む形でも閉じた形として面積を出せる", () => {
+    const shape = rectangleShape(4, 3);
+    const moved = moveCorner(shape, 1, 1, 0);
+    const solved = solveShape(moved.shape);
+    expect(solved.error).toBeNull();
+    expect(solved.points).toHaveLength(4);
+    // 台形（上辺5.00・下辺4.00・高さ3.00）
+    expect(floorArea(solved)).toBe(13.5);
   });
 });
