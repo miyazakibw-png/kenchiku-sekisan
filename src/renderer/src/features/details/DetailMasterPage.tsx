@@ -224,13 +224,17 @@ export default function DetailMasterPage({
   /** 以前に作った工事など、物件専用明細がまだ無いときに基本マスターから複製する */
   const handleCopyFromBasic = useCallback(async () => {
     if (projectId === null || !subject) return;
-    const copied = await window.sekisan.copyBasicDetailsToProject(projectId);
+    const result = await window.sekisan.copyBasicDetailsToProject(projectId);
     setRows(
       toDraftRows(await window.sekisan.listDetails(subject.id, projectId)),
     );
     setDeletedIds([]);
     history.clear();
-    setSyncMessage(`基本マスターから${copied}件複製しました`);
+    setSyncMessage(
+      result.removed === 0
+        ? `基本マスターから${result.copied}件複製しました`
+        : `基本マスターから${result.copied}件複製し、二重になっていた${result.removed}件を取り除きました`,
+    );
   }, [history, projectId, subject]);
 
   /** 物件専用マスターで直した明細を大元（基本マスター）へ反映する */

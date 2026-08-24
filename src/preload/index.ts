@@ -92,8 +92,10 @@ const api = {
     projectId: number | null = null,
   ): Promise<DetailChangeLog[]> =>
     ipcRenderer.invoke(IPC.detailChangeLogsList, projectId),
-  /** 既存工事で物件専用明細が無いときに基本マスターから複製する */
-  copyBasicDetailsToProject: (projectId: number): Promise<number> =>
+  /** 既存工事で物件専用明細が足りないときに基本マスターから複製する（二重複製は取り除く） */
+  copyBasicDetailsToProject: (
+    projectId: number,
+  ): Promise<{ copied: number; removed: number }> =>
     ipcRenderer.invoke(IPC.detailsCopyFromBasic, projectId),
   syncProjectDetailsToBasic: (
     projectId: number,

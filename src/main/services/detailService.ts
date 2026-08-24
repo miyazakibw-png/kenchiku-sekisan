@@ -168,11 +168,13 @@ export function listDetails(
 /**
  * 工事を作ったときに基本マスターの明細を物件専用へ複製する。
  * 物件側で自由に直せるようにコピーし、複製元IDだけ残して大元への同期に使う。
+ * すでに複製済みの明細は二重にならないよう飛ばし、増えた分だけを取り込む。
  */
 export function copyBasicDetailsToProject(
   db: AppDatabase,
   projectId: number,
-): number {
+): { copied: number; removed: number } {
+  const removed = removeDuplicateProjectDetails(db, projectId);
   const source = db
     .select()
     .from(mDetails)
@@ -183,9 +185,20 @@ export function copyBasicDetailsToProject(
       asc(mDetails.id),
     )
     .all();
-  if (source.length === 0) return 0;
+  if (source.length === 0) return { copied: 0, removed };
+  const already = new Set(
+    db
+      .select()
+      .from(mDetails)
+      .where(scopeCondition(projectId))
+      .all()
+      .map((row) => row.sourceDetailId)
+      .filter((id): id is number => id !== null),
+  );
+  const rows = source.filter((row) => !already.has(row.id));
+  if (rows.length === 0) return { copied: 0, removed };
   db.transaction((tx) => {
-    source.forEach((row) => {
+    rows.forEach((row) => {
       tx.insert(mDetails)
         .values({
           subjectId: row.subjectId,
@@ -208,7 +221,41 @@ export function copyBasicDetailsToProject(
         .run();
     });
   });
-  return source.length;
+  return { copied: rows.length, removed };
+}
+
+/**
+ * 二重に複製されてしまった物件専用の明細を取り除く。
+ * 同じ複製元から作られた行が複数ある場合、最初の1行だけ残す。
+ */
+export function removeDuplicateProjectDetails(
+  db: AppDatabase,
+  projectId: number,
+): number {
+  const rows = db
+    .select()
+    .from(mDetails)
+    .where(scopeCondition(projectId))
+    .orderBy(asc(mDetails.id))
+    .all();
+  const seen = new Set<number>();
+  const extra: number[] = [];
+  rows.forEach((row) => {
+    const source = row.sourceDetailId;
+    if (source === null) return;
+    if (seen.has(source)) {
+      extra.push(row.id);
+      return;
+    }
+    seen.add(source);
+  });
+  if (extra.length === 0) return 0;
+  db.transaction((tx) => {
+    extra.forEach((id) => {
+      tx.delete(mDetails).where(eq(mDetails.id, id)).run();
+    });
+  });
+  return extra.length;
 }
 
 /**
