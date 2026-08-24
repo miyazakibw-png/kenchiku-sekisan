@@ -38,6 +38,8 @@ export type ProjectMasterKind = (typeof PROJECT_MASTER_KINDS)[number];
 
 interface ProjectMasterRow {
   number: number;
+  /** 複製元の基本マスター番号（この工事だけで作った行は null） */
+  sourceNumber: number | null;
   name: string;
   note: string;
   skipPart2: number;
@@ -53,6 +55,7 @@ function rowsOf(
   return db
     .select({
       number: projectMasters.number,
+      sourceNumber: projectMasters.sourceNumber,
       name: projectMasters.name,
       note: projectMasters.note,
       skipPart2: projectMasters.skipPart2,
@@ -153,6 +156,7 @@ function replaceRows(
           projectId,
           kind,
           number: row.number,
+          sourceNumber: row.sourceNumber,
           name: row.name,
           note: row.note,
           skipPart2: row.skipPart2,
@@ -176,6 +180,7 @@ export function saveProjectBasicMaster(
     return { masters: listProjectBasicMasters(db, projectId), errors };
   const trimmed = dropBlankBasicMasterRows(rows).map((row) => ({
     number: row.id,
+    sourceNumber: null,
     name: row.name.trim(),
     note: row.note,
     skipPart2: 0,
@@ -243,8 +248,15 @@ export function saveProjectSubjects(
     return next;
   };
 
+  const sourceNumbers = new Map(
+    rowsOf(db, projectId, "subjects").map((row) => [
+      row.number,
+      row.sourceNumber,
+    ]),
+  );
   const saved: ProjectMasterRow[] = rows.map((row) => ({
     number: numberFor(row.id),
+    sourceNumber: row.id === null ? null : (sourceNumbers.get(row.id) ?? null),
     name: row.name,
     note: row.note,
     skipPart2: row.skipPart2,
@@ -255,6 +267,7 @@ export function saveProjectSubjects(
   blocked.forEach((subject) => {
     saved.push({
       number: subject.id,
+      sourceNumber: sourceNumbers.get(subject.id) ?? null,
       name: subject.name,
       note: subject.note,
       skipPart2: subject.skipPart2,
@@ -297,6 +310,7 @@ export function copyBasicMastersToProject(
         kind,
         subjects.map((subject) => ({
           number: subject.id,
+          sourceNumber: subject.id,
           name: subject.name,
           note: subject.note,
           skipPart2: subject.skipPart2,
@@ -315,6 +329,7 @@ export function copyBasicMastersToProject(
       kind,
       rows.map((row) => ({
         number: row.id,
+        sourceNumber: row.id,
         name: row.name,
         note: row.note,
         skipPart2: 0,

@@ -767,4 +767,10 @@ ALTER TABLE m_finish_assembly_items_new RENAME TO m_finish_assembly_items;
 CREATE INDEX idx_m_fa_items_assembly_order ON m_finish_assembly_items(assembly_id, display_order);
 CREATE INDEX idx_m_fa_items_subject ON m_finish_assembly_items(subject_id, display_order);
 `,
+  // 工事側マスターが基本マスターのどの番号から複製されたかを覚える
+  `
+ALTER TABLE project_masters ADD COLUMN source_number INTEGER;
+UPDATE project_masters SET source_number = number
+WHERE kind = 'subjects' AND number IN (SELECT id FROM m_subjects);
+`,
 ];

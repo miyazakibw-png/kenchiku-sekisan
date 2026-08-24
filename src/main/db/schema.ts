@@ -537,6 +537,8 @@ export const projectMasters = sqliteTable("project_masters", {
   kind: text("kind").notNull(),
   /** 画面に出る番号（科目ID・部位番号など） */
   number: integer("number").notNull(),
+  /** 複製元の基本マスター番号（この工事だけで作った行は NULL） */
+  sourceNumber: integer("source_number"),
   name: text("name").notNull().default(""),
   note: text("note").notNull().default(""),
   /** 科目のみ使用 */

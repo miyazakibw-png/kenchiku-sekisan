@@ -21,6 +21,9 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
   /** 自分が送った入力の版（元の画面から戻ってきた分で上書きしないため） */
   const rev = useRef(0);
   const sent = useRef(0);
+  /** 今この画面に出ている入力（送るときに古い内容を送らないため） */
+  const setsRef = useRef<CalcSet[]>([]);
+  const focusRef = useRef<CalcFocus | null>(null);
 
   useEffect(() => {
     const off = window.sekisan.onCalcWindowState((next) => {
@@ -28,6 +31,7 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
         // 自分の入力が戻ってきただけのときは、入力中の明細を上書きしない
         if (prev && sent.current > 0 && next.echo !== sent.current)
           return { ...next, sets: prev.sets };
+        setsRef.current = next.sets;
         return next;
       });
     });
@@ -47,29 +51,31 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
 
   const onChange = useCallback(
     (sets: CalcSet[]) => {
+      setsRef.current = sets;
       setState((prev) => (prev ? { ...prev, sets } : prev));
       rev.current += 1;
       sent.current = rev.current;
       void window.sekisan.applyCalcWindow(parentId, {
         sets,
-        focus,
+        focus: focusRef.current,
         rev: rev.current,
       });
     },
-    [focus, parentId],
+    [parentId],
   );
 
+  // カーソルだけの移動でも、今表示している入力をそのまま送り返す
+  // （古い内容を送ると、明細の呼び出しが元の画面で取り消されてしまう）
   const onFocus = useCallback(
     (next: CalcFocus | null) => {
+      focusRef.current = next;
       setFocus(next);
-      setState((prev) => {
-        if (prev)
-          void window.sekisan.applyCalcWindow(parentId, {
-            sets: prev.sets,
-            focus: next,
-            rev: rev.current,
-          });
-        return prev;
+      rev.current += 1;
+      sent.current = rev.current;
+      void window.sekisan.applyCalcWindow(parentId, {
+        sets: setsRef.current,
+        focus: next,
+        rev: rev.current,
       });
     },
     [parentId],

@@ -112,7 +112,7 @@ export default function SubjectMasterPage({
         <span className="hint">
           {projectId === null
             ? "科目IDは行位置で自動採番します。明細は科目の内部IDに付くため、番号や名称を変えても所属は変わりません（集計順は列のみ用意して未使用）"
-            : "この工事だけの科目です。科目IDは一度決まると並べ替えても変わりません。追加した行には空き番号を割り当てます"}
+            : "この工事だけの科目です。基本マスターから複製した科目は基本マスターと同じ科目IDになります。追加した行には空き番号を割り当てます"}
         </span>
         <span className="status">{toast}</span>
       </div>

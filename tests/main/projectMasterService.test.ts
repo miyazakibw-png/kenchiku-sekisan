@@ -221,3 +221,116 @@ describe("工事別の基準マスター", () => {
     );
   });
 });
+
+describe("基本マスターの科目IDを付け替えたときの工事側", () => {
+  let db: AppDatabase;
+
+  beforeEach(() => {
+    db = createDb();
+  });
+
+  it("工事の科目マスターも同じ番号に付け替わる", () => {
+    const projectId = createProject(db, "科目ID工事").id;
+    copyBasicMastersToProject(db, projectId, true);
+    const before = listProjectSubjects(db, projectId);
+
+    const rows: SubjectDraft[] = listSubjects(db).map((subject) => ({
+      id: subject.id,
+      name: subject.name,
+      skipPart2: subject.skipPart2,
+      aggregateOrder: subject.aggregateOrder,
+      note: subject.note,
+      spare1: subject.spare1,
+      spare2: subject.spare2,
+    }));
+    saveSubjects(db, [
+      {
+        id: null,
+        name: "先頭追加",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+      ...rows,
+    ]);
+
+    const after = listProjectSubjects(db, projectId);
+    const moved = after.find((subject) => subject.name === before[0].name);
+    const basic = listSubjects(db).find(
+      (subject) => subject.name === before[0].name,
+    );
+    expect(moved?.id).toBe(basic?.id);
+  });
+});
+
+describe("工事だけの科目がある状態での付け替え", () => {
+  let db: AppDatabase;
+
+  beforeEach(() => {
+    db = createDb();
+  });
+
+  it("工事だけの科目は基本マスターとぶつからない番号へ寄る", () => {
+    const projectId = createProject(db, "工事専用科目").id;
+    copyBasicMastersToProject(db, projectId, true);
+    const projectRows: SubjectDraft[] = listProjectSubjects(db, projectId).map(
+      (subject) => ({
+        id: subject.id,
+        name: subject.name,
+        skipPart2: subject.skipPart2,
+        aggregateOrder: subject.aggregateOrder,
+        note: subject.note,
+        spare1: subject.spare1,
+        spare2: subject.spare2,
+      }),
+    );
+    saveProjectSubjects(db, projectId, [
+      ...projectRows,
+      {
+        id: null,
+        name: "工事だけの科目",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+    ]);
+    const onlyBefore = listProjectSubjects(db, projectId).find(
+      (subject) => subject.name === "工事だけの科目",
+    );
+    expect(onlyBefore).toBeDefined();
+
+    const basicRows: SubjectDraft[] = listSubjects(db).map((subject) => ({
+      id: subject.id,
+      name: subject.name,
+      skipPart2: subject.skipPart2,
+      aggregateOrder: subject.aggregateOrder,
+      note: subject.note,
+      spare1: subject.spare1,
+      spare2: subject.spare2,
+    }));
+    saveSubjects(db, [
+      ...basicRows,
+      {
+        id: null,
+        name: "末尾追加",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+    ]);
+
+    const basicIds = new Set(listSubjects(db).map((subject) => subject.id));
+    const after = listProjectSubjects(db, projectId);
+    const only = after.find((subject) => subject.name === "工事だけの科目");
+    expect(only).toBeDefined();
+    expect(basicIds.has(only?.id ?? 0)).toBe(false);
+    const numbers = after.map((subject) => subject.id);
+    expect(new Set(numbers).size).toBe(numbers.length);
+  });
+});

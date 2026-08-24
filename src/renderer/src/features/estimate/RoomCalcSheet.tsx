@@ -734,11 +734,13 @@ export default function RoomCalcSheet({
         remarksLower: detail.remarksLower,
         estimateDisplay: detail.estimateDisplay,
       });
-      if (!target) {
+      // 呼び出し先のセットが無い（消えている）ときは、末尾に1セット作って入れる
+      if (!target || !sets.some((set) => set.id === target.id)) {
         const created = calcSet(1);
         created.details = [item];
         commit([...sets, created]);
         onFocus({ setId: created.id, area: "detail", index: 0 });
+        onMessage(`${detail.name} を呼び出しました`);
         return;
       }
       const at =
@@ -746,15 +748,17 @@ export default function RoomCalcSheet({
           ? focus.index
           : target.details.findIndex((row) => row.name.trim() === "");
       const details2 = [...target.details];
+      let next = 0;
       if (insertMode || at < 0 || at >= details2.length) {
         const position = at < 0 ? details2.length : at;
         details2.splice(position, 0, item);
-        onFocus({ setId: target.id, area: "detail", index: position + 1 });
+        next = position + 1;
       } else {
         details2[at] = item;
-        onFocus({ setId: target.id, area: "detail", index: at + 1 });
+        next = at + 1;
       }
       updateSet(target.id, { details: details2 });
+      onFocus({ setId: target.id, area: "detail", index: next });
       onMessage(`${detail.name} を呼び出しました`);
     },
     [

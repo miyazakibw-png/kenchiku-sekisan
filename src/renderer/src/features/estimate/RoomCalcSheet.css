@@ -231,9 +231,16 @@
   right: 24px;
   top: 90px;
   width: 760px;
-  max-width: calc(100vw - 48px);
-  max-height: 78vh;
-  overflow: auto;
+  height: 62vh;
+  min-width: 420px;
+  min-height: 220px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  /* 右下をドラッグすると大きさを変えられる */
+  resize: both;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #fff;
   border: 1px solid #94a3b8;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
@@ -403,14 +410,20 @@
 /* 呼出画面は見出しをドラッグで移動でき、中身は下までスクロールできる */
 .room-calc-sheet .call-window .section-bar.drag {
   cursor: move;
-  position: sticky;
-  top: 0;
   background: #fff;
   z-index: 1;
 }
 
+/* 大きさを変えたときは、真ん中の一覧だけが伸び縮みする */
+.room-calc-sheet .call-window .section-bar.drag,
+.room-calc-sheet .call-window .call-subject,
+.room-calc-sheet .call-window .note {
+  flex: 0 0 auto;
+}
+
 .room-calc-sheet .call-scroll {
-  max-height: 52vh;
+  flex: 1 1 auto;
+  min-height: 80px;
   overflow: auto;
 }
 
