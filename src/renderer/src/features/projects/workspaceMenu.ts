@@ -34,8 +34,8 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: "assemblies",
     label: "セット明細表示",
     group: "master",
-    note: "物件のセット明細一覧",
-    ready: false,
+    note: "この物件専用の仕上明細セット。計算書でまとめて呼び出せる",
+    ready: true,
   },
   {
     key: "fittings",

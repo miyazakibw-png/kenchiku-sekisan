@@ -16,6 +16,7 @@ import {
 } from "./workspaceMenu";
 import { useActiveProjectName } from "../../activeProject";
 import DetailMasterPage from "../details/DetailMasterPage";
+import AssemblyMasterPage from "../assemblies/AssemblyMasterPage";
 import SubjectMasterPage from "../subjects/SubjectMasterPage";
 import BasicMasterPage from "../masters/BasicMasterPage";
 import DetailChangeHistoryPage from "../details/DetailChangeHistoryPage";
@@ -176,6 +177,16 @@ export default function ProjectWorkspacePage({
   if (openedMenu === "details") {
     return (
       <DetailMasterPage
+        options={options}
+        projectId={draft.id}
+        onBack={() => setOpenedMenu(null)}
+      />
+    );
+  }
+
+  if (openedMenu === "assemblies") {
+    return (
+      <AssemblyMasterPage
         options={options}
         projectId={draft.id}
         onBack={() => setOpenedMenu(null)}

@@ -30,6 +30,10 @@ import { useTableResize } from "../../hooks/useTableResize";
 
 interface Props {
   options: AssemblyMasterOptions;
+  /** 物件専用のセット明細を扱うときの工事ID（null は基準マスター） */
+  projectId?: number | null;
+  /** 工事管理画面から開いたときの戻り先 */
+  onBack?: () => void;
 }
 
 interface EditorState {
@@ -46,7 +50,11 @@ interface MergeState {
   message: string;
 }
 
-export default function AssemblyMasterPage({ options }: Props): JSX.Element {
+export default function AssemblyMasterPage({
+  options,
+  projectId = null,
+  onBack,
+}: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-assembly-list-v1");
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const [subject, setSubject] = useState<Subject | null>(
@@ -59,8 +67,8 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
   const [toast, setToast] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    setAssemblies(await window.sekisan.listAssemblies(null));
-  }, []);
+    setAssemblies(await window.sekisan.listAssemblies(projectId));
+  }, [projectId]);
 
   useEffect(() => {
     void reload();
@@ -100,8 +108,8 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
 
   const openPicker = useCallback(async () => {
     if (!subject) return;
-    setPicker(await window.sekisan.listDetails(subject.id));
-  }, [subject]);
+    setPicker(await window.sekisan.listDetails(subject.id, projectId));
+  }, [projectId, subject]);
 
   /** 明細マスターから内容を写し取る（参照ではなく複製なので以後は連動しない） */
   const pickDetail = useCallback(async (detail: Detail) => {
@@ -119,8 +127,8 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
     if (!editor) return;
     const result = await window.sekisan.saveAssembly({
       id: editor.id,
-      scope: "basic",
-      projectId: null,
+      scope: projectId === null ? "basic" : "project",
+      projectId,
       note: editor.note,
       items: toAssemblyItems(editor.items),
     });
@@ -136,7 +144,7 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
     } else {
       setToast("保存しました");
     }
-  }, [editor, reload]);
+  }, [editor, projectId, reload]);
 
   const applyMerge = useCallback(async () => {
     if (!merge) return;
@@ -171,7 +179,15 @@ export default function AssemblyMasterPage({ options }: Props): JSX.Element {
 
       <section className="assembly-main">
         <div className="toolbar">
-          <h2>仕上明細セットマスター</h2>
+          <h2>
+            仕上明細セットマスター
+            {projectId === null ? "" : "（この工事専用）"}
+          </h2>
+          {onBack && (
+            <button type="button" onClick={onBack}>
+              ← 工事管理画面へ
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void openPicker()}
