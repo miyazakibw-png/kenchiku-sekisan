@@ -150,8 +150,10 @@ const api = {
       height: number | null;
       sillHeight: number | null;
     },
+    /** 計算書で直接入れた寸法を建具表へ反映させるとき */
+    overwrite?: boolean,
   ): Promise<Fitting[]> =>
-    ipcRenderer.invoke(IPC.roomFittingRegister, projectId, fitting),
+    ipcRenderer.invoke(IPC.roomFittingRegister, projectId, fitting, overwrite),
   /** 軸組計算書の上段。まだ無ければ部位別入力表の行から作られる */
   getFrameSheet: (estimateRowId: number): Promise<FrameSheet> =>
     ipcRenderer.invoke(IPC.frameSheetGet, estimateRowId),
@@ -182,7 +184,7 @@ const api = {
   /** 部位別入力表のチェック列（部位ごとの名称と数量） */
   getEstimateRowChecks: (
     projectId: number,
-    materialCategory: string
+    materialCategory: string,
   ): Promise<EstimateRowCheck[]> =>
     ipcRenderer.invoke(IPC.estimateRowChecks, projectId, materialCategory),
   /** 集計書兼工事マスターで直した内容を計算書・明細マスターへ書き戻して集計し直す */

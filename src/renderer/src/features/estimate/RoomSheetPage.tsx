@@ -96,6 +96,12 @@ function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
   input.select();
 }
 
+/** 打った文字を数値にする（空欄・数字でないものは未入力） */
+function textToNumber(text: string): number | null {
+  const value = Number(text.trim());
+  return text.trim() === "" || !Number.isFinite(value) ? null : value;
+}
+
 function parseRoomFittings(json: string): RoomSheetFitting[] {
   try {
     const parsed = JSON.parse(json) as RoomSheetFitting[];
@@ -146,7 +152,13 @@ function parseShape(json: string): RoomShape {
 /** 図形の寸法を小窓で入れてから確定する（四角・L型・コ型・角の追加） */
 type ShapePrompt =
   | null
-  | { kind: "rect" | "cut" | "notch"; across: string; along: string }
+  | {
+      kind: "rect" | "cut" | "notch";
+      across: string;
+      along: string;
+      /** L型・コ型で足す辺の種別（小さいL・コは柱にすることが多い） */
+      edgeKind: EdgeKind;
+    }
   | { kind: "split"; edgeId: string; span: number; first: string };
 
 const PROMPT_TITLE: Record<"rect" | "cut" | "notch" | "split", string> = {
@@ -188,8 +200,10 @@ export default function RoomSheetPage({
   const [fittingCountText, setFittingCountText] = useState<
     Record<string, string>
   >({});
+  /** この部屋の建具の表で、いちばん下に置いておく空行（ここへ直接書き込める） */
   const [newFitting, setNewFitting] = useState({
     symbol: "",
+    count: "1",
     width: "",
     height: "",
     sill: "",
@@ -211,6 +225,8 @@ export default function RoomSheetPage({
   const [cutAcross, setCutAcross] = useState("1.00");
   const [cutAlong, setCutAlong] = useState("1.00");
   const [prompt, setPrompt] = useState<ShapePrompt>(null);
+  /** L型・コ型で足す辺の種別（次に開く小窓の初期値） */
+  const [promptEdgeKind, setPromptEdgeKind] = useState<EdgeKind>("wall");
   /** 頂点を動かす寸法（右・下がプラス） */
   const [moveX, setMoveX] = useState("0.00");
   const [moveY, setMoveY] = useState("0.00");
@@ -226,6 +242,7 @@ export default function RoomSheetPage({
   const [addCornerMode, setAddCornerMode] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const promptInputRef = useRef<HTMLInputElement | null>(null);
+  const promptBoxRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
   const [message, setMessage] = useState("");
@@ -257,19 +274,32 @@ export default function RoomSheetPage({
     );
   }, [options]);
 
-  // 小窓（四角・L型・コ型・角の追加）を開いたら、必ず寸法欄へカーソルを入れる
+  // 小窓（四角・L型・コ型・角の追加）を開いている間は、カーソルを必ず小窓の中に置く
   const promptOpen = prompt !== null;
   useEffect(() => {
     if (!promptOpen) return;
     const focusInput = (): void => {
       const input = promptInputRef.current;
-      if (!input || document.activeElement === input) return;
+      if (!input) return;
       input.focus();
       input.select();
     };
     focusInput();
     const timer = window.setTimeout(focusInput, 50);
-    return () => window.clearTimeout(timer);
+    // 小窓の外へカーソルが逃げたら（画面の検索欄などへ移ったら）寸法欄へ戻す
+    const keepInside = (event: FocusEvent): void => {
+      const target = event.target;
+      const inside =
+        target instanceof Node &&
+        promptBoxRef.current !== null &&
+        promptBoxRef.current.contains(target);
+      if (!inside) focusInput();
+    };
+    document.addEventListener("focusin", keepInside);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("focusin", keepInside);
+    };
   }, [promptOpen]);
 
   const solved = useMemo(() => solveShape(shape), [shape]);
@@ -456,36 +486,81 @@ export default function RoomSheetPage({
   );
 
   /** 建具表の行をこの部屋の自動計算へ加える */
-  const addRoomFitting = useCallback((symbol: string) => {
+  const addRoomFitting = useCallback((symbol: string, multiplier = 1) => {
     setRoomFittings((current) => [
       ...current,
-      { id: newRoomFittingId(), symbol, multiplier: 1, edgeId: null },
+      { id: newRoomFittingId(), symbol, multiplier, edgeId: null },
     ]);
   }, []);
 
-  /** 建具表に無い建具をここで入力して登録する（建具表へ自動転記） */
-  const registerFitting = useCallback(async () => {
+  /**
+   * 表のいちばん下の空行に書いた建具を、この部屋へ足す。
+   * 建具表に無い記号はそのまま建具表へ登録し、寸法を入れていれば建具表へ反映する。
+   */
+  const commitNewFitting = useCallback(async () => {
     const symbol = newFitting.symbol.trim();
-    if (symbol === "") {
-      setMessage("建具記号を入力してください");
-      return;
-    }
-    const toNumber = (text: string): number | null => {
-      const value = Number(text.trim());
-      return text.trim() === "" || !Number.isFinite(value) ? null : value;
-    };
+    if (symbol === "") return;
+    const width = textToNumber(newFitting.width);
+    const height = textToNumber(newFitting.height);
+    const sill = textToNumber(newFitting.sill);
+    const master = fittings.find((fitting) => fitting.symbol === symbol);
+    const sized = width !== null || height !== null || sill !== null;
     setFittings(
-      await window.sekisan.registerRoomFitting(project.id, {
-        symbol,
-        width: toNumber(newFitting.width),
-        height: toNumber(newFitting.height),
-        sillHeight: toNumber(newFitting.sill),
-      }),
+      await window.sekisan.registerRoomFitting(
+        project.id,
+        {
+          symbol,
+          width: width ?? master?.width ?? null,
+          height: height ?? master?.height ?? null,
+          sillHeight: sill ?? master?.sillHeight ?? null,
+        },
+        sized,
+      ),
     );
-    addRoomFitting(symbol);
-    setNewFitting({ symbol: "", width: "", height: "", sill: "" });
-    setMessage(`${symbol} を建具表へ登録してこの部屋へ追加しました`);
-  }, [addRoomFitting, newFitting, project.id]);
+    addRoomFitting(symbol, textToNumber(newFitting.count) ?? 1);
+    setNewFitting({ symbol: "", count: "1", width: "", height: "", sill: "" });
+    setMessage(
+      master
+        ? `${symbol} をこの部屋へ足しました`
+        : `${symbol} を建具表へ登録してこの部屋へ足しました`,
+    );
+  }, [addRoomFitting, fittings, newFitting, project.id]);
+
+  /** この部屋の建具の表で、寸法（W・H・腰高）を直接打ち替えて建具表へ反映する */
+  const writeFittingSize = useCallback(
+    async (
+      symbol: string,
+      patch: {
+        width?: number | null;
+        height?: number | null;
+        sill?: number | null;
+      },
+    ) => {
+      const name = symbol.trim();
+      if (name === "") return;
+      const master = fittings.find((fitting) => fitting.symbol === name);
+      setFittings(
+        await window.sekisan.registerRoomFitting(
+          project.id,
+          {
+            symbol: name,
+            width:
+              patch.width === undefined ? (master?.width ?? null) : patch.width,
+            height:
+              patch.height === undefined
+                ? (master?.height ?? null)
+                : patch.height,
+            sillHeight:
+              patch.sill === undefined
+                ? (master?.sillHeight ?? null)
+                : patch.sill,
+          },
+          true,
+        ),
+      );
+    },
+    [fittings, project.id],
+  );
 
   /** 記号は計算式にそのまま入力できる。クリックでコピーする */
   const copySymbol = useCallback(async (symbol: string) => {
@@ -695,8 +770,27 @@ export default function RoomSheetPage({
     };
   };
 
+  /** 図形を直したときに増えた辺だけ、小窓で選んだ種別にする */
+  const applyKindToNewEdges = (
+    before: RoomShape,
+    after: RoomShape,
+    edgeKind: EdgeKind,
+  ): RoomShape => {
+    if (edgeKind === "wall") return after;
+    const known = new Set(before.edges.map((item) => item.id));
+    return {
+      edges: after.edges.map((item) =>
+        known.has(item.id) ? item : { ...item, kind: edgeKind },
+      ),
+    };
+  };
+
   /** 選んだ角をL型に欠き取る（いまの形と寸法は残す） */
-  const addCorner = (across: number, along: number): void => {
+  const addCorner = (
+    across: number,
+    along: number,
+    edgeKind: EdgeKind,
+  ): void => {
     if (selectedCorner === null) {
       setMessage("図の角（○印）を選んでからL型を押してください");
       return;
@@ -713,7 +807,8 @@ export default function RoomSheetPage({
       setMessage(result.error);
       return;
     }
-    applyShape(result.shape);
+    const next = applyKindToNewEdges(base.shape, result.shape, edgeKind);
+    applyShape(next);
     setSelectedEdge(null);
     // 続けてL型を足せるよう、選んである角は残す（形が小さくなったときは最後の角へ寄せる）
     setShowCorners(true);
@@ -721,7 +816,7 @@ export default function RoomSheetPage({
       Math.min(selectedCorner, Math.max(result.shape.edges.length - 1, 0)),
     );
     setMessage(
-      `選んだ角をL型に欠き取りました${
+      `選んだ角をL型に欠き取りました（足した辺は${KIND_LABEL[edgeKind]}）${
         result.adjusted ? "（隣の辺の長さに合わせました）" : ""
       }${base.note}`,
     );
@@ -758,8 +853,8 @@ export default function RoomSheetPage({
     }
     setCutAcross(formatNumber(across, 2));
     setCutAlong(formatNumber(along, 2));
-    if (prompt.kind === "cut") addCorner(across, along);
-    else addNotch(across, along);
+    if (prompt.kind === "cut") addCorner(across, along, prompt.edgeKind);
+    else addNotch(across, along, prompt.edgeKind);
   };
 
   /** 閉じていない寸法を自動で合わせる */
@@ -842,7 +937,11 @@ export default function RoomSheetPage({
   };
 
   /** 選んだ辺の途中をコ型に凹ませる（いまの形と寸法は残す） */
-  const addNotch = (across: number, along: number): void => {
+  const addNotch = (
+    across: number,
+    along: number,
+    edgeKind: EdgeKind,
+  ): void => {
     const index = shape.edges.findIndex((item) => item.id === selectedEdge);
     if (index < 0) {
       setMessage("凹ませる辺を選んでからコ型を押してください");
@@ -863,10 +962,12 @@ export default function RoomSheetPage({
       setMessage(result.error);
       return;
     }
-    applyShape(result.shape);
+    applyShape(applyKindToNewEdges(base.shape, result.shape, edgeKind));
     setSelectedEdge(null);
     setSelectedCorner(null);
-    setMessage(`選んだ辺をコ型に凹ませました${base.note}`);
+    setMessage(
+      `選んだ辺をコ型に凹ませました（足した辺は${KIND_LABEL[edgeKind]}）${base.note}`,
+    );
   };
 
   return (
@@ -927,7 +1028,12 @@ export default function RoomSheetPage({
                 type="button"
                 title="小窓で横・縦の寸法を入れて四角を作ります"
                 onClick={() =>
-                  setPrompt({ kind: "rect", across: "4.00", along: "3.00" })
+                  setPrompt({
+                    kind: "rect",
+                    across: "4.00",
+                    along: "3.00",
+                    edgeKind: "wall",
+                  })
                 }
               >
                 □ 四角
@@ -947,6 +1053,7 @@ export default function RoomSheetPage({
                     kind: "cut",
                     across: cutAcross,
                     along: cutAlong,
+                    edgeKind: promptEdgeKind,
                   });
                 }}
               >
@@ -964,6 +1071,7 @@ export default function RoomSheetPage({
                     kind: "notch",
                     across: cutAcross,
                     along: cutAlong,
+                    edgeKind: promptEdgeKind,
                   });
                 }}
               >
@@ -1597,14 +1705,50 @@ export default function RoomSheetPage({
                         }
                       />
                     </td>
-                    <td className="num">
-                      {formatNumber(master?.width ?? null, 2)}
+                    <td>
+                      <input
+                        className="num"
+                        key={`w-${item.id}-${master?.width ?? ""}`}
+                        defaultValue={formatNumber(master?.width ?? null, 2)}
+                        onMouseDown={selectWholeOnFirstClick}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onBlur={(e) =>
+                          void writeFittingSize(item.symbol, {
+                            width: textToNumber(e.target.value),
+                          })
+                        }
+                      />
                     </td>
-                    <td className="num">
-                      {formatNumber(master?.height ?? null, 2)}
+                    <td>
+                      <input
+                        className="num"
+                        key={`h-${item.id}-${master?.height ?? ""}`}
+                        defaultValue={formatNumber(master?.height ?? null, 2)}
+                        onMouseDown={selectWholeOnFirstClick}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onBlur={(e) =>
+                          void writeFittingSize(item.symbol, {
+                            height: textToNumber(e.target.value),
+                          })
+                        }
+                      />
                     </td>
-                    <td className="num">
-                      {formatNumber(master?.sillHeight ?? null, 2)}
+                    <td>
+                      <input
+                        className="num"
+                        key={`s-${item.id}-${master?.sillHeight ?? ""}`}
+                        defaultValue={formatNumber(
+                          master?.sillHeight ?? null,
+                          2,
+                        )}
+                        onMouseDown={selectWholeOnFirstClick}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onBlur={(e) =>
+                          void writeFittingSize(item.symbol, {
+                            sill: textToNumber(e.target.value),
+                          })
+                        }
+                      />
                     </td>
                     <td className="num">
                       {formatNumber(resolved?.area ?? null, 2)}
@@ -1630,6 +1774,88 @@ export default function RoomSheetPage({
                   </tr>
                 );
               })}
+              {/* いちばん下は空行。記号・数・寸法を直接書き込める（Enterで確定） */}
+              <tr
+                className="blank"
+                // 空行の外へ出たときに確定する（欄を移る途中では確定しない）
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) {
+                    void commitNewFitting();
+                  }
+                }}
+              >
+                <td className="symbol">
+                  <input
+                    list="room-fitting-symbols"
+                    value={newFitting.symbol}
+                    placeholder="記号"
+                    onChange={(e) =>
+                      setNewFitting({ ...newFitting, symbol: e.target.value })
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void commitNewFitting()
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    className="num"
+                    value={newFitting.count}
+                    onMouseDown={selectWholeOnFirstClick}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onChange={(e) =>
+                      setNewFitting({ ...newFitting, count: e.target.value })
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void commitNewFitting()
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    className="num"
+                    value={newFitting.width}
+                    onChange={(e) =>
+                      setNewFitting({ ...newFitting, width: e.target.value })
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void commitNewFitting()
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    className="num"
+                    value={newFitting.height}
+                    onChange={(e) =>
+                      setNewFitting({ ...newFitting, height: e.target.value })
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void commitNewFitting()
+                    }
+                  />
+                </td>
+                <td>
+                  <input
+                    className="num"
+                    value={newFitting.sill}
+                    onChange={(e) =>
+                      setNewFitting({ ...newFitting, sill: e.target.value })
+                    }
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && void commitNewFitting()
+                    }
+                  />
+                </td>
+                <td className="num" />
+                <td className="num" />
+                <td className="num" />
+                <td>
+                  <button type="button" onClick={() => void commitNewFitting()}>
+                    ＋
+                  </button>
+                </td>
+              </tr>
             </tbody>
           </table>
           <datalist id="room-fitting-symbols">
@@ -1637,41 +1863,8 @@ export default function RoomSheetPage({
               <option key={fitting.id} value={fitting.symbol} />
             ))}
           </datalist>
-          <div className="register">
-            <span>建具表に無い建具はここで入力（建具表へ登録します）</span>
-            <input
-              value={newFitting.symbol}
-              onChange={(e) =>
-                setNewFitting({ ...newFitting, symbol: e.target.value })
-              }
-            />
-            <input
-              className="num"
-              value={newFitting.width}
-              onChange={(e) =>
-                setNewFitting({ ...newFitting, width: e.target.value })
-              }
-            />
-            <input
-              className="num"
-              value={newFitting.height}
-              onChange={(e) =>
-                setNewFitting({ ...newFitting, height: e.target.value })
-              }
-            />
-            <input
-              className="num"
-              value={newFitting.sill}
-              onChange={(e) =>
-                setNewFitting({ ...newFitting, sill: e.target.value })
-              }
-            />
-            <button type="button" onClick={() => void registerFitting()}>
-              ＋ 建具表へ登録して追加
-            </button>
-          </div>
           <p className="note">
-            上段の建具は壁面積・巾木長さから自動で差し引きます。下段の計算式で使う建具記号（&lt;AW1&gt;
+            いちばん下の空行に、記号・数・W・H・腰高をそのまま書き込めます（記号は一覧から選ぶこともできます）。建具表に無い記号は建具表へ登録し、W・H・腰高を打ち替えると建具表にも反映します。上段の建具は壁面積・巾木長さから自動で差し引きます。下段の計算式で使う建具記号（&lt;AW1&gt;
             など）は、ここに書かなくても建具表から数量を引用します。
           </p>
         </section>
@@ -1872,68 +2065,105 @@ export default function RoomSheetPage({
         )}
 
         {prompt && (
-          <div className="shape-prompt">
-            <div className="section-bar">
-              <span>{PROMPT_TITLE[prompt.kind]}</span>
-            </div>
-            <div className="body">
-              {prompt.kind === "split" ? (
-                <label>
-                  角までの寸法
-                  <input
-                    className="num"
-                    ref={promptInputRef}
-                    autoFocus
-                    onFocus={(e) => e.currentTarget.select()}
-                    onMouseDown={selectWholeOnFirstClick}
-                    value={prompt.first}
-                    onChange={(e) =>
-                      setPrompt({ ...prompt, first: e.target.value })
-                    }
-                    onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                  />
-                  <span className="hint">
-                    （辺の長さ {formatNumber(prompt.span, 2)}）
-                  </span>
-                </label>
-              ) : (
-                <>
+          <div
+            className="shape-prompt-overlay"
+            // 小窓を出している間は、後ろの欄を押しても入力が移らないようにする
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) e.preventDefault();
+            }}
+          >
+            <div
+              className="shape-prompt"
+              ref={promptBoxRef}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setPrompt(null);
+              }}
+            >
+              <div className="section-bar">
+                <span>{PROMPT_TITLE[prompt.kind]}</span>
+              </div>
+              <div className="body">
+                {prompt.kind === "split" ? (
                   <label>
-                    横
+                    角までの寸法
                     <input
                       className="num"
                       ref={promptInputRef}
                       autoFocus
                       onFocus={(e) => e.currentTarget.select()}
                       onMouseDown={selectWholeOnFirstClick}
-                      value={prompt.across}
+                      value={prompt.first}
                       onChange={(e) =>
-                        setPrompt({ ...prompt, across: e.target.value })
+                        setPrompt({ ...prompt, first: e.target.value })
                       }
                       onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
                     />
+                    <span className="hint">
+                      （辺の長さ {formatNumber(prompt.span, 2)}）
+                    </span>
                   </label>
-                  <label>
-                    縦
-                    <input
-                      className="num"
-                      onFocus={(e) => e.currentTarget.select()}
-                      onMouseDown={selectWholeOnFirstClick}
-                      value={prompt.along}
-                      onChange={(e) =>
-                        setPrompt({ ...prompt, along: e.target.value })
-                      }
-                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                    />
-                  </label>
-                </>
-              )}
-              <button type="button" onClick={submitPrompt}>
-                OK
-              </button>
-              <button type="button" onClick={() => setPrompt(null)}>
-                取消
-              </button>
+                ) : (
+                  <>
+                    <label>
+                      横
+                      <input
+                        className="num"
+                        ref={promptInputRef}
+                        autoFocus
+                        onFocus={(e) => e.currentTarget.select()}
+                        onMouseDown={selectWholeOnFirstClick}
+                        value={prompt.across}
+                        onChange={(e) =>
+                          setPrompt({ ...prompt, across: e.target.value })
+                        }
+                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                      />
+                    </label>
+                    <label>
+                      縦
+                      <input
+                        className="num"
+                        onFocus={(e) => e.currentTarget.select()}
+                        onMouseDown={selectWholeOnFirstClick}
+                        value={prompt.along}
+                        onChange={(e) =>
+                          setPrompt({ ...prompt, along: e.target.value })
+                        }
+                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                      />
+                    </label>
+                    {prompt.kind !== "rect" && (
+                      <label>
+                        種別
+                        <select
+                          value={prompt.edgeKind}
+                          onChange={(e) => {
+                            const edgeKind = e.target.value as EdgeKind;
+                            setPromptEdgeKind(edgeKind);
+                            setPrompt({ ...prompt, edgeKind });
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                        >
+                          {(Object.keys(KIND_LABEL) as EdgeKind[]).map(
+                            (key) => (
+                              <option key={key} value={key}>
+                                {KIND_LABEL[key]}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                        <span className="hint">（足す辺の種別）</span>
+                      </label>
+                    )}
+                  </>
+                )}
+                <button type="button" onClick={submitPrompt}>
+                  OK
+                </button>
+                <button type="button" onClick={() => setPrompt(null)}>
+                  取消
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -181,6 +181,28 @@ describe("部屋計算書（上段）", () => {
     expect(rows[1].fromEstimate).toBe(1);
   });
 
+  it("計算書で寸法を直接打ち替えたときは建具表の寸法も書き替える", () => {
+    const project = createProject(db, "建具寸法直接入力");
+    registerRoomFitting(db, project.id, {
+      symbol: "AW1",
+      width: 1.8,
+      height: 2,
+      sillHeight: null,
+    });
+
+    const rows = registerRoomFitting(
+      db,
+      project.id,
+      { symbol: "AW1", width: 1.6, height: 2.2, sillHeight: 0.8 },
+      true,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].width).toBe(1.6);
+    expect(rows[0].height).toBe(2.2);
+    expect(rows[0].sillHeight).toBe(0.8);
+  });
+
   it("取り合いの欠除は設定として保存する（既定0.5m2）", () => {
     expect(getDeductionLimit(db)).toBe(0.5);
     saveDeductionLimit(db, 0.3);

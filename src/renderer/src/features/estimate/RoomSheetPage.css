@@ -155,7 +155,14 @@
   border-left: 1px solid #cbd5e1;
 }
 
-/* 図形の寸法を入れる小窓 */
+/* 図形の寸法を入れる小窓（後ろの欄へ入力が移らないよう画面全体を覆う） */
+.room-sheet-page .shape-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  /* ID欄の候補一覧（60）より前に出す。後ろに隠れると入力できなくなる */
+  z-index: 80;
+}
+
 .room-sheet-page .shape-prompt {
   position: fixed;
   left: 50%;
@@ -213,17 +220,9 @@
   color: #b91c1c;
 }
 
-.room-sheet-page .room-fittings .register {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 4px 6px;
-  font-size: 12px;
-}
-
-.room-sheet-page .room-fittings .register input {
-  width: 78px;
+/* いちばん下の空行（ここへ直接書き込む） */
+.room-sheet-page .room-fittings tr.blank td {
+  background: #f8fafc;
 }
 
 .room-sheet-page .note {

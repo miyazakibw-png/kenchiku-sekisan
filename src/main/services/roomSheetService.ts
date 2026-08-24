@@ -96,6 +96,7 @@ export function saveRoomSheet(
 /**
  * 計算書で使った記号が建具表に無ければ登録する（積算入力からの登録なので建具表の末尾へ入る）。
  * 既にある記号は建具表側を正として上書きしない。
+ * overwrite のときだけ、計算書で直接入れた寸法を建具表へ反映させる。
  */
 export function registerRoomFitting(
   db: AppDatabase,
@@ -106,6 +107,7 @@ export function registerRoomFitting(
     height: number | null;
     sillHeight: number | null;
   },
+  overwrite = false,
 ): Fitting[] {
   const symbol = fitting.symbol.trim();
   if (symbol === "") throw new Error("建具記号を入力してください");
@@ -136,6 +138,15 @@ export function registerRoomFitting(
         fromEstimate: 1,
         displayOrder: (last?.displayOrder ?? -1) + 1,
       })
+      .run();
+  } else if (overwrite) {
+    db.update(projectFittings)
+      .set({
+        width: fitting.width,
+        height: fitting.height,
+        sillHeight: fitting.sillHeight,
+      })
+      .where(eq(projectFittings.id, existing.id))
       .run();
   }
   return listFittings(db, projectId);

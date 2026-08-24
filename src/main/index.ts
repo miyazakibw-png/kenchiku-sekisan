@@ -305,7 +305,14 @@ function registerIpcHandlers(): void {
         height: number | null;
         sillHeight: number | null;
       },
-    ) => registerRoomFitting(getDatabase(), projectId, fitting),
+      overwrite?: boolean,
+    ) =>
+      registerRoomFitting(
+        getDatabase(),
+        projectId,
+        fitting,
+        overwrite ?? false,
+      ),
   );
   ipcMain.handle(IPC.frameSheetGet, (_event, estimateRowId: number) =>
     getFrameSheet(getDatabase(), estimateRowId),
@@ -343,8 +350,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle(
     IPC.estimateRowChecks,
     (_event, projectId: number, materialCategory: string) =>
-      collectEstimateRowChecks(getDatabase(), projectId, materialCategory)
-  )
+      collectEstimateRowChecks(getDatabase(), projectId, materialCategory),
+  );
   ipcMain.handle(IPC.aggregateRuns, (_event, projectId: number) =>
     listAggregateRuns(getDatabase(), projectId),
   );
