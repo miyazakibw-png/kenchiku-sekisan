@@ -21,17 +21,19 @@ import {
   syncLines,
   usedBSymbols,
   type CalcDetail,
+  type CalcLine,
   type CalcSet,
   type CalcSheetResult,
 } from "../../../../core/room/calcSheet";
 import {
   detailAsTsv,
   duplicateDetail,
+  duplicateLine,
   duplicateSet,
   fillLines,
   pasteDetails,
   pasteLines,
-  setAsTsv,
+  rowsAsTsv,
 } from "../../../../core/room/calcClipboard";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
@@ -359,6 +361,11 @@ export default function RoomCalcSheet({
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   /** 明細番号欄の一覧候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** 複数行コピーの範囲（Shift+クリックで選んだ最後の行） */
+  const [rangeEnd, setRangeEnd] = useState<{
+    setId: string;
+    index: number;
+  } | null>(null);
   /** 元に戻す・やり直しのための履歴 */
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
@@ -879,16 +886,60 @@ export default function RoomCalcSheet({
     );
   }, [currentDetail, onMessage]);
 
-  /** 複数行コピー（カーソルのセット明細ぜんぶ） */
-  const copySet = useCallback(async () => {
-    if (!currentSet) return;
-    const text = setAsTsv(currentSet);
-    await navigator.clipboard.writeText(text);
-    setCalcClip({ kind: "set", text, set: currentSet });
-    onMessage(
-      `セット「${currentSet.partName || "（部位なし）"}」をコピーしました`,
+  /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため） */
+  const flatRows = useMemo(() => {
+    const list: { setId: string; index: number }[] = [];
+    sets.forEach((set) => {
+      for (let index = 0; index < setRowCount(set); index += 1) {
+        list.push({ setId: set.id, index });
+      }
+    });
+    return list;
+  }, [sets]);
+
+  /** カーソルの行から Shift+クリックした行までの範囲（通し番号） */
+  const rangeRows = useMemo(() => {
+    if (!focus || !rangeEnd) return [];
+    const from = flatRows.findIndex(
+      (row) => row.setId === focus.setId && row.index === focus.index,
     );
-  }, [currentSet, onMessage]);
+    const to = flatRows.findIndex(
+      (row) => row.setId === rangeEnd.setId && row.index === rangeEnd.index,
+    );
+    if (from < 0 || to < 0) return [];
+    return flatRows.slice(Math.min(from, to), Math.max(from, to) + 1);
+  }, [flatRows, focus, rangeEnd]);
+
+  /** 選んでいる行かどうか（背景色をつける） */
+  const isSelectedRow = useCallback(
+    (setId: string, index: number): boolean =>
+      rangeRows.some((row) => row.setId === setId && row.index === index),
+    [rangeRows],
+  );
+
+  /** 複数行コピー（Shift+クリックで選んだ範囲の行を明細・計算式ごと） */
+  const copyRows = useCallback(async () => {
+    if (rangeRows.length === 0) {
+      onMessage(
+        "コピーする先頭の行にカーソルを置き、最後の行を Shift+クリックしてください",
+      );
+      return;
+    }
+    const details: CalcDetail[] = [];
+    const lines: CalcLine[] = [];
+    rangeRows.forEach((row) => {
+      const set = sets.find((item) => item.id === row.setId);
+      if (!set) return;
+      details.push(set.details[row.index] ?? calcDetail());
+      lines.push(set.lines[row.index] ?? calcLine());
+    });
+    const text = rowsAsTsv(details, lines);
+    await navigator.clipboard.writeText(text);
+    setCalcClip({ kind: "rows", text, details, lines });
+    onMessage(
+      `${rangeRows.length}行をコピーしました（貼り付けたい行にカーソルを置いて上書貼付／挿入貼付）`,
+    );
+  }, [onMessage, rangeRows, sets]);
 
   /**
    * 貼り付け。この画面でコピーしたセット・明細ならそのまま写し、
@@ -922,20 +973,47 @@ export default function RoomCalcSheet({
         return;
       }
 
-      if (clip?.kind === "detail") {
+      if (clip?.kind === "detail" || clip?.kind === "rows") {
+        // カーソルのある行が貼り付け先。上書貼付はその行から、挿入貼付はその行の下へ
+        const copiedDetails =
+          clip.kind === "detail"
+            ? [duplicateDetail(clip.detail)]
+            : clip.details.map(duplicateDetail);
+        const copiedLines =
+          clip.kind === "rows" ? clip.lines.map(duplicateLine) : [];
         const details = [...currentSet.details];
-        const at = focus?.area === "detail" ? focus.index : details.length;
-        const copied = duplicateDetail(clip.detail);
-        if (mode === "overwrite" && at < details.length) details[at] = copied;
-        else details.splice(at, 0, copied);
+        const lines = [...currentSet.lines];
+        const cursor =
+          focus?.area === "detail" ? focus.index : details.length - 1;
+        const at =
+          mode === "overwrite"
+            ? Math.max(cursor, 0)
+            : Math.min(Math.max(cursor + 1, 0), details.length);
+
+        copiedDetails.forEach((copied, offset) => {
+          const line = copiedLines[offset];
+          if (mode === "overwrite") {
+            const index = at + offset;
+            if (index < details.length) details[index] = copied;
+            else details.push(copied);
+            if (line) {
+              if (index < lines.length) lines[index] = line;
+              else lines.push(line);
+            }
+          } else {
+            details.splice(at + offset, 0, copied);
+            lines.splice(at + offset, 0, line ?? calcLine());
+          }
+        });
+
         updateSet(currentSet.id, {
           details,
-          lines: fillLines(details, currentSet.lines),
+          lines: fillLines(details, lines),
         });
         onMessage(
           mode === "overwrite"
-            ? "コピーした明細で上書きしました"
-            : "コピーした明細を差し込みました",
+            ? `コピーした${copiedDetails.length}行でカーソルの行から上書きしました`
+            : `コピーした${copiedDetails.length}行をカーソルの行の下へ差し込みました`,
         );
         return;
       }
@@ -1112,7 +1190,8 @@ export default function RoomCalcSheet({
           )
             return;
           e.preventDefault();
-          void copyRow();
+          // Shift+クリックで範囲を選んでいればその範囲、無ければカーソルの1行
+          void (rangeRows.length > 0 ? copyRows() : copyRow());
         } else if (e.key === "v") {
           e.preventDefault();
           void paste("overwrite");
@@ -1208,21 +1287,21 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="カーソルのあるセット明細をまとめてコピーします"
-          onClick={() => void copySet()}
+          title="先頭の行にカーソルを置き、最後の行を Shift+クリックしてから押すと、その範囲の行（明細と計算式）をコピーします"
+          onClick={() => void copyRows()}
         >
           ⧉ 複数行コピー
         </button>
         <button
           type="button"
-          title="カーソルの位置に上書きします（Ctrl+V）"
+          title="カーソルのある行から上書きします（Ctrl+V）"
           onClick={() => void paste("overwrite")}
         >
           📋 上書貼付
         </button>
         <button
           type="button"
-          title="カーソルの位置に差し込みます"
+          title="カーソルのある行の下へ差し込みます"
           onClick={() => void paste("insert")}
         >
           📋 挿入貼付
@@ -1313,7 +1392,20 @@ export default function RoomCalcSheet({
                       index: rowIndex,
                     });
                   return (
-                    <tr key={`${set.id}-${rowIndex}`}>
+                    <tr
+                      key={`${set.id}-${rowIndex}`}
+                      className={
+                        isSelectedRow(set.id, rowIndex) ? "row-selected" : ""
+                      }
+                      onClick={(e) => {
+                        // Shift+クリックで範囲の終わりを決める。ふつうのクリックは選び直し
+                        setRangeEnd(
+                          e.shiftKey
+                            ? { setId: set.id, index: rowIndex }
+                            : null,
+                        );
+                      }}
+                    >
                       <td className="set-part">
                         <PickInput
                           row={gridRow}

@@ -362,6 +362,11 @@
   border-top: none;
 }
 
+/* 複数行コピーで選んだ行（Shift+クリックの範囲） */
+.room-calc-sheet table.calc tbody.set tr.row-selected td {
+  background: #fff8d0;
+}
+
 /* 見出し行（※行挿入）。部位欄から操作欄まで色を付ける（列の区切り線は入れない） */
 .room-calc-sheet tr.banner-row td {
   padding: 1px 4px;

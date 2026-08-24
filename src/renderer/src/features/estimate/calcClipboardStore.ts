@@ -1,4 +1,8 @@
-import type { CalcDetail, CalcSet } from "../../../../core/room/calcSheet";
+import type {
+  CalcDetail,
+  CalcLine,
+  CalcSet,
+} from "../../../../core/room/calcSheet";
 
 /**
  * セット・明細のコピー内容を計算書どうしで持ち回るための置き場。
@@ -7,7 +11,13 @@ import type { CalcDetail, CalcSet } from "../../../../core/room/calcSheet";
  */
 export type CalcClip =
   | { kind: "set"; text: string; set: CalcSet }
-  | { kind: "detail"; text: string; detail: CalcDetail };
+  | { kind: "detail"; text: string; detail: CalcDetail }
+  | {
+      kind: "rows";
+      text: string;
+      details: CalcDetail[];
+      lines: CalcLine[];
+    };
 
 let clip: CalcClip | null = null;
 

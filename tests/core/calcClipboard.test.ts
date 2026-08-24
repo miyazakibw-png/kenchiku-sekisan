@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   detailAsTsv,
   duplicateDetail,
+  duplicateLine,
   duplicateSet,
+  rowsAsTsv,
   fillLines,
   pasteDetails,
   pasteLines,
@@ -72,6 +74,23 @@ describe('セット明細計算表のコピー・貼り付け', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].split('\t')[0]).toBe('床')
     expect(rows[0].split('\t')[7]).toBe('3*4')
+  })
+
+  it('選んだ複数行は明細と計算式を並べてコピーする', () => {
+    const details = [
+      calcDetail({ partName: '床', name: 'シート', unit: 'm2', coefficient: 1.05 }),
+      calcDetail({ name: '下地' })
+    ]
+    const lines = [calcLine({ comment: '事務室', formulaA: '3*4' }), calcLine({ formulaA: '2' })]
+    const rows = rowsAsTsv(details, lines).split('\r\n')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].split('\t')).toEqual(['床', 'シート', '', '', 'm2', '1.05', '事務室', '3*4', ''])
+    expect(rows[1].split('\t')[7]).toBe('2')
+
+    const copied = duplicateLine(lines[0])
+    expect(copied.id).not.toBe(lines[0].id)
+    expect(copied.formulaA).toBe('3*4')
+    expect(duplicateLine(calcLine({ bSymbol: 'B1' })).bSymbol).toBe('')
   })
 
   it('写した明細・セットは新しいIDを持ち、記号Ｂは引き継がない', () => {

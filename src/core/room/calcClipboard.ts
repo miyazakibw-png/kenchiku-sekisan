@@ -133,6 +133,28 @@ export function detailAsTsv(detail: CalcDetail): string {
   ]);
 }
 
+/** 選んだ行（明細＋計算式）をExcelへ貼れる形にする */
+export function rowsAsTsv(details: CalcDetail[], lines: CalcLine[]): string {
+  const rowCount = Math.max(details.length, lines.length, 1);
+  const matrix: string[][] = [];
+  for (let index = 0; index < rowCount; index += 1) {
+    const detail = details[index];
+    const line = lines[index];
+    matrix.push([
+      detail?.partName ?? "",
+      detail?.name ?? "",
+      detail?.descriptionUpper ?? "",
+      detail?.descriptionLower ?? "",
+      detail?.unit ?? "",
+      detail === undefined ? "" : String(detail.coefficient),
+      line?.comment ?? "",
+      line?.formulaA ?? "",
+      line?.formulaB ?? "",
+    ]);
+  }
+  return toTsv(matrix);
+}
+
 /** セット1つをExcelへ貼れる形（明細と計算式を横に並べる）にする */
 export function setAsTsv(set: CalcSet): string {
   const rowCount = Math.max(set.details.length, set.lines.length, 1);
@@ -159,6 +181,12 @@ export function setAsTsv(set: CalcSet): string {
 export function duplicateDetail(detail: CalcDetail): CalcDetail {
   const { id: _id, ...rest } = detail;
   return calcDetail(rest);
+}
+
+/** 計算式行を写す（IDは新しくし、記号Ｂは重複しないよう外す） */
+export function duplicateLine(line: CalcLine): CalcLine {
+  const { id: _id, ...rest } = line;
+  return calcLine({ ...rest, bSymbol: "" });
 }
 
 /** セットを写す（セットIDと行IDを新しくし、記号Ｂは重複しないよう外す） */
