@@ -797,4 +797,8 @@ WHERE scope = 'project' AND part_name = '' AND EXISTS (
   WHERE d.source_detail_id = m_details.id AND d.part_name <> ''
 );
 `,
+  // 物件専用の明細マスターは基本マスターの複製のまま（部位は集計書兼工事マスターだけが持つ）
+  `
+UPDATE m_details SET part_name = '' WHERE part_name <> '';
+`,
 ];

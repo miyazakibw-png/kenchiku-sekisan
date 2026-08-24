@@ -153,7 +153,7 @@ describe("明細マスターの保存", () => {
     expect(after.map((d) => d.name)).toEqual(["A"]);
   });
 
-  it("上下2段の各項目を保存・復元する（部位は工事側だけ）", () => {
+  it("上下2段の各項目を保存・復元する（部位は持たない）", () => {
     const projectId = createProject(db, "部位テスト").id;
     const [saved] = saveDetails(db, {
       subjectId,
@@ -170,13 +170,13 @@ describe("明細マスターの保存", () => {
       ],
       deletedIds: [],
     });
-    expect(saved.partName).toBe("同上切欠合せボーダー");
+    expect(saved.partName).toBe("");
     expect(saved.descriptionLower).toBe("端部専用支持脚及び補強用金物共");
     expect(saved.remarksLower).toBe("備考下");
     expect(saved.estimateDisplay).toBe("フリーアクセスフロア");
   });
 
-  it("基本マスターには部位名を保存しない", () => {
+  it("明細マスターには部位名を保存しない", () => {
     const [saved] = saveDetails(db, {
       subjectId,
       rows: [draft("石膏ボード", { partName: "柱型" })],
@@ -383,7 +383,7 @@ describe("基本マスターから工事への複製", () => {
 });
 
 describe("工事マスター（明細）の呼出一覧", () => {
-  it("工事で直した明細と工事で足した明細だけを出す", () => {
+  it("物件専用の明細マスター（基本マスターの複製）は出さない", () => {
     saveDetails(db, {
       subjectId,
       rows: [draft("床シート"), draft("巾木")],
@@ -395,18 +395,13 @@ describe("工事マスター（明細）の呼出一覧", () => {
       subjectId,
       projectId,
       rows: [
-        ...copied.map((row) => ({
-          ...toDraft(row),
-          partName: row.name === "床シート" ? "床" : "",
-        })),
-        draft("工事で足した明細"),
+        ...copied.map((row) => toDraft(row)),
+        draft("明細マスターで足した明細"),
       ],
       deletedIds: [],
     });
 
-    expect(
-      listProjectDetailsInUse(db, subjectId, projectId).map((row) => row.name),
-    ).toEqual(["床シート", "工事で足した明細"]);
+    expect(listProjectDetailsInUse(db, subjectId, projectId)).toEqual([]);
   });
 
   it("集計書に出ている明細は、部位ごとに出す（複製元IDで残っていても出す）", () => {

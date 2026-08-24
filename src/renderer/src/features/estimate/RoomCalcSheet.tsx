@@ -543,7 +543,7 @@ export default function RoomCalcSheet({
       setDetails(
         source === "project"
           ? await window.sekisan.listProjectDetailsInUse(subjectId, projectId)
-          : await window.sekisan.listDetails(subjectId, null),
+          : await window.sekisan.listDetails(subjectId, projectId),
       );
     })();
   }, [callOpen, projectId, source, subjectId]);

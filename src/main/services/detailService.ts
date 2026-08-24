@@ -198,42 +198,15 @@ export function listDetails(
     .all();
 }
 
-/** 明細の中身が同じか（並び順や更新日時は見ない） */
-function sameContent(a: Detail, b: Detail): boolean {
-  return (
-    a.detailNumber === b.detailNumber &&
-    a.materialCategory === b.materialCategory &&
-    a.partName === b.partName &&
-    a.name === b.name &&
-    a.descriptionUpper === b.descriptionUpper &&
-    a.descriptionLower === b.descriptionLower &&
-    a.unit === b.unit &&
-    a.remarksUpper === b.remarksUpper &&
-    a.remarksLower === b.remarksLower &&
-    a.estimateDisplay === b.estimateDisplay
-  );
-}
-
 /**
- * 工事専用としてできた明細だけを返す（マスター呼出の「工事マスター（明細）」用）。
- * 集計書兼工事マスターに出ている明細、工事側で直した明細、工事で足した明細が対象。
- * 基本マスターを複製したまま手つかずの行は出さない。
+ * 集計書兼工事マスターに出ている明細を返す（マスター呼出の「工事マスター（明細）」用）。
+ * 物件専用の明細マスター（基本マスターの複製）は「基本マスター（明細）」側で呼び出す。
  */
 export function listProjectDetailsInUse(
   db: AppDatabase,
   subjectId: number,
   projectId: number,
 ): Detail[] {
-  const rows = listDetails(db, subjectId, projectId);
-  if (rows.length === 0) return rows;
-  const basicById = new Map(
-    db
-      .select()
-      .from(mDetails)
-      .where(scopeCondition(null))
-      .all()
-      .map((row) => [row.id, row]),
-  );
   // 集計は工種科目をまたぐことがあるので、工事の明細は全科目分を引けるようにする
   const projectRows = db
     .select()
@@ -272,7 +245,6 @@ export function listProjectDetailsInUse(
 
   const result: Detail[] = [];
   const seen = new Set<string>();
-  const usedRowIds = new Set<number>();
   const push = (row: Detail) => {
     const key = [
       row.detailNumber ?? "",
@@ -298,7 +270,6 @@ export function listProjectDetailsInUse(
         : (projectById.get(item.sourceDetailId) ??
           projectBySource.get(item.sourceDetailId));
     if (source === undefined) continue;
-    usedRowIds.add(source.id);
     push({
       ...source,
       subjectId: item.subjectId ?? source.subjectId,
@@ -313,17 +284,6 @@ export function listProjectDetailsInUse(
       remarksLower: item.remarksLower,
       estimateDisplay: item.estimateDisplay,
     });
-  }
-
-  // 工事で足した明細・工事で直した明細（まだ集計に出ていないもの）
-  for (const row of rows) {
-    if (row.detailNumber === null && row.name.trim() === "") continue;
-    if (usedRowIds.has(row.id)) continue;
-    if (row.sourceDetailId !== null) {
-      const basic = basicById.get(row.sourceDetailId);
-      if (basic !== undefined && sameContent(row, basic)) continue;
-    }
-    push(row);
   }
 
   return result.sort(
@@ -548,8 +508,8 @@ export function saveDetails(
         projectId,
         detailNumber: normalizeDetailNumber(row.detailNumber),
         materialCategory: row.materialCategory,
-        // 基本マスターは部位を持たない。工事マスターは工事で決めた部位を持つ
-        partName: projectId === null ? "" : row.partName,
+        // 明細マスターは部位を持たない（部位は集計書兼工事マスターだけが持つ）
+        partName: "",
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,

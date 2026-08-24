@@ -22,6 +22,7 @@ import {
 import { listTransferRows } from "../../src/main/services/transferRowService";
 import {
   listDetailChangeLogs,
+  listDetails,
   saveDetails,
 } from "../../src/main/services/detailService";
 import type {
@@ -387,7 +388,7 @@ describe("集計処理", () => {
     expect(after.items[0].quantity).toBe(47.2);
   });
 
-  it("集計書で直した内容は明細マスターの修正履歴に残る", () => {
+  it("集計書で直しても物件専用の明細マスターは変わらない", () => {
     const saved = saveDetails(db, {
       subjectId: 5,
       projectId,
@@ -436,13 +437,12 @@ describe("集計処理", () => {
       ],
     });
 
-    const logs = listDetailChangeLogs(db, projectId).filter(
-      (log) => log.changeKind === "edit",
-    );
-    expect(logs).toHaveLength(1);
-    expect(logs[0].before?.name).toBe("ビニル床シート");
-    expect(logs[0].after?.name).toBe("タイルカーペット");
-    expect(logs[0].changedFields).toContain("descriptionLower");
+    expect(listDetails(db, 5, projectId)[0].name).toBe("ビニル床シート");
+    expect(
+      listDetailChangeLogs(db, projectId).filter(
+        (log) => log.changeKind === "edit",
+      ),
+    ).toHaveLength(0);
   });
 
   it("小計行は集計しない", () => {

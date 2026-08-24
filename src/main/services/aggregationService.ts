@@ -5,11 +5,9 @@
  * 集計をかけ直しても過去の回は消さず、実行ごとに版を残す。
  */
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
-  detailChangeLogs,
-  mDetails,
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
@@ -34,7 +32,6 @@ import {
   listProjectSubjects,
 } from "./projectMasterService";
 import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
-import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import {
   displayedValue,
@@ -484,8 +481,8 @@ function applyEditToSheet(
 
 /**
  * 集計書兼工事マスターで直した内容を保存する。
- * 元の計算書（部屋別・軸組・汎用）と転記入力表を直し、
- * 呼び出し元が工事の明細マスターなら明細マスターへも書き戻す（基本マスターは変えない）。
+ * 元の計算書（部屋別・軸組・汎用）と転記入力表だけを直す。
+ * 物件専用の明細マスターは基本マスターの複製のままにするので書き戻さない。
  * 保存したあと集計をかけ直した結果を返す。
  */
 export function saveAggregateEdits(
@@ -571,77 +568,6 @@ export function saveAggregateEdits(
           .set({ lowerJson, updatedAt: new Date().toISOString() })
           .where(eq(table.id, sheet.id))
           .run();
-      });
-
-      // 工事の明細マスター（基本マスターは変えない）
-      const sourceIds = [
-        ...new Set(
-          targets
-            .map((target) => target.sourceDetailId)
-            .filter((id): id is number => id !== null),
-        ),
-      ];
-      sourceIds.forEach((sourceId) => {
-        const source = tx
-          .select()
-          .from(mDetails)
-          .where(eq(mDetails.id, sourceId))
-          .get();
-        if (!source) return;
-        const target =
-          source.scope === "project" && source.projectId === projectId
-            ? source
-            : tx
-                .select()
-                .from(mDetails)
-                .where(
-                  and(
-                    eq(mDetails.scope, "project"),
-                    eq(mDetails.projectId, projectId),
-                    eq(mDetails.sourceDetailId, sourceId),
-                  ),
-                )
-                .get();
-        if (!target) return;
-        const values = {
-          subjectId: edit.subjectId ?? target.subjectId,
-          materialCategory: edit.materialCategory,
-          // 工事マスターは工事で決めた部位を持つ（基本マスターへは持ち込まない）
-          partName: edit.partName,
-          detailNumber: edit.detailNumber,
-          name: edit.name,
-          descriptionUpper: edit.descriptionUpper,
-          descriptionLower: edit.descriptionLower,
-          unit: edit.unit,
-          remarksUpper: edit.remarksUpper,
-          remarksLower: edit.remarksLower,
-        };
-        tx.update(mDetails)
-          .set({ ...values, updatedAt: new Date().toISOString() })
-          .where(eq(mDetails.id, target.id))
-          .run();
-
-        // 集計書で直した内容も明細マスターの修正履歴に残す
-        const before = snapshotOf(target);
-        const after = snapshotOf({
-          ...values,
-          estimateDisplay: target.estimateDisplay,
-          isActive: target.isActive,
-        });
-        if (changedFieldsOf(before, after).length > 0) {
-          tx.insert(detailChangeLogs)
-            .values({
-              scope: "project",
-              projectId,
-              subjectId: values.subjectId,
-              detailId: target.id,
-              changeKind: "edit",
-              origin: "集計書兼工事マスター",
-              beforeJson: JSON.stringify(before),
-              afterJson: JSON.stringify(after),
-            })
-            .run();
-        }
       });
     });
   });

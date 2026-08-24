@@ -79,7 +79,7 @@ export default function TransferSheetPage({
       setDetails(
         source === "project"
           ? await window.sekisan.listProjectDetailsInUse(subjectId, project.id)
-          : await window.sekisan.listDetails(subjectId, null),
+          : await window.sekisan.listDetails(subjectId, project.id),
       ))();
   }, [callOpen, project.id, source, subjectId]);
 
