@@ -199,6 +199,8 @@ export interface CalcSheetOption {
 export interface MasterEntry {
   id: number;
   name: string;
+  /** マスターの備考（候補一覧に出すだけで、入力には影響しない） */
+  note?: string;
 }
 
 /** 部屋ごとの計算タイプ（計算書書式の key。将来書式が増えても字面を増やすだけで済む） */

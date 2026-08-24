@@ -122,15 +122,6 @@
   background: #f3f7fb;
 }
 
-/* 明細1件は上下2行セット。上段の行の上に区切り線を引く */
-.room-calc-sheet tr.detail-upper td {
-  border-top: 1px solid #b6c2d1;
-}
-
-.room-calc-sheet tr.detail-lower td {
-  border-top: 1px dotted #e2e8f0;
-}
-
 .room-calc-sheet td.num {
   text-align: right;
   padding: 2px 4px;
@@ -179,19 +170,6 @@
   width: 46px;
 }
 
-/* 部位・科目IDは縦に結合した広い枠なので、どこをクリックしても入力できるようにする */
-.room-calc-sheet table.calc td.part,
-.room-calc-sheet table.calc td.subject {
-  position: relative;
-}
-
-.room-calc-sheet table.calc td.part input,
-.room-calc-sheet table.calc td.subject input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-}
-
 .room-calc-sheet .material {
   width: 66px;
 }
@@ -211,16 +189,6 @@
 
 .room-calc-sheet .total {
   width: 72px;
-}
-
-/* 1明細＝上下2行なので、明細欄は上下段の間に罫線を引かない
-   （罫線は結合表示なので上段の下側と下段の上側の両方を消す） */
-.room-calc-sheet table.calc tr.detail-upper td.dcell {
-  border-bottom: none;
-}
-
-.room-calc-sheet table.calc tr.detail-lower td.dcell {
-  border-top: none;
 }
 
 .room-calc-sheet .formula {
@@ -372,32 +340,82 @@
   outline: none;
 }
 
-/* 部位欄（セットの先頭）は、上に番号・下に名称。枠はセット明細いっぱいに広がる */
-.room-calc-sheet table.calc td.part .part-pair {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
+/* 1明細＝1行。区切り線はセット明細の上下だけに引く */
+.room-calc-sheet table.calc tbody.set {
+  border-top: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
 }
 
-.room-calc-sheet table.calc td.part .part-pair input {
-  position: static;
-  inset: auto;
-  width: 100%;
+.room-calc-sheet table.calc tbody.set tr td {
+  border-top-color: #eef2f7;
 }
 
-.room-calc-sheet table.calc td.part .part-pair input.part-no {
-  flex: 0 0 20px;
-  height: 20px;
+.room-calc-sheet table.calc tbody.set tr:first-child td {
+  border-top: none;
+}
+
+/* 見出し行（※行挿入）。部位欄から操作欄まで色を付ける（列の区切り線は入れない） */
+.room-calc-sheet tr.banner-row td {
+  padding: 1px 4px;
+  border-left: none;
+  border-right: none;
+}
+
+.room-calc-sheet tr.banner-row td {
+  display: table-cell;
+}
+
+.room-calc-sheet tr.banner-row input {
+  width: calc(100% - 26px);
+  background: transparent;
+  border: none;
+  font: inherit;
+  padding: 1px 2px;
+}
+
+.room-calc-sheet tr.banner-row button {
+  padding: 0 4px;
+}
+
+.room-calc-sheet .banner-menu {
+  position: relative;
+}
+
+.room-calc-sheet .banner-colors {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.room-calc-sheet .banner-colors button {
+  padding: 0 6px;
+}
+
+/* 管理用部位（先頭列）・ID欄 */
+.room-calc-sheet .set-part input {
+  font-weight: bold;
+}
+
+.room-calc-sheet .id input {
   text-align: right;
-  border-bottom: 1px dotted #cbd5e1;
 }
 
-.room-calc-sheet table.calc td.part .part-pair input:not(.part-no) {
-  flex: 1 1 auto;
+/* 呼出画面は見出しをドラッグで移動でき、中身は下までスクロールできる */
+.room-calc-sheet .call-window .section-bar.drag {
+  cursor: move;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
 }
 
-/* 明細の部位IDは明細番号欄の上段に置く */
-.room-calc-sheet table.calc td.no input.part-id {
-  text-align: right;
+.room-calc-sheet .call-scroll {
+  max-height: 52vh;
+  overflow: auto;
+}
+
+.room-calc-sheet .call-scroll .call-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }

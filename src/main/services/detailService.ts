@@ -126,10 +126,12 @@ export function listMasterOptions(
     pickupParts: masters.pickupParts.map((row) => ({
       id: row.id,
       name: row.name,
+      note: row.note,
     })),
     aggregationParts: masters.aggregationParts.map((row) => ({
       id: row.id,
       name: row.name,
+      note: row.note,
     })),
     calcSheets: db
       .select({

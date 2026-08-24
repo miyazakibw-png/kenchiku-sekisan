@@ -50,14 +50,14 @@ describe('セット明細計算表のコピー・貼り付け', () => {
     expect(details[0].coefficient).toBe(1.5)
   })
 
-  it('明細を増やしたら計算式行も1明細2行になるまで足す', () => {
+  it('明細を増やしたら計算式行も1明細1行になるまで足す', () => {
     const details = [calcDetail(), calcDetail(), calcDetail()]
     const lines = [calcLine({ formulaA: '1' }), calcLine()]
     const next = fillLines(details, lines)
-    expect(next).toHaveLength(6)
+    expect(next).toHaveLength(3)
     expect(next[0].formulaA).toBe('1')
     // すでに足りているときは増やさない
-    expect(fillLines([calcDetail()], next)).toHaveLength(6)
+    expect(fillLines([calcDetail()], next)).toHaveLength(3)
   })
 
   it('明細・セットはExcelへ貼れるTSVでコピーする', () => {

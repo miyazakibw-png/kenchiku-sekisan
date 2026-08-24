@@ -106,10 +106,13 @@ export function pasteLines(
   return next;
 }
 
-/** 明細1件につき計算式2行になるよう、足りない計算式行を足す */
-export function fillLines(details: CalcDetail[], lines: CalcLine[]): CalcLine[] {
+/** 明細1件につき計算式1行になるよう、足りない計算式行を足す */
+export function fillLines(
+  details: CalcDetail[],
+  lines: CalcLine[],
+): CalcLine[] {
   const next = [...lines];
-  while (next.length < details.length * 2) next.push(calcLine());
+  while (next.length < Math.max(details.length, 1)) next.push(calcLine());
   return next;
 }
 
@@ -165,6 +168,7 @@ export function duplicateSet(set: CalcSet): CalcSet {
     ...created,
     partNumber: set.partNumber,
     partName: set.partName,
+    banner: set.banner ? { ...set.banner } : null,
     details: set.details.map(duplicateDetail),
     lines: set.lines.map((line) => {
       const { id: _id, ...rest } = line;

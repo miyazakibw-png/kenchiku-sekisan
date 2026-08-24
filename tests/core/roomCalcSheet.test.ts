@@ -5,9 +5,11 @@ import {
   calcSet,
   displayQuantity,
   evaluateCalcSheet,
+  mergeWithPreviousSet,
   nextBSymbol,
   padLines,
   quantityByPart,
+  splitSetAt,
   syncLines,
   syncPartNames,
   setRowCount,
@@ -118,29 +120,29 @@ describe("下段セット明細計算表", () => {
     ]);
   });
 
-  it("明細1件は上下2行で表示する（計算式が多ければその行数に合わせる）", () => {
+  it("明細1件は1行で表示する（計算式が多ければその行数に合わせる）", () => {
     const set = calcSet(2);
     expect(set.details).toHaveLength(2);
-    expect(setRowCount(set)).toBe(4);
+    expect(setRowCount(set)).toBe(2);
     set.lines = [...set.lines, calcLine(), calcLine()];
-    expect(setRowCount(set)).toBe(6);
+    expect(setRowCount(set)).toBe(4);
   });
 
-  it("明細を増やすと計算式行も明細1件＝2行に足りるまで足す", () => {
+  it("明細を増やすと計算式行も明細1件＝1行に足りるまで足す", () => {
     const set = calcSet(2);
     set.details = [...set.details, calcDetail()];
     const lines = padLines(set.details, set.lines);
-    expect(lines).toHaveLength(6);
-    expect(setRowCount({ ...set, lines })).toBe(6);
+    expect(lines).toHaveLength(3);
+    expect(setRowCount({ ...set, lines })).toBe(3);
   });
 
   it("明細を減らすと末尾の空いた計算式行は詰める（入力済みは残す）", () => {
-    const set = calcSet(2);
+    const set = calcSet(3);
     set.details = [set.details[0]];
-    expect(syncLines(set.details, set.lines)).toHaveLength(2);
+    expect(syncLines(set.details, set.lines)).toHaveLength(1);
     const kept = [...set.lines];
-    kept[3] = calcLine({ formulaA: "1+1" });
-    expect(syncLines(set.details, kept)).toHaveLength(4);
+    kept[2] = calcLine({ formulaA: "1+1" });
+    expect(syncLines(set.details, kept)).toHaveLength(3);
   });
 
   it("入力の無い明細・セットは取り除く（入力済みは残す）", () => {
@@ -151,15 +153,45 @@ describe("下段セット明細計算表", () => {
     const trimmed = trimEmptySets([empty, used]);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].details).toHaveLength(1);
-    expect(trimmed[0].lines).toHaveLength(2);
+    expect(trimmed[0].lines).toHaveLength(1);
   });
 
   it("計算式だけ入っている明細は残す", () => {
     const set = calcSet(2);
-    set.lines[2] = calcLine({ formulaA: "2*3" });
+    set.lines[1] = calcLine({ formulaA: "2*3" });
     const trimmed = trimEmptySets([set]);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].details).toHaveLength(2);
+  });
+
+  it("途中の行に部位を入れると、その行から別のセットに分かれる", () => {
+    const set = calcSet(3);
+    set.partName = "床";
+    set.details[2] = calcDetail({ name: "巾木" });
+    set.lines[2] = calcLine({ formulaA: "2*3" });
+    const split = splitSetAt([set], set.id, 2, {
+      partNumber: 2,
+      partName: "巾木",
+    });
+    expect(split).toHaveLength(2);
+    expect(split[0].partName).toBe("床");
+    expect(split[0].details).toHaveLength(2);
+    expect(split[1].partName).toBe("巾木");
+    expect(split[1].details[0].name).toBe("巾木");
+    expect(split[1].lines[0].formulaA).toBe("2*3");
+  });
+
+  it("部位を消すと一つ上のセットにつながる", () => {
+    const first = calcSet(1);
+    first.partName = "床";
+    const second = calcSet(1);
+    second.partName = "巾木";
+    second.details[0] = calcDetail({ name: "木巾木" });
+    const merged = mergeWithPreviousSet([first, second], second.id);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].partName).toBe("床");
+    expect(merged[0].details).toHaveLength(2);
+    expect(merged[0].details[1].name).toBe("木巾木");
   });
 });
 

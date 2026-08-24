@@ -38,6 +38,13 @@ export interface CalcLine {
   bSymbol: string;
 }
 
+/** セットの上に出す見出し行（目印。色を付けて部位のまとまりを見やすくする） */
+export interface CalcBanner {
+  text: string;
+  /** CSS の色（画面で選んだ登録色） */
+  color: string;
+}
+
 /** 部位で始まる1セット */
 export interface CalcSet {
   id: string;
@@ -46,6 +53,8 @@ export interface CalcSet {
   partName: string;
   details: CalcDetail[];
   lines: CalcLine[];
+  /** セットの上に置く見出し行（無ければ付けない） */
+  banner?: CalcBanner | null;
 }
 
 let counter = 0;
@@ -86,14 +95,15 @@ export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
   };
 }
 
-/** 空のセット明細（初期は2明細分＝表示は4行） */
-export function calcSet(detailCount = 2): CalcSet {
+/** 空のセット明細（1明細＝1行） */
+export function calcSet(detailCount = 1): CalcSet {
   return {
     id: newId("s"),
     partNumber: null,
     partName: "",
     details: Array.from({ length: detailCount }, () => calcDetail()),
-    lines: Array.from({ length: detailCount * 2 }, () => calcLine()),
+    lines: Array.from({ length: Math.max(detailCount, 1) }, () => calcLine()),
+    banner: null,
   };
 }
 
@@ -107,23 +117,23 @@ function isEmptyLine(line: CalcLine): boolean {
   );
 }
 
-/** 明細1件＝計算式2行になるよう、足りない計算式行を足す（3明細目以降も式が入れられるように） */
+/** 明細1件＝計算式1行になるよう、足りない計算式行を足す（明細を増やしても式が入れられるように） */
 export function padLines(details: CalcDetail[], lines: CalcLine[]): CalcLine[] {
-  const need = Math.max(details.length * 2, 2);
+  const need = Math.max(details.length, 1);
   const next = [...lines];
   while (next.length < need) next.push(calcLine());
   return next;
 }
 
 /**
- * 明細の数に計算式行を合わせる（明細1件＝計算式2行）。
+ * 明細の数に計算式行を合わせる（明細1件＝計算式1行）。
  * 余った末尾の空行は詰め、足りなければ足す（入力済みの行は残す）。
  */
 export function syncLines(
   details: CalcDetail[],
   lines: CalcLine[],
 ): CalcLine[] {
-  const need = Math.max(details.length * 2, 2);
+  const need = Math.max(details.length, 1);
   const next = [...lines];
   while (next.length > need && isEmptyLine(next[next.length - 1])) next.pop();
   return padLines(details, next);
@@ -149,7 +159,7 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
 
 /**
  * 入力の無い明細・セットを取り除く（保存・読み込みのときに使う）。
- * 明細1件＝計算式2行の対応を崩さないよう、末尾の空明細だけを詰める。
+ * 明細1件＝計算式1行の対応を崩さないよう、末尾の空明細だけを詰める。
  */
 export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
   const trimmed: CalcSet[] = [];
@@ -158,13 +168,12 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
     while (
       details.length > 0 &&
       isEmptyDetail(details[details.length - 1]) &&
-      isEmptyLine(set.lines[details.length * 2 - 2] ?? calcLine()) &&
-      isEmptyLine(set.lines[details.length * 2 - 1] ?? calcLine())
+      isEmptyLine(set.lines[details.length - 1] ?? calcLine())
     )
       details.pop();
     const lines = [...set.lines];
     while (
-      lines.length > details.length * 2 &&
+      lines.length > Math.max(details.length, 1) &&
       isEmptyLine(lines[lines.length - 1])
     )
       lines.pop();
@@ -172,15 +181,69 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
       details.length === 0 &&
       lines.every(isEmptyLine) &&
       set.partNumber === null &&
-      set.partName.trim() === "";
+      set.partName.trim() === "" &&
+      (set.banner?.text ?? "") === "";
     if (!empty) trimmed.push({ ...set, details, lines });
   }
   return trimmed;
 }
 
-/** セット内で表示する行数（明細は1件2行。明細と計算式の多い方に合わせる） */
+/**
+ * セットの途中の行に部位を入れたとき、その行から下を別のセットに分ける。
+ * 4明細のセットを2明細ずつに分ける、といった直しができる。
+ */
+export function splitSetAt(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+  part: { partNumber: number | null; partName: string },
+): CalcSet[] {
+  const at = sets.findIndex((set) => set.id === setId);
+  if (at < 0) return sets;
+  const target = sets[at];
+  if (index <= 0 || index >= target.details.length) return sets;
+  const head: CalcSet = {
+    ...target,
+    details: target.details.slice(0, index),
+    lines: target.lines.slice(0, index),
+  };
+  const tail: CalcSet = {
+    ...calcSet(0),
+    partNumber: part.partNumber,
+    partName: part.partName,
+    details: target.details.slice(index),
+    lines: target.lines.slice(index),
+  };
+  const next = [...sets];
+  next.splice(at, 1, head, {
+    ...tail,
+    lines: padLines(tail.details, tail.lines),
+  });
+  return next;
+}
+
+/** 部位を消したとき、そのセットを一つ上のセットにつなげる（記号は先頭のものを残す） */
+export function mergeWithPreviousSet(
+  sets: CalcSet[],
+  setId: string,
+): CalcSet[] {
+  const at = sets.findIndex((set) => set.id === setId);
+  if (at <= 0) return sets;
+  const previous = sets[at - 1];
+  const target = sets[at];
+  const merged: CalcSet = {
+    ...previous,
+    details: [...previous.details, ...target.details],
+    lines: [...previous.lines, ...target.lines],
+  };
+  const next = [...sets];
+  next.splice(at - 1, 2, merged);
+  return next;
+}
+
+/** セット内で表示する行数（明細1件＝1行。明細と計算式の多い方に合わせる） */
 export function setRowCount(set: CalcSet): number {
-  return Math.max(set.details.length * 2, set.lines.length, 1);
+  return Math.max(set.details.length, set.lines.length, 1);
 }
 
 /**

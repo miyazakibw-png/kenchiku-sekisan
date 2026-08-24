@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Detail,
   FinishAssembly,
+  MasterEntry,
   MasterOptions,
   Subject,
 } from "@shared/types";
@@ -13,9 +14,10 @@ import {
   displayQuantity,
   displayedValue,
   evaluateCalcSheet,
-  nextBSymbol,
+  mergeWithPreviousSet,
   padLines,
   setRowCount,
+  splitSetAt,
   syncLines,
   usedBSymbols,
   type CalcDetail,
@@ -59,6 +61,16 @@ interface Props {
 
 type CallSource = "basic" | "project" | "assembly";
 
+/** 見出し行（※行挿入）で選べる色 */
+const BANNER_COLORS: { label: string; color: string }[] = [
+  { label: "緑", color: "#dcfce7" },
+  { label: "桃", color: "#fce7f3" },
+  { label: "青", color: "#dbeafe" },
+  { label: "黄", color: "#fef9c3" },
+  { label: "橙", color: "#ffedd5" },
+  { label: "灰", color: "#e2e8f0" },
+];
+
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
 function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   return set.lines.map((line, index) => ({
@@ -67,47 +79,26 @@ function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   }));
 }
 
-/** 部位番号（無ければ部位名）から部位マスターの番号を引く（番号欄の表示用） */
-function partNumberOf(
-  parts: { id: number; name: string }[],
-  partName: string,
-  partNumber?: number | null,
-): string {
-  if (partNumber !== null && partNumber !== undefined)
-    return String(partNumber);
-  const found = parts.find((part) => part.name === partName.trim());
-  return found ? String(found.id) : "";
-}
-
-/** 番号が入っていれば、表示する名称はマスターの今の名称に合わせる */
-function partNameOf(
-  parts: { id: number; name: string }[],
-  partName: string,
-  partNumber?: number | null,
-): string {
-  if (partNumber === null || partNumber === undefined) return partName;
-  return parts.find((part) => part.id === partNumber)?.name ?? partName;
-}
-
-/** 番号欄の入力から、番号と名称を同時に決める */
-function partByNumber(
-  parts: { id: number; name: string }[],
+/** 番号でも名称でも受け付けて、マスターの番号と名称を決める */
+function pickMaster(
+  entries: MasterEntry[],
   input: string,
-  currentName: string,
-): { partNumber: number | null; partName: string } {
+): { id: number | null; name: string } {
   const text = input.trim();
-  if (text === "") return { partNumber: null, partName: "" };
-  const found = parts.find((part) => String(part.id) === text);
-  if (found) return { partNumber: found.id, partName: found.name };
-  return {
-    partNumber: /^\d+$/.test(text) ? Number(text) : null,
-    partName: currentName,
-  };
+  if (text === "") return { id: null, name: "" };
+  const byNumber = /^\d+$/.test(text)
+    ? entries.find((entry) => entry.id === Number(text))
+    : undefined;
+  if (byNumber) return { id: byNumber.id, name: byNumber.name };
+  const byName = entries.find((entry) => entry.name === text);
+  if (byName) return { id: byName.id, name: byName.name };
+  return { id: null, name: text };
 }
 
 /**
  * 一覧（datalist）から選ぶ入力欄。
  * 入力済みのときも、欄を選ぶと一度空にして候補を全件出す（現在の値は薄字で見えます）。
+ * commitOnBlur を付けると、打ち終わって欄を離れたときにだけ反映します。
  */
 function PickInput({
   value,
@@ -115,14 +106,20 @@ function PickInput({
   className,
   placeholder,
   title,
+  row,
+  col,
+  commitOnBlur = false,
   onCommit,
   onFocus,
 }: {
   value: string;
-  listId: string;
+  listId?: string;
   className?: string;
   placeholder?: string;
   title?: string;
+  row: number;
+  col: number;
+  commitOnBlur?: boolean;
   onCommit: (text: string) => void;
   onFocus?: () => void;
 }): JSX.Element {
@@ -131,6 +128,8 @@ function PickInput({
     <input
       className={className}
       list={listId}
+      data-row={row}
+      data-col={col}
       value={editing ?? value}
       placeholder={editing !== null && value !== "" ? value : placeholder}
       title={title}
@@ -140,7 +139,7 @@ function PickInput({
       }}
       onChange={(e) => {
         setEditing(e.target.value);
-        onCommit(e.target.value);
+        if (!commitOnBlur) onCommit(e.target.value);
       }}
       onKeyDown={(e) => {
         // 空のときに Delete・BackSpace を押すと、入っている値を消します
@@ -148,59 +147,99 @@ function PickInput({
         if ((editing ?? value) !== "") return;
         onCommit("");
       }}
-      onBlur={() => setEditing(null)}
+      onBlur={() => {
+        const text = editing;
+        setEditing(null);
+        if (!commitOnBlur || text === null) return;
+        // 空のまま離れたときは、入っている値をそのまま残す
+        if (text.trim() === "" && value !== "") return;
+        if (text === value) return;
+        onCommit(text);
+      }}
     />
   );
 }
 
-/** セット明細計算表の列（列幅はドラッグで変えられます） */
-const CALC_COLUMNS: { label: string; title: string; width: number }[] = [
+/** 計算表の列（画像の並び。列幅はドラッグで変えられ、全物件で共通に使う） */
+const CALC_COLUMNS: {
+  label: string;
+  title: string;
+  width: number;
+  className?: string;
+}[] = [
   {
     label: "部位",
-    title: "管理用部位（セットの先頭だけ。番号を選ぶと名称も入ります）",
-    width: 90,
-  },
-  { label: "科目ID", title: "工種科目のID（番号で入力します）", width: 46 },
-  { label: "材種区分", title: "材種区分マスター", width: 66 },
-  {
-    label: "部位ID／明細番号",
-    title: "上段に部位ID（明細用部位）、下段に明細番号",
-    width: 66,
+    title:
+      "管理用部位。1行に1つ入れられます（途中の行に入れると、その行から別のセットになります）",
+    width: 80,
+    className: "set-part",
   },
   {
-    label: "部位名／名称",
-    title: "上段に部位名、下段に名称（1明細＝上下2行）",
-    width: 200,
+    label: "区分",
+    title: "材種区分マスター",
+    width: 56,
+    className: "material",
   },
-  { label: "摘要", title: "上段・下段の摘要", width: 200 },
-  { label: "単位", title: "単位マスター", width: 50 },
+  { label: "科目", title: "工種科目のID（数字）", width: 42, className: "id" },
+  {
+    label: "部位ID",
+    title: "明細用部位のID（数字）。入れると右の部位名が入ります",
+    width: 48,
+    className: "id",
+  },
+  {
+    label: "名称ID",
+    title: "明細番号。入れると名称・摘要がマスターの文字になります",
+    width: 54,
+    className: "id",
+  },
+  { label: "部位", title: "明細の部位名（自由に直せます）", width: 90 },
+  { label: "名称", title: "明細の名称（自由に直せます）", width: 190 },
+  { label: "摘要（下段）", title: "摘要（下段）", width: 170 },
+  { label: "摘要（上段）", title: "摘要（上段）", width: 140 },
+  { label: "単位", title: "単位マスター", width: 44, className: "unit" },
   {
     label: "掛け率",
-    title: "セットで拾うが計上単位が異なるときに使います",
-    width: 50,
+    title: "セットで拾うが計上単位が異なるときに使います（最大9999.99）",
+    width: 48,
+    className: "coef",
   },
   {
     label: "部位合計",
     title: "このセットの累計×掛け率（集計に出る数量）",
-    width: 72,
+    width: 68,
+    className: "total",
   },
-  { label: "コメント", title: "計算式のコメント", width: 120 },
-  { label: "計算式Ａ", title: "計算式Ａ", width: 200 },
   {
-    label: "Ｂ",
+    label: "コメント",
+    title: "計算式のコメント",
+    width: 96,
+    className: "comment",
+  },
+  { label: "計算式Ａ", title: "計算式Ａ", width: 200, className: "formula" },
+  {
+    label: "計算式Ｂ",
     title: "ＡとＢの両方に入力すると Ａ×Ｂ になります",
     width: 80,
+    className: "formula-b",
   },
-  { label: "結果", title: "計算式の結果", width: 70 },
-  { label: "累計", title: "このセットの累計", width: 70 },
+  { label: "Ａ*Ｂ", title: "計算式の結果", width: 66 },
+  { label: "Ａ*Ｂ累計", title: "このセットの累計", width: 66 },
   {
     label: "記号",
-    title: "セット全体で1つ（このセットの累計を他で使う記号）",
-    width: 58,
+    title: "セット全体で1つ（B1〜B99。このセットの累計を他で使う記号）",
+    width: 48,
+    className: "bsym",
   },
-  { label: "備考", title: "上段・下段の備考", width: 120 },
-  { label: "積算用表示", title: "内訳書へ出すときの表示", width: 90 },
-  { label: "操作", title: "明細の並べ替え・削除", width: 92 },
+  { label: "備考（下段）", title: "備考（下段）", width: 90 },
+  { label: "備考（上段）", title: "備考（上段）", width: 90 },
+  {
+    label: "仕上・下地摘要",
+    title: "内訳書へ出すときの表示（積算用表示）",
+    width: 100,
+    className: "estimate",
+  },
+  { label: "操作", title: "明細の並べ替え・削除", width: 92, className: "ops" },
 ];
 
 const CALC_COLUMN_WIDTHS = CALC_COLUMNS.map((column) => column.width);
@@ -226,11 +265,13 @@ export default function RoomCalcSheet({
   inWindow = false,
 }: Props): JSX.Element {
   const [callOpen, setCallOpen] = useState(false);
+  const [callPos, setCallPos] = useState<{ x: number; y: number } | null>(null);
   const [source, setSource] = useState<CallSource>("basic");
   const [insertMode, setInsertMode] = useState(false);
   const [subjectId, setSubjectId] = useState<number | null>(null);
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
+  const [bannerOpen, setBannerOpen] = useState(false);
   /** 明細番号を打っている途中の文字（確定するまで表示に使う） */
   const [numberEdit, setNumberEdit] = useState<{
     key: string;
@@ -239,13 +280,50 @@ export default function RoomCalcSheet({
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   /** 明細番号欄の一覧候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
-  const {
-    widths,
-    startResize,
-    reset: resetWidths,
-  } = useColumnWidths("calc-sheet-columns", CALC_COLUMN_WIDTHS);
+  /** 元に戻す・やり直しのための履歴 */
+  const [past, setPast] = useState<CalcSet[][]>([]);
+  const [future, setFuture] = useState<CalcSet[][]>([]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const { widths, startResize } = useColumnWidths(
+    "calc-sheet-columns-v2",
+    CALC_COLUMN_WIDTHS,
+  );
 
   const subjects: Subject[] = options?.subjects ?? [];
+  const pickupParts: MasterEntry[] = useMemo(
+    () => options?.pickupParts ?? [],
+    [options],
+  );
+  const aggregationParts: MasterEntry[] = useMemo(
+    () => options?.aggregationParts ?? [],
+    [options],
+  );
+
+  /** 入力の変更（履歴に残す） */
+  const commit = useCallback(
+    (next: CalcSet[]): void => {
+      setPast((rows) => [...rows.slice(-49), sets]);
+      setFuture([]);
+      onChange(next);
+    },
+    [onChange, sets],
+  );
+
+  const undo = useCallback((): void => {
+    if (past.length === 0) return;
+    const previous = past[past.length - 1];
+    setPast((rows) => rows.slice(0, -1));
+    setFuture((rows) => [...rows, sets]);
+    onChange(previous);
+  }, [onChange, past, sets]);
+
+  const redo = useCallback((): void => {
+    if (future.length === 0) return;
+    const next = future[future.length - 1];
+    setFuture((rows) => rows.slice(0, -1));
+    setPast((rows) => [...rows, sets]);
+    onChange(next);
+  }, [future, onChange, sets]);
 
   // 明細入力を別画面（独立したウィンドウ）で開いている間は、ここには案内だけを出す
   const [inOtherWindow, setInOtherWindow] = useState(false);
@@ -339,11 +417,9 @@ export default function RoomCalcSheet({
 
   const used = useMemo(() => usedBSymbols(sets), [sets]);
 
-  // 保存済みのデータで明細に対して計算式行が足りない場合に足す（3明細目以降が入力できるように）
+  // 保存済みのデータで明細に対して計算式行が足りない場合に足す
   useEffect(() => {
-    const short = sets.some(
-      (set) => set.lines.length < Math.max(set.details.length * 2, 2),
-    );
+    const short = sets.some((set) => set.lines.length < set.details.length);
     if (!short) return;
     onChange(
       sets.map((set) => ({ ...set, lines: padLines(set.details, set.lines) })),
@@ -353,17 +429,17 @@ export default function RoomCalcSheet({
   /** セットを書き換える（明細の数に計算式行を合わせてから反映する） */
   const updateSet = useCallback(
     (setId: string, patch: Partial<CalcSet>): void =>
-      onChange(
+      commit(
         sets.map((set) => {
           if (set.id !== setId) return set;
           const next = { ...set, ...patch };
           return { ...next, lines: padLines(next.details, next.lines) };
         }),
       ),
-    [onChange, sets],
+    [commit, sets],
   );
 
-  /** 明細1件（上下2段）の一部を書き換える */
+  /** 明細1件の一部を書き換える */
   const updateDetail = useCallback(
     (setId: string, index: number, patch: Partial<CalcDetail>): void => {
       const target = sets.find((set) => set.id === setId);
@@ -375,6 +451,34 @@ export default function RoomCalcSheet({
       });
     },
     [sets, updateSet],
+  );
+
+  /**
+   * 部位欄の入力。セットの先頭の行なら、そのセットの部位を変える。
+   * 途中の行に入れると、その行から下を別のセットに分ける（空にすると上のセットにつなげる）。
+   */
+  const commitSetPart = useCallback(
+    (setId: string, rowIndex: number, text: string): void => {
+      const picked = pickMaster(aggregationParts, text);
+      if (rowIndex === 0) {
+        const at = sets.findIndex((set) => set.id === setId);
+        if (picked.name === "" && at > 0) {
+          commit(mergeWithPreviousSet(sets, setId));
+          return;
+        }
+        updateSet(setId, { partNumber: picked.id, partName: picked.name });
+        return;
+      }
+      if (picked.name === "") return;
+      commit(
+        splitSetAt(sets, setId, rowIndex, {
+          partNumber: picked.id,
+          partName: picked.name,
+        }),
+      );
+      onMessage("この行から別のセット明細に分けました");
+    },
+    [aggregationParts, commit, onMessage, sets, updateSet],
   );
 
   /**
@@ -424,6 +528,8 @@ export default function RoomCalcSheet({
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
         materialCategory: found.materialCategory,
+        partNumber:
+          pickupParts.find((part) => part.name === found.partName)?.id ?? null,
         partName: found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
@@ -435,7 +541,7 @@ export default function RoomCalcSheet({
       });
       onMessage(`${found.name} を呼び出しました`);
     },
-    [onMessage, projectId, sets, subjects, updateDetail],
+    [onMessage, pickupParts, projectId, sets, subjects, updateDetail],
   );
 
   /** セットの中の明細を1件だけ削除する（他の明細と計算式は残す） */
@@ -446,8 +552,8 @@ export default function RoomCalcSheet({
       const details = target.details.filter(
         (_, rowIndex) => rowIndex !== index,
       );
-      // 明細を消したぶん、末尾の空いた計算式行も詰める
-      updateSet(setId, { details, lines: syncLines(details, target.lines) });
+      const lines = target.lines.filter((_, rowIndex) => rowIndex !== index);
+      updateSet(setId, { details, lines: syncLines(details, lines) });
       onFocus(null);
     },
     [onFocus, sets, updateSet],
@@ -486,6 +592,8 @@ export default function RoomCalcSheet({
         subjectId: detail.subjectId,
         detailNumber: detail.detailNumber,
         materialCategory: detail.materialCategory,
+        partNumber:
+          pickupParts.find((part) => part.name === detail.partName)?.id ?? null,
         partName: detail.partName,
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
@@ -498,8 +606,8 @@ export default function RoomCalcSheet({
       if (!target) {
         const created = calcSet(1);
         created.details = [item];
-        onChange([...sets, created]);
-        onFocus({ setId: created.id, area: "detail", index: 1 });
+        commit([...sets, created]);
+        onFocus({ setId: created.id, area: "detail", index: 0 });
         return;
       }
       const at =
@@ -519,12 +627,13 @@ export default function RoomCalcSheet({
       onMessage(`${detail.name} を呼び出しました`);
     },
     [
+      commit,
       currentSet,
       focus,
       insertMode,
-      onChange,
       onFocus,
       onMessage,
+      pickupParts,
       sets,
       updateSet,
     ],
@@ -542,6 +651,7 @@ export default function RoomCalcSheet({
           subjectId: item.subjectId,
           detailNumber: item.detailNumber,
           materialCategory: item.materialCategory,
+          partNumber: item.partNumber ?? null,
           partName: item.partName,
           name: item.name,
           descriptionUpper: item.descriptionUpper,
@@ -563,13 +673,13 @@ export default function RoomCalcSheet({
         created.lines = syncLines(created.details, sets[at].lines);
         next[at] = created;
       }
-      onChange(next);
+      commit(next);
       onFocus({ setId: created.id, area: "detail", index: 0 });
       onMessage(
         `${assembly.items[0]?.name ?? "セット明細"} を${insertMode ? "挿入" : "上書き"}呼出しました`,
       );
     },
-    [currentSet?.id, insertMode, onChange, onFocus, onMessage, sets],
+    [commit, currentSet?.id, insertMode, onFocus, onMessage, sets],
   );
 
   /** カーソルの位置で判断して行を足す（明細欄なら明細、計算式欄なら計算行） */
@@ -577,7 +687,7 @@ export default function RoomCalcSheet({
     (insert: boolean) => {
       const target = currentSet;
       if (!target) {
-        onChange([...sets, calcSet()]);
+        commit([...sets, calcSet()]);
         return;
       }
       const area = focus?.area ?? "detail";
@@ -585,7 +695,9 @@ export default function RoomCalcSheet({
         const details2 = [...target.details];
         const position = insert ? (focus?.index ?? 0) : details2.length;
         details2.splice(position, 0, calcDetail());
-        updateSet(target.id, { details: details2 });
+        const lines = [...target.lines];
+        lines.splice(Math.min(position, lines.length), 0, calcLine());
+        updateSet(target.id, { details: details2, lines });
       } else {
         const lines = [...target.lines];
         const position = insert ? (focus?.index ?? 0) : lines.length;
@@ -593,7 +705,23 @@ export default function RoomCalcSheet({
         updateSet(target.id, { lines });
       }
     },
-    [currentSet, focus, onChange, sets, updateSet],
+    [commit, currentSet, focus, sets, updateSet],
+  );
+
+  /** 見出し行を入れる（カーソルのあるセットの上） */
+  const insertBanner = useCallback(
+    (color: string) => {
+      setBannerOpen(false);
+      const target = currentSet;
+      if (!target) {
+        onMessage("見出しを入れる位置を選んでください");
+        return;
+      }
+      updateSet(target.id, {
+        banner: { text: target.partName, color },
+      });
+    },
+    [currentSet, onMessage, updateSet],
   );
 
   /** いま選んでいる明細（明細欄にカーソルがあるときだけ） */
@@ -602,84 +730,213 @@ export default function RoomCalcSheet({
     return currentSet.details[focus.index] ?? null;
   }, [currentSet, focus]);
 
-  /**
-   * コピー。明細欄にカーソルがあれば明細1件、それ以外はセット1つ。
-   * Excelへも貼れるようクリップボードへは表形式（TSV）で入れる。
-   */
-  const copy = useCallback(async () => {
-    if (!currentSet) return;
-    if (currentDetail) {
-      const text = detailAsTsv(currentDetail);
-      await navigator.clipboard.writeText(text);
-      setCalcClip({ kind: "detail", text, detail: currentDetail });
-      onMessage(
-        `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
-      );
+  /** 1行コピー（カーソルの明細1件）。Excelへも貼れるようTSVにする */
+  const copyRow = useCallback(async () => {
+    if (!currentDetail) {
+      onMessage("コピーする明細の欄を選んでください");
       return;
     }
+    const text = detailAsTsv(currentDetail);
+    await navigator.clipboard.writeText(text);
+    setCalcClip({ kind: "detail", text, detail: currentDetail });
+    onMessage(
+      `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
+    );
+  }, [currentDetail, onMessage]);
+
+  /** 複数行コピー（カーソルのセット明細ぜんぶ） */
+  const copySet = useCallback(async () => {
+    if (!currentSet) return;
     const text = setAsTsv(currentSet);
     await navigator.clipboard.writeText(text);
     setCalcClip({ kind: "set", text, set: currentSet });
     onMessage(
       `セット「${currentSet.partName || "（部位なし）"}」をコピーしました`,
     );
-  }, [currentDetail, currentSet, onMessage]);
+  }, [currentSet, onMessage]);
 
   /**
    * 貼り付け。この画面でコピーしたセット・明細ならそのまま写し、
    * Excelなど他から持ってきた表なら、カーソルの欄（明細／計算式）へ取り込む。
+   * mode が insert なら差し込み、overwrite ならその位置に上書きする。
    */
-  const paste = useCallback(async () => {
-    const text = await navigator.clipboard.readText();
-    if (text.trim() === "") return;
-    const clip = getCalcClip(text);
+  const paste = useCallback(
+    async (mode: "overwrite" | "insert") => {
+      const text = await navigator.clipboard.readText();
+      if (text.trim() === "") return;
+      const clip = getCalcClip(text);
 
-    if (clip?.kind === "set") {
-      const created = duplicateSet(clip.set);
-      const at = sets.findIndex((set) => set.id === currentSet?.id);
-      const next = [...sets];
-      next.splice(at < 0 ? next.length : at + 1, 0, created);
-      onChange(next);
-      onFocus({ setId: created.id, area: "detail", index: 0 });
-      onMessage("コピーしたセットを貼り付けました");
-      return;
-    }
+      if (clip?.kind === "set") {
+        const created = duplicateSet(clip.set);
+        const at = sets.findIndex((set) => set.id === currentSet?.id);
+        const next = [...sets];
+        if (mode === "overwrite" && at >= 0) next[at] = created;
+        else next.splice(at < 0 ? next.length : at + 1, 0, created);
+        commit(next);
+        onFocus({ setId: created.id, area: "detail", index: 0 });
+        onMessage(
+          mode === "overwrite"
+            ? "コピーしたセットで上書きしました"
+            : "コピーしたセットを差し込みました",
+        );
+        return;
+      }
 
-    if (!currentSet) {
-      onMessage("貼り付ける場所を選んでください");
-      return;
-    }
+      if (!currentSet) {
+        onMessage("貼り付ける場所を選んでください");
+        return;
+      }
 
-    if (clip?.kind === "detail") {
-      const details = [...currentSet.details];
-      const at = focus?.area === "detail" ? focus.index + 1 : details.length;
-      details.splice(at, 0, duplicateDetail(clip.detail));
-      updateSet(currentSet.id, {
-        details,
-        lines: fillLines(details, currentSet.lines),
-      });
-      onMessage("コピーした明細を貼り付けました");
-      return;
-    }
+      if (clip?.kind === "detail") {
+        const details = [...currentSet.details];
+        const at = focus?.area === "detail" ? focus.index : details.length;
+        const copied = duplicateDetail(clip.detail);
+        if (mode === "overwrite" && at < details.length) details[at] = copied;
+        else details.splice(at, 0, copied);
+        updateSet(currentSet.id, {
+          details,
+          lines: fillLines(details, currentSet.lines),
+        });
+        onMessage(
+          mode === "overwrite"
+            ? "コピーした明細で上書きしました"
+            : "コピーした明細を差し込みました",
+        );
+        return;
+      }
 
-    if (focus?.area === "detail") {
-      const details = pasteDetails(currentSet.details, focus.index, text);
-      updateSet(currentSet.id, {
-        details,
-        lines: fillLines(details, currentSet.lines),
-      });
+      if (focus?.area === "detail") {
+        const at = focus.index;
+        const base =
+          mode === "insert"
+            ? [
+                ...currentSet.details.slice(0, at),
+                ...Array.from(
+                  {
+                    length: (text.split(/\r?\n/).filter(Boolean) ?? []).length,
+                  },
+                  () => calcDetail(),
+                ),
+                ...currentSet.details.slice(at),
+              ]
+            : currentSet.details;
+        const details = pasteDetails(base, at, text);
+        updateSet(currentSet.id, {
+          details,
+          lines: fillLines(details, currentSet.lines),
+        });
+        onMessage(
+          "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順）",
+        );
+        return;
+      }
+
+      const lines = pasteLines(currentSet.lines, focus?.index ?? 0, text);
+      updateSet(currentSet.id, { lines });
       onMessage(
-        `Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順）`,
+        "Excelの数量表を計算式へ貼り付けました（コメント／計算式Ａ／計算式Ｂの順。1列だけなら計算式Ａ）",
       );
-      return;
-    }
+    },
+    [commit, currentSet, focus, onFocus, onMessage, sets, updateSet],
+  );
 
-    const lines = pasteLines(currentSet.lines, focus?.index ?? 0, text);
-    updateSet(currentSet.id, { lines });
-    onMessage(
-      "Excelの数量表を計算式へ貼り付けました（コメント／計算式Ａ／計算式Ｂの順。1列だけなら計算式Ａ）",
-    );
-  }, [currentSet, focus, onChange, onFocus, onMessage, sets, updateSet]);
+  /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
+  const moveFocus = useCallback(
+    (row: number, col: number, stepRow: number, stepCol: number): void => {
+      const root = gridRef.current;
+      if (!root) return;
+      const cells = Array.from(
+        root.querySelectorAll<HTMLInputElement>("input[data-row][data-col]"),
+      );
+      const at = (r: number, c: number): HTMLInputElement | undefined =>
+        cells.find(
+          (cell) =>
+            Number(cell.dataset.row) === r && Number(cell.dataset.col) === c,
+        );
+      if (stepRow !== 0) {
+        for (let r = row + stepRow; r >= 0 && r <= 9999; r += stepRow) {
+          const found = at(r, col);
+          if (found) {
+            found.focus();
+            found.select();
+            return;
+          }
+          if (!cells.some((cell) => Number(cell.dataset.row) === r)) return;
+        }
+        return;
+      }
+      const sameRow = cells
+        .filter((cell) => Number(cell.dataset.row) === row)
+        .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
+      const next =
+        stepCol > 0
+          ? sameRow.find((cell) => Number(cell.dataset.col) > col)
+          : [...sameRow]
+              .reverse()
+              .find((cell) => Number(cell.dataset.col) < col);
+      if (next) {
+        next.focus();
+        next.select();
+        return;
+      }
+      // 行の端では、次（前）の行の先頭（末尾）へ移る
+      const otherRow = cells
+        .filter(
+          (cell) => Number(cell.dataset.row) === row + (stepCol > 0 ? 1 : -1),
+        )
+        .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
+      const edge = stepCol > 0 ? otherRow[0] : otherRow[otherRow.length - 1];
+      edge?.focus();
+      edge?.select();
+    },
+    [],
+  );
+
+  const onGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      const el = e.target;
+      if (!(el instanceof HTMLInputElement)) return;
+      const row = Number(el.dataset.row);
+      const col = Number(el.dataset.col);
+      if (Number.isNaN(row) || Number.isNaN(col)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        moveFocus(row, col, 0, 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveFocus(row, col, -1, 0);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveFocus(row, col, 1, 0);
+      } else if (
+        e.key === "ArrowLeft" &&
+        el.selectionStart === 0 &&
+        el.selectionEnd === 0
+      ) {
+        e.preventDefault();
+        moveFocus(row, col, 0, -1);
+      } else if (
+        e.key === "ArrowRight" &&
+        el.selectionStart === el.value.length &&
+        el.selectionEnd === el.value.length
+      ) {
+        e.preventDefault();
+        moveFocus(row, col, 0, 1);
+      }
+    },
+    [moveFocus],
+  );
+
+  /** セットごとの表示開始行（キー移動のための通し番号） */
+  const rowStarts = useMemo(() => {
+    const starts: number[] = [];
+    let total = 0;
+    sets.forEach((set) => {
+      starts.push(total);
+      total += setRowCount(set);
+    });
+    return starts;
+  }, [sets]);
 
   if (inOtherWindow)
     return (
@@ -720,15 +977,29 @@ export default function RoomCalcSheet({
           )
             return;
           e.preventDefault();
-          void copy();
+          void copyRow();
         } else if (e.key === "v") {
           e.preventDefault();
-          void paste();
+          void paste("overwrite");
+        } else if (e.key === "z") {
+          e.preventDefault();
+          undo();
+        } else if (e.key === "y") {
+          e.preventDefault();
+          redo();
         }
       }}
     >
       <div className="section-bar">
-        <span>セット明細計算表（部位のある行がセットの先頭です）</span>
+        {inWindow && (
+          <button
+            type="button"
+            title="このウィンドウを閉じて、元の画面で入力します"
+            onClick={() => void window.sekisan.closeWindow()}
+          >
+            ✕ このウィンドウを閉じる
+          </button>
+        )}
         {!inWindow && (
           <button
             type="button"
@@ -743,17 +1014,49 @@ export default function RoomCalcSheet({
             ⧉ 別画面で開く
           </button>
         )}
-        {inWindow && (
+        <button
+          type="button"
+          title="直前の入力を元に戻します（Ctrl+Z）"
+          disabled={past.length === 0}
+          onClick={undo}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          title="元に戻した入力をやり直します（Ctrl+Y）"
+          disabled={future.length === 0}
+          onClick={redo}
+        >
+          ↷ 進む
+        </button>
+        <span className="banner-menu">
           <button
             type="button"
-            title="このウィンドウを閉じて、元の画面で入力します"
-            onClick={() => void window.sekisan.closeWindow()}
+            className={bannerOpen ? "on" : ""}
+            title="カーソルのセットの上に、色の付いた見出し行を入れます"
+            onClick={() => setBannerOpen(!bannerOpen)}
           >
-            ✕ このウィンドウを閉じる
+            ※ 行挿入
           </button>
-        )}
-        <button type="button" onClick={() => onChange([...sets, calcSet()])}>
-          ＋ セット明細（2明細）
+          {bannerOpen && (
+            <span className="banner-colors">
+              {BANNER_COLORS.map((item) => (
+                <button
+                  key={item.color}
+                  type="button"
+                  title={`${item.label}で見出し行を入れます`}
+                  style={{ background: item.color }}
+                  onClick={() => insertBanner(item.color)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </span>
+          )}
+        </span>
+        <button type="button" onClick={() => commit([...sets, calcSet(1)])}>
+          ＋ 明細（1明細）
         </button>
         <button type="button" onClick={() => addRow(false)}>
           ＋ 行追加
@@ -763,17 +1066,31 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="明細欄にカーソルがあれば明細1件、それ以外はセット1つをコピーします（Ctrl+C）"
-          onClick={() => void copy()}
+          title="カーソルのある明細1件をコピーします（Ctrl+C）"
+          onClick={() => void copyRow()}
         >
-          ⧉ コピー
+          ⧉ 1行コピー
         </button>
         <button
           type="button"
-          title="コピーしたセット・明細、またはExcelの表を貼り付けます（Ctrl+V）"
-          onClick={() => void paste()}
+          title="カーソルのあるセット明細をまとめてコピーします"
+          onClick={() => void copySet()}
         >
-          📋 貼り付け
+          ⧉ 複数行コピー
+        </button>
+        <button
+          type="button"
+          title="カーソルの位置に上書きします（Ctrl+V）"
+          onClick={() => void paste("overwrite")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの位置に差し込みます"
+          onClick={() => void paste("insert")}
+        >
+          📋 挿入貼付
         </button>
         <button
           type="button"
@@ -782,13 +1099,6 @@ export default function RoomCalcSheet({
         >
           📂 マスター呼出
         </button>
-        <button
-          type="button"
-          title="見出しの境目をドラッグすると列幅を変えられます。押すと元の幅に戻します"
-          onClick={resetWidths}
-        >
-          ↔ 列幅リセット
-        </button>
         <span className="hint">
           {hasUpper
             ? "記号は上段の表をクリックすると計算式へ入ります"
@@ -796,7 +1106,7 @@ export default function RoomCalcSheet({
         </span>
       </div>
 
-      <div className="calc-body">
+      <div className="calc-body" ref={gridRef} onKeyDown={onGridKeyDown}>
         <table className="grid calc">
           <colgroup>
             {CALC_COLUMNS.map((column, index) => (
@@ -810,116 +1120,92 @@ export default function RoomCalcSheet({
                   {column.label}
                   <span
                     className="col-resize"
-                    title="ドラッグで列幅を変えられます"
+                    title="ドラッグで列幅を変えられます（全物件で共通です）"
                     onMouseDown={(e) => startResize(index, e)}
                   />
                 </th>
               ))}
             </tr>
           </thead>
-          {sets.map((set, setIndex) => (
-            <tbody
-              key={set.id}
-              className={setIndex % 2 === 0 ? "set even" : "set odd"}
-            >
-              {Array.from({ length: setRowCount(set) }, (_, rowIndex) => {
-                const rowCount = setRowCount(set);
-                // 記号は行ごとではなくセット全体で1つ（先頭の計算式行に持たせる）
-                const setSymbol =
-                  set.lines.find((row) => row.bSymbol.trim() !== "")?.bSymbol ??
-                  "";
-                const setTotal = result.setTotals.get(set.id) ?? null;
-                // 明細1件は上下2行セット（偶数行＝上段、奇数行＝下段）
-                const detailIndex = Math.floor(rowIndex / 2);
-                const isUpper = rowIndex % 2 === 0;
-                const detail = set.details[detailIndex];
-                const line = set.lines[rowIndex];
-                const lineResult = line ? result.lines.get(line.id) : undefined;
-                return (
-                  <tr
-                    key={`${set.id}-${rowIndex}`}
-                    className={isUpper ? "detail-upper" : "detail-lower"}
-                  >
-                    {rowIndex === 0 && (
-                      <td className="part dcell" rowSpan={rowCount}>
-                        <div className="part-pair">
-                          <PickInput
-                            className="part-no"
-                            listId="calc-part-numbers"
-                            value={
-                              set.partNumber === null
-                                ? ""
-                                : String(set.partNumber)
-                            }
-                            placeholder="番号"
-                            title="管理用部位の番号。選ぶと部位名称も同時に入ります（セットの先頭の明細だけ）"
-                            onCommit={(text) =>
-                              updateSet(
-                                set.id,
-                                partByNumber(
-                                  options?.aggregationParts ?? [],
-                                  text,
-                                  set.partName,
-                                ),
-                              )
-                            }
-                          />
-                          <PickInput
-                            listId="calc-parts"
-                            value={partNameOf(
-                              options?.aggregationParts ?? [],
-                              set.partName,
-                              set.partNumber,
-                            )}
-                            placeholder="番号／一覧"
-                            title="部位マスターの番号を入力するか一覧から選びます。空欄にすると上のセットに含まれます"
-                            onCommit={(text) => {
-                              const parts = options?.aggregationParts ?? [];
-                              const name = resolveMasterName(parts, text);
-                              updateSet(set.id, {
-                                partName: name,
-                                partNumber:
-                                  parts.find((part) => part.name === name)
-                                    ?.id ?? null,
-                              });
-                            }}
-                          />
-                        </div>
+          {sets.map((set, setIndex) => {
+            const rowCount = setRowCount(set);
+            // 記号は行ごとではなくセット全体で1つ（先頭の計算式行に持たせる）
+            const setSymbol =
+              set.lines.find((row) => row.bSymbol.trim() !== "")?.bSymbol ?? "";
+            const setTotal = result.setTotals.get(set.id) ?? null;
+            return (
+              <tbody key={set.id} className="set">
+                {set.banner && (
+                  <tr className="banner-row">
+                    <td
+                      colSpan={CALC_COLUMNS.length}
+                      style={{ background: set.banner.color }}
+                    >
+                      <input
+                        lang="ja"
+                        value={set.banner.text}
+                        placeholder="見出し（例 床：1・11）"
+                        onChange={(e) =>
+                          updateSet(set.id, {
+                            banner: {
+                              text: e.target.value,
+                              color: set.banner?.color ?? "#e2e8f0",
+                            },
+                          })
+                        }
+                      />
+                      <button
+                        type="button"
+                        title="この見出し行を消します"
+                        onClick={() => updateSet(set.id, { banner: null })}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                {Array.from({ length: rowCount }, (_, rowIndex) => {
+                  const detail = set.details[rowIndex];
+                  const line = set.lines[rowIndex];
+                  const lineResult = line
+                    ? result.lines.get(line.id)
+                    : undefined;
+                  const gridRow = rowStarts[setIndex] + rowIndex;
+                  const focusDetail = (): void =>
+                    onFocus({
+                      setId: set.id,
+                      area: "detail",
+                      index: rowIndex,
+                    });
+                  return (
+                    <tr key={`${set.id}-${rowIndex}`}>
+                      <td className="set-part">
+                        <PickInput
+                          row={gridRow}
+                          col={0}
+                          listId="calc-part-names"
+                          commitOnBlur
+                          value={rowIndex === 0 ? set.partName : ""}
+                          placeholder={rowIndex === 0 ? "部位" : ""}
+                          title="管理用部位。番号を打つと名称に変わります。途中の行に入れると、その行から別のセットになります"
+                          onCommit={(text) =>
+                            commitSetPart(set.id, rowIndex, text)
+                          }
+                        />
                       </td>
-                    )}
-                    {detail ? (
-                      <>
-                        {isUpper && (
-                          <td className="subject dcell" rowSpan={2}>
+                      {detail ? (
+                        <>
+                          <td className="material">
                             <PickInput
-                              listId="calc-subjects"
-                              value={
-                                detail.subjectId === null
-                                  ? ""
-                                  : String(detail.subjectId)
-                              }
-                              placeholder="番号"
-                              title={
-                                subjects.find(
-                                  (item) => item.id === detail.subjectId,
-                                )?.name ?? "工種科目のID（一覧から選べます）"
-                              }
-                              onCommit={(text) => {
-                                const id = Number.parseInt(text.trim(), 10);
-                                updateDetail(set.id, detailIndex, {
-                                  subjectId: Number.isNaN(id) ? null : id,
-                                });
-                              }}
-                            />
-                          </td>
-                        )}
-                        <td className="material dcell">
-                          {!isUpper && (
-                            <input
-                              list="calc-materials"
+                              row={gridRow}
+                              col={1}
+                              listId="calc-materials"
                               value={detail.materialCategory}
-                              onChange={(e) =>
-                                updateDetail(set.id, detailIndex, {
+                              placeholder="区分"
+                              title="材種区分。番号を打つと名称に変わります"
+                              onFocus={focusDetail}
+                              onCommit={(text) =>
+                                updateDetail(set.id, rowIndex, {
                                   materialCategory: resolveMasterName(
                                     (options?.materialCategories ?? []).map(
                                       (item) => ({
@@ -927,78 +1213,89 @@ export default function RoomCalcSheet({
                                         name: item.name,
                                       }),
                                     ),
-                                    e.target.value,
+                                    text,
                                   ),
                                 })
                               }
                             />
-                          )}
-                        </td>
-                        <td className="no dcell">
-                          {isUpper && (
+                          </td>
+                          <td className="id">
                             <PickInput
-                              className="part-id"
-                              listId="calc-detail-part-numbers"
-                              value={partNumberOf(
-                                options?.pickupParts ?? [],
-                                detail.partName,
-                                detail.partNumber,
-                              )}
-                              placeholder="部位ID"
-                              title="明細用部位のID。選ぶと右の部位名も同時に入ります"
-                              onFocus={() =>
-                                onFocus({
-                                  setId: set.id,
-                                  area: "detail",
-                                  index: detailIndex,
-                                })
+                              row={gridRow}
+                              col={2}
+                              listId="calc-subjects"
+                              value={
+                                detail.subjectId === null
+                                  ? ""
+                                  : String(detail.subjectId)
                               }
+                              placeholder="科目"
+                              title={
+                                subjects.find(
+                                  (item) => item.id === detail.subjectId,
+                                )?.name ?? "工種科目のID（一覧から選べます）"
+                              }
+                              onFocus={focusDetail}
                               onCommit={(text) => {
-                                const picked = partByNumber(
-                                  options?.pickupParts ?? [],
-                                  text,
-                                  detail.partName,
-                                );
-                                updateDetail(set.id, detailIndex, {
-                                  partNumber: picked.partNumber,
-                                  partName: picked.partName,
+                                const id = Number.parseInt(text.trim(), 10);
+                                updateDetail(set.id, rowIndex, {
+                                  subjectId: Number.isNaN(id) ? null : id,
                                 });
                               }}
                             />
-                          )}
-                          {!isUpper && (
-                            <input
+                          </td>
+                          <td className="id">
+                            <PickInput
+                              row={gridRow}
+                              col={3}
+                              listId="calc-detail-part-numbers"
                               value={
-                                numberEdit?.key === `${set.id}:${detailIndex}`
+                                detail.partNumber === null
+                                  ? ""
+                                  : String(detail.partNumber)
+                              }
+                              placeholder="部位ID"
+                              title="明細用部位のID。入れると右の部位名にマスターの文字が入ります"
+                              onFocus={focusDetail}
+                              onCommit={(text) => {
+                                const picked = pickMaster(pickupParts, text);
+                                updateDetail(set.id, rowIndex, {
+                                  partNumber: picked.id,
+                                  partName:
+                                    picked.id === null
+                                      ? detail.partName
+                                      : picked.name,
+                                });
+                              }}
+                            />
+                          </td>
+                          <td className="id">
+                            <input
+                              data-row={gridRow}
+                              data-col={4}
+                              value={
+                                numberEdit?.key === `${set.id}:${rowIndex}`
                                   ? numberEdit.text
                                   : (detail.detailNumber?.toFixed(2) ?? "")
                               }
                               list="calc-detail-numbers"
-                              placeholder="番号／一覧"
+                              placeholder="名称ID"
                               title="明細番号を入れるとマスターの明細を呼び出します（科目IDを入れると一覧から選べます）"
                               onFocus={() => {
-                                onFocus({
-                                  setId: set.id,
-                                  area: "detail",
-                                  index: detailIndex,
-                                });
+                                focusDetail();
                                 // 入力済みでも候補を全件出すため、欄を選んだときは一度空にする
                                 setNumberEdit({
-                                  key: `${set.id}:${detailIndex}`,
+                                  key: `${set.id}:${rowIndex}`,
                                   text: "",
                                 });
                                 void loadNumberOptions(detail.subjectId);
                               }}
                               onChange={(e) =>
                                 setNumberEdit({
-                                  key: `${set.id}:${detailIndex}`,
+                                  key: `${set.id}:${rowIndex}`,
                                   text: e.target.value,
                                 })
                               }
-                              onKeyDown={(e) => {
-                                if (e.key !== "Enter") return;
-                                e.currentTarget.blur();
-                              }}
                               onBlur={(e) => {
                                 const text = e.target.value;
                                 setNumberEdit(null);
@@ -1009,219 +1306,216 @@ export default function RoomCalcSheet({
                                   (detail.detailNumber?.toFixed(2) ?? "")
                                 )
                                   return;
-                                void applyDetailNumber(
-                                  set.id,
-                                  detailIndex,
-                                  text,
-                                );
+                                void applyDetailNumber(set.id, rowIndex, text);
                               }}
                             />
-                          )}
-                        </td>
-                        <td className="dcell">
-                          {isUpper ? (
-                            <PickInput
-                              listId="calc-detail-parts"
-                              value={partNameOf(
-                                options?.pickupParts ?? [],
-                                detail.partName,
-                                detail.partNumber,
-                              )}
-                              placeholder="部位名／一覧"
-                              title="明細用部位の名称（左の部位IDでも選べます）"
-                              onFocus={() =>
-                                onFocus({
-                                  setId: set.id,
-                                  area: "detail",
-                                  index: detailIndex,
-                                })
-                              }
-                              onCommit={(text) => {
-                                const parts = options?.pickupParts ?? [];
-                                const name = resolveMasterName(parts, text);
-                                updateDetail(set.id, detailIndex, {
-                                  partNumber:
-                                    parts.find((part) => part.name === name)
-                                      ?.id ?? null,
-                                  partName: name,
-                                });
-                              }}
-                            />
-                          ) : (
+                          </td>
+                          <td>
                             <input
                               lang="ja"
-                              value={detail.name}
-                              placeholder="名称"
-                              onFocus={() =>
-                                onFocus({
-                                  setId: set.id,
-                                  area: "detail",
-                                  index: detailIndex,
+                              data-row={gridRow}
+                              data-col={5}
+                              value={detail.partName}
+                              placeholder="部位"
+                              onFocus={focusDetail}
+                              onChange={(e) =>
+                                updateDetail(set.id, rowIndex, {
+                                  partName: e.target.value,
                                 })
                               }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={6}
+                              value={detail.name}
+                              placeholder="名称"
+                              onFocus={focusDetail}
                               onChange={(e) =>
-                                updateDetail(set.id, detailIndex, {
+                                updateDetail(set.id, rowIndex, {
                                   name: e.target.value,
                                 })
                               }
                             />
-                          )}
-                        </td>
-                        <td className="dcell">
-                          <input
-                            lang="ja"
-                            value={
-                              isUpper
-                                ? detail.descriptionUpper
-                                : detail.descriptionLower
-                            }
-                            onChange={(e) =>
-                              updateDetail(
-                                set.id,
-                                detailIndex,
-                                isUpper
-                                  ? { descriptionUpper: e.target.value }
-                                  : { descriptionLower: e.target.value },
-                              )
-                            }
-                          />
-                        </td>
-                        <td className="unit dcell">
-                          {!isUpper && (
+                          </td>
+                          <td>
                             <input
-                              list="calc-units"
-                              value={detail.unit}
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={7}
+                              value={detail.descriptionLower}
+                              onFocus={focusDetail}
                               onChange={(e) =>
-                                updateDetail(set.id, detailIndex, {
+                                updateDetail(set.id, rowIndex, {
+                                  descriptionLower: e.target.value,
+                                })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={8}
+                              value={detail.descriptionUpper}
+                              onFocus={focusDetail}
+                              onChange={(e) =>
+                                updateDetail(set.id, rowIndex, {
+                                  descriptionUpper: e.target.value,
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="unit">
+                            <PickInput
+                              row={gridRow}
+                              col={9}
+                              listId="calc-units"
+                              value={detail.unit}
+                              placeholder="単位"
+                              title="単位。番号を打つと単位の文字に変わります"
+                              onFocus={focusDetail}
+                              onCommit={(text) =>
+                                updateDetail(set.id, rowIndex, {
                                   unit: resolveMasterName(
                                     (options?.units ?? []).map((unit) => ({
                                       id: unit.id,
                                       name: unit.name,
                                     })),
-                                    e.target.value,
+                                    text,
                                   ),
                                 })
                               }
                             />
-                          )}
-                        </td>
-                        <td className="coef dcell">
-                          {!isUpper && (
+                          </td>
+                          <td className="coef">
                             <input
                               key={detail.id}
                               className="num"
+                              data-row={gridRow}
+                              data-col={10}
                               defaultValue={String(detail.coefficient)}
-                              title="集計時にこの掛け率を掛けます"
+                              title="集計時にこの掛け率を掛けます（最大9999.99）"
+                              onFocus={focusDetail}
                               onBlur={(e) => {
                                 const value = Number(e.target.value);
                                 if (!Number.isFinite(value)) return;
-                                updateDetail(set.id, detailIndex, {
-                                  coefficient: value,
+                                const limited = Math.min(
+                                  Math.max(value, -9999.99),
+                                  9999.99,
+                                );
+                                updateDetail(set.id, rowIndex, {
+                                  coefficient: limited,
                                 });
                               }}
                             />
-                          )}
-                        </td>
-                        <td className="num total dcell">
-                          {!isUpper && setTotal !== null
-                            ? displayQuantity(
-                                displayedValue(
-                                  setTotal * (detail.coefficient || 1),
-                                ),
-                              )
-                            : ""}
-                        </td>
-                      </>
-                    ) : (
-                      <td className="empty" colSpan={8} />
-                    )}
-                    {line ? (
-                      <>
-                        <td className="comment">
-                          <input
-                            lang="ja"
-                            maxLength={20}
-                            value={line.comment}
-                            onChange={(e) =>
-                              updateSet(set.id, {
-                                lines: set.lines.map((row, index) =>
-                                  index === rowIndex
-                                    ? { ...row, comment: e.target.value }
-                                    : row,
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="formula">
-                          <input
-                            value={line.formulaA}
-                            onFocus={() =>
-                              onFocus({
-                                setId: set.id,
-                                area: "formulaA",
-                                index: rowIndex,
-                              })
-                            }
-                            onChange={(e) =>
-                              updateSet(set.id, {
-                                lines: set.lines.map((row, index) =>
-                                  index === rowIndex
-                                    ? { ...row, formulaA: e.target.value }
-                                    : row,
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="formula-b">
-                          <input
-                            value={line.formulaB}
-                            title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
-                            onFocus={() =>
-                              onFocus({
-                                setId: set.id,
-                                area: "formulaB",
-                                index: rowIndex,
-                              })
-                            }
-                            onChange={(e) =>
-                              updateSet(set.id, {
-                                lines: set.lines.map((row, index) =>
-                                  index === rowIndex
-                                    ? { ...row, formulaB: e.target.value }
-                                    : row,
-                                ),
-                              })
-                            }
-                          />
-                        </td>
-                        <td
-                          className={[
-                            "num",
-                            (lineResult?.value ?? 0) < 0 ? "minus" : "",
-                            lineResult?.error ? "error" : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
-                          title={lineResult?.error}
-                        >
-                          {lineResult?.error !== ""
-                            ? lineResult?.error
-                            : lineResult?.text}
-                        </td>
-                        <td className="num">{lineResult?.totalText ?? ""}</td>
-                      </>
-                    ) : (
-                      <td className="empty" colSpan={5} />
-                    )}
-                    {rowIndex === 0 && (
-                      <td className="bsym" rowSpan={rowCount}>
-                        <div className="cell">
+                          </td>
+                          <td className="num total">
+                            {setTotal !== null
+                              ? displayQuantity(
+                                  displayedValue(
+                                    setTotal * (detail.coefficient || 1),
+                                  ),
+                                )
+                              : ""}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="empty" colSpan={11} />
+                      )}
+                      {line ? (
+                        <>
+                          <td className="comment">
+                            <input
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={12}
+                              value={line.comment}
+                              onChange={(e) =>
+                                updateSet(set.id, {
+                                  lines: set.lines.map((row, index) =>
+                                    index === rowIndex
+                                      ? { ...row, comment: e.target.value }
+                                      : row,
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="formula">
+                            <input
+                              data-row={gridRow}
+                              data-col={13}
+                              value={line.formulaA}
+                              onFocus={() =>
+                                onFocus({
+                                  setId: set.id,
+                                  area: "formulaA",
+                                  index: rowIndex,
+                                })
+                              }
+                              onChange={(e) =>
+                                updateSet(set.id, {
+                                  lines: set.lines.map((row, index) =>
+                                    index === rowIndex
+                                      ? { ...row, formulaA: e.target.value }
+                                      : row,
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="formula-b">
+                            <input
+                              data-row={gridRow}
+                              data-col={14}
+                              value={line.formulaB}
+                              title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
+                              onFocus={() =>
+                                onFocus({
+                                  setId: set.id,
+                                  area: "formulaB",
+                                  index: rowIndex,
+                                })
+                              }
+                              onChange={(e) =>
+                                updateSet(set.id, {
+                                  lines: set.lines.map((row, index) =>
+                                    index === rowIndex
+                                      ? { ...row, formulaB: e.target.value }
+                                      : row,
+                                  ),
+                                })
+                              }
+                            />
+                          </td>
+                          <td
+                            className={[
+                              "num",
+                              (lineResult?.value ?? 0) < 0 ? "minus" : "",
+                              lineResult?.error ? "error" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            title={lineResult?.error}
+                          >
+                            {lineResult?.error !== ""
+                              ? lineResult?.error
+                              : lineResult?.text}
+                          </td>
+                          <td className="num">{lineResult?.totalText ?? ""}</td>
+                        </>
+                      ) : (
+                        <td className="empty" colSpan={5} />
+                      )}
+                      {rowIndex === 0 && (
+                        <td className="bsym" rowSpan={rowCount}>
                           <input
                             value={setSymbol}
                             placeholder="B1"
-                            title="このセットの累計を他のセットで使うための記号（セットに1つ）"
+                            title="このセットの累計を他のセットで使うための記号（B1〜B99。セットに1つ）"
                             onChange={(e) => {
                               const symbol = e.target.value
                                 .trim()
@@ -1239,160 +1533,124 @@ export default function RoomCalcSheet({
                               });
                             }}
                           />
-                          <button
-                            type="button"
-                            title="空いている番号を割り当てます"
-                            onClick={() =>
-                              updateSet(set.id, {
-                                lines: setBSymbol(set, nextBSymbol(sets)),
-                              })
-                            }
-                          >
-                            B
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                    {detail ? (
-                      <>
-                        <td className="dcell">
-                          <input
-                            lang="ja"
-                            value={
-                              isUpper
-                                ? detail.remarksUpper
-                                : detail.remarksLower
-                            }
-                            onChange={(e) =>
-                              updateDetail(
-                                set.id,
-                                detailIndex,
-                                isUpper
-                                  ? { remarksUpper: e.target.value }
-                                  : { remarksLower: e.target.value },
-                              )
-                            }
-                          />
                         </td>
-                        <td className="estimate dcell">
-                          {!isUpper && (
+                      )}
+                      {detail ? (
+                        <>
+                          <td>
                             <input
                               lang="ja"
+                              data-row={gridRow}
+                              data-col={18}
+                              value={detail.remarksLower}
+                              onFocus={focusDetail}
+                              onChange={(e) =>
+                                updateDetail(set.id, rowIndex, {
+                                  remarksLower: e.target.value,
+                                })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={19}
+                              value={detail.remarksUpper}
+                              onFocus={focusDetail}
+                              onChange={(e) =>
+                                updateDetail(set.id, rowIndex, {
+                                  remarksUpper: e.target.value,
+                                })
+                              }
+                            />
+                          </td>
+                          <td className="estimate">
+                            <input
+                              lang="ja"
+                              data-row={gridRow}
+                              data-col={20}
                               value={detail.estimateDisplay}
                               title="内訳書へ出すときの表示（明細マスターと同じ欄）"
+                              onFocus={focusDetail}
                               onChange={(e) =>
-                                updateDetail(set.id, detailIndex, {
+                                updateDetail(set.id, rowIndex, {
                                   estimateDisplay: e.target.value,
                                 })
                               }
                             />
-                          )}
-                        </td>
-                      </>
-                    ) : (
-                      <td className="empty" colSpan={2} />
-                    )}
-                    {detail ? (
-                      isUpper && (
-                        <td
-                          className="ops"
-                          rowSpan={rowIndex + 1 < rowCount ? 2 : 1}
-                        >
-                          <button
-                            type="button"
-                            title="この明細を1つ上へ移動します"
-                            disabled={detailIndex === 0}
-                            onClick={() => moveDetail(set.id, detailIndex, -1)}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            title="この明細を1つ下へ移動します"
-                            disabled={detailIndex === set.details.length - 1}
-                            onClick={() => moveDetail(set.id, detailIndex, 1)}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            title="この明細1件だけを削除します"
-                            onClick={() => removeDetail(set.id, detailIndex)}
-                          >
-                            ✕
-                          </button>
-                          {detailIndex === 0 && (
+                          </td>
+                        </>
+                      ) : (
+                        <td className="empty" colSpan={3} />
+                      )}
+                      <td className="ops">
+                        {detail && (
+                          <>
                             <button
                               type="button"
-                              title="このセット明細をまるごと削除します"
-                              onClick={() =>
-                                onChange(
-                                  sets.filter((each) => each.id !== set.id),
-                                )
-                              }
+                              title="この明細を1つ上へ移動します"
+                              disabled={rowIndex === 0}
+                              onClick={() => moveDetail(set.id, rowIndex, -1)}
                             >
-                              🗑
+                              ↑
                             </button>
-                          )}
-                        </td>
-                      )
-                    ) : (
-                      <td className="ops">
+                            <button
+                              type="button"
+                              title="この明細を1つ下へ移動します"
+                              disabled={rowIndex === set.details.length - 1}
+                              onClick={() => moveDetail(set.id, rowIndex, 1)}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              title="この明細1件だけを削除します"
+                              onClick={() => removeDetail(set.id, rowIndex)}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
                         {rowIndex === 0 && (
                           <button
                             type="button"
                             title="このセット明細をまるごと削除します"
                             onClick={() =>
-                              onChange(
-                                sets.filter((each) => each.id !== set.id),
-                              )
+                              commit(sets.filter((each) => each.id !== set.id))
                             }
                           >
                             🗑
                           </button>
                         )}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            );
+          })}
         </table>
       </div>
 
       <datalist id="calc-detail-numbers">
         {numberOptions.map((item) => (
           <option key={item.id} value={item.detailNumber?.toFixed(2) ?? ""}>
-            {`${item.partName} ${item.name}`.trim()}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-detail-parts">
-        {(options?.pickupParts ?? []).map((part) => (
-          <option key={part.id} value={part.name}>
-            {part.id}
+            {`${item.partName} ${item.name} ${item.descriptionLower}`.trim()}
           </option>
         ))}
       </datalist>
       <datalist id="calc-detail-part-numbers">
-        {(options?.pickupParts ?? []).map((part) => (
+        {pickupParts.map((part) => (
           <option key={part.id} value={String(part.id)}>
-            {part.name}
+            {`${part.name}${part.note ? `　${part.note}` : ""}`}
           </option>
         ))}
       </datalist>
-      <datalist id="calc-part-numbers">
-        {(options?.aggregationParts ?? []).map((part) => (
-          <option key={part.id} value={String(part.id)}>
-            {part.name}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-parts">
-        {(options?.aggregationParts ?? []).map((part) => (
+      <datalist id="calc-part-names">
+        {aggregationParts.map((part) => (
           <option key={part.id} value={part.name}>
-            {part.id}
+            {`${part.id}${part.note ? `　${part.note}` : ""}`}
           </option>
         ))}
       </datalist>
@@ -1419,9 +1677,38 @@ export default function RoomCalcSheet({
       </datalist>
 
       {callOpen && (
-        <div className="call-window">
-          <div className="section-bar">
-            <span>マスター呼出</span>
+        <div
+          className="call-window"
+          style={
+            callPos === null
+              ? undefined
+              : { left: `${callPos.x}px`, top: `${callPos.y}px`, right: "auto" }
+          }
+        >
+          <div
+            className="section-bar drag"
+            onMouseDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              const box = e.currentTarget.parentElement;
+              if (!box) return;
+              const rect = box.getBoundingClientRect();
+              const offsetX = e.clientX - rect.left;
+              const offsetY = e.clientY - rect.top;
+              const move = (event: MouseEvent): void =>
+                setCallPos({
+                  x: event.clientX - offsetX,
+                  y: event.clientY - offsetY,
+                });
+              const up = (): void => {
+                window.removeEventListener("mousemove", move);
+                window.removeEventListener("mouseup", up);
+              };
+              window.addEventListener("mousemove", move);
+              window.addEventListener("mouseup", up);
+            }}
+            title="この見出しをドラッグすると呼出画面を動かせます"
+          >
+            <span>マスター呼出（見出しをドラッグで移動）</span>
             {(Object.keys(SOURCE_LABEL) as CallSource[]).map((key) => (
               <button
                 key={key}
@@ -1453,27 +1740,31 @@ export default function RoomCalcSheet({
             </button>
           </div>
           {source === "assembly" ? (
-            <ul className="call-list">
-              {assemblies.map((assembly) => (
-                <li
-                  key={`${assembly.scope}-${assembly.id}`}
-                  tabIndex={0}
-                  onDoubleClick={() => callAssembly(assembly)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") callAssembly(assembly);
-                  }}
-                >
-                  <span className="scope">
-                    {assembly.scope === "basic" ? "基準" : "工事"}
-                  </span>
-                  <span className="part">
-                    {assembly.items[0]?.partName ?? ""}
-                  </span>
-                  <span className="name">{assembly.items[0]?.name ?? ""}</span>
-                  <span className="count">{assembly.items.length}明細</span>
-                </li>
-              ))}
-            </ul>
+            <div className="call-scroll">
+              <ul className="call-list">
+                {assemblies.map((assembly) => (
+                  <li
+                    key={`${assembly.scope}-${assembly.id}`}
+                    tabIndex={0}
+                    onDoubleClick={() => callAssembly(assembly)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") callAssembly(assembly);
+                    }}
+                  >
+                    <span className="scope">
+                      {assembly.scope === "basic" ? "基準" : "工事"}
+                    </span>
+                    <span className="part">
+                      {assembly.items[0]?.partName ?? ""}
+                    </span>
+                    <span className="name">
+                      {assembly.items[0]?.name ?? ""}
+                    </span>
+                    <span className="count">{assembly.items.length}明細</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : (
             <>
               <div className="call-subject">
@@ -1510,41 +1801,43 @@ export default function RoomCalcSheet({
                 </select>
                 <span className="count">{details.length}件</span>
               </div>
-              <table className="call-table">
-                <thead>
-                  <tr>
-                    <th className="no">番号</th>
-                    <th>部位名／名称</th>
-                    <th>摘要</th>
-                    <th className="unit">単位</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {details.map((detail) => (
-                    <tr
-                      key={detail.id}
-                      tabIndex={0}
-                      onDoubleClick={() => callDetail(detail)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") callDetail(detail);
-                      }}
-                    >
-                      <td className="no">
-                        {detail.detailNumber?.toFixed(2) ?? ""}
-                      </td>
-                      <td>
-                        <div className="upper">{detail.partName}</div>
-                        <div className="lower">{detail.name}</div>
-                      </td>
-                      <td>
-                        <div className="upper">{detail.descriptionUpper}</div>
-                        <div className="lower">{detail.descriptionLower}</div>
-                      </td>
-                      <td className="unit">{detail.unit}</td>
+              <div className="call-scroll">
+                <table className="call-table">
+                  <thead>
+                    <tr>
+                      <th className="no">番号</th>
+                      <th>部位名／名称</th>
+                      <th>摘要</th>
+                      <th className="unit">単位</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {details.map((detail) => (
+                      <tr
+                        key={detail.id}
+                        tabIndex={0}
+                        onDoubleClick={() => callDetail(detail)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") callDetail(detail);
+                        }}
+                      >
+                        <td className="no">
+                          {detail.detailNumber?.toFixed(2) ?? ""}
+                        </td>
+                        <td>
+                          <div className="upper">{detail.partName}</div>
+                          <div className="lower">{detail.name}</div>
+                        </td>
+                        <td>
+                          <div className="upper">{detail.descriptionUpper}</div>
+                          <div className="lower">{detail.descriptionLower}</div>
+                        </td>
+                        <td className="unit">{detail.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
           <p className="note">
@@ -1556,14 +1849,11 @@ export default function RoomCalcSheet({
       <p className="note">
         計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}
         建具記号（&lt;AW1&gt;
-        …建具表から直接引用）、他セットの累計（B1〜B100）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
+        …建具表から直接引用）、他セットの累計（B1〜B99）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
       </p>
       <p className="note dim">
-        コピー・貼り付け（Ctrl+C／Ctrl+V）：明細欄にカーソルがあれば明細1件、計算式欄なら
-        セット1つを写します。Excelの表は、明細欄にカーソルがあれば
-        部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順、
-        計算式欄なら コメント／計算式Ａ／計算式Ｂ
-        の順（1列だけなら計算式Ａ）で取り込みます。
+        Enterで右の欄、↑↓で上下の欄、←→で左右の欄へ移ります。
+        コピー・貼り付け（Ctrl+C／Ctrl+V）、元に戻す（Ctrl+Z）、やり直し（Ctrl+Y）。
       </p>
       <CalcVariablesHint variables={variables} hasUpper={hasUpper} />
     </div>
