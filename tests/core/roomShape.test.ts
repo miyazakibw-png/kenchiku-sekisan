@@ -295,6 +295,8 @@ describe("部屋形状（単線図）", () => {
     expect(arcLength(4, 2)).toBe(6.28);
     // 矢が無ければ直線として弦の長さを使う
     expect(arcLength(4, 0)).toBe(4);
+    // 内側へ凹む（マイナス）でも弧長は同じ
+    expect(arcLength(4, -2)).toBe(6.28);
 
     const shape = {
       edges: [

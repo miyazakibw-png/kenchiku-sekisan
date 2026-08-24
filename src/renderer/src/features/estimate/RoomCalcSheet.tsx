@@ -2040,34 +2040,7 @@ export default function RoomCalcSheet({
           </p>
         </div>
       )}
-
-      <p className="note">
-        計算式には{hasUpper ? "上段の記号（FA・WA1 など）、" : "数字と"}
-        建具記号（&lt;AW1&gt;
-        …建具表から直接引用）、他セットの累計（B1〜B99）が使えます。結果は小数2桁で四捨五入し、累計は表示されている数字を合計します。マイナスは赤、式の誤りは紫で表示します。
-      </p>
-      <p className="note dim">
-        Enterで右の欄、↑↓で上下の欄、←→で左右の欄へ移ります。
-        コピー・貼り付け（Ctrl+C／Ctrl+V）、元に戻す（Ctrl+Z）、やり直し（Ctrl+Y）。
-      </p>
-      <CalcVariablesHint variables={variables} hasUpper={hasUpper} />
     </div>
-  );
-}
-
-function CalcVariablesHint({
-  variables,
-  hasUpper,
-}: {
-  variables: Record<string, number>;
-  hasUpper: boolean;
-}): JSX.Element {
-  const count = Object.keys(variables).length;
-  return (
-    <p className="note dim">
-      計算式に使える記号：{count}件（{hasUpper ? "上段の表と建具表" : "建具表"}
-      ）
-    </p>
   );
 }
 

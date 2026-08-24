@@ -64,8 +64,8 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(170px, 0.62fr) minmax(210px, 0.72fr)
-    minmax(200px, 0.66fr) minmax(210px, 0.8fr);
+    minmax(270px, 1fr) minmax(200px, 0.62fr)
+    minmax(200px, 0.62fr) minmax(210px, 0.76fr);
   grid-auto-rows: auto;
   gap: 8px;
   padding: 8px;
@@ -92,7 +92,35 @@
 }
 
 .room-sheet-page .edges input.num {
-  width: 44px;
+  width: 38px;
+}
+
+/* Ｒ向きは矢（ふくらみ）と向き（外・内）を並べる */
+.room-sheet-page .edges span.curve {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.room-sheet-page .edges span.curve input.num {
+  width: 34px;
+}
+
+.room-sheet-page .edges span.curve select {
+  width: 40px;
+}
+
+/* 寸法・Ｒ向きは数字だけなので狭くする */
+.room-sheet-page .edges table.grid th:nth-child(3),
+.room-sheet-page .edges table.grid td:nth-child(3),
+.room-sheet-page .edges table.grid th:nth-child(4),
+.room-sheet-page .edges table.grid td:nth-child(4) {
+  width: 78px;
+}
+
+.room-sheet-page .edges table.grid th:nth-child(3),
+.room-sheet-page .edges table.grid td:nth-child(3) {
+  width: 48px;
 }
 
 /* 向き・種別は選択肢が読める幅を取る */
@@ -209,12 +237,59 @@
   font-weight: 700;
 }
 
+/* 作図ボタンは図の左に縦並びにして、図を広く見せる */
+.room-sheet-page .drawing-body {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+.room-sheet-page .shape-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  flex: 0 0 auto;
+  width: 104px;
+  padding: 4px;
+  overflow-y: auto;
+  border-right: 1px solid #d5d9e0;
+  font-size: 12px;
+}
+
+.room-sheet-page .shape-tools .corner-move {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 4px 0 0;
+  border-left: none;
+  border-top: 1px solid #cbd5e1;
+}
+
+.room-sheet-page .shape-tools .corner-move label {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.room-sheet-page .shape-tools .corner-move label input.num {
+  width: 100%;
+  min-width: 0;
+}
+
+.room-sheet-page .shape-tools .corner-move button:last-child {
+  grid-column: span 4;
+}
+
 .room-sheet-page .canvas {
   position: relative;
   flex: 1;
-  /* 図は小さくてよい（下段の表示行を増やすため） */
-  min-height: 130px;
-  max-height: 170px;
+  min-width: 0;
+  min-height: 190px;
+  max-height: 240px;
   overflow: auto;
   display: flex;
   align-items: center;

@@ -61,6 +61,9 @@ interface Props {
   onBack: () => void;
 }
 
+/** チェック表で合計する材種区分 */
+const FINISH_CATEGORY = "仕上";
+
 const DIRECTION_LABEL: Record<EdgeDirection, string> = {
   E: "→ 右",
   S: "↓ 下",
@@ -578,7 +581,11 @@ export default function RoomSheetPage({
     ];
     return auto.map((item) => {
       const manual = byPart
-        .filter((each) => each.partName.startsWith(item.partName))
+        .filter(
+          (each) =>
+            each.materialCategory === FINISH_CATEGORY &&
+            each.partName.startsWith(item.partName),
+        )
         .reduce((sum, each) => sum + each.quantity, 0);
       return {
         partName: item.partName,
@@ -870,306 +877,321 @@ export default function RoomSheetPage({
             >
               {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
             </button>
-            <button
-              type="button"
-              title="小窓で横・縦の寸法を入れて四角を作ります"
-              onClick={() =>
-                setPrompt({ kind: "rect", across: "4.00", along: "3.00" })
-              }
-            >
-              □ 四角
-            </button>
-            <button
-              type="button"
-              title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
-              onClick={() => {
-                if (selectedCorner === null) {
-                  setMessage("図の角（○印）を選んでからL型を押してください");
-                  return;
-                }
-                setPrompt({ kind: "cut", across: cutAcross, along: cutAlong });
-              }}
-            >
-              L型を角に追加
-            </button>
-            <button
-              type="button"
-              title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
-              onClick={() => {
-                if (!shape.edges.some((item) => item.id === selectedEdge)) {
-                  setMessage("凹ませる辺を選んでからコ型を押してください");
-                  return;
-                }
-                setPrompt({
-                  kind: "notch",
-                  across: cutAcross,
-                  along: cutAlong,
-                });
-              }}
-            >
-              コ型を辺に追加
-            </button>
-            <button
-              type="button"
-              className={addCornerMode ? "on" : ""}
-              title="押してから図の辺をクリックすると、小窓で位置の寸法を確かめて辺を分け、角を追加します"
-              onClick={() => {
-                const next = !addCornerMode;
-                setAddCornerMode(next);
-                setMessage(
-                  next ? "角を足す位置で図の辺をクリックしてください" : "",
-                );
-              }}
-            >
-              ○ 角を追加
-            </button>
-            <button
-              type="button"
-              disabled={shapePast.length === 0}
-              title="図形の操作を1つ前に戻します"
-              onClick={undoShape}
-            >
-              ↶ 戻る
-            </button>
-            <button
-              type="button"
-              disabled={shapeFuture.length === 0}
-              title="戻した図形の操作を1つ先へ進めます"
-              onClick={redoShape}
-            >
-              ↷ 進む
-            </button>
-            <span className="corner-move">
-              <label title="角を動かす寸法（右がプラス・左がマイナス）">
-                横
-                <input
-                  className="num cut"
-                  value={moveX}
-                  onChange={(e) => setMoveX(e.target.value)}
-                />
-              </label>
-              <label title="角を動かす寸法（下がプラス・上がマイナス）">
-                縦
-                <input
-                  className="num cut"
-                  value={moveY}
-                  onChange={(e) => setMoveY(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を左へ動かします"
-                onClick={() => moveSelectedCorner(-Math.abs(Number(moveX)), 0)}
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を右へ動かします"
-                onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
-              >
-                →
-              </button>
-              <button
-                type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を上へ動かします"
-                onClick={() => moveSelectedCorner(0, -Math.abs(Number(moveY)))}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を下へ動かします"
-                onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                disabled={selectedCorner === null}
-                title="横・縦の両方へ同時に動かします（斜めの辺になります）"
-                onClick={() => moveSelectedCorner(Number(moveX), Number(moveY))}
-              >
-                ╱ 斜めへ
-              </button>
-            </span>
-            <button
-              type="button"
-              onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
-            >
-              ＋
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}
-            >
-              －
-            </button>
-            <button type="button" onClick={() => setZoom(1)}>
-              全体
-            </button>
-            <button
-              type="button"
-              className={showCorners ? "on" : ""}
-              title="角の○印を出す／消す（形が決まったら消せます）"
-              onClick={() => {
-                if (showCorners) setSelectedCorner(null);
-                setShowCorners(!showCorners);
-              }}
-            >
-              {showCorners ? "○角を消す" : "○角を出す"}
-            </button>
           </div>
-          <div className="canvas" ref={canvasRef}>
-            <svg
-              viewBox={view.box}
-              style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
-            >
-              {solved.points.map((point, index) => {
-                const line = solved.edges[index];
-                const next = solved.points[(index + 1) % solved.points.length];
-                const middle = {
-                  x: (point.x + next.x) / 2,
-                  y: (point.y + next.y) / 2,
-                };
-                const vertical = point.x === next.x;
-                const className = [
-                  "edge",
-                  line.kind,
-                  selectedEdge === line.id ? "selected" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                // 曲面壁は矢（ふくらみ）の分だけ外側へ膨らませて描く
-                const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
-                const span = Math.hypot(next.x - point.x, next.y - point.y);
-                const normal =
-                  span === 0
-                    ? { x: 0, y: 0 }
-                    : {
-                        x: -(next.y - point.y) / span,
-                        y: (next.x - point.x) / span,
-                      };
-                const control = {
-                  x: middle.x - normal.x * bulge * 2,
-                  y: middle.y - normal.y * bulge * 2,
-                };
-                return (
-                  <g
-                    key={line.id}
-                    onClick={(event) => {
-                      if (addCornerMode) {
-                        splitEdgeAt(line.id, point, next, event);
-                        return;
-                      }
-                      setSelectedEdge(line.id);
-                      setSelectedCorner(null);
-                    }}
-                  >
-                    {/* 線は細いので、当たり判定用の太い線を重ねる */}
-                    <line
-                      x1={point.x}
-                      y1={point.y}
-                      x2={next.x}
-                      y2={next.y}
-                      className="edge-hit"
-                      strokeWidth={cornerRadius * 1.6}
-                    />
-                    {bulge > 0 ? (
-                      <path
-                        d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
-                        className={className}
-                        fill="none"
-                      />
-                    ) : (
+          <div className="drawing-body">
+            <div className="shape-tools">
+              <button
+                type="button"
+                title="小窓で横・縦の寸法を入れて四角を作ります"
+                onClick={() =>
+                  setPrompt({ kind: "rect", across: "4.00", along: "3.00" })
+                }
+              >
+                □ 四角
+              </button>
+              <button
+                type="button"
+                title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
+                onClick={() => {
+                  if (selectedCorner === null) {
+                    setMessage("図の角（○印）を選んでからL型を押してください");
+                    return;
+                  }
+                  setPrompt({
+                    kind: "cut",
+                    across: cutAcross,
+                    along: cutAlong,
+                  });
+                }}
+              >
+                L型を角に追加
+              </button>
+              <button
+                type="button"
+                title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
+                onClick={() => {
+                  if (!shape.edges.some((item) => item.id === selectedEdge)) {
+                    setMessage("凹ませる辺を選んでからコ型を押してください");
+                    return;
+                  }
+                  setPrompt({
+                    kind: "notch",
+                    across: cutAcross,
+                    along: cutAlong,
+                  });
+                }}
+              >
+                コ型を辺に追加
+              </button>
+              <button
+                type="button"
+                className={addCornerMode ? "on" : ""}
+                title="押してから図の辺をクリックすると、小窓で位置の寸法を確かめて辺を分け、角を追加します"
+                onClick={() => {
+                  const next = !addCornerMode;
+                  setAddCornerMode(next);
+                  setMessage(
+                    next ? "角を足す位置で図の辺をクリックしてください" : "",
+                  );
+                }}
+              >
+                ○ 角を追加
+              </button>
+              <button
+                type="button"
+                disabled={shapePast.length === 0}
+                title="図形の操作を1つ前に戻します"
+                onClick={undoShape}
+              >
+                ↶ 戻る
+              </button>
+              <button
+                type="button"
+                disabled={shapeFuture.length === 0}
+                title="戻した図形の操作を1つ先へ進めます"
+                onClick={redoShape}
+              >
+                ↷ 進む
+              </button>
+              <span className="corner-move">
+                <label title="角を動かす寸法（右がプラス・左がマイナス）">
+                  横
+                  <input
+                    className="num cut"
+                    value={moveX}
+                    onChange={(e) => setMoveX(e.target.value)}
+                  />
+                </label>
+                <label title="角を動かす寸法（下がプラス・上がマイナス）">
+                  縦
+                  <input
+                    className="num cut"
+                    value={moveY}
+                    onChange={(e) => setMoveY(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={selectedCorner === null}
+                  title="角（○印）を選んでから押すと、その角を左へ動かします"
+                  onClick={() =>
+                    moveSelectedCorner(-Math.abs(Number(moveX)), 0)
+                  }
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedCorner === null}
+                  title="角（○印）を選んでから押すと、その角を右へ動かします"
+                  onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedCorner === null}
+                  title="角（○印）を選んでから押すと、その角を上へ動かします"
+                  onClick={() =>
+                    moveSelectedCorner(0, -Math.abs(Number(moveY)))
+                  }
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedCorner === null}
+                  title="角（○印）を選んでから押すと、その角を下へ動かします"
+                  onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedCorner === null}
+                  title="横・縦の両方へ同時に動かします（斜めの辺になります）"
+                  onClick={() =>
+                    moveSelectedCorner(Number(moveX), Number(moveY))
+                  }
+                >
+                  ╱ 斜めへ
+                </button>
+              </span>
+              <button
+                type="button"
+                onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
+              >
+                ＋
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}
+              >
+                －
+              </button>
+              <button type="button" onClick={() => setZoom(1)}>
+                全体
+              </button>
+              <button
+                type="button"
+                className={showCorners ? "on" : ""}
+                title="角の○印を出す／消す（形が決まったら消せます）"
+                onClick={() => {
+                  if (showCorners) setSelectedCorner(null);
+                  setShowCorners(!showCorners);
+                }}
+              >
+                {showCorners ? "○角を消す" : "○角を出す"}
+              </button>
+            </div>
+            <div className="canvas" ref={canvasRef}>
+              <svg
+                viewBox={view.box}
+                style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+              >
+                {solved.points.map((point, index) => {
+                  const line = solved.edges[index];
+                  const next =
+                    solved.points[(index + 1) % solved.points.length];
+                  const middle = {
+                    x: (point.x + next.x) / 2,
+                    y: (point.y + next.y) / 2,
+                  };
+                  const vertical = point.x === next.x;
+                  const className = [
+                    "edge",
+                    line.kind,
+                    selectedEdge === line.id ? "selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+                  // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
+                  const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
+                  const span = Math.hypot(next.x - point.x, next.y - point.y);
+                  const normal =
+                    span === 0
+                      ? { x: 0, y: 0 }
+                      : {
+                          x: -(next.y - point.y) / span,
+                          y: (next.x - point.x) / span,
+                        };
+                  const control = {
+                    x: middle.x - normal.x * bulge * 2,
+                    y: middle.y - normal.y * bulge * 2,
+                  };
+                  return (
+                    <g
+                      key={line.id}
+                      onClick={(event) => {
+                        if (addCornerMode) {
+                          splitEdgeAt(line.id, point, next, event);
+                          return;
+                        }
+                        setSelectedEdge(line.id);
+                        setSelectedCorner(null);
+                      }}
+                    >
+                      {/* 線は細いので、当たり判定用の太い線を重ねる */}
                       <line
                         x1={point.x}
                         y1={point.y}
                         x2={next.x}
                         y2={next.y}
-                        className={className}
+                        className="edge-hit"
+                        strokeWidth={cornerRadius * 1.6}
                       />
-                    )}
-                    <text
-                      x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
-                      y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
-                      className={line.auto ? "dim auto" : "dim"}
-                      fontSize={dimFontSize}
-                      transform={
-                        vertical
-                          ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
-                          : undefined
-                      }
-                    >
-                      {formatNumber(line.resolved, 2)}
-                    </text>
-                  </g>
-                );
-              })}
-              {showCorners &&
-                solved.points.map((point, index) => (
-                  <g
-                    key={`corner-${solved.edges[index].id}`}
-                    onClick={() => {
-                      setSelectedCorner(index);
-                      setSelectedEdge(null);
-                      setAddCornerMode(false);
-                    }}
-                  >
-                    {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
-                    <circle
-                      cx={point.x}
-                      cy={point.y}
-                      r={cornerRadius * 2.6}
-                      className="corner-hit"
-                    />
-                    <circle
-                      cx={point.x}
-                      cy={point.y}
-                      r={cornerRadius}
-                      className={`corner ${selectedCorner === index ? "selected" : ""}`}
-                    />
-                  </g>
-                ))}
-              {showCeiling &&
-                ceilingLines.map((line) => (
-                  <g key={line.key}>
-                    <line
-                      x1={line.x1}
-                      y1={line.y1}
-                      x2={line.x2}
-                      y2={line.y2}
-                      className={`ceiling-line ${line.kind}`}
-                    />
-                    {line.label !== "" && (
+                      {bulge !== 0 ? (
+                        <path
+                          d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
+                          className={className}
+                          fill="none"
+                        />
+                      ) : (
+                        <line
+                          x1={point.x}
+                          y1={point.y}
+                          x2={next.x}
+                          y2={next.y}
+                          className={className}
+                        />
+                      )}
                       <text
-                        x={line.labelX}
-                        y={line.labelY + dimFontSize * 0.9}
-                        className="dim ceiling"
+                        x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
+                        y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
+                        className={line.auto ? "dim auto" : "dim"}
                         fontSize={dimFontSize}
+                        transform={
+                          vertical
+                            ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
+                            : undefined
+                        }
                       >
-                        CH {line.label}
+                        {formatNumber(line.resolved, 2)}
                       </text>
-                    )}
-                  </g>
-                ))}
-            </svg>
-            {solved.points.length === 0 && (
-              <p className="empty">
-                {solved.missing.length > 0
-                  ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
-                  : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
-              </p>
-            )}
-            {extents && (
-              <p className="extents">
-                X={formatNumber(extents.x, 2)}, Y={formatNumber(extents.y, 2)}
-              </p>
-            )}
+                    </g>
+                  );
+                })}
+                {showCorners &&
+                  solved.points.map((point, index) => (
+                    <g
+                      key={`corner-${solved.edges[index].id}`}
+                      onClick={() => {
+                        setSelectedCorner(index);
+                        setSelectedEdge(null);
+                        setAddCornerMode(false);
+                      }}
+                    >
+                      {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={cornerRadius * 2.6}
+                        className="corner-hit"
+                      />
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={cornerRadius}
+                        className={`corner ${selectedCorner === index ? "selected" : ""}`}
+                      />
+                    </g>
+                  ))}
+                {showCeiling &&
+                  ceilingLines.map((line) => (
+                    <g key={line.key}>
+                      <line
+                        x1={line.x1}
+                        y1={line.y1}
+                        x2={line.x2}
+                        y2={line.y2}
+                        className={`ceiling-line ${line.kind}`}
+                      />
+                      {line.label !== "" && (
+                        <text
+                          x={line.labelX}
+                          y={line.labelY + dimFontSize * 0.9}
+                          className="dim ceiling"
+                          fontSize={dimFontSize}
+                        >
+                          CH {line.label}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+              </svg>
+              {solved.points.length === 0 && (
+                <p className="empty">
+                  {solved.missing.length > 0
+                    ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
+                    : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
+                </p>
+              )}
+              {extents && (
+                <p className="extents">
+                  X={formatNumber(extents.x, 2)}, Y={formatNumber(extents.y, 2)}
+                </p>
+              )}
+            </div>
           </div>
           {solved.error && (
             <p className="error">
@@ -1327,24 +1349,52 @@ export default function RoomSheetPage({
                   </td>
                   <td>
                     {line.kind === "curve" ? (
-                      <input
-                        className="num"
-                        defaultValue={
-                          line.bulge === null || line.bulge === undefined
-                            ? ""
-                            : formatNumber(line.bulge, 2)
-                        }
-                        key={`${line.id}-bulge-${line.bulge ?? "none"}`}
-                        title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
-                        onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          applyShape(
-                            updateEdge(shape, line.id, {
-                              bulge: text === "" ? null : Number(text),
-                            }),
-                          );
-                        }}
-                      />
+                      <span className="curve">
+                        <input
+                          className="num"
+                          defaultValue={
+                            line.bulge === null || line.bulge === undefined
+                              ? ""
+                              : formatNumber(Math.abs(line.bulge), 2)
+                          }
+                          key={`${line.id}-bulge-${line.bulge ?? "none"}`}
+                          title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            const size = Math.abs(Number(text));
+                            applyShape(
+                              updateEdge(shape, line.id, {
+                                bulge:
+                                  text === ""
+                                    ? null
+                                    : (line.bulge ?? 0) < 0
+                                      ? -size
+                                      : size,
+                              }),
+                            );
+                          }}
+                        />
+                        <select
+                          value={(line.bulge ?? 0) < 0 ? "in" : "out"}
+                          title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
+                          onChange={(e) => {
+                            const size = Math.abs(line.bulge ?? 0);
+                            applyShape(
+                              updateEdge(shape, line.id, {
+                                bulge:
+                                  size === 0
+                                    ? line.bulge
+                                    : e.target.value === "in"
+                                      ? -size
+                                      : size,
+                              }),
+                            );
+                          }}
+                        >
+                          <option value="out">外</option>
+                          <option value="in">内</option>
+                        </select>
+                      </span>
                     ) : (
                       <span className="none">－</span>
                     )}
@@ -1911,7 +1961,9 @@ export default function RoomSheetPage({
       {showCheck && (
         <div className="check-window">
           <div className="section-bar">
-            <span>チェック表（上段の自動計算と下段の計算式合計）</span>
+            <span>
+              チェック表（上段の自動計算と下段の計算式合計／材種区分「仕上」のみ）
+            </span>
             <button type="button" onClick={() => setShowCheck(false)}>
               ✕ 閉じる
             </button>
@@ -1948,12 +2000,6 @@ export default function RoomSheetPage({
           </p>
         </div>
       )}
-
-      <p className="hint">
-        辺の寸法は空欄にすると、閉じた形になるように自動算出します（同じ方向に未入力が2辺あると寸法不足として
-        赤く点滅します）。「開口（壁なし）」にした辺は壁長さ・壁面積に入れません。「柱」にした辺は柱長さ・柱面積として
-        分けて数え、巾木長さには含めます。記号は下段の計算式にそのまま使えます（計算式にカーソルがあるときに記号をクリックすると差し込みます）。
-      </p>
     </div>
   );
 }

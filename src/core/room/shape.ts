@@ -25,7 +25,7 @@ export interface RoomEdge {
   dx?: number | null;
   /** 斜め辺の縦移動（下がプラス）。direction が "D" のときに使う */
   dy?: number | null;
-  /** 曲面壁の矢（ふくらみ）。0・未入力なら直線として扱う */
+  /** 曲面壁の矢（ふくらみ）。プラスは外側へ、マイナスは内側へ。0・未入力なら直線 */
   bulge?: number | null;
 }
 
@@ -89,10 +89,11 @@ function diagonalVector(row: RoomEdge): Point {
  * 曲面壁の弧長。弦の長さ c と矢（ふくらみ）h から求める。
  *   r = c^2 / (8h) + h / 2
  *   弧長 = 2 * r * asin(c / (2r))
- * 矢が0以下なら直線として弦の長さを返す。
+ * 矢は外側へふくらむがプラス、内側へ凹むがマイナスで、長さはどちらも同じ。
+ * 矢が0なら直線として弦の長さを返す。
  */
 export function arcLength(chord: number, bulge: number | null): number {
-  const h = bulge ?? 0;
+  const h = Math.abs(bulge ?? 0);
   if (h <= 0 || chord <= 0) return round2(chord);
   const r = (chord * chord) / (8 * h) + h / 2;
   const ratio = Math.min(1, chord / (2 * r));
