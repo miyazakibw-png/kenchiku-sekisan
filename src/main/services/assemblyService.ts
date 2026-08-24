@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { AppDatabase } from '../db'
 import {
+  detailChangeLogs,
   mDetails,
   mFinishAssemblies,
   mFinishAssemblyItems,
@@ -10,12 +11,18 @@ import type {
   AssemblyItem,
   AssemblyMasterOptions,
   AssemblyScope,
+  DetailSnapshot,
   FinishAssembly,
   SaveAssemblyRequest,
   SaveAssemblyResult
 } from '../../shared/types'
 import { assemblySignature } from '../../shared/assemblySignature'
-import { listMasterOptions } from './detailService'
+import { changedFieldsOf, listMasterOptions, snapshotOf } from './detailService'
+
+/** セット明細1行を修正履歴の形にする（有効欄はセットには無いので常に有効とする） */
+function itemSnapshot(item: AssemblyItem): DetailSnapshot {
+  return snapshotOf({ ...item, isActive: true })
+}
 
 function toScope(value: string): AssemblyScope {
   return value === 'project' ? 'project' : 'basic'
@@ -113,6 +120,7 @@ export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): Sav
   if (request.items.length === 0) {
     throw new Error('セットには最低1明細が必要です')
   }
+  const before = request.id === null ? [] : getAssembly(db, request.id).items
   const id = db.transaction((tx) => {
     let assemblyId = request.id
     const values = {
@@ -140,7 +148,35 @@ export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): Sav
         .run()
       tx.delete(mFinishAssemblyItems).where(eq(mFinishAssemblyItems.assemblyId, assemblyId)).run()
     }
+    // セット明細で直した内容は修正履歴に残す（明細マスター画面の保存は残さない）
+    const logKind = (
+      item: AssemblyItem,
+      changeKind: 'add' | 'edit' | 'delete',
+      beforeSnapshot: DetailSnapshot | null,
+      afterSnapshot: DetailSnapshot | null
+    ): void => {
+      tx.insert(detailChangeLogs)
+        .values({
+          scope: values.scope,
+          projectId: values.projectId,
+          subjectId: item.subjectId,
+          detailId: item.sourceDetailId,
+          changeKind,
+          origin: 'セット明細',
+          beforeJson: beforeSnapshot === null ? '' : JSON.stringify(beforeSnapshot),
+          afterJson: afterSnapshot === null ? '' : JSON.stringify(afterSnapshot)
+        })
+        .run()
+    }
+    before.slice(request.items.length).forEach((item) => {
+      logKind(item, 'delete', itemSnapshot(item), null)
+    })
     request.items.forEach((item, index) => {
+      const old = before[index]
+      const after = itemSnapshot(item)
+      if (!old) logKind(item, 'add', null, after)
+      else if (changedFieldsOf(itemSnapshot(old), after).length > 0)
+        logKind(item, 'edit', itemSnapshot(old), after)
       tx.insert(mFinishAssemblyItems)
         .values({
           assemblyId,

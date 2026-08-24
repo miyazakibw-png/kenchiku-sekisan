@@ -28,12 +28,32 @@ export function readTableWidths(storageKey: string): Record<number, number> {
   }
 }
 
-/** 見出しの一番下の行（実際の列に対応する行）を返す */
+/**
+ * 列ごとの見出しセルを左から順に返す。
+ * 見出しが2段以上ある表（部位別入力表など）でも、
+ * その列だけを受け持つ見出し（横につながっていない見出し）を選んで幅を変えられるようにする。
+ */
 function headerCells(table: HTMLTableElement): HTMLTableCellElement[] {
-  const rows = table.tHead?.rows;
-  if (!rows || rows.length === 0) return [];
-  const row = rows[rows.length - 1];
-  return [...row.cells].filter((cell) => cell.colSpan === 1);
+  const rows = [...(table.tHead?.rows ?? [])];
+  if (rows.length === 0) return [];
+  /** 上の行から縦につながっている見出しが、どの行まで場所を取るか（列ごと） */
+  const until: number[] = [];
+  const byColumn = new Map<number, HTMLTableCellElement>();
+  rows.forEach((row, rowIndex) => {
+    let column = 0;
+    [...row.cells].forEach((cell) => {
+      while ((until[column] ?? -1) >= rowIndex) column += 1;
+      if (cell.colSpan === 1 && !byColumn.has(column))
+        byColumn.set(column, cell);
+      for (let i = 0; i < cell.colSpan; i += 1) {
+        until[column + i] = rowIndex + cell.rowSpan - 1;
+      }
+      column += cell.colSpan;
+    });
+  });
+  return [...byColumn.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, cell]) => cell);
 }
 
 /**

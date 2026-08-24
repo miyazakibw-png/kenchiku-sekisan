@@ -15,6 +15,12 @@ import {
   listProjectSubjects,
 } from "./projectMasterService";
 
+/**
+ * 修正履歴に残す画面。
+ * 基本マスターや明細マスター画面の保存（自動保存を含む）は残さない。
+ */
+export const RECORDED_ORIGINS = ["集計書兼工事マスター", "セット明細"];
+
 /** 明細番号は小数2桁に丸めて保持する */
 function normalizeDetailNumber(value: number | null): number | null {
   if (value === null || Number.isNaN(value)) return null;
@@ -93,9 +99,12 @@ export function listDetailChangeLogs(
     .select()
     .from(detailChangeLogs)
     .where(
-      projectId === null
-        ? isNull(detailChangeLogs.projectId)
-        : eq(detailChangeLogs.projectId, projectId),
+      and(
+        projectId === null
+          ? isNull(detailChangeLogs.projectId)
+          : eq(detailChangeLogs.projectId, projectId),
+        inArray(detailChangeLogs.origin, RECORDED_ORIGINS),
+      ),
     )
     .orderBy(desc(detailChangeLogs.changedAt), desc(detailChangeLogs.id))
     .all()
@@ -110,6 +119,7 @@ export function listDetailChangeLogs(
         subjectId: row.subjectId,
         detailId: row.detailId,
         changeKind: row.changeKind as DetailChangeLog["changeKind"],
+        origin: row.origin,
         before,
         after,
         changedFields: changedFieldsOf(before, after),
@@ -351,6 +361,8 @@ export function saveDetails(
 ): Detail[] {
   const { subjectId, rows, deletedIds } = request;
   const projectId = request.projectId ?? null;
+  const origin = request.origin ?? "明細マスター画面";
+  const recordHistory = RECORDED_ORIGINS.includes(origin);
   const scope = projectId === null ? "basic" : "project";
   const existing = new Map(
     listDetails(db, subjectId, projectId).map((row) => [row.id, row]),
@@ -362,6 +374,7 @@ export function saveDetails(
       before: DetailSnapshot | null,
       after: DetailSnapshot | null,
     ): void => {
+      if (!recordHistory) return;
       // 中身の無い行（自動保存で入る空行など）は履歴に残さない
       if (isEmptySnapshot(before) && isEmptySnapshot(after)) return;
       tx.insert(detailChangeLogs)
@@ -371,6 +384,7 @@ export function saveDetails(
           subjectId,
           detailId,
           changeKind,
+          origin,
           beforeJson: before === null ? "" : JSON.stringify(before),
           afterJson: after === null ? "" : JSON.stringify(after),
         })

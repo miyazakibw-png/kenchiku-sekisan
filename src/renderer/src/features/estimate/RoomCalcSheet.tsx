@@ -120,6 +120,7 @@ function PickInput({
   className,
   placeholder,
   title,
+  japanese = false,
   row,
   col,
   commitOnBlur = false,
@@ -132,6 +133,8 @@ function PickInput({
   className?: string;
   placeholder?: string;
   title?: string;
+  /** 日本語で入れる欄（半角へ自動変換しない） */
+  japanese?: boolean;
   row: number;
   col: number;
   commitOnBlur?: boolean;
@@ -181,6 +184,7 @@ function PickInput({
     <>
       <input
         ref={ref}
+        lang={japanese ? "ja" : undefined}
         className={className}
         list={entries ? undefined : listId}
         data-row={row}
@@ -1450,6 +1454,7 @@ export default function RoomCalcSheet({
                           row={gridRow}
                           col={0}
                           entries={aggregationPartEntries}
+                          japanese
                           commitOnBlur
                           value={rowIndex === 0 ? set.partName : ""}
                           title="管理用部位。番号を打つと名称に変わります。途中の行に入れると、その行から別のセットになります"
@@ -1465,6 +1470,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={1}
                               entries={materialEntries}
+                              japanese
                               value={detail.materialCategory}
                               title="材種区分。番号を打つと名称に変わります"
                               onFocus={focusDetail}

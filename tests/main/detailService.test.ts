@@ -266,7 +266,7 @@ describe("物件専用マスター（工事マスター）", () => {
 });
 
 describe("修正履歴一覧", () => {
-  it("追加・修正・削除を修正前と修正後の組で残す", () => {
+  it("明細マスター画面の追加・修正・削除は履歴に残さない", () => {
     const [added] = saveDetails(db, {
       subjectId,
       rows: [draft("床シート")],
@@ -279,33 +279,27 @@ describe("修正履歴一覧", () => {
     });
     saveDetails(db, { subjectId, rows: [], deletedIds: [added.id] });
 
-    const logs = listDetailChangeLogs(db);
-    expect(logs.map((log) => log.changeKind)).toEqual([
-      "delete",
-      "edit",
-      "add",
-    ]);
-
-    const edit = logs[1];
-    expect(edit.before?.name).toBe("床シート");
-    expect(edit.after?.name).toBe("床シート（変更）");
-    expect(edit.changedFields.sort()).toEqual(["name", "unit"]);
-
-    expect(logs[0].before?.name).toBe("床シート（変更）");
-    expect(logs[0].after).toBeNull();
-    expect(logs[2].before).toBeNull();
+    expect(listDetailChangeLogs(db)).toEqual([]);
   });
 
-  it("内容が変わらない保存は履歴に残さない", () => {
-    const [row] = saveDetails(db, {
+  it("集計書兼工事マスター・セット明細で直した分だけ残す", () => {
+    const [added] = saveDetails(db, {
       subjectId,
       rows: [draft("床シート")],
       deletedIds: [],
     });
-    saveDetails(db, { subjectId, rows: [row], deletedIds: [] });
-    expect(listDetailChangeLogs(db).map((log) => log.changeKind)).toEqual([
-      "add",
-    ]);
+    saveDetails(db, {
+      subjectId,
+      origin: "集計書兼工事マスター",
+      rows: [{ ...added, name: "床シート（集計書で修正）" }],
+      deletedIds: [],
+    });
+
+    const logs = listDetailChangeLogs(db);
+    expect(logs.map((log) => log.origin)).toEqual(["集計書兼工事マスター"]);
+    expect(logs[0].before?.name).toBe("床シート");
+    expect(logs[0].after?.name).toBe("床シート（集計書で修正）");
+    expect(logs[0].changedFields).toEqual(["name"]);
   });
 
   it("物件専用マスターの履歴は工事ごとに分かれる", () => {
@@ -315,17 +309,15 @@ describe("修正履歴一覧", () => {
     saveDetails(db, {
       subjectId,
       projectId,
+      origin: "集計書兼工事マスター",
       rows: [{ ...row, name: "床シート（工事）" }],
       deletedIds: [],
     });
 
-    const projectLogs = listDetailChangeLogs(db, projectId);
-    expect(projectLogs.map((log) => log.after?.name)).toEqual([
-      "床シート（工事）",
-    ]);
-    expect(listDetailChangeLogs(db).map((log) => log.after?.name)).toEqual([
-      "床シート",
-    ]);
+    expect(
+      listDetailChangeLogs(db, projectId).map((log) => log.after?.name),
+    ).toEqual(["床シート（工事）"]);
+    expect(listDetailChangeLogs(db)).toEqual([]);
   });
 });
 

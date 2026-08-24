@@ -175,6 +175,8 @@ export const detailChangeLogs = sqliteTable(
     detailId: integer("detail_id"),
     /** add:追加 edit:修正 delete:削除 */
     changeKind: text("change_kind").notNull().default("edit"),
+    /** どの画面から直したか（明細マスター画面／集計書兼工事マスター など） */
+    origin: text("origin").notNull().default(""),
     beforeJson: text("before_json").notNull().default(""),
     afterJson: text("after_json").notNull().default(""),
   },

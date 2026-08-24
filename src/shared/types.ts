@@ -133,6 +133,8 @@ export interface SaveDetailsRequest {
   deletedIds: number[];
   /** 物件専用マスターを編集するときの物件ID（基本マスターは null） */
   projectId?: number | null;
+  /** 修正履歴に残す「どの画面から直したか」 */
+  origin?: string;
 }
 
 /** 物件専用マスターの明細を基本マスターへ同期した結果 */
@@ -168,6 +170,8 @@ export interface DetailChangeLog {
   detailId: number | null;
   /** add:追加 edit:修正 delete:削除 */
   changeKind: "add" | "edit" | "delete";
+  /** どの画面から直したか */
+  origin: string;
   before: DetailSnapshot | null;
   after: DetailSnapshot | null;
   /** 変わった項目（赤文字にする欄） */
@@ -587,6 +591,8 @@ export interface SaveAggregateEditsRequest {
   projectId: number;
   runId: number;
   edits: AggregateItemEdit[];
+  /** 同じ工事用明細マスターから拾った行も、まとめて同じ内容に直す */
+  applyToSameDetail?: boolean;
 }
 
 /** 部位別入力表のチェック列（管理用部位ごとの仕上名称と数量） */

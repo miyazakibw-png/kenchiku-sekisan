@@ -13,7 +13,12 @@ import {
   promoteAssemblyToBasic,
   saveAssembly
 } from '../../src/main/services/assemblyService'
-import { listDetails, listMasterOptions, saveDetails } from '../../src/main/services/detailService'
+import {
+  listDetailChangeLogs,
+  listDetails,
+  listMasterOptions,
+  saveDetails
+} from '../../src/main/services/detailService'
 import type { AssemblyItem, DetailDraft } from '../../src/shared/types'
 
 function createDb(): AppDatabase {
@@ -80,6 +85,29 @@ describe('仕上明細セットマスター', () => {
     expect(assembly.items.map((i) => i.materialCategory)).toEqual(['下地1', '下地2'])
     expect(assembly.items[1].coefficient).toBe(1.1)
     expect(listAssemblies(db, null).length).toBe(1)
+  })
+
+  it('セット明細で直した内容は修正履歴に残る', () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [itemOf(detailIds[0])]
+    })
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: 'basic',
+      projectId: null,
+      note: '',
+      items: [{ ...assembly.items[0], name: '軽鉄下地（セットで修正）' }]
+    })
+
+    const logs = listDetailChangeLogs(db)
+    expect(logs.map((log) => log.origin)).toEqual(['セット明細', 'セット明細'])
+    expect(logs[0].changeKind).toBe('edit')
+    expect(logs[0].before?.name).toBe('軽鉄下地')
+    expect(logs[0].after?.name).toBe('軽鉄下地（セットで修正）')
   })
 
   it('明細マスターを後から直してもセットの内容は変わらない（一方通行）', () => {

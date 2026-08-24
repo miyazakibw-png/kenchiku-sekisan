@@ -773,4 +773,8 @@ ALTER TABLE project_masters ADD COLUMN source_number INTEGER;
 UPDATE project_masters SET source_number = number
 WHERE kind = 'subjects' AND number IN (SELECT id FROM m_subjects);
 `,
+  // 修正履歴に「どの画面から直したか」を残す
+  `
+ALTER TABLE detail_change_logs ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+`,
 ];

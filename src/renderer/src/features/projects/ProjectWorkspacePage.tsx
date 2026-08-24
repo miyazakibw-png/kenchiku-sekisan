@@ -317,6 +317,7 @@ export default function ProjectWorkspacePage({
                   </span>
                 ) : (
                   <input
+                    lang={field.key === "projectDate" ? undefined : "ja"}
                     className={field.key === "projectDate" ? "date" : undefined}
                     style={
                       widthOf(field) ? { width: widthOf(field) } : undefined

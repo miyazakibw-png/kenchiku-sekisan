@@ -298,6 +298,76 @@ describe("集計処理", () => {
     expect(rows[0].descriptionLower).toBe("t=6.5");
   });
 
+  it("同じ明細マスターから拾った行は、まとめて直せる", () => {
+    const saved = saveDetails(db, {
+      subjectId: 5,
+      projectId,
+      rows: [
+        {
+          id: null,
+          detailNumber: 1.01,
+          materialCategory: "仕上",
+          partName: "床",
+          name: "ビニル床タイル",
+          descriptionUpper: "",
+          descriptionLower: "3.0 コンクリート面",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+          estimateDisplay: "",
+          isActive: true,
+        },
+      ],
+      deletedIds: [],
+    });
+    const detailId = saved[0].id;
+    saveTransferRows(db, {
+      projectId,
+      rows: [
+        {
+          ...transferDraft(14.57),
+          name: "ビニル床タイル",
+          sourceDetailId: detailId,
+        },
+        {
+          ...transferDraft(32.63),
+          name: "ビニル床タイル",
+          descriptionUpper: "東リ:ロイヤルウッド 同等",
+          sourceDetailId: detailId,
+        },
+      ],
+    });
+    const before = runAggregation(db, projectId);
+    // 摘要（上）が違うので、同じ明細でも集計書では2行に分かれる
+    expect(before.items).toHaveLength(2);
+
+    const after = saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      applyToSameDetail: true,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 5,
+          materialCategory: "仕上",
+          partNumber: 10,
+          partName: "床",
+          detailNumber: 1.01,
+          name: "ビニル床タイル",
+          descriptionUpper: "東リ:ロイヤルウッド 同等",
+          descriptionLower: "3.0 コンクリート面",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0].descriptionUpper).toBe("東リ:ロイヤルウッド 同等");
+    expect(after.items[0].quantity).toBe(47.2);
+  });
+
   it("集計書で直した内容は明細マスターの修正履歴に残る", () => {
     const saved = saveDetails(db, {
       subjectId: 5,

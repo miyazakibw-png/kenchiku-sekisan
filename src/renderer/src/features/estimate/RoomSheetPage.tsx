@@ -1476,7 +1476,7 @@ export default function RoomSheetPage({
           <table className="grid">
             <thead>
               <tr>
-                <th>記号</th>
+                <th className="symbol">記号</th>
                 <th className="num">数</th>
                 <th className="num">W</th>
                 <th className="num">H</th>
@@ -1497,7 +1497,7 @@ export default function RoomSheetPage({
                 const unknown = master === undefined;
                 return (
                   <tr key={item.id} className={unknown ? "unknown" : ""}>
-                    <td>
+                    <td className="symbol">
                       <input
                         list="room-fitting-symbols"
                         defaultValue={item.symbol}

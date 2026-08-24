@@ -492,7 +492,7 @@ export function saveAggregateEdits(
   db: AppDatabase,
   request: SaveAggregateEditsRequest,
 ): AggregateView {
-  const { projectId, runId, edits } = request;
+  const { projectId, runId, edits, applyToSameDetail = false } = request;
   const details = db
     .select()
     .from(projectAggregateDetails)
@@ -501,10 +501,25 @@ export function saveAggregateEdits(
 
   db.transaction((tx) => {
     edits.forEach((edit) => {
-      const targets = details.filter(
+      const matched = details.filter(
         (detail) => detail.masterKey === edit.masterKey,
       );
-      if (targets.length === 0) return;
+      if (matched.length === 0) return;
+      // 同じ明細マスターから拾った行（摘要などが古いまま別行に分かれている分）もそろえる
+      const sameDetailIds = new Set(
+        matched
+          .map((detail) => detail.sourceDetailId)
+          .filter((id): id is number => id !== null),
+      );
+      const targets =
+        applyToSameDetail && sameDetailIds.size > 0
+          ? details.filter(
+              (detail) =>
+                detail.masterKey === edit.masterKey ||
+                (detail.sourceDetailId !== null &&
+                  sameDetailIds.has(detail.sourceDetailId)),
+            )
+          : matched;
 
       // 転記入力表の行
       targets.forEach((target) => {
@@ -620,6 +635,7 @@ export function saveAggregateEdits(
               subjectId: values.subjectId,
               detailId: target.id,
               changeKind: "edit",
+              origin: "集計書兼工事マスター",
               beforeJson: JSON.stringify(before),
               afterJson: JSON.stringify(after),
             })

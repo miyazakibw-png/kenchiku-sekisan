@@ -64,8 +64,8 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(270px, 1fr) minmax(200px, 0.62fr)
-    minmax(200px, 0.62fr) minmax(210px, 0.76fr);
+    minmax(400px, 1.3fr) minmax(200px, 0.6fr)
+    minmax(200px, 0.6fr) minmax(270px, 0.9fr);
   grid-auto-rows: auto;
   gap: 8px;
   padding: 8px;
@@ -237,7 +237,7 @@
   font-weight: 700;
 }
 
-/* 作図ボタンは図の左に縦並びにして、図を広く見せる */
+/* 作図ボタンは図の左に2列で並べ（スクロール不要）、図はタテヨコ同じ比率で見せる */
 .room-sheet-page .drawing-body {
   display: flex;
   align-items: stretch;
@@ -247,19 +247,26 @@
 }
 
 .room-sheet-page .shape-tools {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
   gap: 2px;
   flex: 0 0 auto;
-  width: 104px;
+  width: 200px;
   padding: 4px;
-  overflow-y: auto;
   border-right: 1px solid #d5d9e0;
-  font-size: 12px;
+  font-size: 11px;
+}
+
+.room-sheet-page .shape-tools > button {
+  padding: 2px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .room-sheet-page .shape-tools .corner-move {
+  grid-column: span 2;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 2px;
@@ -290,6 +297,8 @@
   min-width: 0;
   min-height: 190px;
   max-height: 240px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
   overflow: auto;
   display: flex;
   align-items: center;
@@ -491,6 +500,16 @@
 
 .room-sheet-page .room-fittings table.grid {
   font-size: 11px;
+}
+
+/* 記号は建具名がそのまま読めるよう広くとる */
+.room-sheet-page .room-fittings th.symbol,
+.room-sheet-page .room-fittings td.symbol {
+  width: 96px;
+}
+
+.room-sheet-page .room-fittings td.symbol input {
+  width: 92px;
 }
 
 .room-sheet-page .symbols table.two-up td:nth-child(4) {

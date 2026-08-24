@@ -21,6 +21,11 @@
   text-align: center;
 }
 
+.detail-change-history table.change-history th.origin,
+.detail-change-history table.change-history td.origin {
+  width: 150px;
+}
+
 /* 修正後の行は背景色を付け、変わった欄だけ赤文字にする */
 .detail-change-history table.change-history tr.after > td {
   background: #fff7e6;

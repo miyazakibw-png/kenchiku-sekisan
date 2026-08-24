@@ -136,6 +136,8 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
+  /** 同じ明細マスターから拾った行をまとめて直す */
+  const [applyToSameDetail, setApplyToSameDetail] = useState(true);
   const [message, setMessage] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
   const { widths, startResize } = useColumnWidths(
@@ -189,6 +191,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
       projectId: project.id,
       runId: view.run.id,
       edits: list,
+      applyToSameDetail,
     });
     setView(result);
     setRuns(await window.sekisan.listAggregateRuns(project.id));
@@ -197,7 +200,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     setMessage(
       `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
     );
-  }, [edits, project.id, view.run]);
+  }, [applyToSameDetail, edits, project.id, view.run]);
 
   const lines = useMemo(
     () => buildLines(view.items, subjects),
@@ -269,6 +272,14 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         >
           💾 修正を保存（{Object.keys(edits).length}件）
         </button>
+        <label title="同じ工事用明細マスターから拾った行（摘要などが古いまま別の行に分かれている分）も、まとめて同じ内容に直します">
+          <input
+            type="checkbox"
+            checked={applyToSameDetail}
+            onChange={(e) => setApplyToSameDetail(e.target.checked)}
+          />
+          同じ明細をまとめて直す
+        </label>
         <button
           type="button"
           className={checking ? "on" : ""}

@@ -55,6 +55,10 @@ export default function DetailChangeHistoryPage({
   const [logs, setLogs] = useState<DetailChangeLog[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newestFirst, setNewestFirst] = useState(true);
+  const hiddenKey = `detail-change-history-hidden-${projectId ?? "basic"}`;
+  const [hiddenThrough, setHiddenThrough] = useState(() =>
+    Number(window.localStorage.getItem(hiddenKey) ?? "0"),
+  );
 
   useEffect(() => {
     void (async () => {
@@ -63,7 +67,20 @@ export default function DetailChangeHistoryPage({
     })();
   }, [projectId]);
 
-  const rows = newestFirst ? logs : [...logs].reverse();
+  /** 記録は消さずに、いま出ている分を画面から見えなくする */
+  const clearView = (): void => {
+    const newest = logs.reduce((max, log) => Math.max(max, log.id), 0);
+    window.localStorage.setItem(hiddenKey, String(newest));
+    setHiddenThrough(newest);
+  };
+
+  const showAll = (): void => {
+    window.localStorage.removeItem(hiddenKey);
+    setHiddenThrough(0);
+  };
+
+  const visible = logs.filter((log) => log.id > hiddenThrough);
+  const rows = newestFirst ? visible : [...visible].reverse();
 
   return (
     <div className="estimate-page detail-change-history">
@@ -84,7 +101,26 @@ export default function DetailChangeHistoryPage({
         >
           {newestFirst ? "新しい順" : "古い順"}
         </button>
-        <span className="message">{logs.length}件</span>
+        <button
+          type="button"
+          title="今出ている履歴を画面から見えなくします（記録は残ります）"
+          onClick={clearView}
+        >
+          🧹 表示クリア
+        </button>
+        {hiddenThrough > 0 && (
+          <button
+            type="button"
+            title="見えなくした分も含めてすべて出します"
+            onClick={showAll}
+          >
+            ↺ すべて表示
+          </button>
+        )}
+        <span className="message">
+          {rows.length}件
+          {hiddenThrough > 0 && `（非表示 ${logs.length - rows.length}件）`}
+        </span>
       </div>
 
       <table className="parts change-history" ref={tableRef}>
@@ -92,6 +128,7 @@ export default function DetailChangeHistoryPage({
           <tr>
             <th className="when">修正日時</th>
             <th className="kind">区分</th>
+            <th className="origin">変更元</th>
             <th className="subject">科目</th>
             <th className="stage">前後</th>
             {COLUMNS.map((column) => (
@@ -109,6 +146,9 @@ export default function DetailChangeHistoryPage({
                 </td>
                 <td className="kind" rowSpan={2}>
                   {KIND_LABEL[log.changeKind]}
+                </td>
+                <td className="origin" rowSpan={2}>
+                  {log.origin}
                 </td>
                 <td className="subject" rowSpan={2}>
                   {subject?.name ?? log.subjectId}
@@ -136,9 +176,11 @@ export default function DetailChangeHistoryPage({
         })}
       </table>
 
-      {logs.length === 0 && (
+      {rows.length === 0 && (
         <p className="note">
-          まだ修正履歴はありません（明細マスターを保存すると記録します）。
+          {hiddenThrough > 0
+            ? "表示クリアしています（「↺ すべて表示」で戻せます）。"
+            : "まだ修正履歴はありません（集計書兼工事マスター・セット明細で直した分だけ記録します）。"}
         </p>
       )}
     </div>
