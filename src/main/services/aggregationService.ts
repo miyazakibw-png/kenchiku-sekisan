@@ -28,6 +28,7 @@ import {
 import { calcVariables } from "../../core/aggregate/variables";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
 import { listProjectSubjects } from "./projectMasterService";
+import { getDeductionLimit } from "./roomSheetService";
 import {
   displayedValue,
   evaluateCalcSheet,
@@ -198,6 +199,8 @@ export function collectEntries(
     .where(eq(projectFittings.projectId, projectId))
     .all();
 
+  const deductionLimit = getDeductionLimit(db);
+
   const rows = db
     .select()
     .from(projectEstimateRows)
@@ -359,7 +362,12 @@ export function collectEntries(
     });
     const ceiling = parseJson<CeilingElement[]>(sheet.ceilingJson, []);
     const symbols = [
-      ...roomSymbols(solved, sheet.ceilingHeight, sheetFittings),
+      ...roomSymbols(
+        solved,
+        sheet.ceilingHeight,
+        sheetFittings,
+        deductionLimit,
+      ),
       ...(ceiling.length > 0
         ? ceilingSymbols(
             ceilingQuantities(ceiling, solved, sheet.ceilingHeight),

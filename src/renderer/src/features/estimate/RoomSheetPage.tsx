@@ -16,6 +16,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  shapeExtents,
   solveShape,
   splitEdge,
   updateEdge,
@@ -209,6 +210,7 @@ export default function RoomSheetPage({
   }, [options]);
 
   const solved = useMemo(() => solveShape(shape), [shape]);
+  const extents = useMemo(() => shapeExtents(solved), [solved]);
   const view = useMemo(() => viewBox(solved), [solved]);
 
   useEffect(() => {
@@ -261,8 +263,9 @@ export default function RoomSheetPage({
   );
 
   const quantities = useMemo(
-    () => roomQuantities(solved, ceilingHeight, resolvedFittings),
-    [solved, ceilingHeight, resolvedFittings],
+    () =>
+      roomQuantities(solved, ceilingHeight, resolvedFittings, deductionLimit),
+    [solved, ceilingHeight, resolvedFittings, deductionLimit],
   );
   const ceilingResult = useMemo(
     () => ceilingQuantities(ceiling, solved, ceilingHeight),
@@ -270,10 +273,17 @@ export default function RoomSheetPage({
   );
   const symbols = useMemo(
     () => [
-      ...roomSymbols(solved, ceilingHeight, resolvedFittings),
+      ...roomSymbols(solved, ceilingHeight, resolvedFittings, deductionLimit),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ],
-    [solved, ceilingHeight, resolvedFittings, ceiling.length, ceilingResult],
+    [
+      solved,
+      ceilingHeight,
+      resolvedFittings,
+      ceiling.length,
+      ceilingResult,
+      deductionLimit,
+    ],
   );
 
   /**
@@ -935,6 +945,11 @@ export default function RoomSheetPage({
                 {solved.missing.length > 0
                   ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
                   : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
+              </p>
+            )}
+            {extents && (
+              <p className="extents">
+                X={formatNumber(extents.x, 2)}, Y={formatNumber(extents.y, 2)}
               </p>
             )}
           </div>

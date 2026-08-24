@@ -32,23 +32,17 @@
 
 .room-sheet-page .upper {
   display: grid;
-  /* 寸法入力表はできるだけ狭くして、図と記号・建具に幅をまわす */
-  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.42fr) minmax(
-      220px,
-      1fr
-    );
-  grid-template-rows: auto auto auto;
+  /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
+  grid-template-columns:
+    minmax(200px, 0.9fr) minmax(150px, 0.45fr)
+    minmax(230px, 0.85fr) minmax(210px, 0.8fr);
+  grid-auto-rows: auto;
   gap: 8px;
   padding: 8px;
 }
 
-.room-sheet-page .drawing {
-  grid-row: span 3;
-}
-
-/* この部屋の建具は右側（記号表の下）に置く */
 .room-sheet-page .room-fittings {
-  grid-column: 3;
+  grid-column: 4;
 }
 
 .room-sheet-page .edges input.num {
@@ -148,6 +142,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 図の一番下に出す外形寸法（X＝横・Y＝縦の最大） */
+.room-sheet-page .canvas .extents {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
 }
 
 .room-sheet-page svg {
@@ -301,7 +309,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
+  max-width: 62px;
+}
+
+/* 記号・建具は列幅を詰めて、図と寸法入力に幅をまわす */
+.room-sheet-page .symbols table.two-up td.num,
+.room-sheet-page .room-fittings td.num,
+.room-sheet-page .room-fittings th {
+  white-space: nowrap;
+}
+
+.room-sheet-page .room-fittings table.grid {
+  font-size: 11px;
 }
 
 .room-sheet-page .symbols table.two-up td:nth-child(4) {
@@ -337,7 +356,7 @@
 }
 
 .room-sheet-page .ceiling {
-  grid-column: span 2;
+  grid-column: span 4;
 }
 
 .room-sheet-page .section-bar button.on {

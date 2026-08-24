@@ -384,16 +384,117 @@ export function solveShape(shape: RoomShape): SolvedShape {
   return { edges, points, missing, error };
 }
 
-/** 床面積（多角形の面積） */
-export function floorArea(solved: SolvedShape): number | null {
-  if (solved.points.length < 3) return null;
+function polygonArea(points: Point[]): number {
   let sum = 0;
-  for (let i = 0; i < solved.points.length; i += 1) {
-    const a = solved.points[i];
-    const b = solved.points[(i + 1) % solved.points.length];
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
     sum += a.x * b.y - b.x * a.y;
   }
-  return round2(Math.abs(sum) / 2);
+  return Math.abs(sum) / 2;
+}
+
+/** 柱の欠き（柱の辺が続く部分）1ヶ所ぶんの面積 */
+export interface ColumnNotch {
+  /** 柱の辺のID（数量根拠の追跡用） */
+  edgeIds: string[];
+  /** 柱を無いものとして壁を伸ばしたときに増える面積 */
+  area: number;
+}
+
+/** 柱の辺が続く部分（始まりの辺の番号と本数）を拾う */
+function columnRuns(edges: SolvedEdge[]): { start: number; count: number }[] {
+  const total = edges.length;
+  const isColumn = (index: number): boolean =>
+    edges[(index + total) % total].kind === "column";
+  if (edges.every((row) => row.kind === "column")) return [];
+
+  const runs: { start: number; count: number }[] = [];
+  for (let i = 0; i < total; i += 1) {
+    if (!isColumn(i) || isColumn(i - 1)) continue;
+    let count = 1;
+    while (count < total && isColumn(i + count)) count += 1;
+    runs.push({ start: i, count });
+  }
+  return runs;
+}
+
+/**
+ * 柱の欠きを埋めた（柱の無いものとして前後の壁を伸ばして交わらせた）多角形。
+ * 前後の辺が直交していないときは、柱の角をそのまま結ぶ。
+ */
+function filledPoints(
+  solved: SolvedShape,
+  run: { start: number; count: number },
+): Point[] {
+  const total = solved.points.length;
+  const before = (run.start - 1 + total) % total;
+  const after = (run.start + run.count) % total;
+  const previous = solved.edges[before];
+  const next = solved.edges[after];
+  const corner = solved.points[run.start];
+  const resume = solved.points[after];
+
+  const axisA = axisOf(previous.direction);
+  const axisB = axisOf(next.direction);
+  const inserted: Point[] =
+    axisA === null || axisB === null || axisA === axisB
+      ? []
+      : axisA === "x"
+        ? [{ x: resume.x, y: corner.y }]
+        : [{ x: corner.x, y: resume.y }];
+
+  const kept: Point[] = [];
+  for (let i = 0; i < total; i += 1) {
+    const index = (run.start + i) % total;
+    if (i >= 1 && i <= run.count - 1) continue;
+    kept.push(solved.points[index]);
+    if (i === 0) kept.push(...inserted);
+  }
+  return kept;
+}
+
+/** 柱の欠きごとの面積（柱を埋めたときに増える分） */
+export function columnNotches(solved: SolvedShape): ColumnNotch[] {
+  if (solved.points.length < 3) return [];
+  const base = polygonArea(solved.points);
+  return columnRuns(solved.edges)
+    .map((run) => ({
+      edgeIds: Array.from(
+        { length: run.count },
+        (_, i) => solved.edges[(run.start + i) % solved.edges.length].id,
+      ),
+      area: round2(polygonArea(filledPoints(solved, run)) - base),
+    }))
+    .filter((notch) => notch.area > 0);
+}
+
+/**
+ * 床面積（多角形の面積）。
+ * 柱の欠きは取合欠除の設定より小さければ差し引かない（柱の無いものとして数える）。
+ */
+export function floorArea(
+  solved: SolvedShape,
+  limit = DEFAULT_DEDUCTION_LIMIT,
+): number | null {
+  if (solved.points.length < 3) return null;
+  const kept = columnNotches(solved)
+    .filter((notch) => !deducts(notch.area, limit))
+    .reduce((sum, notch) => sum + notch.area, 0);
+  return round2(polygonArea(solved.points) + kept);
+}
+
+/** 図の外形寸法（X＝横の最大、Y＝縦の最大）。曲面壁のふくらみは含めない */
+export function shapeExtents(
+  solved: SolvedShape,
+): { x: number; y: number } | null {
+  if (solved.points.length === 0) return null;
+  const xs = solved.points.map((point) => point.x);
+  const ys = solved.points.map((point) => point.y);
+  return {
+    x: round2(Math.max(...xs) - Math.min(...xs)),
+    y: round2(Math.max(...ys) - Math.min(...ys)),
+  };
 }
 
 export interface EdgeLengthTotals {
@@ -489,9 +590,10 @@ export function roomQuantities(
   solved: SolvedShape,
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
+  limit = DEFAULT_DEDUCTION_LIMIT,
 ): RoomQuantities {
   const totals = edgeTotals(solved);
-  const area = floorArea(solved);
+  const area = floorArea(solved, limit);
   const height = ceilingHeight ?? null;
   const fitting = fittingTotals(fittings);
   return {
@@ -526,8 +628,9 @@ export function roomSymbols(
   solved: SolvedShape,
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
+  limit = DEFAULT_DEDUCTION_LIMIT,
 ): RoomSymbol[] {
-  const quantities = roomQuantities(solved, ceilingHeight, fittings);
+  const quantities = roomQuantities(solved, ceilingHeight, fittings, limit);
   const symbols: RoomSymbol[] = [
     { symbol: "FA", label: "床面積", value: quantities.floorArea },
     { symbol: "CA", label: "天井面積", value: quantities.ceilingArea },

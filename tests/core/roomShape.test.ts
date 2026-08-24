@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   arcLength,
+  columnNotches,
   cutCorner,
   deducts,
   edge,
@@ -11,6 +12,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  shapeExtents,
   solveShape,
   splitEdge,
   updateEdge,
@@ -234,5 +236,28 @@ describe("部屋形状（単線図）", () => {
     expect(solved.points).toHaveLength(4);
     // 台形（上辺5.00・下辺4.00・高さ3.00）
     expect(floorArea(solved)).toBe(13.5);
+  });
+
+  it("外形寸法（X・Y の最大）を出せる", () => {
+    // 6.90×3.45 の下側に 6.40×0.30 が付いた形（右下が 0.50×0.30 の欠き）
+    const shape = {
+      edges: [
+        edge("E", 6.9),
+        edge("S", 3.45),
+        edge("W", 0.5, "column"),
+        edge("S", 0.3, "column"),
+        edge("W", 6.4),
+        edge("N", 0.3, "column"),
+        edge("N", 3.45),
+      ],
+    };
+    const solved = solveShape(shape);
+    expect(solved.error).toBeNull();
+    expect(shapeExtents(solved)).toEqual({ x: 6.9, y: 3.75 });
+    // 柱の欠き（0.50×0.30＝0.15）は取合欠除（0.5m2）以下なので引かない
+    expect(columnNotches(solved).map((notch) => notch.area)).toEqual([0.15]);
+    expect(floorArea(solved)).toBe(25.88);
+    // 取合欠除を0にすると図形どおりに引く
+    expect(floorArea(solved, 0)).toBe(25.73);
   });
 });
