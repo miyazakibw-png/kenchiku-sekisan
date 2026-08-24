@@ -95,14 +95,22 @@ function pickMaster(
   return { id: null, name: text };
 }
 
+/** 候補一覧に出す1行（value＝欄に入る文字、label＝一覧に見せる文字） */
+export interface PickEntry {
+  value: string;
+  label: string;
+}
+
 /**
- * 一覧（datalist）から選ぶ入力欄。
+ * 一覧から選ぶ入力欄。
+ * entries を渡すと、マスターの並びのまま全件を出す候補一覧（下までスクロールできます）を表示します。
  * 入力済みのときも、欄を選ぶと一度空にして候補を全件出す（現在の値は薄字で見えます）。
  * commitOnBlur を付けると、打ち終わって欄を離れたときにだけ反映します。
  */
 function PickInput({
   value,
   listId,
+  entries,
   className,
   placeholder,
   title,
@@ -114,6 +122,7 @@ function PickInput({
 }: {
   value: string;
   listId?: string;
+  entries?: PickEntry[];
   className?: string;
   placeholder?: string;
   title?: string;
@@ -124,39 +133,114 @@ function PickInput({
   onFocus?: () => void;
 }): JSX.Element {
   const [editing, setEditing] = useState<string | null>(null);
+  const [box, setBox] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+
+  const openList = (): void => {
+    if (!entries || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    // 画面の下に入りきらないときは欄の上に出す（一覧の中はスクロールできる）
+    const below = window.innerHeight - rect.bottom - 8;
+    const above = rect.top - 8;
+    const up = below < 160 && above > below;
+    const height = Math.min(320, up ? above : below);
+    setBox({
+      left: Math.min(rect.left, window.innerWidth - 240),
+      top: up ? rect.top - height : rect.bottom,
+      width: Math.max(rect.width, 220),
+      height,
+    });
+  };
+
+  const typed = editing ?? "";
+  const shown = (entries ?? []).filter(
+    (entry) =>
+      typed.trim() === "" ||
+      entry.value.startsWith(typed.trim()) ||
+      entry.label.includes(typed.trim()),
+  );
+
+  const commit = (text: string): void => {
+    setEditing(null);
+    setBox(null);
+    onCommit(text);
+  };
+
   return (
-    <input
-      className={className}
-      list={listId}
-      data-row={row}
-      data-col={col}
-      value={editing ?? value}
-      placeholder={editing !== null && value !== "" ? value : placeholder}
-      title={title}
-      onFocus={() => {
-        setEditing("");
-        onFocus?.();
-      }}
-      onChange={(e) => {
-        setEditing(e.target.value);
-        if (!commitOnBlur) onCommit(e.target.value);
-      }}
-      onKeyDown={(e) => {
-        // 空のときに Delete・BackSpace を押すと、入っている値を消します
-        if (e.key !== "Delete" && e.key !== "Backspace") return;
-        if ((editing ?? value) !== "") return;
-        onCommit("");
-      }}
-      onBlur={() => {
-        const text = editing;
-        setEditing(null);
-        if (!commitOnBlur || text === null) return;
-        // 空のまま離れたときは、入っている値をそのまま残す
-        if (text.trim() === "" && value !== "") return;
-        if (text === value) return;
-        onCommit(text);
-      }}
-    />
+    <>
+      <input
+        ref={ref}
+        className={className}
+        list={entries ? undefined : listId}
+        data-row={row}
+        data-col={col}
+        value={editing ?? value}
+        placeholder={editing !== null && value !== "" ? value : placeholder}
+        title={title}
+        onFocus={() => {
+          setEditing("");
+          openList();
+          onFocus?.();
+        }}
+        onChange={(e) => {
+          setEditing(e.target.value);
+          openList();
+          if (!commitOnBlur) onCommit(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setBox(null);
+            return;
+          }
+          // 空のときに Delete・BackSpace を押すと、入っている値を消します
+          if (e.key !== "Delete" && e.key !== "Backspace") return;
+          if ((editing ?? value) !== "") return;
+          onCommit("");
+        }}
+        onBlur={() => {
+          const text = editing;
+          setEditing(null);
+          setBox(null);
+          if (!commitOnBlur || text === null) return;
+          // 空のまま離れたときは、入っている値をそのまま残す
+          if (text.trim() === "" && value !== "") return;
+          if (text === value) return;
+          onCommit(text);
+        }}
+      />
+      {box && shown.length > 0 && (
+        <ul
+          className="pick-list"
+          style={{
+            left: box.left,
+            top: box.top,
+            width: box.width,
+            maxHeight: box.height,
+          }}
+        >
+          {shown.map((entry, index) => (
+            <li key={`${entry.value}-${index}`}>
+              <button
+                type="button"
+                // クリックで欄から離れる前に選べるよう mousedown で決める
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  commit(entry.value);
+                }}
+              >
+                <span className="key">{entry.value}</span>
+                <span className="label">{entry.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 
@@ -272,11 +356,6 @@ export default function RoomCalcSheet({
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
   const [bannerOpen, setBannerOpen] = useState(false);
-  /** 明細番号を打っている途中の文字（確定するまで表示に使う） */
-  const [numberEdit, setNumberEdit] = useState<{
-    key: string;
-    text: string;
-  } | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   /** 明細番号欄の一覧候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
@@ -289,13 +368,63 @@ export default function RoomCalcSheet({
     CALC_COLUMN_WIDTHS,
   );
 
-  const subjects: Subject[] = options?.subjects ?? [];
+  const subjects: Subject[] = useMemo(() => options?.subjects ?? [], [options]);
   const pickupParts: MasterEntry[] = useMemo(
     () => options?.pickupParts ?? [],
     [options],
   );
   const aggregationParts: MasterEntry[] = useMemo(
     () => options?.aggregationParts ?? [],
+    [options],
+  );
+
+  /** 候補一覧（マスターの並びのまま全件） */
+  const subjectEntries: PickEntry[] = useMemo(
+    () =>
+      subjects.map((subject) => ({
+        value: String(subject.id),
+        label: subject.name,
+      })),
+    [subjects],
+  );
+  const pickupPartEntries: PickEntry[] = useMemo(
+    () =>
+      pickupParts.map((part) => ({
+        value: String(part.id),
+        label: `${part.name}${part.note ? `　${part.note}` : ""}`,
+      })),
+    [pickupParts],
+  );
+  const aggregationPartEntries: PickEntry[] = useMemo(
+    () =>
+      aggregationParts.map((part) => ({
+        value: part.name,
+        label: `${part.id}　${part.name}`,
+      })),
+    [aggregationParts],
+  );
+  const materialEntries: PickEntry[] = useMemo(
+    () =>
+      (options?.materialCategories ?? []).map((item) => ({
+        value: item.name,
+        label: `${item.id}　${item.name}`,
+      })),
+    [options],
+  );
+  const numberEntries: PickEntry[] = useMemo(
+    () =>
+      numberOptions.map((item) => ({
+        value: item.detailNumber?.toFixed(2) ?? "",
+        label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
+      })),
+    [numberOptions],
+  );
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      (options?.units ?? []).map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
     [options],
   );
 
@@ -1185,7 +1314,7 @@ export default function RoomCalcSheet({
                         <PickInput
                           row={gridRow}
                           col={0}
-                          listId="calc-part-names"
+                          entries={aggregationPartEntries}
                           commitOnBlur
                           value={rowIndex === 0 ? set.partName : ""}
                           placeholder={rowIndex === 0 ? "部位" : ""}
@@ -1201,7 +1330,7 @@ export default function RoomCalcSheet({
                             <PickInput
                               row={gridRow}
                               col={1}
-                              listId="calc-materials"
+                              entries={materialEntries}
                               value={detail.materialCategory}
                               placeholder="区分"
                               title="材種区分。番号を打つと名称に変わります"
@@ -1225,7 +1354,7 @@ export default function RoomCalcSheet({
                             <PickInput
                               row={gridRow}
                               col={2}
-                              listId="calc-subjects"
+                              entries={subjectEntries}
                               value={
                                 detail.subjectId === null
                                   ? ""
@@ -1250,7 +1379,7 @@ export default function RoomCalcSheet({
                             <PickInput
                               row={gridRow}
                               col={3}
-                              listId="calc-detail-part-numbers"
+                              entries={pickupPartEntries}
                               value={
                                 detail.partNumber === null
                                   ? ""
@@ -1272,37 +1401,19 @@ export default function RoomCalcSheet({
                             />
                           </td>
                           <td className="id">
-                            <input
-                              data-row={gridRow}
-                              data-col={4}
-                              value={
-                                numberEdit?.key === `${set.id}:${rowIndex}`
-                                  ? numberEdit.text
-                                  : (detail.detailNumber?.toFixed(2) ?? "")
-                              }
-                              list="calc-detail-numbers"
+                            <PickInput
+                              row={gridRow}
+                              col={4}
+                              entries={numberEntries}
+                              commitOnBlur
+                              value={detail.detailNumber?.toFixed(2) ?? ""}
                               placeholder="名称ID"
                               title="明細番号を入れるとマスターの明細を呼び出します（科目IDを入れると一覧から選べます）"
                               onFocus={() => {
                                 focusDetail();
-                                // 入力済みでも候補を全件出すため、欄を選んだときは一度空にする
-                                setNumberEdit({
-                                  key: `${set.id}:${rowIndex}`,
-                                  text: "",
-                                });
                                 void loadNumberOptions(detail.subjectId);
                               }}
-                              onChange={(e) =>
-                                setNumberEdit({
-                                  key: `${set.id}:${rowIndex}`,
-                                  text: e.target.value,
-                                })
-                              }
-                              onBlur={(e) => {
-                                const text = e.target.value;
-                                setNumberEdit(null);
-                                // 空のまま離れたときは、入っている番号をそのまま残す
-                                if (text.trim() === "") return;
+                              onCommit={(text) => {
                                 if (
                                   text.trim() ===
                                   (detail.detailNumber?.toFixed(2) ?? "")
@@ -1374,7 +1485,7 @@ export default function RoomCalcSheet({
                             <PickInput
                               row={gridRow}
                               col={9}
-                              listId="calc-units"
+                              entries={unitEntries}
                               value={detail.unit}
                               placeholder="単位"
                               title="単位。番号を打つと単位の文字に変わります"
@@ -1634,49 +1745,6 @@ export default function RoomCalcSheet({
           })}
         </table>
       </div>
-
-      <datalist id="calc-detail-numbers">
-        {numberOptions.map((item) => (
-          <option key={item.id} value={item.detailNumber?.toFixed(2) ?? ""}>
-            {`${item.partName} ${item.name} ${item.descriptionLower}`.trim()}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-detail-part-numbers">
-        {pickupParts.map((part) => (
-          <option key={part.id} value={String(part.id)}>
-            {`${part.name}${part.note ? `　${part.note}` : ""}`}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-part-names">
-        {aggregationParts.map((part) => (
-          <option key={part.id} value={part.name}>
-            {`${part.id}${part.note ? `　${part.note}` : ""}`}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-subjects">
-        {subjects.map((subject) => (
-          <option key={subject.id} value={String(subject.id)}>
-            {subject.name}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-materials">
-        {(options?.materialCategories ?? []).map((item) => (
-          <option key={item.id} value={item.name}>
-            {item.id}
-          </option>
-        ))}
-      </datalist>
-      <datalist id="calc-units">
-        {(options?.units ?? []).map((unit) => (
-          <option key={unit.id} value={unit.name}>
-            {unit.id}
-          </option>
-        ))}
-      </datalist>
 
       {callOpen && (
         <div
