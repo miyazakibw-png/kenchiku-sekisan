@@ -2,6 +2,46 @@ import { useCallback, useEffect, useRef } from "react";
 
 const MIN_WIDTH = 28;
 
+/** 列幅を持たせる <colgroup> を用意する（無ければ作る） */
+function columnGroup(
+  table: HTMLTableElement,
+  columnCount: number,
+): HTMLElement {
+  const found = table.querySelector(":scope > colgroup.table-col-widths");
+  let group: HTMLElement;
+  if (found instanceof HTMLElement) {
+    group = found;
+  } else {
+    group = document.createElement("colgroup");
+    group.className = "table-col-widths";
+    table.insertBefore(group, table.firstChild);
+  }
+  while (group.children.length < columnCount)
+    group.appendChild(document.createElement("col"));
+  while (group.children.length > columnCount && columnCount > 0) {
+    const last = group.lastElementChild;
+    if (!last) break;
+    group.removeChild(last);
+  }
+  return group;
+}
+
+/** いまのその列の幅 */
+function columnWidth(
+  table: HTMLTableElement | null,
+  index: number,
+  cell: HTMLTableCellElement,
+): number {
+  if (table) {
+    const col = columnGroup(table, 0).children[index];
+    if (col instanceof HTMLTableColElement) {
+      const width = Number.parseFloat(col.style.width);
+      if (Number.isFinite(width)) return width;
+    }
+  }
+  return cell.getBoundingClientRect().width;
+}
+
 /** 記憶した列幅（列番号→px）を読む */
 export function readTableWidths(storageKey: string): Record<number, number> {
   try {
@@ -68,16 +108,43 @@ export function useTableResize(
   const tableRef = useRef<HTMLTableElement | null>(null);
   const widthsRef = useRef<Record<number, number>>({});
 
+  /**
+   * 列幅を固定にする。いまの見た目の幅をそのまま列に持たせてから固定にするので、
+   * 見た目は変わらず、画面の大きさが変わっても列幅が動かなくなる。
+   */
   const apply = useCallback(() => {
     const table = tableRef.current;
     if (!table) return;
-    headerCells(table).forEach((cell, index) => {
-      const width = widthsRef.current[index];
-      if (width === undefined) return;
-      cell.style.width = `${width}px`;
-      cell.style.minWidth = `${width}px`;
-      cell.style.maxWidth = `${width}px`;
+    const cells = headerCells(table);
+    if (cells.length === 0) return;
+    const group = columnGroup(table, cells.length);
+    const cols = [...group.children].filter(
+      (col): col is HTMLTableColElement => col instanceof HTMLTableColElement,
+    );
+    // まだ幅の決まっていない列があるときだけ、いまの見た目の幅を測る
+    const measured: number[] = [];
+    if (
+      cols.some(
+        (col, index) =>
+          col.style.width === "" && widthsRef.current[index] === undefined,
+      )
+    ) {
+      table.style.tableLayout = "";
+      cells.forEach((cell) =>
+        measured.push(cell.getBoundingClientRect().width),
+      );
+    }
+    cols.forEach((col, index) => {
+      const stored = widthsRef.current[index];
+      if (stored !== undefined) {
+        col.style.width = `${Math.max(MIN_WIDTH, stored)}px`;
+        return;
+      }
+      if (col.style.width === "")
+        col.style.width = `${Math.max(MIN_WIDTH, measured[index] ?? MIN_WIDTH)}px`;
     });
+    table.style.tableLayout = "fixed";
+    table.style.width = "auto";
   }, []);
 
   const attachHandles = useCallback(() => {
@@ -92,7 +159,7 @@ export function useTableResize(
         event.preventDefault();
         event.stopPropagation();
         const startX = event.clientX;
-        const startWidth = cell.getBoundingClientRect().width;
+        const startWidth = columnWidth(tableRef.current, index, cell);
         const move = (e: MouseEvent): void => {
           const next = Math.max(MIN_WIDTH, startWidth + e.clientX - startX);
           widthsRef.current = { ...widthsRef.current, [index]: next };
@@ -115,10 +182,11 @@ export function useTableResize(
         const next = { ...widthsRef.current };
         delete next[index];
         widthsRef.current = next;
-        cell.style.width = "";
-        cell.style.minWidth = "";
-        cell.style.maxWidth = "";
+        const table = tableRef.current;
+        const col = table && columnGroup(table, 0).children[index];
+        if (col instanceof HTMLTableColElement) col.style.width = "";
         window.localStorage.setItem(storageKey, JSON.stringify(next));
+        apply();
       });
       cell.appendChild(handle);
     });
