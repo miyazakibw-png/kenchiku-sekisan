@@ -623,6 +623,8 @@ export function linePartVariables(
     const matched = /^<(.+):RF>$/.exec(item.symbol);
     if (!matched) return;
     values[`<${matched[1]}>`] = item.value;
+    if (/^[A-Za-z][A-Za-z0-9]*$/.test(matched[1]))
+      values[matched[1]] = item.value;
   });
   return values;
 }

@@ -24,13 +24,21 @@
   max-height: 300px;
 }
 
+/* レイアウトのときは図を大きく出す（今までの1.5倍） */
+.frame-sheet-page > .upper.layout-mode .canvas {
+  min-height: 330px;
+  max-height: 450px;
+  aspect-ratio: auto;
+  width: 100%;
+}
+
 /* 建物レイアウトを画面いっぱいの別窓で開く（レイアウトのときに出す） */
 .frame-sheet-page > .upper.layout-popup {
   position: fixed;
   inset: 0;
   z-index: 60;
   /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
-  grid-template-columns: 28% 20% 26% 26%;
+  grid-template-columns: 42% 16% 21% 21%;
   grid-template-rows: 100%;
   max-height: none;
   height: 100%;
@@ -41,17 +49,20 @@
 
 /* レイアウトのときは図と「引いた線」の表だけを出す（残りは軸組・確認で見る） */
 .frame-sheet-page > .upper.layout-mode {
-  grid-template-columns: 36% 32% 32%;
+  grid-template-columns: 54% 23% 23%;
+  /* 図を大きく見せるので上段を高くする（今までの1.5倍） */
+  max-height: 50vh;
 }
 
 /* 別窓では「置ける部屋」も並ぶので4列にする */
 .frame-sheet-page > .upper.layout-mode.layout-popup {
-  grid-template-columns: 28% 20% 26% 26%;
+  grid-template-columns: 42% 16% 21% 21%;
+  max-height: none;
 }
 
 /* 「引いた線だけ」のときは表を広く見せる */
 .frame-sheet-page > .upper.layout-mode.layout-popup.lines-only {
-  grid-template-columns: 36% 32% 32%;
+  grid-template-columns: 54% 23% 23%;
 }
 
 /* 別窓では図と置ける部屋だけを出す */
@@ -268,4 +279,86 @@
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
+}
+
+/* Y・X寸法表は長さ・高さを狭く、建具の欄を広くし、行を詰めて多く見せる */
+.frame-sheet-page .rooms.lines-Y table.grid,
+.frame-sheet-page .rooms.lines-X table.grid {
+  table-layout: fixed;
+  font-size: 11px;
+  /* 建具の欄に記号が並ぶ幅を残す（狭いときは横スクロールする） */
+  min-width: 420px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid th,
+.frame-sheet-page .rooms.lines-X table.grid th,
+.frame-sheet-page .rooms.lines-Y table.grid td,
+.frame-sheet-page .rooms.lines-X table.grid td {
+  padding: 0 2px;
+  line-height: 1.4;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid input,
+.frame-sheet-page .rooms.lines-X table.grid input {
+  height: 18px;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid input.num,
+.frame-sheet-page .rooms.lines-X table.grid input.num {
+  min-width: 0;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid col,
+.frame-sheet-page .rooms.lines-X table.grid col {
+  width: auto;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(1),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(1) {
+  width: 32px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(2),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(2),
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(3),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(3) {
+  width: 36px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(5),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(5),
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(6),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(6) {
+  width: 38px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(7),
+.frame-sheet-page .rooms.lines-X table.grid th:nth-child(7) {
+  width: 22px;
+}
+
+/* 建具は「＋建具」と記号5つくらいが並ぶ幅にする */
+.frame-sheet-page .rooms.lines-Y .fitting-cell,
+.frame-sheet-page .rooms.lines-X .fitting-cell {
+  min-width: 0;
+  white-space: normal;
+}
+
+.frame-sheet-page .rooms.lines-Y .fitting-cell button.chip,
+.frame-sheet-page .rooms.lines-X .fitting-cell button.chip {
+  padding: 0 3px;
+  font-size: 10px;
+}
+
+.frame-sheet-page .rooms.lines-Y .fitting-cell select,
+.frame-sheet-page .rooms.lines-X .fitting-cell select {
+  max-width: 54px;
+  font-size: 10px;
+}
+
+.frame-sheet-page .rooms.lines-Y table.grid button,
+.frame-sheet-page .rooms.lines-X table.grid button {
+  padding: 0 2px;
 }

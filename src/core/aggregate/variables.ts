@@ -46,6 +46,21 @@ export function fittingVariables(
   return values;
 }
 
+/**
+ * <X1> のような記号は、かっこ無しの X1 でも書けるようにする。
+ * （計算式に手で X1+X2 と打てるようにするため）
+ */
+export function bareSymbolVariables(
+  values: Record<string, number>,
+): Record<string, number> {
+  const bare: Record<string, number> = {};
+  Object.entries(values).forEach(([key, value]) => {
+    const matched = /^<([A-Za-z][A-Za-z0-9]*)>$/.exec(key);
+    if (matched && !(matched[1] in values)) bare[matched[1]] = value;
+  });
+  return bare;
+}
+
 /** 上段の記号（FA・WA1・AL など）と建具表の記号を合わせた計算式の変数 */
 export function calcVariables(
   symbols: SymbolValue[],
@@ -56,5 +71,6 @@ export function calcVariables(
   symbols.forEach((item) => {
     if (item.value !== null) values[item.symbol] = item.value;
   });
-  return { ...values, ...fittingVariables(fittings, workHeight) };
+  const all = { ...values, ...fittingVariables(fittings, workHeight) };
+  return { ...bareSymbolVariables(all), ...all };
 }

@@ -36,6 +36,7 @@ import {
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
+import { bareSymbolVariables } from "../../../../core/aggregate/variables";
 import {
   DEFAULT_FITTING_PART_VALUES,
   fittingKindForPart,
@@ -385,7 +386,8 @@ export default function FrameSheetPage({
       if (reinforcement !== null)
         values[`<${fitting.symbol}:RF>`] = reinforcement;
     });
-    return values;
+    // <X1> は かっこ無しの X1 でも書ける
+    return { ...bareSymbolVariables(values), ...values };
   }, [fittings, symbols, workHeight]);
 
   /** <AW1> だけのときは、そのセットの部位に合った数値を採る */

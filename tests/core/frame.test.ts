@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { calcVariables } from "../../src/core/aggregate/variables";
 import {
   buildFrameLines,
   findSharedWalls,
@@ -362,6 +363,12 @@ describe("軸組数量", () => {
     expect(symbols.find((item) => item.symbol === "<Y1>")?.value).toBe(5.7);
     expect(linePartVariables(symbols, "壁")).toEqual({});
     expect(linePartVariables(symbols, "壁補強")["<Y1>"]).toBe(5.9);
+    expect(linePartVariables(symbols, "壁補強")["Y1"]).toBe(5.9);
+
+    // 計算式には かっこ無しの Y1・X1 でも書ける
+    const variables = calcVariables(symbols, [], 2.5);
+    expect(variables["Y1"]).toBe(5.7);
+    expect(variables["X1"]).toBe(variables["<X1>"]);
   });
 
   it("辺の寸法が無い部屋は線にしない", () => {
