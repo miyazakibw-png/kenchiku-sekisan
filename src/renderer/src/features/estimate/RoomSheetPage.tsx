@@ -93,9 +93,11 @@ const KIND_LABEL: Record<EdgeKind, string> = {
 function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
   const input = event.currentTarget;
   if (document.activeElement === input) return;
-  event.preventDefault();
-  input.focus();
-  input.select();
+  // ここで入力先を横取りすると、Windowsで窓に文字が入らなくなることがあるので、
+  // 押した後（欄に入った後）に全部を選ぶ
+  window.setTimeout(() => {
+    if (document.activeElement === input) input.select();
+  }, 0);
 }
 
 /**
@@ -288,7 +290,7 @@ export default function RoomSheetPage({
     );
   }, [options]);
 
-  // 小窓（四角・L型・コ型・角の追加）を開いている間は、カーソルを必ず小窓の中に置く
+  // 小窓（四角・L型・コ型・角の追加）を開いたら、寸法欄にカーソルを入れる
   const promptOpen = prompt !== null;
   useEffect(() => {
     if (!promptOpen) return;
@@ -298,30 +300,11 @@ export default function RoomSheetPage({
       input.focus();
       input.select();
     };
+    // 窓に文字が入るようにしてから欄へ入れる（Windowsで入力先が外れることへの備え）
+    window.focus();
     focusInput();
     const timer = window.setTimeout(focusInput, 50);
-    // 小窓の外へカーソルが逃げたら（画面の検索欄などへ移ったら）寸法欄へ戻す
-    const isInside = (node: EventTarget | null): boolean =>
-      node instanceof Node &&
-      promptBoxRef.current !== null &&
-      promptBoxRef.current.contains(node);
-    const keepInside = (event: FocusEvent): void => {
-      if (!isInside(event.target)) focusInput();
-    };
-    // どこへも入らずカーソルが外れたとき（小窓の余白を押したときなど）も戻す
-    const keepAfterLeave = (event: FocusEvent): void => {
-      if (isInside(event.relatedTarget)) return;
-      window.setTimeout(() => {
-        if (!isInside(document.activeElement)) focusInput();
-      }, 0);
-    };
-    document.addEventListener("focusin", keepInside);
-    document.addEventListener("focusout", keepAfterLeave);
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("focusin", keepInside);
-      document.removeEventListener("focusout", keepAfterLeave);
-    };
+    return () => window.clearTimeout(timer);
   }, [promptOpen]);
 
   const solved = useMemo(() => solveShape(shape), [shape]);
@@ -2133,23 +2116,27 @@ export default function RoomSheetPage({
         {prompt && (
           <div
             className="shape-prompt-overlay"
-            // 小窓を出している間は、後ろの欄を押しても入力が移らないようにする
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) e.preventDefault();
+            // 後ろを押したときは寸法欄へカーソルを戻す（入力先が外れないようにする）
+            onClick={(e) => {
+              if (e.target !== e.currentTarget) return;
+              const input = promptInputRef.current;
+              if (input) {
+                input.focus();
+                input.select();
+              }
             }}
           >
             <div
               className="shape-prompt"
               ref={promptBoxRef}
               // 小窓の余白や文字を押しても、カーソルは寸法欄に置いたままにする
-              onMouseDown={(e) => {
+              onClick={(e) => {
                 const target = e.target;
                 const onControl =
                   target instanceof HTMLInputElement ||
                   target instanceof HTMLSelectElement ||
                   target instanceof HTMLButtonElement;
                 if (onControl) return;
-                e.preventDefault();
                 const input = promptInputRef.current;
                 if (
                   input &&

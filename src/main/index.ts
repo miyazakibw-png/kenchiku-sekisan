@@ -171,7 +171,12 @@ function createWindow(projectId?: number): void {
     },
   });
 
-  window.on("ready-to-show", () => window.show());
+  // 出したあと画面（webContents）にも入力先を渡す（Windowsで文字が入らないことへの備え）
+  window.on("ready-to-show", () => {
+    window.show();
+    window.focus();
+    window.webContents.focus();
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -221,7 +226,11 @@ function openCalcWindow(parent: WebContents, title: string): void {
   });
   calcWindows.set(parent.id, window);
 
-  window.on("ready-to-show", () => window.show());
+  window.on("ready-to-show", () => {
+    window.show();
+    window.focus();
+    window.webContents.focus();
+  });
   window.on("closed", () => {
     calcWindows.delete(parent.id);
     if (!parent.isDestroyed()) parent.send(IPC.calcWindowClosed);
