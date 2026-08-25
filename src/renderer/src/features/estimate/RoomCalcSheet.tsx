@@ -41,6 +41,7 @@ import {
   pasteLines,
   rowsAsTsv,
 } from "../../../../core/room/calcClipboard";
+import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import type { CalcFocus } from "@shared/calcWindow";
@@ -401,6 +402,31 @@ export default function RoomCalcSheet({
     () => options?.pickupParts ?? [],
     [options],
   );
+  /** セット明細マスターの並び（他のマスターと同じ 科目→部位→明細） */
+  const sortedAssemblies: FinishAssembly[] = useMemo(() => {
+    const subjectOrder = new Map<number, number>(
+      subjects.map((subject, index) => [subject.id, index]),
+    );
+    return sortDetails(assemblies, (assembly) => {
+      const head = assembly.items[0];
+      return {
+        subjectOrder: subjectOrder.get(head?.subjectId ?? -1) ?? null,
+        part1: "",
+        part2SortOrder: null,
+        part2Name: "",
+        partNumber: head?.partNumber ?? null,
+        detailNumber: head?.detailNumber ?? null,
+        partName: head?.partName ?? "",
+        name: head?.name ?? "",
+        unitOrder: null,
+        descriptionLower: head?.descriptionLower ?? "",
+        descriptionUpper: head?.descriptionUpper ?? "",
+        remarksLower: head?.remarksLower ?? "",
+        remarksUpper: head?.remarksUpper ?? "",
+        materialCategoryOrder: null,
+      };
+    });
+  }, [assemblies, subjects]);
   const aggregationParts: MasterEntry[] = useMemo(
     () => options?.aggregationParts ?? [],
     [options],
@@ -2054,7 +2080,7 @@ export default function RoomCalcSheet({
           {source === "assembly" ? (
             <div className="call-scroll">
               <ul className="call-list">
-                {assemblies.map((assembly) => (
+                {sortedAssemblies.map((assembly) => (
                   <li
                     key={`${assembly.scope}-${assembly.id}`}
                     tabIndex={0}
@@ -2065,6 +2091,11 @@ export default function RoomCalcSheet({
                   >
                     <span className="scope">
                       {assembly.scope === "basic" ? "基準" : "工事"}
+                    </span>
+                    <span className="subject">
+                      {subjects.find(
+                        (subject) => subject.id === assembly.items[0]?.subjectId,
+                      )?.name ?? ""}
                     </span>
                     <span className="part">
                       {assembly.items[0]?.partName ?? ""}
