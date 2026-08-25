@@ -235,6 +235,28 @@ export default function FrameSheetPage({
     })();
   }, [markSaved, project.id, row.id]);
 
+  // 図で選んだ「引いた線」は Delete（BackSpace）で消せるようにする
+  useEffect(() => {
+    if (selectedLineId === null) return;
+    if (!manualLines.some((line) => line.id === selectedLineId)) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (target?.isContentEditable === true) return;
+      event.preventDefault();
+      setManualLines((current) =>
+        current.filter((line) => line.id !== selectedLineId),
+      );
+      setSelectedLineId(null);
+      setDrawStart(null);
+      setMessage("引いた線を消しました");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [manualLines, selectedLineId]);
+
   // 別窓で開いているときは Esc で閉じられるようにする
   useEffect(() => {
     if (!expanded) return;
@@ -782,10 +804,10 @@ export default function FrameSheetPage({
                 ☉ 引いた線だけ
               </button>
             )}
-            {mode === "layout" && drawing && manualLines.length > 0 && (
+            {mode === "layout" && manualLines.length > 0 && (
               <button
                 type="button"
-                title="いま引いた線を1本消します"
+                title="最後に引いた線を1本消します（図の上の線をダブルクリックでも消せます）"
                 onClick={() => {
                   setManualLines((current) => current.slice(0, -1));
                   setDrawStart(null);
@@ -931,8 +953,20 @@ export default function FrameSheetPage({
                     ]
                       .filter(Boolean)
                       .join(" ")}
+                    onDoubleClick={(event) => {
+                      if (line.source !== "manual") return;
+                      event.stopPropagation();
+                      setManualLines((current) =>
+                        current.filter((each) => each.id !== line.id),
+                      );
+                      setDrawStart(null);
+                      setMessage("引いた線を消しました");
+                    }}
                     onPointerDown={(event) => {
                       setSelectedLineId(line.id);
+                      if (line.source === "manual") {
+                        setMessage("この線は Delete キーで消せます");
+                      }
                       if (mode !== "layout" || drawing || !placement) return;
                       setSelectedPlacementId(placement.id);
                       dragRef.current = {
