@@ -897,14 +897,14 @@ export default function RoomCalcSheet({
   /** カーソルの位置で判断して行を足す（明細欄なら明細、計算式欄なら計算行） */
   const addRow = useCallback(
     (insert: boolean) => {
-      // コメント行にカーソルがあるときは、その行の下へ新しい明細を1つ足す
+      // コメント行にカーソルがあるとき。行挿入はその行の上、行追加はその行の下
       const bannerAt =
         bannerSetId === null
           ? -1
           : sets.findIndex((set) => set.id === bannerSetId);
       if (bannerAt >= 0) {
         const next = [...sets];
-        next.splice(bannerAt + 1, 0, calcSet());
+        next.splice(insert ? bannerAt : bannerAt + 1, 0, calcSet());
         commit(next);
         return;
       }
@@ -924,14 +924,14 @@ export default function RoomCalcSheet({
   const insertBanner = useCallback(
     (color: string) => {
       setBannerOpen(false);
-      // コメント行にカーソルがあるときはその下へ入れる（※行だけを続けて並べられる）
+      // カーソルの行の上へ入れる（※行にカーソルがあれば※行だけを続けて並べられる）
       const bannerAt =
         bannerSetId === null
           ? -1
           : sets.findIndex((set) => set.id === bannerSetId);
       const at =
         bannerAt >= 0
-          ? bannerAt + 1
+          ? bannerAt
           : sets.findIndex((set) => set.id === currentSet?.id);
       const created = commentSet("", color);
       const next = [...sets];
@@ -1036,7 +1036,7 @@ export default function RoomCalcSheet({
       const text = await navigator.clipboard.readText();
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
-      // コメント行（※行）にカーソルがあるときは、その行のすぐ下が貼り付け先
+      // コメント行（※行）にカーソルがあるときは、その行が貼り付け先
       const bannerAt =
         bannerSetId === null
           ? -1
@@ -1049,8 +1049,8 @@ export default function RoomCalcSheet({
             ? bannerAt
             : sets.findIndex((set) => set.id === currentSet?.id);
         const next = [...sets];
-        if (mode === "overwrite" && at >= 0) next[at] = created;
-        else next.splice(at < 0 ? next.length : at + 1, 0, created);
+        if (mode === "overwrite" && at >= 0 && bannerAt < 0) next[at] = created;
+        else next.splice(at < 0 ? next.length : at, 0, created);
         commit(next);
         onFocus({ setId: created.id, area: "detail", index: 0 });
         onMessage(
@@ -1065,7 +1065,7 @@ export default function RoomCalcSheet({
         bannerAt >= 0 &&
         (clip?.kind === "detail" || clip?.kind === "rows")
       ) {
-        // コメント行の下へ、コピーした行を新しいセットとして差し込む
+        // コメント行の上へ、コピーした行を新しいセットとして差し込む
         const copiedDetails =
           clip.kind === "detail"
             ? [duplicateDetail(clip.detail)]
@@ -1078,11 +1078,11 @@ export default function RoomCalcSheet({
           lines: fillLines(copiedDetails, copiedLines),
         };
         const next = [...sets];
-        next.splice(bannerAt + 1, 0, created);
+        next.splice(bannerAt, 0, created);
         commit(next);
         onFocus({ setId: created.id, area: "detail", index: 0 });
         onMessage(
-          `コピーした${copiedDetails.length}行をコメント行の下へ差し込みました`,
+          `コピーした${copiedDetails.length}行をコメント行の上へ差し込みました`,
         );
         return;
       }
@@ -1093,7 +1093,7 @@ export default function RoomCalcSheet({
       }
 
       if (clip?.kind === "detail" || clip?.kind === "rows") {
-        // カーソルのある行が貼り付け先。上書貼付はその行から、挿入貼付はその行の下へ
+        // カーソルのある行が貼り付け先。上書貼付はその行から、挿入貼付はその行の上へ
         const copiedDetails =
           clip.kind === "detail"
             ? [duplicateDetail(clip.detail)]
@@ -1107,7 +1107,7 @@ export default function RoomCalcSheet({
         const at =
           mode === "overwrite"
             ? Math.max(cursor, 0)
-            : Math.min(Math.max(cursor + 1, 0), details.length);
+            : Math.min(Math.max(cursor, 0), details.length);
 
         copiedDetails.forEach((copied, offset) => {
           const line = copiedLines[offset];
@@ -1132,7 +1132,7 @@ export default function RoomCalcSheet({
         onMessage(
           mode === "overwrite"
             ? `コピーした${copiedDetails.length}行でカーソルの行から上書きしました`
-            : `コピーした${copiedDetails.length}行をカーソルの行の下へ差し込みました`,
+            : `コピーした${copiedDetails.length}行をカーソルの行の上へ差し込みました`,
         );
         return;
       }

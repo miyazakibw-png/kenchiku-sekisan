@@ -24,8 +24,8 @@ const COLUMNS: { key: keyof DetailSnapshot; label: string }[] = [
   { key: "descriptionLower", label: "摘要（下）" },
   { key: "descriptionUpper", label: "摘要（上）" },
   { key: "unit", label: "単位" },
-  { key: "remarksUpper", label: "備考（上）" },
   { key: "remarksLower", label: "備考（下）" },
+  { key: "remarksUpper", label: "備考（上）" },
   { key: "estimateDisplay", label: "積算用表示" },
   { key: "isActive", label: "有効" },
 ];

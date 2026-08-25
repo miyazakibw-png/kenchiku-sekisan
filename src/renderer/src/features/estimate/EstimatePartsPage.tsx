@@ -179,13 +179,14 @@ export default function EstimatePartsPage({
     async (count: number) => {
       const copied = clipboard.slice(0, count);
       if (copied.length === 0) return;
-      const next = copyRowsInto(rows, selectionEnd + 1, copied);
+      // 挿入はカーソルの行の上（カーソルの行は下へ下がる）
+      const next = copyRowsInto(rows, selectionStart, copied);
       await saveRows(
         next,
-        `${copied.length} 行を挿入しました（計算書の中身も複製）`,
+        `${copied.length} 行をカーソルの行の上へ挿入しました（計算書の中身も複製）`,
       );
     },
-    [clipboard, rows, saveRows, selectionEnd],
+    [clipboard, rows, saveRows, selectionStart],
   );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
