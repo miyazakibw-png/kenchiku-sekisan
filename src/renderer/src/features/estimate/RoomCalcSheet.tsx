@@ -370,6 +370,8 @@ export default function RoomCalcSheet({
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
   const [bannerOpen, setBannerOpen] = useState(false);
+  /** コメント行（※行）にカーソルがあるときの、そのコメント行のセットID */
+  const [bannerSetId, setBannerSetId] = useState<string | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   /** 明細番号欄の一覧候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
@@ -764,6 +766,11 @@ export default function RoomCalcSheet({
     [onFocus, sets, updateSet],
   );
 
+  // 明細・計算式の欄へカーソルを移したら、コメント行のカーソルは外す
+  useEffect(() => {
+    setBannerSetId(null);
+  }, [focus?.setId, focus?.area, focus?.index]);
+
   /** カーソルのあるセット（無ければ最後のセット） */
   const currentSet = useMemo(
     () =>
@@ -890,6 +897,17 @@ export default function RoomCalcSheet({
   /** カーソルの位置で判断して行を足す（明細欄なら明細、計算式欄なら計算行） */
   const addRow = useCallback(
     (insert: boolean) => {
+      // コメント行にカーソルがあるときは、その行の下へ新しい明細を1つ足す
+      const bannerAt =
+        bannerSetId === null
+          ? -1
+          : sets.findIndex((set) => set.id === bannerSetId);
+      if (bannerAt >= 0) {
+        const next = [...sets];
+        next.splice(bannerAt + 1, 0, calcSet());
+        commit(next);
+        return;
+      }
       const target = currentSet;
       if (!target) {
         commit([...sets, calcSet()]);
@@ -899,20 +917,30 @@ export default function RoomCalcSheet({
       const next = addSetRow(target, insert ? (focus?.index ?? 0) : undefined);
       updateSet(target.id, { details: next.details, lines: next.lines });
     },
-    [commit, currentSet, focus, sets, updateSet],
+    [bannerSetId, commit, currentSet, focus, sets, updateSet],
   );
 
   /** コメント行を入れる（明細とは別の独立した1行。何行でも続けて入れられる） */
   const insertBanner = useCallback(
     (color: string) => {
       setBannerOpen(false);
-      const at = sets.findIndex((set) => set.id === currentSet?.id);
+      // コメント行にカーソルがあるときはその下へ入れる（※行だけを続けて並べられる）
+      const bannerAt =
+        bannerSetId === null
+          ? -1
+          : sets.findIndex((set) => set.id === bannerSetId);
+      const at =
+        bannerAt >= 0
+          ? bannerAt + 1
+          : sets.findIndex((set) => set.id === currentSet?.id);
+      const created = commentSet("", color);
       const next = [...sets];
-      next.splice(at < 0 ? next.length : at, 0, commentSet("", color));
+      next.splice(at < 0 ? next.length : at, 0, created);
       commit(next);
+      setBannerSetId(created.id);
       onMessage("コメント行を入れました");
     },
-    [commit, currentSet?.id, onMessage, sets],
+    [bannerSetId, commit, currentSet?.id, onMessage, sets],
   );
 
   /** いま選んでいる明細（明細欄にカーソルがあるときだけ） */
@@ -1008,10 +1036,18 @@ export default function RoomCalcSheet({
       const text = await navigator.clipboard.readText();
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
+      // コメント行（※行）にカーソルがあるときは、その行のすぐ下が貼り付け先
+      const bannerAt =
+        bannerSetId === null
+          ? -1
+          : sets.findIndex((set) => set.id === bannerSetId);
 
       if (clip?.kind === "set") {
         const created = duplicateSet(clip.set);
-        const at = sets.findIndex((set) => set.id === currentSet?.id);
+        const at =
+          bannerAt >= 0
+            ? bannerAt
+            : sets.findIndex((set) => set.id === currentSet?.id);
         const next = [...sets];
         if (mode === "overwrite" && at >= 0) next[at] = created;
         else next.splice(at < 0 ? next.length : at + 1, 0, created);
@@ -1021,6 +1057,32 @@ export default function RoomCalcSheet({
           mode === "overwrite"
             ? "コピーしたセットで上書きしました"
             : "コピーしたセットを差し込みました",
+        );
+        return;
+      }
+
+      if (
+        bannerAt >= 0 &&
+        (clip?.kind === "detail" || clip?.kind === "rows")
+      ) {
+        // コメント行の下へ、コピーした行を新しいセットとして差し込む
+        const copiedDetails =
+          clip.kind === "detail"
+            ? [duplicateDetail(clip.detail)]
+            : clip.details.map(duplicateDetail);
+        const copiedLines =
+          clip.kind === "rows" ? clip.lines.map(duplicateLine) : [];
+        const created: CalcSet = {
+          ...calcSet(0),
+          details: copiedDetails,
+          lines: fillLines(copiedDetails, copiedLines),
+        };
+        const next = [...sets];
+        next.splice(bannerAt + 1, 0, created);
+        commit(next);
+        onFocus({ setId: created.id, area: "detail", index: 0 });
+        onMessage(
+          `コピーした${copiedDetails.length}行をコメント行の下へ差し込みました`,
         );
         return;
       }
@@ -1040,8 +1102,8 @@ export default function RoomCalcSheet({
           clip.kind === "rows" ? clip.lines.map(duplicateLine) : [];
         const details = [...currentSet.details];
         const lines = [...currentSet.lines];
-        const cursor =
-          focus?.area === "detail" ? focus.index : details.length - 1;
+        // 計算式の欄にカーソルがあるときも、その行が貼り付け先（明細1件＝計算式1行）
+        const cursor = focus ? focus.index : details.length - 1;
         const at =
           mode === "overwrite"
             ? Math.max(cursor, 0)
@@ -1107,7 +1169,16 @@ export default function RoomCalcSheet({
         "Excelの数量表を計算式へ貼り付けました（コメント／計算式Ａ／計算式Ｂの順。1列だけなら計算式Ａ）",
       );
     },
-    [commit, currentSet, focus, onFocus, onMessage, sets, updateSet],
+    [
+      bannerSetId,
+      commit,
+      currentSet,
+      focus,
+      onFocus,
+      onMessage,
+      sets,
+      updateSet,
+    ],
   );
 
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
@@ -1415,6 +1486,7 @@ export default function RoomCalcSheet({
                       <input
                         lang="ja"
                         value={set.banner.text}
+                        onFocus={() => setBannerSetId(set.id)}
                         onChange={(e) =>
                           updateSet(set.id, {
                             banner: {
