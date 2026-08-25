@@ -47,7 +47,6 @@ import {
 import {
   evaluateCalcSheet,
   quantityByPart,
-  syncPartNames,
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
@@ -281,14 +280,6 @@ export default function RoomSheetPage({
       setPartValues(await window.sekisan.getFittingPartValues());
     })();
   }, [project.id, row.id]);
-
-  // 部位マスターで名前を直したら、明細の部位表示もその名前に合わせる
-  useEffect(() => {
-    if (!options) return;
-    setLower((current) =>
-      syncPartNames(current, options.aggregationParts, options.pickupParts),
-    );
-  }, [options]);
 
   // 小窓（四角・L型・コ型・角の追加）を開いたら、寸法欄にカーソルを入れる
   const promptOpen = prompt !== null;
@@ -1386,7 +1377,9 @@ export default function RoomSheetPage({
               >
                 選んだ辺で合わせる
               </button>
-              <span>（図の直したい辺をクリックすると、その辺で合わせます）</span>
+              <span>
+                （図の直したい辺をクリックすると、その辺で合わせます）
+              </span>
             </p>
           )}
         </section>
@@ -1567,7 +1560,8 @@ export default function RoomSheetPage({
                           }}
                           onBlur={(e) => {
                             const value = textToNumber(e.target.value);
-                            const size = value === null ? null : Math.abs(value);
+                            const size =
+                              value === null ? null : Math.abs(value);
                             applyShape(
                               updateEdge(shape, line.id, {
                                 bulge:

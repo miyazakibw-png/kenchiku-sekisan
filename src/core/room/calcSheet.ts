@@ -18,8 +18,6 @@ export interface CalcDetail {
   partNumber: number | null;
   /** 上段に出す部位名（明細マスターと同じ上下2段の構成） */
   partName: string;
-  /** 部位名を手で書き直した行（マスターの名称に戻さない） */
-  partNameEdited?: boolean;
   name: string;
   descriptionUpper: string;
   descriptionLower: string;
@@ -53,8 +51,6 @@ export interface CalcSet {
   /** 部位マスターの番号（番号入力で名称に変換する） */
   partNumber: number | null;
   partName: string;
-  /** 部位名を手で書き直したセット（マスターの名称に戻さない） */
-  partNameEdited?: boolean;
   details: CalcDetail[];
   lines: CalcLine[];
   /** セットの上に置く見出し行（無ければ付けない） */
@@ -78,7 +74,6 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
     materialCategory: "",
     partNumber: null,
     partName: "",
-    partNameEdited: false,
     name: "",
     descriptionUpper: "",
     descriptionLower: "",
@@ -272,11 +267,7 @@ export function splitSetAt(
   sets: CalcSet[],
   setId: string,
   index: number,
-  part: {
-    partNumber: number | null;
-    partName: string;
-    partNameEdited?: boolean;
-  },
+  part: { partNumber: number | null; partName: string },
 ): CalcSet[] {
   const at = sets.findIndex((set) => set.id === setId);
   if (at < 0) return sets;
@@ -291,7 +282,6 @@ export function splitSetAt(
     ...calcSet(0),
     partNumber: part.partNumber,
     partName: part.partName,
-    partNameEdited: part.partNameEdited ?? false,
     details: target.details.slice(index),
     lines: target.lines.slice(index),
   };
@@ -315,7 +305,8 @@ export function removeSet(sets: CalcSet[], setId: string): CalcSet[] {
       return;
     }
     if (isCommentSet(set)) return;
-    if (set.banner != null) next.push(commentSet(set.banner.text, set.banner.color));
+    if (set.banner != null)
+      next.push(commentSet(set.banner.text, set.banner.color));
   });
   return next;
 }
@@ -572,53 +563,4 @@ export function quantityByPart(
     const [partName, materialCategory] = key.split("\u0000");
     return { partName, materialCategory, quantity };
   });
-}
-
-/**
- * 部位番号が入っている行の部位名を、部位マスターの今の名称に合わせる。
- * 基本マスターで部位名を直したとき、明細の表示・集計もその名前になる。
- * 変わるところが無ければ元の配列をそのまま返す。
- */
-export function syncPartNames(
-  sets: CalcSet[],
-  aggregationParts: { id: number; name: string }[],
-  pickupParts: { id: number; name: string }[],
-): CalcSet[] {
-  const nameOf = (
-    parts: { id: number; name: string }[],
-    id: number | null | undefined,
-    current: string,
-    edited: boolean | undefined,
-  ): string => {
-    // 手で書き直した部位名はそのまま残す
-    if (edited === true) return current;
-    if (id === null || id === undefined) return current;
-    return parts.find((part) => part.id === id)?.name ?? current;
-  };
-
-  let changed = false;
-  const next = sets.map((set) => {
-    const partName = nameOf(
-      aggregationParts,
-      set.partNumber,
-      set.partName,
-      set.partNameEdited,
-    );
-    let detailChanged = false;
-    const details = set.details.map((detail) => {
-      const detailPart = nameOf(
-        pickupParts,
-        detail.partNumber,
-        detail.partName,
-        detail.partNameEdited,
-      );
-      if (detailPart === detail.partName) return detail;
-      detailChanged = true;
-      return { ...detail, partName: detailPart };
-    });
-    if (partName === set.partName && !detailChanged) return set;
-    changed = true;
-    return { ...set, partName, details };
-  });
-  return changed ? next : sets;
 }

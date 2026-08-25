@@ -29,7 +29,6 @@ import {
 } from "../../../../core/room/shape";
 import {
   evaluateCalcSheet,
-  syncPartNames,
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
@@ -183,14 +182,6 @@ export default function FrameSheetPage({
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [project.id, row.id]);
-
-  // 部位マスターで名前を直したら、明細の部位表示もその名前に合わせる
-  useEffect(() => {
-    if (!options) return;
-    setLower((current) =>
-      syncPartNames(current, options.aggregationParts, options.pickupParts),
-    );
-  }, [options]);
 
   /** 置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = useMemo(() => {

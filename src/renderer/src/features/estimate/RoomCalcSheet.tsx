@@ -648,11 +648,7 @@ export default function RoomCalcSheet({
           commit(mergeWithPreviousSet(sets, setId));
           return;
         }
-        updateSet(setId, {
-          partNumber: picked.id,
-          partName: picked.name,
-          partNameEdited: picked.id === null && picked.name !== "",
-        });
+        updateSet(setId, { partNumber: picked.id, partName: picked.name });
         return;
       }
       if (picked.name === "") return;
@@ -660,7 +656,6 @@ export default function RoomCalcSheet({
         splitSetAt(sets, setId, rowIndex, {
           partNumber: picked.id,
           partName: picked.name,
-          partNameEdited: picked.id === null,
         }),
       );
       onMessage("この行から別のセット明細に分けました");
@@ -1092,10 +1087,7 @@ export default function RoomCalcSheet({
         return;
       }
 
-      if (
-        bannerAt >= 0 &&
-        (clip?.kind === "detail" || clip?.kind === "rows")
-      ) {
+      if (bannerAt >= 0 && (clip?.kind === "detail" || clip?.kind === "rows")) {
         // コメント行の上へ、コピーした行を新しいセットとして差し込む
         const copiedDetails =
           clip.kind === "detail"
@@ -1658,10 +1650,6 @@ export default function RoomCalcSheet({
                                     picked.id === null
                                       ? detail.partName
                                       : picked.name,
-                                  partNameEdited:
-                                    picked.id === null
-                                      ? detail.partNameEdited
-                                      : false,
                                 });
                               }}
                             />
@@ -1698,8 +1686,6 @@ export default function RoomCalcSheet({
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
                                   partName: e.target.value,
-                                  // 手で直した部位名はマスターの名称に戻さない
-                                  partNameEdited: true,
                                 })
                               }
                             />
@@ -2105,7 +2091,8 @@ export default function RoomCalcSheet({
                     </span>
                     <span className="subject">
                       {subjects.find(
-                        (subject) => subject.id === assembly.items[0]?.subjectId,
+                        (subject) =>
+                          subject.id === assembly.items[0]?.subjectId,
                       )?.name ?? ""}
                     </span>
                     <span className="part">

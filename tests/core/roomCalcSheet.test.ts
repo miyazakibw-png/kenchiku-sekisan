@@ -16,7 +16,6 @@ import {
   removeSetLine,
   splitSetAt,
   syncLines,
-  syncPartNames,
   setRowCount,
   trimEmptySets,
   type CalcSet,
@@ -259,49 +258,6 @@ describe("下段セット明細計算表", () => {
     expect(merged[0].partName).toBe("床");
     expect(merged[0].details).toHaveLength(2);
     expect(merged[0].details[1].name).toBe("木巾木");
-  });
-});
-
-describe("部位マスターとの連動", () => {
-  it("部位マスターで名前を直すと明細の部位表示も変わる", () => {
-    const set = calcSet(1);
-    set.partNumber = 10;
-    set.partName = "その他";
-    set.details = [
-      calcDetail({ partNumber: 3, partName: "旧かべ", name: "クロス" }),
-    ];
-    const [synced] = syncPartNames(
-      [set],
-      [{ id: 10, name: "補強" }],
-      [{ id: 3, name: "壁" }],
-    );
-    expect(synced.partName).toBe("補強");
-    expect(synced.details[0].partName).toBe("壁");
-  });
-
-  it("番号が無い行はそのままにする", () => {
-    const set = calcSet(1);
-    set.partName = "手入力部位";
-    const sets = [set];
-    expect(syncPartNames(sets, [{ id: 10, name: "補強" }], [])).toBe(sets);
-  });
-
-  it("手で書き直した部位名は番号があってもマスターに戻さない", () => {
-    const set = calcSet(1);
-    set.partNumber = 10;
-    set.partName = "補強（手入力）";
-    set.partNameEdited = true;
-    set.details[0].partNumber = 3;
-    set.details[0].partName = "壁（手入力）";
-    set.details[0].partNameEdited = true;
-    const sets = [set];
-    const [synced] = syncPartNames(
-      sets,
-      [{ id: 10, name: "補強" }],
-      [{ id: 3, name: "壁" }],
-    );
-    expect(synced.partName).toBe("補強（手入力）");
-    expect(synced.details[0].partName).toBe("壁（手入力）");
   });
 });
 
