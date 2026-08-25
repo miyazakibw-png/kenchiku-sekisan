@@ -880,7 +880,15 @@ export default function FrameSheetPage({
         <span className="status">{message}</span>
       </div>
 
-      <div className={expanded ? "upper layout-popup" : "upper"}>
+      <div
+        className={[
+          "upper",
+          expanded ? "layout-popup" : "",
+          expanded && manualOnly ? "lines-only" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <section className="drawing">
           <div className="section-bar">
             <span>建物レイアウト（{MODE_LABEL[mode]}）</span>

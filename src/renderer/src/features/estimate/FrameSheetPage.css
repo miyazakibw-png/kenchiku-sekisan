@@ -21,13 +21,18 @@
   inset: 0;
   z-index: 60;
   /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 470px;
   grid-template-rows: 100%;
   max-height: none;
   height: 100%;
   background: #fff;
   padding: 8px;
   overflow: hidden;
+}
+
+/* 「引いた線だけ」のときは表を広く見せる */
+.frame-sheet-page > .upper.layout-popup.lines-only {
+  grid-template-columns: 1fr 560px;
 }
 
 /* 別窓では図と置ける部屋だけを出す */
@@ -90,6 +95,17 @@
   pointer-events: none;
 }
 
+/* 引いた線の表は右の欄いっぱいに広げる */
+.frame-sheet-page .rooms table.grid {
+  width: 100%;
+  table-layout: auto;
+}
+
+.frame-sheet-page .rooms table.grid input.num {
+  width: 100%;
+  min-width: 48px;
+}
+
 .frame-sheet-page .rooms table.grid caption {
   text-align: left;
   font-size: 12px;
@@ -134,7 +150,7 @@
 }
 
 .frame-sheet-page .fitting-cell {
-  white-space: nowrap;
+  min-width: 170px;
 }
 
 .frame-sheet-page .fitting-cell select {
