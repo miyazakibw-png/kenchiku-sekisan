@@ -147,6 +147,19 @@ body,
   cursor: pointer;
 }
 
+.print-bar .print-paper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.print-bar .print-paper select {
+  font: inherit;
+  font-size: 12px;
+}
+
 .print-bar button:hover:enabled {
   background: #4b5563;
 }
@@ -180,20 +193,28 @@ body,
   color: #1f4e79;
 }
 
-/* 印刷・PDFはA3 1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
+/* 印刷・PDFは選んだ用紙1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
 @page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@page a4yoko {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@page a3yoko {
   size: A3 landscape;
   margin: 8mm;
 }
 
-/* 印刷バーの「用紙：縦」を選んだとき */
-@page tate {
-  size: A3 portrait;
-  margin: 8mm;
+body.print-a4-landscape .app {
+  page: a4yoko;
 }
 
-body.print-portrait .app {
-  page: tate;
+body.print-a3-landscape .app {
+  page: a3yoko;
 }
 
 @media print {
@@ -260,7 +281,12 @@ body.print-portrait .app {
     margin: 0;
   }
 
-  body.print-portrait .workspace-page .workspace-header {
+  body.print-a4-portrait .workspace-page .workspace-header {
+    max-width: 240px;
+    grid-template-columns: 70px 1fr;
+  }
+
+  body.print-a4-landscape .workspace-page .workspace-header {
     max-width: 350px;
   }
 }

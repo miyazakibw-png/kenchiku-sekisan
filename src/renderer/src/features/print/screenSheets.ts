@@ -5,11 +5,15 @@
 
 import type { ScreenSheetData } from '@shared/types'
 
-/** A3横（余白8mm）に入る幅の目安（96dpi） */
-export const A3_LANDSCAPE_WIDTH = 1527
+/** 印刷・PDFの用紙（A4縦・A4横・A3横） */
+export type PaperKind = 'a4-portrait' | 'a4-landscape' | 'a3-landscape'
 
-/** A3縦（余白8mm）に入る幅の目安（96dpi） */
-export const A3_PORTRAIT_WIDTH = 1062
+/** 用紙（余白8mm）に入る幅の目安（96dpi） */
+export const PAPER_WIDTH: Record<PaperKind, number> = {
+  'a4-portrait': 733,
+  'a4-landscape': 1062,
+  'a3-landscape': 1527
+}
 
 /** 並べ替えつまみなど、画面操作用の記号だけのセルは空にする */
 const UI_GLYPH_ONLY = /^[⠿↕✕🗑📋⧉🖨📄📊＋−+\-\s]+$/u
@@ -64,9 +68,8 @@ export function collectSheets(root: HTMLElement, screenName: string): ScreenShee
     .filter((sheet) => sheet.rows.length > 0)
 }
 
-/** 画面の全幅がA3（横／縦）1枚に収まるよう縮小率を決める */
-export function printScale(contentWidth: number, landscape = true): number {
+/** 画面の全幅が用紙1枚に収まるよう縮小率を決める */
+export function printScale(contentWidth: number, paper: PaperKind = 'a3-landscape'): number {
   if (contentWidth <= 0) return 1
-  const paper = landscape ? A3_LANDSCAPE_WIDTH : A3_PORTRAIT_WIDTH
-  return Math.min(1, Math.round((paper / contentWidth) * 1000) / 1000)
+  return Math.min(1, Math.round((PAPER_WIDTH[paper] / contentWidth) * 1000) / 1000)
 }

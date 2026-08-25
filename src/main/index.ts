@@ -133,6 +133,7 @@ import { IPC } from "../shared/ipc";
 import type {
   BackupInfo,
   BackupResult,
+  PrintPaper,
   PrintResult,
   ScreenExcelRequest,
   SaveBasicMasterRequest,
@@ -639,10 +640,15 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle(
     IPC.printPaper,
-    async (event, landscape = true): Promise<PrintResult> => {
+    async (event, paper: PrintPaper): Promise<PrintResult> => {
       await new Promise<void>((resolve) => {
-        event.sender.print({ landscape, pageSize: "A3", printBackground: true }, () =>
-          resolve(),
+        event.sender.print(
+          {
+            landscape: paper.landscape,
+            pageSize: paper.pageSize,
+            printBackground: true,
+          },
+          () => resolve(),
         );
       });
       return { filePath: null };
@@ -653,7 +659,7 @@ function registerIpcHandlers(): void {
     async (
       event,
       defaultName: string,
-      landscape = true,
+      paper: PrintPaper,
     ): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
       const result = window
@@ -663,8 +669,8 @@ function registerIpcHandlers(): void {
         : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
       if (result.canceled || !result.filePath) return { filePath: null };
       const pdf = await event.sender.printToPDF({
-        landscape,
-        pageSize: "A3",
+        landscape: paper.landscape,
+        pageSize: paper.pageSize,
         printBackground: true,
         preferCSSPageSize: true,
       });

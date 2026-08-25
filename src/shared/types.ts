@@ -755,6 +755,12 @@ export interface PrintResult {
   filePath: string | null;
 }
 
+/** 印刷・PDFの用紙（大きさと向き） */
+export interface PrintPaper {
+  pageSize: "A4" | "A3";
+  landscape: boolean;
+}
+
 /** 積算データ（バックアップ／復元）の状態 */
 export interface BackupInfo {
   /** 積算データの保存場所 */
