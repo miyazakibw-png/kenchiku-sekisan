@@ -53,8 +53,14 @@ export function useHalfWidthFields(): void {
       const at = input.selectionStart ?? input.value.length;
 
       if (isJapaneseField(input)) {
+        // data-kana="on" の欄（部位Ⅰ〜Ⅲ）は設定に関わらずひらがなに直す
+        const alwaysKana = input.getAttribute("data-kana") === "on";
         // 変換を確定した文字は触らない（漢字変換を壊さない）
-        if (!isAutoKanaOn() || event.type === "compositionend") return;
+        if (
+          (!isAutoKanaOn() && !alwaysKana) ||
+          event.type === "compositionend"
+        )
+          return;
         const head = input.value.slice(0, at);
         const converted = romajiToKana(head);
         if (converted === head) return;
