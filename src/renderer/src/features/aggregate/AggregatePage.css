@@ -99,14 +99,19 @@ table.aggregate tbody.row.selected td {
 }
 
 /* 左端の工種科目ボタン。押すとその科目の先頭明細へ飛ぶ */
+/* 工種科目の選択ボタンは、上下・左右どちらへ動かしても常に見えるようにする */
 .aggregate-page .subject-jump {
   position: sticky;
   left: 0;
-  z-index: 3;
+  top: 0;
+  z-index: 4;
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 8px 0 8px 4px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
   background: #fff;
 }
 
