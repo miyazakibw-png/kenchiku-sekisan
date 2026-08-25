@@ -826,7 +826,8 @@ export default function RoomCalcSheet({
         partNumber:
           detail.partName.trim() === ""
             ? (kept?.partNumber ?? null)
-            : (pickupParts.find((part) => part.name === detail.partName)?.id ??
+            : (detail.partNumber ??
+              pickupParts.find((part) => part.name === detail.partName)?.id ??
               null),
         partName: detail.partName || (kept?.partName ?? ""),
         name: detail.name,
@@ -2145,6 +2146,7 @@ export default function RoomCalcSheet({
                 <table className="call-table">
                   <thead>
                     <tr>
+                      <th className="no">部位ID</th>
                       <th className="no">番号</th>
                       <th>部位名／名称</th>
                       <th>摘要</th>
@@ -2161,6 +2163,7 @@ export default function RoomCalcSheet({
                           if (e.key === "Enter") callDetail(detail);
                         }}
                       >
+                        <td className="no">{detail.partNumber ?? ""}</td>
                         <td className="no">
                           {detail.detailNumber?.toFixed(2) ?? ""}
                         </td>

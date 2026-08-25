@@ -93,6 +93,8 @@ export interface Detail {
   detailNumber: number | null;
   /** 材種区分（マスタ番号で入力補助するが、マスタに無い文字も入力可） */
   materialCategory: string;
+  /** 部位番号（集計書兼工事マスターから呼ぶときだけ入る） */
+  partNumber?: number | null;
   partName: string;
   name: string;
   descriptionUpper: string;

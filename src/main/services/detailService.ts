@@ -217,7 +217,8 @@ export function listProjectDetailsInUse(
   // 集計は基本マスターのIDで残ることがあるので、複製元IDからも工事の明細を引けるようにする
   const projectBySource = new Map<number, Detail>();
   for (const row of projectRows) {
-    if (row.sourceDetailId !== null) projectBySource.set(row.sourceDetailId, row);
+    if (row.sourceDetailId !== null)
+      projectBySource.set(row.sourceDetailId, row);
   }
 
   // 集計書兼工事マスターは最新の集計結果を出しているので、呼出も最新の集計に揃える
@@ -275,6 +276,7 @@ export function listProjectDetailsInUse(
       subjectId: item.subjectId ?? source.subjectId,
       detailNumber: item.detailNumber,
       materialCategory: item.materialCategory,
+      partNumber: item.partNumber,
       partName: item.partName,
       name: item.name,
       descriptionUpper: item.descriptionUpper,
@@ -286,11 +288,16 @@ export function listProjectDetailsInUse(
     });
   }
 
+  // 集計書兼工事マスターと同じ並び（部位→明細）
   return result.sort(
     (a, b) =>
+      (a.partNumber ?? Number.MAX_SAFE_INTEGER) -
+        (b.partNumber ?? Number.MAX_SAFE_INTEGER) ||
+      a.partName.localeCompare(b.partName) ||
+      (a.detailNumber ?? Number.MAX_SAFE_INTEGER) -
+        (b.detailNumber ?? Number.MAX_SAFE_INTEGER) ||
       a.displayOrder - b.displayOrder ||
-      a.id - b.id ||
-      a.partName.localeCompare(b.partName),
+      a.id - b.id,
   );
 }
 
