@@ -15,6 +15,32 @@
   max-height: 300px;
 }
 
+/* 建物レイアウトを画面いっぱいの別窓で開く（レイアウトのときに出す） */
+.frame-sheet-page > .upper.layout-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  grid-template-columns: 1fr minmax(240px, 320px);
+  background: #fff;
+  padding: 8px;
+  overflow: auto;
+  box-shadow: 0 0 0 100vmax rgb(15 23 42 / 35%);
+}
+
+/* 別窓では図と置ける部屋だけを出す */
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing):not(.rooms) {
+  display: none;
+}
+
+.frame-sheet-page > .upper.layout-popup .drawing {
+  grid-row: span 1;
+}
+
+.frame-sheet-page > .upper.layout-popup .canvas {
+  max-height: none;
+  height: calc(100vh - 90px);
+}
+
 .frame-sheet-page .frame-line {
   stroke-width: 3;
   vector-effect: non-scaling-stroke;

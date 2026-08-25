@@ -142,6 +142,8 @@ export default function FrameSheetPage({
     null,
   );
   const [zoom, setZoom] = useState(1);
+  /** 建物レイアウトを画面いっぱいの別窓で開く */
+  const [expanded, setExpanded] = useState(false);
   const [message, setMessage] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{
@@ -207,6 +209,16 @@ export default function FrameSheetPage({
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [markSaved, project.id, row.id]);
+
+  // 別窓で開いているときは Esc で閉じられるようにする
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
 
   /** 置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = useMemo(() => {
@@ -597,6 +609,7 @@ export default function FrameSheetPage({
             onClick={() => {
               setMode(key);
               setDrawStart(null);
+              if (key === "layout") setExpanded(true);
             }}
           >
             {mode === key ? "■" : "□"} {MODE_LABEL[key]}
@@ -621,10 +634,21 @@ export default function FrameSheetPage({
         <span className="status">{message}</span>
       </div>
 
-      <div className="upper">
+      <div className={expanded ? "upper layout-popup" : "upper"}>
         <section className="drawing">
           <div className="section-bar">
             <span>建物レイアウト（{MODE_LABEL[mode]}）</span>
+            <button
+              type="button"
+              title={
+                expanded
+                  ? "別窓を閉じてもとの画面に戻ります"
+                  : "レイアウトを画面いっぱいに広げて配置できます"
+              }
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+            </button>
             <button
               type="button"
               onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
