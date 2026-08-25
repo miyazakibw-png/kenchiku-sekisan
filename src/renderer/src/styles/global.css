@@ -180,10 +180,20 @@ body,
   color: #1f4e79;
 }
 
-/* 印刷・PDFはA3横1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
+/* 印刷・PDFはA3 1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
 @page {
   size: A3 landscape;
   margin: 8mm;
+}
+
+/* 印刷バーの「用紙：縦」を選んだとき */
+@page tate {
+  size: A3 portrait;
+  margin: 8mm;
+}
+
+body.print-portrait .app {
+  page: tate;
 }
 
 @media print {
@@ -248,6 +258,10 @@ body,
     zoom: 3;
     max-width: 500px;
     margin: 0;
+  }
+
+  body.print-portrait .workspace-page .workspace-header {
+    max-width: 350px;
   }
 }
 

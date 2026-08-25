@@ -637,18 +637,24 @@ function registerIpcHandlers(): void {
       message: `復元しました（${checked.message}）。復元前のデータは ${rollbackPath} に退避しています。`,
     };
   });
-  ipcMain.handle(IPC.printPaper, async (event): Promise<PrintResult> => {
-    await new Promise<void>((resolve) => {
-      event.sender.print(
-        { landscape: true, pageSize: "A3", printBackground: true },
-        () => resolve(),
-      );
-    });
-    return { filePath: null };
-  });
+  ipcMain.handle(
+    IPC.printPaper,
+    async (event, landscape = true): Promise<PrintResult> => {
+      await new Promise<void>((resolve) => {
+        event.sender.print({ landscape, pageSize: "A3", printBackground: true }, () =>
+          resolve(),
+        );
+      });
+      return { filePath: null };
+    },
+  );
   ipcMain.handle(
     IPC.printPdf,
-    async (event, defaultName: string): Promise<PrintResult> => {
+    async (
+      event,
+      defaultName: string,
+      landscape = true,
+    ): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
       const result = window
         ? await dialog.showSaveDialog(window, {
@@ -657,7 +663,7 @@ function registerIpcHandlers(): void {
         : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
       if (result.canceled || !result.filePath) return { filePath: null };
       const pdf = await event.sender.printToPDF({
-        landscape: true,
+        landscape,
         pageSize: "A3",
         printBackground: true,
         preferCSSPageSize: true,

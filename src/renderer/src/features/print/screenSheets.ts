@@ -8,6 +8,9 @@ import type { ScreenSheetData } from '@shared/types'
 /** A3横（余白8mm）に入る幅の目安（96dpi） */
 export const A3_LANDSCAPE_WIDTH = 1527
 
+/** A3縦（余白8mm）に入る幅の目安（96dpi） */
+export const A3_PORTRAIT_WIDTH = 1062
+
 /** 並べ替えつまみなど、画面操作用の記号だけのセルは空にする */
 const UI_GLYPH_ONLY = /^[⠿↕✕🗑📋⧉🖨📄📊＋−+\-\s]+$/u
 
@@ -61,8 +64,9 @@ export function collectSheets(root: HTMLElement, screenName: string): ScreenShee
     .filter((sheet) => sheet.rows.length > 0)
 }
 
-/** 画面の全幅がA3横1枚に収まるよう縮小率を決める */
-export function printScale(contentWidth: number): number {
+/** 画面の全幅がA3（横／縦）1枚に収まるよう縮小率を決める */
+export function printScale(contentWidth: number, landscape = true): number {
   if (contentWidth <= 0) return 1
-  return Math.min(1, Math.round((A3_LANDSCAPE_WIDTH / contentWidth) * 1000) / 1000)
+  const paper = landscape ? A3_LANDSCAPE_WIDTH : A3_PORTRAIT_WIDTH
+  return Math.min(1, Math.round((paper / contentWidth) * 1000) / 1000)
 }

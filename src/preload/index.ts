@@ -272,11 +272,12 @@ const api = {
   /** 保存した積算データから復元 */
   restoreBackup: (): Promise<BackupResult> =>
     ipcRenderer.invoke(IPC.backupRestore),
-  /** 今の画面をA3横でプリンターへ */
-  printPaper: (): Promise<PrintResult> => ipcRenderer.invoke(IPC.printPaper),
-  /** 今の画面をA3横のPDFで保存 */
-  printPdf: (defaultName: string): Promise<PrintResult> =>
-    ipcRenderer.invoke(IPC.printPdf, defaultName),
+  /** 今の画面をA3（横／縦）でプリンターへ */
+  printPaper: (landscape = true): Promise<PrintResult> =>
+    ipcRenderer.invoke(IPC.printPaper, landscape),
+  /** 今の画面をA3（横／縦）のPDFで保存 */
+  printPdf: (defaultName: string, landscape = true): Promise<PrintResult> =>
+    ipcRenderer.invoke(IPC.printPdf, defaultName, landscape),
   /** 今の画面の表を入力表ごとのシートでエクセル保存（式なし・数字のみ） */
   exportScreenExcel: (request: ScreenExcelRequest): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.screenExcel, request),
