@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildFormworkRulesFromSources,
   buildFormworkTransferRows,
   collectFormworkQuantities,
   type FormworkSourceDetail,
@@ -36,6 +37,84 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
     ...patch
   }
 }
+
+describe('buildFormworkRulesFromSources', () => {
+  const sources = [
+    {
+      masterKey: 'k1',
+      materialCategory: '仕上',
+      partNumber: 30,
+      partName: 'ﾋﾟｯﾄ壁',
+      detailNumber: 100,
+      descriptionUpper: '仕上',
+      unit: 'm2'
+    },
+    {
+      masterKey: 'k2',
+      materialCategory: '仕上',
+      partNumber: 60,
+      partName: '天井',
+      detailNumber: 100,
+      descriptionUpper: '貼物下',
+      unit: 'm2'
+    }
+  ]
+
+  const spec = {
+    subjectId: 5,
+    name: '打放型枠',
+    unit: '',
+    coefficient: 1,
+    materialCategory: '型枠',
+    formwork: '',
+    copyPartName: true,
+    copyDetailNumber: false,
+    copyDescription: true
+  }
+
+  it('探した元明細1件につき1本、名称だけ型枠に変えて作る', () => {
+    const rules = buildFormworkRulesFromSources(sources, spec, '型枠')
+    expect(rules).toHaveLength(2)
+    expect(rules[0]).toMatchObject({
+      key: '型枠-1',
+      sourceKeys: ['k1'],
+      subjectId: 5,
+      materialCategory: '型枠',
+      partNumber: 30,
+      partName: 'ﾋﾟｯﾄ壁',
+      detailNumber: null,
+      name: '打放型枠',
+      description: '仕上',
+      unit: 'm2',
+      part1: '',
+      part2: ''
+    })
+    expect(rules[1].description).toBe('貼物下')
+  })
+
+  it('コピーしない指定・単位の変更・掛け率が効く', () => {
+    const rules = buildFormworkRulesFromSources(
+      sources,
+      {
+        ...spec,
+        unit: 'm',
+        coefficient: 2,
+        copyPartName: false,
+        copyDetailNumber: true,
+        copyDescription: false
+      },
+      '型枠'
+    )
+    expect(rules[0]).toMatchObject({
+      partName: '',
+      partNumber: null,
+      detailNumber: 100,
+      description: '',
+      unit: 'm',
+      coefficient: 2
+    })
+  })
+})
 
 describe('collectFormworkQuantities', () => {
   it('元明細×型枠分類×部位Ⅰ×部位Ⅱで合算する', () => {

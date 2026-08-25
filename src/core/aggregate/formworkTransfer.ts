@@ -80,6 +80,69 @@ export interface FormworkSourceGroup {
   quantity: number;
 }
 
+/** 一括作成のもとになる元明細（集計書兼工事マスターの明細） */
+export interface FormworkBulkSource {
+  masterKey: string;
+  materialCategory: string;
+  partNumber: number | null;
+  partName: string;
+  detailNumber: number | null;
+  descriptionUpper: string;
+  unit: string;
+}
+
+/** 名称で探した元明細を、まとめて型枠明細に変えるときの決めごと */
+export interface FormworkBulkSpec {
+  /** 転記科目 */
+  subjectId: number | null;
+  /** 転記先名称（例：打放型枠） */
+  name: string;
+  /** 単位（空欄なら元明細の単位を使う） */
+  unit: string;
+  coefficient: number;
+  materialCategory: string;
+  /** 型枠分類での絞り込み（空欄なら分類を問わない） */
+  formwork: string;
+  /** 部位名を元明細からコピーする */
+  copyPartName: boolean;
+  /** 明細IDを元明細からコピーする */
+  copyDetailNumber: boolean;
+  /** 摘要を元明細からコピーする */
+  copyDescription: boolean;
+}
+
+/**
+ * 名称で探した元明細から、型枠明細（ルール）をまとめて作る。
+ * 元明細1件につき1本作り、部位は元明細から引き継ぐ（部位Ⅰ・Ⅱは空欄のまま）。
+ */
+export function buildFormworkRulesFromSources(
+  sources: readonly FormworkBulkSource[],
+  spec: FormworkBulkSpec,
+  keyPrefix: string,
+): FormworkTransferRule[] {
+  return sources.map((source, index) => ({
+    key: `${keyPrefix}-${index + 1}`,
+    sourceKeys: [source.masterKey],
+    formwork: spec.formwork,
+    coefficient: spec.coefficient === 0 ? 1 : spec.coefficient,
+    subjectId: spec.subjectId,
+    materialCategory:
+      spec.materialCategory === ""
+        ? source.materialCategory
+        : spec.materialCategory,
+    part1: "",
+    part2: "",
+    part3: "",
+    partNumber: spec.copyPartName ? source.partNumber : null,
+    partName: spec.copyPartName ? source.partName : "",
+    detailNumber: spec.copyDetailNumber ? source.detailNumber : null,
+    name: spec.name,
+    description: spec.copyDescription ? source.descriptionUpper : "",
+    unit: spec.unit === "" ? source.unit : spec.unit,
+    remarks: "",
+  }));
+}
+
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }

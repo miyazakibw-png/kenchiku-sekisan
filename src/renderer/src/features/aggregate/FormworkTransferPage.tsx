@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   FormworkTransferRule,
   FormworkTransferView,
   ProjectSummary,
   Subject,
 } from "@shared/types";
+import { buildFormworkRulesFromSources } from "../../../../core/aggregate/formworkTransfer";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -20,6 +21,41 @@ const EMPTY: FormworkTransferView = {
   groups: [],
   rows: [],
 };
+
+/**
+ * 漢字変換できるように、打ち終わり（欄を出る・Enter）で確定する入力欄。
+ * 1文字ごとに書き換えると変換が切れてしまうため。
+ */
+function TextInput({
+  value,
+  onCommit,
+  className,
+  title,
+  placeholder,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  className?: string;
+  title?: string;
+  placeholder?: string;
+}): JSX.Element {
+  return (
+    <input
+      lang="ja"
+      key={value}
+      className={className}
+      defaultValue={value}
+      title={title}
+      placeholder={placeholder}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onBlur={(e) => {
+        if (e.target.value !== value) onCommit(e.target.value);
+      }}
+    />
+  );
+}
 
 function numberOrNull(value: string): number | null {
   const parsed = Number(value);
@@ -64,6 +100,16 @@ export default function FormworkTransferPage({
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [openRule, setOpenRule] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [bulkName, setBulkName] = useState("");
+  const [bulkSubject, setBulkSubject] = useState<number | null>(null);
+  const [bulkUnit, setBulkUnit] = useState("");
+  const [bulkCoefficient, setBulkCoefficient] = useState(1);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkFormwork, setBulkFormwork] = useState("");
+  const [copyPartName, setCopyPartName] = useState(true);
+  const [copyDetailNumber, setCopyDetailNumber] = useState(false);
+  const [copyDescription, setCopyDescription] = useState(true);
 
   const reload = useCallback(async () => {
     setView(await window.sekisan.getFormworkTransfer(project.id));
@@ -75,6 +121,17 @@ export default function FormworkTransferPage({
       await reload();
     })();
   }, [reload]);
+
+  /** 名称で探した元明細（空欄なら全部） */
+  const shown = useMemo(() => {
+    const word = search.trim();
+    return word === ""
+      ? view.sources
+      : view.sources.filter(
+          (item) =>
+            item.name.includes(word) || item.descriptionUpper.includes(word),
+        );
+  }, [search, view.sources]);
 
   const update = (
     index: number,
@@ -96,6 +153,39 @@ export default function FormworkTransferPage({
     setMessage(
       "元明細を選びました。掛け率と転記先（名称・単位など）を入れてください",
     );
+  };
+
+  /** 探した元明細をまとめて型枠明細に変える（1件ずつ入力しない） */
+  const addBulk = (): void => {
+    const sources = view.sources.filter((item) =>
+      picked.includes(item.masterKey),
+    );
+    if (sources.length === 0) {
+      setMessage("先に、型枠に変える元の明細を選んでください");
+      return;
+    }
+    if (bulkName.trim() === "") {
+      setMessage("転記先名称（例：打放型枠）を入れてください");
+      return;
+    }
+    const rules = buildFormworkRulesFromSources(
+      sources,
+      {
+        subjectId: bulkSubject,
+        name: bulkName,
+        unit: bulkUnit,
+        coefficient: bulkCoefficient,
+        materialCategory: bulkCategory,
+        formwork: bulkFormwork,
+        copyPartName,
+        copyDetailNumber,
+        copyDescription,
+      },
+      `型枠-${Date.now()}`,
+    );
+    setView({ ...view, rules: [...view.rules, ...rules] });
+    setPicked([]);
+    setMessage(`${rules.length} 件の型枠明細を作りました（②で直せます）`);
   };
 
   const removeRule = (index: number): void => {
@@ -158,8 +248,27 @@ export default function FormworkTransferPage({
       </div>
 
       <h3 className="section">
-        ① 型枠を算出する元の明細を選ぶ（集計書兼工事マスター）
+        ① 名称で探して、型枠にする元の明細を選ぶ（集計書兼工事マスター）
       </h3>
+      <div className="toolbar">
+        <label>
+          名称で検索{" "}
+          <TextInput
+            value={search}
+            placeholder="例：打放補修"
+            onCommit={setSearch}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setPicked(shown.map((item) => item.masterKey))}
+        >
+          表示中を全部選ぶ（{shown.length}件）
+        </button>
+        <button type="button" onClick={() => setPicked([])}>
+          選択を外す
+        </button>
+      </div>
       <table className="parts check-sheet">
         <thead>
           <tr>
@@ -174,7 +283,7 @@ export default function FormworkTransferPage({
           </tr>
         </thead>
         <tbody>
-          {view.sources.map((item) => (
+          {shown.map((item) => (
             <tr key={item.masterKey}>
               <td className="flag">
                 <input
@@ -200,15 +309,100 @@ export default function FormworkTransferPage({
           ))}
         </tbody>
       </table>
-      <p className="note">
-        <button type="button" onClick={addRule}>
-          ➕ 選んだ明細から型枠明細を作る
-        </button>
-        （選択 {picked.length} 件）
-      </p>
 
       <h3 className="section">
-        ② 型枠明細（掛け率と転記先。部位Ⅰ・Ⅱが空欄なら元明細の部位を使います）
+        ② 型枠の内容を決めて、選んだ分をまとめて作る（選択 {picked.length} 件）
+      </h3>
+      <div className="toolbar">
+        <label>
+          転記科目{" "}
+          <select
+            value={bulkSubject ?? ""}
+            onChange={(e) => setBulkSubject(numberOrNull(e.target.value))}
+          >
+            <option value="">（未設定）</option>
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.id} {subject.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          転記先名称{" "}
+          <TextInput
+            value={bulkName}
+            placeholder="例：打放型枠"
+            onCommit={setBulkName}
+          />
+        </label>
+        <label>
+          単位{" "}
+          <TextInput
+            className="num"
+            value={bulkUnit}
+            placeholder="空欄＝元の単位"
+            onCommit={setBulkUnit}
+          />
+        </label>
+        <label>
+          掛け率{" "}
+          <input
+            className="num"
+            value={bulkCoefficient}
+            onChange={(e) => setBulkCoefficient(Number(e.target.value) || 0)}
+          />
+        </label>
+        <label>
+          材種区分{" "}
+          <TextInput
+            value={bulkCategory}
+            placeholder="空欄＝元のまま"
+            onCommit={setBulkCategory}
+          />
+        </label>
+        <label>
+          型枠分類{" "}
+          <TextInput
+            value={bulkFormwork}
+            placeholder="空欄＝分類を問わない"
+            onCommit={setBulkFormwork}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={copyPartName}
+            onChange={(e) => setCopyPartName(e.target.checked)}
+          />{" "}
+          部位名をコピー
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={copyDetailNumber}
+            onChange={(e) => setCopyDetailNumber(e.target.checked)}
+          />{" "}
+          明細IDをコピー
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={copyDescription}
+            onChange={(e) => setCopyDescription(e.target.checked)}
+          />{" "}
+          摘要をコピー
+        </label>
+        <button type="button" onClick={addBulk}>
+          ➕ この内容で型枠明細を作る
+        </button>
+        <button type="button" onClick={addRule}>
+          選んだ分を1本にまとめて作る
+        </button>
+      </div>
+
+      <h3 className="section">
+        ③ 型枠明細の一覧（直せます。部位Ⅰ・Ⅱが空欄なら元明細の部位を使います）
       </h3>
       <table className="parts check-sheet" ref={tableRef}>
         <thead>
@@ -250,11 +444,10 @@ export default function FormworkTransferPage({
                 )}
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.formwork}
                   title="空欄なら分類を問わず、元明細の数量を全部使います"
-                  onChange={(e) => update(index, { formwork: e.target.value })}
+                  onCommit={(value) => update(index, { formwork: value })}
                 />
               </td>
               <td className="number">
@@ -281,33 +474,29 @@ export default function FormworkTransferPage({
                 </select>
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.materialCategory}
-                  onChange={(e) =>
-                    update(index, { materialCategory: e.target.value })
+                  onCommit={(value) =>
+                    update(index, { materialCategory: value })
                   }
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.part1}
-                  onChange={(e) => update(index, { part1: e.target.value })}
+                  onCommit={(value) => update(index, { part1: value })}
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.part2}
-                  onChange={(e) => update(index, { part2: e.target.value })}
+                  onCommit={(value) => update(index, { part2: value })}
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.part3}
-                  onChange={(e) => update(index, { part3: e.target.value })}
+                  onCommit={(value) => update(index, { part3: value })}
                 />
               </td>
               <td className="number">
@@ -319,10 +508,9 @@ export default function FormworkTransferPage({
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.partName}
-                  onChange={(e) => update(index, { partName: e.target.value })}
+                  onCommit={(value) => update(index, { partName: value })}
                 />
               </td>
               <td className="number">
@@ -336,32 +524,27 @@ export default function FormworkTransferPage({
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.name}
-                  onChange={(e) => update(index, { name: e.target.value })}
+                  onCommit={(value) => update(index, { name: value })}
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.description}
-                  onChange={(e) =>
-                    update(index, { description: e.target.value })
-                  }
+                  onCommit={(value) => update(index, { description: value })}
                 />
               </td>
               <td>
-                <input
+                <TextInput
                   value={rule.unit}
-                  onChange={(e) => update(index, { unit: e.target.value })}
+                  onCommit={(value) => update(index, { unit: value })}
                 />
               </td>
               <td>
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.remarks}
-                  onChange={(e) => update(index, { remarks: e.target.value })}
+                  onCommit={(value) => update(index, { remarks: value })}
                 />
               </td>
               <td>
@@ -374,7 +557,7 @@ export default function FormworkTransferPage({
         </tbody>
       </table>
 
-      <h3 className="section">③ 算出結果（転記入力表へ入れる行）</h3>
+      <h3 className="section">④ 算出結果（転記入力表へ入れる行）</h3>
       <table className="parts check-sheet" ref={tableRef1}>
         <thead>
           <tr>
