@@ -14,6 +14,7 @@ import {
   frameQuantities,
   frameSymbols,
   isPickedUp,
+  nearMissWalls,
   reinforcementKind,
   reinforcementLength,
   snapPlacement,
@@ -23,6 +24,7 @@ import {
   type FramePlacement,
 } from "../../../../core/frame/frame";
 import {
+  floorArea,
   solveShape,
   type RoomShape,
   type SolvedShape,
@@ -86,6 +88,19 @@ function parseJson<T>(json: string, fallback: T): T {
   }
 }
 
+/** 吸着の幅（mm）。パソコンに覚えておいて次も同じ幅で使う */
+const SNAP_KEY = "frameSnapMm";
+const DEFAULT_SNAP_MM = 300;
+
+function savedSnapMm(): number {
+  try {
+    const value = Number(window.localStorage.getItem(SNAP_KEY));
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_SNAP_MM;
+  } catch {
+    return DEFAULT_SNAP_MM;
+  }
+}
+
 function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 }
@@ -144,6 +159,9 @@ export default function FrameSheetPage({
   const [zoom, setZoom] = useState(1);
   /** 建物レイアウトを画面いっぱいの別窓で開く */
   const [expanded, setExpanded] = useState(false);
+  /** 吸着の幅（mm）。部屋ごとの寸法の食い違いをここで調整する */
+  const [snapMm, setSnapMm] = useState(savedSnapMm);
+  const [snapText, setSnapText] = useState(() => String(savedSnapMm()));
   const [message, setMessage] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{
@@ -268,6 +286,26 @@ export default function FrameSheetPage({
     [quantities, workHeight],
   );
   const shared = useMemo(() => findSharedWalls(lines), [lines]);
+  /** 寸法の基準は面積が最大の部屋とするため、配置ごとの面積を渡す */
+  const placementAreas = useMemo(() => {
+    const areas = new Map<string, number>();
+    placements.forEach((placement) => {
+      const solved = shapes.get(placement.estimateRowId);
+      if (!solved) return;
+      areas.set(placement.id, floorArea(solved) ?? 0);
+    });
+    return areas;
+  }, [placements, shapes]);
+  /** 同じ壁のはずなのに少しずれている組（部屋ごとの寸法の食い違い） */
+  const gaps = useMemo(
+    () => nearMissWalls(lines, snapMm / 1000, placementAreas),
+    [lines, placementAreas, snapMm],
+  );
+  /** 基準（最大の部屋）に合わない側を赤く出す */
+  const gapLineIds = useMemo(
+    () => new Set(gaps.map((gap) => gap.bId)),
+    [gaps],
+  );
 
   /** 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため） */
   const symbolPairs = useMemo(() => {
@@ -441,11 +479,12 @@ export default function FrameSheetPage({
         const snapped = snapPlacement(
           { x: placement.x, y: placement.y, solved },
           others,
+          snapMm / 1000,
         );
         return { ...placement, ...snapped };
       }),
     );
-  }, [lines, shapes]);
+  }, [lines, shapes, snapMm]);
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
@@ -664,6 +703,47 @@ export default function FrameSheetPage({
             <button type="button" onClick={() => setZoom(1)}>
               全体
             </button>
+            <label className="snap-field" title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます">
+              吸着
+              <input
+                className="num"
+                value={snapText}
+                onChange={(e) => setSnapText(e.target.value)}
+                onBlur={() => {
+                  const value = Number(snapText);
+                  // 数でないときや0以下のときは元の幅に戻す
+                  if (!Number.isFinite(value) || value <= 0) {
+                    setSnapText(String(snapMm));
+                    return;
+                  }
+                  setSnapMm(value);
+                  try {
+                    window.localStorage.setItem(SNAP_KEY, String(value));
+                  } catch {
+                    // 覚えられなくても使えるようにする
+                  }
+                }}
+              />
+              mm
+            </label>
+            {gaps.length > 0 && (
+              <span
+                className="gap-note"
+                title={gaps
+                  .map(
+                    (gap) =>
+                      `${gap.roomName} ${formatNumber(gap.gap * 1000, 0)}mm違い`,
+                  )
+                  .join(" / ")}
+              >
+                壁のずれ {gaps.length}か所（最大{" "}
+                {formatNumber(
+                  Math.max(...gaps.map((gap) => gap.gap)) * 1000,
+                  0,
+                )}
+                mm）
+              </span>
+            )}
           </div>
           <div className="canvas">
             <svg
@@ -749,6 +829,7 @@ export default function FrameSheetPage({
                     className={[
                       "frame-line",
                       picked ? "" : "skip",
+                      gapLineIds.has(line.id) ? "gap" : "",
                       selectedLineId === line.id ? "selected" : "",
                     ]
                       .filter(Boolean)

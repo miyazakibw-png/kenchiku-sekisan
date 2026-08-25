@@ -20,11 +20,14 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  grid-template-columns: 1fr minmax(240px, 320px);
+  /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 100%;
+  max-height: none;
+  height: 100%;
   background: #fff;
   padding: 8px;
-  overflow: auto;
-  box-shadow: 0 0 0 100vmax rgb(15 23 42 / 35%);
+  overflow: hidden;
 }
 
 /* 別窓では図と置ける部屋だけを出す */
@@ -32,13 +35,45 @@
   display: none;
 }
 
-.frame-sheet-page > .upper.layout-popup .drawing {
+.frame-sheet-page > .upper.layout-popup > section {
   grid-row: span 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
+/* 図は別窓の高さいっぱいまで使う */
 .frame-sheet-page > .upper.layout-popup .canvas {
+  flex: 1 1 auto;
   max-height: none;
-  height: calc(100vh - 90px);
+  min-height: 0;
+}
+
+/* 同じ壁のはずなのに少しずれている線・その件数 */
+.frame-sheet-page .frame-line.gap {
+  stroke: #dc2626;
+  stroke-dasharray: 3 3;
+}
+
+/* 吸着の幅（mm）の欄 */
+.frame-sheet-page .snap-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.frame-sheet-page .snap-field input {
+  width: 52px;
+  text-align: right;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.frame-sheet-page .gap-note {
+  color: #dc2626;
+  font-size: 12px;
 }
 
 .frame-sheet-page .frame-line {

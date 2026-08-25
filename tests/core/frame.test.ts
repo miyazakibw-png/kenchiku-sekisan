@@ -9,6 +9,7 @@ import {
   reinforcementKind,
   reinforcementLength,
   roomLineId,
+  nearMissWalls,
   snapPlacement,
   type FrameFitting,
   type FrameLineAttribute,
@@ -192,6 +193,19 @@ describe("吸着", () => {
     expect(snapped).toEqual({ x: 4, y: 0 });
   });
 
+  it("角どうしが近ければ、その点がぴったり重なるように寄せる", () => {
+    const others = buildFrameLines({
+      placements: [placement({ id: "p1" })],
+      shapes: new Map([[1, room()]]),
+      manualLines: [],
+      attributes: {},
+    });
+    // 右下の角（4,3）に、動かす部屋の左上の角を近づける
+    expect(
+      snapPlacement({ x: 4.08, y: 3.06, solved: room() }, others),
+    ).toEqual({ x: 4, y: 3 });
+  });
+
   it("離れていれば動かさない", () => {
     const others = buildFrameLines({
       placements: [placement({ id: "p1" })],
@@ -203,6 +217,43 @@ describe("吸着", () => {
       x: 9,
       y: 9,
     });
+  });
+});
+
+describe("壁のずれ", () => {
+  it("同じ壁のはずなのに少しずれている組を拾う", () => {
+    const lines = buildFrameLines({
+      placements: [
+        placement({ id: "p1", estimateRowId: 1 }),
+        placement({ id: "p2", estimateRowId: 1, x: 4.05, y: 0 }),
+      ],
+      shapes: new Map([[1, room()]]),
+      manualLines: [],
+      attributes: {},
+    });
+    const gaps = nearMissWalls(
+      lines,
+      0.3,
+      // 面積が大きいほうを基準にする
+      new Map([
+        ["p1", 12],
+        ["p2", 6],
+      ]),
+    );
+    expect(gaps.length).toBeGreaterThan(0);
+    expect(gaps.every((gap) => gap.gap === 0.05)).toBe(true);
+    expect(gaps.every((gap) => gap.aId.startsWith("p1"))).toBe(true);
+    // ぴったり合っていればずれは出ない
+    const aligned = buildFrameLines({
+      placements: [
+        placement({ id: "p1", estimateRowId: 1 }),
+        placement({ id: "p2", estimateRowId: 1, x: 4, y: 0 }),
+      ],
+      shapes: new Map([[1, room()]]),
+      manualLines: [],
+      attributes: {},
+    });
+    expect(nearMissWalls(aligned, 0.3)).toEqual([]);
   });
 });
 

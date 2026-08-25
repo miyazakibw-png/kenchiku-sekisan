@@ -301,6 +301,60 @@ function rangeOverlap(
   return length > SNAP_TOLERANCE ? length : null;
 }
 
+/** 同じ壁のはずなのに少しずれている組（人が見て直すために出す） */
+export interface WallGap {
+  /** 基準にした側（面積の大きい部屋の壁） */
+  aId: string;
+  /** ずれている側 */
+  bId: string;
+  /** ずれている側の部屋名 */
+  roomName: string;
+  /** ずれ（m） */
+  gap: number;
+}
+
+/**
+ * 別の部屋どうしで、同じ向き・向かい合っているのに少しずれている壁を拾う。
+ * 部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うことがある。
+ * ずれが tolerance 以内のものだけ「同じ壁のはず」とみて返す（0 は一致なので返さない）。
+ */
+export function nearMissWalls(
+  lines: FrameLine[],
+  tolerance: number,
+  areas: Map<string, number> = new Map(),
+): WallGap[] {
+  const gaps: WallGap[] = [];
+  /** 面積が大きい部屋の壁を正（基準）とする */
+  const area = (line: FrameLine): number =>
+    line.placementId === null ? 0 : (areas.get(line.placementId) ?? 0);
+  for (let i = 0; i < lines.length; i += 1) {
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const a = lines[i];
+      const b = lines[j];
+      if (a.placementId !== null && a.placementId === b.placementId) continue;
+      const aVertical = sameValue(a.x1, a.x2);
+      if (aVertical !== sameValue(b.x1, b.x2)) continue;
+      const offset = aVertical
+        ? Math.abs(a.x1 - b.x1)
+        : Math.abs(a.y1 - b.y1);
+      if (offset <= SNAP_TOLERANCE || offset > tolerance) continue;
+      const along = aVertical
+        ? rangeOverlap(a.y1, a.y2, b.y1, b.y2)
+        : rangeOverlap(a.x1, a.x2, b.x1, b.x2);
+      if (along === null) continue;
+      const base = area(a) >= area(b) ? a : b;
+      const off = base === a ? b : a;
+      gaps.push({
+        aId: base.id,
+        bId: off.id,
+        roomName: off.roomName,
+        gap: round2(offset),
+      });
+    }
+  }
+  return gaps;
+}
+
 /**
  * 部屋を近付けたときに壁位置を合わせる（吸着）。
  * 置こうとしている位置から、他の部屋の壁の座標に近ければその座標へ寄せる。
@@ -315,6 +369,34 @@ export function snapPlacement(
   const ys = moving.solved.points.map((point) => point.y + moving.y);
   const targetXs = others.flatMap((line) => [line.x1, line.x2]);
   const targetYs = others.flatMap((line) => [line.y1, line.y2]);
+
+  // 点と点（角どうし）が近ければ、その角がぴったり重なるように寄せる
+  const corners = moving.solved.points.map((point) => ({
+    x: point.x + moving.x,
+    y: point.y + moving.y,
+  }));
+  const targetCorners = others.flatMap((line) => [
+    { x: line.x1, y: line.y1 },
+    { x: line.x2, y: line.y2 },
+  ]);
+  let cornerShift: { x: number; y: number } | null = null;
+  let cornerDistance = tolerance;
+  corners.forEach((corner) => {
+    targetCorners.forEach((target) => {
+      const distance = Math.hypot(target.x - corner.x, target.y - corner.y);
+      if (distance < cornerDistance) {
+        cornerDistance = distance;
+        cornerShift = { x: target.x - corner.x, y: target.y - corner.y };
+      }
+    });
+  });
+  if (cornerShift !== null) {
+    const shift: { x: number; y: number } = cornerShift;
+    return {
+      x: round2(moving.x + shift.x),
+      y: round2(moving.y + shift.y),
+    };
+  }
 
   const shift = (values: number[], targets: number[]): number => {
     let best = 0;
