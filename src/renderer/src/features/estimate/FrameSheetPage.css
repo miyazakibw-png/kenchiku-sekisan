@@ -118,6 +118,24 @@
   cursor: pointer;
 }
 
+.frame-sheet-page .fitting-cell {
+  white-space: nowrap;
+}
+
+.frame-sheet-page .fitting-cell select {
+  font-size: 11px;
+}
+
+.frame-sheet-page .fitting-cell button.chip {
+  margin-right: 2px;
+  padding: 0 4px;
+  font-size: 11px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+
 .frame-sheet-page .gap-note {
   color: #dc2626;
   font-size: 12px;

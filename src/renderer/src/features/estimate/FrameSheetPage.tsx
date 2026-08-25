@@ -1295,7 +1295,9 @@ export default function FrameSheetPage({
                   <th className="no">番号</th>
                   <th className="num">長さ</th>
                   <th className="num">高さ</th>
+                  <th>建具</th>
                   <th className="num">面積</th>
+                  <th className="num">補強</th>
                   <th />
                 </tr>
               </thead>
@@ -1342,7 +1344,55 @@ export default function FrameSheetPage({
                           }}
                         />
                       </td>
+                      <td className="fitting-cell">
+                        {frameFittings
+                          .filter((item) => item.lineId === manual.id)
+                          .map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="chip"
+                              title="押すとこの線から建具を外します"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFrameFittings((current) =>
+                                  current.filter((each) => each.id !== item.id),
+                                );
+                              }}
+                            >
+                              {item.symbol}
+                              {item.multiplier > 1 ? `×${item.multiplier}` : ""}
+                            </button>
+                          ))}
+                        <select
+                          value=""
+                          title="この番号の線に付く建具を選びます"
+                          onChange={(e) => {
+                            const symbol = e.target.value;
+                            if (symbol === "") return;
+                            setFrameFittings((current) => [
+                              ...current,
+                              {
+                                id: newId("ff"),
+                                symbol,
+                                multiplier: 1,
+                                lineId: manual.id,
+                              },
+                            ]);
+                          }}
+                        >
+                          <option value="">＋建具</option>
+                          {fittings.map((fitting) => (
+                            <option key={fitting.id} value={fitting.symbol}>
+                              {fitting.symbol}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="num">{formatNumber(result.area, 2)}</td>
+                      <td className="num">
+                        {formatNumber(result.reinforcement, 2)}
+                      </td>
                       <td>
                         <button
                           type="button"
@@ -1378,6 +1428,13 @@ export default function FrameSheetPage({
                 quantities.lines
                   .filter((each) => each.line.source === "manual")
                   .reduce((total, each) => total + (each.area ?? 0), 0),
+                2,
+              )}
+              ／補強計{" "}
+              {formatNumber(
+                quantities.lines
+                  .filter((each) => each.line.source === "manual")
+                  .reduce((total, each) => total + each.reinforcement, 0),
                 2,
               )}
             </p>
