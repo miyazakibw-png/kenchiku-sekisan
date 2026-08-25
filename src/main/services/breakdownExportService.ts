@@ -68,7 +68,8 @@ export function buildExport(
   const xml = toSpreadsheetXml(sheets, settings.layout);
   return {
     content: Buffer.from(xml, "utf8"),
-    defaultName: `${projectName}_内訳書.xls`,
+    // SpreadsheetML なので .xml で保存する（.xls だとエクセルが形式違いの警告を出す）
+    defaultName: `${projectName}_内訳書.xml`,
   };
 }
 

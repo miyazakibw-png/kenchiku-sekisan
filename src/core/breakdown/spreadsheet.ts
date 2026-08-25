@@ -46,6 +46,13 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
           `<Cell ss:StyleID="h"><Data ss:Type="String">${escapeXml(row.subjectName)}</Data></Cell>`,
         ]),
       );
+      // 2段の書式では工種科目の見出しも明細と同じ2行分にする
+      if (
+        layout === BREAKDOWN_LAYOUT.twoLine ||
+        layout === BREAKDOWN_LAYOUT.twoRow
+      ) {
+        lines.push(rowXml(['<Cell ss:StyleID="h"/>']));
+      }
       return;
     }
     if (layout === BREAKDOWN_LAYOUT.excel) {

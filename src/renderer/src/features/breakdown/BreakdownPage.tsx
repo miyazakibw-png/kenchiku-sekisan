@@ -762,7 +762,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 row.rowKind === "subject" ? (
                   <tr key={`s-${index}`} className="subject">
                     <td className="mark">{row.subjectId ?? ""}</td>
-                    <td colSpan={7}>{row.subjectName}</td>
+                    <td colSpan={7}>
+                      {/* 2段の書式では工種科目の見出しも2行分の高さにする */}
+                      {settings.layout === BREAKDOWN_LAYOUT.twoLine ||
+                      settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
+                        <>
+                          <div className="upper">{row.subjectName}</div>
+                          <div className="lower" />
+                        </>
+                      ) : (
+                        row.subjectName
+                      )}
+                    </td>
                   </tr>
                 ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
                   settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
@@ -870,6 +881,16 @@ function comparePairClass(
   return "";
 }
 
+/** 2段の書式で、工種科目の見出しを2行分の高さにする */
+function subjectLines(name: string): JSX.Element {
+  return (
+    <>
+      <div className="upper">{name}</div>
+      <div className="lower" />
+    </>
+  );
+}
+
 /** 比較画面の明細セル。内訳書の設定（書式）どおりに出す */
 function renderCompareCells(
   row: BreakdownRowRecord | null,
@@ -895,7 +916,7 @@ function renderCompareCells(
     return [
       <td key="n" className={mark("name")}>
         {row.rowKind === "subject" ? (
-          row.subjectName
+          subjectLines(row.subjectName)
         ) : (
           <>
             <div className="upper">{row.nameUpper}</div>
@@ -940,7 +961,11 @@ function renderCompareCells(
     : [row.remarksUpper, row.remarksLower].filter((v) => v !== "").join(" ");
   return [
     <td key="n" className={mark("name")}>
-      {row.rowKind === "subject" ? row.subjectName : name}
+      {row.rowKind === "subject"
+        ? layout === BREAKDOWN_LAYOUT.twoRow
+          ? subjectLines(row.subjectName)
+          : row.subjectName
+        : name}
     </td>,
     <td key="d" className={mark("description")}>
       {description}

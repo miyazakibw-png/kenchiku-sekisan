@@ -656,7 +656,8 @@ function registerIpcHandlers(): void {
     IPC.screenExcel,
     async (event, request: ScreenExcelRequest): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
-      const defaultPath = `${request.defaultName}.xls`;
+      // SpreadsheetML なので .xml で保存する（.xls だとエクセルが形式違いの警告を出す）
+      const defaultPath = `${request.defaultName}.xml`;
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath })
         : await dialog.showSaveDialog({ defaultPath });
