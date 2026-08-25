@@ -331,10 +331,7 @@ export default function FrameSheetPage({
     [lines, placementAreas, snapMm],
   );
   /** 基準（最大の部屋）に合わない側を赤く出す */
-  const gapLineIds = useMemo(
-    () => new Set(gaps.map((gap) => gap.bId)),
-    [gaps],
-  );
+  const gapLineIds = useMemo(() => new Set(gaps.map((gap) => gap.bId)), [gaps]);
 
   /** 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため） */
   const symbolPairs = useMemo(() => {
@@ -492,63 +489,19 @@ export default function FrameSheetPage({
     [view.box, view.span],
   );
 
-  const finishDrag = useCallback(() => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (!drag) return;
-    // 近い壁に吸着させて壁位置を合わせる
-    setPlacements((current) =>
-      current.map((placement) => {
-        if (placement.id !== drag.placementId) return placement;
-        const solved = shapes.get(placement.estimateRowId);
-        if (!solved) return placement;
-        const others = lines.filter(
-          (line) => line.placementId !== placement.id,
-        );
-        const snapped = snapPlacement(
-          { x: placement.x, y: placement.y, solved },
-          others,
-          snapMm / 1000,
-        );
-        return { ...placement, ...snapped };
-      }),
-    );
-  }, [lines, shapes, snapMm]);
-
-  const onPointerMove = useCallback(
-    (event: React.PointerEvent<SVGSVGElement>) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const svg = svgRef.current;
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const size = Math.min(rect.width, rect.height) || 1;
-      const scale = view.span / size;
-      const x = drag.x + (event.clientX - drag.clientX) * scale;
-      const y = drag.y + (event.clientY - drag.clientY) * scale;
-      setPlacements((current) =>
-        current.map((placement) =>
-          placement.id === drag.placementId
-            ? {
-                ...placement,
-                x: Math.round(x * 20) / 20,
-                y: Math.round(y * 20) / 20,
-              }
-            : placement,
-        ),
-      );
-    },
-    [view.span],
-  );
-
   /** クリックした所を、近くの角（点）や壁の位置へ寄せる */
   const snapPoint = useCallback(
-    (point: { x: number; y: number }): { x: number; y: number } => {
+    (
+      point: { x: number; y: number },
+      exceptLineId: string | null = null,
+    ): { x: number; y: number } => {
       const tolerance = snapMm / 1000;
-      const corners = lines.flatMap((line) => [
-        { x: line.x1, y: line.y1 },
-        { x: line.x2, y: line.y2 },
-      ]);
+      const corners = lines
+        .filter((line) => line.id !== exceptLineId)
+        .flatMap((line) => [
+          { x: line.x1, y: line.y1 },
+          { x: line.x2, y: line.y2 },
+        ]);
       let best: { x: number; y: number } | null = null;
       let bestDistance = tolerance;
       corners.forEach((corner) => {
@@ -585,9 +538,115 @@ export default function FrameSheetPage({
     [lines, snapMm],
   );
 
+  /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
+  const endRef = useRef<{ lineId: string; end: 1 | 2 } | null>(null);
+  /** 端をつまんで離した直後のクリックで、線を引き始めないための印 */
+  const endMovedRef = useRef(false);
+
+  const finishDrag = useCallback(() => {
+    const grabbed = endRef.current;
+    if (grabbed) {
+      endRef.current = null;
+      endMovedRef.current = true;
+      setManualLines((current) =>
+        current.map((line) => {
+          if (line.id !== grabbed.lineId) return line;
+          const point = snapPoint(
+            grabbed.end === 1
+              ? { x: line.x1, y: line.y1 }
+              : { x: line.x2, y: line.y2 },
+            line.id,
+          );
+          return grabbed.end === 1
+            ? { ...line, x1: point.x, y1: point.y }
+            : { ...line, x2: point.x, y2: point.y };
+        }),
+      );
+      return;
+    }
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag) return;
+    // 近い壁に吸着させて壁位置を合わせる
+    setPlacements((current) =>
+      current.map((placement) => {
+        if (placement.id !== drag.placementId) return placement;
+        const solved = shapes.get(placement.estimateRowId);
+        if (!solved) return placement;
+        const others = lines.filter(
+          (line) => line.placementId !== placement.id,
+        );
+        const snapped = snapPlacement(
+          { x: placement.x, y: placement.y, solved },
+          others,
+          snapMm / 1000,
+        );
+        return { ...placement, ...snapped };
+      }),
+    );
+  }, [lines, shapes, snapMm, snapPoint]);
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      const grabbed = endRef.current;
+      if (grabbed) {
+        const point = toModel(event.clientX, event.clientY);
+        if (!point) return;
+        const at = (value: number): number => Math.round(value * 20) / 20;
+        setManualLines((current) =>
+          current.map((line) => {
+            if (line.id !== grabbed.lineId) return line;
+            // よこの線はよこだけ、たての線はたてだけ伸び縮みさせる
+            const horizontal = Math.abs(line.y1 - line.y2) < 1e-6;
+            const vertical = Math.abs(line.x1 - line.x2) < 1e-6;
+            const x = vertical
+              ? grabbed.end === 1
+                ? line.x1
+                : line.x2
+              : at(point.x);
+            const y = horizontal
+              ? grabbed.end === 1
+                ? line.y1
+                : line.y2
+              : at(point.y);
+            return grabbed.end === 1
+              ? { ...line, x1: x, y1: y }
+              : { ...line, x2: x, y2: y };
+          }),
+        );
+        return;
+      }
+      const drag = dragRef.current;
+      if (!drag) return;
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const size = Math.min(rect.width, rect.height) || 1;
+      const scale = view.span / size;
+      const x = drag.x + (event.clientX - drag.clientX) * scale;
+      const y = drag.y + (event.clientY - drag.clientY) * scale;
+      setPlacements((current) =>
+        current.map((placement) =>
+          placement.id === drag.placementId
+            ? {
+                ...placement,
+                x: Math.round(x * 20) / 20,
+                y: Math.round(y * 20) / 20,
+              }
+            : placement,
+        ),
+      );
+    },
+    [toModel, view.span],
+  );
+
   /** 始点クリック → 終点クリックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
+      if (endMovedRef.current) {
+        endMovedRef.current = false;
+        return;
+      }
       if (mode !== "frame" && !(mode === "layout" && drawing)) return;
       const point = toModel(event.clientX, event.clientY);
       if (!point) return;
@@ -817,7 +876,10 @@ export default function FrameSheetPage({
                 ↩ 1本消す
               </button>
             )}
-            <label className="snap-field" title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます">
+            <label
+              className="snap-field"
+              title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます"
+            >
               吸着
               <input
                 className="num"
@@ -994,6 +1056,26 @@ export default function FrameSheetPage({
                   />
                 );
               })}
+              {manualLines
+                .filter((line) => line.id === selectedLineId)
+                .flatMap((line) =>
+                  ([1, 2] as const).map((end) => (
+                    <circle
+                      key={`h-${line.id}-${end}`}
+                      cx={end === 1 ? line.x1 : line.x2}
+                      cy={end === 1 ? line.y1 : line.y2}
+                      r={view.span * 0.012}
+                      className="line-handle"
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        endRef.current = { lineId: line.id, end };
+                        setMessage(
+                          "端をつまんだまま動かすと、線が伸び縮みします",
+                        );
+                      }}
+                    />
+                  )),
+                )}
               {drawStart && (
                 <circle
                   cx={drawStart.x}

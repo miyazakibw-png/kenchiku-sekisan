@@ -77,6 +77,15 @@
   opacity: 0.15;
 }
 
+/* 選んだ線の端のつまみ（ドラッグで伸び縮み） */
+.frame-sheet-page .line-handle {
+  fill: #fff;
+  stroke: #dc2626;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
 /* 部屋名を押すとその部屋の計算書へ飛ぶ */
 .frame-sheet-page .rooms button.room-link {
   border: none;
