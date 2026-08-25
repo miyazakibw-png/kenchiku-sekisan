@@ -630,7 +630,11 @@ export interface FormworkSourceItem {
   masterKey: string;
   part1: string;
   part2: string;
+  subjectId: number | null;
+  materialCategory: string;
+  partNumber: number | null;
   partName: string;
+  detailNumber: number | null;
   name: string;
   descriptionUpper: string;
   unit: string;
