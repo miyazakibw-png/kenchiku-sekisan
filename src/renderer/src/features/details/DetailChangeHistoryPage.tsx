@@ -55,8 +55,6 @@ export default function DetailChangeHistoryPage({
   const [logs, setLogs] = useState<DetailChangeLog[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newestFirst, setNewestFirst] = useState(true);
-  /** true なら修正前・修正後の2行を並べる。false は変わった欄だけの1行 */
-  const [showBefore, setShowBefore] = useState(false);
   const hiddenKey = `detail-change-history-hidden-${projectId ?? "basic"}`;
   const [hiddenThrough, setHiddenThrough] = useState(() =>
     Number(window.localStorage.getItem(hiddenKey) ?? "0"),
@@ -81,7 +79,12 @@ export default function DetailChangeHistoryPage({
     setHiddenThrough(0);
   };
 
-  const visible = logs.filter((log) => log.id > hiddenThrough);
+  // 変わった欄（赤文字）の無い修正は一覧に出さない（追加・削除は出す）
+  const visible = logs.filter(
+    (log) =>
+      log.id > hiddenThrough &&
+      (log.changeKind !== "edit" || log.changedFields.length > 0),
+  );
   const rows = newestFirst ? visible : [...visible].reverse();
 
   return (
@@ -102,14 +105,6 @@ export default function DetailChangeHistoryPage({
           onClick={() => setNewestFirst(!newestFirst)}
         >
           {newestFirst ? "新しい順" : "古い順"}
-        </button>
-        <button
-          type="button"
-          className={showBefore ? "on" : ""}
-          title="修正前の行も並べて見比べます"
-          onClick={() => setShowBefore(!showBefore)}
-        >
-          {showBefore ? "修正前後を表示" : "変わった欄だけ"}
         </button>
         <button
           type="button"
@@ -140,7 +135,7 @@ export default function DetailChangeHistoryPage({
             <th className="kind">区分</th>
             <th className="origin">変更元</th>
             <th className="subject">科目</th>
-            {showBefore && <th className="stage">前後</th>}
+            <th className="stage">前後</th>
             {COLUMNS.map((column) => (
               <th key={column.key}>{column.label}</th>
             ))}
@@ -148,53 +143,20 @@ export default function DetailChangeHistoryPage({
         </thead>
         {rows.map((log) => {
           const subject = subjects.find((item) => item.id === log.subjectId);
-          const when = log.changedAt.replace("T", " ").slice(0, 19);
-          const kind = KIND_LABEL[log.changeKind];
-          const subjectName = subject?.name ?? String(log.subjectId);
-          if (!showBefore) {
-            // 変わった欄だけを出す（削除は消える前の中身をそのまま出す）
-            const snapshot = log.after ?? log.before;
-            return (
-              <tbody key={log.id} className="log">
-                <tr className="after">
-                  <td className="when">{when}</td>
-                  <td className="kind">{kind}</td>
-                  <td className="origin">{log.origin}</td>
-                  <td className="subject">{subjectName}</td>
-                  {COLUMNS.map((column) => {
-                    const changed = log.changedFields.includes(column.key);
-                    const before = cellText(log.before, column.key);
-                    const after = cellText(snapshot, column.key);
-                    return (
-                      <td
-                        key={column.key}
-                        className={changed ? "changed" : ""}
-                        title={changed ? `修正前：${before || "（空欄）"}` : ""}
-                      >
-                        {changed && log.changeKind === "edit"
-                          ? `${before || "（空欄）"} → ${after || "（空欄）"}`
-                          : after}
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            );
-          }
           return (
             <tbody key={log.id} className="log">
               <tr className="before">
                 <td className="when" rowSpan={2}>
-                  {when}
+                  {log.changedAt.replace("T", " ").slice(0, 19)}
                 </td>
                 <td className="kind" rowSpan={2}>
-                  {kind}
+                  {KIND_LABEL[log.changeKind]}
                 </td>
                 <td className="origin" rowSpan={2}>
                   {log.origin}
                 </td>
                 <td className="subject" rowSpan={2}>
-                  {subjectName}
+                  {subject?.name ?? log.subjectId}
                 </td>
                 <td className="stage">修正前</td>
                 {COLUMNS.map((column) => (
