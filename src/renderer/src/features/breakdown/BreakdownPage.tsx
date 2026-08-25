@@ -99,7 +99,7 @@ function blankRow(): BreakdownRowRecord {
  * 提出の回ごとに版を残し、前回との比較ができる。
  */
 export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-breakdown-compare-v2");
+  const tableRef = useTableResize("table-widths-breakdown-compare-v3");
   const tableRef1 = useTableResize("table-widths-breakdown-v1");
   const [view, setView] = useState<BreakdownView>({
     version: null,
@@ -649,22 +649,17 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           <table className="parts compare" ref={tableRef}>
             <thead>
               <tr>
-                <th className="ops">操作</th>
-                <th>名称</th>
-                <th>摘要</th>
-                <th>数量</th>
-                <th>単位</th>
-                <th>単価</th>
-                <th>金額</th>
-                <th>備考</th>
-                <th className="ops">操作</th>
-                <th>名称</th>
-                <th>摘要</th>
-                <th>数量</th>
-                <th>単位</th>
-                <th>単価</th>
-                <th>金額</th>
-                <th>備考</th>
+                {["left", "right"].map((side) =>
+                  COMPARE_COLUMNS.map((column) => (
+                    <th
+                      key={`${side}-${column.label}`}
+                      className={column.className}
+                      style={{ width: `${column.width}px` }}
+                    >
+                      {column.label}
+                    </th>
+                  )),
+                )}
               </tr>
             </thead>
             <tbody>
@@ -825,6 +820,22 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     </div>
   );
 }
+
+/** 比較表の列（左右で同じ並び）。幅はドラッグで変えられる初期値 */
+const COMPARE_COLUMNS: {
+  label: string;
+  className: string;
+  width: number;
+}[] = [
+  { label: "操作", className: "ops", width: 70 },
+  { label: "名称", className: "", width: 170 },
+  { label: "摘要", className: "", width: 150 },
+  { label: "数量", className: "qty", width: 60 },
+  { label: "単位", className: "unit", width: 40 },
+  { label: "単価", className: "qty", width: 60 },
+  { label: "金額", className: "qty", width: 70 },
+  { label: "備考", className: "", width: 90 },
+];
 
 /**
  * 書式④（2段2行）で、1明細の上段と下段の間に罫線を出さないための印。

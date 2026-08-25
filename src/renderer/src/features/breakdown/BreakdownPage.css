@@ -138,6 +138,12 @@
 .breakdown-page table.compare {
   border-collapse: collapse;
   font-size: 12px;
+  /* 左右どちらの列もドラッグで幅を変えられるようにする */
+  table-layout: fixed;
+}
+
+.breakdown-page table.compare td {
+  overflow-wrap: anywhere;
 }
 
 .breakdown-page table.compare th,
