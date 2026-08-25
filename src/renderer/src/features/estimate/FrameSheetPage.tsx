@@ -161,6 +161,8 @@ export default function FrameSheetPage({
   );
   /** レイアウトの上から線を引く（すき間をつなぐ） */
   const [drawing, setDrawing] = useState(false);
+  /** 自分で引いた線だけを見る（部屋の図は薄くする） */
+  const [manualOnly, setManualOnly] = useState(false);
   const [zoom, setZoom] = useState(1);
   /** 建物レイアウトを画面いっぱいの別窓で開く */
   const [expanded, setExpanded] = useState(false);
@@ -770,6 +772,16 @@ export default function FrameSheetPage({
                 ✎ 線を引く
               </button>
             )}
+            {manualLines.length > 0 && (
+              <button
+                type="button"
+                className={manualOnly ? "on" : ""}
+                title="自分で引いた線だけを濃く出します（部屋の図は薄くなります）"
+                onClick={() => setManualOnly(!manualOnly)}
+              >
+                ☉ 引いた線だけ
+              </button>
+            )}
             {mode === "layout" && drawing && manualLines.length > 0 && (
               <button
                 type="button"
@@ -853,7 +865,10 @@ export default function FrameSheetPage({
                     { x: 0, y: 0 },
                   );
                   return (
-                    <g key={`p-${placement.id}`}>
+                    <g
+                      key={`p-${placement.id}`}
+                      className={manualOnly ? "faint" : ""}
+                    >
                       <polygon
                         points={points}
                         className={[
@@ -909,6 +924,7 @@ export default function FrameSheetPage({
                     }
                     className={[
                       "frame-line",
+                      manualOnly && line.source !== "manual" ? "faint" : "",
                       picked ? "" : "skip",
                       gapLineIds.has(line.id) ? "gap" : "",
                       selectedLineId === line.id ? "selected" : "",
