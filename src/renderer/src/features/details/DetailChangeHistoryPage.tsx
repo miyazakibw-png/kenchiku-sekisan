@@ -79,11 +79,9 @@ export default function DetailChangeHistoryPage({
     setHiddenThrough(0);
   };
 
-  // 変わった欄（赤文字）の無い修正は一覧に出さない（追加・削除は出す）
+  // 変わった欄（赤文字）が1つも無い履歴は一覧に出さない
   const visible = logs.filter(
-    (log) =>
-      log.id > hiddenThrough &&
-      (log.changeKind !== "edit" || log.changedFields.length > 0),
+    (log) => log.id > hiddenThrough && log.changedFields.length > 0,
   );
   const rows = newestFirst ? visible : [...visible].reverse();
 
