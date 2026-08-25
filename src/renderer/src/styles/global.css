@@ -242,6 +242,13 @@ body,
   .workspace-page .workspace-menu {
     display: none !important;
   }
+
+  /* 工事情報の欄は3倍の大きさで出す（A3横1枚に収まる幅にする） */
+  .workspace-page .workspace-header {
+    zoom: 3;
+    max-width: 500px;
+    margin: 0;
+  }
 }
 
 /* 表形式画面の共通列幅つまみ（見出しの右端をドラッグ）。
