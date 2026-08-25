@@ -211,7 +211,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const deleteVersion = async (): Promise<void> => {
     const target = view.version;
     if (!target) return;
-    if (!window.confirm(`${target.round}回目の内訳書を消します。よろしいですか。`))
+    if (
+      !window.confirm(`${target.round}回目の内訳書を消します。よろしいですか。`)
+    )
       return;
     await window.sekisan.deleteBreakdownVersion(target.id);
     setPanel("none");
@@ -323,6 +325,61 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const diffs = useMemo(
     () => compareBreakdown(leftRows, rightRows),
     [leftRows, rightRows],
+  );
+
+  /** 空行を入れる（2行1明細のときは2行1組で入れる） */
+  const insertBlank = (side: "left" | "right", index: number, count: number) =>
+    editCompare(side, (rows) => {
+      const next = [...rows];
+      next.splice(index, 0, ...Array.from({ length: count }, blankRow));
+      return next;
+    });
+
+  /** 行を動かす（2行1明細のときは2行1組で動かす） */
+  const moveRows = (
+    side: "left" | "right",
+    index: number,
+    step: number,
+    count: number,
+  ) =>
+    editCompare(side, (rows) => {
+      if (count === 1) return moveRow(rows, index, step);
+      const next = [...rows];
+      const moved = next.splice(index, count);
+      const to = Math.max(0, Math.min(next.length, index + step * count));
+      next.splice(to, 0, ...moved);
+      return next;
+    });
+
+  /** 行の操作ボタン。2行1明細なら1明細に1組だけ出す */
+  const opsCell = (
+    side: "left" | "right",
+    index: number,
+    count: number,
+  ): JSX.Element => (
+    <td className="ops" rowSpan={count}>
+      <button
+        type="button"
+        title="ここに空きを入れる"
+        onClick={() => insertBlank(side, index, count)}
+      >
+        ＋
+      </button>
+      <button
+        type="button"
+        title="1つ上へ"
+        onClick={() => moveRows(side, index, -1, count)}
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        title="1つ下へ"
+        onClick={() => moveRows(side, index, 1, count)}
+      >
+        ↓
+      </button>
+    </td>
   );
 
   return (
@@ -443,7 +500,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </select>
           </label>
           <label>
-            名称（下段）の文字
+            名称の文字（部位名も）
             <select
               value={settings.nameWidth}
               onChange={(e) => void saveSettings({ nameWidth: e.target.value })}
@@ -611,97 +668,41 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {diffs.map((diff) => (
-                <tr
-                  key={diff.index}
-                  className={
-                    settings.layout === BREAKDOWN_LAYOUT.twoLine
-                      ? "two-line"
-                      : comparePairClass(diffs, diff.index, settings.layout)
-                  }
-                >
-                  <td className="ops">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("left", (rows) => {
-                          const next = [...rows];
-                          next.splice(diff.index, 0, blankRow());
-                          return next;
-                        })
-                      }
-                    >
-                      ＋
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("left", (rows) =>
-                          moveRow(rows, diff.index, -1),
-                        )
-                      }
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("left", (rows) =>
-                          moveRow(rows, diff.index, 1),
-                        )
-                      }
-                    >
-                      ↓
-                    </button>
-                  </td>
-                  {renderCompareCells(
-                    diff.left,
-                    diff.changed,
-                    diff.onlyLeft,
-                    settings.layout,
-                  )}
-                  <td className="ops">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("right", (rows) => {
-                          const next = [...rows];
-                          next.splice(diff.index, 0, blankRow());
-                          return next;
-                        })
-                      }
-                    >
-                      ＋
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("right", (rows) =>
-                          moveRow(rows, diff.index, -1),
-                        )
-                      }
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        editCompare("right", (rows) =>
-                          moveRow(rows, diff.index, 1),
-                        )
-                      }
-                    >
-                      ↓
-                    </button>
-                  </td>
-                  {renderCompareCells(
-                    diff.right,
-                    diff.changed,
-                    diff.onlyRight,
-                    settings.layout,
-                  )}
-                </tr>
-              ))}
+              {diffs.map((diff) => {
+                const pair = comparePairClass(
+                  diffs,
+                  diff.index,
+                  settings.layout,
+                );
+                // 2行1明細の下段は、上段の操作ボタン（2行分）にまとめる
+                const hideOps = pair === "detail-lower";
+                const count = pair === "detail-upper" ? 2 : 1;
+                return (
+                  <tr
+                    key={diff.index}
+                    className={
+                      settings.layout === BREAKDOWN_LAYOUT.twoLine
+                        ? "two-line"
+                        : pair
+                    }
+                  >
+                    {!hideOps && opsCell("left", diff.index, count)}
+                    {renderCompareCells(
+                      diff.left,
+                      diff.changed,
+                      diff.onlyLeft,
+                      settings.layout,
+                    )}
+                    {!hideOps && opsCell("right", diff.index, count)}
+                    {renderCompareCells(
+                      diff.right,
+                      diff.changed,
+                      diff.onlyRight,
+                      settings.layout,
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

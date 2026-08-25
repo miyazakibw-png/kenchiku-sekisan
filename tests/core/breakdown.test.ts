@@ -128,14 +128,32 @@ describe("内訳書の行づくり", () => {
     });
   });
 
-  it("書式④で上段が空の明細は下段だけにする", () => {
+  it("書式④は上段が空でも2行1組にする", () => {
     const rows = buildBreakdownRows(
       [item({ partName: "", descriptionUpper: "", remarksUpper: "" })],
       subjects,
       { ...DEFAULT_BREAKDOWN_SETTINGS, layout: BREAKDOWN_LAYOUT.twoRow },
     );
-    expect(rows).toHaveLength(2);
-    expect(rows[1].nameLower).toBe("普通コンクリート");
+    expect(rows).toHaveLength(3);
+    expect(rows[1].rowKind).toBe("note");
+    expect(rows[1].nameLower).toBe("");
+    expect(rows[2].nameLower).toBe("普通コンクリート");
+  });
+
+  it("名称の文字を全角・半角にそろえる（半角カタカナも）", () => {
+    const source = item({ partName: "ﾌｶｼ壁", name: "ﾒﾀｶﾗｰSK-FB" });
+    const full = buildBreakdownRows([source], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      nameWidth: "full",
+    });
+    expect(full[1].nameUpper).toBe("フカシ壁");
+    expect(full[1].nameLower).toBe("メタカラーＳＫ－ＦＢ");
+
+    const half = buildBreakdownRows([source], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      nameWidth: "half",
+    });
+    expect(half[1].nameLower).toBe("ﾒﾀｶﾗｰSK-FB");
   });
 
   it("名称パターンで部位＋名称にできる", () => {
@@ -177,7 +195,9 @@ describe("BCS.CSV", () => {
     expect(lines[0]).toContain('"P"');
     expect(lines[0]).toContain("港区計画");
     expect(lines.some((line) => line.includes('"建築主体工事"'))).toBe(true);
-    expect(lines.some((line) => line.includes('"コンクリート工事"'))).toBe(true);
+    expect(lines.some((line) => line.includes('"コンクリート工事"'))).toBe(
+      true,
+    );
     expect(lines.some((line) => line.includes('"D"'))).toBe(true);
     expect(lines.some((line) => line.includes('"T"'))).toBe(true);
     lines.forEach((line) => {

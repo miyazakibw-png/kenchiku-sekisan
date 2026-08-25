@@ -109,17 +109,122 @@ export interface BreakdownSubject {
 
 const FULL_WIDTH_OFFSET = 0xfee0;
 
-/** 半角の英数記号を全角にする */
+/** 半角カタカナ→全角カタカナ（濁点・半濁点は1文字にまとめる） */
+const KANA_TO_FULL: Record<string, string> = {
+  ｶﾞ: "ガ",
+  ｷﾞ: "ギ",
+  ｸﾞ: "グ",
+  ｹﾞ: "ゲ",
+  ｺﾞ: "ゴ",
+  ｻﾞ: "ザ",
+  ｼﾞ: "ジ",
+  ｽﾞ: "ズ",
+  ｾﾞ: "ゼ",
+  ｿﾞ: "ゾ",
+  ﾀﾞ: "ダ",
+  ﾁﾞ: "ヂ",
+  ﾂﾞ: "ヅ",
+  ﾃﾞ: "デ",
+  ﾄﾞ: "ド",
+  ﾊﾞ: "バ",
+  ﾋﾞ: "ビ",
+  ﾌﾞ: "ブ",
+  ﾍﾞ: "ベ",
+  ﾎﾞ: "ボ",
+  ﾊﾟ: "パ",
+  ﾋﾟ: "ピ",
+  ﾌﾟ: "プ",
+  ﾍﾟ: "ペ",
+  ﾎﾟ: "ポ",
+  ｳﾞ: "ヴ",
+  ｱ: "ア",
+  ｲ: "イ",
+  ｳ: "ウ",
+  ｴ: "エ",
+  ｵ: "オ",
+  ｶ: "カ",
+  ｷ: "キ",
+  ｸ: "ク",
+  ｹ: "ケ",
+  ｺ: "コ",
+  ｻ: "サ",
+  ｼ: "シ",
+  ｽ: "ス",
+  ｾ: "セ",
+  ｿ: "ソ",
+  ﾀ: "タ",
+  ﾁ: "チ",
+  ﾂ: "ツ",
+  ﾃ: "テ",
+  ﾄ: "ト",
+  ﾅ: "ナ",
+  ﾆ: "ニ",
+  ﾇ: "ヌ",
+  ﾈ: "ネ",
+  ﾉ: "ノ",
+  ﾊ: "ハ",
+  ﾋ: "ヒ",
+  ﾌ: "フ",
+  ﾍ: "ヘ",
+  ﾎ: "ホ",
+  ﾏ: "マ",
+  ﾐ: "ミ",
+  ﾑ: "ム",
+  ﾒ: "メ",
+  ﾓ: "モ",
+  ﾔ: "ヤ",
+  ﾕ: "ユ",
+  ﾖ: "ヨ",
+  ﾗ: "ラ",
+  ﾘ: "リ",
+  ﾙ: "ル",
+  ﾚ: "レ",
+  ﾛ: "ロ",
+  ﾜ: "ワ",
+  ｦ: "ヲ",
+  ﾝ: "ン",
+  ｧ: "ァ",
+  ｨ: "ィ",
+  ｩ: "ゥ",
+  ｪ: "ェ",
+  ｫ: "ォ",
+  ｬ: "ャ",
+  ｭ: "ュ",
+  ｮ: "ョ",
+  ｯ: "ッ",
+  ｰ: "ー",
+  "｡": "。",
+  "､": "、",
+  "｢": "「",
+  "｣": "」",
+  "･": "・",
+  ﾞ: "゛",
+  ﾟ: "゜",
+};
+
+const KANA_TO_HALF: Record<string, string> = Object.fromEntries(
+  Object.entries(KANA_TO_FULL).map(([half, full]) => [full, half]),
+);
+
+/** 半角の英数記号・カタカナを全角にする */
 export function toFullWidth(value: string): string {
-  return value.replace(/[!-~]/g, (char) =>
+  const kana = value.replace(
+    /[ｦ-ﾟ][ﾞﾟ]?/g,
+    (char) => KANA_TO_FULL[char] ?? KANA_TO_FULL[char[0]] ?? char,
+  );
+  return kana.replace(/[!-~]/g, (char) =>
     String.fromCharCode(char.charCodeAt(0) + FULL_WIDTH_OFFSET),
   );
 }
 
-/** 全角の英数記号を半角にする */
+/** 全角の英数記号・カタカナを半角にする */
 export function toHalfWidth(value: string): string {
-  return value.replace(/[！-～]/g, (char) =>
+  const ascii = value.replace(/[！-～]/g, (char) =>
     String.fromCharCode(char.charCodeAt(0) - FULL_WIDTH_OFFSET),
+  );
+  return ascii.replace(
+    /[ァ-ヶー。、「」・゛゜]/g,
+    (char) => KANA_TO_HALF[char] ?? char,
   );
 }
 
@@ -278,9 +383,10 @@ function detailRows(
     hasQuantity,
   );
   const name = applyWidth(item.name, settings.nameWidth);
+  const partName = applyWidth(item.partName, settings.nameWidth);
 
   if (settings.layout === BREAKDOWN_LAYOUT.twoRow) {
-    return twoRowDetail(item, subjectId, subjectName, name, settings);
+    return twoRowDetail(item, subjectId, subjectName, name, partName, settings);
   }
 
   const row = emptyRow("detail");
@@ -289,16 +395,14 @@ function detailRows(
   row.masterKey = item.masterKey;
   row.aggregateItemId = item.id;
   row.partName = item.partName;
-  if (settings.layout === BREAKDOWN_LAYOUT.oneLine) {
+  if (
+    settings.layout === BREAKDOWN_LAYOUT.oneLine ||
+    settings.namePattern === NAME_PATTERN.withPart
+  ) {
     row.nameUpper = "";
-    row.nameLower =
-      item.partName === "" ? name : `${item.partName} ${name}`.trim();
-  } else if (settings.namePattern === NAME_PATTERN.withPart) {
-    row.nameUpper = "";
-    row.nameLower =
-      item.partName === "" ? name : `${item.partName} ${name}`.trim();
+    row.nameLower = partName === "" ? name : `${partName} ${name}`.trim();
   } else {
-    row.nameUpper = item.partName;
+    row.nameUpper = partName;
     row.nameLower = name;
   }
   row.descriptionLower = description.primary;
@@ -329,6 +433,7 @@ function twoRowDetail(
   subjectId: number | null,
   subjectName: string,
   name: string,
+  partName: string,
   settings: BreakdownSettings,
 ): BreakdownRow[] {
   const hasQuantity = item.unit !== "";
@@ -343,7 +448,7 @@ function twoRowDetail(
   };
 
   const upper = line("note");
-  upper.nameLower = item.partName;
+  upper.nameLower = partName;
   upper.descriptionLower = applyReplacements(
     item.descriptionUpper,
     settings.replacements,
@@ -360,20 +465,12 @@ function twoRowDetail(
   lower.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
   lower.unit = item.unit;
 
-  const rows: BreakdownRow[] = [];
-  const emptyUpper =
-    upper.nameLower === "" &&
-    upper.descriptionLower === "" &&
-    upper.remarksLower === "";
-  if (!emptyUpper) rows.push(upper);
-  rows.push(lower);
-  return rows;
+  // 1明細＝必ず上下2行1組にする（中身が空でも行は残す）
+  return [upper, lower];
 }
 
 /** 集計書から使っている単位を並び順つきで抜き出す */
-export function collectUnits(
-  items: readonly BreakdownSourceItem[],
-): string[] {
+export function collectUnits(items: readonly BreakdownSourceItem[]): string[] {
   const units: string[] = [];
   items.forEach((item) => {
     if (item.unit !== "" && !units.includes(item.unit)) units.push(item.unit);
