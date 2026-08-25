@@ -236,6 +236,12 @@ body,
   th {
     page-break-inside: avoid;
   }
+
+  /* 積算操作画面は工事情報の欄だけ紙に出す（下のボタンの一覧は出さない） */
+  .workspace-page .field-picker,
+  .workspace-page .workspace-menu {
+    display: none !important;
+  }
 }
 
 /* 表形式画面の共通列幅つまみ（見出しの右端をドラッグ）。
