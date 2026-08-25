@@ -201,6 +201,7 @@ export function transferBreakdown(
       id: item.id,
       masterKey: item.masterKey,
       subjectId: item.subjectId,
+      part1: item.part1,
       partName: item.partName,
       name: item.name,
       descriptionUpper: item.descriptionUpper,

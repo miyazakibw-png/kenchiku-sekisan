@@ -29,6 +29,7 @@ function item(patch: Partial<BreakdownSourceItem>): BreakdownSourceItem {
     id: 1,
     masterKey: "k1",
     subjectId: 1,
+    part1: "",
     partName: "基礎",
     name: "普通コンクリート",
     descriptionUpper: "FC21*18",
@@ -138,6 +139,23 @@ describe("内訳書の行づくり", () => {
     expect(rows[1].rowKind).toBe("note");
     expect(rows[1].nameLower).toBe("");
     expect(rows[2].nameLower).toBe("普通コンクリート");
+  });
+
+  it("部位Ⅰが変わるところへタイトル行を入れる", () => {
+    const rows = buildBreakdownRows(
+      [
+        item({ part1: "内部", masterKey: "k1" }),
+        item({ part1: "内部", masterKey: "k2" }),
+        item({ part1: "外部", masterKey: "k3" }),
+      ],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const titles = rows.filter((row) => row.rowKind === "title");
+    expect(titles.map((row) => row.nameLower)).toEqual([
+      "（内部）",
+      "（外部）",
+    ]);
   });
 
   it("名称の文字を全角・半角にそろえる（半角カタカナも）", () => {

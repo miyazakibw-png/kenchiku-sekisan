@@ -21,6 +21,7 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
   return {
     rowKind:
       row.rowKind === "subject" ||
+      row.rowKind === "title" ||
       row.rowKind === "note" ||
       row.rowKind === "blank"
         ? row.rowKind

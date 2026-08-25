@@ -63,7 +63,8 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
 };
 
 /** 内訳書の行の種類 */
-export type BreakdownRowKind = "subject" | "detail" | "note" | "blank";
+export type BreakdownRowKind =
+  "subject" | "title" | "detail" | "note" | "blank";
 
 /** 内訳書の1行（画面の1明細＝2段1行） */
 export interface BreakdownRow {
@@ -91,6 +92,8 @@ export interface BreakdownSourceItem {
   id: number | null;
   masterKey: string;
   subjectId: number | null;
+  /** 部位Ⅰ（集計書ではタイトル行になる） */
+  part1: string;
   partName: string;
   name: string;
   descriptionUpper: string;
@@ -358,7 +361,20 @@ export function buildBreakdownRows(
     heading.nameUpper = heading.subjectName;
     rows.push(heading);
 
+    // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
+    let part1: string | undefined;
     (groups.get(subjectId) ?? []).forEach((item) => {
+      if (part1 !== item.part1) {
+        part1 = item.part1;
+        if (part1 !== "") {
+          const title = emptyRow("title");
+          title.subjectId = subjectId;
+          title.subjectName = heading.subjectName;
+          title.partName = part1;
+          title.nameLower = `（${part1}）`;
+          rows.push(title);
+        }
+      }
       rows.push(...detailRows(item, subjectId, heading.subjectName, settings));
     });
   });

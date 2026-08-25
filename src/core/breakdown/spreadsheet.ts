@@ -67,19 +67,22 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
   const twoRowHeading =
     layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow;
   rows.forEach((row) => {
-    if (row.rowKind === "subject") {
-      // 2段の書式では工種科目の見出しも2行で、名前は下の行に出す
+    if (row.rowKind === "subject" || row.rowKind === "title") {
+      // 2段の書式では工種科目・タイトルの見出しも2行で、文字は下の行に出す
+      const text = row.rowKind === "subject" ? row.subjectName : row.nameLower;
       if (twoRowHeading) {
         lines.push(headingRow("", "upper"));
-        lines.push(headingRow(row.subjectName, "lower"));
+        lines.push(headingRow(text, "lower"));
       } else {
-        lines.push(headingRow(row.subjectName, "one"));
+        lines.push(headingRow(text, "one"));
       }
       return;
     }
     if (layout === BREAKDOWN_LAYOUT.excel) {
       // 書式③：2段を1行にまとめて掃き出す
-      const name = [row.nameUpper, row.nameLower].filter((v) => v !== "").join(" ");
+      const name = [row.nameUpper, row.nameLower]
+        .filter((v) => v !== "")
+        .join(" ");
       const description = [row.descriptionUpper, row.descriptionLower]
         .filter((v) => v !== "")
         .join(" ");

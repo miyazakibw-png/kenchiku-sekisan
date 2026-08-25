@@ -80,6 +80,11 @@
   font-weight: bold;
 }
 
+/* 2段の書式：一番上の見出し（名称・摘要…）も2行分の高さにする */
+.breakdown-page table.two-stage th {
+  height: 30px;
+}
+
 /* 2段の書式：工種科目の見出しも2行分の高さにする */
 .breakdown-page table.breakdown tr.subject td div.upper,
 .breakdown-page table.breakdown tr.subject td div.lower,

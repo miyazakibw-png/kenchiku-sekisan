@@ -646,7 +646,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               行のずれは左右それぞれ「行挿入」「↑」「↓」で合わせます。違う部分に色が付きます。
             </span>
           </div>
-          <table className="parts compare" ref={tableRef}>
+          <table
+            className={`parts compare${twoStage(settings.layout) ? " two-stage" : ""}`}
+            ref={tableRef}
+          >
             <thead>
               <tr>
                 {["left", "right"].map((side) =>
@@ -744,7 +747,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </div>
           </div>
 
-          <table className="parts breakdown" ref={tableRef1}>
+          <table
+            className={`parts breakdown${twoStage(settings.layout) ? " two-stage" : ""}`}
+            ref={tableRef1}
+          >
             <thead>
               <tr>
                 <th className="mark">印</th>
@@ -759,14 +765,15 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </thead>
             <tbody>
               {shownRows.map((row, index) =>
-                row.rowKind === "subject" ? (
+                row.rowKind === "subject" || row.rowKind === "title" ? (
                   <tr key={`s-${index}`} className="subject">
-                    <td className="mark">{row.subjectId ?? ""}</td>
+                    <td className="mark">
+                      {row.rowKind === "subject" ? (row.subjectId ?? "") : ""}
+                    </td>
                     <td>
-                      {settings.layout === BREAKDOWN_LAYOUT.twoLine ||
-                      settings.layout === BREAKDOWN_LAYOUT.twoRow
-                        ? subjectLines(row.subjectName)
-                        : row.subjectName}
+                      {twoStage(settings.layout)
+                        ? subjectLines(headingText(row))
+                        : headingText(row)}
                     </td>
                     <td />
                     <td />
@@ -881,6 +888,18 @@ function comparePairClass(
   return "";
 }
 
+/** 2段（1明細を2行分で見せる）の書式か */
+function twoStage(layout: number): boolean {
+  return (
+    layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow
+  );
+}
+
+/** 見出し行（工種科目・部位Ⅰのタイトル）の文字 */
+function headingText(row: BreakdownRowRecord): string {
+  return row.rowKind === "subject" ? row.subjectName : row.nameLower;
+}
+
 /** 2段の書式で、工種科目の見出しを2行分の高さにし、名前は下の行に出す */
 function subjectLines(name: string): JSX.Element {
   return (
@@ -915,8 +934,8 @@ function renderCompareCells(
     // 書式①：名称・摘要を上段／下段の2段で見比べる
     return [
       <td key="n" className={mark("name")}>
-        {row.rowKind === "subject" ? (
-          subjectLines(row.subjectName)
+        {row.rowKind === "subject" || row.rowKind === "title" ? (
+          subjectLines(headingText(row))
         ) : (
           <>
             <div className="upper">{row.nameUpper}</div>
@@ -961,10 +980,10 @@ function renderCompareCells(
     : [row.remarksUpper, row.remarksLower].filter((v) => v !== "").join(" ");
   return [
     <td key="n" className={mark("name")}>
-      {row.rowKind === "subject"
+      {row.rowKind === "subject" || row.rowKind === "title"
         ? layout === BREAKDOWN_LAYOUT.twoRow
-          ? subjectLines(row.subjectName)
-          : row.subjectName
+          ? subjectLines(headingText(row))
+          : headingText(row)
         : name}
     </td>,
     <td key="d" className={mark("description")}>
