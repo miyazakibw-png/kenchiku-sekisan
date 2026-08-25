@@ -578,6 +578,26 @@ export default function FrameSheetPage({
       .reduce((total, count) => total + count - 1, 0);
   }, [manualLines]);
 
+  /** 表に入れた長さに合わせて、引いた線の終わりの端だけを動かす */
+  const setManualLength = useCallback((id: string, length: number): void => {
+    if (!Number.isFinite(length) || length <= 0) return;
+    setManualLines((current) =>
+      current.map((line) => {
+        if (line.id !== id) return line;
+        const dx = line.x2 - line.x1;
+        const dy = line.y2 - line.y1;
+        const now = Math.hypot(dx, dy);
+        if (now < 1e-6) return line;
+        const at = (value: number): number => Math.round(value * 1000) / 1000;
+        return {
+          ...line,
+          x2: at(line.x1 + (dx / now) * length),
+          y2: at(line.y1 + (dy / now) * length),
+        };
+      }),
+    );
+  }, []);
+
   /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
   const endRef = useRef<{
     lineId: string;
@@ -1155,37 +1175,45 @@ export default function FrameSheetPage({
 
         <section className="rooms">
           <div className="section-bar">
-            <span>置ける部屋（部屋計算書を作った部屋）</span>
+            <span>
+              {manualOnly
+                ? "引いた線（「☉ 引いた線だけ」を押し直すと部屋の表に戻ります）"
+                : "置ける部屋（部屋計算書を作った部屋）"}
+            </span>
           </div>
-          <table className="grid">
-            <tbody>
-              {rooms.map((room) => (
-                <tr key={room.estimateRowId}>
-                  <td>
-                    {onOpenRoomSheet ? (
-                      <button
-                        type="button"
-                        className="room-link"
-                        title="この部屋の計算書を開きます（寸法の直しはそちらで）"
-                        onClick={() => onOpenRoomSheet(room.estimateRowId)}
-                      >
-                        {room.roomName || "（部屋名なし）"}
+          {!manualOnly && (
+            <table className="grid">
+              <tbody>
+                {rooms.map((room) => (
+                  <tr key={room.estimateRowId}>
+                    <td>
+                      {onOpenRoomSheet ? (
+                        <button
+                          type="button"
+                          className="room-link"
+                          title="この部屋の計算書を開きます（寸法の直しはそちらで）"
+                          onClick={() => onOpenRoomSheet(room.estimateRowId)}
+                        >
+                          {room.roomName || "（部屋名なし）"}
+                        </button>
+                      ) : (
+                        room.roomName || "（部屋名なし）"
+                      )}
+                    </td>
+                    <td className="num">
+                      {formatNumber(room.ceilingHeight, 2)}
+                    </td>
+                    <td>
+                      <button type="button" onClick={() => addPlacement(room)}>
+                        ＋ 置く
                       </button>
-                    ) : (
-                      room.roomName || "（部屋名なし）"
-                    )}
-                  </td>
-                  <td className="num">{formatNumber(room.ceilingHeight, 2)}</td>
-                  <td>
-                    <button type="button" onClick={() => addPlacement(room)}>
-                      ＋ 置く
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {placements.length > 0 && (
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {!manualOnly && placements.length > 0 && (
             <table className="grid">
               <thead>
                 <tr>
@@ -1268,6 +1296,7 @@ export default function FrameSheetPage({
                   <th className="num">長さ</th>
                   <th className="num">高さ</th>
                   <th className="num">面積</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -1283,8 +1312,16 @@ export default function FrameSheetPage({
                       onClick={() => setSelectedLineId(manual.id)}
                     >
                       <td className="no">{index + 1}</td>
-                      <td className="num">
-                        {formatNumber(result.line.length, 2)}
+                      <td>
+                        <input
+                          className="num"
+                          key={`l-${manual.id}-${result.line.length}`}
+                          defaultValue={formatNumber(result.line.length, 2)}
+                          title="長さを入れると、始めの端はそのままで終わりの端が動きます"
+                          onBlur={(e) =>
+                            setManualLength(manual.id, Number(e.target.value))
+                          }
+                        />
                       </td>
                       <td>
                         <input
@@ -1306,6 +1343,21 @@ export default function FrameSheetPage({
                         />
                       </td>
                       <td className="num">{formatNumber(result.area, 2)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          title="この線を消します"
+                          onClick={() => {
+                            setManualLines((current) =>
+                              current.filter((each) => each.id !== manual.id),
+                            );
+                            setSelectedLineId(null);
+                            setMessage("引いた線を消しました");
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
