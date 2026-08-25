@@ -94,9 +94,30 @@ table.estimate td.check.number {
 
 table.estimate td.no,
 table.estimate th.no {
-  width: 4ch;
+  width: 8ch;
   text-align: right;
   color: #6b7280;
+}
+
+/* 先頭列：行番号のとなりに行の入れ替え（↑↓） */
+table.estimate td.no .no-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+table.estimate td.no .row-move {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+table.estimate td.no .row-move button {
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 1.1;
+  min-width: 14px;
 }
 
 table.estimate th.part,

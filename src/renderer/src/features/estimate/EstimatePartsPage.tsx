@@ -543,7 +543,39 @@ export default function EstimatePartsPage({
                   void openCalcSheet(index);
                 }}
               >
-                <td className="no">{index + 1}</td>
+                <td className="no">
+                  <span className="no-cell">
+                    <span className="row-no">{index + 1}</span>
+                    <span className="row-move">
+                      <button
+                        type="button"
+                        title="この行を1つ上へ"
+                        disabled={index === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editRows(moveRow(rows, index, index - 1));
+                          setSelected(index - 1);
+                          setSelectedEnd(index - 1);
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ下へ"
+                        disabled={index === rows.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editRows(moveRow(rows, index, index + 1));
+                          setSelected(index + 1);
+                          setSelectedEnd(index + 1);
+                        }}
+                      >
+                        ↓
+                      </button>
+                    </span>
+                  </span>
+                </td>
                 <td>
                   <input
                     lang="ja"
