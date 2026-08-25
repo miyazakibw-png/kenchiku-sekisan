@@ -97,7 +97,7 @@ const DEFAULT_SNAP_MM = 300;
 function savedSnapMm(): number {
   try {
     const value = Number(window.localStorage.getItem(SNAP_KEY));
-    return Number.isFinite(value) && value > 0 ? value : DEFAULT_SNAP_MM;
+    return Number.isFinite(value) && value >= 0 ? value : DEFAULT_SNAP_MM;
   } catch {
     return DEFAULT_SNAP_MM;
   }
@@ -579,7 +579,12 @@ export default function FrameSheetPage({
   }, [manualLines]);
 
   /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
-  const endRef = useRef<{ lineId: string; end: 1 | 2 } | null>(null);
+  const endRef = useRef<{
+    lineId: string;
+    end: 1 | 2;
+    /** Shiftを押している間は吸着させない（好きな長さに伸ばせる） */
+    free: boolean;
+  } | null>(null);
   /** 端をつまんで離した直後のクリックで、線を引き始めないための印 */
   const endMovedRef = useRef(false);
 
@@ -588,6 +593,7 @@ export default function FrameSheetPage({
     if (grabbed) {
       endRef.current = null;
       endMovedRef.current = true;
+      if (grabbed.free) return;
       setManualLines((current) =>
         current.map((line) => {
           if (line.id !== grabbed.lineId) return line;
@@ -630,6 +636,7 @@ export default function FrameSheetPage({
     (event: React.PointerEvent<SVGSVGElement>) => {
       const grabbed = endRef.current;
       if (grabbed) {
+        if (event.shiftKey) grabbed.free = true;
         const point = toModel(event.clientX, event.clientY);
         if (!point) return;
         const at = (value: number): number => Math.round(value * 20) / 20;
@@ -918,7 +925,7 @@ export default function FrameSheetPage({
             )}
             <label
               className="snap-field"
-              title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます"
+              title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます。0にすると吸着しません"
             >
               吸着
               <input
@@ -928,7 +935,7 @@ export default function FrameSheetPage({
                 onBlur={() => {
                   const value = Number(snapText);
                   // 数でないときや0以下のときは元の幅に戻す
-                  if (!Number.isFinite(value) || value <= 0) {
+                  if (!Number.isFinite(value) || value < 0) {
                     setSnapText(String(snapMm));
                     return;
                   }
@@ -1117,9 +1124,13 @@ export default function FrameSheetPage({
                       className="line-handle"
                       onPointerDown={(event) => {
                         event.stopPropagation();
-                        endRef.current = { lineId: line.id, end };
+                        endRef.current = {
+                          lineId: line.id,
+                          end,
+                          free: event.shiftKey,
+                        };
                         setMessage(
-                          "端をつまんだまま動かすと、線が伸び縮みします",
+                          "端をつまんだまま動かすと伸び縮みします（Shiftを押しながらだと吸着しません）",
                         );
                       }}
                     />
