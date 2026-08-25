@@ -1085,9 +1085,17 @@ export default function RoomCalcSheet({
       details.push(set.details[row.index] ?? calcDetail());
       lines.push(set.lines[row.index] ?? calcLine());
     });
+    const source = sets.find((item) => item.id === rangeRows[0].setId);
     const text = rowsAsTsv(details, lines);
     await navigator.clipboard.writeText(text);
-    setCalcClip({ kind: "rows", text, details, lines });
+    setCalcClip({
+      kind: "rows",
+      text,
+      details,
+      lines,
+      partNumber: source?.partNumber ?? null,
+      partName: source?.partName ?? "",
+    });
     onMessage(
       `${rangeRows.length}行をコピーしました（貼り付けたい行にカーソルを置いて上書貼付／挿入貼付）`,
     );
@@ -1145,6 +1153,9 @@ export default function RoomCalcSheet({
           clip.kind === "rows" ? clip.lines.map(duplicateLine) : [];
         const created: CalcSet = {
           ...calcSet(0),
+          // 写し元のセットの部位も一緒に写す
+          partNumber: clip.kind === "rows" ? clip.partNumber : null,
+          partName: clip.kind === "rows" ? clip.partName : "",
           details: copiedDetails,
           lines: fillLines(copiedDetails, copiedLines),
         };
@@ -1196,9 +1207,15 @@ export default function RoomCalcSheet({
           }
         });
 
+        // 貼り付け先のセットに部位が入っていなければ、写し元の部位を入れる
+        const emptyPart =
+          currentSet.partNumber === null && currentSet.partName.trim() === "";
         updateSet(currentSet.id, {
           details,
           lines: fillLines(details, lines),
+          ...(clip.kind === "rows" && emptyPart
+            ? { partNumber: clip.partNumber, partName: clip.partName }
+            : {}),
         });
         onMessage(
           mode === "overwrite"
