@@ -6,6 +6,15 @@
     );
 }
 
+/* 表の中身で列が広がらないようにする（列幅は指定どおりに保つ） */
+.frame-sheet-page > .upper > section {
+  min-width: 0;
+}
+
+.frame-sheet-page > .upper > section.rooms {
+  overflow-x: auto;
+}
+
 .frame-sheet-page .drawing {
   grid-row: span 2;
 }
@@ -21,7 +30,7 @@
   inset: 0;
   z-index: 60;
   /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
-  grid-template-columns: 1fr 470px;
+  grid-template-columns: 28% 20% 26% 26%;
   grid-template-rows: 100%;
   max-height: none;
   height: 100%;
@@ -30,9 +39,19 @@
   overflow: hidden;
 }
 
+/* レイアウトのときは図と「引いた線」の表だけを出す（残りは軸組・確認で見る） */
+.frame-sheet-page > .upper.layout-mode {
+  grid-template-columns: 36% 32% 32%;
+}
+
+/* 別窓では「置ける部屋」も並ぶので4列にする */
+.frame-sheet-page > .upper.layout-mode.layout-popup {
+  grid-template-columns: 28% 20% 26% 26%;
+}
+
 /* 「引いた線だけ」のときは表を広く見せる */
-.frame-sheet-page > .upper.layout-popup.lines-only {
-  grid-template-columns: 1fr 560px;
+.frame-sheet-page > .upper.layout-mode.layout-popup.lines-only {
+  grid-template-columns: 36% 32% 32%;
 }
 
 /* 別窓では図と置ける部屋だけを出す */
@@ -52,6 +71,8 @@
   flex: 1 1 auto;
   max-height: none;
   min-height: 0;
+  aspect-ratio: auto;
+  width: 100%;
 }
 
 /* 同じ壁のはずなのに少しずれている線・その件数 */
