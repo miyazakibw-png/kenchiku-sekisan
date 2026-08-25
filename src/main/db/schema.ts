@@ -638,12 +638,34 @@ export const projectAggregateItems = sqliteTable(
     remarksLower: text("remarks_lower").notNull().default(""),
     estimateDisplay: text("estimate_display").notNull().default(""),
     formwork: text("formwork").notNull().default(""),
+    /** 1: 不要明細（内訳書へ飛ばさず工種科目の最後にまとめる） */
+    unused: integer("unused").notNull().default(0),
     quantity: real("quantity").notNull().default(0),
     /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
     roomsJson: text("rooms_json").notNull().default("[]"),
   },
   (t) => ({
     runIdx: index("idx_aggregate_items_run").on(t.runId, t.displayOrder),
+  }),
+);
+
+/** 不要明細の印。集計をかけ直しても残るよう明細（masterKey）で覚えておく */
+export const projectUnusedDetails = sqliteTable(
+  "project_unused_details",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    masterKey: text("master_key").notNull(),
+    /** 不要にした理由（設計事務所の指示など） */
+    note: text("note").notNull().default(""),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex("idx_unused_details_key").on(t.projectId, t.masterKey),
   }),
 );
 

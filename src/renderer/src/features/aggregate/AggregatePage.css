@@ -87,6 +87,12 @@ table.aggregate tbody.row.warn td {
   background: #ffffcc;
 }
 
+/* 不要明細（内訳書へ飛ばさない明細）は灰色で示す */
+table.aggregate tbody.row.unused td {
+  background: #eeeeee;
+  color: #888888;
+}
+
 /* 選んだ明細は枠ではなく薄い黄色の背景で示す */
 table.aggregate tbody.row.selected td {
   background: #fff6b8;

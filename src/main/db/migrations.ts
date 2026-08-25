@@ -819,4 +819,17 @@ WHERE scope = 'project' AND source_detail_id IS NOT NULL
     WHERE l.detail_id = m_details.id ORDER BY l.id DESC LIMIT 1
   ) = '集計書兼工事マスター';
 `,
+  // 不要明細（人が印を付けた明細。内訳書へ飛ばさず工種科目の最後にまとめる）
+  `
+ALTER TABLE project_aggregate_items ADD COLUMN unused INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS project_unused_details (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  master_key TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unused_details_key
+  ON project_unused_details(project_id, master_key);
+`,
 ];

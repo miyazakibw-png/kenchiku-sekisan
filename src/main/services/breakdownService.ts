@@ -194,19 +194,22 @@ export function transferBreakdown(
 ): BreakdownView {
   const aggregate = getAggregate(db, projectId);
   const subjects = subjectList(db, projectId);
-  const items: BreakdownSourceItem[] = aggregate.items.map((item) => ({
-    id: item.id,
-    masterKey: item.masterKey,
-    subjectId: item.subjectId,
-    partName: item.partName,
-    name: item.name,
-    descriptionUpper: item.descriptionUpper,
-    descriptionLower: item.descriptionLower,
-    quantity: item.quantity,
-    unit: item.unit,
-    remarksUpper: item.remarksUpper,
-    remarksLower: item.remarksLower,
-  }));
+  // 不要明細（人が印を付けた明細）は内訳書へ飛ばさない
+  const items: BreakdownSourceItem[] = aggregate.items
+    .filter((item) => !item.unused)
+    .map((item) => ({
+      id: item.id,
+      masterKey: item.masterKey,
+      subjectId: item.subjectId,
+      partName: item.partName,
+      name: item.name,
+      descriptionUpper: item.descriptionUpper,
+      descriptionLower: item.descriptionLower,
+      quantity: item.quantity,
+      unit: item.unit,
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+    }));
 
   // 集計書で使っている工種科目・単位を自動的に用意する（並びは前回の設定を優先）
   const stored = getBreakdownSettings(db, projectId);

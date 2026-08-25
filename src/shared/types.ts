@@ -433,6 +433,10 @@ export interface SaveAssemblyRequest {
   projectId: number | null;
   note: string;
   items: AssemblyItem[];
+  /** マスター画面での修正のとき true。計算書のセットへ内容を連動させる */
+  propagate?: boolean;
+  /** 直した明細を、その明細を使っている他のセットにも反映する */
+  applyToAllSets?: boolean;
 }
 
 /** 保存結果。同じ内容のセットが既にある場合は統合候補を返す */
@@ -440,6 +444,8 @@ export interface SaveAssemblyResult {
   assembly: FinishAssembly;
   /** 内容が一致する既存セット（統合確認用） */
   duplicateOf: FinishAssembly | null;
+  /** 連動して直した計算書のセット数 */
+  syncedSets: number;
 }
 
 export interface Part {
@@ -524,9 +530,20 @@ export interface AggregateItem {
   remarksLower: string;
   estimateDisplay: string;
   formwork: string;
+  /** 不要明細（人が印を付けた明細。内訳書へは飛ばさず工種科目の最後にまとめる） */
+  unused: boolean;
   quantity: number;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];
+}
+
+/** 不要明細の印を付ける／外す */
+export interface SetDetailUnusedRequest {
+  projectId: number;
+  masterKey: string;
+  unused: boolean;
+  /** 不要にした理由（設計事務所の指示など） */
+  note?: string;
 }
 
 /** 集計詳細データ（合算前の1件。数量根拠） */

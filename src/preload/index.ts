@@ -41,6 +41,7 @@ import type {
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
   SaveAggregateEditsRequest,
+  SetDetailUnusedRequest,
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
@@ -192,6 +193,9 @@ const api = {
     request: SaveAggregateEditsRequest,
   ): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateSaveEdits, request),
+  /** 不要明細の印を付ける／外す（内訳書へ飛ばさず工種科目の最後にまとめる） */
+  setDetailUnused: (request: SetDetailUnusedRequest): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateSetUnused, request),
   /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
   getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferGet, projectId),

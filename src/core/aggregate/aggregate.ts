@@ -73,6 +73,8 @@ export interface AggregatedItem {
   remarksLower: string;
   estimateDisplay: string;
   formwork: string;
+  /** 不要明細（人が印を付けた明細。内訳書へは飛ばさず工種科目の最後にまとめる） */
+  unused: boolean;
   quantity: number;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];
@@ -199,6 +201,7 @@ function numberOrder(value: number | null): string {
 export function aggregateItems(
   entries: AggregateEntry[],
   skipPart2SubjectIds: ReadonlySet<number> = new Set(),
+  unusedMasterKeys: ReadonlySet<string> = new Set(),
 ): AggregatedItem[] {
   const map = new Map<string, AggregatedItem>();
   entries.forEach((entry) => {
@@ -228,6 +231,7 @@ export function aggregateItems(
       remarksLower: entry.remarksLower,
       estimateDisplay: entry.estimateDisplay,
       formwork: entry.formwork,
+      unused: unusedMasterKeys.has(masterKey),
       quantity: 0,
       rooms: [],
       traceIds: [],
@@ -249,6 +253,8 @@ export function aggregateItems(
     const keyOf = (item: AggregatedItem): string =>
       [
         String(item.subjectId ?? 99999).padStart(5, "0"),
+        // 不要明細は工種科目の最後にまとめる
+        item.unused ? "9" : "0",
         item.part1,
         item.part2 === "" ? " " : String(item.part2Order).padStart(5, "0"),
         item.part2,

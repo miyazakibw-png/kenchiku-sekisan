@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { migrations } from '../../src/main/db/migrations'
@@ -11,7 +12,8 @@ import {
   listAssemblyMasterOptions,
   mergeAssemblies,
   promoteAssemblyToBasic,
-  saveAssembly
+  saveAssembly,
+  syncAssembliesFromSheets
 } from '../../src/main/services/assemblyService'
 import {
   listDetailChangeLogs,
@@ -242,5 +244,137 @@ describe('仕上明細セットマスター', () => {
       '下地2',
       '予備'
     ])
+  })
+})
+
+describe('計算書からの自動登録と連動', () => {
+  function makeRoomSheet(sets: unknown[]): number {
+    const rowId = Number(
+      db
+        .insert(schema.projectEstimateRows)
+        .values({
+          projectId: projectIdRef,
+          rowType: 'room',
+          part1: '1階',
+          part2: '内部',
+          part3: '事務室',
+          calcType: 'room',
+          displayOrder: 0
+        })
+        .run().lastInsertRowid
+    )
+    return Number(
+      db
+        .insert(schema.projectRoomSheets)
+        .values({
+          projectId: projectIdRef,
+          estimateRowId: rowId,
+          lowerJson: JSON.stringify(sets)
+        })
+        .run().lastInsertRowid
+    )
+  }
+
+  function calcSetJson(names: string[]): unknown {
+    return {
+      id: 's1',
+      partNumber: null,
+      partName: '壁',
+      banner: null,
+      assemblyId: null,
+      details: names.map((name, index) => ({
+        id: `d${index}`,
+        sourceDetailId: detailIds[index] ?? null,
+        subjectId,
+        detailNumber: null,
+        materialCategory: '仕上',
+        partNumber: null,
+        partName: '',
+        name,
+        descriptionUpper: '',
+        descriptionLower: '',
+        unit: 'm2',
+        remarksUpper: '',
+        remarksLower: '',
+        estimateDisplay: '',
+        coefficient: 1
+      })),
+      lines: [{ id: 'l1', formulaA: '10', formulaB: '', comment: '', bSymbol: '' }]
+    }
+  }
+
+  function lowerJsonOf(sheetId: number): string {
+    return (
+      db
+        .select()
+        .from(schema.projectRoomSheets)
+        .where(eq(schema.projectRoomSheets.id, sheetId))
+        .get()?.lowerJson ?? ''
+    )
+  }
+
+  it('計算書で組んだセットを集計時に自動登録する', () => {
+    const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地', 'グラスウール'])])
+    expect(listAssemblies(db, projectIdRef)).toEqual([])
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1)
+
+    const [assembly] = listAssemblies(db, projectIdRef)
+    expect(assembly.items.map((i) => i.name)).toEqual(['軽鉄下地', 'グラスウール'])
+    // 計算書側にマスターのIDを控える（連動の目印）
+    expect(lowerJsonOf(sheetId)).toContain(`"assemblyId":${assembly.id}`)
+
+    // 同じ構成は1件にまとめるので2回目は増えない
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(0)
+    expect(listAssemblies(db, projectIdRef).length).toBe(1)
+  })
+
+  it('セット明細マスターで直すと計算書も連動して直る', () => {
+    const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
+    syncAssembliesFromSheets(db, projectIdRef)
+    const [assembly] = listAssemblies(db, projectIdRef)
+
+    const result = saveAssembly(db, {
+      id: assembly.id,
+      scope: 'project',
+      projectId: projectIdRef,
+      note: '',
+      items: [{ ...assembly.items[0], name: '軽鉄下地（65形）' }],
+      propagate: true
+    })
+
+    expect(result.syncedSets).toBe(1)
+    expect(lowerJsonOf(sheetId)).toContain('軽鉄下地（65形）')
+    // 計算式はそのまま残す
+    expect(lowerJsonOf(sheetId)).toContain('"formulaA":"10"')
+  })
+
+  it('同じ明細を使う他のセットも一緒に直せる', () => {
+    makeRoomSheet([calcSetJson(['軽鉄下地'])])
+    syncAssembliesFromSheets(db, projectIdRef)
+    const [first] = listAssemblies(db, projectIdRef)
+    const { assembly: second } = saveAssembly(db, {
+      id: null,
+      scope: 'project',
+      projectId: projectIdRef,
+      note: '',
+      items: [{ ...first.items[0], id: null }, itemOf(detailIds[1])]
+    })
+
+    saveAssembly(db, {
+      id: first.id,
+      scope: 'project',
+      projectId: projectIdRef,
+      note: '',
+      items: [{ ...first.items[0], name: '軽鉄下地（50形）' }],
+      propagate: true,
+      applyToAllSets: true
+    })
+
+    expect(
+      listAssemblies(db, projectIdRef)
+        .find((a) => a.id === second.id)
+        ?.items.map((i) => i.name)
+    ).toEqual(['軽鉄下地（50形）', 'グラスウール'])
   })
 })

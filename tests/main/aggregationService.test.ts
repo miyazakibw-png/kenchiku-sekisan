@@ -18,7 +18,9 @@ import {
   listAggregateRuns,
   runAggregation,
   saveAggregateEdits,
+  setDetailUnused,
 } from "../../src/main/services/aggregationService";
+import { transferBreakdown } from "../../src/main/services/breakdownService";
 import { listTransferRows } from "../../src/main/services/transferRowService";
 import {
   listDetailChangeLogs,
@@ -443,6 +445,36 @@ describe("集計処理", () => {
         (log) => log.changeKind === "edit",
       ),
     ).toHaveLength(0);
+  });
+
+  it("不要明細にした明細は内訳書へ飛ばさない（計算書はそのまま残る）", () => {
+    addRoom("事務室", 1, 1);
+    const before = runAggregation(db, projectId);
+    expect(before.items[0].unused).toBe(false);
+    expect(transferBreakdown(db, projectId).rows.length).toBeGreaterThan(0);
+
+    const view = setDetailUnused(db, {
+      projectId,
+      masterKey: before.items[0].masterKey,
+      unused: true,
+      note: "設計事務所より不要の指示",
+    });
+
+    // 集計書には数量ごと残る（計算書も消さない）
+    expect(view.items).toHaveLength(1);
+    expect(view.items[0].unused).toBe(true);
+    expect(view.items[0].quantity).toBe(before.items[0].quantity);
+    // 内訳書へは出さない
+    expect(transferBreakdown(db, projectId).rows).toEqual([]);
+
+    // 印を外せば元どおり内訳書へ出る
+    const back = setDetailUnused(db, {
+      projectId,
+      masterKey: before.items[0].masterKey,
+      unused: false,
+    });
+    expect(back.items[0].unused).toBe(false);
+    expect(transferBreakdown(db, projectId).rows.length).toBeGreaterThan(0);
   });
 
   it("小計行は集計しない", () => {

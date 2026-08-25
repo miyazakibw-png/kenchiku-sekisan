@@ -5,7 +5,7 @@
  * 集計をかけ直しても過去の回は消さず、実行ごとに版を残す。
  */
 
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
   projectAggregateDetails,
@@ -17,6 +17,7 @@ import {
   projectGeneralSheets,
   projectRoomSheets,
   projectTransferRows,
+  projectUnusedDetails,
 } from "../db/schema";
 import {
   aggregateItems,
@@ -33,6 +34,7 @@ import {
 } from "./projectMasterService";
 import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
 import { getDeductionLimit } from "./roomSheetService";
+import { syncAssembliesFromSheets } from "./assemblyService";
 import {
   displayedValue,
   evaluateCalcSheet,
@@ -68,6 +70,7 @@ import type {
   AggregateView,
   EstimateRowCheck,
   SaveAggregateEditsRequest,
+  SetDetailUnusedRequest,
 } from "../../shared/types";
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -92,18 +95,75 @@ interface FrameFittingInput {
   lineId: string | null;
 }
 
+/** 不要明細（人が印を付けた明細）の集計キー */
+function unusedMasterKeys(
+  db: AppDatabase,
+  projectId: number,
+): ReadonlySet<string> {
+  return new Set(
+    db
+      .select()
+      .from(projectUnusedDetails)
+      .where(eq(projectUnusedDetails.projectId, projectId))
+      .all()
+      .map((row) => row.masterKey),
+  );
+}
+
+/**
+ * 明細に不要の印を付ける／外す。
+ * 不要明細は工種科目の最後にまとめ、内訳書へは飛ばさない（計算書はそのまま残す）。
+ */
+export function setDetailUnused(
+  db: AppDatabase,
+  request: SetDetailUnusedRequest,
+): AggregateView {
+  if (request.unused) {
+    db.insert(projectUnusedDetails)
+      .values({
+        projectId: request.projectId,
+        masterKey: request.masterKey,
+        note: request.note ?? "",
+      })
+      .onConflictDoUpdate({
+        target: [
+          projectUnusedDetails.projectId,
+          projectUnusedDetails.masterKey,
+        ],
+        set: { note: request.note ?? "" },
+      })
+      .run();
+  } else {
+    db.delete(projectUnusedDetails)
+      .where(
+        and(
+          eq(projectUnusedDetails.projectId, request.projectId),
+          eq(projectUnusedDetails.masterKey, request.masterKey),
+        ),
+      )
+      .run();
+  }
+  return runAggregation(db, request.projectId);
+}
+
 /** 集計を実行して保存する。戻り値は最新の集計結果 */
 export function runAggregation(
   db: AppDatabase,
   projectId: number,
 ): AggregateView {
+  // 計算書で組んだセットは、集計をかけた時点で仕上明細セットマスターへ自動登録する
+  syncAssembliesFromSheets(db, projectId);
   const entries = collectEntries(db, projectId);
   const skipPart2 = new Set(
     listProjectSubjects(db, projectId)
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const items = aggregateItems(entries, skipPart2);
+  const items = aggregateItems(
+    entries,
+    skipPart2,
+    unusedMasterKeys(db, projectId),
+  );
 
   const run = db.transaction((tx) => {
     const created = tx
@@ -134,6 +194,7 @@ export function runAggregation(
           remarksLower: item.remarksLower,
           estimateDisplay: item.estimateDisplay,
           formwork: item.formwork,
+          unused: item.unused ? 1 : 0,
           quantity: item.quantity,
           roomsJson: JSON.stringify(item.rooms),
         })
@@ -597,6 +658,7 @@ function toItem(row: typeof projectAggregateItems.$inferSelect): AggregateItem {
     remarksLower: row.remarksLower,
     estimateDisplay: row.estimateDisplay,
     formwork: row.formwork,
+    unused: row.unused === 1,
     quantity: row.quantity,
     rooms: parseJson<{ roomName: string; quantity: number }[]>(
       row.roomsJson,
@@ -681,7 +743,11 @@ function isStale(db: AppDatabase, projectId: number, runId: number): boolean {
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const fresh = aggregateItems(collectEntries(db, projectId), skipPart2);
+  const fresh = aggregateItems(
+    collectEntries(db, projectId),
+    skipPart2,
+    unusedMasterKeys(db, projectId),
+  );
   const saved = db
     .select()
     .from(projectAggregateItems)

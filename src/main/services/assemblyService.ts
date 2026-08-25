@@ -5,7 +5,10 @@ import {
   mDetails,
   mFinishAssemblies,
   mFinishAssemblyItems,
-  projectRoomFinishes
+  projectFrameSheets,
+  projectGeneralSheets,
+  projectRoomFinishes,
+  projectRoomSheets
 } from '../db/schema'
 import type {
   AssemblyItem,
@@ -17,6 +20,8 @@ import type {
   SaveAssemblyResult
 } from '../../shared/types'
 import { assemblySignature } from '../../shared/assemblySignature'
+import type { CalcDetail, CalcSet } from '../../core/room/calcSheet'
+import { calcDetail, isEmptyDetail, normalizeSets, syncLines } from '../../core/room/calcSheet'
 import { changedFieldsOf, listMasterOptions, snapshotOf } from './detailService'
 
 /** セット明細1行を修正履歴の形にする（有効欄はセットには無いので常に有効とする） */
@@ -203,7 +208,205 @@ export function saveAssembly(db: AppDatabase, request: SaveAssemblyRequest): Sav
   })
 
   const assembly = getAssembly(db, id)
-  return { assembly, duplicateOf: findDuplicate(db, assembly) }
+  let syncedSets = 0
+  if (request.propagate === true) {
+    if (request.applyToAllSets === true) {
+      syncedSets += applyItemChangesToOtherAssemblies(db, assembly, before, request.items)
+    }
+    syncedSets += propagateAssemblyToSheets(db, assembly)
+  }
+  return { assembly, duplicateOf: findDuplicate(db, assembly), syncedSets }
+}
+
+/** 1明細だけの照合キー（同じ明細を使っている他のセットを探すために使う） */
+function itemKey(item: AssemblyItem): string {
+  return assemblySignature([item])
+}
+
+/**
+ * 直した明細を、その明細を使っている同じ物件の他のセットにも反映する。
+ * （直したセットだけ変える場合は呼ばない）
+ */
+function applyItemChangesToOtherAssemblies(
+  db: AppDatabase,
+  assembly: FinishAssembly,
+  before: AssemblyItem[],
+  after: AssemblyItem[]
+): number {
+  const changes = new Map<string, AssemblyItem>()
+  after.forEach((item, index) => {
+    const old = before[index]
+    if (!old) return
+    const key = itemKey(old)
+    if (key !== itemKey(item)) changes.set(key, item)
+  })
+  if (changes.size === 0) return 0
+
+  let synced = 0
+  listAssemblies(db, assembly.projectId).forEach((other) => {
+    if (other.id === assembly.id) return
+    let changed = false
+    const items = other.items.map((item) => {
+      const replacement = changes.get(itemKey(item))
+      if (!replacement) return item
+      changed = true
+      return { ...replacement, id: item.id, sourceDetailId: item.sourceDetailId }
+    })
+    if (!changed) return
+    const saved = saveAssembly(db, {
+      id: other.id,
+      scope: other.scope,
+      projectId: other.projectId,
+      note: other.note,
+      items
+    })
+    synced += propagateAssemblyToSheets(db, saved.assembly)
+  })
+  return synced
+}
+
+/** 物件の計算書（部屋・軸組・汎用）を1つの形で扱う */
+function projectSheetTables(): (
+  | typeof projectRoomSheets
+  | typeof projectFrameSheets
+  | typeof projectGeneralSheets
+)[] {
+  return [projectRoomSheets, projectFrameSheets, projectGeneralSheets]
+}
+
+function parseSets(lowerJson: string): CalcSet[] {
+  try {
+    const parsed: unknown = JSON.parse(lowerJson)
+    return Array.isArray(parsed) ? normalizeSets(parsed as CalcSet[]) : []
+  } catch {
+    return []
+  }
+}
+
+/** セット明細マスターの1明細を、計算書の明細行の形にする */
+function toCalcDetail(item: AssemblyItem, base: CalcDetail | undefined): CalcDetail {
+  return calcDetail({
+    ...(base ?? {}),
+    sourceDetailId: item.sourceDetailId,
+    subjectId: item.subjectId,
+    detailNumber: item.detailNumber,
+    materialCategory: item.materialCategory,
+    partNumber: item.partNumber,
+    partName: item.partName,
+    name: item.name,
+    descriptionUpper: item.descriptionUpper,
+    descriptionLower: item.descriptionLower,
+    unit: item.unit,
+    remarksUpper: item.remarksUpper,
+    remarksLower: item.remarksLower,
+    estimateDisplay: item.estimateDisplay,
+    coefficient: item.coefficient
+  })
+}
+
+/**
+ * セット明細マスターで直した内容を、そのセットを使っている計算書へ連動させる。
+ * 計算式はそのまま残し、明細の文字と掛け率だけを合わせる。
+ */
+export function propagateAssemblyToSheets(db: AppDatabase, assembly: FinishAssembly): number {
+  if (assembly.projectId === null) return 0
+  let synced = 0
+  projectSheetTables().forEach((table) => {
+    db.select()
+      .from(table)
+      .where(eq(table.projectId, assembly.projectId as number))
+      .all()
+      .forEach((sheet) => {
+        const sets = parseSets(sheet.lowerJson)
+        let changed = false
+        sets.forEach((set) => {
+          if (set.assemblyId !== assembly.id) return
+          const details = assembly.items.map((item, index) => toCalcDetail(item, set.details[index]))
+          set.details = details
+          set.lines = syncLines(details, set.lines)
+          changed = true
+          synced += 1
+        })
+        if (!changed) return
+        db.update(table)
+          .set({ lowerJson: JSON.stringify(sets), updatedAt: new Date().toISOString() })
+          .where(eq(table.id, sheet.id))
+          .run()
+      })
+  })
+  return synced
+}
+
+/** 計算書の1セットを、セット明細マスターの構成明細に写し取る */
+function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
+  return set.details
+    .filter((detail) => !isEmptyDetail(detail) && detail.subjectId !== null)
+    .map((detail) => ({
+      id: null,
+      sourceDetailId: detail.sourceDetailId,
+      subjectId: detail.subjectId as number,
+      partNumber: detail.partNumber,
+      detailNumber: detail.detailNumber,
+      materialCategory: detail.materialCategory,
+      partName: detail.partName || set.partName,
+      name: detail.name,
+      descriptionUpper: detail.descriptionUpper,
+      descriptionLower: detail.descriptionLower,
+      unit: detail.unit,
+      remarksUpper: detail.remarksUpper,
+      remarksLower: detail.remarksLower,
+      estimateDisplay: detail.estimateDisplay,
+      formula: '',
+      coefficient: detail.coefficient
+    }))
+}
+
+/**
+ * 計算書に組まれたセットを、この物件の仕上明細セットマスターへ自動登録する。
+ * 同じ構成のセットは1件にまとめ、計算書側にはマスターのIDを控えて連動できるようにする。
+ */
+export function syncAssembliesFromSheets(db: AppDatabase, projectId: number): number {
+  const bySignature = new Map(
+    listAssemblies(db, projectId).map((assembly) => [assemblySignature(assembly.items), assembly])
+  )
+  let added = 0
+  projectSheetTables().forEach((table) => {
+    db.select()
+      .from(table)
+      .where(eq(table.projectId, projectId))
+      .all()
+      .forEach((sheet) => {
+        const sets = parseSets(sheet.lowerJson)
+        let changed = false
+        sets.forEach((set) => {
+          const items = itemsOfCalcSet(set)
+          if (items.length === 0) return
+          const signature = assemblySignature(items)
+          let assembly = bySignature.get(signature)
+          if (!assembly) {
+            assembly = saveAssembly(db, {
+              id: null,
+              scope: 'project',
+              projectId,
+              note: '',
+              items
+            }).assembly
+            bySignature.set(signature, assembly)
+            added += 1
+          }
+          if (set.assemblyId !== assembly.id) {
+            set.assemblyId = assembly.id
+            changed = true
+          }
+        })
+        if (!changed) return
+        db.update(table)
+          .set({ lowerJson: JSON.stringify(sets), updatedAt: new Date().toISOString() })
+          .where(eq(table.id, sheet.id))
+          .run()
+      })
+  })
+  return added
 }
 
 /** 内容（構成明細の並びと文字）が完全一致する別セットを探す */

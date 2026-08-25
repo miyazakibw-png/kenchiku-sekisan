@@ -109,6 +109,7 @@ import {
   listAggregateRuns,
   runAggregation,
   saveAggregateEdits,
+  setDetailUnused,
 } from "./services/aggregationService";
 import {
   getFormworkTransfer,
@@ -150,6 +151,7 @@ import type {
   SaveAggregateEditsRequest,
   SaveFormworkRulesRequest,
   SaveTransferRowsRequest,
+  SetDetailUnusedRequest,
   SubjectDraft,
 } from "../shared/types";
 
@@ -359,6 +361,11 @@ function registerIpcHandlers(): void {
     IPC.aggregateSaveEdits,
     (_event, request: SaveAggregateEditsRequest) =>
       saveAggregateEdits(getDatabase(), request),
+  );
+  ipcMain.handle(
+    IPC.aggregateSetUnused,
+    (_event, request: SetDetailUnusedRequest) =>
+      setDetailUnused(getDatabase(), request),
   );
   ipcMain.handle(IPC.formworkTransferGet, (_event, projectId: number) =>
     getFormworkTransfer(getDatabase(), projectId),

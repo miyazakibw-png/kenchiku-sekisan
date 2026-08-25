@@ -55,6 +55,8 @@ export default function TransferSheetPage({
   const [details, setDetails] = useState<Detail[]>([]);
   const [partsOpen, setPartsOpen] = useState(false);
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
+  /** 明細IDで呼び出すための明細マスター（科目ごとに一度だけ読む） */
+  const [detailCache, setDetailCache] = useState<Record<number, Detail[]>>({});
 
   const history = useRowsHistory(rows, setRows);
 
@@ -122,6 +124,46 @@ export default function TransferSheetPage({
       setMessage(`${detail.name} を転記しました`);
     },
     [history, selected],
+  );
+
+  /**
+   * 明細IDを打って明細マスターから呼び出す。
+   * 科目（打った行、無ければ上の行から引き継いだ科目）の明細を探す。
+   */
+  const callDetailNumber = useCallback(
+    async (index: number, subject: number | null, text: string) => {
+      const trimmed = text.trim();
+      if (trimmed === "") {
+        update(index, { detailNumber: null });
+        return;
+      }
+      const parsed = Number.parseFloat(trimmed);
+      if (Number.isNaN(parsed)) {
+        setMessage("明細IDは数字で入れてください");
+        return;
+      }
+      update(index, { detailNumber: parsed });
+      if (subject === null) {
+        setMessage("科目IDを先に入れてください（明細を探せません）");
+        return;
+      }
+      const list =
+        detailCache[subject] ??
+        (await window.sekisan.listDetails(subject, project.id));
+      setDetailCache((current) => ({ ...current, [subject]: list }));
+      const found = list.find((detail) => detail.detailNumber === parsed);
+      if (!found) {
+        setMessage(`明細ID ${trimmed} は科目 ${subject} にありません`);
+        return;
+      }
+      history.edit((current) =>
+        current.map((row, at) =>
+          at === index ? applyDetail(row, found) : row,
+        ),
+      );
+      setMessage(`${found.name} を呼び出しました`);
+    },
+    [detailCache, history, project.id, update],
   );
 
   const materialEntries = useMemo(
@@ -512,7 +554,23 @@ export default function TransferSheetPage({
               </tr>
               <tr className="detail-lower">
                 <td className="no">
-                  {row.detailNumber === null ? "" : row.detailNumber.toFixed(2)}
+                  <input
+                    className="num"
+                    key={`d-${index}-${row.detailNumber ?? ""}`}
+                    defaultValue={
+                      row.detailNumber === null
+                        ? ""
+                        : row.detailNumber.toFixed(2)
+                    }
+                    title="明細IDを入れると、その科目の明細マスターから名称・摘要・単位を呼び出します"
+                    onBlur={(e) =>
+                      void callDetailNumber(
+                        index,
+                        row.subjectId ?? shown.subjectId,
+                        e.target.value,
+                      )
+                    }
+                  />
                 </td>
                 <td>
                   <input

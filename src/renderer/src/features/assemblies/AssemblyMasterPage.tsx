@@ -6,6 +6,7 @@ import type {
   Subject,
 } from "@shared/types";
 import { formatDetailNumber } from "@shared/detailNumber";
+import { assemblySignature } from "@shared/assemblySignature";
 import UnitInput, { UnitOptions } from "../../components/UnitInput";
 import MasterCodeInput, {
   MasterCodeOptions,
@@ -125,12 +126,36 @@ export default function AssemblyMasterPage({
 
   const save = useCallback(async () => {
     if (!editor) return;
+    const items = toAssemblyItems(editor.items);
+    const before = assemblies.find((a) => a.id === editor.id);
+    // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
+    const changedKeys = (before?.items ?? []).flatMap((old, index) => {
+      const next = items[index];
+      if (!next) return [];
+      const key = assemblySignature([old]);
+      return key === assemblySignature([next]) ? [] : [key];
+    });
+    const sharing = assemblies.filter(
+      (other) =>
+        other.id !== editor.id &&
+        other.items.some((item) =>
+          changedKeys.includes(assemblySignature([item])),
+        ),
+    );
+    const applyToAllSets =
+      sharing.length > 0 &&
+      window.confirm(
+        `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
+          "［OK］この明細を使う全セットを直す\n［キャンセル］このセットだけ直す",
+      );
     const result = await window.sekisan.saveAssembly({
       id: editor.id,
       scope: projectId === null ? "basic" : "project",
       projectId,
       note: editor.note,
-      items: toAssemblyItems(editor.items),
+      items,
+      propagate: true,
+      applyToAllSets,
     });
     await reload();
     setEditor(null);
@@ -142,9 +167,13 @@ export default function AssemblyMasterPage({
         message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ""}）。既存セットへ統合しますか。`,
       });
     } else {
-      setToast("保存しました");
+      setToast(
+        result.syncedSets === 0
+          ? "保存しました"
+          : `保存しました（計算書の${result.syncedSets}セットも直しました）`,
+      );
     }
-  }, [editor, projectId, reload]);
+  }, [assemblies, editor, projectId, reload]);
 
   const applyMerge = useCallback(async () => {
     if (!merge) return;

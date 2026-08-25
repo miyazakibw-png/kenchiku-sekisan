@@ -75,11 +75,13 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
   let subjectId: number | null | undefined;
   let part1: string | undefined;
   let part2: string | undefined;
+  let unused: boolean | undefined;
   items.forEach((item) => {
     if (subjectId !== item.subjectId) {
       subjectId = item.subjectId;
       part1 = undefined;
       part2 = undefined;
+      unused = undefined;
       const subject = subjects.find((row) => row.id === item.subjectId);
       lines.push({
         kind: "heading",
@@ -88,6 +90,16 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
           subjectId: item.subjectId,
           text: subject ? subject.name : "",
         },
+      });
+    }
+    // 不要明細は工種科目の最後にまとめる（内訳書へは飛ばさない）
+    if (unused !== item.unused && item.unused) {
+      unused = item.unused;
+      part1 = undefined;
+      part2 = undefined;
+      lines.push({
+        kind: "heading",
+        heading: { kind: "part1", subjectId: null, text: "【不要明細】" },
       });
     }
     if (part1 !== item.part1) {
@@ -205,6 +217,27 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     );
   }, [applyToSameDetail, edits, project.id, view.run]);
 
+  /** 不要明細の印を付ける／外す（内訳書へ飛ばさなくなる） */
+  const toggleUnused = useCallback(async () => {
+    if (selected === null) return;
+    const result = await window.sekisan.setDetailUnused({
+      projectId: project.id,
+      masterKey: selected.masterKey,
+      unused: !selected.unused,
+    });
+    setView(result);
+    setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setSelected(
+      result.items.find((item) => item.masterKey === selected.masterKey) ??
+        null,
+    );
+    setMessage(
+      selected.unused
+        ? "不要の印を外しました（内訳書へ飛びます）"
+        : "不要明細にしました（工種科目の最後にまとめ、内訳書へは飛ばしません）",
+    );
+  }, [project.id, selected]);
+
   const lines = useMemo(
     () => buildLines(view.items, subjects),
     [subjects, view.items],
@@ -320,6 +353,14 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         </label>
         <button
           type="button"
+          disabled={selected === null}
+          onClick={() => void toggleUnused()}
+          title="不要になった明細に印を付けます。印を付けた明細は工種科目の最後にまとめ、内訳書へは飛ばしません（計算書はそのまま残ります）"
+        >
+          {selected?.unused ? "↩ 不要を外す" : "🚫 不要明細にする"}
+        </button>
+        <button
+          type="button"
           className={checking ? "on" : ""}
           onClick={() => setChecking(!checking)}
         >
@@ -405,11 +446,12 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
               ? checkQuantityUnit(item.quantity, item.unit)
               : "";
             const isSelected = selected?.masterKey === item.masterKey;
+            const unusedClass = item.unused ? "unused" : "";
             const draft = edits[item.masterKey] ?? initialEdit(item);
             return (
               <tbody
                 key={item.id}
-                className={`row ${check} ${isSelected ? "selected" : ""}`}
+                className={`row ${check} ${unusedClass} ${isSelected ? "selected" : ""}`}
                 data-master-key={item.masterKey}
                 onClick={() => setSelected(item)}
               >

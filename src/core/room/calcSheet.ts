@@ -55,6 +55,8 @@ export interface CalcSet {
   lines: CalcLine[];
   /** セットの上に置く見出し行（無ければ付けない） */
   banner?: CalcBanner | null;
+  /** 自動登録された仕上明細セットマスターのID（マスター修正の連動先） */
+  assemblyId?: number | null;
 }
 
 let counter = 0;
@@ -104,6 +106,7 @@ export function commentSet(text: string, color: string): CalcSet {
     details: [],
     lines: [],
     banner: { text, color },
+    assemblyId: null,
   };
 }
 
@@ -123,6 +126,7 @@ export function calcSet(detailCount = 1): CalcSet {
     details: Array.from({ length: detailCount }, () => calcDetail()),
     lines: Array.from({ length: Math.max(detailCount, 1) }, () => calcLine()),
     banner: null,
+    assemblyId: null,
   };
 }
 
@@ -137,6 +141,7 @@ export function normalizeSets(sets: CalcSet[]): CalcSet[] {
     partNumber: set.partNumber ?? null,
     partName: set.partName ?? "",
     banner: set.banner ?? null,
+    assemblyId: set.assemblyId ?? null,
     details: (set.details ?? []).map((detail) => calcDetail(detail)),
     lines: (set.lines ?? []).map((line) => calcLine(line)),
   }));
