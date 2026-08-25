@@ -762,18 +762,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 row.rowKind === "subject" ? (
                   <tr key={`s-${index}`} className="subject">
                     <td className="mark">{row.subjectId ?? ""}</td>
-                    <td colSpan={7}>
-                      {/* 2段の書式では工種科目の見出しも2行分の高さにする */}
+                    <td>
                       {settings.layout === BREAKDOWN_LAYOUT.twoLine ||
-                      settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
-                        <>
-                          <div className="upper">{row.subjectName}</div>
-                          <div className="lower" />
-                        </>
-                      ) : (
-                        row.subjectName
-                      )}
+                      settings.layout === BREAKDOWN_LAYOUT.twoRow
+                        ? subjectLines(row.subjectName)
+                        : row.subjectName}
                     </td>
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
                   </tr>
                 ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
                   settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
@@ -881,12 +881,12 @@ function comparePairClass(
   return "";
 }
 
-/** 2段の書式で、工種科目の見出しを2行分の高さにする */
+/** 2段の書式で、工種科目の見出しを2行分の高さにし、名前は下の行に出す */
 function subjectLines(name: string): JSX.Element {
   return (
     <>
-      <div className="upper">{name}</div>
-      <div className="lower" />
+      <div className="upper" />
+      <div className="lower">{name}</div>
     </>
   );
 }

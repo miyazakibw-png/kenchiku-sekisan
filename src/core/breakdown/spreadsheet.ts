@@ -18,13 +18,38 @@ function escapeXml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function textCell(value: string): string {
-  return `<Cell ss:StyleID="b"><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
+
+/**
+ * 行の罫線の種類。
+ * one：上下とも罫線あり、upper：1明細の上の行（下の線なし）、lower：下の行（上の線なし）
+ */
+type RowBorder = "one" | "upper" | "lower";
+
+function style(base: string, border: RowBorder): string {
+  if (border === "upper") return `${base}u`;
+  if (border === "lower") return `${base}l`;
+  return base;
 }
 
-function numberCell(value: number | null): string {
-  if (value === null) return '<Cell ss:StyleID="b"/>';
-  return `<Cell ss:StyleID="n"><Data ss:Type="Number">${value}</Data></Cell>`;
+function textCell(value: string, border: RowBorder = "one"): string {
+  return `<Cell ss:StyleID="${style("b", border)}"><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+}
+
+function numberCell(value: number | null, border: RowBorder = "one"): string {
+  if (value === null) return `<Cell ss:StyleID="${style("b", border)}"/>`;
+  return `<Cell ss:StyleID="${style("n", border)}"><Data ss:Type="Number">${value}</Data></Cell>`;
+}
+
+/** 見出し（工種科目・タイトル）の1行。列のタテ線を残すため全列分のセルを出す */
+function headingRow(name: string, border: RowBorder): string {
+  const id = style("h", border);
+  const cells = HEADER.map((_title, index) =>
+    index === 0 && name !== ""
+      ? `<Cell ss:StyleID="${id}"><Data ss:Type="String">${escapeXml(name)}</Data></Cell>`
+      : `<Cell ss:StyleID="${id}"/>`,
+  );
+  return rowXml(cells);
 }
 
 /** シート名に使えない文字を置き換える（31文字まで） */
@@ -39,19 +64,16 @@ function rowXml(cells: string[]): string {
 
 function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
   const lines: string[] = [];
+  const twoRowHeading =
+    layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow;
   rows.forEach((row) => {
     if (row.rowKind === "subject") {
-      lines.push(
-        rowXml([
-          `<Cell ss:StyleID="h"><Data ss:Type="String">${escapeXml(row.subjectName)}</Data></Cell>`,
-        ]),
-      );
-      // 2段の書式では工種科目の見出しも明細と同じ2行分にする
-      if (
-        layout === BREAKDOWN_LAYOUT.twoLine ||
-        layout === BREAKDOWN_LAYOUT.twoRow
-      ) {
-        lines.push(rowXml(['<Cell ss:StyleID="h"/>']));
+      // 2段の書式では工種科目の見出しも2行で、名前は下の行に出す
+      if (twoRowHeading) {
+        lines.push(headingRow("", "upper"));
+        lines.push(headingRow(row.subjectName, "lower"));
+      } else {
+        lines.push(headingRow(row.subjectName, "one"));
       }
       return;
     }
@@ -81,47 +103,53 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
       layout === BREAKDOWN_LAYOUT.oneLine ||
       layout === BREAKDOWN_LAYOUT.twoRow
     ) {
-      // 書式②④：1行に1段だけ書く
+      // 書式②④：1行に1段だけ書く（書式④は上段（note）と下段（detail）で2行1明細）
+      const border: RowBorder =
+        layout === BREAKDOWN_LAYOUT.oneLine
+          ? "one"
+          : row.rowKind === "note"
+            ? "upper"
+            : row.rowKind === "detail"
+              ? "lower"
+              : "one";
       lines.push(
         rowXml([
-          textCell(row.nameLower),
-          textCell(row.descriptionLower),
-          numberCell(row.quantity),
-          textCell(row.unit),
-          numberCell(row.unitPrice),
-          numberCell(row.amount),
-          textCell(row.remarksLower),
+          textCell(row.nameLower, border),
+          textCell(row.descriptionLower, border),
+          numberCell(row.quantity, border),
+          textCell(row.unit, border),
+          numberCell(row.unitPrice, border),
+          numberCell(row.amount, border),
+          textCell(row.remarksLower, border),
         ]),
       );
       return;
     }
     lines.push(
       rowXml([
-        textCell(row.nameUpper),
-        textCell(row.descriptionUpper),
-        '<Cell ss:StyleID="b"/>',
-        '<Cell ss:StyleID="b"/>',
-        '<Cell ss:StyleID="b"/>',
-        '<Cell ss:StyleID="b"/>',
-        textCell(row.remarksUpper),
+        textCell(row.nameUpper, "upper"),
+        textCell(row.descriptionUpper, "upper"),
+        textCell("", "upper"),
+        textCell("", "upper"),
+        textCell("", "upper"),
+        textCell("", "upper"),
+        textCell(row.remarksUpper, "upper"),
       ]),
     );
     lines.push(
       rowXml([
-        textCell(row.nameLower),
-        textCell(row.descriptionLower),
-        numberCell(row.quantity),
-        textCell(row.unit),
-        numberCell(row.unitPrice),
-        numberCell(row.amount),
-        textCell(row.remarksLower),
+        textCell(row.nameLower, "lower"),
+        textCell(row.descriptionLower, "lower"),
+        numberCell(row.quantity, "lower"),
+        textCell(row.unit, "lower"),
+        numberCell(row.unitPrice, "lower"),
+        numberCell(row.amount, "lower"),
+        textCell(row.remarksLower, "lower"),
       ]),
     );
   });
   return lines;
 }
-
-const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
 
 function worksheet(sheet: SheetData, index: number, layout: number): string {
   const header = rowXml(
@@ -136,6 +164,37 @@ function worksheet(sheet: SheetData, index: number, layout: number): string {
   return `<Worksheet ss:Name="${escapeXml(sheetName(sheet.name, index))}"><Table>${columns}${header}${bodyRows(sheet.rows, layout).join("")}</Table></Worksheet>`;
 }
 
+/** 上の線・下の線だけを引く罫線（1明細の上下2行の間に線を出さないため） */
+function borders(top: boolean, bottom: boolean): string {
+  const list = [
+    '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>',
+    '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>',
+  ];
+  if (top)
+    list.push(
+      '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>',
+    );
+  if (bottom)
+    list.push(
+      '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>',
+    );
+  return `<Borders>${list.join("")}</Borders>`;
+}
+
+/** 1明細の上の行（○u）と下の行（○l）の書式を作る */
+function pairStyle(base: string): string {
+  const extra =
+    base === "n"
+      ? '<NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right"/>'
+      : base === "h"
+        ? '<Font ss:Bold="1"/><Interior ss:Color="#EFEFEF" ss:Pattern="Solid"/>'
+        : "";
+  return [
+    `<Style ss:ID="${base}u">${extra}${borders(true, false)}</Style>`,
+    `<Style ss:ID="${base}l">${extra}${borders(false, true)}</Style>`,
+  ].join("\n");
+}
+
 /** 複数シートのブックを作る */
 export function toSpreadsheetXml(
   sheets: readonly SheetData[],
@@ -146,6 +205,9 @@ export function toSpreadsheetXml(
 <Style ss:ID="b"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
 <Style ss:ID="n"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders><NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right"/></Style>
 <Style ss:ID="h"><Font ss:Bold="1"/><Interior ss:Color="#EFEFEF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>
+${pairStyle("b")}
+${pairStyle("n")}
+${pairStyle("h")}
 </Styles>`;
   const body = sheets
     .map((sheet, index) => worksheet(sheet, index, layout))
