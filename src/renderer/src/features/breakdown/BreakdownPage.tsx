@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   BreakdownExportKind,
   BreakdownRowRecord,
@@ -109,6 +109,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const [versions, setVersions] = useState<BreakdownVersion[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const [panel, setPanel] = useState<"none" | "settings" | "compare">("none");
   const [message, setMessage] = useState("");
   const [leftRows, setLeftRows] = useState<BreakdownRowRecord[]>([]);
@@ -289,13 +290,23 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     });
   }, [settings.subjectOrder, view.rows]);
 
-  const shownRows = useMemo(
-    () =>
-      selectedSubject === null
-        ? view.rows
-        : view.rows.filter((row) => row.subjectId === selectedSubject),
-    [selectedSubject, view.rows],
-  );
+  // 全部の科目を出したまま、選んだ科目の見出しへ移動する
+  const shownRows = view.rows;
+
+  const showSubject = (subjectId: number | null): void => {
+    setSelectedSubject(subjectId);
+    if (subjectId === null) {
+      bodyRef.current?.scrollTo({ top: 0 });
+      return;
+    }
+    const heading = bodyRef.current?.querySelector(
+      `tr.subject[data-subject="${subjectId}"]`,
+    );
+    if (heading instanceof HTMLElement && bodyRef.current)
+      bodyRef.current.scrollTop +=
+        heading.getBoundingClientRect().top -
+        bodyRef.current.getBoundingClientRect().top;
+  };
 
   const moveSubject = (subjectId: number, step: number): void => {
     const order = [...settings.subjectOrder];
@@ -705,12 +716,12 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           </table>
         </div>
       ) : (
-        <div className="breakdown-body">
+        <div className="breakdown-body" ref={bodyRef}>
           <div className="subject-list">
             <button
               type="button"
               className={selectedSubject === null ? "selected" : ""}
-              onClick={() => setSelectedSubject(null)}
+              onClick={() => showSubject(null)}
             >
               すべて
             </button>
@@ -719,7 +730,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 <button
                   type="button"
                   className={selectedSubject === subjectId ? "selected" : ""}
-                  onClick={() => setSelectedSubject(subjectId)}
+                  onClick={() => showSubject(subjectId)}
                 >
                   {name}
                 </button>
@@ -766,7 +777,15 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             <tbody>
               {shownRows.map((row, index) =>
                 row.rowKind === "subject" || row.rowKind === "title" ? (
-                  <tr key={`s-${index}`} className="subject">
+                  <tr
+                    key={`s-${index}`}
+                    className="subject"
+                    data-subject={
+                      row.rowKind === "subject" && row.subjectId !== null
+                        ? row.subjectId
+                        : undefined
+                    }
+                  >
                     <td className="mark">
                       {(() => {
                         const mark =
