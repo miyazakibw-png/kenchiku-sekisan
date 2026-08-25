@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
   projectAggregateDetails,
+  projectAggregateItems,
   projectAggregateRuns,
   projectTransferRows,
   projectTransferRules,
@@ -9,10 +10,12 @@ import {
 import {
   buildFormworkTransferRows,
   collectFormworkQuantities,
+  type FormworkSourceDetail,
   type FormworkTransferRule,
   type FormworkTransferRow,
 } from "../../core/aggregate/formworkTransfer";
 import type {
+  FormworkSourceItem,
   FormworkTransferView,
   SaveFormworkRulesRequest,
 } from "../../shared/types";
@@ -30,7 +33,17 @@ function latestRunId(db: AppDatabase, projectId: number): number | null {
   return run.length > 0 ? run[0].id : null;
 }
 
-function listRules(db: AppDatabase, projectId: number): FormworkTransferRule[] {
+function splitKeys(text: string): string[] {
+  return text
+    .split(",")
+    .map((key) => key.trim())
+    .filter((key) => key !== "");
+}
+
+export function listFormworkRules(
+  db: AppDatabase,
+  projectId: number,
+): FormworkTransferRule[] {
   return db
     .select()
     .from(projectTransferRules)
@@ -40,13 +53,18 @@ function listRules(db: AppDatabase, projectId: number): FormworkTransferRule[] {
         eq(projectTransferRules.ruleKind, RULE_KIND),
       ),
     )
-    .orderBy(asc(projectTransferRules.masterKey))
+    .orderBy(asc(projectTransferRules.id))
     .all()
     .map((rule) => ({
-      formwork: rule.masterKey,
+      key: rule.masterKey,
+      sourceKeys: splitKeys(rule.sourceKeys),
+      formwork: rule.formwork,
       coefficient: rule.coefficient,
       subjectId: rule.subjectId,
       materialCategory: rule.materialCategory,
+      part1: rule.part1,
+      part2: rule.part2,
+      part3: rule.part3,
       partNumber: rule.partNumber,
       partName: rule.partName,
       detailNumber: rule.detailNumber,
@@ -57,16 +75,11 @@ function listRules(db: AppDatabase, projectId: number): FormworkTransferRule[] {
     }));
 }
 
+/** 集計詳細データ（部屋ごとの拾い1行）。型枠転記の元になる数量 */
 function sourceDetails(
   db: AppDatabase,
   projectId: number,
-): {
-  formwork: string;
-  part1: string;
-  part2: string;
-  part2Split: boolean;
-  quantity: number;
-}[] {
+): FormworkSourceDetail[] {
   const runId = latestRunId(db, projectId);
   if (runId === null) return [];
   return db
@@ -75,6 +88,7 @@ function sourceDetails(
     .where(eq(projectAggregateDetails.runId, runId))
     .all()
     .map((detail) => ({
+      masterKey: detail.masterKey,
       formwork: detail.formwork,
       part1: detail.part1,
       part2: detail.part2,
@@ -83,39 +97,51 @@ function sourceDetails(
     }));
 }
 
+/** 型枠転記の元にできる明細（最新の集計書兼工事マスター。型枠転記で作った行は除く） */
+function sourceItems(db: AppDatabase, projectId: number): FormworkSourceItem[] {
+  const runId = latestRunId(db, projectId);
+  if (runId === null) return [];
+  const ruleKeys = new Set(
+    listFormworkRules(db, projectId).map((rule) => rule.key),
+  );
+  return db
+    .select()
+    .from(projectAggregateItems)
+    .where(eq(projectAggregateItems.runId, runId))
+    .orderBy(asc(projectAggregateItems.displayOrder))
+    .all()
+    .filter((item) => !ruleKeys.has(item.masterKey))
+    .map((item) => ({
+      masterKey: item.masterKey,
+      part1: item.part1,
+      part2: item.part2,
+      partName: item.partName,
+      name: item.name,
+      descriptionUpper: item.descriptionUpper,
+      unit: item.unit,
+      quantity: item.quantity,
+    }));
+}
+
 /**
  * 型枠転記の画面データ。
- * 集計した明細のうち型枠分類が付いているものを分類別に集計し、
- * 分類ごとの転記先（未設定なら空欄）と、転記したときにできる行を返す。
+ * 選べる元明細、元明細の型枠分類別の数量、いま決めているルール、
+ * そのルールでできる行（転記入力表へ入れる行）を返す。
  */
 export function getFormworkTransfer(
   db: AppDatabase,
   projectId: number,
 ): FormworkTransferView {
   const details = sourceDetails(db, projectId);
-  const rules = listRules(db, projectId);
-  const groups = collectFormworkQuantities(details);
-  const found = [...new Set(groups.map((group) => group.formwork))];
-  const merged = found.map(
-    (formwork) =>
-      rules.find((rule) => rule.formwork === formwork) ?? {
-        formwork,
-        coefficient: 1,
-        subjectId: null,
-        materialCategory: "",
-        partNumber: null,
-        partName: "",
-        detailNumber: null,
-        name: "",
-        description: "",
-        unit: "",
-        remarks: "",
-      },
-  );
+  const rules = listFormworkRules(db, projectId);
+  const selected = new Set(rules.flatMap((rule) => rule.sourceKeys));
   return {
-    rules: merged,
-    groups,
-    rows: buildFormworkTransferRows(details, merged),
+    rules,
+    sources: sourceItems(db, projectId),
+    groups: collectFormworkQuantities(details).filter((group) =>
+      selected.has(group.masterKey),
+    ),
+    rows: buildFormworkTransferRows(details, rules),
   };
 }
 
@@ -124,11 +150,32 @@ export function saveFormworkRules(
   request: SaveFormworkRulesRequest,
 ): FormworkTransferView {
   db.transaction((tx) => {
+    const keep = new Set(request.rules.map((rule) => rule.key));
+    tx.select()
+      .from(projectTransferRules)
+      .where(
+        and(
+          eq(projectTransferRules.projectId, request.projectId),
+          eq(projectTransferRules.ruleKind, RULE_KIND),
+        ),
+      )
+      .all()
+      .filter((rule) => !keep.has(rule.masterKey))
+      .forEach((rule) => {
+        tx.delete(projectTransferRules)
+          .where(eq(projectTransferRules.id, rule.id))
+          .run();
+      });
     request.rules.forEach((rule) => {
       const values = {
         projectId: request.projectId,
-        masterKey: rule.formwork,
+        masterKey: rule.key,
         ruleKind: RULE_KIND,
+        sourceKeys: rule.sourceKeys.join(","),
+        formwork: rule.formwork,
+        part1: rule.part1,
+        part2: rule.part2,
+        part3: rule.part3,
         coefficient: rule.coefficient,
         subjectId: rule.subjectId,
         materialCategory: rule.materialCategory,
@@ -157,9 +204,9 @@ export function saveFormworkRules(
 }
 
 /**
- * 転記入力表の最終行へ型枠の行を追記する。
+ * 転記入力表の空き部分（入力があれば最後の行の次）へ型枠の行を自動転記する。
  * 前回この機能で作った行は作り直すので、集計をかけ直しても数量が合う。
- * 人が手で直した行（型枠分類の印が無い行）はそのまま残す。
+ * 人が手で入れた行（型枠転記の印が無い行）はそのまま残す。
  */
 export function runFormworkTransfer(
   db: AppDatabase,
@@ -191,7 +238,7 @@ export function runFormworkTransfer(
           part2: row.part2,
           part2Split: row.part2Split ? 1 : 0,
           formwork: row.formwork,
-          part3: "",
+          part3: row.part3,
           subjectId: row.subjectId,
           materialCategory: row.materialCategory,
           partId: row.partNumber,

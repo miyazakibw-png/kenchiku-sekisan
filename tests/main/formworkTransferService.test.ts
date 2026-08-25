@@ -91,19 +91,27 @@ function roomRow(part3: string): EstimateRowDraft {
   };
 }
 
-const rule: FormworkTransferRule = {
-  formwork: "打放型枠",
-  coefficient: 1,
-  subjectId: 5,
-  materialCategory: "型枠",
-  partNumber: 60,
-  partName: "型枠",
-  detailNumber: 2.01,
-  name: "打放型枠",
-  description: "合板型枠",
-  unit: "m2",
-  remarks: "",
-};
+/** 元明細（コンクリート）を選んで打放型枠を算出するルール */
+function rule(sourceKeys: string[]): FormworkTransferRule {
+  return {
+    key: "型枠1",
+    sourceKeys,
+    formwork: "打放型枠",
+    coefficient: 1,
+    subjectId: 5,
+    materialCategory: "型枠",
+    part1: "",
+    part2: "",
+    part3: "機械室",
+    partNumber: 60,
+    partName: "型枠",
+    detailNumber: 2.01,
+    name: "打放型枠",
+    description: "合板型枠",
+    unit: "m2",
+    remarks: "",
+  };
+}
 
 const manualRow: TransferRowDraft = {
   id: null,
@@ -150,24 +158,24 @@ describe("型枠転記", () => {
     runAggregation(db, projectId);
   });
 
-  it("集計した型枠分類を拾い、転記先が未設定なら行を作らない", () => {
+  it("集計書兼工事マスターの明細から元明細を選べる（まだ行は作らない）", () => {
     const view = getFormworkTransfer(db, projectId);
-    expect(view.groups).toEqual([
-      {
-        formwork: "打放型枠",
-        part1: "建築",
-        part2: "1階",
-        part2Split: true,
-        quantity: 12,
-      },
-    ]);
-    expect(view.rules[0].formwork).toBe("打放型枠");
+    expect(view.sources).toHaveLength(1);
+    expect(view.sources[0]).toMatchObject({
+      name: "コンクリート",
+      quantity: 12,
+    });
+    expect(view.rules).toEqual([]);
     expect(view.rows).toEqual([]);
   });
 
-  it("転記先を決めると集計数量×掛け率で転記入力表の最終行へ追記する", () => {
+  it("選んだ元明細の数量×掛け率で、転記入力表の最後へ自動転記する", () => {
     saveTransferRows(db, { projectId, rows: [manualRow] });
-    saveFormworkRules(db, { projectId, rules: [{ ...rule, coefficient: 1.5 }] });
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    saveFormworkRules(db, {
+      projectId,
+      rules: [{ ...rule([source]), coefficient: 1.5 }],
+    });
 
     runFormworkTransfer(db, projectId);
     const rows = listTransferRows(db, projectId);
@@ -177,14 +185,16 @@ describe("型枠転記", () => {
       name: "打放型枠",
       unit: "m2",
       quantity: 18,
+      part3: "機械室",
       formwork: "打放型枠",
-      formworkKey: "打放型枠",
+      formworkKey: "型枠1",
     });
   });
 
   it("転記し直しても二重にならず、手入力の行は残す", () => {
     saveTransferRows(db, { projectId, rows: [manualRow] });
-    saveFormworkRules(db, { projectId, rules: [rule] });
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    saveFormworkRules(db, { projectId, rules: [rule([source])] });
     runFormworkTransfer(db, projectId);
     runFormworkTransfer(db, projectId);
 
@@ -192,5 +202,38 @@ describe("型枠転記", () => {
     expect(rows).toHaveLength(2);
     expect(rows.filter((row) => row.formworkKey !== "")).toHaveLength(1);
     expect(rows[1].quantity).toBe(12);
+  });
+
+  it("計算書を直して集計をかけ直すと、型枠数量も作り直す", () => {
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    saveFormworkRules(db, { projectId, rules: [rule([source])] });
+    runFormworkTransfer(db, projectId);
+    expect(listTransferRows(db, projectId)[0].quantity).toBe(12);
+
+    // 部屋を倍にする（数量が12→24になる）
+    const rows = saveEstimateRows(db, {
+      projectId,
+      rows: [{ ...roomRow("機械室"), id: null, multiplier: 2 }],
+    });
+    const sheet = getRoomSheet(db, rows[0].id);
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: LOWER_JSON,
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    const view = runAggregation(db, projectId);
+    expect(listTransferRows(db, projectId)[0].quantity).toBe(24);
+    // 集計書兼工事マスターにも型枠明細が載る
+    expect(view.items.filter((item) => item.name === "打放型枠")).toHaveLength(
+      1,
+    );
+    expect(view.items.find((item) => item.name === "打放型枠")?.quantity).toBe(
+      24,
+    );
   });
 });

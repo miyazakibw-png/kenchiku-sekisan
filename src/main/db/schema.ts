@@ -677,9 +677,18 @@ export const projectTransferRules = sqliteTable(
     projectId: integer("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    /** ルールの目印（転記した行に付ける） */
     masterKey: text("master_key").notNull(),
     /** formwork: 型枠転記 */
     ruleKind: text("rule_kind").notNull().default("formwork"),
+    /** 算出のもとにする集計明細のキー（カンマ区切り） */
+    sourceKeys: text("source_keys").notNull().default(""),
+    /** 型枠分類での絞り込み（空欄なら分類を問わない） */
+    formwork: text("formwork").notNull().default(""),
+    /** 転記先の部位Ⅰ・Ⅱ・Ⅲ（部位Ⅰ・Ⅱが空欄なら元明細の部位を使う） */
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part3: text("part3").notNull().default(""),
     coefficient: real("coefficient").notNull().default(1),
     subjectId: integer("subject_id"),
     materialCategory: text("material_category").notNull().default(""),

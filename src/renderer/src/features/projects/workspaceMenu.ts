@@ -90,7 +90,7 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     key: "formworkTransfer",
     label: "型枠転記",
     group: "aggregate",
-    note: "集計した型枠分類別の数量を転記入力表の最終行へ追記（次の集計に含まれる）",
+    note: "集計書兼工事マスターの明細を選び、型枠明細を算出して転記入力表へ自動転記",
     ready: true,
   },
   {

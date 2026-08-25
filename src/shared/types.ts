@@ -3,12 +3,13 @@ import type {
   BasicMasterRow,
 } from "../core/masters/basicMaster";
 import type {
+  FormworkSourceGroup,
   FormworkTransferRow,
   FormworkTransferRule,
 } from "../core/aggregate/formworkTransfer";
 
 export type { BasicMasterKind, BasicMasterRow };
-export type { FormworkTransferRow, FormworkTransferRule };
+export type { FormworkSourceGroup, FormworkTransferRow, FormworkTransferRule };
 
 export interface Subject {
   id: number;
@@ -624,16 +625,25 @@ export interface EstimateRowCheck {
   cells: EstimateRowCheckCell[];
 }
 
-/** 型枠転記（集計した型枠分類別の数量→転記入力表の最終行へ追記） */
+/** 型枠転記で選べる元明細（最新の集計書兼工事マスターの明細） */
+export interface FormworkSourceItem {
+  masterKey: string;
+  part1: string;
+  part2: string;
+  partName: string;
+  name: string;
+  descriptionUpper: string;
+  unit: string;
+  quantity: number;
+}
+
+/** 型枠転記（選んだ元明細の数量→掛け率→転記入力表へ自動転記） */
 export interface FormworkTransferView {
   rules: FormworkTransferRule[];
-  groups: {
-    formwork: string;
-    part1: string;
-    part2: string;
-    part2Split: boolean;
-    quantity: number;
-  }[];
+  /** 選べる元明細（集計書兼工事マスターの明細） */
+  sources: FormworkSourceItem[];
+  /** 元明細ごとの型枠分類別の数量 */
+  groups: FormworkSourceGroup[];
   rows: FormworkTransferRow[];
 }
 

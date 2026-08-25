@@ -832,4 +832,13 @@ CREATE TABLE IF NOT EXISTS project_unused_details (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unused_details_key
   ON project_unused_details(project_id, master_key);
 `,
+  // 型枠転記：集計した明細（元明細）を選んで別の明細を算出する
+  `
+ALTER TABLE project_transfer_rules ADD COLUMN source_keys TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_transfer_rules ADD COLUMN formwork TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_transfer_rules ADD COLUMN part1 TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_transfer_rules ADD COLUMN part2 TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_transfer_rules ADD COLUMN part3 TEXT NOT NULL DEFAULT '';
+UPDATE project_transfer_rules SET formwork = master_key WHERE formwork = '';
+`,
 ];
