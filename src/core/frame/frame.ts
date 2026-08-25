@@ -6,7 +6,12 @@
  * 数量根拠を追えるように、軸組ラインは「部屋 → 壁 → 軸組ライン → 数量」の関係を保持する。
  */
 
-import { round2, solveShape, type RoomShape, type SolvedShape } from "../room/shape";
+import {
+  round2,
+  solveShape,
+  type RoomShape,
+  type SolvedShape,
+} from "../room/shape";
 
 /** レイアウトに置いた部屋（部屋計算書1つ＝1オブジェクト） */
 export interface FramePlacement {
@@ -209,7 +214,13 @@ export function buildFrameLines(input: BuildLinesInput): FrameLine[] {
     });
   });
 
-  input.manualLines.forEach((line, index) => {
+  // 自分で引いた線は、たてを Y1・Y2…、よこを X1・X2… と呼ぶ
+  let verticalCount = 0;
+  let horizontalCount = 0;
+  input.manualLines.forEach((line) => {
+    const vertical = Math.abs(line.y2 - line.y1) >= Math.abs(line.x2 - line.x1);
+    if (vertical) verticalCount += 1;
+    else horizontalCount += 1;
     lines.push({
       ...frameLineAttribute(input.attributes[line.id]),
       id: line.id,
@@ -218,7 +229,7 @@ export function buildFrameLines(input: BuildLinesInput): FrameLine[] {
       estimateRowId: null,
       roomName: "",
       edgeId: null,
-      label: `軸組${index + 1}`,
+      label: vertical ? `Y${verticalCount}` : `X${horizontalCount}`,
       x1: line.x1,
       y1: line.y1,
       x2: line.x2,
@@ -334,9 +345,7 @@ export function nearMissWalls(
       if (a.placementId !== null && a.placementId === b.placementId) continue;
       const aVertical = sameValue(a.x1, a.x2);
       if (aVertical !== sameValue(b.x1, b.x2)) continue;
-      const offset = aVertical
-        ? Math.abs(a.x1 - b.x1)
-        : Math.abs(a.y1 - b.y1);
+      const offset = aVertical ? Math.abs(a.x1 - b.x1) : Math.abs(a.y1 - b.y1);
       if (offset <= SNAP_TOLERANCE || offset > tolerance) continue;
       const along = aVertical
         ? rangeOverlap(a.y1, a.y2, b.y1, b.y2)
@@ -467,7 +476,8 @@ export function frameQuantities(
     const reinforcement = round2(
       onLine.reduce(
         (sum, fitting) =>
-          sum + (reinforcementLength(fitting, height) ?? 0) * fitting.multiplier,
+          sum +
+          (reinforcementLength(fitting, height) ?? 0) * fitting.multiplier,
         0,
       ),
     );
@@ -569,5 +579,50 @@ export function frameSymbols(
       lineId: result.line.id,
     });
   });
+  // 自分で引いた線は X1・Y1 の記号でも使える（部位が補強のときは <X1> で補強長さ）
+  quantities.lines.forEach((result) => {
+    if (result.line.source !== "manual") return;
+    const name = result.line.label;
+    symbols.push({
+      symbol: `<${name}>`,
+      label: `${name} 面積（部位が補強なら補強）`,
+      value: result.area,
+      lineId: result.line.id,
+    });
+    symbols.push({
+      symbol: `<${name}:AL>`,
+      label: `${name} 長さ`,
+      value: result.line.length,
+      lineId: result.line.id,
+    });
+    symbols.push({
+      symbol: `<${name}:AA>`,
+      label: `${name} 面積`,
+      value: result.area,
+      lineId: result.line.id,
+    });
+    symbols.push({
+      symbol: `<${name}:RF>`,
+      label: `${name} 補強`,
+      value: result.reinforcement,
+      lineId: result.line.id,
+    });
+  });
   return symbols;
+}
+
+/** 部位が「補強」のセットでは、<X1> などの記号で補強長さを採る */
+export function linePartVariables(
+  symbols: FrameSymbol[],
+  partName: string,
+): Record<string, number> {
+  if (!partName.includes("補強")) return {};
+  const values: Record<string, number> = {};
+  symbols.forEach((item) => {
+    if (item.value === null) return;
+    const matched = /^<(.+):RF>$/.exec(item.symbol);
+    if (!matched) return;
+    values[`<${matched[1]}>`] = item.value;
+  });
+  return values;
 }

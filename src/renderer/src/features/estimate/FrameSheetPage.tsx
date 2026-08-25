@@ -13,6 +13,7 @@ import {
   frameLineAttribute,
   frameQuantities,
   frameSymbols,
+  linePartVariables,
   isPickedUp,
   nearMissWalls,
   reinforcementKind,
@@ -392,15 +393,19 @@ export default function FrameSheetPage({
     (set: CalcSet): Record<string, number> => {
       const kind = fittingKindForPart(set.partName, partValues, set.partNumber);
       const suffix = fittingSuffix(kind);
-      if (suffix === "") return {};
-      const values: Record<string, number> = {};
+      // 部位が補強のセットでは <X1> などで補強長さを採る
+      const values: Record<string, number> = linePartVariables(
+        symbols,
+        set.partName,
+      );
+      if (suffix === "") return values;
       fittings.forEach((fitting) => {
         const value = calcVariables[`<${fitting.symbol}${suffix}>`];
         if (value !== undefined) values[`<${fitting.symbol}>`] = value;
       });
       return values;
     },
-    [calcVariables, fittings, partValues],
+    [calcVariables, fittings, partValues, symbols],
   );
 
   const calcResult = useMemo(
@@ -545,7 +550,7 @@ export default function FrameSheetPage({
   const manualNumbers = useMemo(() => {
     const step = view.span * 0.022;
     const used = new Map<string, number>();
-    return manualLines.map((line, index) => {
+    return manualLines.map((line) => {
       const mx = (line.x1 + line.x2) / 2;
       const my = (line.y1 + line.y2) / 2;
       const key = `${Math.round(mx * 20)}/${Math.round(my * 20)}`;
@@ -555,12 +560,12 @@ export default function FrameSheetPage({
         Math.abs(line.y1 - line.y2) >= Math.abs(line.x1 - line.x2);
       return {
         id: line.id,
-        no: index + 1,
+        no: lines.find((each) => each.id === line.id)?.label ?? "",
         x: mx + (vertical ? step * (order + 1) : 0),
         y: my - (vertical ? 0 : step * (order + 1)),
       };
     });
-  }, [manualLines, view.span]);
+  }, [lines, manualLines, view.span]);
 
   /** 同じ所に重ねて引いてしまった線（両端が同じ線どうし） */
   const doubled = useMemo(() => {
@@ -585,6 +590,9 @@ export default function FrameSheetPage({
     });
     return { ids, extras };
   }, [manualLines]);
+
+  /** 部屋の表はレイアウトを大きく開いているときだけ出す（戻したら図と線の表だけ） */
+  const showRoomTables = expanded && !manualOnly;
 
   /** 表に入れた長さに合わせて、引いた線の終わりの端だけを動かす */
   const setManualLength = useCallback((id: string, length: number): void => {
@@ -1193,12 +1201,12 @@ export default function FrameSheetPage({
         <section className="rooms">
           <div className="section-bar">
             <span>
-              {manualOnly
-                ? "引いた線（「☉ 引いた線だけ」を押し直すと部屋の表に戻ります）"
-                : "置ける部屋（部屋計算書を作った部屋）"}
+              {showRoomTables
+                ? "置ける部屋（部屋計算書を作った部屋）"
+                : "引いた線（部屋の表はレイアウトを大きく開いたときに出ます）"}
             </span>
           </div>
-          {!manualOnly && (
+          {showRoomTables && (
             <table className="grid">
               <tbody>
                 {rooms.map((room) => (
@@ -1230,7 +1238,7 @@ export default function FrameSheetPage({
               </tbody>
             </table>
           )}
-          {!manualOnly && placements.length > 0 && (
+          {showRoomTables && placements.length > 0 && (
             <table className="grid">
               <thead>
                 <tr>
@@ -1319,7 +1327,7 @@ export default function FrameSheetPage({
                 </tr>
               </thead>
               <tbody>
-                {manualLines.map((manual, index) => {
+                {manualLines.map((manual) => {
                   const result = quantities.lines.find(
                     (each) => each.line.id === manual.id,
                   );
@@ -1331,7 +1339,7 @@ export default function FrameSheetPage({
                       onClick={() => setSelectedLineId(manual.id)}
                     >
                       <td className="no">
-                        {index + 1}
+                        {result.line.label}
                         {doubled.ids.has(manual.id) && (
                           <span
                             className="doubled-mark"

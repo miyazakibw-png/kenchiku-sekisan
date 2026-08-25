@@ -60,6 +60,7 @@ import {
   buildFrameLines,
   frameQuantities,
   frameSymbols,
+  linePartVariables,
   type FrameFitting,
   type FrameLineAttribute,
   type FrameManualLine,
@@ -413,16 +414,15 @@ export function collectEntries(
         sheetFittings,
         sheet.workHeight,
       );
-      const variables = calcVariables(
-        frameSymbols(quantities, sheet.workHeight),
-        fittings,
-        sheet.workHeight,
-      );
+      const symbols = frameSymbols(quantities, sheet.workHeight);
+      const variables = calcVariables(symbols, fittings, sheet.workHeight);
       entries.push(
         ...entriesFromCalcSheet(
           context,
           sets,
-          evaluateCalcSheet(sets, variables),
+          evaluateCalcSheet(sets, variables, (set) =>
+            linePartVariables(symbols, set.partName),
+          ),
         ),
       );
       return;

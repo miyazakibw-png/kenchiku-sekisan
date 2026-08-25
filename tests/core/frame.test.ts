@@ -6,6 +6,7 @@ import {
   frameQuantities,
   frameSymbols,
   isPickedUp,
+  linePartVariables,
   reinforcementKind,
   reinforcementLength,
   roomLineId,
@@ -186,10 +187,7 @@ describe("吸着", () => {
       manualLines: [],
       attributes: {},
     });
-    const snapped = snapPlacement(
-      { x: 4.12, y: 0.05, solved: room() },
-      others,
-    );
+    const snapped = snapPlacement({ x: 4.12, y: 0.05, solved: room() }, others);
     expect(snapped).toEqual({ x: 4, y: 0 });
   });
 
@@ -201,9 +199,9 @@ describe("吸着", () => {
       attributes: {},
     });
     // 右下の角（4,3）に、動かす部屋の左上の角を近づける
-    expect(
-      snapPlacement({ x: 4.08, y: 3.06, solved: room() }, others),
-    ).toEqual({ x: 4, y: 3 });
+    expect(snapPlacement({ x: 4.08, y: 3.06, solved: room() }, others)).toEqual(
+      { x: 4, y: 3 },
+    );
   });
 
   it("離れていれば動かさない", () => {
@@ -330,6 +328,40 @@ describe("軸組数量", () => {
     ]);
     expect(symbols.find((item) => item.symbol === "AL1")?.value).toBe(4);
     expect(symbols.find((item) => item.symbol === "AA1")?.value).toBe(10);
+  });
+
+  it("自分で引いた線はたてY1・よこX1と呼び、部位が補強なら記号で補強長さを採る", () => {
+    const built = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [
+        { id: "m1", x1: 0, y1: 0, x2: 0, y2: 3 },
+        { id: "m2", x1: 0, y1: 0, x2: 4, y2: 0 },
+      ],
+      attributes: {},
+    });
+    expect(built.map((line) => line.label)).toEqual(["Y1", "X1"]);
+
+    const fitting: FrameFitting = {
+      symbol: "SD1",
+      multiplier: 1,
+      lineId: "m1",
+      area: 1.8,
+      width: 0.9,
+      sillHeight: null,
+      baseboardDeduction: 0.9,
+    };
+    const quantities = frameQuantities(
+      built.map((line) => ({ ...line, perimeter: false })),
+      [fitting],
+      2.5,
+    );
+    const symbols = frameSymbols(quantities, 2.5);
+    expect(symbols.find((item) => item.symbol === "<Y1:AL>")?.value).toBe(3);
+    expect(symbols.find((item) => item.symbol === "<Y1:RF>")?.value).toBe(5.9);
+    expect(symbols.find((item) => item.symbol === "<Y1>")?.value).toBe(5.7);
+    expect(linePartVariables(symbols, "壁")).toEqual({});
+    expect(linePartVariables(symbols, "壁補強")["<Y1>"]).toBe(5.9);
   });
 
   it("辺の寸法が無い部屋は線にしない", () => {
