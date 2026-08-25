@@ -159,6 +159,8 @@ export default function FrameSheetPage({
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(
     null,
   );
+  /** レイアウトの上から線を引く（すき間をつなぐ） */
+  const [drawing, setDrawing] = useState(false);
   const [zoom, setZoom] = useState(1);
   /** 建物レイアウトを画面いっぱいの別窓で開く */
   const [expanded, setExpanded] = useState(false);
@@ -515,14 +517,58 @@ export default function FrameSheetPage({
     [view.span],
   );
 
-  /** 軸組モード：始点クリック → 終点クリックで1本引く */
+  /** クリックした所を、近くの角（点）や壁の位置へ寄せる */
+  const snapPoint = useCallback(
+    (point: { x: number; y: number }): { x: number; y: number } => {
+      const tolerance = snapMm / 1000;
+      const corners = lines.flatMap((line) => [
+        { x: line.x1, y: line.y1 },
+        { x: line.x2, y: line.y2 },
+      ]);
+      let best: { x: number; y: number } | null = null;
+      let bestDistance = tolerance;
+      corners.forEach((corner) => {
+        const distance = Math.hypot(corner.x - point.x, corner.y - point.y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = corner;
+        }
+      });
+      if (best !== null) return best;
+      // 角に届かないときは、たて・よこそれぞれ近い壁の位置に合わせる
+      const near = (value: number, targets: number[]): number => {
+        let found = value;
+        let distance = tolerance;
+        targets.forEach((target) => {
+          if (Math.abs(target - value) < distance) {
+            distance = Math.abs(target - value);
+            found = target;
+          }
+        });
+        return found;
+      };
+      return {
+        x: near(
+          point.x,
+          corners.map((corner) => corner.x),
+        ),
+        y: near(
+          point.y,
+          corners.map((corner) => corner.y),
+        ),
+      };
+    },
+    [lines, snapMm],
+  );
+
+  /** 始点クリック → 終点クリックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
-      if (mode !== "frame") return;
+      if (mode !== "frame" && !(mode === "layout" && drawing)) return;
       const point = toModel(event.clientX, event.clientY);
       if (!point) return;
       const snap = (value: number): number => Math.round(value * 20) / 20;
-      const next = { x: snap(point.x), y: snap(point.y) };
+      const next = snapPoint({ x: snap(point.x), y: snap(point.y) });
       if (drawStart === null) {
         setDrawStart(next);
         setMessage("終点をクリックしてください");
@@ -552,7 +598,7 @@ export default function FrameSheetPage({
       setDrawStart(null);
       setMessage("軸組ラインを1本追加しました");
     },
-    [drawStart, mode, toModel],
+    [drawStart, drawing, mode, snapPoint, toModel],
   );
 
   /** 壁の共有：共有された側は拾わない1本にまとめる */
@@ -706,6 +752,37 @@ export default function FrameSheetPage({
             <button type="button" onClick={() => setZoom(1)}>
               全体
             </button>
+            {mode === "layout" && (
+              <button
+                type="button"
+                className={drawing ? "on" : ""}
+                title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します）"
+                onClick={() => {
+                  setDrawStart(null);
+                  setDrawing(!drawing);
+                  setMessage(
+                    drawing
+                      ? "線引きをやめました（部屋を動かせます）"
+                      : "始点をクリックしてください（部屋は動きません）",
+                  );
+                }}
+              >
+                ✎ 線を引く
+              </button>
+            )}
+            {mode === "layout" && drawing && manualLines.length > 0 && (
+              <button
+                type="button"
+                title="いま引いた線を1本消します"
+                onClick={() => {
+                  setManualLines((current) => current.slice(0, -1));
+                  setDrawStart(null);
+                  setMessage("引いた線を1本消しました");
+                }}
+              >
+                ↩ 1本消す
+              </button>
+            )}
             <label className="snap-field" title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます">
               吸着
               <input
@@ -790,6 +867,7 @@ export default function FrameSheetPage({
                         fill={placement.color}
                         onPointerDown={(event) => {
                           setSelectedPlacementId(placement.id);
+                          if (drawing) return;
                           dragRef.current = {
                             placementId: placement.id,
                             clientX: event.clientX,
@@ -839,7 +917,7 @@ export default function FrameSheetPage({
                       .join(" ")}
                     onPointerDown={(event) => {
                       setSelectedLineId(line.id);
-                      if (mode !== "layout" || !placement) return;
+                      if (mode !== "layout" || drawing || !placement) return;
                       setSelectedPlacementId(placement.id);
                       dragRef.current = {
                         placementId: placement.id,
