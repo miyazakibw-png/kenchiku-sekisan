@@ -562,20 +562,28 @@ export default function FrameSheetPage({
     });
   }, [manualLines, view.span]);
 
-  /** 同じ所に重ねて引いてしまった線の本数 */
-  const doubledCount = useMemo(() => {
-    const seen = new Map<string, number>();
+  /** 同じ所に重ねて引いてしまった線（両端が同じ線どうし） */
+  const doubled = useMemo(() => {
+    const groups = new Map<string, string[]>();
     manualLines.forEach((line) => {
       const ends = [
         `${Math.round(line.x1 * 20)},${Math.round(line.y1 * 20)}`,
         `${Math.round(line.x2 * 20)},${Math.round(line.y2 * 20)}`,
       ].sort();
       const key = ends.join("/");
-      seen.set(key, (seen.get(key) ?? 0) + 1);
+      groups.set(key, [...(groups.get(key) ?? []), line.id]);
     });
-    return [...seen.values()]
-      .filter((count) => count > 1)
-      .reduce((total, count) => total + count - 1, 0);
+    /** 重なっている線のid（あとから引いた分は「消す候補」） */
+    const ids = new Set<string>();
+    const extras = new Set<string>();
+    groups.forEach((members) => {
+      if (members.length < 2) return;
+      members.forEach((id, index) => {
+        ids.add(id);
+        if (index > 0) extras.add(id);
+      });
+    });
+    return { ids, extras };
   }, [manualLines]);
 
   /** 表に入れた長さに合わせて、引いた線の終わりの端だけを動かす */
@@ -1076,6 +1084,7 @@ export default function FrameSheetPage({
                       manualOnly && line.source !== "manual" ? "faint" : "",
                       picked ? "" : "skip",
                       gapLineIds.has(line.id) ? "gap" : "",
+                      doubled.ids.has(line.id) ? "doubled" : "",
                       selectedLineId === line.id ? "selected" : "",
                     ]
                       .filter(Boolean)
@@ -1313,7 +1322,17 @@ export default function FrameSheetPage({
                       className={selectedLineId === manual.id ? "selected" : ""}
                       onClick={() => setSelectedLineId(manual.id)}
                     >
-                      <td className="no">{index + 1}</td>
+                      <td className="no">
+                        {index + 1}
+                        {doubled.ids.has(manual.id) && (
+                          <span
+                            className="doubled-mark"
+                            title="同じ位置に他の線があります"
+                          >
+                            重
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <input
                           className="num"
@@ -1439,10 +1458,23 @@ export default function FrameSheetPage({
               )}
             </p>
           )}
-          {doubledCount > 0 && (
+          {doubled.extras.size > 0 && (
             <p className="gap-note">
-              同じ所に重ねて引いた線が{doubledCount}
-              本あります（数字が重なっている所です）
+              同じ所に重ねて引いた線が{doubled.extras.size}
+              本あります（表の番号の横の「重」印、図では紫の太い線です）{" "}
+              <button
+                type="button"
+                title="重なっている線を、1つの位置につき1本だけ残します"
+                onClick={() => {
+                  setManualLines((current) =>
+                    current.filter((line) => !doubled.extras.has(line.id)),
+                  );
+                  setSelectedLineId(null);
+                  setMessage("重なっていた線を1本にしました");
+                }}
+              >
+                重なりを1本にする
+              </button>
             </p>
           )}
           <p className="note">

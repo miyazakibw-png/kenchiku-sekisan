@@ -118,6 +118,21 @@
   cursor: pointer;
 }
 
+/* 同じ位置に重ねて引いてしまった線 */
+.frame-sheet-page .frame-line.doubled {
+  stroke: #7c3aed;
+  stroke-width: 7;
+}
+
+.frame-sheet-page .doubled-mark {
+  margin-left: 2px;
+  padding: 0 2px;
+  font-size: 10px;
+  color: #fff;
+  background: #7c3aed;
+  border-radius: 3px;
+}
+
 .frame-sheet-page .fitting-cell {
   white-space: nowrap;
 }
