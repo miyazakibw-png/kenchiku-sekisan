@@ -94,6 +94,14 @@
   border-bottom: none;
 }
 
+/* 中身が空の段でも1行分の高さを残す（1明細が1行に見えないように） */
+.breakdown-page table.breakdown tr.detail-upper > td,
+.breakdown-page table.breakdown tr.detail-lower > td,
+.breakdown-page table.compare tr.detail-upper > td,
+.breakdown-page table.compare tr.detail-lower > td {
+  height: 15px;
+}
+
 .breakdown-page table.breakdown tr.detail-lower > td,
 .breakdown-page table.compare tr.detail-lower > td {
   border-top: none;
