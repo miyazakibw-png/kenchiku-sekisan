@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  FormworkSourceItem,
   FormworkTransferRule,
   FormworkTransferView,
   ProjectSummary,
@@ -21,6 +22,9 @@ const EMPTY: FormworkTransferView = {
   groups: [],
   rows: [],
 };
+
+/** 転記科目の初期値（5 型枠工事） */
+const FORMWORK_SUBJECT = 5;
 
 /**
  * 漢字変換できるように、打ち終わり（欄を出る・Enter）で確定する入力欄。
@@ -62,53 +66,24 @@ function numberOrNull(value: string): number | null {
   return value.trim() === "" || Number.isNaN(parsed) ? null : parsed;
 }
 
-function newRule(sourceKeys: string[]): FormworkTransferRule {
-  return {
-    key: `型枠-${Date.now()}`,
-    sourceKeys,
-    formwork: "",
-    coefficient: 1,
-    subjectId: null,
-    materialCategory: "",
-    part1: "",
-    part2: "",
-    part3: "",
-    partNumber: null,
-    partName: "",
-    detailNumber: null,
-    name: "",
-    description: "",
-    unit: "",
-    remarks: "",
-  };
-}
-
-/**
- * 型枠転記。集計書兼工事マスターの明細（コンクリート壁など）を選び、
- * その明細の部屋ごとの拾い数量を型枠分類別に合算し、掛け率を掛けて
- * 別の明細（打放型枠など）として転記入力表の空き行へ自動転記する。
- * 選んだ元明細と転記先は覚えているので、集計をかけ直すたびに作り直す。
- */
 export default function FormworkTransferPage({
   project,
   onBack,
 }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-formwork-rules-v2");
-  const tableRef1 = useTableResize("table-widths-formwork-groups-v2");
+  const tableRef = useTableResize("table-widths-formwork-rules-v3");
+  const tableRef1 = useTableResize("table-widths-formwork-rows-v3");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
-  const [openRule, setOpenRule] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [bulkName, setBulkName] = useState("");
-  const [bulkSubject, setBulkSubject] = useState<number | null>(null);
+  const [bulkSubject, setBulkSubject] = useState<number | null>(
+    FORMWORK_SUBJECT,
+  );
   const [bulkUnit, setBulkUnit] = useState("");
   const [bulkCoefficient, setBulkCoefficient] = useState(1);
   const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkFormwork, setBulkFormwork] = useState("");
-  const [copyPartName, setCopyPartName] = useState(true);
-  const [copyDetailNumber, setCopyDetailNumber] = useState(false);
   const [copyDescription, setCopyDescription] = useState(true);
 
   const reload = useCallback(async () => {
@@ -143,18 +118,6 @@ export default function FormworkTransferPage({
     setView({ ...view, rules });
   };
 
-  const addRule = (): void => {
-    if (picked.length === 0) {
-      setMessage("先に、型枠を算出する元の明細を選んでください");
-      return;
-    }
-    setView({ ...view, rules: [...view.rules, newRule(picked)] });
-    setPicked([]);
-    setMessage(
-      "元明細を選びました。掛け率と転記先（名称・単位など）を入れてください",
-    );
-  };
-
   /** 探した元明細をまとめて型枠明細に変える（1件ずつ入力しない） */
   const addBulk = (): void => {
     const sources = view.sources.filter((item) =>
@@ -176,16 +139,15 @@ export default function FormworkTransferPage({
         unit: bulkUnit,
         coefficient: bulkCoefficient,
         materialCategory: bulkCategory,
-        formwork: bulkFormwork,
-        copyPartName,
-        copyDetailNumber,
         copyDescription,
       },
       `型枠-${Date.now()}`,
     );
     setView({ ...view, rules: [...view.rules, ...rules] });
     setPicked([]);
-    setMessage(`${rules.length} 件の型枠明細を作りました（②で直せます）`);
+    setMessage(
+      `${rules.length} 件を型枠明細に変えました（右側で摘要・掛け率を直せます）`,
+    );
   };
 
   const removeRule = (index: number): void => {
@@ -219,10 +181,10 @@ export default function FormworkTransferPage({
     );
   };
 
-  const sourceName = (key: string): string => {
-    const item = view.sources.find((source) => source.masterKey === key);
-    return item ? `${item.partName} ${item.name}`.trim() : key;
-  };
+  const sourcesOf = (keys: readonly string[]): FormworkSourceItem[] =>
+    keys
+      .map((key) => view.sources.find((source) => source.masterKey === key))
+      .filter((item): item is FormworkSourceItem => item !== undefined);
 
   return (
     <div className="estimate-page check-sheet-page">
@@ -230,7 +192,7 @@ export default function FormworkTransferPage({
         <button type="button" onClick={onBack}>
           ← 工事管理画面へ
         </button>
-        <h2>型枠転記（集計した明細から型枠明細を算出）</h2>
+        <h2>型枠転記（拾った明細を型枠明細に変える）</h2>
         <span className="project">
           {project.managementNo} {project.name}
         </span>
@@ -248,7 +210,7 @@ export default function FormworkTransferPage({
       </div>
 
       <h3 className="section">
-        ① 名称で探して、型枠にする元の明細を選ぶ（集計書兼工事マスター）
+        ① 名称で探して、型枠にする元の明細を選ぶ（例：打放補修）
       </h3>
       <div className="toolbar">
         <label>
@@ -276,8 +238,7 @@ export default function FormworkTransferPage({
             <th>部位Ⅰ</th>
             <th>部位Ⅱ</th>
             <th>部位名</th>
-            <th>名称</th>
-            <th>摘要</th>
+            <th>名称・摘要</th>
             <th>数量</th>
             <th>単位</th>
           </tr>
@@ -301,8 +262,15 @@ export default function FormworkTransferPage({
               <td>{item.part1}</td>
               <td>{item.part2}</td>
               <td>{item.partName}</td>
-              <td>{item.name}</td>
-              <td>{item.descriptionUpper}</td>
+              <td>
+                <div>{item.name}</div>
+                <div className="lower">
+                  {item.descriptionUpper}
+                  {item.descriptionLower === ""
+                    ? ""
+                    : ` / ${item.descriptionLower}`}
+                </div>
+              </td>
               <td className="number">{item.quantity.toFixed(2)}</td>
               <td>{item.unit}</td>
             </tr>
@@ -311,7 +279,7 @@ export default function FormworkTransferPage({
       </table>
 
       <h3 className="section">
-        ② 型枠の内容を決めて、選んだ分をまとめて作る（選択 {picked.length} 件）
+        ② 型枠の内容を決めて、選んだ分をまとめて変える（選択 {picked.length} 件）
       </h3>
       <div className="toolbar">
         <label>
@@ -346,7 +314,7 @@ export default function FormworkTransferPage({
           />
         </label>
         <label>
-          掛け率{" "}
+          掛け率（あとで明細ごとに直せます）{" "}
           <input
             className="num"
             value={bulkCoefficient}
@@ -362,211 +330,153 @@ export default function FormworkTransferPage({
           />
         </label>
         <label>
-          型枠分類{" "}
-          <TextInput
-            value={bulkFormwork}
-            placeholder="空欄＝分類を問わない"
-            onCommit={setBulkFormwork}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={copyPartName}
-            onChange={(e) => setCopyPartName(e.target.checked)}
-          />{" "}
-          部位名をコピー
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={copyDetailNumber}
-            onChange={(e) => setCopyDetailNumber(e.target.checked)}
-          />{" "}
-          明細IDをコピー
-        </label>
-        <label>
           <input
             type="checkbox"
             checked={copyDescription}
             onChange={(e) => setCopyDescription(e.target.checked)}
           />{" "}
-          摘要をコピー
+          摘要を元明細から写す
         </label>
         <button type="button" onClick={addBulk}>
-          ➕ この内容で型枠明細を作る
-        </button>
-        <button type="button" onClick={addRule}>
-          選んだ分を1本にまとめて作る
+          ➕ この内容で型枠明細に変える
         </button>
       </div>
 
       <h3 className="section">
-        ③ 型枠明細の一覧（直せます。部位Ⅰ・Ⅱが空欄なら元明細の部位を使います）
+        ③ 変換の一覧（左：変換元明細／右：変換後の型枠明細。摘要は2段）
       </h3>
       <table className="parts check-sheet" ref={tableRef}>
         <thead>
           <tr>
-            <th>元明細</th>
-            <th>型枠分類</th>
+            <th colSpan={5}>変換元明細</th>
+            <th colSpan={6}>変換後の型枠明細</th>
+            <th rowSpan={2}>取消</th>
+          </tr>
+          <tr>
+            <th>部位</th>
+            <th>名称・摘要</th>
+            <th>数量</th>
+            <th>単位</th>
             <th>掛け率</th>
             <th>科目</th>
             <th>材種区分</th>
-            <th>部位Ⅰ</th>
-            <th>部位Ⅱ</th>
-            <th>部位Ⅲ</th>
-            <th>部位番号</th>
-            <th>部位名</th>
-            <th>明細番号</th>
             <th>名称</th>
-            <th>摘要</th>
+            <th>摘要 上段</th>
+            <th>摘要 下段</th>
             <th>単位</th>
-            <th>備考</th>
-            <th>取消</th>
           </tr>
         </thead>
         <tbody>
-          {view.rules.map((rule, index) => (
-            <tr key={rule.key}>
-              <td
-                title={rule.sourceKeys.map(sourceName).join(" / ")}
-                onClick={() =>
-                  setOpenRule(openRule === rule.key ? null : rule.key)
-                }
-              >
-                {rule.sourceKeys.length}件
-                {openRule === rule.key && (
-                  <div className="note">
-                    {rule.sourceKeys.map((key) => (
-                      <div key={key}>{sourceName(key)}</div>
-                    ))}
-                  </div>
-                )}
-              </td>
-              <td>
-                <TextInput
-                  value={rule.formwork}
-                  title="空欄なら分類を問わず、元明細の数量を全部使います"
-                  onCommit={(value) => update(index, { formwork: value })}
-                />
-              </td>
-              <td className="number">
-                <input
-                  value={rule.coefficient}
-                  onChange={(e) =>
-                    update(index, { coefficient: Number(e.target.value) || 0 })
-                  }
-                />
-              </td>
-              <td>
-                <select
-                  value={rule.subjectId ?? ""}
-                  onChange={(e) =>
-                    update(index, { subjectId: numberOrNull(e.target.value) })
-                  }
-                >
-                  <option value="">（未設定）</option>
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.id} {subject.name}
-                    </option>
+          {view.rules.map((rule, index) => {
+            const sources = sourcesOf(rule.sourceKeys);
+            const quantity = sources.reduce(
+              (sum, item) => sum + item.quantity,
+              0,
+            );
+            return (
+              <tr key={rule.key}>
+                <td>
+                  {sources.map((item) => (
+                    <div key={item.masterKey}>
+                      {`${item.part1} ${item.part2} ${item.partName}`.trim()}
+                    </div>
                   ))}
-                </select>
-              </td>
-              <td>
-                <TextInput
-                  value={rule.materialCategory}
-                  onCommit={(value) =>
-                    update(index, { materialCategory: value })
-                  }
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.part1}
-                  onCommit={(value) => update(index, { part1: value })}
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.part2}
-                  onCommit={(value) => update(index, { part2: value })}
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.part3}
-                  onCommit={(value) => update(index, { part3: value })}
-                />
-              </td>
-              <td className="number">
-                <input
-                  value={rule.partNumber ?? ""}
-                  onChange={(e) =>
-                    update(index, { partNumber: numberOrNull(e.target.value) })
-                  }
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.partName}
-                  onCommit={(value) => update(index, { partName: value })}
-                />
-              </td>
-              <td className="number">
-                <input
-                  value={rule.detailNumber ?? ""}
-                  onChange={(e) =>
-                    update(index, {
-                      detailNumber: numberOrNull(e.target.value),
-                    })
-                  }
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.name}
-                  onCommit={(value) => update(index, { name: value })}
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.description}
-                  onCommit={(value) => update(index, { description: value })}
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.unit}
-                  onCommit={(value) => update(index, { unit: value })}
-                />
-              </td>
-              <td>
-                <TextInput
-                  value={rule.remarks}
-                  onCommit={(value) => update(index, { remarks: value })}
-                />
-              </td>
-              <td>
-                <button type="button" onClick={() => removeRule(index)}>
-                  ✕
-                </button>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  {sources.map((item) => (
+                    <div key={item.masterKey}>
+                      <div>{item.name}</div>
+                      <div className="lower">
+                        {item.descriptionUpper}
+                        {item.descriptionLower === ""
+                          ? ""
+                          : ` / ${item.descriptionLower}`}
+                      </div>
+                    </div>
+                  ))}
+                </td>
+                <td className="number">{quantity.toFixed(2)}</td>
+                <td>{sources[0]?.unit ?? ""}</td>
+                <td className="number">
+                  <input
+                    value={rule.coefficient}
+                    onChange={(e) =>
+                      update(index, {
+                        coefficient: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </td>
+                <td>
+                  <select
+                    value={rule.subjectId ?? ""}
+                    onChange={(e) =>
+                      update(index, { subjectId: numberOrNull(e.target.value) })
+                    }
+                  >
+                    <option value="">（未設定）</option>
+                    {subjects.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.id} {subject.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <TextInput
+                    value={rule.materialCategory}
+                    onCommit={(value) =>
+                      update(index, { materialCategory: value })
+                    }
+                  />
+                </td>
+                <td>
+                  <TextInput
+                    value={rule.name}
+                    onCommit={(value) => update(index, { name: value })}
+                  />
+                </td>
+                <td>
+                  <TextInput
+                    value={rule.description}
+                    onCommit={(value) => update(index, { description: value })}
+                  />
+                </td>
+                <td>
+                  <TextInput
+                    value={rule.descriptionLower}
+                    onCommit={(value) =>
+                      update(index, { descriptionLower: value })
+                    }
+                  />
+                </td>
+                <td>
+                  <TextInput
+                    value={rule.unit}
+                    onCommit={(value) => update(index, { unit: value })}
+                  />
+                </td>
+                <td>
+                  <button type="button" onClick={() => removeRule(index)}>
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 
-      <h3 className="section">④ 算出結果（転記入力表へ入れる行）</h3>
+      <h3 className="section">
+        ④ 算出結果（型枠分類ごとにタイトル行を置き、転記入力表へ入れます）
+      </h3>
       <table className="parts check-sheet" ref={tableRef1}>
         <thead>
           <tr>
-            <th>型枠分類</th>
-            <th>部位Ⅰ</th>
-            <th>部位Ⅱ</th>
-            <th>部位Ⅲ</th>
+            <th>明細番号</th>
             <th>名称</th>
-            <th>摘要</th>
+            <th>摘要 上段</th>
+            <th>摘要 下段</th>
             <th>元数量</th>
             <th>転記数量</th>
             <th>単位</th>
@@ -575,27 +485,29 @@ export default function FormworkTransferPage({
         <tbody>
           {view.rows.map((row) => (
             <tr
-              key={`${row.formworkKey}|${row.formwork}|${row.part1}|${row.part2}`}
+              key={`${row.formwork}|${row.detailNumber}`}
+              className={row.title ? "title-row" : undefined}
             >
-              <td>{row.formwork}</td>
-              <td>{row.part1}</td>
-              <td>{row.part2}</td>
-              <td>{row.part3}</td>
+              <td className="number">{row.detailNumber}</td>
               <td>{row.name}</td>
               <td>{row.description}</td>
-              <td className="number">{row.sourceQuantity.toFixed(2)}</td>
-              <td className="number">{row.quantity.toFixed(2)}</td>
+              <td>{row.descriptionLower}</td>
+              <td className="number">
+                {row.title ? "" : row.sourceQuantity.toFixed(2)}
+              </td>
+              <td className="number">
+                {row.title ? "" : row.quantity.toFixed(2)}
+              </td>
               <td>{row.unit}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="note">
-        元明細の部屋ごとの拾い数量を、型枠分類（部位別入力表で付けた分類）と
-        部位Ⅰ・部位Ⅱ（仕分け✔のある行のみ）で合算し、掛け率を掛けます。
-        算出した行は転記入力表の空き部分（入力があれば最後の行の次）へ入れます。
-        元明細と型枠明細は結び付けて覚えているので、計算書を直して集計をかけ直すと
-        型枠数量も自動で作り直します（二重に増えません）。
+        型枠分類は部位別入力表で部屋ごとに入れます。その部屋で拾った分がその分類になり、
+        分類ごとにタイトル行（&lt;分類名&gt;）を置いて、その下に摘要ごとの明細を並べます。
+        同じ分類・同じ摘要は合算し、分類の並びは型枠分類マスターの登録番号順、
+        分類の入っていない拾いは「分類なし」でまとめます。
       </p>
     </div>
   );

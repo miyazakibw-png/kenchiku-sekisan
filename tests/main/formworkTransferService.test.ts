@@ -96,18 +96,12 @@ function rule(sourceKeys: string[]): FormworkTransferRule {
   return {
     key: "型枠1",
     sourceKeys,
-    formwork: "打放型枠",
     coefficient: 1,
     subjectId: 5,
     materialCategory: "型枠",
-    part1: "",
-    part2: "",
-    part3: "機械室",
-    partNumber: 60,
-    partName: "型枠",
-    detailNumber: 2.01,
     name: "打放型枠",
     description: "合板型枠",
+    descriptionLower: "",
     unit: "m2",
     remarks: "",
   };
@@ -179,15 +173,20 @@ describe("型枠転記", () => {
 
     runFormworkTransfer(db, projectId);
     const rows = listTransferRows(db, projectId);
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows[0].name).toBe("手入力の明細");
+    // 型枠分類のタイトル行（部位Ⅰの代わり）
     expect(rows[1]).toMatchObject({
+      name: "<打放型枠>",
+      part1: "打放型枠",
+      detailNumber: 1,
+    });
+    expect(rows[2]).toMatchObject({
       name: "打放型枠",
       unit: "m2",
       quantity: 18,
-      part3: "機械室",
       formwork: "打放型枠",
-      formworkKey: "型枠1",
+      detailNumber: 2,
     });
   });
 
@@ -199,16 +198,16 @@ describe("型枠転記", () => {
     runFormworkTransfer(db, projectId);
 
     const rows = listTransferRows(db, projectId);
-    expect(rows).toHaveLength(2);
-    expect(rows.filter((row) => row.formworkKey !== "")).toHaveLength(1);
-    expect(rows[1].quantity).toBe(12);
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((row) => row.formworkKey !== "")).toHaveLength(2);
+    expect(rows[2].quantity).toBe(12);
   });
 
   it("計算書を直して集計をかけ直すと、型枠数量も作り直す", () => {
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
     saveFormworkRules(db, { projectId, rules: [rule([source])] });
     runFormworkTransfer(db, projectId);
-    expect(listTransferRows(db, projectId)[0].quantity).toBe(12);
+    expect(listTransferRows(db, projectId)[1].quantity).toBe(12);
 
     // 部屋を倍にする（数量が12→24になる）
     const rows = saveEstimateRows(db, {
@@ -227,7 +226,7 @@ describe("型枠転記", () => {
     });
 
     const view = runAggregation(db, projectId);
-    expect(listTransferRows(db, projectId)[0].quantity).toBe(24);
+    expect(listTransferRows(db, projectId)[1].quantity).toBe(24);
     // 集計書兼工事マスターにも型枠明細が載る
     expect(view.items.filter((item) => item.name === "打放型枠")).toHaveLength(
       1,

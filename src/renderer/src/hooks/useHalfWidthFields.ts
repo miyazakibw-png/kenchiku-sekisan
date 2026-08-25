@@ -19,9 +19,12 @@ export function setValue(input: HTMLInputElement, value: string): void {
 
 const KANA_SETTING = "sekisan.autoKana";
 
-/** 「日本語入力の自動切替」を使うか（設定画面で切り替える。初期は使う） */
+/**
+ * 「ローマ字を自動でひらがなにする」を使うか（設定画面で切り替える）。
+ * Windowsの日本語入力（IME）を使うと漢字変換できなくなるため、初期は使わない。
+ */
 export function isAutoKanaOn(): boolean {
-  return window.localStorage.getItem(KANA_SETTING) !== "off";
+  return window.localStorage.getItem(KANA_SETTING) === "on";
 }
 
 export function setAutoKana(on: boolean): void {
@@ -50,7 +53,8 @@ export function useHalfWidthFields(): void {
       const at = input.selectionStart ?? input.value.length;
 
       if (isJapaneseField(input)) {
-        if (!isAutoKanaOn()) return;
+        // 変換を確定した文字は触らない（漢字変換を壊さない）
+        if (!isAutoKanaOn() || event.type === "compositionend") return;
         const head = input.value.slice(0, at);
         const converted = romajiToKana(head);
         if (converted === head) return;
@@ -60,7 +64,7 @@ export function useHalfWidthFields(): void {
       }
 
       let value = input.value;
-      if (isAutoKanaOn() && hasKana(value)) value = kanaToRomaji(value);
+      if (hasKana(value)) value = kanaToRomaji(value);
       if (needsHalfWidth(value)) value = toHalfWidth(value);
       if (value === input.value) return;
       setValue(input, value);

@@ -841,4 +841,8 @@ ALTER TABLE project_transfer_rules ADD COLUMN part2 TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_transfer_rules ADD COLUMN part3 TEXT NOT NULL DEFAULT '';
 UPDATE project_transfer_rules SET formwork = master_key WHERE formwork = '';
 `,
+  // 型枠転記：摘要を集計書と同じ2段にする
+  `
+ALTER TABLE project_transfer_rules ADD COLUMN description_lower TEXT NOT NULL DEFAULT '';
+`,
 ];

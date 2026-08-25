@@ -696,7 +696,9 @@ export const projectTransferRules = sqliteTable(
     partName: text("part_name").notNull().default(""),
     detailNumber: real("detail_number"),
     name: text("name").notNull().default(""),
+    /** 摘要（上段・下段。集計書と同じ2段の形式） */
     description: text("description").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
     unit: text("unit").notNull().default(""),
     remarks: text("remarks").notNull().default(""),
   },

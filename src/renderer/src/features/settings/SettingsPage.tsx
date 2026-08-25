@@ -90,8 +90,8 @@ export default function SettingsPage(): JSX.Element {
       <section className="settings-card">
         <h3>文字の入力</h3>
         <p className="settings-note">
-          部位名・名称・摘要・備考・積算用表示の欄は、日本語入力が切れていても小文字のローマ字をひらがなに直します（大文字と数字はそのまま）。
-          ID・番号・計算式・記号・単位の欄は、日本語入力のまま打っても半角の英数字に直します。
+          ID・番号・計算式・記号・単位の欄は、日本語入力のまま打っても半角の英数字に直します（この動きは常に働きます）。
+          下の印を付けると、部位名・名称・摘要・備考の欄で日本語入力が切れていても小文字のローマ字をひらがなに直します。ただしWindowsの日本語入力（IME）で漢字に変換できなくなるため、通常は付けないでください。
         </p>
         <label className="settings-check">
           <input
@@ -102,7 +102,7 @@ export default function SettingsPage(): JSX.Element {
               setAutoKanaState(e.target.checked)
             }}
           />
-          欄に合わせて文字を自動で直す（ひらがな／半角）
+          日本語の欄でローマ字を自動でひらがなに直す（漢字変換は使えなくなります）
         </label>
       </section>
     </div>

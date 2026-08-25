@@ -637,6 +637,7 @@ export interface FormworkSourceItem {
   detailNumber: number | null;
   name: string;
   descriptionUpper: string;
+  descriptionLower: string;
   unit: string;
   quantity: number;
 }

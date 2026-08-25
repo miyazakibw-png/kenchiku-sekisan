@@ -1,6 +1,7 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
+  mFormworkCategories,
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
@@ -10,6 +11,7 @@ import {
 import {
   buildFormworkTransferRows,
   collectFormworkQuantities,
+  type FormworkCategory,
   type FormworkSourceDetail,
   type FormworkTransferRule,
   type FormworkTransferRow,
@@ -58,20 +60,28 @@ export function listFormworkRules(
     .map((rule) => ({
       key: rule.masterKey,
       sourceKeys: splitKeys(rule.sourceKeys),
-      formwork: rule.formwork,
       coefficient: rule.coefficient,
       subjectId: rule.subjectId,
       materialCategory: rule.materialCategory,
-      part1: rule.part1,
-      part2: rule.part2,
-      part3: rule.part3,
-      partNumber: rule.partNumber,
-      partName: rule.partName,
-      detailNumber: rule.detailNumber,
       name: rule.name,
       description: rule.description,
+      descriptionLower: rule.descriptionLower,
       unit: rule.unit,
       remarks: rule.remarks,
+    }));
+}
+
+/** 型枠分類マスター（転記の並びは登録番号順） */
+function formworkCategories(db: AppDatabase): FormworkCategory[] {
+  return db
+    .select()
+    .from(mFormworkCategories)
+    .orderBy(asc(mFormworkCategories.displayOrder), asc(mFormworkCategories.id))
+    .all()
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      displayOrder: category.displayOrder,
     }));
 }
 
@@ -122,6 +132,7 @@ function sourceItems(db: AppDatabase, projectId: number): FormworkSourceItem[] {
       detailNumber: item.detailNumber,
       name: item.name,
       descriptionUpper: item.descriptionUpper,
+      descriptionLower: item.descriptionLower,
       unit: item.unit,
       quantity: item.quantity,
     }));
@@ -145,7 +156,7 @@ export function getFormworkTransfer(
     groups: collectFormworkQuantities(details).filter((group) =>
       selected.has(group.masterKey),
     ),
-    rows: buildFormworkTransferRows(details, rules),
+    rows: buildFormworkTransferRows(details, rules, formworkCategories(db)),
   };
 }
 
@@ -176,18 +187,19 @@ export function saveFormworkRules(
         masterKey: rule.key,
         ruleKind: RULE_KIND,
         sourceKeys: rule.sourceKeys.join(","),
-        formwork: rule.formwork,
-        part1: rule.part1,
-        part2: rule.part2,
-        part3: rule.part3,
+        formwork: "",
+        part1: "",
+        part2: "",
+        part3: "",
         coefficient: rule.coefficient,
         subjectId: rule.subjectId,
         materialCategory: rule.materialCategory,
-        partNumber: rule.partNumber,
-        partName: rule.partName,
-        detailNumber: rule.detailNumber,
+        partNumber: null,
+        partName: "",
+        detailNumber: null,
         name: rule.name,
         description: rule.description,
+        descriptionLower: rule.descriptionLower,
         unit: rule.unit,
         remarks: rule.remarks,
       };
@@ -251,7 +263,7 @@ export function runFormworkTransfer(
           name: row.name,
           sourceDetailId: null,
           descriptionUpper: row.description,
-          descriptionLower: "",
+          descriptionLower: row.descriptionLower,
           quantity: row.quantity,
           unit: row.unit,
           unitPrice: null,
