@@ -648,7 +648,11 @@ export default function RoomCalcSheet({
           commit(mergeWithPreviousSet(sets, setId));
           return;
         }
-        updateSet(setId, { partNumber: picked.id, partName: picked.name });
+        updateSet(setId, {
+          partNumber: picked.id,
+          partName: picked.name,
+          partNameEdited: picked.id === null && picked.name !== "",
+        });
         return;
       }
       if (picked.name === "") return;
@@ -656,6 +660,7 @@ export default function RoomCalcSheet({
         splitSetAt(sets, setId, rowIndex, {
           partNumber: picked.id,
           partName: picked.name,
+          partNameEdited: picked.id === null,
         }),
       );
       onMessage("この行から別のセット明細に分けました");
@@ -1653,6 +1658,10 @@ export default function RoomCalcSheet({
                                     picked.id === null
                                       ? detail.partName
                                       : picked.name,
+                                  partNameEdited:
+                                    picked.id === null
+                                      ? detail.partNameEdited
+                                      : false,
                                 });
                               }}
                             />
@@ -1689,6 +1698,8 @@ export default function RoomCalcSheet({
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
                                   partName: e.target.value,
+                                  // 手で直した部位名はマスターの名称に戻さない
+                                  partNameEdited: true,
                                 })
                               }
                             />

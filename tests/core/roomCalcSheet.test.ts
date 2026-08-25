@@ -285,6 +285,24 @@ describe("部位マスターとの連動", () => {
     const sets = [set];
     expect(syncPartNames(sets, [{ id: 10, name: "補強" }], [])).toBe(sets);
   });
+
+  it("手で書き直した部位名は番号があってもマスターに戻さない", () => {
+    const set = calcSet(1);
+    set.partNumber = 10;
+    set.partName = "補強（手入力）";
+    set.partNameEdited = true;
+    set.details[0].partNumber = 3;
+    set.details[0].partName = "壁（手入力）";
+    set.details[0].partNameEdited = true;
+    const sets = [set];
+    const [synced] = syncPartNames(
+      sets,
+      [{ id: 10, name: "補強" }],
+      [{ id: 3, name: "壁" }],
+    );
+    expect(synced.partName).toBe("補強（手入力）");
+    expect(synced.details[0].partName).toBe("壁（手入力）");
+  });
 });
 
 describe("行の追加と削除", () => {

@@ -18,6 +18,8 @@ export interface CalcDetail {
   partNumber: number | null;
   /** 上段に出す部位名（明細マスターと同じ上下2段の構成） */
   partName: string;
+  /** 部位名を手で書き直した行（マスターの名称に戻さない） */
+  partNameEdited?: boolean;
   name: string;
   descriptionUpper: string;
   descriptionLower: string;
@@ -51,6 +53,8 @@ export interface CalcSet {
   /** 部位マスターの番号（番号入力で名称に変換する） */
   partNumber: number | null;
   partName: string;
+  /** 部位名を手で書き直したセット（マスターの名称に戻さない） */
+  partNameEdited?: boolean;
   details: CalcDetail[];
   lines: CalcLine[];
   /** セットの上に置く見出し行（無ければ付けない） */
@@ -74,6 +78,7 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
     materialCategory: "",
     partNumber: null,
     partName: "",
+    partNameEdited: false,
     name: "",
     descriptionUpper: "",
     descriptionLower: "",
@@ -267,7 +272,11 @@ export function splitSetAt(
   sets: CalcSet[],
   setId: string,
   index: number,
-  part: { partNumber: number | null; partName: string },
+  part: {
+    partNumber: number | null;
+    partName: string;
+    partNameEdited?: boolean;
+  },
 ): CalcSet[] {
   const at = sets.findIndex((set) => set.id === setId);
   if (at < 0) return sets;
@@ -282,6 +291,7 @@ export function splitSetAt(
     ...calcSet(0),
     partNumber: part.partNumber,
     partName: part.partName,
+    partNameEdited: part.partNameEdited ?? false,
     details: target.details.slice(index),
     lines: target.lines.slice(index),
   };
@@ -578,20 +588,29 @@ export function syncPartNames(
     parts: { id: number; name: string }[],
     id: number | null | undefined,
     current: string,
+    edited: boolean | undefined,
   ): string => {
+    // 手で書き直した部位名はそのまま残す
+    if (edited === true) return current;
     if (id === null || id === undefined) return current;
     return parts.find((part) => part.id === id)?.name ?? current;
   };
 
   let changed = false;
   const next = sets.map((set) => {
-    const partName = nameOf(aggregationParts, set.partNumber, set.partName);
+    const partName = nameOf(
+      aggregationParts,
+      set.partNumber,
+      set.partName,
+      set.partNameEdited,
+    );
     let detailChanged = false;
     const details = set.details.map((detail) => {
       const detailPart = nameOf(
         pickupParts,
         detail.partNumber,
         detail.partName,
+        detail.partNameEdited,
       );
       if (detailPart === detail.partName) return detail;
       detailChanged = true;
