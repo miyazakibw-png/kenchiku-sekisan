@@ -21,6 +21,7 @@ import {
   edge,
   incomingIsVertical,
   isDiagonal,
+  mirrorShape,
   moveCorner,
   nextEdgeDirection,
   notchEdge,
@@ -734,6 +735,18 @@ export default function RoomSheetPage({
     setShape(next);
   };
 
+  /** いまの図形を左右（x）・上下（y）に反転する */
+  const flipShape = (axis: "x" | "y"): void => {
+    if (shape.edges.length === 0) {
+      setMessage("先に部屋の形を作ってください");
+      return;
+    }
+    applyShape(mirrorShape(shape, axis));
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    setMessage(axis === "x" ? "左右に反転しました" : "上下に反転しました");
+  };
+
   const undoShape = (): void => {
     if (shapePast.length === 0) {
       setMessage("図形で戻せる操作がありません");
@@ -1126,6 +1139,22 @@ export default function RoomSheetPage({
                 }}
               >
                 ○ 角を追加
+              </button>
+              <button
+                type="button"
+                disabled={shape.edges.length === 0}
+                title="今の図形を左右に反転します（寸法はそのまま）"
+                onClick={() => flipShape("x")}
+              >
+                ⇔ 左右反転
+              </button>
+              <button
+                type="button"
+                disabled={shape.edges.length === 0}
+                title="今の図形を上下に反転します（寸法はそのまま）"
+                onClick={() => flipShape("y")}
+              >
+                ⇕ 上下反転
               </button>
               <button
                 type="button"

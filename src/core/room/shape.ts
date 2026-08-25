@@ -189,6 +189,38 @@ export function uShape(
   };
 }
 
+/**
+ * 図形を左右（横）・上下（縦）に反転する。
+ * 反転すると一周する向きが逆になるので、辺の並びも逆にして
+ * 「E→S→W→N で一周する」前提を保つ。寸法・辺の種別はそのまま引き継ぐ。
+ */
+const MIRROR_X: Record<AxisDirection, AxisDirection> = {
+  E: "E",
+  W: "W",
+  N: "S",
+  S: "N",
+};
+const MIRROR_Y: Record<AxisDirection, AxisDirection> = {
+  E: "W",
+  W: "E",
+  N: "N",
+  S: "S",
+};
+
+export function mirrorShape(shape: RoomShape, axis: "x" | "y"): RoomShape {
+  const map = axis === "x" ? MIRROR_X : MIRROR_Y;
+  const edges = [...shape.edges].reverse().map((row) => {
+    if (isDiagonal(row.direction)) {
+      const vector = diagonalVector(row);
+      return axis === "x"
+        ? { ...row, dx: vector.x, dy: round2(-vector.y) }
+        : { ...row, dx: round2(-vector.x), dy: vector.y };
+    }
+    return { ...row, direction: map[row.direction as AxisDirection] };
+  });
+  return { edges };
+}
+
 /** 辺を進む向きから見た内側の向き（E→S→W→N の並びで一周する形が前提） */
 const INSIDE: Record<AxisDirection, AxisDirection> = {
   E: "S",

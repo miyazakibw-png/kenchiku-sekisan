@@ -9,6 +9,7 @@ import {
   edge,
   floorArea,
   lShape,
+  mirrorShape,
   moveCorner,
   nextEdgeDirection,
   notchEdge,
@@ -22,7 +23,35 @@ import {
   uShape,
 } from "../../src/core/room/shape";
 
+/** 形の向きを見るために、左上を原点にそろえた頂点の並び */
+function cornerSet(shape: ReturnType<typeof rectangleShape>): string[] {
+  const points = solveShape(shape).points;
+  const left = Math.min(...points.map((point) => point.x));
+  const top = Math.min(...points.map((point) => point.y));
+  return points
+    .map((point) => `${(point.x - left).toFixed(2)},${(point.y - top).toFixed(2)}`)
+    .sort();
+}
+
 describe("部屋形状（単線図）", () => {
+  it("左右反転・上下反転しても面積・壁長さは変わらず、形だけが裏返る", () => {
+    const shape = lShape(6, 4, 2, 1.5);
+    const solved = solveShape(shape);
+    for (const axis of ["x", "y"] as const) {
+      const flipped = mirrorShape(shape, axis);
+      const after = solveShape(flipped);
+      expect(after.error).toBeNull();
+      expect(floorArea(after)).toBe(floorArea(solved));
+      expect(roomQuantities(after, 2.5).wallLength).toBe(
+        roomQuantities(solved, 2.5).wallLength,
+      );
+      // 頂点の並びは変わる（元と同じ形のままではない）
+      expect(cornerSet(flipped)).not.toEqual(cornerSet(shape));
+      // 2回反転すれば元の形に戻る
+      expect(cornerSet(mirrorShape(flipped, axis))).toEqual(cornerSet(shape));
+    }
+  });
+
   it("長方形の床面積と壁長さを算出する", () => {
     const solved = solveShape(rectangleShape(3, 3));
     expect(floorArea(solved)).toBe(9);
