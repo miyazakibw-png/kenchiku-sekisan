@@ -1,6 +1,6 @@
 {
   "name": "kenchiku-sekisan",
-  "version": "0.1.92",
+  "version": "0.1.93",
   "description": "建築積算システム（完全オフラインのWindowsデスクトップアプリ）",
   "main": "./out/main/index.js",
   "author": "有限会社ビルズワーク",

@@ -72,9 +72,29 @@
 }
 
 /* 「引いた線だけ」のとき、部屋の図と部屋の壁は薄くする */
-.frame-sheet-page .canvas g.faint,
+.frame-sheet-page .frame-room.faint,
 .frame-sheet-page .frame-line.faint {
   opacity: 0.15;
+}
+
+/* 引いた線の番号（面積表と同じ番号） */
+.frame-sheet-page .manual-no {
+  fill: #dc2626;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.frame-sheet-page .rooms table.grid caption {
+  text-align: left;
+  font-size: 12px;
+  color: #475569;
+  padding: 2px 0;
 }
 
 /* 選んだ線の端のつまみ（ドラッグで伸び縮み） */

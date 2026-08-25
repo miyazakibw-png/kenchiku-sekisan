@@ -949,14 +949,12 @@ export default function FrameSheetPage({
                     { x: 0, y: 0 },
                   );
                   return (
-                    <g
-                      key={`p-${placement.id}`}
-                      className={manualOnly ? "faint" : ""}
-                    >
+                    <g key={`p-${placement.id}`}>
                       <polygon
                         points={points}
                         className={[
                           "frame-room",
+                          manualOnly ? "faint" : "",
                           selectedPlacementId === placement.id
                             ? "selected"
                             : "",
@@ -1056,6 +1054,17 @@ export default function FrameSheetPage({
                   />
                 );
               })}
+              {manualLines.map((line, index) => (
+                <text
+                  key={`n-${line.id}`}
+                  className="manual-no"
+                  x={(line.x1 + line.x2) / 2}
+                  y={(line.y1 + line.y2) / 2}
+                  fontSize={view.span * 0.035}
+                >
+                  {index + 1}
+                </text>
+              ))}
               {manualLines
                 .filter((line) => line.id === selectedLineId)
                 .flatMap((line) =>
@@ -1198,6 +1207,77 @@ export default function FrameSheetPage({
                 ))}
               </tbody>
             </table>
+          )}
+          {manualLines.length > 0 && (
+            <table className="grid">
+              <caption>引いた線（番号は図の中の数字）</caption>
+              <thead>
+                <tr>
+                  <th className="no">番号</th>
+                  <th className="num">長さ</th>
+                  <th className="num">高さ</th>
+                  <th className="num">面積</th>
+                </tr>
+              </thead>
+              <tbody>
+                {manualLines.map((manual, index) => {
+                  const result = quantities.lines.find(
+                    (each) => each.line.id === manual.id,
+                  );
+                  if (!result) return null;
+                  return (
+                    <tr
+                      key={manual.id}
+                      className={selectedLineId === manual.id ? "selected" : ""}
+                      onClick={() => setSelectedLineId(manual.id)}
+                    >
+                      <td className="no">{index + 1}</td>
+                      <td className="num">
+                        {formatNumber(result.line.length, 2)}
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          key={`h-${manual.id}-${result.line.workHeight ?? ""}`}
+                          defaultValue={
+                            result.line.workHeight === null
+                              ? ""
+                              : formatNumber(result.line.workHeight, 2)
+                          }
+                          placeholder={formatNumber(workHeight, 2)}
+                          title="空欄なら上の施工高さを使います"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateAttribute(manual.id, {
+                              workHeight: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="num">{formatNumber(result.area, 2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {manualLines.length > 0 && (
+            <p className="totals">
+              引いた線 長さ計{" "}
+              {formatNumber(
+                quantities.lines
+                  .filter((each) => each.line.source === "manual")
+                  .reduce((total, each) => total + each.line.length, 0),
+                2,
+              )}
+              ／面積計{" "}
+              {formatNumber(
+                quantities.lines
+                  .filter((each) => each.line.source === "manual")
+                  .reduce((total, each) => total + (each.area ?? 0), 0),
+                2,
+              )}
+            </p>
           )}
           <p className="note">
             レイアウトでは部屋をドラッグで移動でき、離すと近くの壁に吸着します。軸組モードでは始点→終点のクリックで1本引きます。
