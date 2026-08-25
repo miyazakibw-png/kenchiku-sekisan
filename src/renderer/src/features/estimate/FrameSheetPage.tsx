@@ -538,6 +538,46 @@ export default function FrameSheetPage({
     [lines, snapMm],
   );
 
+  /**
+   * 引いた線の番号を出す位置。
+   * 同じ所に重ねて引いた線は数字が読めなくなるので、少しずつずらして出す。
+   */
+  const manualNumbers = useMemo(() => {
+    const step = view.span * 0.022;
+    const used = new Map<string, number>();
+    return manualLines.map((line, index) => {
+      const mx = (line.x1 + line.x2) / 2;
+      const my = (line.y1 + line.y2) / 2;
+      const key = `${Math.round(mx * 20)}/${Math.round(my * 20)}`;
+      const order = used.get(key) ?? 0;
+      used.set(key, order + 1);
+      const vertical =
+        Math.abs(line.y1 - line.y2) >= Math.abs(line.x1 - line.x2);
+      return {
+        id: line.id,
+        no: index + 1,
+        x: mx + (vertical ? step * (order + 1) : 0),
+        y: my - (vertical ? 0 : step * (order + 1)),
+      };
+    });
+  }, [manualLines, view.span]);
+
+  /** 同じ所に重ねて引いてしまった線の本数 */
+  const doubledCount = useMemo(() => {
+    const seen = new Map<string, number>();
+    manualLines.forEach((line) => {
+      const ends = [
+        `${Math.round(line.x1 * 20)},${Math.round(line.y1 * 20)}`,
+        `${Math.round(line.x2 * 20)},${Math.round(line.y2 * 20)}`,
+      ].sort();
+      const key = ends.join("/");
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    });
+    return [...seen.values()]
+      .filter((count) => count > 1)
+      .reduce((total, count) => total + count - 1, 0);
+  }, [manualLines]);
+
   /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
   const endRef = useRef<{ lineId: string; end: 1 | 2 } | null>(null);
   /** 端をつまんで離した直後のクリックで、線を引き始めないための印 */
@@ -1054,15 +1094,15 @@ export default function FrameSheetPage({
                   />
                 );
               })}
-              {manualLines.map((line, index) => (
+              {manualNumbers.map((mark) => (
                 <text
-                  key={`n-${line.id}`}
+                  key={`n-${mark.id}`}
                   className="manual-no"
-                  x={(line.x1 + line.x2) / 2}
-                  y={(line.y1 + line.y2) / 2}
-                  fontSize={view.span * 0.035}
+                  x={mark.x}
+                  y={mark.y}
+                  fontSize={view.span * 0.016}
                 >
-                  {index + 1}
+                  {mark.no}
                 </text>
               ))}
               {manualLines
@@ -1277,6 +1317,12 @@ export default function FrameSheetPage({
                   .reduce((total, each) => total + (each.area ?? 0), 0),
                 2,
               )}
+            </p>
+          )}
+          {doubledCount > 0 && (
+            <p className="gap-note">
+              同じ所に重ねて引いた線が{doubledCount}
+              本あります（数字が重なっている所です）
             </p>
           )}
           <p className="note">
