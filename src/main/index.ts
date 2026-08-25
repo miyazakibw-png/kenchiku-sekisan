@@ -118,6 +118,7 @@ import {
 } from "./services/formworkTransferService";
 import {
   confirmBreakdownVersion,
+  deleteBreakdownVersion,
   getBreakdown,
   listBreakdownVersions,
   saveBreakdownRows,
@@ -401,6 +402,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.breakdownConfirm, (_event, versionId: number) =>
     confirmBreakdownVersion(getDatabase(), versionId),
+  );
+  ipcMain.handle(IPC.breakdownDeleteVersion, (_event, versionId: number) =>
+    deleteBreakdownVersion(getDatabase(), versionId),
   );
   ipcMain.handle(
     IPC.breakdownExport,

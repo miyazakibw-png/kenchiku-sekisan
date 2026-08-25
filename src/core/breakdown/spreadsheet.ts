@@ -63,6 +63,8 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
           textCell(description),
           numberCell(row.quantity),
           textCell(row.unit),
+          numberCell(row.unitPrice),
+          numberCell(row.amount),
           textCell(remarks),
         ]),
       );
@@ -79,6 +81,8 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
           textCell(row.descriptionLower),
           numberCell(row.quantity),
           textCell(row.unit),
+          numberCell(row.unitPrice),
+          numberCell(row.amount),
           textCell(row.remarksLower),
         ]),
       );
@@ -90,6 +94,8 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
         textCell(row.descriptionUpper),
         '<Cell ss:StyleID="b"/>',
         '<Cell ss:StyleID="b"/>',
+        '<Cell ss:StyleID="b"/>',
+        '<Cell ss:StyleID="b"/>',
         textCell(row.remarksUpper),
       ]),
     );
@@ -99,6 +105,8 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
         textCell(row.descriptionLower),
         numberCell(row.quantity),
         textCell(row.unit),
+        numberCell(row.unitPrice),
+        numberCell(row.amount),
         textCell(row.remarksLower),
       ]),
     );
@@ -106,7 +114,7 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
   return lines;
 }
 
-const HEADER = ["名称", "摘要", "数量", "単位", "備考"];
+const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
 
 function worksheet(sheet: SheetData, index: number, layout: number): string {
   const header = rowXml(
@@ -115,7 +123,7 @@ function worksheet(sheet: SheetData, index: number, layout: number): string {
         `<Cell ss:StyleID="h"><Data ss:Type="String">${title}</Data></Cell>`,
     ),
   );
-  const columns = [40, 30, 12, 8, 20]
+  const columns = [40, 30, 12, 8, 12, 14, 20]
     .map((width) => `<Column ss:Width="${width * 5}"/>`)
     .join("");
   return `<Worksheet ss:Name="${escapeXml(sheetName(sheet.name, index))}"><Table>${columns}${header}${bodyRows(sheet.rows, layout).join("")}</Table></Worksheet>`;

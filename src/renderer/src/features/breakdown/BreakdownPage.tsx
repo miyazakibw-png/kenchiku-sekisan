@@ -12,6 +12,7 @@ import {
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
 } from "../../../../core/breakdown/breakdown";
+import type { BreakdownDiff } from "../../../../core/breakdown/compare";
 import { compareBreakdown, moveRow } from "../../../../core/breakdown/compare";
 import "../estimate/EstimatePartsPage.css";
 import "../aggregate/AggregatePage.css";
@@ -206,6 +207,20 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     setMessage("この回を確定しました。次の転記は新しい回になります。");
   };
 
+  /** この回（内訳書）を消す。集計書兼工事マスターと計算書はそのまま */
+  const deleteVersion = async (): Promise<void> => {
+    const target = view.version;
+    if (!target) return;
+    if (!window.confirm(`${target.round}回目の内訳書を消します。よろしいですか。`))
+      return;
+    await window.sekisan.deleteBreakdownVersion(target.id);
+    setPanel("none");
+    setCompareTarget(null);
+    setRightRows([]);
+    await reload();
+    setMessage(`${target.round}回目の内訳書を消しました。`);
+  };
+
   const exportFile = async (kind: BreakdownExportKind): Promise<void> => {
     if (!view.version) return;
     const result = await window.sekisan.exportBreakdown({
@@ -341,6 +356,14 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           disabled={!view.version || view.version.confirmed === 1}
         >
           ✓ この回を確定
+        </button>
+        <button
+          type="button"
+          onClick={() => void deleteVersion()}
+          disabled={!view.version}
+          title="この回の内訳書だけを消します（集計書・計算書はそのまま）"
+        >
+          🗑 この回を削除
         </button>
         <button type="button" onClick={() => void exportFile("bcs")}>
           BCS.CSV
@@ -546,6 +569,22 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             >
               ↷ 進む
             </button>
+            <button
+              type="button"
+              onClick={() => void confirmVersion()}
+              disabled={!view.version || view.version.confirmed === 1}
+              title="見比べた回（左）を確定します"
+            >
+              ✓ この回を確定
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteVersion()}
+              disabled={!view.version}
+              title="見比べた回（左）の内訳書を消します"
+            >
+              🗑 この回を削除
+            </button>
             <span className="note">
               行のずれは左右それぞれ「行挿入」「↑」「↓」で合わせます。違う部分に色が付きます。
             </span>
@@ -558,12 +597,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 <th>摘要</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>単価</th>
+                <th>金額</th>
                 <th>備考</th>
                 <th className="ops">操作</th>
                 <th>名称</th>
                 <th>摘要</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>単価</th>
+                <th>金額</th>
                 <th>備考</th>
               </tr>
             </thead>
@@ -574,7 +617,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                   className={
                     settings.layout === BREAKDOWN_LAYOUT.twoLine
                       ? "two-line"
-                      : ""
+                      : comparePairClass(diffs, diff.index, settings.layout)
                   }
                 >
                   <td className="ops">
@@ -713,6 +756,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 <th>摘要</th>
                 <th className="qty">数量</th>
                 <th className="unit">単位</th>
+                <th className="qty">単価</th>
+                <th className="qty">金額</th>
                 <th>備考</th>
               </tr>
             </thead>
@@ -721,16 +766,21 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 row.rowKind === "subject" ? (
                   <tr key={`s-${index}`} className="subject">
                     <td className="mark">{row.subjectId ?? ""}</td>
-                    <td colSpan={5}>{row.subjectName}</td>
+                    <td colSpan={7}>{row.subjectName}</td>
                   </tr>
                 ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
                   settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
-                  <tr key={`d-${index}`}>
+                  <tr
+                    key={`d-${index}`}
+                    className={pairClass(shownRows, index, settings.layout)}
+                  >
                     <td className="mark" />
                     <td>{row.nameLower}</td>
                     <td>{row.descriptionLower}</td>
                     <td className="qty">{row.quantity ?? ""}</td>
                     <td className="unit">{row.unit}</td>
+                    <td className="qty">{row.unitPrice ?? ""}</td>
+                    <td className="qty">{row.amount ?? ""}</td>
                     <td>{row.remarksLower}</td>
                   </tr>
                 ) : (
@@ -752,6 +802,14 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                       <div className="upper" />
                       <div className="lower">{row.unit}</div>
                     </td>
+                    <td className="qty">
+                      <div className="upper" />
+                      <div className="lower">{row.unitPrice ?? ""}</div>
+                    </td>
+                    <td className="qty">
+                      <div className="upper" />
+                      <div className="lower">{row.amount ?? ""}</div>
+                    </td>
                     <td>
                       <div className="upper">{row.remarksUpper}</div>
                       <div className="lower">{row.remarksLower}</div>
@@ -765,6 +823,39 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       )}
     </div>
   );
+}
+
+/**
+ * 書式④（2段2行）で、1明細の上段と下段の間に罫線を出さないための印。
+ * 集計書兼工事マスターと同じ見た目にする。
+ */
+function pairClass(
+  rows: BreakdownRowRecord[],
+  index: number,
+  layout: number,
+): string {
+  if (layout !== BREAKDOWN_LAYOUT.twoRow) return "";
+  const row = rows[index];
+  if (row.rowKind === "note" && rows[index + 1]?.rowKind === "detail")
+    return "detail-upper";
+  if (row.rowKind === "detail" && rows[index - 1]?.rowKind === "note")
+    return "detail-lower";
+  return "";
+}
+
+/** 比較画面でも書式④の1明細（上段・下段）の間に罫線を出さない */
+function comparePairClass(
+  diffs: BreakdownDiff<BreakdownRowRecord>[],
+  index: number,
+  layout: number,
+): string {
+  if (layout !== BREAKDOWN_LAYOUT.twoRow) return "";
+  const kind = diffs[index]?.left?.rowKind;
+  if (kind === "note" && diffs[index + 1]?.left?.rowKind === "detail")
+    return "detail-upper";
+  if (kind === "detail" && diffs[index - 1]?.left?.rowKind === "note")
+    return "detail-lower";
+  return "";
 }
 
 /** 比較画面の明細セル。内訳書の設定（書式）どおりに出す */
@@ -782,6 +873,8 @@ function renderCompareCells(
       <td key="d" className="only" />,
       <td key="q" className="only" />,
       <td key="u" className="only" />,
+      <td key="p" className="only" />,
+      <td key="a" className="only" />,
       <td key="r" className="only" />,
     ];
   }
@@ -807,6 +900,12 @@ function renderCompareCells(
       </td>,
       <td key="u" className={`unit ${mark("unit")}`}>
         {row.unit}
+      </td>,
+      <td key="p" className="qty">
+        {row.unitPrice ?? ""}
+      </td>,
+      <td key="a" className="qty">
+        {row.amount ?? ""}
       </td>,
       <td key="r" className={mark("remarks")}>
         <div className="upper">{row.remarksUpper}</div>
@@ -839,6 +938,12 @@ function renderCompareCells(
     </td>,
     <td key="u" className={`unit ${mark("unit")}`}>
       {row.unit}
+    </td>,
+    <td key="p" className="qty">
+      {row.unitPrice ?? ""}
+    </td>,
+    <td key="a" className="qty">
+      {row.amount ?? ""}
     </td>,
     <td key="r" className={mark("remarks")}>
       {remarks}

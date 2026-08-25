@@ -46,6 +46,7 @@ export const IPC = {
   breakdownSaveRows: "breakdown:saveRows",
   breakdownSaveSettings: "breakdown:saveSettings",
   breakdownConfirm: "breakdown:confirm",
+  breakdownDeleteVersion: "breakdown:deleteVersion",
   breakdownExport: "breakdown:export",
   deductionLimitGet: "settings:deductionLimitGet",
   deductionLimitSave: "settings:deductionLimitSave",

@@ -227,6 +227,8 @@ const api = {
     versionId: number,
   ): Promise<BreakdownVersion | null> =>
     ipcRenderer.invoke(IPC.breakdownConfirm, versionId),
+  deleteBreakdownVersion: (versionId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.breakdownDeleteVersion, versionId),
   exportBreakdown: (
     request: BreakdownExportRequest,
   ): Promise<BreakdownExportResult> =>

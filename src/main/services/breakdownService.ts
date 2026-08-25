@@ -318,6 +318,19 @@ export function saveBreakdownRows(
   return listRows(db, versionId);
 }
 
+/** 作った回を消す（その回の行も消える。集計書と計算書はそのまま） */
+export function deleteBreakdownVersion(
+  db: AppDatabase,
+  versionId: number,
+): void {
+  db.delete(projectBreakdownRows)
+    .where(eq(projectBreakdownRows.versionId, versionId))
+    .run();
+  db.delete(projectBreakdownVersions)
+    .where(eq(projectBreakdownVersions.id, versionId))
+    .run();
+}
+
 /** 提出した回を確定する（次の転記は新しい回になる） */
 export function confirmBreakdownVersion(
   db: AppDatabase,

@@ -14,6 +14,7 @@ import {
 import { runAggregation } from "../../src/main/services/aggregationService";
 import {
   confirmBreakdownVersion,
+  deleteBreakdownVersion,
   getBreakdown,
   listBreakdownVersions,
   saveBreakdownRows,
@@ -151,6 +152,21 @@ describe("内訳書", () => {
     const second = transferBreakdown(db, projectId);
     expect(second.version?.round).toBe(2);
     expect(second.settings.subjectOrder).toEqual([9, 5, 1]);
+  });
+
+  it("作った回を削除すると行も消える", () => {
+    const first = transferBreakdown(db, projectId);
+    confirmBreakdownVersion(db, first.version?.id ?? 0);
+    const second = transferBreakdown(db, projectId);
+    expect(listBreakdownVersions(db, projectId)).toHaveLength(2);
+
+    deleteBreakdownVersion(db, second.version?.id ?? 0);
+    const left = listBreakdownVersions(db, projectId);
+    expect(left).toHaveLength(1);
+    expect(left[0].id).toBe(first.version?.id);
+    expect(
+      getBreakdown(db, projectId, second.version?.id ?? 0).rows,
+    ).toHaveLength(0);
   });
 
   it("画面で並べ替えた行位置を保存する", () => {

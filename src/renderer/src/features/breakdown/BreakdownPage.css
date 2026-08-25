@@ -88,6 +88,22 @@
   min-height: 15px;
 }
 
+/* 書式④（2段2行）：1明細＝上下2行。明細の中は罫線を出さず、明細どうしの区切りだけ残す */
+.breakdown-page table.breakdown tr.detail-upper > td,
+.breakdown-page table.compare tr.detail-upper > td {
+  border-bottom: none;
+}
+
+.breakdown-page table.breakdown tr.detail-lower > td,
+.breakdown-page table.compare tr.detail-lower > td {
+  border-top: none;
+}
+
+.breakdown-page table.compare td.qty {
+  text-align: right;
+  white-space: nowrap;
+}
+
 .breakdown-page .breakdown-settings {
   border: 1px solid #bbb;
   background: #f4f8ff;
