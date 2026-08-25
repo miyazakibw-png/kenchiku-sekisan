@@ -8,7 +8,7 @@ import iconv from "iconv-lite";
 import { toBcsCsv } from "../../core/breakdown/bcs";
 import {
   splitBySubject,
-  toSpreadsheetXml,
+  toSpreadsheetWorkbook,
 } from "../../core/breakdown/spreadsheet";
 import type { BreakdownRow } from "../../core/breakdown/breakdown";
 import type {
@@ -66,11 +66,9 @@ export function buildExport(
     kind === "excelBySubject"
       ? splitBySubject(coreRows)
       : [{ name: "内訳書", rows: coreRows }];
-  const xml = toSpreadsheetXml(sheets, settings.layout);
   return {
-    content: Buffer.from(xml, "utf8"),
-    // SpreadsheetML なので .xml で保存する（.xls だとエクセルが形式違いの警告を出す）
-    defaultName: `${projectName}_内訳書.xml`,
+    content: toSpreadsheetWorkbook(sheets, settings.layout),
+    defaultName: `${projectName}_内訳書.xlsx`,
   };
 }
 

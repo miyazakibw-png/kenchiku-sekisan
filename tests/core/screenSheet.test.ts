@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   numberOf,
   sheetName,
-  toScreenXml,
+  toScreenSheets,
+  toScreenWorkbook,
 } from "../../src/core/export/screenSheet";
 
 describe("画面のエクセル掃き出し", () => {
@@ -24,22 +25,27 @@ describe("画面のエクセル掃き出し", () => {
   });
 
   it("入力表ごとに1シートで、1行目は見出しになる", () => {
-    const xml = toScreenXml([
+    const book = toScreenSheets([
       { name: "建具表", rows: [["建具記号", "W"], ["SD2", "1.80"]] },
       { name: "部屋計算書", rows: [["名称"], ["ビニル床シート"]] },
     ]);
-    expect(xml).toContain('ss:Name="建具表"');
-    expect(xml).toContain('ss:Name="部屋計算書"');
-    expect(xml).toContain('ss:StyleID="h"><Data ss:Type="String">建具記号');
-    expect(xml).toContain('ss:Type="Number">1.8');
+    expect(book.map((sheet) => sheet.name)).toEqual(["建具表", "部屋計算書"]);
+    expect(book[0].rows[0][0]).toMatchObject({
+      value: "建具記号",
+      kind: "header",
+    });
+    expect(book[0].rows[1][1]).toMatchObject({ value: 1.8, kind: "number" });
     // 見出し行は数字に見えても文字のまま
-    expect(toScreenXml([{ name: "表", rows: [["1"]] }])).toContain(
-      'ss:StyleID="h"><Data ss:Type="String">1',
+    expect(toScreenSheets([{ name: "表", rows: [["1"]] }])[0].rows[0][0]).toMatchObject(
+      { value: "1", kind: "header" },
     );
   });
 
-  it("XMLで困る文字を逃がす", () => {
-    const xml = toScreenXml([{ name: "表", rows: [["名称"], ["<SD2>&A"]] }]);
-    expect(xml).toContain("&lt;SD2&gt;&amp;A");
+  it(".xlsx（zip）として書き出す", () => {
+    const file = toScreenWorkbook([
+      { name: "表", rows: [["名称"], ["<SD2>&A"]] },
+    ]);
+    expect(file.subarray(0, 2).toString("latin1")).toBe("PK");
+    expect(file.length).toBeGreaterThan(0);
   });
 });

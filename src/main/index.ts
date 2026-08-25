@@ -126,7 +126,7 @@ import {
   transferBreakdown,
 } from "./services/breakdownService";
 import { buildExport, writeExport } from "./services/breakdownExportService";
-import { toScreenXml } from "../core/export/screenSheet";
+import { toScreenWorkbook } from "../core/export/screenSheet";
 import type { FittingPartValue } from "../core/fittings/partValue";
 import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import { IPC } from "../shared/ipc";
@@ -656,16 +656,12 @@ function registerIpcHandlers(): void {
     IPC.screenExcel,
     async (event, request: ScreenExcelRequest): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
-      // SpreadsheetML なので .xml で保存する（.xls だとエクセルが形式違いの警告を出す）
-      const defaultPath = `${request.defaultName}.xml`;
+      const defaultPath = `${request.defaultName}.xlsx`;
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath })
         : await dialog.showSaveDialog({ defaultPath });
       if (result.canceled || !result.filePath) return { filePath: null };
-      writeExport(
-        result.filePath,
-        Buffer.from(toScreenXml(request.sheets), "utf8"),
-      );
+      writeExport(result.filePath, toScreenWorkbook(request.sheets));
       return { filePath: result.filePath };
     },
   );

@@ -15,7 +15,8 @@ import { toBcsCsv } from "../../src/core/breakdown/bcs";
 import { compareBreakdown, moveRow } from "../../src/core/breakdown/compare";
 import {
   splitBySubject,
-  toSpreadsheetXml,
+  toSpreadsheetSheets,
+  toSpreadsheetWorkbook,
 } from "../../src/core/breakdown/spreadsheet";
 import type { BreakdownSourceItem } from "../../src/core/breakdown/breakdown";
 
@@ -236,9 +237,20 @@ describe("エクセル掃き出し", () => {
       "コンクリート工事",
       "型枠工事",
     ]);
-    const xml = toSpreadsheetXml(sheets, DEFAULT_BREAKDOWN_SETTINGS.layout);
-    expect(xml).toContain('ss:Name="コンクリート工事"');
-    expect(xml).toContain('ss:Name="型枠工事"');
+    const book = toSpreadsheetSheets(
+      sheets,
+      DEFAULT_BREAKDOWN_SETTINGS.layout,
+    );
+    expect(book.map((sheet) => sheet.name)).toEqual([
+      "コンクリート工事",
+      "型枠工事",
+    ]);
+    // .xlsx （zip）として書き出している
+    const file = toSpreadsheetWorkbook(
+      sheets,
+      DEFAULT_BREAKDOWN_SETTINGS.layout,
+    );
+    expect(file.subarray(0, 2).toString("latin1")).toBe("PK");
   });
 
   it("書式③は2段を1行にまとめる", () => {
@@ -247,11 +259,14 @@ describe("エクセル掃き出し", () => {
       subjects,
       DEFAULT_BREAKDOWN_SETTINGS,
     );
-    const xml = toSpreadsheetXml(
+    const book = toSpreadsheetSheets(
       [{ name: "内訳書", rows }],
       BREAKDOWN_LAYOUT.excel,
     );
-    expect(xml).toContain("基礎 普通コンクリート");
+    const values = book[0].rows.flatMap((row) =>
+      row.map((cell) => cell.value),
+    );
+    expect(values).toContain("基礎 普通コンクリート");
   });
 });
 

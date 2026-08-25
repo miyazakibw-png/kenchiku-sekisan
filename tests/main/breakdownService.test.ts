@@ -202,7 +202,8 @@ describe("内訳書", () => {
       view.settings,
       "港区計画",
     );
-    expect(excel.defaultName).toBe("港区計画_内訳書.xml");
-    expect(excel.content.toString("utf8")).toContain("<Worksheet");
+    expect(excel.defaultName).toBe("港区計画_内訳書.xlsx");
+    // .xlsx（zip）なので PK で始まる
+    expect(excel.content.subarray(0, 2).toString("latin1")).toBe("PK");
   });
 });
