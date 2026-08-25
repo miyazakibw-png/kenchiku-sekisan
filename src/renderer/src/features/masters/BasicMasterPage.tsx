@@ -15,6 +15,7 @@ import {
 } from "../grid/gridClipboard";
 import "./BasicMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 const TABS: BasicMasterKind[] = [
   "pickupParts",
@@ -50,13 +51,35 @@ export default function BasicMasterPage({
   const [selectedCol, setSelectedCol] = useState(0);
   const [messages, setMessages] = useState<string[]>([]);
 
-  const load = useCallback((source: BasicMasters, target: BasicMasterKind) => {
-    setMasters(source);
-    setKind(target);
-    setRows(source[target].map((row) => ({ ...row })));
-    setSelected(0);
-    setMessages([]);
-  }, []);
+  const { markSaved, isDirty } = useSaveOnLeave(rows, () => save(true));
+
+  const load = useCallback(
+    (source: BasicMasters, target: BasicMasterKind) => {
+      const next = source[target].map((row) => ({ ...row }));
+      setMasters(source);
+      setKind(target);
+      setRows(next);
+      setSelected(0);
+      setMessages([]);
+      markSaved(next);
+    },
+    [markSaved],
+  );
+
+  /** 別の種類へ移るときは、今の表を保存してから読み替える */
+  const changeKind = async (target: BasicMasterKind): Promise<void> => {
+    if (target === kind) return;
+    if (!isDirty()) {
+      load(masters, target);
+      return;
+    }
+    const result = await window.sekisan.saveBasicMaster({
+      kind,
+      rows,
+      projectId,
+    });
+    load(result.errors.length > 0 ? masters : result.masters, target);
+  };
 
   useEffect(() => {
     void window.sekisan
@@ -158,16 +181,20 @@ export default function BasicMasterPage({
     setSelected(at);
   };
 
-  const save = async (): Promise<void> => {
+  const save = async (quiet = false): Promise<void> => {
     const result = await window.sekisan.saveBasicMaster({
       kind,
       rows,
       projectId,
     });
     setMasters(result.masters);
-    setMessages(result.errors.length > 0 ? result.errors : ["保存しました"]);
-    if (result.errors.length === 0)
-      setRows(result.masters[kind].map((row) => ({ ...row })));
+    if (!quiet)
+      setMessages(result.errors.length > 0 ? result.errors : ["保存しました"]);
+    if (result.errors.length === 0) {
+      const next = result.masters[kind].map((row) => ({ ...row }));
+      setRows(next);
+      markSaved(next);
+    }
   };
 
   return (
@@ -205,7 +232,7 @@ export default function BasicMasterPage({
             key={tab}
             type="button"
             className={tab === kind ? "tab active" : "tab"}
-            onClick={() => load(masters, tab)}
+            onClick={() => void changeKind(tab)}
           >
             {BASIC_MASTER_LIMITS[tab].label}
           </button>

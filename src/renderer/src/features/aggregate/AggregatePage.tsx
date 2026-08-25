@@ -10,6 +10,7 @@ import type {
 import { checkQuantityUnit } from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
@@ -160,13 +161,16 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     COLUMN_WIDTHS,
   );
 
+  const { markSaved } = useSaveOnLeave(edits, () => saveEdits(true));
+
   const reload = useCallback(
     async (runId?: number) => {
       setView(await window.sekisan.getAggregate(project.id, runId));
       setRuns(await window.sekisan.listAggregateRuns(project.id));
       setEdits({});
+      markSaved({});
     },
-    [project.id],
+    [markSaved, project.id],
   );
 
   useEffect(() => {
@@ -181,8 +185,9 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     setView(result);
     setRuns(await window.sekisan.listAggregateRuns(project.id));
     setEdits({});
+    markSaved({});
     setMessage(`集計しました（明細 ${result.items.length} 件）`);
-  }, [project.id]);
+  }, [markSaved, project.id]);
 
   /** 集計書の欄を直す（保存を押すまでは画面の中だけ） */
   const editItem = useCallback(
@@ -199,23 +204,28 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   );
 
   /** 直した内容を計算書・工事の明細マスターへ書き戻し、集計をかけ直す */
-  const saveEdits = useCallback(async () => {
-    const list = Object.values(edits);
-    if (view.run === null || list.length === 0) return;
-    const result = await window.sekisan.saveAggregateEdits({
-      projectId: project.id,
-      runId: view.run.id,
-      edits: list,
-      applyToSameDetail,
-    });
-    setView(result);
-    setRuns(await window.sekisan.listAggregateRuns(project.id));
-    setEdits({});
-    setSelected(null);
-    setMessage(
-      `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
-    );
-  }, [applyToSameDetail, edits, project.id, view.run]);
+  const saveEdits = useCallback(
+    async (quiet = false) => {
+      const list = Object.values(edits);
+      if (view.run === null || list.length === 0) return;
+      const result = await window.sekisan.saveAggregateEdits({
+        projectId: project.id,
+        runId: view.run.id,
+        edits: list,
+        applyToSameDetail,
+      });
+      setView(result);
+      setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setEdits({});
+      markSaved({});
+      setSelected(null);
+      if (quiet) return;
+      setMessage(
+        `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
+      );
+    },
+    [applyToSameDetail, edits, markSaved, project.id, view.run],
+  );
 
   /** 不要明細の印を付ける／外す（内訳書へ飛ばさなくなる） */
   const toggleUnused = useCallback(async () => {

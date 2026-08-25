@@ -25,6 +25,7 @@ import {
 import "./EstimatePartsPage.css";
 import "./TransferSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useRowsHistory } from "../../hooks/useRowsHistory";
 
 interface Props {
@@ -62,11 +63,15 @@ export default function TransferSheetPage({
 
   const inherited = useMemo(() => resolveTransferInherited(rows), [rows]);
 
+  const { markSaved } = useSaveOnLeave(rows, () => save(true));
+
   const reload = useCallback(async () => {
-    setRows(
-      toTransferDrafts(await window.sekisan.listTransferRows(project.id)),
+    const next = toTransferDrafts(
+      await window.sekisan.listTransferRows(project.id),
     );
-  }, [project.id]);
+    setRows(next);
+    markSaved(next);
+  }, [markSaved, project.id]);
 
   useEffect(() => {
     void reload();
@@ -85,14 +90,20 @@ export default function TransferSheetPage({
       ))();
   }, [callOpen, project.id, source, subjectId]);
 
-  const save = useCallback(async () => {
-    const saved = await window.sekisan.saveTransferRows({
-      projectId: project.id,
-      rows,
-    });
-    setRows(toTransferDrafts(saved));
-    setMessage("保存しました（集計書兼工事マスターに計上します）");
-  }, [project.id, rows]);
+  const save = useCallback(
+    async (quiet = false) => {
+      const saved = await window.sekisan.saveTransferRows({
+        projectId: project.id,
+        rows,
+      });
+      const next = toTransferDrafts(saved);
+      setRows(next);
+      markSaved(next);
+      if (quiet) return;
+      setMessage("保存しました（集計書兼工事マスターに計上します）");
+    },
+    [markSaved, project.id, rows],
+  );
 
   /** 部位別入力表に入力した部位（A〜G）を呼び出して転記する */
   const openParts = useCallback(async () => {

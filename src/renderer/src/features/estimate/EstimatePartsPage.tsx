@@ -29,6 +29,7 @@ import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
 import "./EstimatePartsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   project: ProjectSummary;
@@ -92,10 +93,14 @@ export default function EstimatePartsPage({
     {},
   );
 
+  const { markSaved } = useSaveOnLeave(rows, () => save());
+
   const reload = useCallback(async () => {
-    setRows(toDrafts(await window.sekisan.listEstimateRows(project.id)));
+    const next = toDrafts(await window.sekisan.listEstimateRows(project.id));
+    setRows(next);
+    markSaved(next);
     setFilledSheets(await window.sekisan.listFilledCalcSheets(project.id));
-  }, [project.id]);
+  }, [markSaved, project.id]);
 
   useEffect(() => {
     void reload();
@@ -161,10 +166,12 @@ export default function EstimatePartsPage({
         projectId: project.id,
         rows: next,
       });
-      setRows(toDrafts(saved));
+      const drafts = toDrafts(saved);
+      setRows(drafts);
+      markSaved(drafts);
       setMessage(note);
     },
-    [project.id],
+    [markSaved, project.id],
   );
 
   const save = useCallback(async () => {

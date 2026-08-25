@@ -14,6 +14,7 @@ import {
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import "./RoomSheetPage.css";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   project: ProjectSummary;
@@ -47,17 +48,22 @@ export default function GeneralSheetPage({
   const [message, setMessage] = useState("");
   const [warned, setWarned] = useState(false);
 
+  // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
+  const { markSaved } = useSaveOnLeave({ lower, note }, () => save());
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
       const loaded = await window.sekisan.getGeneralSheet(row.id as number);
+      const sets = trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, []));
       setSheet(loaded);
-      setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
+      setLower(sets);
       setNote(loaded.note);
+      markSaved({ lower: sets, note: loaded.note });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
-  }, [project.id, row.id]);
+  }, [markSaved, project.id, row.id]);
 
   /** 上段が無いので、計算式に使えるのは建具表の記号だけ */
   const calcVariables = useMemo(() => {
@@ -85,6 +91,7 @@ export default function GeneralSheetPage({
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
+    markSaved({ lower: trimmed, note });
     const saved = await window.sekisan.saveGeneralSheet({
       id: sheet.id,
       lowerJson: JSON.stringify(trimmed),
@@ -92,7 +99,7 @@ export default function GeneralSheetPage({
     });
     setSheet(saved);
     setMessage("保存しました");
-  }, [lower, note, sheet]);
+  }, [lower, markSaved, note, sheet]);
 
   const closePage = useCallback(() => {
     if (calcResult.errors.length > 0 && !warned) {

@@ -62,6 +62,7 @@ import {
 } from "../../../../core/fittings/partValue";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   project: ProjectSummary;
@@ -262,6 +263,12 @@ export default function RoomSheetPage({
   const [canvasSize, setCanvasSize] = useState(200);
   const [message, setMessage] = useState("");
 
+  // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
+  const { markSaved } = useSaveOnLeave(
+    { shape, roomFittings, ceiling, lower, ceilingHeight },
+    () => save(),
+  );
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
@@ -273,13 +280,20 @@ export default function RoomSheetPage({
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson));
       setLower(parseLower(loaded.lowerJson));
+      markSaved({
+        shape: parseShape(loaded.shapeJson),
+        roomFittings: parseRoomFittings(loaded.fittingsJson),
+        ceiling: parseCeiling(loaded.ceilingJson),
+        lower: parseLower(loaded.lowerJson),
+        ceilingHeight: loaded.ceilingHeight,
+      });
       setOptions(await window.sekisan.getMasterOptions(project.id));
       setCeilingHeight(loaded.ceilingHeight);
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());
       setPartValues(await window.sekisan.getFittingPartValues());
     })();
-  }, [project.id, row.id]);
+  }, [markSaved, project.id, row.id]);
 
   // 小窓（四角・L型・コ型・角の追加）を開いたら、寸法欄にカーソルを入れる
   const promptOpen = prompt !== null;
@@ -460,6 +474,13 @@ export default function RoomSheetPage({
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
+    markSaved({
+      shape,
+      roomFittings,
+      ceiling,
+      lower: trimmed,
+      ceilingHeight,
+    });
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
       shapeJson: JSON.stringify(shape),
@@ -471,7 +492,7 @@ export default function RoomSheetPage({
     });
     setSheet(saved);
     setMessage("保存しました（天井高さは部位別入力表にも反映します）");
-  }, [ceiling, ceilingHeight, lower, roomFittings, shape, sheet]);
+  }, [ceiling, ceilingHeight, lower, markSaved, roomFittings, shape, sheet]);
 
   const updateCeiling = useCallback(
     (id: string, patch: Partial<CeilingElement>): void =>

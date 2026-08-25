@@ -44,6 +44,7 @@ import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import "./FrameSheetPage.css";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   project: ProjectSummary;
@@ -151,6 +152,12 @@ export default function FrameSheetPage({
     y: number;
   } | null>(null);
 
+  // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
+  const { markSaved } = useSaveOnLeave(
+    { placements, manualLines, attributes, frameFittings, lower, workHeight },
+    () => save(),
+  );
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
@@ -176,12 +183,30 @@ export default function FrameSheetPage({
       );
       setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
       setWorkHeight(loaded.workHeight);
+      markSaved({
+        placements: parseJson<FramePlacement[]>(loaded.layoutJson, []),
+        manualLines: parseJson<FrameManualLine[]>(loaded.linesJson, []),
+        attributes: parseJson<Record<string, FrameLineAttribute>>(
+          loaded.attributesJson,
+          {},
+        ),
+        frameFittings: parseJson<
+          {
+            id: string;
+            symbol: string;
+            multiplier: number;
+            lineId: string | null;
+          }[]
+        >(loaded.fittingsJson, []),
+        lower: trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
+        workHeight: loaded.workHeight,
+      });
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
       setPartValues(await window.sekisan.getFittingPartValues());
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
-  }, [project.id, row.id]);
+  }, [markSaved, project.id, row.id]);
 
   /** 置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = useMemo(() => {
@@ -312,6 +337,14 @@ export default function FrameSheetPage({
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
+    markSaved({
+      placements,
+      manualLines,
+      attributes,
+      frameFittings,
+      lower: trimmed,
+      workHeight,
+    });
     const saved = await window.sekisan.saveFrameSheet({
       id: sheet.id,
       layoutJson: JSON.stringify(placements),
@@ -329,6 +362,7 @@ export default function FrameSheetPage({
     frameFittings,
     lower,
     manualLines,
+    markSaved,
     placements,
     sheet,
     workHeight,

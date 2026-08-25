@@ -28,6 +28,7 @@ import {
 } from "./assemblyEditor";
 import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -67,13 +68,16 @@ export default function AssemblyMasterPage({
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const { markSaved, isDirty } = useSaveOnLeave(editor, () => save(true));
+
   const reload = useCallback(async () => {
     setAssemblies(await window.sekisan.listAssemblies(projectId));
   }, [projectId]);
 
   useEffect(() => {
     void reload();
-  }, [reload]);
+    markSaved(null);
+  }, [markSaved, reload]);
 
   const subjectOrderById = useMemo(
     () => new Map(options.subjects.map((s) => [s.id, s.displayOrder])),
@@ -98,15 +102,6 @@ export default function AssemblyMasterPage({
     ],
   );
 
-  const openEditor = useCallback((assembly: FinishAssembly) => {
-    setSelectedId(assembly.id);
-    setEditor({
-      id: assembly.id,
-      note: assembly.note,
-      items: toDraftItems(assembly.items),
-    });
-  }, []);
-
   const openPicker = useCallback(async () => {
     if (!subject) return;
     setPicker(await window.sekisan.listDetails(subject.id, projectId));
@@ -124,56 +119,79 @@ export default function AssemblyMasterPage({
     );
   }, []);
 
-  const save = useCallback(async () => {
-    if (!editor) return;
-    const items = toAssemblyItems(editor.items);
-    const before = assemblies.find((a) => a.id === editor.id);
-    // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
-    const changedKeys = (before?.items ?? []).flatMap((old, index) => {
-      const next = items[index];
-      if (!next) return [];
-      const key = assemblySignature([old]);
-      return key === assemblySignature([next]) ? [] : [key];
-    });
-    const sharing = assemblies.filter(
-      (other) =>
-        other.id !== editor.id &&
-        other.items.some((item) =>
-          changedKeys.includes(assemblySignature([item])),
-        ),
-    );
-    const applyToAllSets =
-      sharing.length > 0 &&
-      window.confirm(
-        `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
-          "［OK］この明細を使う全セットを直す\n［キャンセル］このセットだけ直す",
-      );
-    const result = await window.sekisan.saveAssembly({
-      id: editor.id,
-      scope: projectId === null ? "basic" : "project",
-      projectId,
-      note: editor.note,
-      items,
-      propagate: true,
-      applyToAllSets,
-    });
-    await reload();
-    setEditor(null);
-    setSelectedId(result.assembly.id);
-    if (result.duplicateOf) {
-      setMerge({
-        keepId: result.duplicateOf.id,
-        mergedId: result.assembly.id,
-        message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ""}）。既存セットへ統合しますか。`,
+  const save = useCallback(
+    async (quiet = false) => {
+      if (!editor) return;
+      const items = toAssemblyItems(editor.items);
+      const before = assemblies.find((a) => a.id === editor.id);
+      // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
+      const changedKeys = (before?.items ?? []).flatMap((old, index) => {
+        const next = items[index];
+        if (!next) return [];
+        const key = assemblySignature([old]);
+        return key === assemblySignature([next]) ? [] : [key];
       });
-    } else {
-      setToast(
-        result.syncedSets === 0
-          ? "保存しました"
-          : `保存しました（計算書の${result.syncedSets}セットも直しました）`,
+      const sharing = assemblies.filter(
+        (other) =>
+          other.id !== editor.id &&
+          other.items.some((item) =>
+            changedKeys.includes(assemblySignature([item])),
+          ),
       );
-    }
-  }, [assemblies, editor, projectId, reload]);
+      // 画面を離れるときの自動保存では確認を出さず、このセットだけ直す
+      const applyToAllSets =
+        !quiet &&
+        sharing.length > 0 &&
+        window.confirm(
+          `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
+            "［OK］この明細を使う全セットを直す\n［キャンセル］このセットだけ直す",
+        );
+      const result = await window.sekisan.saveAssembly({
+        id: editor.id,
+        scope: projectId === null ? "basic" : "project",
+        projectId,
+        note: editor.note,
+        items,
+        propagate: true,
+        applyToAllSets,
+      });
+      await reload();
+      setEditor(null);
+      markSaved(null);
+      setSelectedId(result.assembly.id);
+      if (quiet) return;
+      if (result.duplicateOf) {
+        setMerge({
+          keepId: result.duplicateOf.id,
+          mergedId: result.assembly.id,
+          message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ""}）。既存セットへ統合しますか。`,
+        });
+      } else {
+        setToast(
+          result.syncedSets === 0
+            ? "保存しました"
+            : `保存しました（計算書の${result.syncedSets}セットも直しました）`,
+        );
+      }
+    },
+    [assemblies, editor, markSaved, projectId, reload],
+  );
+
+  const openEditor = useCallback(
+    async (assembly: FinishAssembly) => {
+      // 直したまま別のセットへ移るときは先に保存する
+      if (isDirty()) await save(true);
+      const next: EditorState = {
+        id: assembly.id,
+        note: assembly.note,
+        items: toDraftItems(assembly.items),
+      };
+      setSelectedId(assembly.id);
+      setEditor(next);
+      markSaved(next);
+    },
+    [isDirty, markSaved, save],
+  );
 
   const applyMerge = useCallback(async () => {
     if (!merge) return;
@@ -263,9 +281,9 @@ export default function AssemblyMasterPage({
                     className={`detail-group ${selectedId === assembly.id ? "selected" : ""}`}
                     tabIndex={0}
                     onClick={() => setSelectedId(assembly.id)}
-                    onDoubleClick={() => openEditor(assembly)}
+                    onDoubleClick={() => void openEditor(assembly)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") openEditor(assembly);
+                      if (e.key === "Enter") void openEditor(assembly);
                     }}
                   >
                     <tr className="upper-row">

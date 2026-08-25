@@ -155,12 +155,12 @@ import type {
   SetDetailUnusedRequest,
   SubjectDraft,
 } from "../shared/types";
+import { rememberWindowState, savedBounds, wasMaximized } from "./windowState";
 
 /** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用） */
 function createWindow(projectId?: number): void {
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    ...savedBounds("main", { width: 1440, height: 900 }),
     show: false,
     title: "建築積算システム",
     autoHideMenuBar: true,
@@ -170,6 +170,10 @@ function createWindow(projectId?: number): void {
       contextIsolation: true,
     },
   });
+
+  // 前回使った大きさ・位置を覚えておき、次に開いたとき同じ大きさで出す
+  rememberWindowState(window, "main");
+  if (wasMaximized("main")) window.maximize();
 
   // 出したあと画面（webContents）にも入力先を渡す（Windowsで文字が入らないことへの備え）
   window.on("ready-to-show", () => {
@@ -213,8 +217,7 @@ function openCalcWindow(parent: WebContents, title: string): void {
   }
 
   const window = new BrowserWindow({
-    width: 1180,
-    height: 620,
+    ...savedBounds("calc", { width: 1180, height: 620 }),
     show: false,
     title,
     autoHideMenuBar: true,
@@ -225,6 +228,8 @@ function openCalcWindow(parent: WebContents, title: string): void {
     },
   });
   calcWindows.set(parent.id, window);
+  rememberWindowState(window, "calc");
+  if (wasMaximized("calc")) window.maximize();
 
   window.on("ready-to-show", () => {
     window.show();

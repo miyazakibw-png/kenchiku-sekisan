@@ -10,6 +10,7 @@ import {
 } from "./subjectRows";
 import "./SubjectMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   /** 工事専用の科目マスターを直すときの工事ID（未指定なら基本マスター） */
@@ -26,9 +27,13 @@ export default function SubjectMasterPage({
   const [selected, setSelected] = useState(0);
   const [toast, setToast] = useState("");
 
+  const { markSaved } = useSaveOnLeave(rows, () => save(true));
+
   const reload = useCallback(async () => {
-    setRows(toDrafts(await window.sekisan.listSubjects(projectId)));
-  }, [projectId]);
+    const next = toDrafts(await window.sekisan.listSubjects(projectId));
+    setRows(next);
+    markSaved(next);
+  }, [markSaved, projectId]);
 
   /** 基準（基本）マスターの科目をこの工事へ取り込む */
   const copyFromBasic = useCallback(async () => {
@@ -42,15 +47,21 @@ export default function SubjectMasterPage({
     void reload();
   }, [reload]);
 
-  const save = useCallback(async () => {
-    const result = await window.sekisan.saveSubjects(rows, projectId);
-    setRows(toDrafts(result.subjects));
-    setToast(
-      result.blockedDeletes.length > 0
-        ? `明細が登録されているため削除できませんでした：${result.blockedDeletes.join("、")}（末尾へ移動しました）`
-        : "保存しました",
-    );
-  }, [projectId, rows]);
+  const save = useCallback(
+    async (quiet = false) => {
+      const result = await window.sekisan.saveSubjects(rows, projectId);
+      const next = toDrafts(result.subjects);
+      setRows(next);
+      markSaved(next);
+      if (quiet) return;
+      setToast(
+        result.blockedDeletes.length > 0
+          ? `明細が登録されているため削除できませんでした：${result.blockedDeletes.join("、")}（末尾へ移動しました）`
+          : "保存しました",
+      );
+    },
+    [markSaved, projectId, rows],
+  );
 
   return (
     <div className="subject-page">

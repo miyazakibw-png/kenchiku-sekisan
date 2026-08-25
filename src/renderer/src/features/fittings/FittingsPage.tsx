@@ -27,6 +27,7 @@ import {
 import { buildPastePreview, copyRangeAsTsv } from "../grid/gridClipboard";
 import "./FittingsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
 interface Props {
   project: ProjectSummary;
@@ -63,9 +64,13 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   const [parts, setParts] = useState<MasterEntry[]>([]);
   const columns = useMemo(() => buildFittingColumns(), []);
 
+  const { markSaved } = useSaveOnLeave(rows, () => save(true));
+
   const reload = useCallback(async () => {
-    setRows(toDrafts(await window.sekisan.listFittings(project.id)));
-  }, [project.id]);
+    const next = toDrafts(await window.sekisan.listFittings(project.id));
+    setRows(next);
+    markSaved(next);
+  }, [markSaved, project.id]);
 
   useEffect(() => {
     void reload();
@@ -104,14 +109,19 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
     [partValues, savePartValues],
   );
 
-  const save = useCallback(async () => {
-    const saved = await window.sekisan.saveFittings({
-      projectId: project.id,
-      rows,
-    });
-    setRows(toDrafts(saved));
-    setMessage("保存しました");
-  }, [project.id, rows]);
+  const save = useCallback(
+    async (quiet = false) => {
+      const saved = await window.sekisan.saveFittings({
+        projectId: project.id,
+        rows,
+      });
+      const next = toDrafts(saved);
+      setRows(next);
+      markSaved(next);
+      if (!quiet) setMessage("保存しました");
+    },
+    [markSaved, project.id, rows],
+  );
 
   const duplicates = useMemo(
     () => duplicateSymbolIndexes(rows.map((row) => row.symbol)),
