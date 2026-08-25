@@ -301,18 +301,26 @@ export default function RoomSheetPage({
     focusInput();
     const timer = window.setTimeout(focusInput, 50);
     // 小窓の外へカーソルが逃げたら（画面の検索欄などへ移ったら）寸法欄へ戻す
+    const isInside = (node: EventTarget | null): boolean =>
+      node instanceof Node &&
+      promptBoxRef.current !== null &&
+      promptBoxRef.current.contains(node);
     const keepInside = (event: FocusEvent): void => {
-      const target = event.target;
-      const inside =
-        target instanceof Node &&
-        promptBoxRef.current !== null &&
-        promptBoxRef.current.contains(target);
-      if (!inside) focusInput();
+      if (!isInside(event.target)) focusInput();
+    };
+    // どこへも入らずカーソルが外れたとき（小窓の余白を押したときなど）も戻す
+    const keepAfterLeave = (event: FocusEvent): void => {
+      if (isInside(event.relatedTarget)) return;
+      window.setTimeout(() => {
+        if (!isInside(document.activeElement)) focusInput();
+      }, 0);
     };
     document.addEventListener("focusin", keepInside);
+    document.addEventListener("focusout", keepAfterLeave);
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener("focusin", keepInside);
+      document.removeEventListener("focusout", keepAfterLeave);
     };
   }, [promptOpen]);
 
@@ -2133,6 +2141,24 @@ export default function RoomSheetPage({
             <div
               className="shape-prompt"
               ref={promptBoxRef}
+              // 小窓の余白や文字を押しても、カーソルは寸法欄に置いたままにする
+              onMouseDown={(e) => {
+                const target = e.target;
+                const onControl =
+                  target instanceof HTMLInputElement ||
+                  target instanceof HTMLSelectElement ||
+                  target instanceof HTMLButtonElement;
+                if (onControl) return;
+                e.preventDefault();
+                const input = promptInputRef.current;
+                if (
+                  input &&
+                  !(document.activeElement instanceof HTMLInputElement)
+                ) {
+                  input.focus();
+                  input.select();
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setPrompt(null);
               }}
