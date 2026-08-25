@@ -134,17 +134,21 @@ export function useTableResize(
         measured.push(cell.getBoundingClientRect().width),
       );
     }
+    let total = 0;
     cols.forEach((col, index) => {
       const stored = widthsRef.current[index];
       if (stored !== undefined) {
         col.style.width = `${Math.max(MIN_WIDTH, stored)}px`;
-        return;
-      }
-      if (col.style.width === "")
+      } else if (col.style.width === "") {
         col.style.width = `${Math.max(MIN_WIDTH, measured[index] ?? MIN_WIDTH)}px`;
+      }
+      total += Math.max(MIN_WIDTH, Number.parseFloat(col.style.width) || 0);
     });
     table.style.tableLayout = "fixed";
-    table.style.width = "auto";
+    // 表全体の幅を列幅の合計にする。こうしないと、狭めた分が他の列へ配られてしまう
+    table.style.width = `${total}px`;
+    table.style.minWidth = `${total}px`;
+    table.style.maxWidth = `${total}px`;
   }, []);
 
   const attachHandles = useCallback(() => {

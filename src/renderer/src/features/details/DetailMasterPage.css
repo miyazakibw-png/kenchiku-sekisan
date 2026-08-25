@@ -106,7 +106,8 @@
 .grid {
   border-collapse: collapse;
   table-layout: fixed;
-  width: 100%;
+  /* 列幅は列ごとに決める（1列を狭めても他の列へ配らない） */
+  width: max-content;
   font-size: 13px;
 }
 
@@ -153,7 +154,7 @@ body.col-resizing {
   white-space: nowrap;
 }
 
-.grid td input[type='text'],
+.grid td input[type="text"],
 .grid td input:not([type]),
 .grid td select {
   width: 100%;
@@ -181,7 +182,6 @@ body.col-resizing {
 .grid tr.upper-row td {
   border-bottom-style: dotted;
 }
-
 
 .grid td input.num {
   text-align: right;

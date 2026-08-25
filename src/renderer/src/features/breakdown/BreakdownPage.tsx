@@ -768,7 +768,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 row.rowKind === "subject" || row.rowKind === "title" ? (
                   <tr key={`s-${index}`} className="subject">
                     <td className="mark">
-                      {row.rowKind === "subject" ? (row.subjectId ?? "") : ""}
+                      {(() => {
+                        const mark =
+                          row.rowKind === "subject"
+                            ? `${row.subjectId ?? ""}`
+                            : "";
+                        // 番号も科目名と同じ下段に出す
+                        return twoStage(settings.layout)
+                          ? subjectLines(mark)
+                          : mark;
+                      })()}
                     </td>
                     <td>
                       {twoStage(settings.layout)
