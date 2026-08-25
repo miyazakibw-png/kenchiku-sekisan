@@ -17,6 +17,7 @@ import "../estimate/EstimatePartsPage.css";
 import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 
 interface Props {
   project: ProjectSummary;
@@ -38,6 +39,35 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   unitOrder: [],
   workCategory: "建築主体工事",
 };
+
+/**
+ * 打ち終わり（欄を出る・Enter）で確定する入力欄。
+ * 1文字ごとに書き換えると漢字変換が切れるため。
+ */
+function TextInput({
+  value,
+  onCommit,
+  className,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  className?: string;
+}): JSX.Element {
+  return (
+    <input
+      lang="ja"
+      key={value}
+      className={className}
+      defaultValue={value}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onBlur={(e) => {
+        if (e.target.value !== value) onCommit(e.target.value);
+      }}
+    />
+  );
+}
 
 function blankRow(): BreakdownRowRecord {
   return {
@@ -68,7 +98,7 @@ function blankRow(): BreakdownRowRecord {
  * 提出の回ごとに版を残し、前回との比較ができる。
  */
 export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-breakdown-compare-v1");
+  const tableRef = useTableResize("table-widths-breakdown-compare-v2");
   const tableRef1 = useTableResize("table-widths-breakdown-v1");
   const [view, setView] = useState<BreakdownView>({
     version: null,
@@ -83,6 +113,35 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const [leftRows, setLeftRows] = useState<BreakdownRowRecord[]>([]);
   const [rightRows, setRightRows] = useState<BreakdownRowRecord[]>([]);
   const [compareTarget, setCompareTarget] = useState<number | null>(null);
+  /** 比較画面の行操作を戻る／進むできるようにする */
+  const history = useUndoRedo<{
+    left: BreakdownRowRecord[];
+    right: BreakdownRowRecord[];
+  }>();
+
+  /** 行を動かす前に今の状態を履歴へ積む */
+  const editCompare = (
+    side: "left" | "right",
+    change: (rows: BreakdownRowRecord[]) => BreakdownRowRecord[],
+  ): void => {
+    history.push({ left: leftRows, right: rightRows });
+    if (side === "left") setLeftRows(change(leftRows));
+    else setRightRows(change(rightRows));
+  };
+
+  const undoCompare = (): void => {
+    const previous = history.undo({ left: leftRows, right: rightRows });
+    if (!previous) return;
+    setLeftRows(previous.left);
+    setRightRows(previous.right);
+  };
+
+  const redoCompare = (): void => {
+    const next = history.redo({ left: leftRows, right: rightRows });
+    if (!next) return;
+    setLeftRows(next.left);
+    setRightRows(next.right);
+  };
 
   const reload = useCallback(
     async (versionId?: number) => {
@@ -115,6 +174,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     );
   };
 
+  /**
+   * 設定を保存して、いま見ている回（未確定）を作り直す。
+   * 書式・名称の文字幅・摘要の置き換えは、保存した時点で画面に出る（転記のやり直しは不要）。
+   */
   const saveSettings = async (
     patch: Partial<BreakdownSettingsRecord>,
   ): Promise<void> => {
@@ -124,6 +187,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       projectId: project.id,
     });
     setView((current) => ({ ...current, settings: saved }));
+    if (view.version && view.version.confirmed === 0) {
+      const next = await window.sekisan.transferBreakdown(project.id);
+      setView(next);
+      setLeftRows(next.rows);
+      setMessage("設定を変えたので、この回を作り直しました。");
+    } else if (view.version) {
+      setMessage(
+        "確定した回は作り直しません（新しく転記すると設定が効きます）。",
+      );
+    }
   };
 
   const confirmVersion = async (): Promise<void> => {
@@ -152,6 +225,22 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     setRightRows(other.rows);
     setCompareTarget(versionId);
     setPanel("compare");
+    history.clear();
+    setMessage(
+      `${other.version?.round ?? "-"}回目（${other.rows.length}行）と比べています`,
+    );
+  };
+
+  /** 前の回（1つ前の提出）と見比べる */
+  const comparePrevious = async (): Promise<void> => {
+    const previous = versions.find(
+      (version) => version.round === (view.version?.round ?? 0) - 1,
+    );
+    if (!previous) {
+      setMessage("比べる前の回がありません（確定してから次の回を作ります）。");
+      return;
+    }
+    await openCompare(previous.id);
   };
 
   const saveCompare = async (): Promise<void> => {
@@ -197,6 +286,24 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     if (index < 0) return;
     void saveSettings({ subjectOrder: moveRow(order, index, step) });
   };
+
+  // 比較画面では Ctrl+Z で戻る、Ctrl+Y（Ctrl+Shift+Z）で進む
+  useEffect(() => {
+    if (panel !== "compare") return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (!event.ctrlKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoCompare();
+      } else if (key === "y" || (key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redoCompare();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const diffs = useMemo(
     () => compareBreakdown(leftRows, rightRows),
@@ -250,13 +357,23 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         >
           ⚙ 設定
         </button>
+        <button
+          type="button"
+          onClick={() => void comparePrevious()}
+          disabled={(view.version?.round ?? 0) < 2}
+        >
+          ⇔ 前回と比較
+        </button>
         <select
-          value={compareTarget ?? ""}
-          onChange={(e) =>
-            e.target.value === ""
-              ? setPanel("none")
-              : void openCompare(Number(e.target.value))
-          }
+          value={panel === "compare" ? (compareTarget ?? "") : ""}
+          onChange={(e) => {
+            if (e.target.value === "") {
+              setCompareTarget(null);
+              setPanel("none");
+              return;
+            }
+            void openCompare(Number(e.target.value));
+          }}
         >
           <option value="">比較しない</option>
           {versions
@@ -284,6 +401,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               <option value={BREAKDOWN_LAYOUT.oneLine}>②1段</option>
               <option value={BREAKDOWN_LAYOUT.excel}>
                 ③エクセル転記用（2段を1行）
+              </option>
+              <option value={BREAKDOWN_LAYOUT.twoRow}>
+                ④2段2行（集計書のまま）
               </option>
             </select>
           </label>
@@ -339,34 +459,29 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           </label>
           <label>
             工事区分（BCS 2層目）
-            <input
-              lang="ja"
+            <TextInput
               value={settings.workCategory}
-              onChange={(e) =>
-                void saveSettings({ workCategory: e.target.value })
-              }
+              onCommit={(value) => void saveSettings({ workCategory: value })}
             />
           </label>
           <div className="replacements">
             <span>摘要の文字置き換え</span>
             {settings.replacements.map((rule, index) => (
               <span key={`${rule.from}-${index}`} className="rule">
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.from}
-                  onChange={(e) => {
+                  onCommit={(value) => {
                     const next = [...settings.replacements];
-                    next[index] = { ...rule, from: e.target.value };
+                    next[index] = { ...rule, from: value };
                     void saveSettings({ replacements: next });
                   }}
                 />
                 →
-                <input
-                  lang="ja"
+                <TextInput
                   value={rule.to}
-                  onChange={(e) => {
+                  onCommit={(value) => {
                     const next = [...settings.replacements];
-                    next[index] = { ...rule, to: e.target.value };
+                    next[index] = { ...rule, to: value };
                     void saveSettings({ replacements: next });
                   }}
                 />
@@ -415,6 +530,22 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             <button type="button" onClick={() => void saveCompare()}>
               ⌷ 行位置を保存
             </button>
+            <button
+              type="button"
+              onClick={undoCompare}
+              disabled={!history.canUndo}
+              title="行の挿入・移動を1つ戻す（Ctrl+Z）"
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              onClick={redoCompare}
+              disabled={!history.canRedo}
+              title="戻した操作をやり直す（Ctrl+Y）"
+            >
+              ↷ 進む
+            </button>
             <span className="note">
               行のずれは左右それぞれ「行挿入」「↑」「↓」で合わせます。違う部分に色が付きます。
             </span>
@@ -427,21 +558,30 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 <th>摘要</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>備考</th>
                 <th className="ops">操作</th>
                 <th>名称</th>
                 <th>摘要</th>
                 <th>数量</th>
                 <th>単位</th>
+                <th>備考</th>
               </tr>
             </thead>
             <tbody>
               {diffs.map((diff) => (
-                <tr key={diff.index}>
+                <tr
+                  key={diff.index}
+                  className={
+                    settings.layout === BREAKDOWN_LAYOUT.twoLine
+                      ? "two-line"
+                      : ""
+                  }
+                >
                   <td className="ops">
                     <button
                       type="button"
                       onClick={() =>
-                        setLeftRows((rows) => {
+                        editCompare("left", (rows) => {
                           const next = [...rows];
                           next.splice(diff.index, 0, blankRow());
                           return next;
@@ -453,7 +593,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <button
                       type="button"
                       onClick={() =>
-                        setLeftRows((rows) => moveRow(rows, diff.index, -1))
+                        editCompare("left", (rows) =>
+                          moveRow(rows, diff.index, -1),
+                        )
                       }
                     >
                       ↑
@@ -461,18 +603,25 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <button
                       type="button"
                       onClick={() =>
-                        setLeftRows((rows) => moveRow(rows, diff.index, 1))
+                        editCompare("left", (rows) =>
+                          moveRow(rows, diff.index, 1),
+                        )
                       }
                     >
                       ↓
                     </button>
                   </td>
-                  {renderCompareCells(diff.left, diff.changed, diff.onlyLeft)}
+                  {renderCompareCells(
+                    diff.left,
+                    diff.changed,
+                    diff.onlyLeft,
+                    settings.layout,
+                  )}
                   <td className="ops">
                     <button
                       type="button"
                       onClick={() =>
-                        setRightRows((rows) => {
+                        editCompare("right", (rows) => {
                           const next = [...rows];
                           next.splice(diff.index, 0, blankRow());
                           return next;
@@ -484,7 +633,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <button
                       type="button"
                       onClick={() =>
-                        setRightRows((rows) => moveRow(rows, diff.index, -1))
+                        editCompare("right", (rows) =>
+                          moveRow(rows, diff.index, -1),
+                        )
                       }
                     >
                       ↑
@@ -492,13 +643,20 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <button
                       type="button"
                       onClick={() =>
-                        setRightRows((rows) => moveRow(rows, diff.index, 1))
+                        editCompare("right", (rows) =>
+                          moveRow(rows, diff.index, 1),
+                        )
                       }
                     >
                       ↓
                     </button>
                   </td>
-                  {renderCompareCells(diff.right, diff.changed, diff.onlyRight)}
+                  {renderCompareCells(
+                    diff.right,
+                    diff.changed,
+                    diff.onlyRight,
+                    settings.layout,
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -565,7 +723,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <td className="mark">{row.subjectId ?? ""}</td>
                     <td colSpan={5}>{row.subjectName}</td>
                   </tr>
-                ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ? (
+                ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
+                  settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
                   <tr key={`d-${index}`}>
                     <td className="mark" />
                     <td>{row.nameLower}</td>
@@ -608,10 +767,12 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   );
 }
 
+/** 比較画面の明細セル。内訳書の設定（書式）どおりに出す */
 function renderCompareCells(
   row: BreakdownRowRecord | null,
   changed: string[],
   onlySide: boolean,
+  layout: number,
 ): JSX.Element[] {
   const mark = (field: string): string =>
     onlySide ? "only" : changed.includes(field) ? "changed" : "";
@@ -621,12 +782,51 @@ function renderCompareCells(
       <td key="d" className="only" />,
       <td key="q" className="only" />,
       <td key="u" className="only" />,
+      <td key="r" className="only" />,
     ];
   }
-  const name = [row.nameUpper, row.nameLower].filter((v) => v !== "").join(" ");
-  const description = [row.descriptionUpper, row.descriptionLower]
-    .filter((v) => v !== "")
-    .join(" ");
+  if (layout === BREAKDOWN_LAYOUT.twoLine) {
+    // 書式①：名称・摘要を上段／下段の2段で見比べる
+    return [
+      <td key="n" className={mark("name")}>
+        {row.rowKind === "subject" ? (
+          row.subjectName
+        ) : (
+          <>
+            <div className="upper">{row.nameUpper}</div>
+            <div className="lower">{row.nameLower}</div>
+          </>
+        )}
+      </td>,
+      <td key="d" className={mark("description")}>
+        <div className="upper">{row.descriptionUpper}</div>
+        <div className="lower">{row.descriptionLower}</div>
+      </td>,
+      <td key="q" className={`qty ${mark("quantity")}`}>
+        {row.quantity ?? ""}
+      </td>,
+      <td key="u" className={`unit ${mark("unit")}`}>
+        {row.unit}
+      </td>,
+      <td key="r" className={mark("remarks")}>
+        <div className="upper">{row.remarksUpper}</div>
+        <div className="lower">{row.remarksLower}</div>
+      </td>,
+    ];
+  }
+  const oneLineName =
+    layout === BREAKDOWN_LAYOUT.oneLine || layout === BREAKDOWN_LAYOUT.twoRow;
+  const name = oneLineName
+    ? row.nameLower
+    : [row.nameUpper, row.nameLower].filter((v) => v !== "").join(" ");
+  const description = oneLineName
+    ? row.descriptionLower
+    : [row.descriptionUpper, row.descriptionLower]
+        .filter((v) => v !== "")
+        .join(" ");
+  const remarks = oneLineName
+    ? row.remarksLower
+    : [row.remarksUpper, row.remarksLower].filter((v) => v !== "").join(" ");
   return [
     <td key="n" className={mark("name")}>
       {row.rowKind === "subject" ? row.subjectName : name}
@@ -639,6 +839,9 @@ function renderCompareCells(
     </td>,
     <td key="u" className={`unit ${mark("unit")}`}>
       {row.unit}
+    </td>,
+    <td key="r" className={mark("remarks")}>
+      {remarks}
     </td>,
   ];
 }

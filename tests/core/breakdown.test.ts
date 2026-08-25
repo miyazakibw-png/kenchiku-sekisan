@@ -105,6 +105,39 @@ describe("内訳書の行づくり", () => {
     expect(rows[1].nameLower).toBe("基礎 普通コンクリート");
   });
 
+  it("書式④は集計書のまま2段2行にする", () => {
+    const rows = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+    });
+    // 上段（部位名・摘要上段・備考上段）と下段（名称・摘要下段・数量）が別の行になる
+    expect(rows[1]).toMatchObject({
+      rowKind: "note",
+      nameLower: "基礎",
+      descriptionLower: "FC21*18",
+      remarksLower: "上段備考",
+      quantity: null,
+    });
+    expect(rows[2]).toMatchObject({
+      rowKind: "detail",
+      nameLower: "普通コンクリート",
+      descriptionLower: "呼び強度21",
+      remarksLower: "下段備考",
+      quantity: 12.3,
+      unit: "m3",
+    });
+  });
+
+  it("書式④で上段が空の明細は下段だけにする", () => {
+    const rows = buildBreakdownRows(
+      [item({ partName: "", descriptionUpper: "", remarksUpper: "" })],
+      subjects,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, layout: BREAKDOWN_LAYOUT.twoRow },
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[1].nameLower).toBe("普通コンクリート");
+  });
+
   it("名称パターンで部位＋名称にできる", () => {
     const rows = buildBreakdownRows([item({})], subjects, {
       ...DEFAULT_BREAKDOWN_SETTINGS,

@@ -68,6 +68,22 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): string[] {
       );
       return;
     }
+    if (
+      layout === BREAKDOWN_LAYOUT.oneLine ||
+      layout === BREAKDOWN_LAYOUT.twoRow
+    ) {
+      // 書式②④：1行に1段だけ書く
+      lines.push(
+        rowXml([
+          textCell(row.nameLower),
+          textCell(row.descriptionLower),
+          numberCell(row.quantity),
+          textCell(row.unit),
+          textCell(row.remarksLower),
+        ]),
+      );
+      return;
+    }
     lines.push(
       rowXml([
         textCell(row.nameUpper),

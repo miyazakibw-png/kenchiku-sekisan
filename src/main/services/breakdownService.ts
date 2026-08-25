@@ -211,16 +211,18 @@ export function transferBreakdown(
       remarksLower: item.remarksLower,
     }));
 
-  // 集計書で使っている工種科目・単位を自動的に用意する（並びは前回の設定を優先）
+  // 集計書で使っている工種科目・単位を自動的に用意する。
+  // 並べ替えた並びは物件の設定として残し、2回目以降もそのまま持ち越す
+  // （その回で使わなかった科目・単位も並びから消さない）。
   const stored = getBreakdownSettings(db, projectId);
   const used = collectSubjectOrder(items, subjects);
   const subjectOrder = [
-    ...stored.subjectOrder.filter((id) => used.includes(id)),
+    ...stored.subjectOrder,
     ...used.filter((id) => !stored.subjectOrder.includes(id)),
   ];
   const units = collectUnits(items);
   const unitOrder = [
-    ...stored.unitOrder.filter((unit) => units.includes(unit)),
+    ...stored.unitOrder,
     ...units.filter((unit) => !stored.unitOrder.includes(unit)),
   ];
   const settings = saveBreakdownSettings(db, {

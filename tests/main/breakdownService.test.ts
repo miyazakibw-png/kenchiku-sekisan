@@ -140,6 +140,19 @@ describe("内訳書", () => {
     );
   });
 
+  it("工種科目の並べ替えは2回目以降も持ち越す", () => {
+    const first = transferBreakdown(db, projectId);
+    saveBreakdownSettings(db, {
+      ...first.settings,
+      subjectOrder: [9, 5, 1],
+    });
+    confirmBreakdownVersion(db, first.version?.id ?? 0);
+
+    const second = transferBreakdown(db, projectId);
+    expect(second.version?.round).toBe(2);
+    expect(second.settings.subjectOrder).toEqual([9, 5, 1]);
+  });
+
   it("画面で並べ替えた行位置を保存する", () => {
     const view = transferBreakdown(db, projectId);
     const reversed = [...view.rows].reverse();

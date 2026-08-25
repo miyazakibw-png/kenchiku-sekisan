@@ -82,7 +82,9 @@
 
 /* 2段1行：1明細の中には罫線を引かない */
 .breakdown-page table.breakdown tr.two-line td div.upper,
-.breakdown-page table.breakdown tr.two-line td div.lower {
+.breakdown-page table.breakdown tr.two-line td div.lower,
+.breakdown-page table.compare tr.two-line td div.upper,
+.breakdown-page table.compare tr.two-line td div.lower {
   min-height: 15px;
 }
 

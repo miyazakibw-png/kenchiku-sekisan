@@ -12,6 +12,8 @@ export const BREAKDOWN_LAYOUT = {
   oneLine: 2,
   /** エクセル転記用（2段のまま1行に掃き出す） */
   excel: 3,
+  /** 2段2行（集計書のまま。上段と下段を別の行にする） */
+  twoRow: 4,
 } as const;
 
 /** 名称欄の作り方 */
@@ -277,6 +279,10 @@ function detailRows(
   );
   const name = applyWidth(item.name, settings.nameWidth);
 
+  if (settings.layout === BREAKDOWN_LAYOUT.twoRow) {
+    return twoRowDetail(item, subjectId, subjectName, name, settings);
+  }
+
   const row = emptyRow("detail");
   row.subjectId = subjectId;
   row.subjectName = subjectName;
@@ -311,6 +317,56 @@ function detailRows(
     extra.remarksLower = remarks.overflow;
     rows.push(extra);
   }
+  return rows;
+}
+
+/**
+ * 書式④＝集計書のまま2段2行。
+ * 上段（部位名・摘要上段・備考上段）と下段（名称・摘要下段・数量・単位・備考下段）を別の行にする。
+ */
+function twoRowDetail(
+  item: BreakdownSourceItem,
+  subjectId: number | null,
+  subjectName: string,
+  name: string,
+  settings: BreakdownSettings,
+): BreakdownRow[] {
+  const hasQuantity = item.unit !== "";
+  const line = (kind: BreakdownRowKind): BreakdownRow => {
+    const row = emptyRow(kind);
+    row.subjectId = subjectId;
+    row.subjectName = subjectName;
+    row.masterKey = item.masterKey;
+    row.aggregateItemId = item.id;
+    row.partName = item.partName;
+    return row;
+  };
+
+  const upper = line("note");
+  upper.nameLower = item.partName;
+  upper.descriptionLower = applyReplacements(
+    item.descriptionUpper,
+    settings.replacements,
+  );
+  upper.remarksLower = item.remarksUpper;
+
+  const lower = line("detail");
+  lower.nameLower = name;
+  lower.descriptionLower = applyReplacements(
+    item.descriptionLower,
+    settings.replacements,
+  );
+  lower.remarksLower = item.remarksLower;
+  lower.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
+  lower.unit = item.unit;
+
+  const rows: BreakdownRow[] = [];
+  const emptyUpper =
+    upper.nameLower === "" &&
+    upper.descriptionLower === "" &&
+    upper.remarksLower === "";
+  if (!emptyUpper) rows.push(upper);
+  rows.push(lower);
   return rows;
 }
 
