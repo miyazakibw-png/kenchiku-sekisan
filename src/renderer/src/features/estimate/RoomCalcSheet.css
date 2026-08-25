@@ -54,8 +54,8 @@
 }
 
 .room-calc-sheet table.calc {
+  /* 列幅は列ごとに決める（画面の大きさに連れて動かさない） */
   width: max-content;
-  min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
