@@ -71,6 +71,18 @@
   background: #fff;
 }
 
+/* 部屋名を押すとその部屋の計算書へ飛ぶ */
+.frame-sheet-page .rooms button.room-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .frame-sheet-page .gap-note {
   color: #dc2626;
   font-size: 12px;

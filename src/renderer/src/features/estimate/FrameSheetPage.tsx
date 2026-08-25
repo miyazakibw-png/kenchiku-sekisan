@@ -53,6 +53,8 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  /** 置ける部屋の名前を押したとき、その部屋の計算書を開く */
+  onOpenRoomSheet?: (estimateRowId: number) => void;
 }
 
 /** レイアウト：部屋を並べる／軸組：線を引く／確認：拾う線と数量根拠を見る */
@@ -128,6 +130,7 @@ export default function FrameSheetPage({
   row,
   roomName,
   onBack,
+  onOpenRoomSheet,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FrameSheet | null>(null);
   const [mode, setMode] = useState<FrameMode>("layout");
@@ -888,7 +891,20 @@ export default function FrameSheetPage({
             <tbody>
               {rooms.map((room) => (
                 <tr key={room.estimateRowId}>
-                  <td>{room.roomName || "（部屋名なし）"}</td>
+                  <td>
+                    {onOpenRoomSheet ? (
+                      <button
+                        type="button"
+                        className="room-link"
+                        title="この部屋の計算書を開きます（寸法の直しはそちらで）"
+                        onClick={() => onOpenRoomSheet(room.estimateRowId)}
+                      >
+                        {room.roomName || "（部屋名なし）"}
+                      </button>
+                    ) : (
+                      room.roomName || "（部屋名なし）"
+                    )}
+                  </td>
                   <td className="num">{formatNumber(room.ceilingHeight, 2)}</td>
                   <td>
                     <button type="button" onClick={() => addPlacement(room)}>
@@ -919,7 +935,21 @@ export default function FrameSheetPage({
                     onClick={() => setSelectedPlacementId(placement.id)}
                   >
                     <td style={{ color: placement.color }}>
-                      {placement.roomName}
+                      {onOpenRoomSheet ? (
+                        <button
+                          type="button"
+                          className="room-link"
+                          style={{ color: placement.color }}
+                          title="この部屋の計算書を開きます（寸法の直しはそちらで）"
+                          onClick={() =>
+                            onOpenRoomSheet(placement.estimateRowId)
+                          }
+                        >
+                          {placement.roomName}
+                        </button>
+                      ) : (
+                        placement.roomName
+                      )}
                     </td>
                     {(["x", "y"] as const).map((axis) => (
                       <td key={axis}>

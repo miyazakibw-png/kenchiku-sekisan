@@ -55,6 +55,8 @@ export default function EstimatePartsPage({
   const [others, setOthers] = useState<ProjectSummary[] | null>(null);
   /** 計算書を開いている行（部位別入力表の行が1部屋＝1計算書） */
   const [openedSheet, setOpenedSheet] = useState<number | null>(null);
+  /** 軸組の「置ける部屋」から部屋計算書へ飛んだとき、戻り先の軸組計算書 */
+  const [returnSheet, setReturnSheet] = useState<number | null>(null);
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
   const [checkCategory, setCheckCategory] = useState(
     options.materialCategories.some((category) => category.name === "仕上")
@@ -281,6 +283,16 @@ export default function EstimatePartsPage({
           setOpenedSheet(null);
           void reload();
         }}
+        onOpenRoomSheet={(estimateRowId) => {
+          const index = rows.findIndex((each) => each.id === estimateRowId);
+          if (index < 0) {
+            setMessage("その部屋の行が見つかりません");
+            return;
+          }
+          setSelected(index);
+          setReturnSheet(openedSheet);
+          setOpenedSheet(index);
+        }}
       />
     );
   }
@@ -306,6 +318,11 @@ export default function EstimatePartsPage({
         row={rows[openedSheet]}
         roomName={rows[openedSheet].part3}
         onBack={() => {
+          if (returnSheet !== null) {
+            setOpenedSheet(returnSheet);
+            setReturnSheet(null);
+            return;
+          }
           setOpenedSheet(null);
           void reload();
         }}
