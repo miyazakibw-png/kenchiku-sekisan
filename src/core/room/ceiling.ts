@@ -503,17 +503,32 @@ export function ceilingRegions(
       elementDrop(element, roomCeilingHeight) ?? 0,
     ]),
   );
+  // 区画を切るのは下がり天井の線だけ。梁型の線で切れて短くなっていても、
+  // 天井の高さが変わる境目は壁から壁までなので、切るときは壁までの線を使う。
   // 低い線から先に区切る（低い線で止まっている線も、その区画は区切れる）
-  const lines = ceilingLines(elements, solved, roomCeilingHeight)
-    .filter((line) => line.kind === "dropCeiling")
+  const lines = elements
+    .filter((element) => element.kind === "dropCeiling")
+    .map((element) => ({
+      element,
+      line: wallToWallLine(
+        points,
+        solved.edges.findIndex((row) => row.id === element.edgeId),
+        element.offset ?? 0,
+      ),
+    }))
+    .filter(
+      (row): row is { element: CeilingElement; line: CeilingSegment } =>
+        row.line !== null,
+    )
     .sort(
       (left, right) =>
-        (dropOf.get(right.elementId) ?? 0) - (dropOf.get(left.elementId) ?? 0),
+        (dropOf.get(right.element.id) ?? 0) -
+        (dropOf.get(left.element.id) ?? 0),
     );
 
   let polygons: CeilingPoint[][] = [points];
-  lines.forEach((line) => {
-    polygons = polygons.flatMap((poly) => cutPolygon(poly, line));
+  lines.forEach((row) => {
+    polygons = polygons.flatMap((poly) => cutPolygon(poly, row.line));
   });
 
   const pieces = polygons.map((poly) => {
