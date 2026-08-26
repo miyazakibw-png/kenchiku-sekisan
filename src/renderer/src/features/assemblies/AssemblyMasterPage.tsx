@@ -7,6 +7,7 @@ import type {
 } from "@shared/types";
 import { formatDetailNumber } from "@shared/detailNumber";
 import { assemblySignature } from "@shared/assemblySignature";
+import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import UnitInput, { UnitOptions } from "../../components/UnitInput";
 import MasterCodeInput, {
   MasterCodeOptions,
@@ -65,6 +66,8 @@ export default function AssemblyMasterPage({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [picker, setPicker] = useState<Detail[] | null>(null);
+  /** 1行目が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
+  const [chooser, setChooser] = useState<FinishAssembly[]>([]);
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -101,6 +104,14 @@ export default function AssemblyMasterPage({
       options.materialCategories,
     ],
   );
+
+  /** 1行目が同じセットは1行にまとめて見せる */
+  const groups = useMemo(() => groupAssembliesByHead(visible), [visible]);
+
+  // 科目を変えたら、セットを選ぶ画面は閉じる
+  useEffect(() => {
+    setChooser([]);
+  }, [subject]);
 
   const openPicker = useCallback(async () => {
     if (!subject) return;
@@ -243,7 +254,7 @@ export default function AssemblyMasterPage({
             ➕ 新規セット（明細マスターから）
           </button>
           <span className="hint">
-            行をダブルクリック／Enterでセット明細を開きます
+            1行目が同じセットは1行にまとめています。ダブルクリック／Enterで中のセットを出します
           </span>
           <span className="status">{toast ?? ""}</span>
         </div>
@@ -260,10 +271,10 @@ export default function AssemblyMasterPage({
                 <th>単位</th>
                 <th>掛け率</th>
                 <th>備考</th>
-                <th>明細数</th>
+                <th>セット</th>
               </tr>
             </thead>
-            {visible.length === 0 ? (
+            {groups.length === 0 ? (
               <tbody>
                 <tr>
                   <td colSpan={9} className="empty">
@@ -272,18 +283,24 @@ export default function AssemblyMasterPage({
                 </tr>
               </tbody>
             ) : (
-              visible.map((assembly, index) => {
+              groups.map((group, index) => {
+                const assembly = group.list[0];
                 const head = headItem(assembly);
                 if (!head) return null;
+                // 同じ行のセットが複数あるときだけ、中身を見て選ぶ
+                const open = (): void => {
+                  if (group.list.length === 1) void openEditor(assembly);
+                  else setChooser(group.list);
+                };
                 return (
                   <tbody
-                    key={assembly.id}
-                    className={`detail-group ${selectedId === assembly.id ? "selected" : ""}`}
+                    key={group.key}
+                    className={`detail-group ${group.list.some((a) => a.id === selectedId) ? "selected" : ""}`}
                     tabIndex={0}
                     onClick={() => setSelectedId(assembly.id)}
-                    onDoubleClick={() => void openEditor(assembly)}
+                    onDoubleClick={open}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") void openEditor(assembly);
+                      if (e.key === "Enter") open();
                     }}
                   >
                     <tr className="upper-row">
@@ -300,7 +317,9 @@ export default function AssemblyMasterPage({
                       </td>
                       <td>{head.remarksUpper}</td>
                       <td rowSpan={2} className="num">
-                        {assembly.items.length}
+                        {group.list.length === 1
+                          ? `${assembly.items.length}明細`
+                          : `${group.list.length}種類`}
                       </td>
                     </tr>
                     <tr>
@@ -584,6 +603,83 @@ export default function AssemblyMasterPage({
                 onClick={() => void save()}
               >
                 💾 保存
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {chooser.length > 0 && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal picker">
+            <header>
+              <h3>セット明細を選ぶ（1行目が同じセットが{chooser.length}件）</h3>
+            </header>
+            <div className="modal-body">
+              {chooser.map((assembly, groupIndex) => (
+                <table className="grid" key={assembly.id}>
+                  <thead>
+                    <tr>
+                      <th colSpan={7}>
+                        {groupIndex + 1}．{assembly.items.length}明細のセット
+                        {assembly.note ? `（${assembly.note}）` : ""}
+                      </th>
+                    </tr>
+                    <tr>
+                      <th>部位番号／明細番号</th>
+                      <th>部位名／名称</th>
+                      <th>摘要</th>
+                      <th>備考</th>
+                      <th>単位</th>
+                      <th>掛け率</th>
+                      <th>計算式</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assembly.items.map((item, itemIndex) => {
+                      const open = (): void => {
+                        setChooser([]);
+                        void openEditor(assembly);
+                      };
+                      return (
+                        <tr
+                          key={`${assembly.id}-${itemIndex}`}
+                          tabIndex={0}
+                          onDoubleClick={open}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") open();
+                          }}
+                        >
+                          <td className="num">
+                            {formatDetailNumber(item.partNumber)} /{" "}
+                            {formatDetailNumber(item.detailNumber)}
+                          </td>
+                          <td>
+                            {item.partName} / {item.name}
+                          </td>
+                          <td>
+                            {item.descriptionUpper} {item.descriptionLower}
+                          </td>
+                          <td>
+                            {item.remarksUpper} {item.remarksLower}
+                          </td>
+                          <td>{item.unit}</td>
+                          <td className="num">{item.coefficient}</td>
+                          <td>{item.formula}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ))}
+            </div>
+            <footer>
+              <span className="hint">
+                どの行をダブルクリック／Enterでもそのセットを開きます
+              </span>
+              <span className="spacer" />
+              <button type="button" onClick={() => setChooser([])}>
+                閉じる
               </button>
             </footer>
           </div>

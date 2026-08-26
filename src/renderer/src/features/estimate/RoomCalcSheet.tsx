@@ -7,6 +7,8 @@ import type {
   Subject,
 } from "@shared/types";
 import { resolveMasterName } from "@shared/masters";
+import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
+import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import {
   addSetRow,
   calcDetail,
@@ -427,6 +429,8 @@ export default function RoomCalcSheet({
       };
     });
   }, [assemblies, subjects]);
+  /** 1行目が同じセットをまとめて選ぶための一覧（空なら閉じている） */
+  const [pickGroup, setPickGroup] = useState<FinishAssembly[]>([]);
   /** 呼出画面に出すセット（工種科目を選んでいればその科目のセットだけ） */
   const calledAssemblies: FinishAssembly[] = useMemo(
     () =>
@@ -436,6 +440,11 @@ export default function RoomCalcSheet({
             (assembly) => assembly.items[0]?.subjectId === subjectId,
           ),
     [sortedAssemblies, subjectId],
+  );
+  /** 1行目が同じセットは1行にまとめて見せる（選ぶと中のセットを全部出す） */
+  const assemblyGroups: AssemblyGroup[] = useMemo(
+    () => groupAssembliesByHead(calledAssemblies),
+    [calledAssemblies],
   );
   const aggregationParts: MasterEntry[] = useMemo(
     () => options?.aggregationParts ?? [],
@@ -585,6 +594,11 @@ export default function RoomCalcSheet({
       );
     })();
   }, [callOpen, projectId, source, subjectId]);
+
+  // 呼出先や科目を変えたら、セットを選ぶ画面は閉じる
+  useEffect(() => {
+    setPickGroup([]);
+  }, [callOpen, source, subjectId]);
 
   /** 明細番号欄に入ったとき、その科目の明細を一覧候補として読み込む */
   const loadNumberOptions = useCallback(
@@ -2178,7 +2192,7 @@ export default function RoomCalcSheet({
             </select>
             <span className="count">
               {source === "assembly"
-                ? `${calledAssemblies.length}セット`
+                ? `${assemblyGroups.length}件（セット${calledAssemblies.length}）`
                 : `${details.length}件`}
             </span>
           </div>
@@ -2193,20 +2207,26 @@ export default function RoomCalcSheet({
                   <th>摘要</th>
                   <th>備考</th>
                   <th className="unit">単位</th>
-                  {source === "assembly" && <th className="unit">明細数</th>}
+                  {source === "assembly" && <th className="unit">セット</th>}
                 </tr>
               </thead>
               <tbody>
                 {source === "assembly"
-                  ? calledAssemblies.map((assembly) => {
+                  ? assemblyGroups.map((group) => {
+                      const assembly = group.list[0];
                       const head = assembly.items[0];
+                      // 1行目が同じセットが複数あるときだけ、中身を見て選ぶ
+                      const pick = (): void => {
+                        if (group.list.length === 1) callAssembly(assembly);
+                        else setPickGroup(group.list);
+                      };
                       return (
                         <tr
-                          key={`${assembly.scope}-${assembly.id}`}
+                          key={group.key}
                           tabIndex={0}
-                          onDoubleClick={() => callAssembly(assembly)}
+                          onDoubleClick={pick}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") callAssembly(assembly);
+                            if (e.key === "Enter") pick();
                           }}
                         >
                           <td className="scope">
@@ -2237,7 +2257,11 @@ export default function RoomCalcSheet({
                             </div>
                           </td>
                           <td className="unit">{head?.unit ?? ""}</td>
-                          <td className="unit">{assembly.items.length}明細</td>
+                          <td className="unit">
+                            {group.list.length === 1
+                              ? `${assembly.items.length}明細`
+                              : `${group.list.length}種類`}
+                          </td>
                         </tr>
                       );
                     })
@@ -2275,6 +2299,79 @@ export default function RoomCalcSheet({
           <p className="note">
             選んでダブルクリック（またはEnter）で呼び出します。呼出画面は閉じないので続けて呼び出せます。
           </p>
+          {pickGroup.length > 0 && (
+            <div className="assembly-pick">
+              <div className="section-bar">
+                <span>
+                  セット明細を選ぶ（どの行をダブルクリックでも構いません）
+                </span>
+                <button type="button" onClick={() => setPickGroup([])}>
+                  ✕ 閉じる
+                </button>
+              </div>
+              <div className="assembly-pick-scroll">
+                {pickGroup.map((assembly, groupIndex) => (
+                  <table
+                    className="call-table"
+                    key={`${assembly.scope}-${assembly.id}`}
+                  >
+                    <thead>
+                      <tr>
+                        <th colSpan={7}>
+                          {groupIndex + 1}．{assembly.items.length}明細のセット
+                        </th>
+                      </tr>
+                      <tr>
+                        <th className="no">部位ID</th>
+                        <th className="no">番号</th>
+                        <th>部位名／名称</th>
+                        <th>摘要</th>
+                        <th>備考</th>
+                        <th className="unit">単位</th>
+                        <th className="unit">掛け率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assembly.items.map((item, itemIndex) => (
+                        <tr
+                          key={`${assembly.id}-${itemIndex}`}
+                          tabIndex={0}
+                          onDoubleClick={() => {
+                            callAssembly(assembly);
+                            setPickGroup([]);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            callAssembly(assembly);
+                            setPickGroup([]);
+                          }}
+                        >
+                          <td className="no">{item.partNumber ?? ""}</td>
+                          <td className="no">
+                            {item.detailNumber?.toFixed(2) ?? ""}
+                          </td>
+                          <td>
+                            <div className="upper">{item.partName}</div>
+                            <div className="lower">{item.name}</div>
+                          </td>
+                          <td>
+                            <div className="upper">{item.descriptionUpper}</div>
+                            <div className="lower">{item.descriptionLower}</div>
+                          </td>
+                          <td>
+                            <div className="upper">{item.remarksUpper}</div>
+                            <div className="lower">{item.remarksLower}</div>
+                          </td>
+                          <td className="unit">{item.unit}</td>
+                          <td className="unit">{item.coefficient}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
