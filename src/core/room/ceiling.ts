@@ -33,6 +33,8 @@ export interface CeilingElement {
   ceilingHeight: number | null;
   /** Ｈ（梁せい・下がり壁の高さ）。入れると壁の高さ（範囲の天井高さ）は自動で決まる */
   height?: number | null;
+  /** 下がるのは線の向こう側（壁と反対側）か。未指定は壁側が下がる */
+  inner?: boolean;
   /** 下がり天井の範囲面積（範囲の自動判定は次段階。ここでは入力値を使う） */
   area: number | null;
   note: string;
@@ -332,6 +334,8 @@ export interface CeilingRegion {
   height: number | null;
   /** その区画を下げている下がり天井（壁に近い順）。天井高さはこの行に入る */
   elementIds: string[];
+  /** その区画の境目になっている下がり天井（下がっていない側の区画でも高さを入れられる） */
+  boundaryIds: string[];
 }
 
 /** その点が多角形のどの辺のどこに乗っているか（乗っていなければnull） */
@@ -596,6 +600,10 @@ export function ceilingRegions(
 
   const pieces = polygons.map((poly) => {
     const center = polygonCenter(poly);
+    // その区画のふちになっている下がり天井（下がっていない側でも高さを入れられるように）
+    const boundaryIds = lines
+      .filter((row) => onBoundary(poly, row.line))
+      .map((row) => row.element.id);
     const found = dropAt(elements, solved, roomCeilingHeight, center);
     const beamArea = beams
       .filter((beam) => inside(poly, beam.center))
@@ -607,6 +615,7 @@ export function ceilingRegions(
       drop: found.drop,
       waiting: found.waiting,
       elementIds: found.elementIds,
+      boundaryIds,
     };
   });
 
@@ -642,6 +651,7 @@ export function ceilingRegions(
         area: round2(rows.reduce((sum, row) => sum + row.area, 0)),
         drop: widest.drop,
         elementIds: widest.elementIds,
+        boundaryIds: [...new Set(rows.flatMap((row) => row.boundaryIds))],
         height:
           roomCeilingHeight === null
             ? null
@@ -749,9 +759,11 @@ function dropAt(
     const normal = inwardNormal(points, index);
     const reach =
       (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
-    // 下がり天井が下げているのは、その線より壁側（線の向こう側は下がらない）
+    // 下がり天井が下げているのは、その線より壁側（innerなら線の向こう側）
     const far = element.offset ?? 0;
-    if (reach > far + 1e-6) return;
+    const lowered =
+      element.inner === true ? reach > far - 1e-6 : reach <= far + 1e-6;
+    if (!lowered) return;
     covering.push({ id: element.id, offset: far });
     const here = elementDrop(element, roomCeilingHeight);
     if (here === null) {
@@ -767,6 +779,28 @@ function dropAt(
       .sort((left, right) => left.offset - right.offset)
       .map((row) => row.id),
   };
+}
+
+/** その線が区画のふち（外周の辺）になっているか */
+function onBoundary(poly: CeilingPoint[], line: CeilingSegment): boolean {
+  const span = { x: line.b.x - line.a.x, y: line.b.y - line.a.y };
+  const size = Math.hypot(span.x, span.y);
+  if (size < 1e-9) return false;
+  const dir = { x: span.x / size, y: span.y / size };
+  return poly.some((point, no) => {
+    const next = poly[(no + 1) % poly.length];
+    const edge = { x: next.x - point.x, y: next.y - point.y };
+    const length = Math.hypot(edge.x, edge.y);
+    if (length < 1e-6) return false;
+    if (Math.abs(cross(dir, { x: edge.x / length, y: edge.y / length })) > 1e-9)
+      return false;
+    // 同じ向きで、線の上に乗っているか
+    const gap = { x: point.x - line.a.x, y: point.y - line.a.y };
+    if (Math.abs(cross(dir, gap)) > 1e-6) return false;
+    const from = gap.x * dir.x + gap.y * dir.y;
+    const to = from + (edge.x * dir.x + edge.y * dir.y);
+    return Math.min(from, to) < size - 1e-6 && Math.max(from, to) > 1e-6;
+  });
 }
 
 /** 2つの区画が辺で接しているか（同じ直線の上で重なっているか） */

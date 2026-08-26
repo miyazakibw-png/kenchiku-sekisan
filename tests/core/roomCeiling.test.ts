@@ -294,10 +294,35 @@ describe("天井伏図", () => {
     const lowered = regions.filter((row) => row.elementIds.length > 0);
     expect(lowered).toHaveLength(1);
     expect(lowered[0].elementIds).toEqual([drop.id]);
-    // 下がっていない区画は部屋の天井高さのまま（入力先なし）
-    expect(regions.filter((row) => row.elementIds.length === 0)).toHaveLength(
-      1,
+    // 下がっていない側の区画にも、ふちの下がり天井が付く（そちらにも高さを入れられる）
+    const other = regions.filter((row) => row.elementIds.length === 0);
+    expect(other).toHaveLength(1);
+    expect(other[0].boundaryIds).toEqual([drop.id]);
+  });
+
+  it("下がる側を線の向こう側に入れ替えられる", () => {
+    const solved = shape();
+    const wall = solved.edges[0];
+    const near = ceilingRegions(
+      [element("dropCeiling", wall.id, { offset: 1, height: 0.3 })],
+      solved,
+      2.7,
     );
+    // 壁側（4×1）が下がる
+    expect(near.find((row) => row.drop === 0.3)?.area).toBeCloseTo(4, 6);
+    const far = ceilingRegions(
+      [
+        element("dropCeiling", wall.id, {
+          offset: 1,
+          height: 0.3,
+          inner: true,
+        }),
+      ],
+      solved,
+      2.7,
+    );
+    // 線の向こう側（4×2）が下がる
+    expect(far.find((row) => row.drop === 0.3)?.area).toBeCloseTo(8, 6);
   });
 
   it("梁型の線で下がり天井が短く切れていても、区画は壁まででで分ける", () => {
