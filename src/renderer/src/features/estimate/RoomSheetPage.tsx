@@ -42,8 +42,8 @@ import {
   ceilingElement,
   ceilingQuantities,
   ceilingSymbols,
-  inwardNormal,
-  wallToWallLine,
+  ceilingLines as buildCeilingLines,
+  ceilingRegions,
   type CeilingElement,
   type CeilingElementKind,
 } from "../../../../core/room/ceiling";
@@ -416,56 +416,50 @@ export default function RoomSheetPage({
       );
   }, [symbols]);
 
-  /** 天井伏図の線を描く位置（平面図の辺から内側へ離し、壁で止める） */
+  /** 天井伏図の線を描く位置（壁や、自分より低くなる線で止まる） */
   const ceilingLines = useMemo(() => {
     if (solved.points.length === 0) return [];
     const count = ceilingResult.items.length;
-    return ceilingResult.items.flatMap((item, itemIndex) => {
-      const index = solved.edges.findIndex(
-        (line) => line.id === item.element.edgeId,
+    const drawn = buildCeilingLines(ceiling, solved, ceilingHeight);
+
+    return drawn.flatMap((line) => {
+      const itemIndex = ceilingResult.items.findIndex(
+        (row) => row.element.id === line.elementId,
       );
-      if (index < 0) return [];
-      const width = item.element.width ?? 0;
-      const offset =
-        item.element.kind === "wallBeam" || item.element.kind === "dropWall"
-          ? 0
-          : (item.element.offset ?? 0);
-      const distances =
-        item.element.kind === "ceilingBeam"
-          ? [offset, offset + width]
-          : item.element.kind === "dropCeiling"
-            ? [offset]
-            : [width];
+      if (itemIndex < 0) return [];
+      const item = ceilingResult.items[itemIndex];
+
       // 同じ壁に何本も線を置いても天井高さの文字が重ならないように、線の上で位置をずらす
       const at = (itemIndex + 1) / (count + 1);
-      const normal = inwardNormal(solved.points, index);
-      return distances.flatMap((distance, no) => {
-        const line = wallToWallLine(solved.points, index, distance);
-        if (line === null) return [];
-        return [
-          {
-            key: `${item.element.id}-${no}`,
-            elementId: item.element.id,
-            kind: item.element.kind,
-            x1: line.a.x,
-            y1: line.a.y,
-            x2: line.b.x,
-            y2: line.b.y,
-            labelX: line.a.x + (line.b.x - line.a.x) * at,
-            labelY: line.a.y + (line.b.y - line.a.y) * at,
-            label:
-              no === 0 && item.element.ceilingHeight !== null
-                ? formatNumber(item.element.ceilingHeight, 2)
-                : "",
-            // 下がり天井は範囲（壁から線まで）の中央に C1・C2… を出す
-            code: no === 0 ? item.code : null,
-            codeX: (line.a.x + line.b.x) / 2 - (normal.x * distance) / 2,
-            codeY: (line.a.y + line.b.y) / 2 - (normal.y * distance) / 2,
-          },
-        ];
-      });
+
+      return [
+        {
+          key: `${line.elementId}-${line.no}`,
+          elementId: line.elementId,
+          kind: line.kind,
+          x1: line.a.x,
+          y1: line.a.y,
+          x2: line.b.x,
+          y2: line.b.y,
+          labelX: line.a.x + (line.b.x - line.a.x) * at,
+          labelY: line.a.y + (line.b.y - line.a.y) * at,
+          label:
+            line.no === 0 && item.element.ceilingHeight !== null
+              ? formatNumber(item.element.ceilingHeight, 2)
+              : "",
+        },
+      ];
     });
-  }, [ceilingResult.items, solved.edges, solved.points]);
+  }, [ceiling, ceilingHeight, ceilingResult.items, solved]);
+
+  /** 線で囲まれた天井の区画（すべての区画にC1・C2…の番号を出す） */
+  const ceilingCodes = useMemo(
+    () =>
+      solved.points.length === 0
+        ? []
+        : ceilingRegions(ceiling, solved, ceilingHeight),
+    [ceiling, ceilingHeight, solved],
+  );
 
   /** 壁の辺だけ（建具の取付先の選択肢） */
   const wallEdges = useMemo(
@@ -1423,18 +1417,20 @@ export default function RoomSheetPage({
                           CH {line.label}
                         </text>
                       )}
-                      {line.code !== null && (
-                        <text
-                          x={line.codeX}
-                          y={line.codeY}
-                          className="ceiling-code"
-                          textAnchor="middle"
-                          fontSize={dimFontSize * 1.3}
-                        >
-                          {line.code}
-                        </text>
-                      )}
                     </g>
+                  ))}
+                {showCeiling &&
+                  ceilingCodes.map((region) => (
+                    <text
+                      key={region.code}
+                      x={region.center.x}
+                      y={region.center.y}
+                      className="ceiling-code"
+                      textAnchor="middle"
+                      fontSize={dimFontSize * 1.3}
+                    >
+                      {region.code}
+                    </text>
                   ))}
               </svg>
               {solved.points.length === 0 && (
@@ -2055,11 +2051,11 @@ export default function RoomSheetPage({
                 </tr>
               </thead>
               <tbody>
-                {ceilingResult.items.map((item) => {
+                {ceilingResult.items.map((item, itemNo) => {
                   const element = item.element;
                   return (
                     <tr key={element.id}>
-                      <td className="no">{item.code ?? ""}</td>
+                      <td className="no">{itemNo + 1}</td>
                       <td>
                         <select
                           value={element.kind}
@@ -2240,8 +2236,30 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。下がり天井は線が壁に当たるところまで自動で伸び、範囲の中央にC1・C2…の番号を出します。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。線で囲まれた天井の区画はすべてにC1・C2…の番号を区画の中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
+            {ceilingCodes.length > 1 && (
+              <table className="grid ceiling-regions">
+                <thead>
+                  <tr>
+                    <th className="no">番号</th>
+                    <th className="num">天井高さ</th>
+                    <th className="num">下がり</th>
+                    <th className="num">区画の面積</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ceilingCodes.map((region) => (
+                    <tr key={region.code}>
+                      <td className="no">{region.code}</td>
+                      <td className="num">{formatNumber(region.height, 2)}</td>
+                      <td className="num">{formatNumber(region.drop, 2)}</td>
+                      <td className="num">{formatNumber(region.area, 2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </section>
         )}
 

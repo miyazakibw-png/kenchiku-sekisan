@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ceilingElement,
   ceilingQuantities,
+  ceilingRegions,
   ceilingSymbols,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
@@ -78,8 +79,9 @@ describe("天井伏図", () => {
       solved,
       2.7,
     );
+    // 0.3の2本は、より低い0.5の線に当たって止まる（4m→3m）
     expect(result.dropCeilingByHeight).toEqual([
-      { drop: 0.3, length: 8 },
+      { drop: 0.3, length: 6 },
       { drop: 0.5, length: 3 },
     ]);
     expect(result.totals.dropCeilingArea).toBe(4);
@@ -113,18 +115,35 @@ describe("天井伏図", () => {
     expect(shallow.items[0].length).toBe(6);
   });
 
-  it("下がり天井には図に出す番号（C1・C2…）を付ける", () => {
+  it("壁付き梁型は壁の長さのままで、他の線では切らない", () => {
     const solved = shape();
     const result = ceilingQuantities(
       [
-        element("wallBeam", solved.edges[0].id, {}),
-        element("dropCeiling", solved.edges[0].id, {}),
-        element("dropCeiling", solved.edges[1].id, {}),
+        element("wallBeam", solved.edges[0].id, { width: 0.3, height: 0.4 }),
+        // 直交してぶつかる、より低い下がり天井
+        element("dropCeiling", solved.edges[1].id, { offset: 2, height: 0.6 }),
       ],
       solved,
       2.7,
     );
-    expect(result.items.map((row) => row.code)).toEqual([null, "C1", "C2"]);
+    expect(result.items[0].length).toBe(4);
+  });
+
+  it("下がり天井は自分より低くなる線のところで止まる", () => {
+    const solved = shape();
+    const low = element("dropCeiling", solved.edges[1].id, {
+      offset: 1.5,
+      height: 0.6,
+    });
+    const high = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.3,
+    });
+    const result = ceilingQuantities([high, low], solved, 2.7);
+    // 4mの壁沿いだが、低い下がり天井（右から1.5m）に当たって止まる
+    expect(result.items[0].length).toBe(2.5);
+    // 低い方は高い線では切られない
+    expect(result.items[1].length).toBe(3);
   });
 
   it("梁型はＨ（梁せい）を入れれば壁の高さを入れなくても面積が出る", () => {
@@ -166,5 +185,51 @@ describe("天井伏図", () => {
     expect(result.items[0].area).toBeNull();
     expect(result.totals.wallBeamLength).toBe(4);
     expect(result.totals.wallBeamArea).toBe(0);
+  });
+
+  it("線で囲まれた天井の区画すべてに番号（C1・C2…）を振る", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [
+        element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 }),
+        element("dropCeiling", solved.edges[1].id, {
+          offset: 1.5,
+          height: 0.6,
+        }),
+      ],
+      solved,
+      2.7,
+    );
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2", "C3"]);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
+    // 区画ごとに天井高さが出る（部屋2.7−下がり）
+    expect(regions.map((row) => row.height).sort()).toEqual([2.1, 2.4, 2.7]);
+  });
+
+  it("天井高さが同じでつながる区画（コ型の下がり天井）は1つにまとめて番号も1つ", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [
+        element("dropCeiling", solved.edges[0].id, {
+          offset: 0.5,
+          height: 0.2,
+        }),
+        element("dropCeiling", solved.edges[1].id, {
+          offset: 0.5,
+          height: 0.2,
+        }),
+        element("dropCeiling", solved.edges[2].id, {
+          offset: 0.5,
+          height: 0.2,
+        }),
+      ],
+      solved,
+      2.7,
+    );
+    // コ型の下がり天井（1つ）＋真ん中の天井（1つ）
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    const drop = regions.find((row) => row.drop === 0.2);
+    expect(drop?.height).toBe(2.5);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
   });
 });
