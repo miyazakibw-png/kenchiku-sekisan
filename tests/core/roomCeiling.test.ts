@@ -300,6 +300,16 @@ describe("天井伏図", () => {
     expect(other[0].boundaryIds).toEqual([drop.id]);
   });
 
+  it("下がり0でも下がり天井の線で区画を分ける", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0 })],
+      solved,
+      2.7,
+    );
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+  });
+
   it("下がる側を線の向こう側に入れ替えられる", () => {
     const solved = shape();
     const wall = solved.edges[0];

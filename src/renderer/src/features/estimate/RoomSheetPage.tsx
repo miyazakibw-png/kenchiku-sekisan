@@ -611,6 +611,10 @@ export default function RoomSheetPage({
       const lowered = region.elementIds[0];
       const id = lowered ?? region.boundaryIds[0];
       if (id === undefined) return;
+      // 触っただけ（値が変わっていない）ときは何もしない
+      if (Math.abs((drop ?? 0) - region.drop) < 1e-6) return;
+      // 下がり0はどちら側かの入れ替えに使わない
+      const flip = lowered === undefined && drop !== null && drop !== 0;
       setCeiling((current) =>
         current.map((item) =>
           item.id === id
@@ -619,7 +623,7 @@ export default function RoomSheetPage({
                 height: drop,
                 ceilingHeight: null,
                 // 下がっていない側に入れたときは、下がる側をその区画へ向ける
-                inner: lowered === undefined ? item.inner !== true : item.inner,
+                inner: flip ? item.inner !== true : item.inner,
               }
             : item,
         ),

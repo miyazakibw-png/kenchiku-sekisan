@@ -766,7 +766,8 @@ function dropAt(
     if (!lowered) return;
     covering.push({ id: element.id, offset: far });
     const here = elementDrop(element, roomCeilingHeight);
-    if (here === null) {
+    // 高さがまだ入っていない（または下がり0）ときも、その線の内と外は別の区画にする
+    if (here === null || Math.abs(here) < 1e-6) {
       waiting.push(element.id);
       return;
     }
