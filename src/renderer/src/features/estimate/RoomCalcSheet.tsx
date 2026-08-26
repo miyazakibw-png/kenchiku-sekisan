@@ -427,6 +427,16 @@ export default function RoomCalcSheet({
       };
     });
   }, [assemblies, subjects]);
+  /** 呼出画面に出すセット（工種科目を選んでいればその科目のセットだけ） */
+  const calledAssemblies: FinishAssembly[] = useMemo(
+    () =>
+      subjectId === null
+        ? sortedAssemblies
+        : sortedAssemblies.filter(
+            (assembly) => assembly.items[0]?.subjectId === subjectId,
+          ),
+    [sortedAssemblies, subjectId],
+  );
   const aggregationParts: MasterEntry[] = useMemo(
     () => options?.aggregationParts ?? [],
     [options],
@@ -950,15 +960,7 @@ export default function RoomCalcSheet({
         `${assembly.items[0]?.name ?? "セット明細"} を${insertMode ? "挿入" : "上書き"}呼出しました`,
       );
     },
-    [
-      bannerSetId,
-      commit,
-      currentSet?.id,
-      insertMode,
-      onFocus,
-      onMessage,
-      sets,
-    ],
+    [bannerSetId, commit, currentSet?.id, insertMode, onFocus, onMessage, sets],
   );
 
   /** カーソルの位置で判断して行を足す（明細欄なら明細、計算式欄なら計算行） */
@@ -2139,86 +2141,107 @@ export default function RoomCalcSheet({
               ✕ 閉じる
             </button>
           </div>
-          {source === "assembly" ? (
-            <div className="call-scroll">
-              <ul className="call-list">
-                {sortedAssemblies.map((assembly) => (
-                  <li
-                    key={`${assembly.scope}-${assembly.id}`}
-                    tabIndex={0}
-                    onDoubleClick={() => callAssembly(assembly)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") callAssembly(assembly);
-                    }}
-                  >
-                    <span className="scope">
-                      {assembly.scope === "basic" ? "基準" : "工事"}
-                    </span>
-                    <span className="subject">
-                      {subjects.find(
-                        (subject) =>
-                          subject.id === assembly.items[0]?.subjectId,
-                      )?.name ?? ""}
-                    </span>
-                    <span className="part">
-                      {assembly.items[0]?.partName ?? ""}
-                    </span>
-                    <span className="name">
-                      {assembly.items[0]?.name ?? ""}
-                    </span>
-                    <span className="count">{assembly.items.length}明細</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <>
-              <div className="call-subject">
-                <span>工種科目</span>
-                <input
-                  className="num"
-                  value={subjectNumber}
-                  title="工種科目の番号を入れると、その科目の明細を出します"
-                  onChange={(e) => {
-                    const text = e.target.value.trim();
-                    setSubjectNumber(e.target.value);
-                    const found = subjects.find(
-                      (subject) => String(subject.id) === text,
-                    );
-                    setSubjectId(found?.id ?? null);
-                  }}
-                />
-                <select
-                  value={subjectId === null ? "" : String(subjectId)}
-                  title="一覧から選び直せます（何回でも選べます）"
-                  onChange={(e) => {
-                    const id = Number.parseInt(e.target.value, 10);
-                    setSubjectId(Number.isNaN(id) ? null : id);
-                    setSubjectNumber(Number.isNaN(id) ? "" : String(id));
-                  }}
-                >
-                  <option value="">（工種科目を選ぶ）</option>
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.id}：{subject.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="count">{details.length}件</span>
-              </div>
-              <div className="call-scroll">
-                <table className="call-table">
-                  <thead>
-                    <tr>
-                      <th className="no">部位ID</th>
-                      <th className="no">番号</th>
-                      <th>部位名／名称</th>
-                      <th>摘要</th>
-                      <th className="unit">単位</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {details.map((detail, detailIndex) => (
+          <div className="call-subject">
+            <span>工種科目</span>
+            <input
+              className="num"
+              value={subjectNumber}
+              title="工種科目の番号を入れると、その科目の明細を出します"
+              onChange={(e) => {
+                const text = e.target.value.trim();
+                setSubjectNumber(e.target.value);
+                const found = subjects.find(
+                  (subject) => String(subject.id) === text,
+                );
+                setSubjectId(found?.id ?? null);
+              }}
+            />
+            <select
+              value={subjectId === null ? "" : String(subjectId)}
+              title="一覧から選び直せます（何回でも選べます）"
+              onChange={(e) => {
+                const id = Number.parseInt(e.target.value, 10);
+                setSubjectId(Number.isNaN(id) ? null : id);
+                setSubjectNumber(Number.isNaN(id) ? "" : String(id));
+              }}
+            >
+              <option value="">
+                {source === "assembly"
+                  ? "（すべての工種科目）"
+                  : "（工種科目を選ぶ）"}
+              </option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.id}：{subject.name}
+                </option>
+              ))}
+            </select>
+            <span className="count">
+              {source === "assembly"
+                ? `${calledAssemblies.length}セット`
+                : `${details.length}件`}
+            </span>
+          </div>
+          <div className="call-scroll">
+            <table className="call-table">
+              <thead>
+                <tr>
+                  {source === "assembly" && <th className="scope">区分</th>}
+                  <th className="no">部位ID</th>
+                  <th className="no">番号</th>
+                  <th>部位名／名称</th>
+                  <th>摘要</th>
+                  <th>備考</th>
+                  <th className="unit">単位</th>
+                  {source === "assembly" && <th className="unit">明細数</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {source === "assembly"
+                  ? calledAssemblies.map((assembly) => {
+                      const head = assembly.items[0];
+                      return (
+                        <tr
+                          key={`${assembly.scope}-${assembly.id}`}
+                          tabIndex={0}
+                          onDoubleClick={() => callAssembly(assembly)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") callAssembly(assembly);
+                          }}
+                        >
+                          <td className="scope">
+                            {assembly.scope === "basic" ? "基準" : "工事"}
+                          </td>
+                          <td className="no">{head?.partNumber ?? ""}</td>
+                          <td className="no">
+                            {head?.detailNumber?.toFixed(2) ?? ""}
+                          </td>
+                          <td>
+                            <div className="upper">{head?.partName ?? ""}</div>
+                            <div className="lower">{head?.name ?? ""}</div>
+                          </td>
+                          <td>
+                            <div className="upper">
+                              {head?.descriptionUpper ?? ""}
+                            </div>
+                            <div className="lower">
+                              {head?.descriptionLower ?? ""}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="upper">
+                              {head?.remarksUpper ?? ""}
+                            </div>
+                            <div className="lower">
+                              {head?.remarksLower ?? ""}
+                            </div>
+                          </td>
+                          <td className="unit">{head?.unit ?? ""}</td>
+                          <td className="unit">{assembly.items.length}明細</td>
+                        </tr>
+                      );
+                    })
+                  : details.map((detail, detailIndex) => (
                       <tr
                         key={`${detail.id}-${detailIndex}`}
                         tabIndex={0}
@@ -2239,14 +2262,16 @@ export default function RoomCalcSheet({
                           <div className="upper">{detail.descriptionUpper}</div>
                           <div className="lower">{detail.descriptionLower}</div>
                         </td>
+                        <td>
+                          <div className="upper">{detail.remarksUpper}</div>
+                          <div className="lower">{detail.remarksLower}</div>
+                        </td>
                         <td className="unit">{detail.unit}</td>
                       </tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+              </tbody>
+            </table>
+          </div>
           <p className="note">
             選んでダブルクリック（またはEnter）で呼び出します。呼出画面は閉じないので続けて呼び出せます。
           </p>

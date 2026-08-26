@@ -326,6 +326,11 @@
   width: 50px;
 }
 
+.room-calc-sheet .call-table .scope {
+  width: 44px;
+  text-align: center;
+}
+
 .room-calc-sheet .call-list {
   list-style: none;
   margin: 4px 0;
