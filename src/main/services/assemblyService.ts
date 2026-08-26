@@ -362,10 +362,56 @@ function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
 }
 
 /**
+ * 計算書で直したセットの内容を、その計算書がひも付けている物件セットマスターへ書き戻す。
+ * 全物件共通の基本セットは書き換えず、物件セットだけを対象にする。
+ */
+function updateLinkedAssembliesFromSheets(db: AppDatabase, projectId: number): number {
+  const byId = new Map(
+    listAssemblies(db, projectId).map((assembly) => [assembly.id, assembly] as const)
+  )
+  const done = new Set<number>()
+  let updated = 0
+  projectSheetTables().forEach((table) => {
+    db.select()
+      .from(table)
+      .where(eq(table.projectId, projectId))
+      .all()
+      .forEach((sheet) => {
+        // 書き戻しで他の計算書が更新されるため、その都度読み直す
+        const fresh = db.select().from(table).where(eq(table.id, sheet.id)).get()
+        if (!fresh) return
+        parseSets(fresh.lowerJson).forEach((set) => {
+          const assemblyId = set.assemblyId
+          if (assemblyId === null || assemblyId === undefined || done.has(assemblyId)) return
+          const linked = byId.get(assemblyId)
+          if (!linked || linked.scope !== 'project') return
+          const items = itemsOfCalcSet(set)
+          if (items.length === 0) return
+          if (assemblySignature(linked.items) === assemblySignature(items)) return
+          const { assembly } = saveAssembly(db, {
+            id: linked.id,
+            scope: 'project',
+            projectId,
+            note: linked.note,
+            items,
+            propagate: true
+          })
+          byId.set(assembly.id, assembly)
+          done.add(assembly.id)
+          updated += 1
+        })
+      })
+  })
+  return updated
+}
+
+/**
  * 計算書に組まれたセットを、この物件の仕上明細セットマスターへ自動登録する。
  * 同じ構成のセットは1件にまとめ、計算書側にはマスターのIDを控えて連動できるようにする。
+ * ひも付け済みのセットは、計算書で直した内容でマスターを書き換える。
  */
 export function syncAssembliesFromSheets(db: AppDatabase, projectId: number): number {
+  const updated = updateLinkedAssembliesFromSheets(db, projectId)
   const bySignature = new Map(
     listAssemblies(db, projectId).map((assembly) => [assemblySignature(assembly.items), assembly])
   )
@@ -406,7 +452,7 @@ export function syncAssembliesFromSheets(db: AppDatabase, projectId: number): nu
           .run()
       })
   })
-  return added
+  return added + updated
 }
 
 /** 内容（構成明細の並びと文字）が完全一致する別セットを探す */

@@ -329,6 +329,30 @@ describe('計算書からの自動登録と連動', () => {
     expect(listAssemblies(db, projectIdRef).length).toBe(1)
   })
 
+  it('計算書でセットを直すと集計時にマスターも書き換わる', () => {
+    const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
+    syncAssembliesFromSheets(db, projectIdRef)
+    const [assembly] = listAssemblies(db, projectIdRef)
+
+    const sets = JSON.parse(lowerJsonOf(sheetId)) as {
+      assemblyId: number | null
+      details: { name: string }[]
+    }[]
+    sets[0].details[0].name = '軽鉄下地（65形）'
+    db.update(schema.projectRoomSheets)
+      .set({ lowerJson: JSON.stringify(sets) })
+      .where(eq(schema.projectRoomSheets.id, sheetId))
+      .run()
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1)
+
+    const after = listAssemblies(db, projectIdRef)
+    // 新しいセットを増やさず、ひも付いたセットの中身を入れ替える
+    expect(after.length).toBe(1)
+    expect(after[0].id).toBe(assembly.id)
+    expect(after[0].items.map((i) => i.name)).toEqual(['軽鉄下地（65形）'])
+  })
+
   it('セット明細マスターで直すと計算書も連動して直る', () => {
     const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
     syncAssembliesFromSheets(db, projectIdRef)
