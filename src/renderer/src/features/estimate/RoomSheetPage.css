@@ -81,6 +81,50 @@
   overflow: auto;
 }
 
+/* 「⤡ 大きく開く」＝図を画面いっぱいに出し、右は寸法入力表だけにする */
+.room-sheet-page > .upper.expanded {
+  position: fixed;
+  inset: 40px 8px 8px;
+  z-index: 40;
+  max-height: none;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
+  grid-template-columns: minmax(0, 1.9fr) minmax(320px, 0.9fr);
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.room-sheet-page > .upper.expanded > .symbols,
+.room-sheet-page > .upper.expanded > .room-fittings {
+  display: none;
+}
+
+.room-sheet-page > .upper.expanded > .drawing {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 大きく開いたときは図を画面の高さいっぱいまで広げる */
+.room-sheet-page > .upper.expanded .canvas {
+  max-height: none;
+  min-height: 0;
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.room-sheet-page > .upper.expanded > .edges,
+.room-sheet-page > .upper.expanded > .ceiling {
+  grid-column: 2;
+}
+
+.room-sheet-page > .upper.expanded > section {
+  overflow: auto;
+}
+
 .room-sheet-page > .upper > section > .section-bar {
   position: sticky;
   top: 0;

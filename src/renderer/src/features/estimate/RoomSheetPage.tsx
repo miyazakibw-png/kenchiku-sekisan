@@ -227,6 +227,8 @@ export default function RoomSheetPage({
   });
   const [ceiling, setCeiling] = useState<CeilingElement[]>([]);
   const [showCeiling, setShowCeiling] = useState(false);
+  /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
+  const [expanded, setExpanded] = useState(false);
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [options, setOptions] = useState<MasterOptions | null>(null);
@@ -1054,10 +1056,25 @@ export default function RoomSheetPage({
         <button type="button" onClick={() => setShowCheck(!showCheck)}>
           ✓ チェック表
         </button>
+        <button
+          type="button"
+          className={showCeiling ? "on" : ""}
+          onClick={() => setShowCeiling(!showCeiling)}
+        >
+          {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+        </button>
+        <button
+          type="button"
+          className={expanded ? "on" : ""}
+          title="図を画面いっぱいに開いて、そのまま入力できます"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+        </button>
         <span className="status">{message}</span>
       </div>
 
-      <div className="upper">
+      <div className={expanded ? "upper expanded" : "upper"}>
         <section className="drawing">
           <div className="section-bar">
             <span>
@@ -1069,6 +1086,14 @@ export default function RoomSheetPage({
               onClick={() => setShowCeiling(!showCeiling)}
             >
               {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+            </button>
+            <button
+              type="button"
+              className={expanded ? "on" : ""}
+              title="図を画面いっぱいに開いて、そのまま入力できます"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
             </button>
           </div>
           <div className="drawing-body">
@@ -1434,244 +1459,251 @@ export default function RoomSheetPage({
           )}
         </section>
 
-        <section className="edges">
-          <div className="section-bar">
-            <span>寸法入力（空欄は自動算出）</span>
-            <button
-              type="button"
-              title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
-              onClick={() =>
-                applyShape({
-                  edges: [...shape.edges, edge(nextEdgeDirection(shape), null)],
-                })
-              }
-            >
-              ＋ 辺追加
-            </button>
-            <button
-              type="button"
-              disabled={selectedEdge === null}
-              onClick={() => {
-                if (selectedEdge === null) return;
-                const target = shape.edges.find(
-                  (item) => item.id === selectedEdge,
-                );
-                const half =
-                  target?.length === null ? 1 : (target?.length ?? 2) / 2;
-                applyShape(
-                  splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
-                );
-              }}
-            >
-              ✂ 線分割
-            </button>
-            <button
-              type="button"
-              disabled={selectedEdge === null}
-              onClick={() =>
-                selectedEdge !== null &&
-                applyShape({
-                  edges: shape.edges.filter((item) => item.id !== selectedEdge),
-                })
-              }
-            >
-              🗑 辺削除
-            </button>
-          </div>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th className="no">No</th>
-                <th>向き</th>
-                <th className="num">寸法</th>
-                <th className="num" title="曲面壁のふくらみ（矢）">
-                  Ｒ向き
-                </th>
-                <th>種別</th>
-              </tr>
-            </thead>
-            <tbody>
-              {solved.edges.map((line, index) => (
-                <tr
-                  key={line.id}
-                  className={[
-                    selectedEdge === line.id ? "selected" : "",
-                    solved.missing.includes(line.id) ? "missing" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => setSelectedEdge(line.id)}
-                >
-                  <td className="no">{index + 1}</td>
-                  <td>
-                    <select
-                      value={line.direction}
-                      onChange={(e) =>
-                        applyShape(
-                          updateEdge(shape, line.id, {
-                            direction: e.target.value as EdgeDirection,
-                          }),
-                        )
-                      }
-                    >
-                      {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
-                        (key) => (
-                          <option key={key} value={key}>
-                            {DIRECTION_LABEL[key]}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </td>
-                  <td>
-                    {isDiagonal(line.direction) ? (
-                      <span className="diagonal">
-                        <input
-                          className="num"
-                          defaultValue={formatNumber(line.dx ?? 0, 2)}
-                          key={`${line.id}-dx-${line.dx ?? 0}`}
-                          title="斜め辺の横移動（右がプラス）。計算式も入れられます"
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && e.currentTarget.blur()
-                          }
-                          onBlur={(e) =>
-                            applyShape(
-                              updateEdge(shape, line.id, {
-                                dx: textToNumber(e.target.value) ?? 0,
-                              }),
-                            )
-                          }
-                        />
-                        <input
-                          className="num"
-                          defaultValue={formatNumber(line.dy ?? 0, 2)}
-                          key={`${line.id}-dy-${line.dy ?? 0}`}
-                          title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && e.currentTarget.blur()
-                          }
-                          onBlur={(e) =>
-                            applyShape(
-                              updateEdge(shape, line.id, {
-                                dy: textToNumber(e.target.value) ?? 0,
-                              }),
-                            )
-                          }
-                        />
-                      </span>
-                    ) : (
-                      <input
-                        className="num"
-                        defaultValue={
-                          line.length === null
-                            ? ""
-                            : formatNumber(line.length, 2)
-                        }
-                        key={`${line.id}-${line.length ?? "auto"}`}
-                        placeholder={
-                          line.auto ? formatNumber(line.resolved, 2) : ""
-                        }
-                        title={
-                          line.kind === "curve"
-                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
-                            : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter") return;
-                          showAnswer(e.currentTarget);
-                          e.currentTarget.blur();
-                        }}
-                        onBlur={(e) => {
+        {!(expanded && showCeiling) && (
+          <section className="edges">
+            <div className="section-bar">
+              <span>寸法入力（空欄は自動算出）</span>
+              <button
+                type="button"
+                title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
+                onClick={() =>
+                  applyShape({
+                    edges: [
+                      ...shape.edges,
+                      edge(nextEdgeDirection(shape), null),
+                    ],
+                  })
+                }
+              >
+                ＋ 辺追加
+              </button>
+              <button
+                type="button"
+                disabled={selectedEdge === null}
+                onClick={() => {
+                  if (selectedEdge === null) return;
+                  const target = shape.edges.find(
+                    (item) => item.id === selectedEdge,
+                  );
+                  const half =
+                    target?.length === null ? 1 : (target?.length ?? 2) / 2;
+                  applyShape(
+                    splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
+                  );
+                }}
+              >
+                ✂ 線分割
+              </button>
+              <button
+                type="button"
+                disabled={selectedEdge === null}
+                onClick={() =>
+                  selectedEdge !== null &&
+                  applyShape({
+                    edges: shape.edges.filter(
+                      (item) => item.id !== selectedEdge,
+                    ),
+                  })
+                }
+              >
+                🗑 辺削除
+              </button>
+            </div>
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th className="no">No</th>
+                  <th>向き</th>
+                  <th className="num">寸法</th>
+                  <th className="num" title="曲面壁のふくらみ（矢）">
+                    Ｒ向き
+                  </th>
+                  <th>種別</th>
+                </tr>
+              </thead>
+              <tbody>
+                {solved.edges.map((line, index) => (
+                  <tr
+                    key={line.id}
+                    className={[
+                      selectedEdge === line.id ? "selected" : "",
+                      solved.missing.includes(line.id) ? "missing" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => setSelectedEdge(line.id)}
+                  >
+                    <td className="no">{index + 1}</td>
+                    <td>
+                      <select
+                        value={line.direction}
+                        onChange={(e) =>
                           applyShape(
                             updateEdge(shape, line.id, {
-                              length: textToNumber(e.target.value),
+                              direction: e.target.value as EdgeDirection,
                             }),
-                          );
-                        }}
-                      />
-                    )}
-                  </td>
-                  <td>
-                    {line.kind === "curve" ? (
-                      <span className="curve">
+                          )
+                        }
+                      >
+                        {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
+                          (key) => (
+                            <option key={key} value={key}>
+                              {DIRECTION_LABEL[key]}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </td>
+                    <td>
+                      {isDiagonal(line.direction) ? (
+                        <span className="diagonal">
+                          <input
+                            className="num"
+                            defaultValue={formatNumber(line.dx ?? 0, 2)}
+                            key={`${line.id}-dx-${line.dx ?? 0}`}
+                            title="斜め辺の横移動（右がプラス）。計算式も入れられます"
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && e.currentTarget.blur()
+                            }
+                            onBlur={(e) =>
+                              applyShape(
+                                updateEdge(shape, line.id, {
+                                  dx: textToNumber(e.target.value) ?? 0,
+                                }),
+                              )
+                            }
+                          />
+                          <input
+                            className="num"
+                            defaultValue={formatNumber(line.dy ?? 0, 2)}
+                            key={`${line.id}-dy-${line.dy ?? 0}`}
+                            title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && e.currentTarget.blur()
+                            }
+                            onBlur={(e) =>
+                              applyShape(
+                                updateEdge(shape, line.id, {
+                                  dy: textToNumber(e.target.value) ?? 0,
+                                }),
+                              )
+                            }
+                          />
+                        </span>
+                      ) : (
                         <input
                           className="num"
                           defaultValue={
-                            line.bulge === null || line.bulge === undefined
+                            line.length === null
                               ? ""
-                              : formatNumber(Math.abs(line.bulge), 2)
+                              : formatNumber(line.length, 2)
                           }
-                          key={`${line.id}-bulge-${line.bulge ?? "none"}`}
-                          title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                          key={`${line.id}-${line.length ?? "auto"}`}
+                          placeholder={
+                            line.auto ? formatNumber(line.resolved, 2) : ""
+                          }
+                          title={
+                            line.kind === "curve"
+                              ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
+                              : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
+                          }
                           onKeyDown={(e) => {
                             if (e.key !== "Enter") return;
                             showAnswer(e.currentTarget);
                             e.currentTarget.blur();
                           }}
                           onBlur={(e) => {
-                            const value = textToNumber(e.target.value);
-                            const size =
-                              value === null ? null : Math.abs(value);
                             applyShape(
                               updateEdge(shape, line.id, {
-                                bulge:
-                                  size === null
-                                    ? null
-                                    : (line.bulge ?? 0) < 0
-                                      ? -size
-                                      : size,
+                                length: textToNumber(e.target.value),
                               }),
                             );
                           }}
                         />
-                        <select
-                          value={(line.bulge ?? 0) < 0 ? "in" : "out"}
-                          title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
-                          onChange={(e) => {
-                            const size = Math.abs(line.bulge ?? 0);
-                            applyShape(
-                              updateEdge(shape, line.id, {
-                                bulge:
-                                  size === 0
-                                    ? line.bulge
-                                    : e.target.value === "in"
-                                      ? -size
-                                      : size,
-                              }),
-                            );
-                          }}
-                        >
-                          <option value="out">外</option>
-                          <option value="in">内</option>
-                        </select>
-                      </span>
-                    ) : (
-                      <span className="none">－</span>
-                    )}
-                  </td>
-                  <td>
-                    <select
-                      value={line.kind}
-                      onChange={(e) =>
-                        applyShape(
-                          updateEdge(shape, line.id, {
-                            kind: e.target.value as EdgeKind,
-                          }),
-                        )
-                      }
-                    >
-                      {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
-                        <option key={key} value={key}>
-                          {KIND_LABEL[key]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+                      )}
+                    </td>
+                    <td>
+                      {line.kind === "curve" ? (
+                        <span className="curve">
+                          <input
+                            className="num"
+                            defaultValue={
+                              line.bulge === null || line.bulge === undefined
+                                ? ""
+                                : formatNumber(Math.abs(line.bulge), 2)
+                            }
+                            key={`${line.id}-bulge-${line.bulge ?? "none"}`}
+                            title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                            onKeyDown={(e) => {
+                              if (e.key !== "Enter") return;
+                              showAnswer(e.currentTarget);
+                              e.currentTarget.blur();
+                            }}
+                            onBlur={(e) => {
+                              const value = textToNumber(e.target.value);
+                              const size =
+                                value === null ? null : Math.abs(value);
+                              applyShape(
+                                updateEdge(shape, line.id, {
+                                  bulge:
+                                    size === null
+                                      ? null
+                                      : (line.bulge ?? 0) < 0
+                                        ? -size
+                                        : size,
+                                }),
+                              );
+                            }}
+                          />
+                          <select
+                            value={(line.bulge ?? 0) < 0 ? "in" : "out"}
+                            title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
+                            onChange={(e) => {
+                              const size = Math.abs(line.bulge ?? 0);
+                              applyShape(
+                                updateEdge(shape, line.id, {
+                                  bulge:
+                                    size === 0
+                                      ? line.bulge
+                                      : e.target.value === "in"
+                                        ? -size
+                                        : size,
+                                }),
+                              );
+                            }}
+                          >
+                            <option value="out">外</option>
+                            <option value="in">内</option>
+                          </select>
+                        </span>
+                      ) : (
+                        <span className="none">－</span>
+                      )}
+                    </td>
+                    <td>
+                      <select
+                        value={line.kind}
+                        onChange={(e) =>
+                          applyShape(
+                            updateEdge(shape, line.id, {
+                              kind: e.target.value as EdgeKind,
+                            }),
+                          )
+                        }
+                      >
+                        {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
+                          <option key={key} value={key}>
+                            {KIND_LABEL[key]}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
 
         <section className="symbols">
           <div className="section-bar">
