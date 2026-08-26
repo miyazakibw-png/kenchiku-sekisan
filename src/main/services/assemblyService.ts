@@ -232,7 +232,8 @@ export function saveAssembly(
           remarksUpper: item.remarksUpper,
           remarksLower: item.remarksLower,
           estimateDisplay: item.estimateDisplay,
-          formula: item.formula,
+          // セット明細は計算式を持たない（式は計算書ごとに入れる）
+          formula: "",
           coefficient: item.coefficient,
           displayOrder: index,
         })

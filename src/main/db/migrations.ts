@@ -850,4 +850,8 @@ ALTER TABLE project_transfer_rules ADD COLUMN description_lower TEXT NOT NULL DE
 ALTER TABLE m_finish_assemblies ADD COLUMN auto_registered INTEGER NOT NULL DEFAULT 0;
 UPDATE m_finish_assemblies SET auto_registered = 1 WHERE scope = 'project';
 `,
+  // セット明細は計算式を持たない（計算式は計算書ごとに入れる）
+  `
+UPDATE m_finish_assembly_items SET formula = '' WHERE formula <> '';
+`,
 ];

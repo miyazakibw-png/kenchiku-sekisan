@@ -368,7 +368,6 @@ export default function AssemblyMasterPage({
                     <th>摘要</th>
                     <th>単位</th>
                     <th>掛け率</th>
-                    <th>計算式</th>
                     <th>備考</th>
                     <th>操作</th>
                   </tr>
@@ -455,18 +454,6 @@ export default function AssemblyMasterPage({
                                 index,
                                 e.target.value,
                               ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td rowSpan={2}>
-                        <input
-                          value={item.formula}
-                          onChange={(e) =>
-                            editItems(
-                              updateItem(editor.items, index, {
-                                formula: e.target.value,
-                              }),
                             )
                           }
                         />
@@ -576,7 +563,7 @@ export default function AssemblyMasterPage({
                 ))}
               </table>
               <p className="hint">
-                セット内の明細は明細マスターから写し取った控えです。ここでの修正は明細マスターには反映されません。
+                セット内の明細は明細マスターから写し取った控えです。ここでの修正は明細マスターには反映されません。計算式はセットには持たせず、呼び出した計算書で入力します。
               </p>
             </div>
 
@@ -620,7 +607,7 @@ export default function AssemblyMasterPage({
                 <table className="grid" key={assembly.id}>
                   <thead>
                     <tr>
-                      <th colSpan={7}>
+                      <th colSpan={6}>
                         {groupIndex + 1}．{assembly.items.length}明細のセット
                         {assembly.note ? `（${assembly.note}）` : ""}
                       </th>
@@ -632,7 +619,6 @@ export default function AssemblyMasterPage({
                       <th>備考</th>
                       <th>単位</th>
                       <th>掛け率</th>
-                      <th>計算式</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -665,7 +651,6 @@ export default function AssemblyMasterPage({
                           </td>
                           <td>{item.unit}</td>
                           <td className="num">{item.coefficient}</td>
-                          <td>{item.formula}</td>
                         </tr>
                       );
                     })}
