@@ -527,6 +527,20 @@ export function beamFootprints(
   });
 }
 
+/** 梁型が天井から取る梁底の合計（長さ×Ｗ幅）。天井面積はこの分を引く */
+export function beamFootprintArea(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): number {
+  return round2(
+    beamFootprints(elements, solved, roomCeilingHeight).reduce(
+      (sum, beam) => sum + beam.area,
+      0,
+    ),
+  );
+}
+
 /**
  * 天井を、下がり天井の線で区切った区画に分けて番号（C1・C2…）を振る。
  * 区切りに使うのは下がり天井の線だけ（梁型・下がり壁は天井の高さを分けないので使わない）。
@@ -850,7 +864,9 @@ function edgeLength(solved: SolvedShape, edgeId: string | null): number | null {
 
 /**
  * 天井伏図の数量。
- * 梁型面積は天井の範囲の面積「長さ×梁幅」。下がり壁は見付「長さ×下がり高さ」。
+ * 梁型面積は仕上げる面。壁付き梁型は「長さ×（梁幅＋梁せい）」（梁底＋見付1面）、
+ * 天井付梁型は「長さ×（梁幅＋梁せい×2）」（梁底＋見付2面）。
+ * 下がり壁は見付「長さ×下がり高さ」。
  */
 export function ceilingQuantities(
   elements: CeilingElement[],
@@ -889,12 +905,16 @@ export function ceilingQuantities(
       switch (element.kind) {
         case "wallBeam":
           totals.wallBeamLength += length;
-          if (element.width !== null) area = round2(length * width);
+          // 梁底＋見付1面
+          if (element.width !== null)
+            area = round2(length * (width + (drop ?? 0)));
           totals.wallBeamArea += area ?? 0;
           break;
         case "ceilingBeam":
           totals.ceilingBeamLength += length;
-          if (element.width !== null) area = round2(length * width);
+          // 梁底＋見付2面
+          if (element.width !== null)
+            area = round2(length * (width + (drop ?? 0) * 2));
           totals.ceilingBeamArea += area ?? 0;
           break;
         case "dropWall":

@@ -41,6 +41,7 @@ import {
 } from "../../../../core/room/shape";
 import {
   ceilingElement,
+  beamFootprintArea,
   ceilingQuantities,
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
@@ -406,9 +407,11 @@ export default function RoomSheetPage({
     () => ceilingQuantities(ceiling, solved, ceilingHeight),
     [ceiling, solved, ceilingHeight],
   );
-  // 天井面積は梁型（壁付き・天井付）が取る梁底の分を引く
-  const beamArea =
-    ceilingResult.totals.wallBeamArea + ceilingResult.totals.ceilingBeamArea;
+  // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
+  const beamArea = useMemo(
+    () => beamFootprintArea(ceiling, solved, ceilingHeight),
+    [ceiling, solved, ceilingHeight],
+  );
   const quantities = useMemo(
     () =>
       roomQuantities(
@@ -2355,7 +2358,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は天井の範囲の面積で長さ×Ｗ幅（梁幅）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型（壁付き・天井付）の梁底の分を引いた面積です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
             {ceilingCodes.length > 0 && (
               <table className="grid ceiling-regions">

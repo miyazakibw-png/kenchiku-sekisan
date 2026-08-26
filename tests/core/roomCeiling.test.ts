@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  beamFootprintArea,
   ceilingElement,
   ceilingQuantities,
   ceilingRegions,
@@ -26,7 +27,7 @@ function element(
 }
 
 describe("天井伏図", () => {
-  it("壁付き梁型は沿う壁の長さを引き継ぎ、面積は天井の範囲（長さ×梁幅）", () => {
+  it("壁付き梁型は沿う壁の長さを引き継ぎ、面積は梁底＋見付1面", () => {
     const solved = shape();
     const wall = solved.edges[0];
     const result = ceilingQuantities(
@@ -37,10 +38,11 @@ describe("天井伏図", () => {
     expect(result.items[0].length).toBe(4);
     expect(result.items[0].drop).toBe(0.5);
     expect(result.totals.wallBeamLength).toBe(4);
-    expect(result.totals.wallBeamArea).toBe(1.6);
+    // 梁底（Ｗ幅0.40）＋見付1面（Ｈ0.50）
+    expect(result.totals.wallBeamArea).toBe(3.6);
   });
 
-  it("天井付梁型は壁までの長さを自動で使い、天井の範囲（長さ×梁幅）で数える", () => {
+  it("天井付梁型は壁までの長さを自動で使い、梁底＋見付2面で数える", () => {
     const solved = shape();
     const wall = solved.edges[0];
     const result = ceilingQuantities(
@@ -55,7 +57,8 @@ describe("天井伏図", () => {
     );
     // 2本の見付線それぞれが壁から壁まで（4m）
     expect(result.totals.ceilingBeamLength).toBe(4);
-    expect(result.totals.ceilingBeamArea).toBe(1.6);
+    // 梁底（Ｗ幅0.40）＋見付2面（Ｈ0.30×2）
+    expect(result.totals.ceilingBeamArea).toBe(4);
   });
 
   it("下がり壁は下がり高さ分の面積になる", () => {
@@ -159,7 +162,7 @@ describe("天井伏図", () => {
       2.7,
     );
     expect(result.items[0].drop).toBe(0.5);
-    expect(result.totals.wallBeamArea).toBe(1.6);
+    expect(result.totals.wallBeamArea).toBe(3.6);
   });
 
   it("記号は合計と線ごとに作る", () => {
@@ -175,9 +178,9 @@ describe("天井伏図", () => {
       2.7,
     );
     const symbols = ceilingSymbols(result);
-    expect(symbols.find((row) => row.symbol === "GA")?.value).toBe(1.6);
+    expect(symbols.find((row) => row.symbol === "GA")?.value).toBe(3.6);
     expect(symbols.find((row) => row.symbol === "GL1")?.value).toBe(4);
-    expect(symbols.find((row) => row.symbol === "GA1")?.value).toBe(1.6);
+    expect(symbols.find((row) => row.symbol === "GA1")?.value).toBe(3.6);
   });
 
   it("Ｗ幅が未入力なら面積は出さない（長さだけ数える）", () => {
@@ -308,9 +311,8 @@ describe("天井伏図", () => {
       element("wallBeam", solved.edges[0].id, { width: 0.2, height: 0.4 }),
       element("ceilingBeam", solved.edges[1].id, { offset: 1, width: 0.3 }),
     ];
-    const totals = ceilingQuantities(beams, solved, 2.7).totals;
-    const beamArea = totals.wallBeamArea + totals.ceilingBeamArea;
-    // 壁付き4.00×0.20＋天井付（壁付き梁型で止まって2.80）×0.30
+    // 引くのは梁底だけ（壁付き4.00×0.20＋天井付（壁付き梁型で止まって2.80）×0.30）
+    const beamArea = beamFootprintArea(beams, solved, 2.7);
     expect(beamArea).toBeCloseTo(4 * 0.2 + 2.8 * 0.3, 6);
     const quantities = roomQuantities(solved, 2.7, [], undefined, beamArea);
     expect(quantities.floorArea).toBe(12);

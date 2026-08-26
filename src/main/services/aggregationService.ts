@@ -52,6 +52,7 @@ import {
   type RoomShape,
 } from "../../core/room/shape";
 import {
+  beamFootprintArea,
   ceilingQuantities,
   ceilingSymbols,
   type CeilingElement,
@@ -452,9 +453,8 @@ export function collectEntries(
       solved,
       sheet.ceilingHeight,
     );
-    // 天井面積は梁型（壁付き・天井付）が取る梁底の分を引く
-    const beamArea =
-      ceilingResult.totals.wallBeamArea + ceilingResult.totals.ceilingBeamArea;
+    // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
+    const beamArea = beamFootprintArea(ceiling, solved, sheet.ceilingHeight);
     const symbols = [
       ...roomSymbols(
         solved,
