@@ -447,18 +447,23 @@ export function collectEntries(
       };
     });
     const ceiling = parseJson<CeilingElement[]>(sheet.ceilingJson, []);
+    const ceilingResult = ceilingQuantities(
+      ceiling,
+      solved,
+      sheet.ceilingHeight,
+    );
+    // 天井面積は梁型（壁付き・天井付）が取る梁底の分を引く
+    const beamArea =
+      ceilingResult.totals.wallBeamArea + ceilingResult.totals.ceilingBeamArea;
     const symbols = [
       ...roomSymbols(
         solved,
         sheet.ceilingHeight,
         sheetFittings,
         deductionLimit,
+        beamArea,
       ),
-      ...(ceiling.length > 0
-        ? ceilingSymbols(
-            ceilingQuantities(ceiling, solved, sheet.ceilingHeight),
-          )
-        : []),
+      ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];
     const variables = calcVariables(symbols, fittings);
     entries.push(

@@ -6,7 +6,12 @@ import {
   ceilingSymbols,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
-import { lShape, rectangleShape, solveShape } from "../../src/core/room/shape";
+import {
+  lShape,
+  rectangleShape,
+  roomQuantities,
+  solveShape,
+} from "../../src/core/room/shape";
 
 function shape() {
   return solveShape(rectangleShape(4, 3));
@@ -249,7 +254,8 @@ describe("天井伏図", () => {
       2.7,
     );
     expect(regions.map((row) => row.code)).toEqual(["C1"]);
-    expect(regions[0].area).toBeCloseTo(12, 6);
+    // 梁型の梁底（壁付き4.00×0.40＋天井付4.00×0.40）は天井の面積から引く
+    expect(regions[0].area).toBeCloseTo(8.8, 6);
     expect(regions[0].height).toBe(2.7);
   });
 
@@ -289,7 +295,26 @@ describe("天井伏図", () => {
       2.7,
     );
     expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
-    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
+    // 梁底（3.00×0.20）を引いた面積
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(
+      11.4,
+      6,
+    );
+  });
+
+  it("天井面積（CA）は梁型の梁底の分を引く", () => {
+    const solved = shape();
+    const beams = [
+      element("wallBeam", solved.edges[0].id, { width: 0.2, height: 0.4 }),
+      element("ceilingBeam", solved.edges[1].id, { offset: 1, width: 0.3 }),
+    ];
+    const totals = ceilingQuantities(beams, solved, 2.7).totals;
+    const beamArea = totals.wallBeamArea + totals.ceilingBeamArea;
+    // 壁付き4.00×0.20＋天井付（壁付き梁型で止まって2.80）×0.30
+    expect(beamArea).toBeCloseTo(4 * 0.2 + 2.8 * 0.3, 6);
+    const quantities = roomQuantities(solved, 2.7, [], undefined, beamArea);
+    expect(quantities.floorArea).toBe(12);
+    expect(quantities.ceilingArea).toBe(10.36);
   });
 
   it("番号は区画の中（外まわりの線から離れたところ）に出す", () => {

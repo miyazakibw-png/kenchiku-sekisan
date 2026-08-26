@@ -483,6 +483,50 @@ function polygonCenter(poly: CeilingPoint[]): CeilingPoint {
   return { x: x / (3 * sum), y: y / (3 * sum) };
 }
 
+/** 梁型が天井から取る場所（梁底）。天井面積・区画の面積からはこの分を引く */
+export interface CeilingBeamFootprint {
+  /** その梁底の真ん中（どの区画に入るかを見る） */
+  center: CeilingPoint;
+  /** 長さ×Ｗ幅 */
+  area: number;
+}
+
+/** 壁付き梁型・天井付梁型が天井から取る場所（長さ×Ｗ幅）とその中央 */
+export function beamFootprints(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): CeilingBeamFootprint[] {
+  const points = solved.points;
+  if (points.length < 3) return [];
+  const lines = ceilingLines(elements, solved, roomCeilingHeight);
+
+  return elements.flatMap((element) => {
+    if (element.kind !== "wallBeam" && element.kind !== "ceilingBeam")
+      return [];
+    const width = element.width ?? 0;
+    if (width <= 0) return [];
+    const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+    if (index < 0) return [];
+    const line = lines.find(
+      (row) => row.elementId === element.id && row.no === 0,
+    );
+    if (line === undefined) return [];
+    const normal = inwardNormal(points, index);
+    // 壁付き梁型は壁と線の間、天井付梁型は2本の線の間が梁底
+    const step = element.kind === "wallBeam" ? -width / 2 : width / 2;
+    return [
+      {
+        center: {
+          x: (line.a.x + line.b.x) / 2 + normal.x * step,
+          y: (line.a.y + line.b.y) / 2 + normal.y * step,
+        },
+        area: round2(line.length * width),
+      },
+    ];
+  });
+}
+
 /**
  * 天井を、下がり天井の線で区切った区画に分けて番号（C1・C2…）を振る。
  * 区切りに使うのは下がり天井の線だけ（梁型・下がり壁は天井の高さを分けないので使わない）。
@@ -531,13 +575,19 @@ export function ceilingRegions(
     polygons = polygons.flatMap((poly) => cutPolygon(poly, row.line));
   });
 
+  // 梁型（壁付き・天井付）が取る梁底は、その区画の天井面積から引く
+  const beams = beamFootprints(elements, solved, roomCeilingHeight);
+
   const pieces = polygons.map((poly) => {
     const center = polygonCenter(poly);
     const found = dropAt(elements, solved, roomCeilingHeight, center);
+    const beamArea = beams
+      .filter((beam) => inside(poly, beam.center))
+      .reduce((sum, beam) => sum + beam.area, 0);
     return {
       poly,
       center,
-      area: polygonArea(poly),
+      area: Math.max(0, polygonArea(poly) - beamArea),
       drop: found.drop,
       waiting: found.waiting,
     };

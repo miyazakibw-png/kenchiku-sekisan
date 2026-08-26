@@ -634,7 +634,13 @@ export function solveShape(shape: RoomShape): SolvedShape {
       if (gap !== 0) {
         // どちら向きへ何m足りないかを出して、向きの取り違えに気付けるようにする
         const back =
-          axis === "x" ? (gap > 0 ? "← 左" : "→ 右") : gap > 0 ? "↑ 上" : "↓ 下";
+          axis === "x"
+            ? gap > 0
+              ? "← 左"
+              : "→ 右"
+            : gap > 0
+              ? "↑ 上"
+              : "↓ 下";
         error = `${axis === "x" ? "横" : "縦"}方向の寸法が閉じていません（${back}へ ${formatLength(Math.abs(gap))} 足りません）`;
       }
       continue;
@@ -871,7 +877,7 @@ export function fittingTotals(
 export interface RoomQuantities {
   /** FA 床面積 */
   floorArea: number | null;
-  /** CA 天井面積 */
+  /** CA 天井面積（梁型が取る梁底の分は引く） */
   ceilingArea: number | null;
   /** WL 壁長さ */
   wallLength: number;
@@ -896,6 +902,7 @@ export function roomQuantities(
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
+  beamArea = 0,
 ): RoomQuantities {
   const totals = edgeTotals(solved);
   const area = floorArea(solved, limit);
@@ -903,7 +910,7 @@ export function roomQuantities(
   const fitting = fittingTotals(fittings);
   return {
     floorArea: area,
-    ceilingArea: area,
+    ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
     wallLength: totals.wall,
     columnLength: totals.column,
     baseboardLength: round2(totals.wall + totals.column - fitting.baseboard),
@@ -934,8 +941,15 @@ export function roomSymbols(
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
+  beamArea = 0,
 ): RoomSymbol[] {
-  const quantities = roomQuantities(solved, ceilingHeight, fittings, limit);
+  const quantities = roomQuantities(
+    solved,
+    ceilingHeight,
+    fittings,
+    limit,
+    beamArea,
+  );
   const symbols: RoomSymbol[] = [
     { symbol: "FA", label: "床面積", value: quantities.floorArea },
     { symbol: "CA", label: "天井面積", value: quantities.ceilingArea },
