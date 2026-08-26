@@ -773,7 +773,7 @@ function edgeLength(solved: SolvedShape, edgeId: string | null): number | null {
 
 /**
  * 天井伏図の数量。
- * 梁型面積は「長さ×(梁幅＋下がり高さ)」（天井付梁型は両側に見付が出るので下がり高さ×2）。
+ * 梁型面積は天井の範囲の面積「長さ×梁幅」。下がり壁は見付「長さ×下がり高さ」。
  */
 export function ceilingQuantities(
   elements: CeilingElement[],
@@ -811,12 +811,12 @@ export function ceilingQuantities(
       switch (element.kind) {
         case "wallBeam":
           totals.wallBeamLength += length;
-          if (drop !== null) area = round2(length * (width + drop));
+          if (element.width !== null) area = round2(length * width);
           totals.wallBeamArea += area ?? 0;
           break;
         case "ceilingBeam":
           totals.ceilingBeamLength += length;
-          if (drop !== null) area = round2(length * (width + drop * 2));
+          if (element.width !== null) area = round2(length * width);
           totals.ceilingBeamArea += area ?? 0;
           break;
         case "dropWall":

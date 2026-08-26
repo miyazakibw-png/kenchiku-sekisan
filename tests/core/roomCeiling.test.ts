@@ -21,7 +21,7 @@ function element(
 }
 
 describe("天井伏図", () => {
-  it("壁付き梁型は沿う壁の長さを引き継ぎ、面積は長さ×(梁幅＋下がり)", () => {
+  it("壁付き梁型は沿う壁の長さを引き継ぎ、面積は天井の範囲（長さ×梁幅）", () => {
     const solved = shape();
     const wall = solved.edges[0];
     const result = ceilingQuantities(
@@ -32,10 +32,10 @@ describe("天井伏図", () => {
     expect(result.items[0].length).toBe(4);
     expect(result.items[0].drop).toBe(0.5);
     expect(result.totals.wallBeamLength).toBe(4);
-    expect(result.totals.wallBeamArea).toBe(3.6);
+    expect(result.totals.wallBeamArea).toBe(1.6);
   });
 
-  it("天井付梁型は両側に見付が出るので下がりを2倍で数える", () => {
+  it("天井付梁型も天井の範囲（長さ×梁幅）で数える", () => {
     const solved = shape();
     const wall = solved.edges[0];
     const result = ceilingQuantities(
@@ -50,7 +50,7 @@ describe("天井伏図", () => {
       2.7,
     );
     expect(result.totals.ceilingBeamLength).toBe(3);
-    expect(result.totals.ceilingBeamArea).toBe(3);
+    expect(result.totals.ceilingBeamArea).toBe(1.2);
   });
 
   it("下がり壁は下がり高さ分の面積になる", () => {
@@ -154,7 +154,7 @@ describe("天井伏図", () => {
       2.7,
     );
     expect(result.items[0].drop).toBe(0.5);
-    expect(result.totals.wallBeamArea).toBe(3.6);
+    expect(result.totals.wallBeamArea).toBe(1.6);
   });
 
   it("記号は合計と線ごとに作る", () => {
@@ -170,15 +170,15 @@ describe("天井伏図", () => {
       2.7,
     );
     const symbols = ceilingSymbols(result);
-    expect(symbols.find((row) => row.symbol === "GA")?.value).toBe(3.6);
+    expect(symbols.find((row) => row.symbol === "GA")?.value).toBe(1.6);
     expect(symbols.find((row) => row.symbol === "GL1")?.value).toBe(4);
-    expect(symbols.find((row) => row.symbol === "GA1")?.value).toBe(3.6);
+    expect(symbols.find((row) => row.symbol === "GA1")?.value).toBe(1.6);
   });
 
-  it("天井高さが未入力なら面積は出さない（長さだけ数える）", () => {
+  it("Ｗ幅が未入力なら面積は出さない（長さだけ数える）", () => {
     const solved = shape();
     const result = ceilingQuantities(
-      [element("wallBeam", solved.edges[0].id, { width: 0.4 })],
+      [element("wallBeam", solved.edges[0].id, { width: null })],
       solved,
       2.7,
     );
