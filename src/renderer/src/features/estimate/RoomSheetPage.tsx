@@ -2200,9 +2200,16 @@ export default function RoomSheetPage({
                     Ｈ高さ
                   </th>
                   <th className="num">壁からの離れ</th>
-                  <th className="num">範囲の天井高さ</th>
-                  <th className="num">下がり</th>
-                  <th className="num">面積</th>
+                  <th
+                    className="num"
+                    title="この線で囲まれる範囲の天井高さ（面積ではありません）"
+                  >
+                    範囲の天井高さ(m)
+                  </th>
+                  <th className="num" title="部屋の天井高さからの下がり">
+                    下がり(m)
+                  </th>
+                  <th className="num">面積(㎡)</th>
                   <th />
                 </tr>
               </thead>
@@ -2406,9 +2413,9 @@ export default function RoomSheetPage({
                 <thead>
                   <tr>
                     <th className="no">番号</th>
-                    <th className="num">天井高さ</th>
-                    <th className="num">下がり</th>
-                    <th className="num">区画の面積</th>
+                    <th className="num">天井高さ(m)</th>
+                    <th className="num">下がり(m)</th>
+                    <th className="num">区画の面積(㎡)</th>
                   </tr>
                 </thead>
                 <tbody>
