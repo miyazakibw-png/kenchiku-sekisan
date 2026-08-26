@@ -845,4 +845,9 @@ UPDATE project_transfer_rules SET formwork = master_key WHERE formwork = '';
   `
 ALTER TABLE project_transfer_rules ADD COLUMN description_lower TEXT NOT NULL DEFAULT '';
 `,
+  // 計算書から自動登録した物件セットの目印（使われなくなったら集計時に片付ける）
+  `
+ALTER TABLE m_finish_assemblies ADD COLUMN auto_registered INTEGER NOT NULL DEFAULT 0;
+UPDATE m_finish_assemblies SET auto_registered = 1 WHERE scope = 'project';
+`,
 ];

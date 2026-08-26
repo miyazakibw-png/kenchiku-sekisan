@@ -353,6 +353,50 @@ describe('計算書からの自動登録と連動', () => {
     expect(after[0].items.map((i) => i.name)).toEqual(['軽鉄下地（65形）'])
   })
 
+  it('使わなくなった自動登録のセットは集計時に片付ける', () => {
+    const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
+    syncAssembliesFromSheets(db, projectIdRef)
+    expect(listAssemblies(db, projectIdRef).length).toBe(1)
+
+    // 計算書からセットを消す（別のセットに入れ替える）
+    db.update(schema.projectRoomSheets)
+      .set({ lowerJson: JSON.stringify([calcSetJson(['グラスウール'])]) })
+      .where(eq(schema.projectRoomSheets.id, sheetId))
+      .run()
+    syncAssembliesFromSheets(db, projectIdRef)
+
+    expect(listAssemblies(db, projectIdRef).map((a) => a.items[0].name)).toEqual(['グラスウール'])
+  })
+
+  it('中身が同じ物件セットが増えていたら集計時に1件へまとめる', () => {
+    const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
+    syncAssembliesFromSheets(db, projectIdRef)
+    const [assembly] = listAssemblies(db, projectIdRef)
+    // 以前の版で増えてしまった同内容のセットを再現し、計算書をそちらへ向ける
+    const { assembly: duplicate } = saveAssembly(db, {
+      id: null,
+      scope: 'project',
+      projectId: projectIdRef,
+      note: '',
+      items: assembly.items.map((item) => ({ ...item, id: null }))
+    })
+    db.update(schema.mFinishAssemblies)
+      .set({ autoRegistered: 1 })
+      .where(eq(schema.mFinishAssemblies.id, duplicate.id))
+      .run()
+    const sets = JSON.parse(lowerJsonOf(sheetId)) as { assemblyId: number | null }[]
+    sets[0].assemblyId = duplicate.id
+    db.update(schema.projectRoomSheets)
+      .set({ lowerJson: JSON.stringify(sets) })
+      .where(eq(schema.projectRoomSheets.id, sheetId))
+      .run()
+
+    syncAssembliesFromSheets(db, projectIdRef)
+
+    expect(listAssemblies(db, projectIdRef).map((a) => a.id)).toEqual([assembly.id])
+    expect(lowerJsonOf(sheetId)).toContain(`"assemblyId":${assembly.id}`)
+  })
+
   it('セット明細マスターで直すと計算書も連動して直る', () => {
     const sheetId = makeRoomSheet([calcSetJson(['軽鉄下地'])])
     syncAssembliesFromSheets(db, projectIdRef)
