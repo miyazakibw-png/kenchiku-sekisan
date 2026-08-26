@@ -42,6 +42,8 @@ import {
   ceilingElement,
   ceilingQuantities,
   ceilingSymbols,
+  inwardNormal,
+  wallToWallLine,
   type CeilingElement,
   type CeilingElementKind,
 } from "../../../../core/room/ceiling";
@@ -414,27 +416,15 @@ export default function RoomSheetPage({
       );
   }, [symbols]);
 
-  /** 天井伏図の線を描く位置（平面図の辺から内側へ離す） */
+  /** 天井伏図の線を描く位置（平面図の辺から内側へ離し、壁で止める） */
   const ceilingLines = useMemo(() => {
     if (solved.points.length === 0) return [];
-    const area = solved.points.reduce((sum, point, index) => {
-      const next = solved.points[(index + 1) % solved.points.length];
-      return sum + (point.x * next.y - next.x * point.y);
-    }, 0);
-    const inward = area >= 0 ? 1 : -1;
     const count = ceilingResult.items.length;
     return ceilingResult.items.flatMap((item, itemIndex) => {
       const index = solved.edges.findIndex(
         (line) => line.id === item.element.edgeId,
       );
       if (index < 0) return [];
-      const from = solved.points[index];
-      const to = solved.points[(index + 1) % solved.points.length];
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const size = Math.hypot(dx, dy) || 1;
-      const nx = (-dy / size) * inward;
-      const ny = (dx / size) * inward;
       const width = item.element.width ?? 0;
       const offset =
         item.element.kind === "wallBeam" || item.element.kind === "dropWall"
@@ -448,21 +438,32 @@ export default function RoomSheetPage({
             : [width];
       // 同じ壁に何本も線を置いても天井高さの文字が重ならないように、線の上で位置をずらす
       const at = (itemIndex + 1) / (count + 1);
-      return distances.map((distance, no) => ({
-        key: `${item.element.id}-${no}`,
-        elementId: item.element.id,
-        kind: item.element.kind,
-        x1: from.x + nx * distance,
-        y1: from.y + ny * distance,
-        x2: to.x + nx * distance,
-        y2: to.y + ny * distance,
-        labelX: from.x + dx * at + nx * distance,
-        labelY: from.y + dy * at + ny * distance,
-        label:
-          no === 0 && item.element.ceilingHeight !== null
-            ? formatNumber(item.element.ceilingHeight, 2)
-            : "",
-      }));
+      const normal = inwardNormal(solved.points, index);
+      return distances.flatMap((distance, no) => {
+        const line = wallToWallLine(solved.points, index, distance);
+        if (line === null) return [];
+        return [
+          {
+            key: `${item.element.id}-${no}`,
+            elementId: item.element.id,
+            kind: item.element.kind,
+            x1: line.a.x,
+            y1: line.a.y,
+            x2: line.b.x,
+            y2: line.b.y,
+            labelX: line.a.x + (line.b.x - line.a.x) * at,
+            labelY: line.a.y + (line.b.y - line.a.y) * at,
+            label:
+              no === 0 && item.element.ceilingHeight !== null
+                ? formatNumber(item.element.ceilingHeight, 2)
+                : "",
+            // 下がり天井は範囲（壁から線まで）の中央に C1・C2… を出す
+            code: no === 0 ? item.code : null,
+            codeX: (line.a.x + line.b.x) / 2 - (normal.x * distance) / 2,
+            codeY: (line.a.y + line.b.y) / 2 - (normal.y * distance) / 2,
+          },
+        ];
+      });
     });
   }, [ceilingResult.items, solved.edges, solved.points]);
 
@@ -1422,6 +1423,17 @@ export default function RoomSheetPage({
                           CH {line.label}
                         </text>
                       )}
+                      {line.code !== null && (
+                        <text
+                          x={line.codeX}
+                          y={line.codeY}
+                          className="ceiling-code"
+                          textAnchor="middle"
+                          fontSize={dimFontSize * 1.3}
+                        >
+                          {line.code}
+                        </text>
+                      )}
                     </g>
                   ))}
               </svg>
@@ -2022,10 +2034,19 @@ export default function RoomSheetPage({
             <table className="grid">
               <thead>
                 <tr>
+                  <th className="no">番号</th>
                   <th>種別</th>
                   <th>沿う壁</th>
                   <th className="num">長さ</th>
-                  <th className="num">幅</th>
+                  <th className="num" title="梁幅・下がり天井の見付">
+                    Ｗ幅
+                  </th>
+                  <th
+                    className="num"
+                    title="梁せい・下がり壁の高さ（入れると壁の高さは自動）"
+                  >
+                    Ｈ高さ
+                  </th>
                   <th className="num">壁からの離れ</th>
                   <th className="num">範囲の天井高さ</th>
                   <th className="num">下がり</th>
@@ -2038,6 +2059,7 @@ export default function RoomSheetPage({
                   const element = item.element;
                   return (
                     <tr key={element.id}>
+                      <td className="no">{item.code ?? ""}</td>
                       <td>
                         <select
                           value={element.kind}
@@ -2086,7 +2108,7 @@ export default function RoomSheetPage({
                               : formatNumber(element.length, 2)
                           }
                           placeholder={formatNumber(item.length, 2)}
-                          title="空欄なら沿う壁の長さを使います"
+                          title="空欄なら自動（下がり天井は壁に当たるまで、他は沿う壁の長さ）"
                           onBlur={(e) => {
                             const text = e.target.value.trim();
                             updateCeiling(element.id, {
@@ -2112,6 +2134,28 @@ export default function RoomSheetPage({
                         />
                       </td>
                       <td>
+                        {element.kind === "dropCeiling" ? (
+                          ""
+                        ) : (
+                          <input
+                            className="num"
+                            defaultValue={
+                              element.height === null ||
+                              element.height === undefined
+                                ? ""
+                                : formatNumber(element.height, 2)
+                            }
+                            title="Ｈ（梁せい・下がり壁の高さ）。入れると壁の高さ（範囲の天井高さ）は自動で決まります"
+                            onBlur={(e) => {
+                              const text = e.target.value.trim();
+                              updateCeiling(element.id, {
+                                height: text === "" ? null : Number(text),
+                              });
+                            }}
+                          />
+                        )}
+                      </td>
+                      <td>
                         <input
                           className="num"
                           defaultValue={
@@ -2127,22 +2171,34 @@ export default function RoomSheetPage({
                           }}
                         />
                       </td>
-                      <td>
-                        <input
-                          className="num"
-                          defaultValue={
-                            element.ceilingHeight === null
-                              ? ""
-                              : formatNumber(element.ceilingHeight, 2)
-                          }
-                          title="この線で囲まれる範囲の天井高さ"
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              ceilingHeight: text === "" ? null : Number(text),
-                            });
-                          }}
-                        />
+                      <td className="num">
+                        {element.height !== null &&
+                        element.height !== undefined ? (
+                          // Ｈを入れたときは壁の高さを自動で出す
+                          formatNumber(
+                            ceilingHeight === null
+                              ? null
+                              : ceilingHeight - element.height,
+                            2,
+                          )
+                        ) : (
+                          <input
+                            className="num"
+                            defaultValue={
+                              element.ceilingHeight === null
+                                ? ""
+                                : formatNumber(element.ceilingHeight, 2)
+                            }
+                            title="この線で囲まれる範囲の天井高さ"
+                            onBlur={(e) => {
+                              const text = e.target.value.trim();
+                              updateCeiling(element.id, {
+                                ceilingHeight:
+                                  text === "" ? null : Number(text),
+                              });
+                            }}
+                          />
+                        )}
                       </td>
                       <td className="num">{formatNumber(item.drop, 2)}</td>
                       <td className="num">
@@ -2184,7 +2240,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              範囲の天井高さを入れると、部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。下がり天井は線が壁に当たるところまで自動で伸び、範囲の中央にC1・C2…の番号を出します。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
           </section>
         )}

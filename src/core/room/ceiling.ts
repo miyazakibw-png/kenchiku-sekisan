@@ -31,6 +31,8 @@ export interface CeilingElement {
   offset: number | null;
   /** その範囲の天井高さ。部屋の天井高さとの差が下がり高さ */
   ceilingHeight: number | null;
+  /** Ｈ（梁せい・下がり壁の高さ）。入れると壁の高さ（範囲の天井高さ）は自動で決まる */
+  height?: number | null;
   /** 下がり天井の範囲面積（範囲の自動判定は次段階。ここでは入力値を使う） */
   area: number | null;
   note: string;
@@ -44,6 +46,128 @@ export interface CeilingElementResult {
   drop: number | null;
   /** 見付面積（梁型は幅と下がり高さから、下がり壁は下がり高さから） */
   area: number | null;
+  /** 天井伏図に出す範囲の番号（下がり天井のみ。C1・C2…） */
+  code: string | null;
+}
+
+export interface CeilingPoint {
+  x: number;
+  y: number;
+}
+
+/** 天井伏図に描く線（壁で止めた区間） */
+export interface CeilingSegment {
+  a: CeilingPoint;
+  b: CeilingPoint;
+  length: number;
+}
+
+function signedArea(points: CeilingPoint[]): number {
+  return points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return sum + (point.x * next.y - next.x * point.y);
+  }, 0);
+}
+
+function cross(a: CeilingPoint, b: CeilingPoint): number {
+  return a.x * b.y - a.y * b.x;
+}
+
+function inside(points: CeilingPoint[], target: CeilingPoint): boolean {
+  let hit = false;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const crosses = point.y > target.y !== next.y > target.y;
+    if (!crosses) return;
+    const x =
+      point.x +
+      ((target.y - point.y) / (next.y - point.y)) * (next.x - point.x);
+    if (target.x < x) hit = !hit;
+  });
+  return hit;
+}
+
+/** 部屋の内側へ向く単位ベクトル（辺の法線） */
+export function inwardNormal(
+  points: CeilingPoint[],
+  index: number,
+): CeilingPoint {
+  const from = points[index];
+  const to = points[(index + 1) % points.length];
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const size = Math.hypot(dx, dy) || 1;
+  const sign = signedArea(points) >= 0 ? 1 : -1;
+  return { x: (-dy / size) * sign, y: (dx / size) * sign };
+}
+
+/**
+ * 辺から内側へ離した位置に引く線を、部屋の壁に当たるところで止める。
+ * 下がり天井のように部屋を横切る線でも、○から○まで（壁から壁まで）になる。
+ */
+export function wallToWallLine(
+  points: CeilingPoint[],
+  index: number,
+  distance: number,
+): CeilingSegment | null {
+  if (points.length < 3 || index < 0 || index >= points.length) return null;
+  const from = points[index];
+  const to = points[(index + 1) % points.length];
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const size = Math.hypot(dx, dy);
+  if (size === 0) return null;
+  const dir = { x: dx / size, y: dy / size };
+  const normal = inwardNormal(points, index);
+  const base = {
+    x: from.x + normal.x * distance,
+    y: from.y + normal.y * distance,
+  };
+  if (Math.abs(distance) < 1e-6) {
+    return { a: from, b: to, length: round2(size) };
+  }
+
+  const hits: number[] = [];
+  points.forEach((point, no) => {
+    const next = points[(no + 1) % points.length];
+    const span = { x: next.x - point.x, y: next.y - point.y };
+    const denom = cross(dir, span);
+    if (Math.abs(denom) < 1e-9) return;
+    const gap = { x: point.x - base.x, y: point.y - base.y };
+    const u = cross(gap, dir) / denom;
+    if (u < -1e-9 || u > 1 + 1e-9) return;
+    const t = cross(gap, span) / denom;
+    if (!hits.some((value) => Math.abs(value - t) < 1e-6)) hits.push(t);
+  });
+  hits.sort((a, b) => a - b);
+  if (hits.length < 2) return null;
+
+  const at = (t: number): CeilingPoint => ({
+    x: base.x + dir.x * t,
+    y: base.y + dir.y * t,
+  });
+  const middle = size / 2;
+  let best: [number, number] | null = null;
+  for (let no = 0; no + 1 < hits.length; no += 1) {
+    const [start, end] = [hits[no], hits[no + 1]];
+    if (end - start < 1e-6) continue;
+    if (!inside(points, at((start + end) / 2))) continue;
+    const holdsMiddle = start <= middle && middle <= end;
+    if (holdsMiddle) {
+      best = [start, end];
+      break;
+    }
+    if (best === null || end - start > best[1] - best[0]) best = [start, end];
+  }
+  if (best === null) return null;
+  return { a: at(best[0]), b: at(best[1]), length: round2(best[1] - best[0]) };
+}
+
+/** その線が取り付く辺から内側へ離す寸法 */
+export function ceilingLineDistance(element: CeilingElement): number {
+  if (element.kind === "wallBeam" || element.kind === "dropWall")
+    return element.width ?? 0;
+  return element.offset ?? 0;
 }
 
 export interface CeilingTotals {
@@ -91,6 +215,7 @@ export function ceilingElement(
     width: kind === "dropCeiling" ? null : 0.3,
     offset: kind === "wallBeam" || kind === "dropWall" ? 0 : 1,
     ceilingHeight: null,
+    height: null,
     area: null,
     note: "",
   };
@@ -121,13 +246,29 @@ export function ceilingQuantities(
     dropCeilingArea: 0,
   };
   const byHeight = new Map<number, number>();
+  let dropCeilingNo = 0;
 
   const items = elements.map((element) => {
-    const length = element.length ?? edgeLength(solved, element.edgeId);
+    // 下がり天井は部屋を横切るので、壁に当たるところまでの長さを自動で使う
+    const crossing =
+      element.kind === "dropCeiling"
+        ? wallToWallLine(
+            solved.points,
+            solved.edges.findIndex((row) => row.id === element.edgeId),
+            ceilingLineDistance(element),
+          )
+        : null;
+    const length =
+      element.length ?? crossing?.length ?? edgeLength(solved, element.edgeId);
+    const code =
+      element.kind === "dropCeiling" ? `C${(dropCeilingNo += 1)}` : null;
+    // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは自動で決める
     const drop =
-      roomCeilingHeight === null || element.ceilingHeight === null
-        ? null
-        : round2(roomCeilingHeight - element.ceilingHeight);
+      element.height !== null && element.height !== undefined
+        ? round2(element.height)
+        : roomCeilingHeight === null || element.ceilingHeight === null
+          ? null
+          : round2(roomCeilingHeight - element.ceilingHeight);
     const width = element.width ?? 0;
     let area: number | null = null;
 
@@ -159,7 +300,7 @@ export function ceilingQuantities(
       }
     }
 
-    return { element, length, drop, area };
+    return { element, length, drop, area, code };
   });
 
   return {

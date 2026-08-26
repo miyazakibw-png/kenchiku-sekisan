@@ -667,6 +667,16 @@
   fill: #0f766e;
 }
 
+/* 下がり天井の範囲番号（C1・C2…） */
+.room-sheet-page text.ceiling-code {
+  fill: #0f766e;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
 .room-sheet-page .check-window {
   position: fixed;
   right: 24px;

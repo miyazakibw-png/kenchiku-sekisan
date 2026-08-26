@@ -85,6 +85,59 @@ describe("天井伏図", () => {
     expect(result.totals.dropCeilingArea).toBe(4);
   });
 
+  it("下がり天井の線は壁に当たるところで止まり、その長さを自動で使う", () => {
+    // 6×4の部屋の右下を2×2欠き取ったL型
+    const solved = solveShape({
+      edges: [
+        { id: "e1", direction: "E", length: 6, kind: "wall" },
+        { id: "e2", direction: "S", length: 2, kind: "wall" },
+        { id: "e3", direction: "W", length: 2, kind: "wall" },
+        { id: "e4", direction: "S", length: 2, kind: "wall" },
+        { id: "e5", direction: "W", length: 4, kind: "wall" },
+        { id: "e6", direction: "N", length: 4, kind: "wall" },
+      ],
+    });
+    // 上の壁から3m下がった位置＝欠き取りの外なので、壁から壁まで4mになる
+    const deep = ceilingQuantities(
+      [element("dropCeiling", "e1", { offset: 3 })],
+      solved,
+      2.7,
+    );
+    expect(deep.items[0].length).toBe(4);
+    // 上の壁から1m下がった位置は欠き取りより上なので6mのまま（○～○）
+    const shallow = ceilingQuantities(
+      [element("dropCeiling", "e1", { offset: 1 })],
+      solved,
+      2.7,
+    );
+    expect(shallow.items[0].length).toBe(6);
+  });
+
+  it("下がり天井には図に出す番号（C1・C2…）を付ける", () => {
+    const solved = shape();
+    const result = ceilingQuantities(
+      [
+        element("wallBeam", solved.edges[0].id, {}),
+        element("dropCeiling", solved.edges[0].id, {}),
+        element("dropCeiling", solved.edges[1].id, {}),
+      ],
+      solved,
+      2.7,
+    );
+    expect(result.items.map((row) => row.code)).toEqual([null, "C1", "C2"]);
+  });
+
+  it("梁型はＨ（梁せい）を入れれば壁の高さを入れなくても面積が出る", () => {
+    const solved = shape();
+    const result = ceilingQuantities(
+      [element("wallBeam", solved.edges[0].id, { width: 0.4, height: 0.5 })],
+      solved,
+      2.7,
+    );
+    expect(result.items[0].drop).toBe(0.5);
+    expect(result.totals.wallBeamArea).toBe(3.6);
+  });
+
   it("記号は合計と線ごとに作る", () => {
     const solved = shape();
     const result = ceilingQuantities(
