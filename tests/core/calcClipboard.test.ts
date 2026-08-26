@@ -8,6 +8,7 @@ import {
   fillLines,
   pasteDetails,
   pasteLines,
+  pasteRows,
   setAsTsv
 } from '../../src/core/room/calcClipboard'
 import { calcDetail, calcLine, calcSet } from '../../src/core/room/calcSheet'
@@ -73,7 +74,7 @@ describe('セット明細計算表のコピー・貼り付け', () => {
     const rows = setAsTsv(set).split('\r\n')
     expect(rows).toHaveLength(1)
     expect(rows[0].split('\t')[0]).toBe('床')
-    expect(rows[0].split('\t')[7]).toBe('3*4')
+    expect(rows[0].split('\t')[10]).toBe('3*4')
   })
 
   it('選んだ複数行は明細と計算式を並べてコピーする', () => {
@@ -84,13 +85,63 @@ describe('セット明細計算表のコピー・貼り付け', () => {
     const lines = [calcLine({ comment: '事務室', formulaA: '3*4' }), calcLine({ formulaA: '2' })]
     const rows = rowsAsTsv(details, lines).split('\r\n')
     expect(rows).toHaveLength(2)
-    expect(rows[0].split('\t')).toEqual(['床', 'シート', '', '', 'm2', '1.05', '事務室', '3*4', ''])
-    expect(rows[1].split('\t')[7]).toBe('2')
+    // 明細の列のあとに計算式の列を並べる（明細欄へ貼り直しても列がずれない）
+    expect(rows[0].split('\t')).toEqual([
+      '床',
+      'シート',
+      '',
+      '',
+      'm2',
+      '1.05',
+      '',
+      '',
+      '',
+      '事務室',
+      '3*4',
+      ''
+    ])
+    expect(rows[1].split('\t')[10]).toBe('2')
 
     const copied = duplicateLine(lines[0])
     expect(copied.id).not.toBe(lines[0].id)
     expect(copied.formulaA).toBe('3*4')
     expect(duplicateLine(calcLine({ bSymbol: 'B1' })).bSymbol).toBe('')
+  })
+
+  it('コピーした行を明細欄へ貼り直しても列がずれない', () => {
+    const details = [
+      calcDetail({
+        partName: '床',
+        name: 'シート',
+        unit: 'm2',
+        coefficient: 1.05,
+        remarksUpper: '備上',
+        estimateDisplay: 'C21'
+      })
+    ]
+    const lines = [calcLine({ comment: '事務室', formulaA: '3*4' })]
+    const text = rowsAsTsv(details, lines)
+    const pasted = pasteRows([calcDetail()], [calcLine()], 0, text)
+    expect(pasted.details[0]).toMatchObject({
+      partName: '床',
+      name: 'シート',
+      unit: 'm2',
+      coefficient: 1.05,
+      remarksUpper: '備上',
+      estimateDisplay: 'C21'
+    })
+    expect(pasted.lines[0]).toMatchObject({ comment: '事務室', formulaA: '3*4' })
+  })
+
+  it('計算式の列が無いExcelの表は明細だけ入り、計算式はそのまま', () => {
+    const pasted = pasteRows(
+      [calcDetail()],
+      [calcLine({ formulaA: '残す' })],
+      0,
+      '床	シート			m2	1.05'
+    )
+    expect(pasted.details[0].name).toBe('シート')
+    expect(pasted.lines[0].formulaA).toBe('残す')
   })
 
   it('写した明細・セットは新しいIDを持ち、記号Ｂは引き継がない', () => {

@@ -417,6 +417,59 @@ describe('計算書からの自動登録と連動', () => {
     expect(lowerJsonOf(sheetId)).toContain('"formulaA":"10"')
   })
 
+  it('計算式だけの空行があってもマスター連動で明細の位置がずれない', () => {
+    const set = calcSetJson(['軽鉄下地', 'グラスウール']) as {
+      details: Record<string, unknown>[]
+      lines: Record<string, unknown>[]
+    }
+    // 明細の無い行（計算式だけの行）を1行目と2行目の間に挟む
+    set.details.splice(1, 0, {
+      id: 'dblank',
+      sourceDetailId: null,
+      subjectId: null,
+      detailNumber: null,
+      materialCategory: '',
+      partNumber: null,
+      partName: '',
+      name: '',
+      descriptionUpper: '',
+      descriptionLower: '',
+      unit: '',
+      remarksUpper: '',
+      remarksLower: '',
+      estimateDisplay: '',
+      coefficient: 1
+    })
+    set.lines = ['10', '20', '30'].map((formulaA, index) => ({
+      id: `l${index}`,
+      formulaA,
+      formulaB: '',
+      comment: '',
+      bSymbol: ''
+    }))
+    const sheetId = makeRoomSheet([set])
+    syncAssembliesFromSheets(db, projectIdRef)
+    const [assembly] = listAssemblies(db, projectIdRef)
+    expect(assembly.items.map((i) => i.name)).toEqual(['軽鉄下地', 'グラスウール'])
+
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: 'project',
+      projectId: projectIdRef,
+      note: '',
+      items: assembly.items.map((item) => ({ ...item, name: `${item.name}（改）` })),
+      propagate: true
+    })
+
+    const after = JSON.parse(lowerJsonOf(sheetId)) as {
+      details: { name: string }[]
+      lines: { formulaA: string }[]
+    }[]
+    // 空行はその位置のまま、明細と計算式の組み合わせも変わらない
+    expect(after[0].details.map((d) => d.name)).toEqual(['軽鉄下地（改）', '', 'グラスウール（改）'])
+    expect(after[0].lines.map((l) => l.formulaA)).toEqual(['10', '20', '30'])
+  })
+
   it('同じ明細を使う他のセットも一緒に直せる', () => {
     makeRoomSheet([calcSetJson(['軽鉄下地'])])
     syncAssembliesFromSheets(db, projectIdRef)

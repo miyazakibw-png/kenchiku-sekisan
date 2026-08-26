@@ -10,6 +10,7 @@ import {
   removeRow,
   resolveInherited,
   subtotalRow,
+  subtotalSums,
   updateRow
 } from '../../src/renderer/src/features/estimate/estimateRows'
 import { buildPastePreview } from '../../src/renderer/src/features/grid/gridClipboard'
@@ -78,6 +79,28 @@ describe('行操作', () => {
 
   it('部屋を入力した行の倍率は既定で1', () => {
     expect(updateRow([emptyRow()], 0, { part3: '事務室' })[0].multiplier).toBe(1)
+  })
+
+  it('小計行に部位ごとの数量合計が入り、次の小計行では足し直す', () => {
+    const rows = [
+      row({ part3: 'A' }),
+      row({ part3: 'B' }),
+      subtotalRow(),
+      row({ part3: 'C' }),
+      subtotalRow()
+    ]
+    const quantity: Record<string, Record<string, number>> = {
+      A: { 床: 10, 巾木: 4 },
+      B: { 床: 5 },
+      C: { 床: 2, 巾木: 1 }
+    }
+    const sums = subtotalSums(rows, ['床', '巾木'], (target, part) => {
+      const value = quantity[target.part3]?.[part]
+      return value === undefined ? null : value
+    })
+    expect(sums[0]).toBeNull()
+    expect(sums[2]).toEqual({ 床: 15, 巾木: 4 })
+    expect(sums[4]).toEqual({ 床: 2, 巾木: 1 })
   })
 })
 

@@ -169,6 +169,10 @@ table.estimate tr.subtotal {
   font-weight: bold;
 }
 
+table.estimate tr.subtotal .subtotal-label {
+  padding: 0 4px;
+}
+
 .estimate-page .hint {
   margin: 0 8px 16px;
   font-size: 11px;

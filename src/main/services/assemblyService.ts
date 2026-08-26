@@ -20,9 +20,10 @@ import type {
   SaveAssemblyResult,
 } from "../../shared/types";
 import { assemblySignature } from "../../shared/assemblySignature";
-import type { CalcDetail, CalcSet } from "../../core/room/calcSheet";
+import type { CalcDetail, CalcLine, CalcSet } from "../../core/room/calcSheet";
 import {
   calcDetail,
+  calcLine,
   isEmptyDetail,
   normalizeSets,
   syncLines,
@@ -351,6 +352,45 @@ function toCalcDetail(
   });
 }
 
+/** マスターの明細とつき合わせる行か（空行・科目なしの行はマスターに無い） */
+function isMasterRow(detail: CalcDetail): boolean {
+  return !isEmptyDetail(detail) && detail.subjectId !== null;
+}
+
+/**
+ * セット明細マスターの明細を、計算書のセットへ当てはめる。
+ * 空行はその位置のまま残し、中身のある行だけを上から順に合わせるので、
+ * 計算式の行と明細の行がずれない。
+ */
+function applyItemsToSet(
+  items: AssemblyItem[],
+  set: CalcSet,
+): { details: CalcDetail[]; lines: CalcLine[] } {
+  const details: CalcDetail[] = [];
+  const lines: CalcLine[] = [];
+  let cursor = 0;
+  set.details.forEach((detail, index) => {
+    const line = set.lines[index] ?? calcLine();
+    if (!isMasterRow(detail)) {
+      details.push(detail);
+      lines.push(line);
+      return;
+    }
+    const item = items[cursor];
+    cursor += 1;
+    // マスターから消えた明細は計算書からも消す
+    if (item === undefined) return;
+    details.push(toCalcDetail(item, detail));
+    lines.push(line);
+  });
+  // マスターで増えた明細は後ろへ足す
+  for (; cursor < items.length; cursor += 1) {
+    details.push(toCalcDetail(items[cursor], undefined));
+    lines.push(calcLine());
+  }
+  return { details, lines: syncLines(details, lines) };
+}
+
 /**
  * セット明細マスターで直した内容を、そのセットを使っている計算書へ連動させる。
  * 計算式はそのまま残し、明細の文字と掛け率だけを合わせる。
@@ -371,11 +411,9 @@ export function propagateAssemblyToSheets(
         let changed = false;
         sets.forEach((set) => {
           if (set.assemblyId !== assembly.id) return;
-          const details = assembly.items.map((item, index) =>
-            toCalcDetail(item, set.details[index]),
-          );
-          set.details = details;
-          set.lines = syncLines(details, set.lines);
+          const applied = applyItemsToSet(assembly.items, set);
+          set.details = applied.details;
+          set.lines = applied.lines;
           changed = true;
           synced += 1;
         });
@@ -394,26 +432,24 @@ export function propagateAssemblyToSheets(
 
 /** 計算書の1セットを、セット明細マスターの構成明細に写し取る */
 function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
-  return set.details
-    .filter((detail) => !isEmptyDetail(detail) && detail.subjectId !== null)
-    .map((detail) => ({
-      id: null,
-      sourceDetailId: detail.sourceDetailId,
-      subjectId: detail.subjectId as number,
-      partNumber: detail.partNumber,
-      detailNumber: detail.detailNumber,
-      materialCategory: detail.materialCategory,
-      partName: detail.partName || set.partName,
-      name: detail.name,
-      descriptionUpper: detail.descriptionUpper,
-      descriptionLower: detail.descriptionLower,
-      unit: detail.unit,
-      remarksUpper: detail.remarksUpper,
-      remarksLower: detail.remarksLower,
-      estimateDisplay: detail.estimateDisplay,
-      formula: "",
-      coefficient: detail.coefficient,
-    }));
+  return set.details.filter(isMasterRow).map((detail) => ({
+    id: null,
+    sourceDetailId: detail.sourceDetailId,
+    subjectId: detail.subjectId as number,
+    partNumber: detail.partNumber,
+    detailNumber: detail.detailNumber,
+    materialCategory: detail.materialCategory,
+    partName: detail.partName || set.partName,
+    name: detail.name,
+    descriptionUpper: detail.descriptionUpper,
+    descriptionLower: detail.descriptionLower,
+    unit: detail.unit,
+    remarksUpper: detail.remarksUpper,
+    remarksLower: detail.remarksLower,
+    estimateDisplay: detail.estimateDisplay,
+    formula: "",
+    coefficient: detail.coefficient,
+  }));
 }
 
 /**

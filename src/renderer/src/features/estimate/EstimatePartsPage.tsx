@@ -21,6 +21,7 @@ import {
   removeRow,
   resolveInherited,
   subtotalRow,
+  subtotalSums,
   toDrafts,
   updateRow,
 } from "./estimateRows";
@@ -90,6 +91,16 @@ export default function EstimatePartsPage({
     [checks],
   );
 
+  /** 小計行に入れる部位ごとの数量合計（ひとつ上の小計行から下の分） */
+  const partSums = useMemo(
+    () =>
+      subtotalSums(rows, checkColumns, (row, partName) => {
+        const cell = checkOf(row.id, partName);
+        return cell === null ? null : cell.quantity;
+      }),
+    [rows, checkColumns, checkOf],
+  );
+
   /** 行ごとに中身の入っている計算書の種類（種類を変える前の確認に使う） */
   const [filledSheets, setFilledSheets] = useState<Record<number, string[]>>(
     {},
@@ -116,16 +127,20 @@ export default function EstimatePartsPage({
     })();
   }, [checkCategory, project.id, rows]);
 
+  /** 今の行の中身（欄を離れたときなど、描き直しよりあとで使う） */
+  const rowsRef = useRef<EstimateRowDraft[]>(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
   /** 直したときは1つ前の内容を履歴へ積む（↶戻る・↷進む用） */
-  const editRows = useCallback(
-    (next: EstimateRowDraft[]): void => {
-      pastRef.current = [...pastRef.current.slice(-99), rows];
-      futureRef.current = [];
-      setHistoryTick((tick) => tick + 1);
-      setRows(next);
-    },
-    [rows],
-  );
+  const editRows = useCallback((next: EstimateRowDraft[]): void => {
+    pastRef.current = [...pastRef.current.slice(-99), rowsRef.current];
+    futureRef.current = [];
+    setHistoryTick((tick) => tick + 1);
+    rowsRef.current = next;
+    setRows(next);
+  }, []);
 
   const canUndo = useMemo(
     () => historyTick >= 0 && pastRef.current.length > 0,
@@ -257,21 +272,31 @@ export default function EstimatePartsPage({
     decimals: number,
     parse: (text: string) => { value: number | null; error?: string },
     apply: (parsed: number | null) => Partial<EstimateRowDraft>,
-  ): JSX.Element => (
-    <input
-      className="num"
-      defaultValue={formatNumber(value, decimals)}
-      key={`${index}-${formatNumber(value, decimals)}`}
-      onBlur={(e) => {
-        const parsed = parse(e.target.value);
-        if (parsed.error) {
-          setMessage(parsed.error);
-          return;
-        }
-        editRows(updateRow(rows, index, apply(parsed.value)));
-      }}
-    />
-  );
+  ): JSX.Element => {
+    const rowId = rows[index]?.id ?? null;
+    return (
+      <input
+        className="num"
+        defaultValue={formatNumber(value, decimals)}
+        key={`${index}-${formatNumber(value, decimals)}`}
+        onBlur={(e) => {
+          const parsed = parse(e.target.value);
+          if (parsed.error) {
+            setMessage(parsed.error);
+            return;
+          }
+          // 欄を離れるまでに行が増えていても、同じ行へ入れる
+          const current = rowsRef.current;
+          const at =
+            rowId === null
+              ? index
+              : current.findIndex((row) => row.id === rowId);
+          if (at < 0) return;
+          editRows(updateRow(current, at, apply(parsed.value)));
+        }}
+      />
+    );
+  };
 
   if (openedSheet !== null && rows[openedSheet]?.calcType === "frame") {
     return (
@@ -602,66 +627,88 @@ export default function EstimatePartsPage({
                   </span>
                 </td>
                 <td>
-                  <input
-                    lang="ja"
-                    value={row.part1}
-                    placeholder={shown.part1}
-                    title="空欄のときは入力のある上の行を引き継ぎます"
-                    onChange={(e) =>
-                      editRows(
-                        updateRow(rows, index, { part1: e.target.value }),
-                      )
-                    }
-                  />
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <input
+                      lang="ja"
+                      value={row.part1}
+                      placeholder={shown.part1}
+                      title="空欄のときは入力のある上の行を引き継ぎます"
+                      onChange={(e) =>
+                        editRows(
+                          updateRow(rows, index, { part1: e.target.value }),
+                        )
+                      }
+                    />
+                  )}
                 </td>
                 <td>
-                  <input
-                    lang="ja"
-                    value={row.part2}
-                    placeholder={shown.part2}
-                    title="空欄のときは入力のある上の行を引き継ぎます"
-                    onChange={(e) =>
-                      editRows(
-                        updateRow(rows, index, { part2: e.target.value }),
-                      )
-                    }
-                  />
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <input
+                      lang="ja"
+                      value={row.part2}
+                      placeholder={shown.part2}
+                      title="空欄のときは入力のある上の行を引き継ぎます"
+                      onChange={(e) =>
+                        editRows(
+                          updateRow(rows, index, { part2: e.target.value }),
+                        )
+                      }
+                    />
+                  )}
                 </td>
                 <td className="flag">
-                  <input
-                    type="checkbox"
-                    checked={row.part2Split === 1}
-                    title="集計時に部位Ⅱ別で仕分ける"
-                    onChange={(e) =>
-                      editRows(
-                        updateRow(rows, index, {
-                          part2Split: e.target.checked ? 1 : 0,
-                        }),
-                      )
-                    }
-                  />
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={row.part2Split === 1}
+                      title="集計時に部位Ⅱ別で仕分ける"
+                      onChange={(e) =>
+                        editRows(
+                          updateRow(rows, index, {
+                            part2Split: e.target.checked ? 1 : 0,
+                          }),
+                        )
+                      }
+                    />
+                  )}
                 </td>
                 <td>
-                  <MasterCodeInput
-                    entries={options.formworkCategories}
-                    listId="formwork-list"
-                    value={row.formwork}
-                    title="型枠分類のIDを入力すると種類名に変換されます"
-                    onChange={(value) =>
-                      editRows(updateRow(rows, index, { formwork: value }))
-                    }
-                  />
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <MasterCodeInput
+                      entries={options.formworkCategories}
+                      listId="formwork-list"
+                      value={row.formwork}
+                      title="型枠分類のIDを入力すると種類名に変換されます"
+                      onChange={(value) =>
+                        editRows(updateRow(rows, index, { formwork: value }))
+                      }
+                    />
+                  )}
                 </td>
                 <td>
-                  <input
-                    lang="ja"
-                    value={row.part3}
-                    onChange={(e) =>
-                      editRows(
-                        updateRow(rows, index, { part3: e.target.value }),
-                      )
-                    }
-                  />
+                  {isSubtotal ? (
+                    <span className="subtotal-label">
+                      {row.part3 || "小計"}
+                    </span>
+                  ) : (
+                    <input
+                      lang="ja"
+                      value={row.part3}
+                      onChange={(e) =>
+                        editRows(
+                          updateRow(rows, index, { part3: e.target.value }),
+                        )
+                      }
+                    />
+                  )}
                 </td>
                 <td>
                   {isSubtotal
@@ -677,15 +724,17 @@ export default function EstimatePartsPage({
                       )}
                 </td>
                 <td>
-                  {numberCell(
-                    index,
-                    row.multiplier,
-                    0,
-                    parseMultiplier,
-                    (value) => ({
-                      multiplier: value ?? 1,
-                    }),
-                  )}
+                  {isSubtotal
+                    ? ""
+                    : numberCell(
+                        index,
+                        row.multiplier,
+                        0,
+                        parseMultiplier,
+                        (value) => ({
+                          multiplier: value ?? 1,
+                        }),
+                      )}
                 </td>
                 <td>
                   {isSubtotal ? (
@@ -717,22 +766,36 @@ export default function EstimatePartsPage({
                   )}
                 </td>
                 <td>
-                  <input
-                    lang="ja"
-                    value={row.note}
-                    onChange={(e) =>
-                      editRows(updateRow(rows, index, { note: e.target.value }))
-                    }
-                  />
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <input
+                      lang="ja"
+                      value={row.note}
+                      onChange={(e) =>
+                        editRows(
+                          updateRow(rows, index, { note: e.target.value }),
+                        )
+                      }
+                    />
+                  )}
                 </td>
                 {checkColumns.flatMap((label) => {
-                  const cell = checkOf(row.id, label);
+                  // 小計行は部位ごとの合計だけを出す（名称は出さない）
+                  const sum = partSums[index]?.[label];
+                  const cell = isSubtotal ? null : checkOf(row.id, label);
                   return [
                     <td key={`n-${label}`} className="check">
                       {cell?.name ?? ""}
                     </td>,
                     <td key={`q-${label}`} className="check number">
-                      {cell ? cell.quantity.toFixed(2) : ""}
+                      {isSubtotal
+                        ? sum === undefined
+                          ? ""
+                          : sum.toFixed(2)
+                        : cell
+                          ? cell.quantity.toFixed(2)
+                          : ""}
                     </td>,
                   ];
                 })}

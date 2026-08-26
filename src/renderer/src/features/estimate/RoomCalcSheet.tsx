@@ -39,8 +39,8 @@ import {
   duplicateLine,
   duplicateSet,
   fillLines,
-  pasteDetails,
   pasteLines,
+  pasteRows,
   rowsAsTsv,
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
@@ -1256,13 +1256,26 @@ export default function RoomCalcSheet({
                 ...currentSet.details.slice(at),
               ]
             : currentSet.details;
-        const details = pasteDetails(base, at, text);
+        const baseLines =
+          mode === "insert"
+            ? [
+                ...currentSet.lines.slice(0, at),
+                ...Array.from(
+                  {
+                    length: base.length - currentSet.details.length,
+                  },
+                  () => calcLine(),
+                ),
+                ...currentSet.lines.slice(at),
+              ]
+            : currentSet.lines;
+        const pasted = pasteRows(base, baseLines, at, text);
         updateSet(currentSet.id, {
-          details,
-          lines: fillLines(details, currentSet.lines),
+          details: pasted.details,
+          lines: fillLines(pasted.details, pasted.lines),
         });
         onMessage(
-          "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順）",
+          "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順。後ろにコメント／計算式Ａ／計算式Ｂがあれば計算式へも入ります）",
         );
         return;
       }
@@ -1629,7 +1642,8 @@ export default function RoomCalcSheet({
                     });
                   return (
                     <tr
-                      key={`${set.id}-${rowIndex}`}
+                      // 行の目印は行番号ではなくIDにする（行を差し込んでも入力中の欄がずれない）
+                      key={`${set.id}-${detail?.id ?? line?.id ?? `r${rowIndex}`}`}
                       className={
                         isSelectedRow(set.id, rowIndex) ? "row-selected" : ""
                       }

@@ -32,6 +32,32 @@ export function subtotalRow(): EstimateRowDraft {
   return { ...emptyRow(), rowType: 'subtotal', part3: '小計', multiplier: 0 }
 }
 
+/**
+ * 小計行に入れる部位ごとの数量合計。
+ * ひとつ上の小計行の次から、その小計行の直前までの行を足す。
+ */
+export function subtotalSums(
+  rows: EstimateRowDraft[],
+  parts: string[],
+  quantityOf: (row: EstimateRowDraft, partName: string) => number | null
+): (Record<string, number> | null)[] {
+  const sums: (Record<string, number> | null)[] = rows.map(() => null)
+  let running: Record<string, number> = {}
+  rows.forEach((row, index) => {
+    if (row.rowType === 'subtotal') {
+      sums[index] = running
+      running = {}
+      return
+    }
+    parts.forEach((part) => {
+      const value = quantityOf(row, part)
+      if (value === null) return
+      running[part] = (running[part] ?? 0) + value
+    })
+  })
+  return sums
+}
+
 /** 天井高さ・倍率の表示（未入力は空欄） */
 export function formatNumber(value: number | null, decimals = 2): string {
   return value === null ? '' : value.toFixed(decimals)

@@ -30,6 +30,19 @@ export const DETAIL_PASTE_COLUMNS = [
 /** 計算式欄へ貼り付けるときの列（1列だけのときは計算式Ａとして扱う） */
 export const LINE_PASTE_COLUMNS = ["コメント", "計算式Ａ", "計算式Ｂ"] as const;
 
+/**
+ * 行（明細＋計算式）をコピーするときの列。
+ * 明細の列をそのまま並べたあとに計算式の列を足すので、
+ * 明細欄へ貼り直しても列がずれない。
+ */
+export const ROW_PASTE_COLUMNS = [
+  ...DETAIL_PASTE_COLUMNS,
+  ...LINE_PASTE_COLUMNS,
+] as const;
+
+/** 明細の列数（この列より後ろは計算式の列） */
+const DETAIL_COLUMN_COUNT = DETAIL_PASTE_COLUMNS.length;
+
 function coefficientOf(text: string, fallback: number): number {
   if (text.trim() === "") return fallback;
   const value = Number(text);
@@ -133,24 +146,33 @@ export function detailAsTsv(detail: CalcDetail): string {
   ]);
 }
 
+/** 明細1件と計算式1行を、コピー用の1行（列はROW_PASTE_COLUMNS）にする */
+function rowCells(
+  detail: CalcDetail | undefined,
+  line: CalcLine | undefined,
+): string[] {
+  return [
+    detail?.partName ?? "",
+    detail?.name ?? "",
+    detail?.descriptionUpper ?? "",
+    detail?.descriptionLower ?? "",
+    detail?.unit ?? "",
+    detail === undefined ? "" : String(detail.coefficient),
+    detail?.remarksUpper ?? "",
+    detail?.remarksLower ?? "",
+    detail?.estimateDisplay ?? "",
+    line?.comment ?? "",
+    line?.formulaA ?? "",
+    line?.formulaB ?? "",
+  ];
+}
+
 /** 選んだ行（明細＋計算式）をExcelへ貼れる形にする */
 export function rowsAsTsv(details: CalcDetail[], lines: CalcLine[]): string {
   const rowCount = Math.max(details.length, lines.length, 1);
   const matrix: string[][] = [];
   for (let index = 0; index < rowCount; index += 1) {
-    const detail = details[index];
-    const line = lines[index];
-    matrix.push([
-      detail?.partName ?? "",
-      detail?.name ?? "",
-      detail?.descriptionUpper ?? "",
-      detail?.descriptionLower ?? "",
-      detail?.unit ?? "",
-      detail === undefined ? "" : String(detail.coefficient),
-      line?.comment ?? "",
-      line?.formulaA ?? "",
-      line?.formulaB ?? "",
-    ]);
+    matrix.push(rowCells(details[index], lines[index]));
   }
   return toTsv(matrix);
 }
@@ -160,21 +182,44 @@ export function setAsTsv(set: CalcSet): string {
   const rowCount = Math.max(set.details.length, set.lines.length, 1);
   const matrix: string[][] = [];
   for (let index = 0; index < rowCount; index += 1) {
-    const detail = set.details[index];
-    const line = set.lines[index];
-    matrix.push([
-      index === 0 ? set.partName : "",
-      detail?.partName ?? "",
-      detail?.name ?? "",
-      detail?.descriptionLower ?? "",
-      detail?.unit ?? "",
-      detail === undefined ? "" : String(detail.coefficient),
-      line?.comment ?? "",
-      line?.formulaA ?? "",
-      line?.formulaB ?? "",
-    ]);
+    const cells = rowCells(set.details[index], set.lines[index]);
+    // セットの部位名は、明細に部位名が無いときだけ1行目へ入れる
+    if (index === 0 && cells[0] === "") cells[0] = set.partName;
+    matrix.push(cells);
   }
   return toTsv(matrix);
+}
+
+/**
+ * 明細と計算式を横に並べた表（ROW_PASTE_COLUMNS）を取り込む。
+ * 計算式の列が無い表（明細だけ）でも貼り付けできる。
+ */
+export function pasteRows(
+  details: CalcDetail[],
+  lines: CalcLine[],
+  startIndex: number,
+  clipboardText: string,
+): { details: CalcDetail[]; lines: CalcLine[] } {
+  const matrix = normalizePastedMatrix(parseTsv(clipboardText));
+  const nextDetails = pasteDetails(details, startIndex, clipboardText);
+  const nextLines = [...lines];
+  const at = Math.min(Math.max(startIndex, 0), nextDetails.length);
+  matrix.forEach((row, offset) => {
+    if (row.length <= DETAIL_COLUMN_COUNT) return;
+    const index = at + offset;
+    const base = nextLines[index] ?? calcLine();
+    const merged: CalcLine = {
+      ...base,
+      comment: row[DETAIL_COLUMN_COUNT] ?? base.comment,
+      formulaA: row[DETAIL_COLUMN_COUNT + 1] ?? base.formulaA,
+      formulaB: row[DETAIL_COLUMN_COUNT + 2] ?? base.formulaB,
+      // 記号はセットに1つなので貼り付けでは動かさない
+      bSymbol: base.bSymbol,
+    };
+    if (index < nextLines.length) nextLines[index] = merged;
+    else nextLines.push(merged);
+  });
+  return { details: nextDetails, lines: fillLines(nextDetails, nextLines) };
 }
 
 /** 明細を写す（IDは新しくする。写し元の明細IDは根拠として残す） */
