@@ -266,6 +266,17 @@ describe("天井伏図", () => {
     expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(26, 6);
   });
 
+  it("天井高さがまだ空でも下がり天井の線で区画を2つに分ける", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
+      solved,
+      2.7,
+    );
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
+  });
+
   it("番号は区画の中（外まわりの線から離れたところ）に出す", () => {
     const solved = shape();
     const regions = ceilingRegions(

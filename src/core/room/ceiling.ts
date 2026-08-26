@@ -516,12 +516,17 @@ export function ceilingRegions(
     polygons = polygons.flatMap((poly) => cutPolygon(poly, line));
   });
 
-  const pieces = polygons.map((poly) => ({
-    poly,
-    center: polygonCenter(poly),
-    area: polygonArea(poly),
-    drop: dropAt(elements, solved, roomCeilingHeight, polygonCenter(poly)),
-  }));
+  const pieces = polygons.map((poly) => {
+    const center = polygonCenter(poly);
+    const found = dropAt(elements, solved, roomCeilingHeight, center);
+    return {
+      poly,
+      center,
+      area: polygonArea(poly),
+      drop: found.drop,
+      waiting: found.waiting,
+    };
+  });
 
   // 天井高さが同じで隣り合う区画（コ型・L型の下がり天井）は1つにまとめる
   const group = pieces.map((_, no) => no);
@@ -531,6 +536,7 @@ export function ceilingRegions(
     pieces.forEach((right, other) => {
       if (other <= no) return;
       if (Math.abs(left.drop - right.drop) > 1e-6) return;
+      if (left.waiting !== right.waiting) return;
       if (!touching(left.poly, right.poly)) return;
       group[rootOf(other)] = rootOf(no);
     });
@@ -645,9 +651,11 @@ function dropAt(
   solved: SolvedShape,
   roomCeilingHeight: number | null,
   target: CeilingPoint,
-): number {
+): { drop: number; waiting: string } {
   const points = solved.points;
   let drop = 0;
+  // 高さがまだ入っていない下がり天井。高さが決まるまで、その内と外は別の区画にする
+  const waiting: string[] = [];
   elements.forEach((element) => {
     if (element.kind !== "dropCeiling") return;
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
@@ -660,9 +668,13 @@ function dropAt(
     const far = element.offset ?? 0;
     if (reach > far + 1e-6) return;
     const here = elementDrop(element, roomCeilingHeight);
-    if (here !== null && here > drop) drop = here;
+    if (here === null) {
+      waiting.push(element.id);
+      return;
+    }
+    if (here > drop) drop = here;
   });
-  return round2(drop);
+  return { drop: round2(drop), waiting: waiting.sort().join(",") };
 }
 
 /** 2つの区画が辺で接しているか（同じ直線の上で重なっているか） */
