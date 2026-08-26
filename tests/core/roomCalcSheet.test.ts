@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  addSetDetailRow,
+  addSetLineRow,
   addSetRow,
+  moveSetDetail,
+  removeSetDetail,
   calcDetail,
   calcLine,
   calcSet,
@@ -279,6 +283,43 @@ describe("行の追加と削除", () => {
     const added = addSetRow(set, 1);
     expect(added.details.map((item) => item.name)).toEqual(["床", "", "壁"]);
     expect(added.lines.map((item) => item.formulaA)).toEqual(["1", "", "2"]);
+  });
+
+  it("明細欄の行挿入では計算式の行がずれない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const added = addSetDetailRow(set, 0);
+    expect(added.details.map((item) => item.name)).toEqual(["", "床", "壁"]);
+    // 計算式はセットの先頭行に入れたまま動かさない
+    expect(added.lines.map((item) => item.formulaA)).toEqual(["1", "2", ""]);
+  });
+
+  it("計算式欄の行挿入では明細がずれない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const added = addSetLineRow(set, 0);
+    expect(added.details.map((item) => item.name)).toEqual(["床", "壁"]);
+    expect(added.lines.map((item) => item.formulaA)).toEqual(["", "1", "2"]);
+  });
+
+  it("明細を1件消しても計算式は消えない・ずれない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const removed = removeSetDetail(set, 0);
+    expect(removed.details.map((item) => item.name)).toEqual(["壁"]);
+    expect(removed.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("明細を上下に動かしても計算式は動かない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    set.lines = [calcLine({ formulaA: "1" }), calcLine({ formulaA: "2" })];
+    const moved = moveSetDetail(set, 0, 1);
+    expect(moved.details.map((item) => item.name)).toEqual(["壁", "床"]);
+    expect(moved.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
   });
 
   it("明細の無い行は明細を用意して入力できるようにする", () => {

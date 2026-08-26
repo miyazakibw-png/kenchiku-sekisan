@@ -193,6 +193,46 @@ export function addSetRow(set: CalcSet, position?: number): CalcSet {
   return { ...set, details, lines: padLines(details, lines) };
 }
 
+/**
+ * 明細欄に1行入れる（計算式の行は動かさない）。
+ * 計算式はセットの先頭行に入れる使い方が多いため、
+ * 明細を差し込んだだけで式が下の行へずれないようにする。
+ */
+export function addSetDetailRow(set: CalcSet, position?: number): CalcSet {
+  const details = [...set.details];
+  const at = Math.min(Math.max(position ?? details.length, 0), details.length);
+  details.splice(at, 0, calcDetail());
+  return { ...set, details, lines: padLines(details, set.lines) };
+}
+
+/** 計算式欄に1行入れる（明細の行は動かさない） */
+export function addSetLineRow(set: CalcSet, position?: number): CalcSet {
+  const lines = [...set.lines];
+  const at = Math.min(Math.max(position ?? lines.length, 0), lines.length);
+  lines.splice(at, 0, calcLine());
+  return { ...set, lines };
+}
+
+/** 明細を1件だけ消す（計算式の行は残して動かさない） */
+export function removeSetDetail(set: CalcSet, index: number): CalcSet {
+  const details = set.details.filter((_, rowIndex) => rowIndex !== index);
+  return { ...set, details, lines: padLines(details, set.lines) };
+}
+
+/** 明細を上下に入れ替える（計算式の行は動かさない） */
+export function moveSetDetail(
+  set: CalcSet,
+  index: number,
+  step: number,
+): CalcSet {
+  const to = index + step;
+  if (index < 0 || index >= set.details.length) return set;
+  if (to < 0 || to >= set.details.length) return set;
+  const details = [...set.details];
+  [details[index], details[to]] = [details[to], details[index]];
+  return { ...set, details, lines: padLines(details, set.lines) };
+}
+
 /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
 export function openSetDetail(set: CalcSet, index: number): CalcSet {
   const details = [...set.details];

@@ -10,6 +10,8 @@ import { resolveMasterName } from "@shared/masters";
 import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import {
+  addSetDetailRow,
+  addSetLineRow,
   addSetRow,
   calcDetail,
   calcLine,
@@ -20,9 +22,11 @@ import {
   evaluateCalcSheet,
   isCommentSet,
   mergeWithPreviousSet,
+  moveSetDetail,
   openSetDetail,
   padLines,
   removeSet,
+  removeSetDetail,
   removeSetLine,
   setRowCount,
   splitSetAt,
@@ -766,11 +770,8 @@ export default function RoomCalcSheet({
     (setId: string, index: number): void => {
       const target = sets.find((set) => set.id === setId);
       if (!target) return;
-      const details = target.details.filter(
-        (_, rowIndex) => rowIndex !== index,
-      );
-      const lines = target.lines.filter((_, rowIndex) => rowIndex !== index);
-      updateSet(setId, { details, lines: syncLines(details, lines) });
+      const next = removeSetDetail(target, index);
+      updateSet(setId, { details: next.details, lines: next.lines });
       onFocus(null);
     },
     [onFocus, sets, updateSet],
@@ -806,11 +807,8 @@ export default function RoomCalcSheet({
       if (!target) return;
       const to = index + step;
       if (to < 0 || to >= target.details.length) return;
-      const details = [...target.details];
-      const lines = padLines(details, target.lines);
-      [details[index], details[to]] = [details[to], details[index]];
-      [lines[index], lines[to]] = [lines[to], lines[index]];
-      updateSet(setId, { details, lines });
+      const next = moveSetDetail(target, index, step);
+      updateSet(setId, { details: next.details, lines: next.lines });
       onFocus({ setId, area: "detail", index: to });
     },
     [onFocus, sets, updateSet],
@@ -996,8 +994,14 @@ export default function RoomCalcSheet({
         commit([...sets, calcSet()]);
         return;
       }
-      // 明細欄・計算式欄のどちらから足しても、明細と計算式行は必ず1対1にする
-      const next = addSetRow(target, insert ? (focus?.index ?? 0) : undefined);
+      // カーソルのある欄だけに行を入れる（明細を差し込んでも計算式はずれない）
+      const at = insert ? (focus?.index ?? 0) : undefined;
+      const next =
+        focus === null
+          ? addSetRow(target, at)
+          : focus.area === "detail"
+            ? addSetDetailRow(target, at)
+            : addSetLineRow(target, at);
       updateSet(target.id, { details: next.details, lines: next.lines });
     },
     [bannerSetId, commit, currentSet, focus, sets, updateSet],
