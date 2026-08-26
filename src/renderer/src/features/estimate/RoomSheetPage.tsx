@@ -2204,7 +2204,7 @@ export default function RoomSheetPage({
                     className="num"
                     title="この線で囲まれる範囲の天井高さ（面積ではありません）"
                   >
-                    範囲の天井高さ(m)
+                    天井高さ(m)
                   </th>
                   <th className="num" title="部屋の天井高さからの下がり">
                     下がり(m)
