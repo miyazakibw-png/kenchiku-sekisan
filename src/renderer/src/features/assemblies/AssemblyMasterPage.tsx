@@ -135,6 +135,17 @@ export default function AssemblyMasterPage({
       if (!editor) return;
       const items = toAssemblyItems(editor.items);
       const before = assemblies.find((a) => a.id === editor.id);
+      // 中身が変わっていない自動保存では計算書への連動を走らせない
+      if (
+        quiet &&
+        before &&
+        before.note === editor.note &&
+        JSON.stringify(before.items) === JSON.stringify(items)
+      ) {
+        setEditor(null);
+        markSaved(null);
+        return;
+      }
       // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
       const changedKeys = (before?.items ?? []).flatMap((old, index) => {
         const next = items[index];
