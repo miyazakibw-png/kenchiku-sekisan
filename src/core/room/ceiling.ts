@@ -812,8 +812,9 @@ export function ceilingQuantities(
       element.kind === "dropCeiling" || element.kind === "ceilingBeam"
         ? (lines.find((line) => line.elementId === element.id) ?? null)
         : null;
+    // 下がり天井・天井付梁型は、壁や自分より低い線で止めた実際の長さで数える
     const length =
-      element.length ?? crossing?.length ?? edgeLength(solved, element.edgeId);
+      crossing?.length ?? element.length ?? edgeLength(solved, element.edgeId);
     // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは自動で決める
     const drop = elementDrop(element, roomCeilingHeight);
     const width = element.width ?? 0;

@@ -2192,22 +2192,33 @@ export default function RoomSheetPage({
                         </select>
                       </td>
                       <td>
-                        <input
-                          className="num"
-                          defaultValue={
-                            element.length === null
-                              ? ""
-                              : formatNumber(element.length, 2)
-                          }
-                          placeholder={formatNumber(item.length, 2)}
-                          title="空欄なら自動（下がり天井は壁に当たるまで、他は沿う壁の長さ）"
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              length: text === "" ? null : Number(text),
-                            });
-                          }}
-                        />
+                        {element.kind === "dropCeiling" ||
+                        element.kind === "ceilingBeam" ? (
+                          // 図で止まったところまでの長さ（手入力できると図と合わなくなる）
+                          <span
+                            className="num"
+                            title="自動（突き当たる壁か、自分より低い下がり天井・梁型まで）"
+                          >
+                            {formatNumber(item.length, 2)}
+                          </span>
+                        ) : (
+                          <input
+                            className="num"
+                            defaultValue={
+                              element.length === null
+                                ? ""
+                                : formatNumber(element.length, 2)
+                            }
+                            placeholder={formatNumber(item.length, 2)}
+                            title="空欄なら沿う壁の長さ"
+                            onBlur={(e) => {
+                              const text = e.target.value.trim();
+                              updateCeiling(element.id, {
+                                length: text === "" ? null : Number(text),
+                              });
+                            }}
+                          />
+                        )}
                       </td>
                       <td>
                         <input

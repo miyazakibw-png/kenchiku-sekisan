@@ -35,13 +35,12 @@ describe("天井伏図", () => {
     expect(result.totals.wallBeamArea).toBe(1.6);
   });
 
-  it("天井付梁型も天井の範囲（長さ×梁幅）で数える", () => {
+  it("天井付梁型は壁までの長さを自動で使い、天井の範囲（長さ×梁幅）で数える", () => {
     const solved = shape();
     const wall = solved.edges[0];
     const result = ceilingQuantities(
       [
         element("ceilingBeam", wall.id, {
-          length: 3,
           width: 0.4,
           ceilingHeight: 2.4,
         }),
@@ -49,8 +48,9 @@ describe("天井伏図", () => {
       solved,
       2.7,
     );
-    expect(result.totals.ceilingBeamLength).toBe(3);
-    expect(result.totals.ceilingBeamArea).toBe(1.2);
+    // 2本の見付線それぞれが壁から壁まで（4m）
+    expect(result.totals.ceilingBeamLength).toBe(4);
+    expect(result.totals.ceilingBeamArea).toBe(1.6);
   });
 
   it("下がり壁は下がり高さ分の面積になる", () => {
