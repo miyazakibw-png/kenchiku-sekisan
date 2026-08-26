@@ -2202,9 +2202,9 @@ export default function RoomSheetPage({
                   <th className="num">壁からの離れ</th>
                   <th
                     className="num"
-                    title="この線で囲まれる範囲の天井高さ（面積ではありません）"
+                    title="この線で囲まれる範囲の壁高さ（天井高さ。面積ではありません）"
                   >
-                    天井高さ(m)
+                    壁高さ(m)
                   </th>
                   <th className="num" title="部屋の天井高さからの下がり">
                     下がり(m)
