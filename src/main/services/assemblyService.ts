@@ -357,18 +357,88 @@ function isMasterRow(detail: CalcDetail): boolean {
   return !isEmptyDetail(detail) && detail.subjectId !== null;
 }
 
+/** 同じ明細かを見分ける目印（明細マスターのID。無いものは名称で見る） */
+function rowKeyOf(value: {
+  sourceDetailId: number | null;
+  name: string;
+}): string {
+  return value.sourceDetailId === null
+    ? `n:${value.name.trim()}`
+    : `d:${value.sourceDetailId}`;
+}
+
+/**
+ * マスターの明細と計算書の明細行を、位置ではなく中身で対応させる。
+ * 同じ明細どうしを先に結び付け、残った分は前後の並びの中で順に対応させるので、
+ * マスターに1行足しても計算書の他の行（と付いている計算式）が入れ替わらない。
+ */
+function matchItemsToRows(
+  items: AssemblyItem[],
+  rows: { detail: CalcDetail; index: number }[],
+): Map<number, number> {
+  const anchors = new Map<number, number>();
+  let cursor = 0;
+  items.forEach((item, itemIndex) => {
+    for (let position = cursor; position < rows.length; position += 1) {
+      if (rowKeyOf(rows[position].detail) !== rowKeyOf(item)) continue;
+      anchors.set(itemIndex, position);
+      cursor = position + 1;
+      break;
+    }
+  });
+  // 結び付かなかった分は、前後の結び付いた行に挟まれた区間ごとに順で対応させる
+  const matched = new Map(anchors);
+  const takenRows = new Set(anchors.values());
+  let itemFrom = 0;
+  let rowFrom = 0;
+  [...anchors.keys(), items.length].forEach((anchorItem) => {
+    const anchorRow = anchors.get(anchorItem) ?? rows.length;
+    const freeRows: number[] = [];
+    for (let row = rowFrom; row < anchorRow; row += 1) {
+      if (!takenRows.has(row)) freeRows.push(row);
+    }
+    let at = 0;
+    for (let item = itemFrom; item < anchorItem; item += 1) {
+      if (anchors.has(item)) continue;
+      const row = freeRows[at];
+      at += 1;
+      if (row !== undefined) matched.set(item, row);
+    }
+    itemFrom = anchorItem + 1;
+    rowFrom = anchorRow + 1;
+  });
+  return matched;
+}
+
 /**
  * セット明細マスターの明細を、計算書のセットへ当てはめる。
- * 空行はその位置のまま残し、中身のある行だけを上から順に合わせるので、
- * 計算式の行と明細の行がずれない。
+ * 空行はその位置のまま残し、同じ明細どうしを突き合わせるので、
+ * マスターで行を足しても計算書の明細と計算式の組み合わせが入れ替わらない。
  */
 function applyItemsToSet(
   items: AssemblyItem[],
   set: CalcSet,
 ): { details: CalcDetail[]; lines: CalcLine[] } {
+  const rows = set.details
+    .map((detail, index) => ({ detail, index }))
+    .filter((row) => isMasterRow(row.detail));
+  const matched = matchItemsToRows(items, rows);
+  const itemOfRow = new Map<number, number>();
+  matched.forEach((position, itemIndex) => {
+    itemOfRow.set(rows[position].index, itemIndex);
+  });
+
   const details: CalcDetail[] = [];
   const lines: CalcLine[] = [];
-  let cursor = 0;
+  let next = 0;
+  // マスターで増えた明細は、その明細の前に来る行の手前へ入れる
+  const pushNewItems = (before: number): void => {
+    for (; next < before; next += 1) {
+      if (matched.has(next)) continue;
+      details.push(toCalcDetail(items[next], undefined));
+      lines.push(calcLine());
+    }
+  };
   set.details.forEach((detail, index) => {
     const line = set.lines[index] ?? calcLine();
     if (!isMasterRow(detail)) {
@@ -376,18 +446,15 @@ function applyItemsToSet(
       lines.push(line);
       return;
     }
-    const item = items[cursor];
-    cursor += 1;
+    const itemIndex = itemOfRow.get(index);
     // マスターから消えた明細は計算書からも消す
-    if (item === undefined) return;
-    details.push(toCalcDetail(item, detail));
+    if (itemIndex === undefined) return;
+    pushNewItems(itemIndex);
+    details.push(toCalcDetail(items[itemIndex], detail));
     lines.push(line);
+    next = itemIndex + 1;
   });
-  // マスターで増えた明細は後ろへ足す
-  for (; cursor < items.length; cursor += 1) {
-    details.push(toCalcDetail(items[cursor], undefined));
-    lines.push(calcLine());
-  }
+  pushNewItems(items.length);
   return { details, lines: syncLines(details, lines) };
 }
 

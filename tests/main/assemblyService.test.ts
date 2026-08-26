@@ -525,6 +525,49 @@ describe("計算書からの自動登録と連動", () => {
     expect(after[0].lines.map((l) => l.formulaA)).toEqual(["10", "20", "30"]);
   });
 
+  it("マスターのセットに明細を1行足しても計算書の明細と計算式の組み合わせは入れ替わらない", () => {
+    const set = calcSetJson(["軽鉄下地", "グラスウール"]) as {
+      lines: Record<string, unknown>[];
+    };
+    set.lines = ["10", "20"].map((formulaA, index) => ({
+      id: `l${index}`,
+      formulaA,
+      formulaB: "",
+      comment: "",
+      bSymbol: "",
+    }));
+    const sheetId = makeRoomSheet([set]);
+    syncAssembliesFromSheets(db, projectIdRef);
+    const [assembly] = listAssemblies(db, projectIdRef);
+    const added = saveDetails(db, {
+      subjectId,
+      rows: [draft("捨て張り合板")],
+      deletedIds: [],
+    }).find((detail) => detail.name === "捨て張り合板");
+    if (!added) throw new Error("明細を作れませんでした");
+
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: [itemOf(added.id), ...assembly.items],
+      propagate: true,
+    });
+
+    const after = JSON.parse(lowerJsonOf(sheetId)) as {
+      details: { name: string }[];
+      lines: { formulaA: string }[];
+    }[];
+    // 足した明細は先頭へ入り、元からある明細は自分の計算式を持ったまま下へ動く
+    expect(after[0].details.map((d) => d.name)).toEqual([
+      "捨て張り合板",
+      "軽鉄下地",
+      "グラスウール",
+    ]);
+    expect(after[0].lines.map((l) => l.formulaA)).toEqual(["", "10", "20"]);
+  });
+
   it("同じ明細を使う他のセットも一緒に直せる", () => {
     makeRoomSheet([calcSetJson(["軽鉄下地"])]);
     syncAssembliesFromSheets(db, projectIdRef);
