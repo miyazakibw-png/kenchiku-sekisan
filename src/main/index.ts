@@ -45,6 +45,7 @@ import {
 import {
   buildItemFromDetail,
   listAssemblies,
+  tidyAutoAssemblies,
   listAssemblyMasterOptions,
   mergeAssemblies,
   promoteAssemblyToBasic,
@@ -492,9 +493,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.assemblyOptions, () =>
     listAssemblyMasterOptions(getDatabase()),
   );
-  ipcMain.handle(IPC.assemblyList, (_event, projectId: number | null) =>
-    listAssemblies(getDatabase(), projectId),
-  );
+  ipcMain.handle(IPC.assemblyList, (_event, projectId: number | null) => {
+    const db = getDatabase();
+    // 使わなくなった自動登録のセットは開いたときに片付ける
+    if (projectId !== null) tidyAutoAssemblies(db, projectId);
+    return listAssemblies(db, projectId);
+  });
   ipcMain.handle(IPC.assemblySave, (_event, request: SaveAssemblyRequest) =>
     saveAssembly(getDatabase(), request),
   );

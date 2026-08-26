@@ -534,9 +534,17 @@ export function syncAssembliesFromSheets(
           .run();
       });
   });
-  mergeDuplicateAutoAssemblies(db, projectId);
-  removeUnusedAutoAssemblies(db, projectId);
+  tidyAutoAssemblies(db, projectId);
   return added + updated;
+}
+
+/**
+ * 自動登録した物件セットを片付ける。
+ * 中身が同じものは1件へまとめ、どの計算書でも使わなくなったものは消す。
+ */
+export function tidyAutoAssemblies(db: AppDatabase, projectId: number): number {
+  mergeDuplicateAutoAssemblies(db, projectId);
+  return removeUnusedAutoAssemblies(db, projectId);
 }
 
 /** 計算書から自動登録した物件セットのIDを集める */
