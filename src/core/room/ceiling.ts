@@ -332,59 +332,124 @@ export interface CeilingRegion {
   height: number | null;
 }
 
-/** 多角形をその直線で2つに分ける（線の上下・左右で切り分ける） */
-function splitPolygon(
+/** その点が多角形のどの辺のどこに乗っているか（乗っていなければnull） */
+function boundaryAt(
   poly: CeilingPoint[],
-  line: CeilingSegment,
-): [CeilingPoint[], CeilingPoint[]] | null {
-  const span = { x: line.b.x - line.a.x, y: line.b.y - line.a.y };
-  const size = Math.hypot(span.x, span.y);
-  if (size === 0) return null;
-  const dir = { x: span.x / size, y: span.y / size };
-  const sideOf = (point: CeilingPoint): number =>
-    cross(dir, { x: point.x - line.a.x, y: point.y - line.a.y });
-  const alongOf = (point: CeilingPoint): number =>
-    dir.x * (point.x - line.a.x) + dir.y * (point.y - line.a.y);
-
-  // 区画が線に届いていない（線がその区画を横切らない）ときは分けない
-  const chord: number[] = [];
+  target: CeilingPoint,
+): { edge: number; rate: number } | null {
+  let best: { edge: number; rate: number } | null = null;
+  let bestGap = 1e-6;
   poly.forEach((point, no) => {
     const next = poly[(no + 1) % poly.length];
-    const here = sideOf(point);
-    const there = sideOf(next);
-    if (Math.abs(here) < 1e-9) chord.push(alongOf(point));
-    if (here * there < 0) {
-      const rate = here / (here - there);
-      chord.push(
-        alongOf({
-          x: point.x + (next.x - point.x) * rate,
-          y: point.y + (next.y - point.y) * rate,
-        }),
-      );
+    const span = { x: next.x - point.x, y: next.y - point.y };
+    const size = span.x * span.x + span.y * span.y;
+    if (size < 1e-18) return;
+    const rate = Math.max(
+      0,
+      Math.min(
+        1,
+        ((target.x - point.x) * span.x + (target.y - point.y) * span.y) / size,
+      ),
+    );
+    const near = { x: point.x + span.x * rate, y: point.y + span.y * rate };
+    const gap = Math.hypot(target.x - near.x, target.y - near.y);
+    if (gap <= bestGap) {
+      bestGap = gap;
+      best = { edge: no, rate };
     }
   });
-  if (chord.length < 2) return null;
-  const from = Math.min(...chord);
-  const to = Math.max(...chord);
-  if (from < -1e-6 || to > size + 1e-6) return null;
+  return best;
+}
 
-  const halves: [CeilingPoint[], CeilingPoint[]] = [[], []];
-  [1, -1].forEach((sign, half) => {
-    poly.forEach((point, no) => {
-      const next = poly[(no + 1) % poly.length];
-      const here = sideOf(point) * sign;
-      const there = sideOf(next) * sign;
-      if (here >= -1e-9) halves[half].push(point);
-      if (here * there < -1e-18) {
-        const rate = here / (here - there);
-        halves[half].push({
-          x: point.x + (next.x - point.x) * rate,
-          y: point.y + (next.y - point.y) * rate,
-        });
-      }
-    });
+/**
+ * 多角形をその線で切る。
+ * 線がその多角形を横切っているところ（中を通るひと続き）だけで切るので、
+ * L型・凹型でも、線が届いていないところはそのまま残る。
+ */
+function cutPolygon(
+  poly: CeilingPoint[],
+  line: CeilingSegment,
+): CeilingPoint[][] {
+  const span = { x: line.b.x - line.a.x, y: line.b.y - line.a.y };
+  const size = Math.hypot(span.x, span.y);
+  if (size < 1e-9) return [poly];
+  const dir = { x: span.x / size, y: span.y / size };
+
+  // 線の上で、外周と交わるところを並べる
+  const hits: number[] = [0, size];
+  poly.forEach((point, no) => {
+    const next = poly[(no + 1) % poly.length];
+    const edge = { x: next.x - point.x, y: next.y - point.y };
+    const denom = cross(dir, edge);
+    const gap = { x: point.x - line.a.x, y: point.y - line.a.y };
+    if (Math.abs(denom) < 1e-9) return;
+    const rate = cross(gap, dir) / denom;
+    if (rate < -1e-9 || rate > 1 + 1e-9) return;
+    const t = cross(gap, edge) / denom;
+    if (t < -1e-6 || t > size + 1e-6) return;
+    if (!hits.some((value) => Math.abs(value - t) < 1e-6)) hits.push(t);
+  });
+  hits.sort((left, right) => left - right);
+
+  const at = (t: number): CeilingPoint => ({
+    x: line.a.x + dir.x * t,
+    y: line.a.y + dir.y * t,
   });
 
+  // 中を通っているひと続きを探して、そこで切る
+  for (let no = 0; no + 1 < hits.length; no += 1) {
+    const [start, end] = [hits[no], hits[no + 1]];
+    if (end - start < 1e-6) continue;
+    if (!inside(poly, at((start + end) / 2))) continue;
+    const halves = splitAtChord(poly, at(start), at(end));
+    if (halves === null) continue;
+    return halves.flatMap((half) => cutPolygon(half, line));
+  }
+  return [poly];
+}
+
+/** 両端が外周に乗っている線で多角形を2つに分ける */
+function splitAtChord(
+  poly: CeilingPoint[],
+  head: CeilingPoint,
+  tail: CeilingPoint,
+): [CeilingPoint[], CeilingPoint[]] | null {
+  const from = boundaryAt(poly, head);
+  const to = boundaryAt(poly, tail);
+  if (from === null || to === null || from.edge === to.edge) return null;
+
+  const at = (place: { edge: number; rate: number }): CeilingPoint => {
+    const point = poly[place.edge];
+    const next = poly[(place.edge + 1) % poly.length];
+    return {
+      x: point.x + (next.x - point.x) * place.rate,
+      y: point.y + (next.y - point.y) * place.rate,
+    };
+  };
+  const start = at(from);
+  const end = at(to);
+
+  // 外周を「線の入口→出口」でたどって2つの輪にする
+  const walk = (
+    headEdge: number,
+    tailEdge: number,
+    headPoint: CeilingPoint,
+    tailPoint: CeilingPoint,
+  ): CeilingPoint[] => {
+    const ring: CeilingPoint[] = [headPoint];
+    let edge = headEdge;
+    while (edge !== tailEdge) {
+      edge = (edge + 1) % poly.length;
+      ring.push(poly[edge]);
+    }
+    ring.push(tailPoint);
+    return ring;
+  };
+
+  const halves: [CeilingPoint[], CeilingPoint[]] = [
+    walk(from.edge, to.edge, start, end),
+    walk(to.edge, from.edge, end, start),
+  ];
   if (polygonArea(halves[0]) < 1e-6 || polygonArea(halves[1]) < 1e-6)
     return null;
   return halves;
@@ -448,7 +513,7 @@ export function ceilingRegions(
 
   let polygons: CeilingPoint[][] = [points];
   lines.forEach((line) => {
-    polygons = polygons.flatMap((poly) => splitPolygon(poly, line) ?? [poly]);
+    polygons = polygons.flatMap((poly) => cutPolygon(poly, line));
   });
 
   const pieces = polygons.map((poly) => ({
@@ -591,9 +656,9 @@ function dropAt(
     const normal = inwardNormal(points, index);
     const reach =
       (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
-    // 下がり天井が下げている範囲（沿う壁からその線までの帯）
+    // 下がり天井が下げているのは、その線より壁側（線の向こう側は下がらない）
     const far = element.offset ?? 0;
-    if (reach < -1e-6 || reach > far + 1e-6) return;
+    if (reach > far + 1e-6) return;
     const here = elementDrop(element, roomCeilingHeight);
     if (here !== null && here > drop) drop = here;
   });

@@ -6,7 +6,7 @@ import {
   ceilingSymbols,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
-import { rectangleShape, solveShape } from "../../src/core/room/shape";
+import { lShape, rectangleShape, solveShape } from "../../src/core/room/shape";
 
 function shape() {
   return solveShape(rectangleShape(4, 3));
@@ -251,6 +251,19 @@ describe("天井伏図", () => {
     expect(regions.map((row) => row.code)).toEqual(["C1"]);
     expect(regions[0].area).toBeCloseTo(12, 6);
     expect(regions[0].height).toBe(2.7);
+  });
+
+  it("L型でも下がり天井の線で区画を2つに分ける", () => {
+    const solved = solveShape(lShape(6, 5, 2, 2));
+    const wall = solved.edges[3]; // 欠き取りの縦壁（この壁に沿う下がり天井）
+    const regions = ceilingRegions(
+      [element("dropCeiling", wall.id, { offset: 1.5, height: 0.4 })],
+      solved,
+      2.7,
+    );
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    expect(regions.map((row) => row.height).sort()).toEqual([2.3, 2.7]);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(26, 6);
   });
 
   it("番号は区画の中（外まわりの線から離れたところ）に出す", () => {

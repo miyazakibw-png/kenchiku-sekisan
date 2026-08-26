@@ -501,6 +501,12 @@
   line-height: 1.1;
 }
 
+/* 天井伏図は入力できる欄が分かるように薄く囲む */
+.room-sheet-page .ceiling table.grid input {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
 .room-sheet-page .edges table.grid button,
 .room-sheet-page .room-fittings table.grid button,
 .room-sheet-page .ceiling table.grid button {

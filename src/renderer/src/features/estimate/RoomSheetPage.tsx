@@ -2226,26 +2226,22 @@ export default function RoomSheetPage({
                         />
                       </td>
                       <td>
-                        {element.kind === "dropCeiling" ? (
-                          ""
-                        ) : (
-                          <input
-                            className="num"
-                            defaultValue={
-                              element.height === null ||
-                              element.height === undefined
-                                ? ""
-                                : formatNumber(element.height, 2)
-                            }
-                            title="Ｈ（梁せい・下がり壁の高さ）。入れると壁の高さ（範囲の天井高さ）は自動で決まります"
-                            onBlur={(e) => {
-                              const text = e.target.value.trim();
-                              updateCeiling(element.id, {
-                                height: text === "" ? null : Number(text),
-                              });
-                            }}
-                          />
-                        )}
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.height === null ||
+                            element.height === undefined
+                              ? ""
+                              : formatNumber(element.height, 2)
+                          }
+                          title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると範囲の天井高さは自動で決まります"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              height: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
                       </td>
                       <td>
                         <input
