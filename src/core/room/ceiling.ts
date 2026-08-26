@@ -330,6 +330,8 @@ export interface CeilingRegion {
   drop: number;
   /** その区画の天井高さ */
   height: number | null;
+  /** その区画を下げている下がり天井（壁に近い順）。天井高さはこの行に入る */
+  elementIds: string[];
 }
 
 /** その点が多角形のどの辺のどこに乗っているか（乗っていなければnull） */
@@ -604,6 +606,7 @@ export function ceilingRegions(
       area: Math.max(0, polygonArea(poly) - beamArea),
       drop: found.drop,
       waiting: found.waiting,
+      elementIds: found.elementIds,
     };
   });
 
@@ -638,6 +641,7 @@ export function ceilingRegions(
         center: labelPoint(parts, widest.center),
         area: round2(rows.reduce((sum, row) => sum + row.area, 0)),
         drop: widest.drop,
+        elementIds: widest.elementIds,
         height:
           roomCeilingHeight === null
             ? null
@@ -730,11 +734,13 @@ function dropAt(
   solved: SolvedShape,
   roomCeilingHeight: number | null,
   target: CeilingPoint,
-): { drop: number; waiting: string } {
+): { drop: number; waiting: string; elementIds: string[] } {
   const points = solved.points;
   let drop = 0;
   // 高さがまだ入っていない下がり天井。高さが決まるまで、その内と外は別の区画にする
   const waiting: string[] = [];
+  // その区画を下げている下がり天井（壁に近い順）
+  const covering: { id: string; offset: number }[] = [];
   elements.forEach((element) => {
     if (element.kind !== "dropCeiling") return;
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
@@ -746,6 +752,7 @@ function dropAt(
     // 下がり天井が下げているのは、その線より壁側（線の向こう側は下がらない）
     const far = element.offset ?? 0;
     if (reach > far + 1e-6) return;
+    covering.push({ id: element.id, offset: far });
     const here = elementDrop(element, roomCeilingHeight);
     if (here === null) {
       waiting.push(element.id);
@@ -753,7 +760,13 @@ function dropAt(
     }
     if (here > drop) drop = here;
   });
-  return { drop: round2(drop), waiting: waiting.sort().join(",") };
+  return {
+    drop: round2(drop),
+    waiting: waiting.sort().join(","),
+    elementIds: covering
+      .sort((left, right) => left.offset - right.offset)
+      .map((row) => row.id),
+  };
 }
 
 /** 2つの区画が辺で接しているか（同じ直線の上で重なっているか） */

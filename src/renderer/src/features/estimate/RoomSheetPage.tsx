@@ -49,6 +49,7 @@ import {
   type CeilingElement,
   type CeilingElementKind,
   type CeilingPoint,
+  type CeilingRegion,
 } from "../../../../core/room/ceiling";
 import {
   evaluateCalcSheet,
@@ -598,6 +599,46 @@ export default function RoomSheetPage({
         current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       ),
     [],
+  );
+
+  /**
+   * 区画一覧で入れた下がりを、その区画を下げている下がり天井の行（壁に近いほう）へ入れる。
+   * 空欄にしたときは未入力に戻す。
+   */
+  const setRegionDrop = useCallback(
+    (region: CeilingRegion, text: string): void => {
+      const id = region.elementIds[0];
+      if (id === undefined) return;
+      const body = text.trim();
+      const drop = body === "" ? null : textToNumber(body);
+      if (body !== "" && drop === null) return;
+      updateCeiling(id, { height: drop, ceilingHeight: null });
+    },
+    [updateCeiling],
+  );
+
+  /** 区画一覧の天井高さは「部屋の天井高さ－この区画の天井高さ」を下がりにして入れる */
+  const setRegionHeight = useCallback(
+    (region: CeilingRegion, text: string): void => {
+      const id = region.elementIds[0];
+      if (id === undefined) return;
+      const body = text.trim();
+      if (body === "") {
+        updateCeiling(id, { height: null, ceilingHeight: null });
+        return;
+      }
+      const height = textToNumber(body);
+      if (height === null) return;
+      if (ceilingHeight === null) {
+        updateCeiling(id, { height: null, ceilingHeight: height });
+        return;
+      }
+      updateCeiling(id, {
+        height: Math.round((ceilingHeight - height) * 100) / 100,
+        ceilingHeight: null,
+      });
+    },
+    [ceilingHeight, updateCeiling],
   );
 
   /** 建具表の行をこの部屋の自動計算へ加える */
@@ -2358,7 +2399,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはそのまま入力できます（その区画を下げている下がり天井の行に入ります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
             {ceilingCodes.length > 0 && (
               <table className="grid ceiling-regions">
@@ -2374,8 +2415,37 @@ export default function RoomSheetPage({
                   {ceilingCodes.map((region) => (
                     <tr key={region.code}>
                       <td className="no">{region.code}</td>
-                      <td className="num">{formatNumber(region.height, 2)}</td>
-                      <td className="num">{formatNumber(region.drop, 2)}</td>
+                      <td className="num">
+                        {region.elementIds.length === 0 ? (
+                          // 下がっていない区画は部屋の天井高さそのまま
+                          formatNumber(region.height, 2)
+                        ) : (
+                          <input
+                            className="num"
+                            key={`h${formatNumber(region.height, 2)}`}
+                            defaultValue={formatNumber(region.height, 2)}
+                            title="この区画の天井高さ（下がり天井の行に入ります）"
+                            onBlur={(e) =>
+                              setRegionHeight(region, e.target.value)
+                            }
+                          />
+                        )}
+                      </td>
+                      <td className="num">
+                        {region.elementIds.length === 0 ? (
+                          formatNumber(region.drop, 2)
+                        ) : (
+                          <input
+                            className="num"
+                            key={`d${formatNumber(region.drop, 2)}`}
+                            defaultValue={formatNumber(region.drop, 2)}
+                            title="この区画の下がり（部屋の天井高さからの下がり）"
+                            onBlur={(e) =>
+                              setRegionDrop(region, e.target.value)
+                            }
+                          />
+                        )}
+                      </td>
                       <td className="num">{formatNumber(region.area, 2)}</td>
                     </tr>
                   ))}

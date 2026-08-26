@@ -286,6 +286,20 @@ describe("天井伏図", () => {
     expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
   });
 
+  it("区画には天井高さを入れる先（下がり天井の行）が付く", () => {
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[0].id, { offset: 1 });
+    const regions = ceilingRegions([drop], solved, 2.7);
+    // 壁側（下がる側）の区画は、その下がり天井の行へ高さを入れる
+    const lowered = regions.filter((row) => row.elementIds.length > 0);
+    expect(lowered).toHaveLength(1);
+    expect(lowered[0].elementIds).toEqual([drop.id]);
+    // 下がっていない区画は部屋の天井高さのまま（入力先なし）
+    expect(regions.filter((row) => row.elementIds.length === 0)).toHaveLength(
+      1,
+    );
+  });
+
   it("梁型の線で下がり天井が短く切れていても、区画は壁まででで分ける", () => {
     const solved = shape();
     const regions = ceilingRegions(
