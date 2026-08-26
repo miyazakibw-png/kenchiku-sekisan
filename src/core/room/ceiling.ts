@@ -419,9 +419,10 @@ function polygonCenter(poly: CeilingPoint[]): CeilingPoint {
 }
 
 /**
- * 天井を、下がり天井・梁型の線で区切った区画に分けて番号（C1・C2…）を振る。
+ * 天井を、下がり天井の線で区切った区画に分けて番号（C1・C2…）を振る。
+ * 区切りに使うのは下がり天井の線だけ（梁型・下がり壁は天井の高さを分けないので使わない）。
  * 天井高さが同じで隣り合う区画（コ型・L型の下がり天井）は1つにまとめ、番号も1つ。
- * 番号は区画の中央に出す。並びは左上から。
+ * 番号は区画の中（一番ふところの広いところ）に出す。並びは左上から。
  */
 export function ceilingRegions(
   elements: CeilingElement[],
@@ -439,7 +440,7 @@ export function ceilingRegions(
   );
   // 低い線から先に区切る（低い線で止まっている線も、その区画は区切れる）
   const lines = ceilingLines(elements, solved, roomCeilingHeight)
-    .filter((line) => line.kind !== "wallBeam" || line.distance > 1e-6)
+    .filter((line) => line.kind === "dropCeiling")
     .sort(
       (left, right) =>
         (dropOf.get(right.elementId) ?? 0) - (dropOf.get(left.elementId) ?? 0),
@@ -481,9 +482,10 @@ export function ceilingRegions(
       const widest = rows.reduce((best, row) =>
         row.area > best.area ? row : best,
       );
+      const parts = rows.map((row) => row.poly);
       return {
-        parts: rows.map((row) => row.poly),
-        center: widest.center,
+        parts,
+        center: labelPoint(parts, widest.center),
         area: round2(rows.reduce((sum, row) => sum + row.area, 0)),
         drop: widest.drop,
         height:
@@ -500,7 +502,79 @@ export function ceilingRegions(
     .map((row, no) => ({ code: `C${no + 1}`, ...row }));
 }
 
-/** その点の下がり（下がり天井・梁型の下になっていれば、その中で一番大きい下がり） */
+/** 番号を出す位置（区画の中で、まわりの線から一番離れているところ） */
+function labelPoint(
+  parts: CeilingPoint[][],
+  fallback: CeilingPoint,
+): CeilingPoint {
+  const all = parts.flat();
+  if (all.length === 0) return fallback;
+  const left = Math.min(...all.map((point) => point.x));
+  const right = Math.max(...all.map((point) => point.x));
+  const top = Math.min(...all.map((point) => point.y));
+  const bottom = Math.max(...all.map((point) => point.y));
+
+  const inParts = (target: CeilingPoint): boolean =>
+    parts.some((poly) => inside(poly, target));
+
+  // まとめた区画の外まわりの線だけを見る（中で接している線は境目にしない）
+  const edges: [CeilingPoint, CeilingPoint][] = [];
+  parts.forEach((poly) => {
+    poly.forEach((point, no) => {
+      const next = poly[(no + 1) % poly.length];
+      const span = { x: next.x - point.x, y: next.y - point.y };
+      const size = Math.hypot(span.x, span.y);
+      if (size < 1e-9) return;
+      const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+      const step = Math.min(size, right - left, bottom - top) * 1e-3 + 1e-6;
+      const off = { x: (-span.y / size) * step, y: (span.x / size) * step };
+      const outer =
+        inParts({ x: middle.x + off.x, y: middle.y + off.y }) &&
+        inParts({ x: middle.x - off.x, y: middle.y - off.y });
+      if (!outer) edges.push([point, next]);
+    });
+  });
+
+  const reach = (target: CeilingPoint): number =>
+    edges.reduce((best, [from, to]) => {
+      const span = { x: to.x - from.x, y: to.y - from.y };
+      const size = span.x * span.x + span.y * span.y;
+      const rate =
+        size === 0
+          ? 0
+          : Math.max(
+              0,
+              Math.min(
+                1,
+                ((target.x - from.x) * span.x + (target.y - from.y) * span.y) /
+                  size,
+              ),
+            );
+      const near = { x: from.x + span.x * rate, y: from.y + span.y * rate };
+      return Math.min(best, Math.hypot(target.x - near.x, target.y - near.y));
+    }, Infinity);
+
+  const steps = 24;
+  let best: CeilingPoint | null = null;
+  let bestReach = -1;
+  for (let ix = 1; ix < steps; ix += 1) {
+    for (let iy = 1; iy < steps; iy += 1) {
+      const target = {
+        x: left + ((right - left) * ix) / steps,
+        y: top + ((bottom - top) * iy) / steps,
+      };
+      if (!inParts(target)) continue;
+      const here = reach(target);
+      if (here > bestReach) {
+        bestReach = here;
+        best = target;
+      }
+    }
+  }
+  return best ?? fallback;
+}
+
+/** その点の下がり（下がり天井の下になっていれば、その中で一番大きい下がり） */
 function dropAt(
   elements: CeilingElement[],
   solved: SolvedShape,
@@ -510,22 +584,16 @@ function dropAt(
   const points = solved.points;
   let drop = 0;
   elements.forEach((element) => {
+    if (element.kind !== "dropCeiling") return;
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
     if (index < 0) return;
     const from = points[index];
     const normal = inwardNormal(points, index);
     const reach =
       (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
-    const width = element.width ?? 0;
-    const offset = element.offset ?? 0;
-    // その要素が下げている範囲（壁側の帯、天井付梁型は2本の線の間）
-    const [near, far] =
-      element.kind === "ceilingBeam"
-        ? [offset, offset + width]
-        : element.kind === "dropCeiling"
-          ? [0, offset]
-          : [0, width];
-    if (reach < near - 1e-6 || reach > far + 1e-6) return;
+    // 下がり天井が下げている範囲（沿う壁からその線までの帯）
+    const far = element.offset ?? 0;
+    if (reach < -1e-6 || reach > far + 1e-6) return;
     const here = elementDrop(element, roomCeilingHeight);
     if (here !== null && here > drop) drop = here;
   });

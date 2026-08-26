@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import type {
   EstimateRowDraft,
@@ -46,6 +47,7 @@ import {
   ceilingRegions,
   type CeilingElement,
   type CeilingElementKind,
+  type CeilingPoint,
 } from "../../../../core/room/ceiling";
 import {
   evaluateCalcSheet,
@@ -150,6 +152,22 @@ function parseCeiling(json: string): CeilingElement[] {
   }
 }
 
+/** C番号を手で動かした位置（番号→ずらし量） */
+type CeilingCodeMove = Record<string, CeilingPoint>;
+
+function parseCeilingCodes(json: string): CeilingCodeMove {
+  try {
+    const parsed = JSON.parse(json) as CeilingCodeMove;
+    return parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 function parseLower(json: string): CalcSet[] {
   try {
     const parsed = JSON.parse(json) as CalcSet[];
@@ -228,6 +246,16 @@ export default function RoomSheetPage({
     sill: "",
   });
   const [ceiling, setCeiling] = useState<CeilingElement[]>([]);
+  /** C番号をつかんで動かした位置（番号→ずらし量） */
+  const [codeMoves, setCodeMoves] = useState<CeilingCodeMove>({});
+  /** C番号をつかんでいる間の持ち手（番号と、つかんだ時の位置） */
+  const codeDragRef = useRef<{
+    code: string;
+    fromX: number;
+    fromY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
   const [showCeiling, setShowCeiling] = useState(false);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
@@ -270,7 +298,7 @@ export default function RoomSheetPage({
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
-    { shape, roomFittings, ceiling, lower, ceilingHeight },
+    { shape, roomFittings, ceiling, codeMoves, lower, ceilingHeight },
     () => save(),
   );
 
@@ -284,11 +312,13 @@ export default function RoomSheetPage({
       setShapeFuture([]);
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson));
+      setCodeMoves(parseCeilingCodes(loaded.ceilingCodesJson));
       setLower(parseLower(loaded.lowerJson));
       markSaved({
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson),
+        codeMoves: parseCeilingCodes(loaded.ceilingCodesJson),
         lower: parseLower(loaded.lowerJson),
         ceilingHeight: loaded.ceilingHeight,
       });
@@ -476,6 +506,7 @@ export default function RoomSheetPage({
       shape,
       roomFittings,
       ceiling,
+      codeMoves,
       lower: trimmed,
       ceilingHeight,
     });
@@ -484,13 +515,63 @@ export default function RoomSheetPage({
       shapeJson: JSON.stringify(shape),
       fittingsJson: JSON.stringify(roomFittings),
       ceilingJson: JSON.stringify(ceiling),
+      ceilingCodesJson: JSON.stringify(codeMoves),
       lowerJson: JSON.stringify(trimmed),
       ceilingHeight,
       note: sheet.note,
     });
     setSheet(saved);
     setMessage("保存しました（天井高さは部位別入力表にも反映します）");
-  }, [ceiling, ceilingHeight, lower, markSaved, roomFittings, shape, sheet]);
+  }, [
+    ceiling,
+    ceilingHeight,
+    codeMoves,
+    lower,
+    markSaved,
+    roomFittings,
+    shape,
+    sheet,
+  ]);
+
+  /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
+  const perPixel = useMemo(
+    () => view.span / Math.max(canvasSize * zoom, 1),
+    [canvasSize, view.span, zoom],
+  );
+
+  /** C番号をつかんで好きな位置へ動かす */
+  const startCodeDrag = useCallback(
+    (code: string, event: ReactPointerEvent<SVGTextElement>): void => {
+      const base = codeMoves[code] ?? { x: 0, y: 0 };
+      codeDragRef.current = {
+        code,
+        fromX: event.clientX,
+        fromY: event.clientY,
+        baseX: base.x,
+        baseY: base.y,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.stopPropagation();
+    },
+    [codeMoves],
+  );
+
+  const moveCodeDrag = useCallback(
+    (event: ReactPointerEvent<SVGTextElement>): void => {
+      const drag = codeDragRef.current;
+      if (drag === null) return;
+      const moved = {
+        x: drag.baseX + (event.clientX - drag.fromX) * perPixel,
+        y: drag.baseY + (event.clientY - drag.fromY) * perPixel,
+      };
+      setCodeMoves((current) => ({ ...current, [drag.code]: moved }));
+    },
+    [perPixel],
+  );
+
+  const endCodeDrag = useCallback((): void => {
+    codeDragRef.current = null;
+  }, []);
 
   const updateCeiling = useCallback(
     (id: string, patch: Partial<CeilingElement>): void =>
@@ -1420,18 +1501,33 @@ export default function RoomSheetPage({
                     </g>
                   ))}
                 {showCeiling &&
-                  ceilingCodes.map((region) => (
-                    <text
-                      key={region.code}
-                      x={region.center.x}
-                      y={region.center.y}
-                      className="ceiling-code"
-                      textAnchor="middle"
-                      fontSize={dimFontSize * 1.3}
-                    >
-                      {region.code}
-                    </text>
-                  ))}
+                  ceilingCodes.map((region) => {
+                    const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
+                    return (
+                      <text
+                        key={region.code}
+                        x={region.center.x + moved.x}
+                        y={region.center.y + moved.y}
+                        className="ceiling-code"
+                        textAnchor="middle"
+                        fontSize={dimFontSize * 1.3}
+                        onPointerDown={(event) =>
+                          startCodeDrag(region.code, event)
+                        }
+                        onPointerMove={moveCodeDrag}
+                        onPointerUp={endCodeDrag}
+                        onDoubleClick={() =>
+                          setCodeMoves((current) => {
+                            const next = { ...current };
+                            delete next[region.code];
+                            return next;
+                          })
+                        }
+                      >
+                        {region.code}
+                      </text>
+                    );
+                  })}
               </svg>
               {solved.points.length === 0 && (
                 <p className="empty">
@@ -2236,7 +2332,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。線で囲まれた天井の区画はすべてにC1・C2…の番号を区画の中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は長さ×（梁幅＋下がり）、天井付梁型は両側に見付が出るので長さ×（梁幅＋下がり×2）です。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
             {ceilingCodes.length > 1 && (
               <table className="grid ceiling-regions">

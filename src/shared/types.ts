@@ -260,6 +260,8 @@ export interface RoomSheet {
   fittingsJson: string;
   /** 天井伏図の線（CeilingElementの配列）のJSON */
   ceilingJson: string;
+  /** 天井伏図のC番号を手で動かした位置（番号→ずらし量）のJSON */
+  ceilingCodesJson: string;
   /** 下段のセット明細計算表 */
   lowerJson: string;
   ceilingHeight: number | null;
@@ -282,8 +284,11 @@ export interface RoomSheetFitting {
 
 export type SaveRoomSheetRequest = Omit<
   RoomSheet,
-  "projectId" | "estimateRowId"
->;
+  "projectId" | "estimateRowId" | "ceilingCodesJson"
+> & {
+  /** 天井伏図のC番号を動かした位置（省略したときは今の位置のまま） */
+  ceilingCodesJson?: string;
+};
 
 /** 軸組計算書の上段（建物レイアウト・軸組ライン） */
 export interface FrameSheet {

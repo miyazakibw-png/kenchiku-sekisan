@@ -358,6 +358,8 @@ export const projectRoomSheets = sqliteTable("project_room_sheets", {
   fittingsJson: text("fittings_json").notNull().default("[]"),
   /** 天井伏図の線（梁型・下がり壁・下がり天井）。線ごとに範囲の天井高さを持つ */
   ceilingJson: text("ceiling_json").notNull().default("[]"),
+  /** 天井伏図のC番号を手で動かした位置（番号→ずらし量） */
+  ceilingCodesJson: text("ceiling_codes_json").notNull().default("{}"),
   /** 下段のセット明細計算表（部位ごとのセット・明細・計算式） */
   lowerJson: text("lower_json").notNull().default("[]"),
   ceilingHeight: real("ceiling_height"),

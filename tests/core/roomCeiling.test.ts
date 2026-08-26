@@ -232,4 +232,38 @@ describe("天井伏図", () => {
     expect(drop?.height).toBe(2.5);
     expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
   });
+
+  it("区画を分けるのは下がり天井の線だけ（壁付き梁型・下がり壁では分けない）", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [
+        element("wallBeam", solved.edges[0].id, { width: 0.4, height: 0.4 }),
+        element("dropWall", solved.edges[1].id, { width: 0.3, height: 0.3 }),
+        element("ceilingBeam", solved.edges[0].id, {
+          offset: 1,
+          width: 0.4,
+          height: 0.4,
+        }),
+      ],
+      solved,
+      2.7,
+    );
+    expect(regions.map((row) => row.code)).toEqual(["C1"]);
+    expect(regions[0].area).toBeCloseTo(12, 6);
+    expect(regions[0].height).toBe(2.7);
+  });
+
+  it("番号は区画の中（外まわりの線から離れたところ）に出す", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 })],
+      solved,
+      2.7,
+    );
+    const wide = regions.find((row) => row.drop === 0);
+    expect(wide?.center.y).toBeGreaterThan(1);
+    expect(wide?.center.y).toBeLessThan(3);
+    expect(wide?.center.x).toBeGreaterThan(0.5);
+    expect(wide?.center.x).toBeLessThan(3.5);
+  });
 });

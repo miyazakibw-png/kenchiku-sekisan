@@ -854,4 +854,8 @@ UPDATE m_finish_assemblies SET auto_registered = 1 WHERE scope = 'project';
   `
 UPDATE m_finish_assembly_items SET formula = '' WHERE formula <> '';
 `,
+  // 天井伏図のC番号を手で動かした位置
+  `
+ALTER TABLE project_room_sheets ADD COLUMN ceiling_codes_json TEXT NOT NULL DEFAULT '{}';
+`,
 ];

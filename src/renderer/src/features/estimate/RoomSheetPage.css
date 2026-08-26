@@ -478,11 +478,13 @@
   color: #1f2937;
 }
 
-/* 寸法入力・この部屋の建具は行の高さを詰める */
+/* 寸法入力・この部屋の建具・天井伏図は行の高さを詰める（どれも同じ高さ） */
 .room-sheet-page .edges table.grid th,
 .room-sheet-page .edges table.grid td,
 .room-sheet-page .room-fittings table.grid th,
-.room-sheet-page .room-fittings table.grid td {
+.room-sheet-page .room-fittings table.grid td,
+.room-sheet-page .ceiling table.grid th,
+.room-sheet-page .ceiling table.grid td {
   padding: 0 3px;
   height: 15px;
   line-height: 1.1;
@@ -491,14 +493,17 @@
 .room-sheet-page .edges table.grid input,
 .room-sheet-page .edges table.grid select,
 .room-sheet-page .room-fittings table.grid input,
-.room-sheet-page .room-fittings table.grid select {
+.room-sheet-page .room-fittings table.grid select,
+.room-sheet-page .ceiling table.grid input,
+.room-sheet-page .ceiling table.grid select {
   height: 15px;
   padding: 0;
   line-height: 1.1;
 }
 
 .room-sheet-page .edges table.grid button,
-.room-sheet-page .room-fittings table.grid button {
+.room-sheet-page .room-fittings table.grid button,
+.room-sheet-page .ceiling table.grid button {
   padding: 0 2px;
   line-height: 1.1;
 }
@@ -669,6 +674,8 @@
 
 /* 下がり天井の範囲番号（C1・C2…） */
 .room-sheet-page text.ceiling-code {
+  cursor: move;
+  user-select: none;
   fill: #0f766e;
   font-weight: 700;
   paint-order: stroke;
