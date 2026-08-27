@@ -33,6 +33,7 @@ import {
   shapeExtents,
   solveShape,
   splitEdge,
+  trimEdges,
   updateEdge,
   type EdgeDirection,
   type EdgeKind,
@@ -286,6 +287,8 @@ export default function RoomSheetPage({
     DEFAULT_FITTING_PART_VALUES,
   );
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  /** 範囲選択の終わりの辺（Shift＋クリック）。まとめて消すときに使う */
+  const [rangeEdge, setRangeEdge] = useState<string | null>(null);
   /** L型・コ型を足す場所（角の番号＝その角から出ていく辺の番号） */
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
   const [cutAcross, setCutAcross] = useState("1.00");
@@ -1080,6 +1083,28 @@ export default function RoomSheetPage({
     else addNotch(across, along, prompt.edgeKind);
   };
 
+  /** 辺を選ぶ（Shift＋クリックでここからここまでの範囲選択） */
+  const selectEdge = (edgeId: string, extend: boolean): void => {
+    if (extend && selectedEdge !== null && selectedEdge !== edgeId) {
+      setRangeEdge(edgeId);
+      return;
+    }
+    setSelectedEdge(edgeId);
+    setRangeEdge(null);
+  };
+
+  /** 選んでいる辺（範囲選択中はその間の辺すべて） */
+  const selectedEdgeIds = ((): string[] => {
+    if (selectedEdge === null) return [];
+    const from = shape.edges.findIndex((row) => row.id === selectedEdge);
+    const to = shape.edges.findIndex((row) => row.id === rangeEdge);
+    if (from < 0) return [];
+    if (rangeEdge === null || to < 0) return [selectedEdge];
+    return shape.edges
+      .slice(Math.min(from, to), Math.max(from, to) + 1)
+      .map((row) => row.id);
+  })();
+
   /** 選んだ辺の寸法だけを、閉じた形になるように自動で入れる */
   const fitEdge = (edgeId: string): void => {
     const result = closeShapeAtEdge(shape, edgeId);
@@ -1493,7 +1518,7 @@ export default function RoomSheetPage({
                   const className = [
                     "edge",
                     line.kind,
-                    selectedEdge === line.id ? "selected" : "",
+                    selectedEdgeIds.includes(line.id) ? "selected" : "",
                   ]
                     .filter(Boolean)
                     .join(" ");
@@ -1519,10 +1544,11 @@ export default function RoomSheetPage({
                           splitEdgeAt(line.id, point, next, event);
                           return;
                         }
-                        setSelectedEdge(line.id);
+                        selectEdge(line.id, event.shiftKey);
                         setSelectedCorner(null);
                         // 閉じていないときは、押した辺の寸法で合わせる
-                        if (solved.error !== null) fitEdge(line.id);
+                        if (!event.shiftKey && solved.error !== null)
+                          fitEdge(line.id);
                       }}
                     >
                       {/* 線は細いので、当たり判定用の太い線を重ねる */}
@@ -1734,6 +1760,24 @@ export default function RoomSheetPage({
               >
                 🗑 辺削除
               </button>
+              <button
+                type="button"
+                disabled={selectedEdge === null || rangeEdge === null}
+                title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺をまとめて消し、まっすぐな壁でそろえます"
+                onClick={() => {
+                  if (selectedEdge === null || rangeEdge === null) return;
+                  const result = trimEdges(shape, selectedEdge, rangeEdge);
+                  if (result.error !== null) {
+                    setMessage(result.error);
+                    return;
+                  }
+                  applyShape(result.shape);
+                  setSelectedEdge(null);
+                  setRangeEdge(null);
+                }}
+              >
+                ▭ 範囲をまとめる
+              </button>
             </div>
             <table className="grid">
               <thead>
@@ -1752,12 +1796,12 @@ export default function RoomSheetPage({
                   <tr
                     key={line.id}
                     className={[
-                      selectedEdge === line.id ? "selected" : "",
+                      selectedEdgeIds.includes(line.id) ? "selected" : "",
                       solved.missing.includes(line.id) ? "missing" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    onClick={() => setSelectedEdge(line.id)}
+                    onClick={(event) => selectEdge(line.id, event.shiftKey)}
                   >
                     <td className="no">{index + 1}</td>
                     <td>
@@ -1928,6 +1972,10 @@ export default function RoomSheetPage({
                 ))}
               </tbody>
             </table>
+            <p className="note">
+              辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ、「▭
+              範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
+            </p>
           </section>
         )}
 

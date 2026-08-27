@@ -19,6 +19,7 @@ import {
   shapeExtents,
   solveShape,
   splitEdge,
+  trimEdges,
   updateEdge,
   uShape,
 } from "../../src/core/room/shape";
@@ -29,7 +30,9 @@ function cornerSet(shape: ReturnType<typeof rectangleShape>): string[] {
   const left = Math.min(...points.map((point) => point.x));
   const top = Math.min(...points.map((point) => point.y));
   return points
-    .map((point) => `${(point.x - left).toFixed(2)},${(point.y - top).toFixed(2)}`)
+    .map(
+      (point) => `${(point.x - left).toFixed(2)},${(point.y - top).toFixed(2)}`,
+    )
     .sort();
 }
 
@@ -452,5 +455,42 @@ describe("部屋形状（単線図）", () => {
     expect(floorArea(solved)).toBe(25.88);
     // 取合欠除を0にすると図形どおりに引く
     expect(floorArea(solved, 0)).toBe(25.73);
+  });
+
+  describe("範囲をまとめる（ここからここまで消してそろえる）", () => {
+    it("L型の出っぱりをまとめて消すと、四角い形に戻る", () => {
+      // 6×4の右下を2×2欠き取ったL型（辺は6本）
+      const shape = lShape(6, 4, 2, 2);
+      const ids = shape.edges.map((row) => row.id);
+      const before = solveShape(shape);
+      expect(before.error).toBeNull();
+
+      // 欠き取っている3辺をまとめて消す
+      const result = trimEdges(shape, ids[1], ids[3]);
+      expect(result.error).toBeNull();
+      const solved = solveShape(result.shape);
+      expect(solved.error).toBeNull();
+      expect(shapeExtents(solved)).toEqual({ x: 6, y: 4 });
+      expect(floorArea(solved)).toBe(24);
+    });
+
+    it("消したあとも形は閉じたままで、寸法は自動で直さない", () => {
+      const shape = rectangleShape(6, 4);
+      const ids = shape.edges.map((row) => row.id);
+      const result = trimEdges(shape, ids[0], ids[1]);
+      expect(result.error).toBeNull();
+      const solved = solveShape(result.shape);
+      expect(solved.error).toBeNull();
+      // 右へ6m・下へ4mの2辺が、始点と終点を結ぶ2辺に置き換わる（形は同じ）
+      expect(floorArea(solved)).toBe(24);
+    });
+
+    it("辺が残らない範囲は消さない", () => {
+      const shape = rectangleShape(6, 4);
+      const ids = shape.edges.map((row) => row.id);
+      const result = trimEdges(shape, ids[0], ids[3]);
+      expect(result.error).not.toBeNull();
+      expect(result.shape).toBe(shape);
+    });
   });
 });

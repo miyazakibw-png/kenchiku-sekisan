@@ -1123,6 +1123,69 @@ export function moveCorner(
   return { shape: { edges }, error: null };
 }
 
+/**
+ * 選んだ範囲（この辺からこの辺まで）をまとめて消し、その間をまっすぐな壁でそろえる。
+ * 始めの辺の始点と終わりの辺の終点を結ぶ辺（縦横がずれていれば2本）に置き換えるので、
+ * 1本ずつ消したときのように形が崩れない。
+ */
+export function trimEdges(
+  shape: RoomShape,
+  fromId: string,
+  toId: string,
+): { shape: RoomShape; error: string | null } {
+  const count = shape.edges.length;
+  const from = shape.edges.findIndex((row) => row.id === fromId);
+  const to = shape.edges.findIndex((row) => row.id === toId);
+  if (from < 0 || to < 0) return { shape, error: "範囲を選んでください" };
+  const first = Math.min(from, to);
+  const last = Math.max(from, to);
+  const removed = last - first + 1;
+  if (count - removed < 2) {
+    return { shape, error: "この範囲は消せません（辺が残りません）" };
+  }
+  const solved = solveShape(shape);
+  if (solved.points.length !== count) {
+    return {
+      shape,
+      error: "先に部屋の寸法を決めてください（空欄が残っています）",
+    };
+  }
+
+  const start = solved.points[first];
+  const end = solved.points[(last + 1) % count];
+  const dx = round2(end.x - start.x);
+  const dy = round2(end.y - start.y);
+  const base = shape.edges[first];
+  const replaced: RoomEdge[] = [];
+  // 縦横がずれているときは、消した先頭の辺の向きに合わせて2本に分ける
+  const horizontalFirst = axisOf(base.direction) !== "y";
+  const horizontal = (): void => {
+    if (Math.abs(dx) < 0.005) return;
+    replaced.push(edge(dx > 0 ? "E" : "W", round2(Math.abs(dx)), base.kind));
+  };
+  const vertical = (): void => {
+    if (Math.abs(dy) < 0.005) return;
+    replaced.push(edge(dy > 0 ? "S" : "N", round2(Math.abs(dy)), base.kind));
+  };
+  if (horizontalFirst) {
+    horizontal();
+    vertical();
+  } else {
+    vertical();
+    horizontal();
+  }
+
+  const edges = [
+    ...shape.edges.slice(0, first),
+    ...replaced,
+    ...shape.edges.slice(last + 1),
+  ];
+  if (edges.length < 3) {
+    return { shape, error: "この範囲は消せません（形が作れません）" };
+  }
+  return { shape: { edges }, error: null };
+}
+
 export function updateEdge(
   shape: RoomShape,
   id: string,
