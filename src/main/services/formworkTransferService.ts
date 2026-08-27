@@ -269,6 +269,7 @@ export function runFormworkTransfer(
           unitPrice: null,
           amount: null,
           remarks: row.remarks,
+          remarksLower: "",
           memo: "",
           formworkKey: row.formworkKey,
           displayOrder: order,

@@ -296,6 +296,15 @@ const api = {
   /** 明細入力ウィンドウの読み込み完了を元の画面へ伝える */
   readyCalcWindow: (parentId: number): Promise<void> =>
     ipcRenderer.invoke(IPC.calcWindowReady, parentId),
+  /** 他のウィンドウで工事（工事概要・台帳）が直されたときに受け取る */
+  onProjectChanged: (
+    handler: (project: ProjectSummary) => void,
+  ): (() => void) => {
+    const listener = (_event: unknown, project: ProjectSummary): void =>
+      handler(project);
+    ipcRenderer.on(IPC.projectChanged, listener);
+    return () => ipcRenderer.removeListener(IPC.projectChanged, listener);
+  },
   /** 明細入力ウィンドウ側で内容を受け取る */
   onCalcWindowState: (
     handler: (state: CalcWindowState) => void,

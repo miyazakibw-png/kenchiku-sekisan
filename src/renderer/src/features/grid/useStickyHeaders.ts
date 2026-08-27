@@ -17,12 +17,16 @@ function scrollParent(el: HTMLElement, root: HTMLElement): HTMLElement {
   return root
 }
 
-/** 表より上にあり、同じ枠の中で一緒に流れるツールバーの高さ */
+/**
+ * 表より上にあるツールバーの高さ。
+ * ツールバーはどれも上端に張り付くので、1つの画面に何本あっても
+ * 実際に見えているのは表の直前の1本だけ。その高さだけ見出しを下げる。
+ */
 function toolbarHeight(container: HTMLElement, table: HTMLElement): number {
   let height = 0
   container.querySelectorAll<HTMLElement>(TOOLBARS).forEach((toolbar) => {
     const after = toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
-    if (after !== 0) height += toolbar.offsetHeight
+    if (after !== 0) height = toolbar.offsetHeight
   })
   return height
 }

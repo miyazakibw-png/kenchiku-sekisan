@@ -128,6 +128,7 @@ const manualRow: TransferRowDraft = {
   unitPrice: null,
   amount: null,
   remarks: "",
+  remarksLower: "",
   memo: "",
 };
 

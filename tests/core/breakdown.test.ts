@@ -253,7 +253,7 @@ describe("エクセル掃き出し", () => {
     expect(file.subarray(0, 2).toString("latin1")).toBe("PK");
   });
 
-  it("書式③は2段を1行にまとめる", () => {
+  it("書式③は2段をセル内改行で1行にまとめる", () => {
     const rows = buildBreakdownRows(
       [item({})],
       subjects,
@@ -266,7 +266,44 @@ describe("エクセル掃き出し", () => {
     const values = book[0].rows.flatMap((row) =>
       row.map((cell) => cell.value),
     );
-    expect(values).toContain("基礎 普通コンクリート");
+    expect(values).toContain("基礎\n普通コンクリート");
+  });
+
+  it("工種科目ごとに決めた明細数分の枠を空けて次の科目へ進む", () => {
+    const rows = buildBreakdownRows(
+      [item({}), item({ id: 2, masterKey: "k2", subjectId: 2 })],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const book = toSpreadsheetSheets(
+      [{ name: "内訳書", rows }],
+      BREAKDOWN_LAYOUT.twoLine,
+      { detailsPerPage: 17, detailsPerPageLater: 16 },
+    );
+    // 1ページ目は17明細＝34行、2つ目の科目は次のページ（16明細＝32行）から
+    expect(book[0].rows.length).toBe(34 + 32);
+    // タイトル行は先頭だけ（2段目に文字）
+    expect(book[0].rows[0][0].value).toBe("");
+    expect(book[0].rows[1][0].value).toBe("名称");
+    expect(book[0].rows.slice(2).some((row) => row[0].value === "名称")).toBe(
+      false,
+    );
+  });
+
+  it("単位は設定した表記へ置き換える（未入力ならそのまま）", () => {
+    const rows = buildBreakdownRows([item({ unit: "m2" })], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      unitReplacements: [
+        { from: "m2", to: "㎡" },
+        { from: "m3", to: "" },
+      ],
+    });
+    expect(rows.find((row) => row.rowKind === "detail")?.unit).toBe("㎡");
+    const asIs = buildBreakdownRows([item({ unit: "m3" })], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      unitReplacements: [{ from: "m3", to: "" }],
+    });
+    expect(asIs.find((row) => row.rowKind === "detail")?.unit).toBe("m3");
   });
 });
 

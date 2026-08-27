@@ -5,8 +5,11 @@
 
 import { deflateRawSync } from "zlib";
 
-/** セルの見た目。text：文字、number：数字（右寄せ・#,##0.00）、header：見出し（太字・灰色） */
-export type XlsxCellKind = "text" | "number" | "header";
+/**
+ * セルの見た目。text：文字、number：数字（右寄せ・#,##0.00）、header：見出し（太字・灰色）、
+ * wrap：セルの中で改行する文字（エクセルの Alt+Enter と同じ）
+ */
+export type XlsxCellKind = "text" | "number" | "header" | "wrap";
 
 /**
  * 行の罫線。
@@ -27,7 +30,7 @@ export interface XlsxSheet {
   rows: XlsxCell[][];
 }
 
-const KINDS: XlsxCellKind[] = ["text", "number", "header"];
+const KINDS: XlsxCellKind[] = ["text", "number", "header", "wrap"];
 const BORDERS: XlsxBorder[] = ["one", "upper", "lower"];
 
 function escapeXml(value: string): string {
@@ -88,7 +91,11 @@ function stylesXml(): string {
       const fillId = kind === "header" ? 2 : 0;
       const numFmtId = kind === "number" ? 176 : 0;
       const alignment =
-        kind === "number" ? '<alignment vertical="center" horizontal="right"/>' : '<alignment vertical="center"/>';
+        kind === "number"
+          ? '<alignment vertical="center" horizontal="right"/>'
+          : kind === "wrap"
+            ? '<alignment vertical="center" wrapText="1"/>'
+            : '<alignment vertical="center"/>';
       return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${BORDERS.indexOf(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
     }),
   ).join("");

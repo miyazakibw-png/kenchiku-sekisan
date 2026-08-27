@@ -79,6 +79,9 @@ export function getBreakdownSettings(
       subjectOrder: [],
       replacements: [],
       unitOrder: [],
+      unitReplacements: [],
+      detailsPerPage: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
+      detailsPerPageLater: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
       workCategory: "建築主体工事",
     };
   }
@@ -95,6 +98,9 @@ export function getBreakdownSettings(
     subjectOrder: parseNumbers(row.subjectOrderJson),
     replacements: parseReplacements(row.replacementsJson),
     unitOrder: parseStrings(row.unitOrderJson),
+    unitReplacements: parseReplacements(row.unitReplacementsJson),
+    detailsPerPage: row.detailsPerPage,
+    detailsPerPageLater: row.detailsPerPageLater,
     workCategory: row.workCategory,
   };
 }
@@ -117,6 +123,9 @@ export function saveBreakdownSettings(
       subjectOrderJson: JSON.stringify(settings.subjectOrder),
       replacementsJson: JSON.stringify(settings.replacements),
       unitOrderJson: JSON.stringify(settings.unitOrder),
+      unitReplacementsJson: JSON.stringify(settings.unitReplacements),
+      detailsPerPage: settings.detailsPerPage,
+      detailsPerPageLater: settings.detailsPerPageLater,
       workCategory: settings.workCategory,
     })
     .where(eq(projectBreakdownSettings.projectId, settings.projectId))
@@ -137,6 +146,9 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
     subjectOrder: record.subjectOrder,
     replacements: record.replacements,
     unitOrder: record.unitOrder,
+    unitReplacements: record.unitReplacements,
+    detailsPerPage: record.detailsPerPage,
+    detailsPerPageLater: record.detailsPerPageLater,
   };
 }
 

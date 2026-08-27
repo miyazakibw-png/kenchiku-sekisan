@@ -46,6 +46,12 @@ export interface BreakdownSettings {
   replacements: TextReplacement[];
   /** 単位の並び（集計書から抜き出す） */
   unitOrder: string[];
+  /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
+  unitReplacements: TextReplacement[];
+  /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
+  detailsPerPage: number;
+  /** エクセル掃き出し：2ページ目以降の明細数（タイトル行が無い分） */
+  detailsPerPageLater: number;
 }
 
 export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
@@ -60,6 +66,9 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   subjectOrder: [],
   replacements: [],
   unitOrder: [],
+  unitReplacements: [],
+  detailsPerPage: 17,
+  detailsPerPageLater: 16,
 };
 
 /** 内訳書の行の種類 */
@@ -249,6 +258,17 @@ export function applyReplacements(
   );
 }
 
+/** 単位を提出先の表記へ置き換える（設定が無ければそのまま） */
+export function replaceUnit(
+  unit: string,
+  replacements: readonly TextReplacement[],
+): string {
+  const rule = replacements.find(
+    (row) => row.from === unit && row.to.trim() !== "",
+  );
+  return rule ? rule.to : unit;
+}
+
 function roundTo(value: number, decimals: number): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
@@ -424,7 +444,7 @@ function detailRows(
   row.descriptionLower = description.primary;
   row.remarksLower = remarks.primary;
   row.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  row.unit = item.unit;
+  row.unit = replaceUnit(item.unit, settings.unitReplacements);
 
   const rows = [row];
   if (description.overflow !== "" || remarks.overflow !== "") {
@@ -479,7 +499,7 @@ function twoRowDetail(
   );
   lower.remarksLower = item.remarksLower;
   lower.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  lower.unit = item.unit;
+  lower.unit = replaceUnit(item.unit, settings.unitReplacements);
 
   // 1明細＝必ず上下2行1組にする（中身が空でも行は残す）
   return [upper, lower];

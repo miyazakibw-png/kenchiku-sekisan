@@ -10,9 +10,12 @@ import { resolveMasterName } from "@shared/masters";
 import MasterCodeInput, {
   MasterCodeOptions,
 } from "../../components/MasterCodeInput";
+import PickInput, { type PickEntry } from "../../components/PickInput";
+import { buildPastePreview } from "../grid/gridClipboard";
 import {
   applyDetail,
   applyEstimateParts,
+  buildTransferColumns,
   emptyTransferRow,
   formatQuantity,
   insertTransferRow,
@@ -189,6 +192,40 @@ export default function TransferSheetPage({
     () => options.units.map((unit) => ({ id: unit.id, name: unit.name })),
     [options.units],
   );
+  const subjectEntries: PickEntry[] = useMemo(
+    () =>
+      options.subjects.map((subject) => ({
+        value: String(subject.id),
+        label: subject.name,
+      })),
+    [options.subjects],
+  );
+
+  const pasteColumns = useMemo(
+    () =>
+      buildTransferColumns(materialEntries, unitEntries, options.pickupParts),
+    [materialEntries, options.pickupParts, unitEntries],
+  );
+
+  /** エクセルの表をそのまま貼り付ける（選んでいる行の科目ID列から取り込む） */
+  const pasteFromExcel = useCallback(async () => {
+    const text = await navigator.clipboard.readText();
+    if (text.trim() === "") return;
+    const preview = buildPastePreview(
+      rows,
+      pasteColumns,
+      text,
+      Math.min(selected, Math.max(rows.length - 1, 0)),
+      0,
+      () => emptyTransferRow(),
+    );
+    history.edit(preview.rows);
+    const notes = [
+      `${preview.addedRows} 行追加`,
+      preview.errorCount > 0 ? `取り込めない値 ${preview.errorCount} 件` : "",
+    ].filter((note) => note !== "");
+    setMessage(`貼り付けました（${notes.join("／")}）`);
+  }, [history, pasteColumns, rows, selected]);
 
   return (
     <div className="estimate-page transfer-page">
@@ -255,6 +292,13 @@ export default function TransferSheetPage({
           onClick={() => setCallOpen(!callOpen)}
         >
           📂 マスター呼出
+        </button>
+        <button
+          type="button"
+          title="エクセルでコピーした表を、選んでいる行の科目IDから取り込みます（列の順番：科目ID・仕上区分・部位ID・明細ID・部位名・名称・摘要上・摘要下・数量・単位・備考上・備考下）"
+          onClick={() => void pasteFromExcel()}
+        >
+          📋 エクセルから貼付
         </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
@@ -470,7 +514,8 @@ export default function TransferSheetPage({
                   />
                 </td>
                 <td className="subject" rowSpan={2}>
-                  <input
+                  <PickInput
+                    entries={subjectEntries}
                     value={row.subjectId === null ? "" : String(row.subjectId)}
                     placeholder={
                       shown.subjectId === null
@@ -480,10 +525,10 @@ export default function TransferSheetPage({
                     title={
                       options.subjects.find(
                         (subject) => subject.id === row.subjectId,
-                      )?.name ?? "工種科目のID"
+                      )?.name ?? "工種科目のID（一覧から選べます）"
                     }
-                    onChange={(e) => {
-                      const parsed = Number.parseInt(e.target.value.trim(), 10);
+                    onCommit={(value) => {
+                      const parsed = Number.parseInt(value.trim(), 10);
                       update(index, {
                         subjectId: Number.isNaN(parsed) ? null : parsed,
                       });
@@ -547,10 +592,11 @@ export default function TransferSheetPage({
                 <td className="unit" />
                 <td className="num future" />
                 <td className="num future" />
-                <td rowSpan={2}>
+                <td>
                   <input
                     lang="ja"
                     value={row.remarks}
+                    title="備考の上段"
                     onChange={(e) => update(index, { remarks: e.target.value })}
                   />
                 </td>
@@ -627,6 +673,16 @@ export default function TransferSheetPage({
                 </td>
                 <td className="num future" title="将来用（単価）" />
                 <td className="num future" title="将来用（金額）" />
+                <td>
+                  <input
+                    lang="ja"
+                    value={row.remarksLower}
+                    title="備考の下段"
+                    onChange={(e) =>
+                      update(index, { remarksLower: e.target.value })
+                    }
+                  />
+                </td>
               </tr>
             </tbody>
           );

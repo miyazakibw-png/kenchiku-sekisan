@@ -171,6 +171,17 @@ export default function ProjectLedgerPage({
     setToast("保存しました");
   }, []);
 
+  // 別のウィンドウ（工事概要など）で直された内容を台帳にも反映する
+  useEffect(
+    () =>
+      window.sekisan.onProjectChanged((saved) =>
+        setProjects((prev) =>
+          prev.map((row) => (row.id === saved.id ? saved : row)),
+        ),
+      ),
+    [],
+  );
+
   /** 画面上の編集は行だけを差し替え、確定（フォーカスアウト）で保存する */
   const editRow = useCallback((id: number, patch: Partial<ProjectSummary>) => {
     setProjects((prev) =>

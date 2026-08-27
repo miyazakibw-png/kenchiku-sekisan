@@ -120,6 +120,7 @@ function transferDraft(quantity: number): TransferRowDraft {
     unitPrice: null,
     amount: null,
     remarks: "",
+    remarksLower: "",
     memo: "",
   };
 }

@@ -444,8 +444,9 @@ export const projectTransferRows = sqliteTable(
     /** O・P: 将来用（単価・金額） */
     unitPrice: real("unit_price"),
     amount: real("amount"),
-    /** Q・R: 備考とメモ（メモはどこにも連動しない） */
+    /** Q・R: 備考（上段・下段）とメモ（メモはどこにも連動しない） */
     remarks: text("remarks").notNull().default(""),
+    remarksLower: text("remarks_lower").notNull().default(""),
     memo: text("memo").notNull().default(""),
     /** 型枠転記で作った行の生成元（型枠分類）。転記し直すときの目印 */
     formworkKey: text("formwork_key").notNull().default(""),
@@ -736,6 +737,11 @@ export const projectBreakdownSettings = sqliteTable(
     subjectOrderJson: text("subject_order_json").notNull().default("[]"),
     replacementsJson: text("replacements_json").notNull().default("[]"),
     unitOrderJson: text("unit_order_json").notNull().default("[]"),
+    /** 単位の置き換え（[{from,to}]。変更後が空ならそのまま） */
+    unitReplacementsJson: text("unit_replacements_json").notNull().default("[]"),
+    /** エクセル掃き出しの1ページの明細数（1ページ目はタイトル行を含む） */
+    detailsPerPage: integer("details_per_page").notNull().default(17),
+    detailsPerPageLater: integer("details_per_page_later").notNull().default(16),
     workCategory: text("work_category").notNull().default("建築主体工事"),
   },
 );

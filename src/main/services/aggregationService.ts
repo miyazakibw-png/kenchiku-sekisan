@@ -525,7 +525,7 @@ function transferEntries(
         descriptionLower: row.descriptionLower,
         unit: row.unit,
         remarksUpper: row.remarks,
-        remarksLower: "",
+        remarksLower: row.remarksLower,
         estimateDisplay: "",
         coefficient: 1,
         setTotal: quantity,
@@ -618,6 +618,7 @@ export function saveAggregateEdits(
             descriptionLower: edit.descriptionLower,
             unit: edit.unit,
             remarks: edit.remarksUpper,
+            remarksLower: edit.remarksLower,
           })
           .where(eq(projectTransferRows.id, target.transferRowId))
           .run();

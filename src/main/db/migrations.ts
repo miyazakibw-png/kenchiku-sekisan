@@ -858,4 +858,14 @@ UPDATE m_finish_assembly_items SET formula = '' WHERE formula <> '';
   `
 ALTER TABLE project_room_sheets ADD COLUMN ceiling_codes_json TEXT NOT NULL DEFAULT '{}';
 `,
+  // 内訳書：単位の置き換えと、エクセル掃き出しの1ページの明細数
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN unit_replacements_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE project_breakdown_settings ADD COLUMN details_per_page INTEGER NOT NULL DEFAULT 17;
+ALTER TABLE project_breakdown_settings ADD COLUMN details_per_page_later INTEGER NOT NULL DEFAULT 16;
+`,
+  // 転記入力表：備考も集計書と同じ2段にする
+  `
+ALTER TABLE project_transfer_rows ADD COLUMN remarks_lower TEXT NOT NULL DEFAULT '';
+`,
 ];

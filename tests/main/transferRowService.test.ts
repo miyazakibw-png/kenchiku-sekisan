@@ -46,6 +46,7 @@ function draft(name: string, quantity: number | null): TransferRowDraft {
     unitPrice: null,
     amount: null,
     remarks: "備考",
+    remarksLower: "",
     memo: "メモ",
   };
 }

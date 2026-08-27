@@ -77,6 +77,15 @@ export default function ProjectWorkspacePage({
 
   useEffect(() => setDraft(project), [project]);
 
+  // 物件管理台帳など別の画面で同じ工事が直されたら、工事概要もそろえる
+  useEffect(
+    () =>
+      window.sekisan.onProjectChanged((saved) =>
+        setDraft((current) => (current.id === saved.id ? saved : current)),
+      ),
+    [],
+  );
+
   useActiveProjectName(draft.name);
 
   const headerFields = useMemo<HeaderField[]>(
@@ -270,11 +279,7 @@ export default function ProjectWorkspacePage({
     );
   }
 
-  if (
-    openedMenu === "statement" ||
-    openedMenu === "statementSingle" ||
-    openedMenu === "statementSettings"
-  ) {
+  if (openedMenu === "statement") {
     return <BreakdownPage project={draft} onBack={() => setOpenedMenu(null)} />;
   }
 

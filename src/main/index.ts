@@ -520,9 +520,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.projectCopy, (_event, sourceId: number, name: string) =>
     copyProject(getDatabase(), sourceId, name),
   );
-  ipcMain.handle(IPC.projectSave, (_event, request: SaveProjectRequest) =>
-    saveProject(getDatabase(), request),
-  );
+  ipcMain.handle(IPC.projectSave, (event, request: SaveProjectRequest) => {
+    const saved = saveProject(getDatabase(), request);
+    // 台帳と工事概要（別ウィンドウで開いていることもある）を同じ内容にそろえる
+    for (const opened of BrowserWindow.getAllWindows()) {
+      if (opened.webContents.id === event.sender.id) continue;
+      if (!opened.isDestroyed()) opened.webContents.send(IPC.projectChanged, saved);
+    }
+    return saved;
+  });
   ipcMain.handle(IPC.projectReorder, (_event, orderedIds: number[]) =>
     reorderProjects(getDatabase(), orderedIds),
   );

@@ -16,6 +16,19 @@ export interface SheetData {
   rows: BreakdownRow[];
 }
 
+/** 1ページに引く罫線の数（提出先の書式に合わせて変えられる） */
+export interface PageLayout {
+  /** 1ページ目の明細数（タイトル行を含む） */
+  detailsPerPage: number;
+  /** 2ページ目以降の明細数（タイトル行が無い分） */
+  detailsPerPageLater: number;
+}
+
+export const DEFAULT_PAGE_LAYOUT: PageLayout = {
+  detailsPerPage: 17,
+  detailsPerPageLater: 16,
+};
+
 const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
 const COLUMN_WIDTHS = [40, 30, 12, 8, 12, 14, 20];
 
@@ -43,8 +56,29 @@ function headingRow(name: string, border: RowBorder): XlsxCell[] {
   }));
 }
 
-function bodyRows(rows: readonly BreakdownRow[], layout: number): XlsxCell[][] {
+function wrapCell(upper: string, lower: string): XlsxCell {
+  // エクセルの Alt+Enter と同じセル内改行。片方だけのときは改行を入れない
+  const value = [upper, lower].filter((text) => text !== "").join("\n");
+  return { value, kind: value.includes("\n") ? "wrap" : "text", border: "one" };
+}
+
+/** 1明細が何行になるか（2段の書式は上下2行、1段・セル内改行の書式は1行） */
+function rowsPerDetail(layout: number): number {
+  return layout === BREAKDOWN_LAYOUT.oneLine || layout === BREAKDOWN_LAYOUT.excel
+    ? 1
+    : 2;
+}
+
+/** 明細1件分をまとめた行の固まり（ページの途中で切らない単位） */
+function detailBlocks(
+  rows: readonly BreakdownRow[],
+  layout: number,
+): XlsxCell[][][] {
+  const blocks: XlsxCell[][][] = [];
   const lines: XlsxCell[][] = [];
+  const flush = (): void => {
+    if (lines.length > 0) blocks.push(lines.splice(0, lines.length));
+  };
   const twoRowHeading =
     layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow;
   rows.forEach((row) => {
@@ -57,28 +91,24 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): XlsxCell[][] {
       } else {
         lines.push(headingRow(text, "one"));
       }
+      flush();
       return;
     }
     if (layout === BREAKDOWN_LAYOUT.excel) {
-      // 書式③：2段を1行にまとめて掃き出す
-      const name = [row.nameUpper, row.nameLower]
-        .filter((v) => v !== "")
-        .join(" ");
-      const description = [row.descriptionUpper, row.descriptionLower]
-        .filter((v) => v !== "")
-        .join(" ");
-      const remarks = [row.remarksUpper, row.remarksLower]
-        .filter((v) => v !== "")
-        .join(" ");
+      // 書式③：2段を1行にまとめ、上段と下段はセルの中で改行する（上：部位／下：名称）
+      const name = wrapCell(row.nameUpper, row.nameLower);
+      const description = wrapCell(row.descriptionUpper, row.descriptionLower);
+      const remarks = wrapCell(row.remarksUpper, row.remarksLower);
       lines.push([
-        textCell(name),
-        textCell(description),
+        name,
+        description,
         numberCell(row.quantity),
         textCell(row.unit),
         numberCell(row.unitPrice),
         numberCell(row.amount),
-        textCell(remarks),
+        remarks,
       ]);
+      flush();
       return;
     }
     if (
@@ -103,6 +133,7 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): XlsxCell[][] {
         numberCell(row.amount, border),
         textCell(row.remarksLower, border),
       ]);
+      if (layout === BREAKDOWN_LAYOUT.oneLine || row.rowKind !== "note") flush();
       return;
     }
     lines.push([
@@ -123,20 +154,91 @@ function bodyRows(rows: readonly BreakdownRow[], layout: number): XlsxCell[][] {
       numberCell(row.amount, "lower"),
       textCell(row.remarksLower, "lower"),
     ]);
+    flush();
   });
-  return lines;
+  flush();
+  return blocks;
 }
 
-function worksheet(sheet: SheetData, layout: number): XlsxSheet {
-  const header = HEADER.map((title) => ({
+/** タイトル行。2段にして文字は下の行へ入れる */
+function titleRows(): XlsxCell[][] {
+  const upper = HEADER.map(() => ({
+    value: "",
+    kind: "header" as const,
+    border: "upper" as const,
+  }));
+  const lower = HEADER.map((title) => ({
     value: title,
     kind: "header" as const,
-    border: "one" as const,
+    border: "lower" as const,
   }));
+  return [upper, lower];
+}
+
+function blankRow(): XlsxCell[] {
+  return HEADER.map(() => textCell(""));
+}
+
+/**
+ * 明細の固まりをページへ並べる。
+ * 1ページ目はタイトル行を含めて detailsPerPage 明細分、
+ * 2ページ目以降はタイトルが無いので detailsPerPageLater 明細分の罫線を引く。
+ * 工種科目が変わるところでは、残りを空行で埋めて次のページから書き出す。
+ */
+function paginate(
+  subjects: readonly XlsxCell[][][][],
+  layout: number,
+  page: PageLayout,
+): XlsxCell[][] {
+  const unit = rowsPerDetail(layout);
+  const firstPage = Math.max(page.detailsPerPage, 1) * unit;
+  const laterPage = Math.max(page.detailsPerPageLater, 1) * unit;
+
+  const rows: XlsxCell[][] = [];
+  const title = titleRows();
+  title.forEach((row) => rows.push(row));
+  let remaining = firstPage - title.length;
+
+  const fillPage = (): void => {
+    for (let count = 0; count < remaining; count += 1) rows.push(blankRow());
+    remaining = laterPage;
+  };
+
+  subjects.forEach((blocks, index) => {
+    if (index > 0) fillPage();
+    blocks.forEach((block) => {
+      if (block.length > remaining) fillPage();
+      block.forEach((row) => rows.push(row));
+      remaining -= block.length;
+    });
+  });
+  fillPage();
+  return rows;
+}
+
+/** 工種科目ごとに固まりを分ける（1シート出力で科目ごとにページを分けるため） */
+function bySubject(rows: readonly BreakdownRow[]): BreakdownRow[][] {
+  const groups: BreakdownRow[][] = [];
+  rows.forEach((row) => {
+    if (row.rowKind === "subject" || groups.length === 0) groups.push([]);
+    groups[groups.length - 1].push(row);
+  });
+  return groups;
+}
+
+function worksheet(
+  sheet: SheetData,
+  layout: number,
+  page: PageLayout,
+): XlsxSheet {
+  const subjects = bySubject(sheet.rows).map((rows) =>
+    detailBlocks(rows, layout),
+  );
+
   return {
     name: sheet.name,
     columnWidths: COLUMN_WIDTHS,
-    rows: [header, ...bodyRows(sheet.rows, layout)],
+    rows: paginate(subjects, layout, page),
   };
 }
 
@@ -144,16 +246,18 @@ function worksheet(sheet: SheetData, layout: number): XlsxSheet {
 export function toSpreadsheetSheets(
   sheets: readonly SheetData[],
   layout: number,
+  page: PageLayout = DEFAULT_PAGE_LAYOUT,
 ): XlsxSheet[] {
-  return sheets.map((sheet) => worksheet(sheet, layout));
+  return sheets.map((sheet) => worksheet(sheet, layout, page));
 }
 
 /** 複数シートのブック（.xlsx）を作る */
 export function toSpreadsheetWorkbook(
   sheets: readonly SheetData[],
   layout: number,
+  page: PageLayout = DEFAULT_PAGE_LAYOUT,
 ): Buffer {
-  return toXlsx(toSpreadsheetSheets(sheets, layout));
+  return toXlsx(toSpreadsheetSheets(sheets, layout, page));
 }
 
 /** 工種科目ごとにシートを分ける */

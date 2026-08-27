@@ -38,6 +38,9 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   subjectOrder: [],
   replacements: [],
   unitOrder: [],
+  unitReplacements: [],
+  detailsPerPage: 17,
+  detailsPerPageLater: 16,
   workCategory: "建築主体工事",
 };
 
@@ -604,9 +607,54 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               ＋追加
             </button>
           </div>
+          <label>
+            エクセルの行数
+            <input
+              type="number"
+              value={settings.detailsPerPage}
+              onChange={(e) =>
+                void saveSettings({ detailsPerPage: Number(e.target.value) })
+              }
+            />
+            明細（1ページ目・タイトル行を含む）、2ページ目以降は
+            <input
+              type="number"
+              value={settings.detailsPerPageLater}
+              onChange={(e) =>
+                void saveSettings({
+                  detailsPerPageLater: Number(e.target.value),
+                })
+              }
+            />
+            明細
+          </label>
           <div className="units">
-            単位：
-            {settings.unitOrder.join("・") || "（転記すると自動で並びます）"}
+            <span>単位の変更（入れなければそのまま）</span>
+            {settings.unitOrder.length === 0 && (
+              <span>（転記すると自動で並びます）</span>
+            )}
+            {settings.unitOrder.map((unit) => (
+              <span key={unit} className="rule">
+                {unit} →
+                <TextInput
+                  value={
+                    settings.unitReplacements.find((rule) => rule.from === unit)
+                      ?.to ?? ""
+                  }
+                  onCommit={(value) => {
+                    const rest = settings.unitReplacements.filter(
+                      (rule) => rule.from !== unit,
+                    );
+                    void saveSettings({
+                      unitReplacements:
+                        value.trim() === ""
+                          ? rest
+                          : [...rest, { from: unit, to: value }],
+                    });
+                  }}
+                />
+              </span>
+            ))}
           </div>
         </div>
       )}
@@ -764,7 +812,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           >
             <thead>
               <tr>
-                <th className="mark">印</th>
+                <th className="mark" data-noexport>印</th>
                 <th>名称</th>
                 <th>摘要</th>
                 <th className="qty">数量</th>
@@ -786,7 +834,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                         : undefined
                     }
                   >
-                    <td className="mark">
+                    <td className="mark" data-noexport>
                       {(() => {
                         const mark =
                           row.rowKind === "subject"
@@ -816,7 +864,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     key={`d-${index}`}
                     className={pairClass(shownRows, index, settings.layout)}
                   >
-                    <td className="mark" />
+                    <td className="mark" data-noexport />
                     <td>{row.nameLower}</td>
                     <td>{row.descriptionLower}</td>
                     <td className="qty">{row.quantity ?? ""}</td>
@@ -827,7 +875,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                   </tr>
                 ) : (
                   <tr key={`d-${index}`} className="two-line">
-                    <td className="mark" />
+                    <td className="mark" data-noexport />
                     <td>
                       <div className="upper">{row.nameUpper}</div>
                       <div className="lower">{row.nameLower}</div>

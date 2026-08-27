@@ -61,6 +61,8 @@ export const IPC = {
   projectReorder: "project:reorder",
   projectFieldsSave: "project:fieldsSave",
   projectOpenWindow: "project:openWindow",
+  /** 工事の内容が変わったことを開いているすべての画面へ知らせる（送信専用） */
+  projectChanged: "project:changed",
   /** 明細入力を独立したウィンドウで開く */
   calcWindowOpen: "calc:openWindow",
   /** 元の画面 → 明細入力ウィンドウへ内容を渡す */

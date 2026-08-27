@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDetail,
+  buildTransferColumns,
   applyEstimateParts,
   emptyTransferRow,
   insertTransferRow,
@@ -10,6 +11,7 @@ import {
   updateTransferRow,
 } from "../../src/renderer/src/features/estimate/transferRows";
 import type { Detail, EstimateRow } from "../../src/shared/types";
+import { buildPastePreview } from "../../src/renderer/src/features/grid/gridClipboard";
 
 describe("転記入力表の行操作", () => {
   it("Ａ〜Ｉは入力が無ければ入力のある上の行を引き継ぐ", () => {
@@ -124,5 +126,72 @@ describe("転記入力表の行操作", () => {
     expect(parseQuantity("１２．３４５").value).toBe(12.35);
     expect(parseQuantity("").value).toBeNull();
     expect(parseQuantity("あ").error).toBeTruthy();
+  });
+});
+
+describe("転記入力表のエクセル貼り付け（科目IDから）", () => {
+  const columns = buildTransferColumns(
+    [{ id: 1, name: "仕上" }],
+    [{ id: 2, name: "m2" }],
+    [{ id: 3, name: "床" }],
+  );
+
+  it("科目IDから右へ、1行1明細で取り込む", () => {
+    const text = [
+      [
+        "5",
+        "1",
+        "3",
+        "1.02",
+        "",
+        "ビニル床シート",
+        "上段",
+        "下段",
+        "12.345",
+        "2",
+        "備考上",
+        "備考下",
+      ].join("\t"),
+      ["6", "仕上", "", "", "壁", "塗装", "", "", "3", "m2", "", ""].join("\t"),
+    ].join("\n");
+
+    const preview = buildPastePreview(
+      [emptyTransferRow()],
+      columns,
+      text,
+      0,
+      0,
+      () => emptyTransferRow(),
+    );
+
+    expect(preview.errorCount).toBe(0);
+    expect(preview.addedRows).toBe(1);
+    const [first, second] = preview.rows;
+    expect(first.subjectId).toBe(5);
+    // マスターのIDで打った仕上区分・単位・部位はマスターの名前に直す
+    expect(first.materialCategory).toBe("仕上");
+    expect(first.unit).toBe("m2");
+    expect(first.partId).toBe(3);
+    expect(first.partName).toBe("床");
+    expect(first.detailNumber).toBe(1.02);
+    expect(first.quantity).toBe(12.35);
+    expect(first.remarks).toBe("備考上");
+    expect(first.remarksLower).toBe("備考下");
+    expect(second.subjectId).toBe(6);
+    expect(second.partName).toBe("壁");
+  });
+
+  it("数字で入れる欄に文字が来たときは取り込まずに件数を返す", () => {
+    const preview = buildPastePreview(
+      [emptyTransferRow()],
+      columns,
+      "あ\t仕上",
+      0,
+      0,
+      () => emptyTransferRow(),
+    );
+    expect(preview.errorCount).toBe(1);
+    expect(preview.rows[0].subjectId).toBeNull();
+    expect(preview.rows[0].materialCategory).toBe("仕上");
   });
 });

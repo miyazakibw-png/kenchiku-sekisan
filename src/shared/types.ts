@@ -363,8 +363,10 @@ export interface TransferRow {
   /** O・P: 将来用（単価・金額） */
   unitPrice: number | null;
   amount: number | null;
-  /** Q: 備考 */
+  /** Q: 備考（上段） */
   remarks: string;
+  /** Q: 備考（下段。集計書と同じ2段） */
+  remarksLower: string;
   /** R: メモ（どこにも連動しない） */
   memo: string;
   /** 型枠転記で作った行の生成元（型枠分類） */
@@ -684,6 +686,12 @@ export interface BreakdownSettingsRecord {
   replacements: { from: string; to: string }[];
   /** 単位の並び */
   unitOrder: string[];
+  /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
+  unitReplacements: { from: string; to: string }[];
+  /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
+  detailsPerPage: number;
+  /** エクセル掃き出し：2ページ目以降の明細数 */
+  detailsPerPageLater: number;
   /** BCS・印刷で使う2層目の工事区分 */
   workCategory: string;
 }

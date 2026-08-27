@@ -67,7 +67,10 @@ export function buildExport(
       ? splitBySubject(coreRows)
       : [{ name: "内訳書", rows: coreRows }];
   return {
-    content: toSpreadsheetWorkbook(sheets, settings.layout),
+    content: toSpreadsheetWorkbook(sheets, settings.layout, {
+      detailsPerPage: settings.detailsPerPage,
+      detailsPerPageLater: settings.detailsPerPageLater,
+    }),
     defaultName: `${projectName}_内訳書.xlsx`,
   };
 }
