@@ -1124,6 +1124,23 @@ export function moveCorner(
 }
 
 /**
+ * 選んだ範囲（この辺からこの辺まで）の辺の番号。
+ * 始めの辺から形をたどる向き（表の並び順）に進んで終わりの辺まで。一周をまたいでもよい。
+ */
+export function edgeRange(
+  shape: RoomShape,
+  fromId: string,
+  toId: string,
+): number[] {
+  const count = shape.edges.length;
+  const from = shape.edges.findIndex((row) => row.id === fromId);
+  const to = shape.edges.findIndex((row) => row.id === toId);
+  if (from < 0 || to < 0) return [];
+  const steps = (((to - from) % count) + count) % count;
+  return Array.from({ length: steps + 1 }, (_, step) => (from + step) % count);
+}
+
+/**
  * 選んだ範囲（この辺からこの辺まで）をまとめて消し、その間をまっすぐな壁でそろえる。
  * 始めの辺の始点と終わりの辺の終点を結ぶ辺（縦横がずれていれば2本）に置き換えるので、
  * 1本ずつ消したときのように形が崩れない。
@@ -1134,13 +1151,9 @@ export function trimEdges(
   toId: string,
 ): { shape: RoomShape; error: string | null } {
   const count = shape.edges.length;
-  const from = shape.edges.findIndex((row) => row.id === fromId);
-  const to = shape.edges.findIndex((row) => row.id === toId);
-  if (from < 0 || to < 0) return { shape, error: "範囲を選んでください" };
-  const first = Math.min(from, to);
-  const last = Math.max(from, to);
-  const removed = last - first + 1;
-  if (count - removed < 2) {
+  const range = edgeRange(shape, fromId, toId);
+  if (range.length === 0) return { shape, error: "範囲を選んでください" };
+  if (count - range.length < 2) {
     return { shape, error: "この範囲は消せません（辺が残りません）" };
   }
   const solved = solveShape(shape);
@@ -1151,6 +1164,8 @@ export function trimEdges(
     };
   }
 
+  const first = range[0];
+  const last = range[range.length - 1];
   const start = solved.points[first];
   const end = solved.points[(last + 1) % count];
   const dx = round2(end.x - start.x);
@@ -1175,11 +1190,14 @@ export function trimEdges(
     horizontal();
   }
 
-  const edges = [
-    ...shape.edges.slice(0, first),
-    ...replaced,
-    ...shape.edges.slice(last + 1),
-  ];
+  // 残る辺は「終わりの辺の次」から順にたどる（一周をまたぐ範囲でも同じ形のまま）
+  const removedIds = new Set(range.map((index) => shape.edges[index].id));
+  const kept: RoomEdge[] = [];
+  for (let step = 1; step <= count; step += 1) {
+    const row = shape.edges[(last + step) % count];
+    if (!removedIds.has(row.id)) kept.push(row);
+  }
+  const edges = [...kept, ...replaced];
   if (edges.length < 3) {
     return { shape, error: "この範囲は消せません（形が作れません）" };
   }

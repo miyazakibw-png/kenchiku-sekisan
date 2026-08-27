@@ -485,6 +485,19 @@ describe("部屋形状（単線図）", () => {
       expect(floorArea(solved)).toBe(24);
     });
 
+    it("一周をまたぐ範囲（最後の辺から最初の辺まで）も選んで消せる", () => {
+      const shape = lShape(6, 4, 2, 2);
+      const ids = shape.edges.map((row) => row.id);
+      const count = ids.length;
+      // 最後の辺から最初の辺までを選ぶ（表の並び順に一周をまたぐ）
+      const result = trimEdges(shape, ids[count - 1], ids[0]);
+      expect(result.error).toBeNull();
+      const solved = solveShape(result.shape);
+      expect(solved.error).toBeNull();
+      // 形は変わらない（消した2辺の代わりに同じ位置を通る辺が入る）
+      expect(floorArea(solved)).toBe(floorArea(solveShape(shape)));
+    });
+
     it("辺が残らない範囲は消さない", () => {
       const shape = rectangleShape(6, 4);
       const ids = shape.edges.map((row) => row.id);

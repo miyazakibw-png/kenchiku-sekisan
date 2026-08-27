@@ -20,6 +20,7 @@ import {
   closeShapeAtEdge,
   cutCorner,
   edge,
+  edgeRange,
   incomingIsVertical,
   isDiagonal,
   mirrorShape,
@@ -1096,13 +1097,10 @@ export default function RoomSheetPage({
   /** 選んでいる辺（範囲選択中はその間の辺すべて） */
   const selectedEdgeIds = ((): string[] => {
     if (selectedEdge === null) return [];
-    const from = shape.edges.findIndex((row) => row.id === selectedEdge);
-    const to = shape.edges.findIndex((row) => row.id === rangeEdge);
-    if (from < 0) return [];
-    if (rangeEdge === null || to < 0) return [selectedEdge];
-    return shape.edges
-      .slice(Math.min(from, to), Math.max(from, to) + 1)
-      .map((row) => row.id);
+    if (rangeEdge === null) return [selectedEdge];
+    return edgeRange(shape, selectedEdge, rangeEdge).map(
+      (index) => shape.edges[index].id,
+    );
   })();
 
   /** 選んだ辺の寸法だけを、閉じた形になるように自動で入れる */
@@ -1763,7 +1761,7 @@ export default function RoomSheetPage({
               <button
                 type="button"
                 disabled={selectedEdge === null || rangeEdge === null}
-                title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺をまとめて消し、まっすぐな壁でそろえます"
+                title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺（表の並び順に進みます。一周をまたいでも選べます）をまとめて消し、まっすぐな壁でそろえます"
                 onClick={() => {
                   if (selectedEdge === null || rangeEdge === null) return;
                   const result = trimEdges(shape, selectedEdge, rangeEdge);
@@ -1973,7 +1971,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ、「▭
+              辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
               範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
             </p>
           </section>
