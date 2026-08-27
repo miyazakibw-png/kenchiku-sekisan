@@ -78,6 +78,8 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  /** 天井高さを直したときに部位別入力表の行へも伝える */
+  onCeilingHeightChange?: (height: number | null) => void;
 }
 
 /** チェック表で合計する材種区分 */
@@ -239,6 +241,7 @@ export default function RoomSheetPage({
   row,
   roomName,
   onBack,
+  onCeilingHeightChange,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<RoomSheet | null>(null);
   const [shape, setShape] = useState<RoomShape>({ edges: [] });
@@ -316,12 +319,16 @@ export default function RoomSheetPage({
     () => save(),
   );
 
+  /** 部位別入力表の行の天井高さ（読み込みのときだけ見る） */
+  const rowCeilingRef = useRef(row.ceilingHeight);
+  rowCeilingRef.current = row.ceilingHeight;
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
       const loaded = await window.sekisan.getRoomSheet(row.id as number);
       // 天井高さは部位別入力表の値を優先（計算書をコピーしたときに元の高さが残らないように）
-      const height = row.ceilingHeight ?? loaded.ceilingHeight;
+      const height = rowCeilingRef.current ?? loaded.ceilingHeight;
       setSheet(loaded);
       setCeilingHeight(height);
       setShape(parseShape(loaded.shapeJson));
@@ -337,14 +344,15 @@ export default function RoomSheetPage({
         ceiling: parseCeiling(loaded.ceilingJson, height),
         codeMoves: parseCeilingCodes(loaded.ceilingCodesJson),
         lower: parseLower(loaded.lowerJson),
-        ceilingHeight: height,
+        // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
+        ceilingHeight: loaded.ceilingHeight,
       });
       setOptions(await window.sekisan.getMasterOptions(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
       setDeductionLimit(await window.sekisan.getDeductionLimit());
       setPartValues(await window.sekisan.getFittingPartValues());
     })();
-  }, [markSaved, project.id, row.ceilingHeight, row.id]);
+  }, [markSaved, project.id, row.id]);
 
   // 小窓（四角・L型・コ型・角の追加）を開いたら、寸法欄にカーソルを入れる
   const promptOpen = prompt !== null;
@@ -362,6 +370,18 @@ export default function RoomSheetPage({
     const timer = window.setTimeout(focusInput, 50);
     return () => window.clearTimeout(timer);
   }, [promptOpen]);
+
+  /** 天井高さを直す（部位別入力表の行にもその場で反映させる） */
+  const applyCeilingHeight = useCallback(
+    (text: string): void => {
+      const trimmed = text.trim();
+      const value = trimmed === "" ? null : Number(trimmed);
+      if (value !== null && Number.isNaN(value)) return;
+      setCeilingHeight(value);
+      onCeilingHeightChange?.(value);
+    },
+    [onCeilingHeightChange],
+  );
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const extents = useMemo(() => shapeExtents(solved), [solved]);
@@ -1208,10 +1228,7 @@ export default function RoomSheetPage({
             className="num"
             defaultValue={formatNumber(ceilingHeight, 2)}
             key={`ch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
-            onBlur={(e) => {
-              const value = e.target.value.trim();
-              setCeilingHeight(value === "" ? null : Number(value));
-            }}
+            onBlur={(e) => applyCeilingHeight(e.target.value)}
           />
         </label>
         <button type="button" onClick={() => void save()}>
@@ -1668,11 +1685,8 @@ export default function RoomSheetPage({
                   className="num"
                   key={`ech-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
                   defaultValue={formatNumber(ceilingHeight, 2)}
-                  title="この部屋の天井高さ（記号CH）。天井伏図の壁高さもこの高さから決まります"
-                  onBlur={(e) => {
-                    const value = e.target.value.trim();
-                    setCeilingHeight(value === "" ? null : Number(value));
-                  }}
+                  title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+                  onBlur={(e) => applyCeilingHeight(e.target.value)}
                 />
               </label>
               <button
@@ -2210,6 +2224,16 @@ export default function RoomSheetPage({
           <section className="ceiling">
             <div className="section-bar">
               <span>天井伏図（平面図の壁沿いに線を追加します）</span>
+              <label className="ceiling-height">
+                天井高さ
+                <input
+                  className="num"
+                  key={`cch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
+                  defaultValue={formatNumber(ceilingHeight, 2)}
+                  title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+                  onBlur={(e) => applyCeilingHeight(e.target.value)}
+                />
+              </label>
               {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
                 (kind) => (
                   <button

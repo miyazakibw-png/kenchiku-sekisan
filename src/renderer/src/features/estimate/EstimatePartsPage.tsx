@@ -342,6 +342,14 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={rows[openedSheet].part3}
+        onCeilingHeightChange={(height) => {
+          if (openedSheet === null) return;
+          editRows(
+            updateRow(rowsRef.current, openedSheet, {
+              ceilingHeight: height,
+            }),
+          );
+        }}
         onBack={() => {
           if (returnSheet !== null) {
             setOpenedSheet(returnSheet);

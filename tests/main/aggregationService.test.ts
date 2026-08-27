@@ -174,6 +174,37 @@ describe("集計処理", () => {
     ]);
   });
 
+  it("天井高さは部位別入力表の値で集計する（計算書のコピーで残った古い高さは使わない）", () => {
+    addRoom("事務室", 1, 1);
+    const row = drafts[drafts.length - 1];
+    const sheet = getRoomSheet(db, row.id as number);
+    // 計算書側にコピー元の古い天井高さ5.10が残っている状態にする
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(
+        JSON.parse(lowerJson(1)).map(
+          (set: { lines: { formulaA: string }[] }) => ({
+            ...set,
+            lines: [{ ...set.lines[0], formulaA: "CH" }],
+          }),
+        ),
+      ),
+      ceilingHeight: 5.1,
+      note: "",
+    });
+    // 部位別入力表では3.82に直してある
+    saveEstimateRows(db, {
+      projectId,
+      rows: drafts.map((each) => ({ ...each, ceilingHeight: 3.82 })),
+    });
+
+    const view = runAggregation(db, projectId);
+    expect(view.items[0].quantity).toBe(3.82);
+  });
+
   it("部位別入力表のチェック列は行ごとに部位別の名称と数量を返す", () => {
     addRoom("事務室", 2, 1.05);
     const rowId = drafts[drafts.length - 1].id;

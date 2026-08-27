@@ -55,6 +55,7 @@ import {
   beamFootprintArea,
   ceilingQuantities,
   ceilingSymbols,
+  normalizeCeilingHeights,
   type CeilingElement,
 } from "../../core/room/ceiling";
 import {
@@ -447,18 +448,19 @@ export function collectEntries(
         edgeId: item.edgeId,
       };
     });
-    const ceiling = parseJson<CeilingElement[]>(sheet.ceilingJson, []);
-    const ceilingResult = ceilingQuantities(
-      ceiling,
-      solved,
-      sheet.ceilingHeight,
+    // 天井高さは部位別入力表の行の値を優先する（計算書のコピーで古い高さが残ることへの備え）
+    const ceilingHeight = row.ceilingHeight ?? sheet.ceilingHeight;
+    const ceiling = normalizeCeilingHeights(
+      parseJson<CeilingElement[]>(sheet.ceilingJson, []),
+      ceilingHeight,
     );
+    const ceilingResult = ceilingQuantities(ceiling, solved, ceilingHeight);
     // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
-    const beamArea = beamFootprintArea(ceiling, solved, sheet.ceilingHeight);
+    const beamArea = beamFootprintArea(ceiling, solved, ceilingHeight);
     const symbols = [
       ...roomSymbols(
         solved,
-        sheet.ceilingHeight,
+        ceilingHeight,
         sheetFittings,
         deductionLimit,
         beamArea,

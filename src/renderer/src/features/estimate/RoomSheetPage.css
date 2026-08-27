@@ -284,6 +284,18 @@
   min-height: 0;
 }
 
+.room-sheet-page .section-bar label.ceiling-height {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.room-sheet-page .section-bar label.ceiling-height input.num {
+  width: 60px;
+}
+
 .room-sheet-page .section-bar {
   display: flex;
   gap: 4px;
