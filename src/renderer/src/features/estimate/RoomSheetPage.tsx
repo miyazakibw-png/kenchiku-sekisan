@@ -29,6 +29,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  round2,
   shapeExtents,
   solveShape,
   splitEdge,
@@ -46,6 +47,7 @@ import {
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
   ceilingRegions,
+  normalizeCeilingHeights,
   type CeilingElement,
   type CeilingElementKind,
   type CeilingPoint,
@@ -145,10 +147,20 @@ const CEILING_KIND_LABEL: Record<CeilingElementKind, string> = {
   dropCeiling: "下がり天井",
 };
 
-function parseCeiling(json: string): CeilingElement[] {
+/**
+ * 保存してある天井伏図を読む。
+ * 入っている壁高さはＨ（梁せい・下がり）に直して読み込む。
+ * こうしておくと、計算書をコピーして部屋の天井高さを変えても、元の天井高さの壁高さが残らない。
+ */
+function parseCeiling(
+  json: string,
+  roomCeilingHeight: number | null,
+): CeilingElement[] {
   try {
     const parsed = JSON.parse(json) as CeilingElement[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? normalizeCeilingHeights(parsed, roomCeilingHeight)
+      : [];
   } catch {
     return [];
   }
@@ -313,13 +325,13 @@ export default function RoomSheetPage({
       setShapePast([]);
       setShapeFuture([]);
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
-      setCeiling(parseCeiling(loaded.ceilingJson));
+      setCeiling(parseCeiling(loaded.ceilingJson, loaded.ceilingHeight));
       setCodeMoves(parseCeilingCodes(loaded.ceilingCodesJson));
       setLower(parseLower(loaded.lowerJson));
       markSaved({
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
-        ceiling: parseCeiling(loaded.ceilingJson),
+        ceiling: parseCeiling(loaded.ceilingJson, loaded.ceilingHeight),
         codeMoves: parseCeilingCodes(loaded.ceilingCodesJson),
         lower: parseLower(loaded.lowerJson),
         ceilingHeight: loaded.ceilingHeight,
@@ -2223,7 +2235,13 @@ export default function RoomSheetPage({
                   <th className="num">壁からの離れ</th>
                   <th
                     className="num"
-                    title="この線で囲まれる範囲の壁高さ（天井高さ。面積ではありません）"
+                    title="その梁・下がり壁が取りつく天井の高さ。空なら自動（下がり天井の中なら下がった天井）"
+                  >
+                    取りつく天井(m)
+                  </th>
+                  <th
+                    className="num"
+                    title="取りつく天井高さ−Ｈ。ここに入れるとＨが自動で合います"
                   >
                     壁高さ(m)
                   </th>
@@ -2333,11 +2351,12 @@ export default function RoomSheetPage({
                               ? ""
                               : formatNumber(element.height, 2)
                           }
-                          title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると範囲の天井高さは自動で決まります"
+                          title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると壁高さは取りつく天井から自動で決まります"
                           onBlur={(e) => {
                             const text = e.target.value.trim();
                             updateCeiling(element.id, {
                               height: text === "" ? null : Number(text),
+                              ceilingHeight: null,
                             });
                           }}
                         />
@@ -2358,34 +2377,55 @@ export default function RoomSheetPage({
                           }}
                         />
                       </td>
-                      <td className="num">
-                        {element.height !== null &&
-                        element.height !== undefined ? (
-                          // Ｈを入れたときは壁の高さを自動で出す
-                          formatNumber(
-                            ceilingHeight === null
-                              ? null
-                              : ceilingHeight - element.height,
-                            2,
-                          )
-                        ) : (
-                          <input
-                            className="num"
-                            defaultValue={
-                              element.ceilingHeight === null
-                                ? ""
-                                : formatNumber(element.ceilingHeight, 2)
-                            }
-                            title="この線で囲まれる範囲の天井高さ"
-                            onBlur={(e) => {
-                              const text = e.target.value.trim();
+                      <td>
+                        <input
+                          className="num"
+                          key={`base-${element.id}-${item.baseHeight ?? ""}`}
+                          defaultValue={
+                            element.baseHeight === null ||
+                            element.baseHeight === undefined
+                              ? ""
+                              : formatNumber(element.baseHeight, 2)
+                          }
+                          placeholder={formatNumber(item.baseHeight, 2)}
+                          title="空なら自動（その位置の天井。梁の前に下がり天井があればその高さ）"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              baseHeight: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="num"
+                          key={`wall-${element.id}-${item.wallHeight ?? ""}`}
+                          defaultValue={formatNumber(item.wallHeight, 2)}
+                          title="取りつく天井高さ−Ｈ。ここを直すとＨが自動で合います"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            if (text === "") {
                               updateCeiling(element.id, {
-                                ceilingHeight:
-                                  text === "" ? null : Number(text),
+                                height: null,
+                                ceilingHeight: null,
                               });
-                            }}
-                          />
-                        )}
+                              return;
+                            }
+                            const value = Number(text);
+                            if (Number.isNaN(value)) return;
+                            // 壁高さを入れたらＨ（梁せい・下がり）を合わせる
+                            updateCeiling(
+                              element.id,
+                              item.baseHeight === null
+                                ? { ceilingHeight: value, height: null }
+                                : {
+                                    height: round2(item.baseHeight - value),
+                                    ceilingHeight: null,
+                                  },
+                            );
+                          }}
+                        />
                       </td>
                       <td className="num">{formatNumber(item.drop, 2)}</td>
                       <td className="num">
@@ -2427,7 +2467,7 @@ export default function RoomSheetPage({
               </tbody>
             </table>
             <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁の高さ（範囲の天井高さ）は部屋の天井高さから自動で決まります。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる下がり天井・梁型の線のところまで自動で伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
             </p>
             {ceilingCodes.length > 0 && (
               <table className="grid ceiling-regions">

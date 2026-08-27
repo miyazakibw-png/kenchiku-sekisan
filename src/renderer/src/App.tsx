@@ -41,7 +41,7 @@ export default function App(): JSX.Element {
   const projectId = openedProjectId();
   const calcParentId = calcWindowParentId();
   const [options, setOptions] = useState<MasterOptions | null>(null);
-  const [nav, setNav] = useState<NavKey>("details");
+  const [nav, setNav] = useState<NavKey>("projects");
   const [projectName, setProjectName] = useState("");
   const setActiveProjectName = useCallback(
     (name: string) => setProjectName(name),

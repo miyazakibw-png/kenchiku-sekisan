@@ -5,6 +5,7 @@ import {
   ceilingQuantities,
   ceilingRegions,
   ceilingSymbols,
+  normalizeCeilingHeights,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
 import {
@@ -163,6 +164,71 @@ describe("天井伏図", () => {
     );
     expect(result.items[0].drop).toBe(0.5);
     expect(result.totals.wallBeamArea).toBe(3.6);
+  });
+
+  it("梁の前に下がり天井があれば、取りつく天井は下がった天井になる", () => {
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.4,
+    });
+    const beam = element("wallBeam", solved.edges[0].id, {
+      width: 0.4,
+      height: 0.35,
+    });
+    const result = ceilingQuantities([drop, beam], solved, 2.7);
+    const row = result.items[1];
+    // 取りつく天井＝2.70−0.40、壁高さ＝2.30−0.35
+    expect(row.baseHeight).toBe(2.3);
+    expect(row.wallHeight).toBe(1.95);
+    expect(row.drop).toBe(0.35);
+  });
+
+  it("取りつく天井高さは手で入れた値が優先される", () => {
+    const solved = shape();
+    const result = ceilingQuantities(
+      [
+        element("wallBeam", solved.edges[0].id, {
+          width: 0.4,
+          height: 0.35,
+          baseHeight: 3.0,
+        }),
+      ],
+      solved,
+      3.82,
+    );
+    expect(result.items[0].baseHeight).toBe(3.0);
+    expect(result.items[0].wallHeight).toBe(2.65);
+  });
+
+  it("部屋の天井高さを変えると壁高さも付いてくる（コピーした計算書）", () => {
+    const solved = shape();
+    const beam = element("wallBeam", solved.edges[0].id, {
+      width: 0.2,
+      height: 0.35,
+    });
+    expect(ceilingQuantities([beam], solved, 5.1).items[0].wallHeight).toBe(
+      4.75,
+    );
+    expect(ceilingQuantities([beam], solved, 3.82).items[0].wallHeight).toBe(
+      3.47,
+    );
+  });
+
+  it("保存済みの壁高さはＨに直して読み込む（元の天井高さを持ち込まない）", () => {
+    const solved = shape();
+    const saved = element("wallBeam", solved.edges[0].id, {
+      width: 0.2,
+      ceilingHeight: 4.75,
+      height: null,
+    });
+    const [fixed] = normalizeCeilingHeights([saved], 5.1);
+    expect(fixed.height).toBe(0.35);
+    expect(fixed.ceilingHeight).toBeNull();
+    // 部屋の天井高さを3.82に変えると壁高さは3.47
+    expect(ceilingQuantities([fixed], solved, 3.82).items[0].wallHeight).toBe(
+      3.47,
+    );
   });
 
   it("記号は合計と線ごとに作る", () => {

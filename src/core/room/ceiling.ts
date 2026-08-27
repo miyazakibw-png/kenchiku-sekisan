@@ -33,6 +33,11 @@ export interface CeilingElement {
   ceilingHeight: number | null;
   /** Ｈ（梁せい・下がり壁の高さ）。入れると壁の高さ（範囲の天井高さ）は自動で決まる */
   height?: number | null;
+  /**
+   * 取りつく天井高さ。空なら自動（その線の位置の天井。下がり天井の中なら下がった天井）。
+   * 壁高さ＝取りつく天井高さ − Ｈ。
+   */
+  baseHeight?: number | null;
   /** 下がるのは線の向こう側（壁と反対側）か。未指定は壁側が下がる */
   inner?: boolean;
   /** 下がり天井の範囲面積（範囲の自動判定は次段階。ここでは入力値を使う） */
@@ -44,8 +49,12 @@ export interface CeilingElementResult {
   element: CeilingElement;
   /** 確定した長さ */
   length: number | null;
-  /** 下がり高さ（部屋の天井高さ − 範囲の天井高さ） */
+  /** 下がり高さ（取りつく天井高さ − 範囲の天井高さ＝Ｈ） */
   drop: number | null;
+  /** 取りつく天井高さ（自動判定または入力値） */
+  baseHeight: number | null;
+  /** 壁高さ（取りつく天井高さ − Ｈ） */
+  wallHeight: number | null;
   /** 見付面積（梁型は幅と下がり高さから、下がり壁は下がり高さから） */
   area: number | null;
 }
@@ -170,15 +179,94 @@ export function ceilingLineDistance(element: CeilingElement): number {
   return element.offset ?? 0;
 }
 
-/** その要素が天井から下がる寸法（Ｈを入れていればそのまま使う） */
+/**
+ * その要素が「取りつく天井」から下がる寸法（Ｈを入れていればそのまま使う）。
+ * baseHeight には取りつく天井高さ（梁の前に下がり天井があればその高さ）を渡す。
+ */
 export function elementDrop(
   element: CeilingElement,
-  roomCeilingHeight: number | null,
+  baseHeight: number | null,
 ): number | null {
   if (element.height !== null && element.height !== undefined)
     return round2(element.height);
-  if (roomCeilingHeight === null || element.ceilingHeight === null) return null;
-  return round2(roomCeilingHeight - element.ceilingHeight);
+  if (baseHeight === null || element.ceilingHeight === null) return null;
+  return round2(baseHeight - element.ceilingHeight);
+}
+
+/** その要素の代表点（梁底・下がり壁の真ん中）。取りつく天井を見るのに使う */
+function elementCenter(
+  element: CeilingElement,
+  solved: SolvedShape,
+): CeilingPoint | null {
+  const points = solved.points;
+  const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+  if (points.length < 3 || index < 0) return null;
+  const width = element.width ?? 0;
+  const offset = element.offset ?? 0;
+  const distance =
+    element.kind === "ceilingBeam"
+      ? offset + width / 2
+      : Math.max(width / 2, 0.01);
+  const segment =
+    element.kind === "ceilingBeam"
+      ? (wallToWallLine(points, index, distance) ??
+        offsetSegment(points, index, distance))
+      : offsetSegment(points, index, distance);
+  if (segment === null) return null;
+  return {
+    x: (segment.a.x + segment.b.x) / 2,
+    y: (segment.a.y + segment.b.y) / 2,
+  };
+}
+
+/**
+ * 要素ごとの「取りつく天井高さ」。
+ * 入力があればその値、無ければその位置の天井（下がり天井の中なら下がった天井）を自動で使う。
+ */
+export function ceilingBaseHeights(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): Map<string, number | null> {
+  const bases = new Map<string, number | null>();
+  elements.forEach((element) => {
+    if (element.baseHeight !== null && element.baseHeight !== undefined) {
+      bases.set(element.id, round2(element.baseHeight));
+      return;
+    }
+    if (roomCeilingHeight === null || element.kind === "dropCeiling") {
+      bases.set(element.id, roomCeilingHeight);
+      return;
+    }
+    const center = elementCenter(element, solved);
+    if (center === null) {
+      bases.set(element.id, roomCeilingHeight);
+      return;
+    }
+    const found = dropAt(elements, solved, roomCeilingHeight, center);
+    bases.set(element.id, round2(roomCeilingHeight - found.drop));
+  });
+  return bases;
+}
+
+/**
+ * 保存済みの「壁高さ（範囲の天井高さ）」をＨ（梁せい・下がり）に直す。
+ * 計算書をコピーしたときに、元の部屋の天井高さで入れた壁高さが残らないようにする。
+ */
+export function normalizeCeilingHeights(
+  elements: CeilingElement[],
+  roomCeilingHeight: number | null,
+): CeilingElement[] {
+  if (roomCeilingHeight === null) return elements;
+  return elements.map((element) => {
+    if (element.height !== null && element.height !== undefined) return element;
+    if (element.ceilingHeight === null) return element;
+    return {
+      ...element,
+      height: round2(roomCeilingHeight - element.ceilingHeight),
+      ceilingHeight: null,
+    };
+  });
 }
 
 /** 辺に沿って内側へ離した線（壁の長さいっぱい。切りません） */
@@ -272,6 +360,16 @@ export function ceilingLines(
     return [width];
   };
 
+  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  // 立体で見た下がり（部屋の天井からの深さ）。取りつく天井が下がっていればその分も足す
+  const depthOf = (element: CeilingElement): number | null => {
+    const base = bases.get(element.id) ?? roomCeilingHeight;
+    const drop = elementDrop(element, base);
+    if (drop === null) return null;
+    if (roomCeilingHeight === null || base === null) return drop;
+    return round2(roomCeilingHeight - base + drop);
+  };
+
   const rough = elements.map((element) => {
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
     const crossing = element.kind === "wallBeam" || element.kind === "dropWall";
@@ -293,7 +391,7 @@ export function ceilingLines(
       element,
       index,
       lines,
-      drop: elementDrop(element, roomCeilingHeight),
+      drop: depthOf(element),
     };
   });
 
@@ -935,6 +1033,7 @@ export function ceilingQuantities(
 
   // 下がり天井・天井付梁型は壁や、自分より低くなる線のところで止まる
   const lines = ceilingLines(elements, solved, roomCeilingHeight);
+  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
 
   const items = elements.map((element) => {
     const crossing =
@@ -944,8 +1043,9 @@ export function ceilingQuantities(
     // 下がり天井・天井付梁型は、壁や自分より低い線で止めた実際の長さで数える
     const length =
       crossing?.length ?? element.length ?? edgeLength(solved, element.edgeId);
-    // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは自動で決める
-    const drop = elementDrop(element, roomCeilingHeight);
+    // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは取りつく天井から自動で決める
+    const baseHeight = bases.get(element.id) ?? roomCeilingHeight;
+    const drop = elementDrop(element, baseHeight);
     const width = element.width ?? 0;
     let area: number | null = null;
 
@@ -981,7 +1081,15 @@ export function ceilingQuantities(
       }
     }
 
-    return { element, length, drop, area };
+    return {
+      element,
+      length,
+      drop,
+      baseHeight,
+      wallHeight:
+        baseHeight === null || drop === null ? null : round2(baseHeight - drop),
+      area,
+    };
   });
 
   return {
