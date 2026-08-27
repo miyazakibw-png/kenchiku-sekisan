@@ -341,8 +341,9 @@ export interface CeilingLine extends CeilingSegment {
 /**
  * 天井伏図の線を作る。
  * 壁付き梁型・下がり壁は壁の長さのまま。
- * 下がり天井・天井付梁型は、突き当たる壁か、自分より低くなる線のところで止める
- * （立体で見て、より下がっている天井・梁の下をくぐらない）。
+ * 下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井で止める
+ * （梁型は天井より低く見えるときだけ入れる線なので、端部は壁か梁になる）。
+ * 天井付梁型は、突き当たる壁か、自分より低くなる線のところで止める。
  */
 export function ceilingLines(
   elements: CeilingElement[],
@@ -401,14 +402,22 @@ export function ceilingLines(
     if (!clip)
       return row.lines.filter((line): line is CeilingLine => line !== null);
 
-    // 自分より低くなる（下がりが大きい）線だけが行き止まりになる
+    // 自分より低くなる（下がりが大きい）線が行き止まりになる。
+    // 梁型・下がり壁は天井より低く見えるときだけ入れる線なので、
+    // 下がり天井の線は高さを比べずにその線で止める（端部は取りつく壁か梁）。
     const barriers = rough
-      .filter(
-        (other) =>
-          other.element.id !== row.element.id &&
+      .filter((other) => {
+        if (other.element.id === row.element.id) return false;
+        if (
+          row.element.kind === "dropCeiling" &&
+          other.element.kind !== "dropCeiling"
+        )
+          return true;
+        return (
           other.drop !== null &&
-          (row.drop === null || other.drop > row.drop + 1e-6),
-      )
+          (row.drop === null || other.drop > row.drop + 1e-6)
+        );
+      })
       .flatMap((other) => other.lines.filter((line) => line !== null));
 
     return row.lines

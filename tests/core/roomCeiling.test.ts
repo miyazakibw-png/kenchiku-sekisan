@@ -155,6 +155,22 @@ describe("天井伏図", () => {
     expect(result.items[1].length).toBe(3);
   });
 
+  it("下がり天井の線は梁型のところで止まる（下がりが小さい梁でも）", () => {
+    const solved = shape();
+    // 4mの壁に沿う下がり天井（下がり0.6）と、直交する壁に沿う幅0.5の梁型（下がり0.3）
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.6,
+    });
+    const beam = element("wallBeam", solved.edges[1].id, {
+      width: 0.5,
+      height: 0.3,
+    });
+    const result = ceilingQuantities([drop, beam], solved, 2.7);
+    // 壁までの4mではなく、梁の見付（壁から0.5m）で止まる
+    expect(result.items[0].length).toBe(3.5);
+  });
+
   it("梁型はＨ（梁せい）を入れれば壁の高さを入れなくても面積が出る", () => {
     const solved = shape();
     const result = ceilingQuantities(
