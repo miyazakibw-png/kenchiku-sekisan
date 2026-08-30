@@ -34,9 +34,8 @@ function cellText(cell: HTMLTableCellElement): string {
 function tableRows(table: HTMLTableElement): string[][] {
   return Array.from(table.rows).map((row) =>
     Array.from(row.cells).flatMap((cell) => {
-      // data-noexport の列（画面だけの印など）は掃き出さない
-      if (cell.dataset.noexport !== undefined) return []
-      const text = cellText(cell)
+      // data-noexport の列（画面だけの印など）は、列は残して中の文字だけ出さない
+      const text = cell.dataset.noexport !== undefined ? '' : cellText(cell)
       const span = Math.max(cell.colSpan, 1)
       return [text, ...Array.from({ length: span - 1 }, () => '')]
     })

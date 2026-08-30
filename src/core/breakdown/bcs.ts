@@ -1,6 +1,8 @@
 /**
  * BCS（建築内訳書標準書式）のCSV掃き出し。
  * 1行19列。層コード3段＋階層レベル＋行番号＋行種別（P:見出し A:注記 D:明細 S:小計 T:合計）。
+ * 2段1明細は1行にまとめる：K名称下段・L摘要下段・M数量・N単位・O単価・P備考下段・
+ * Q部位（名称上段）・R摘要上段・S備考上段。
  */
 
 import type { BreakdownRow } from "./breakdown";
@@ -27,6 +29,51 @@ function line(cells: (string | number | null)[]): string {
   return row.join(",");
 }
 
+/**
+ * 2段2行の書式で作った行を、1明細1行に戻す。
+ * 上段の行（note）と、同じ明細の下段の行（detail）をひとつにする。
+ */
+function mergeTwoLines(rows: readonly BreakdownRow[]): BreakdownRow[] {
+  const merged: BreakdownRow[] = [];
+  let upper: BreakdownRow | null = null;
+
+  const flushUpper = (): void => {
+    if (upper !== null) merged.push(upper);
+    upper = null;
+  };
+
+  rows.forEach((row) => {
+    if (row.rowKind === "note") {
+      flushUpper();
+      upper = row;
+      return;
+    }
+    if (row.rowKind !== "detail") {
+      flushUpper();
+      merged.push(row);
+      return;
+    }
+    const above: BreakdownRow | null = upper;
+    upper = null;
+    if (above === null) {
+      merged.push(row);
+      return;
+    }
+    merged.push({
+      ...row,
+      nameUpper: row.nameUpper === "" ? above.nameLower : row.nameUpper,
+      descriptionUpper:
+        row.descriptionUpper === ""
+          ? above.descriptionLower
+          : row.descriptionUpper,
+      remarksUpper:
+        row.remarksUpper === "" ? above.remarksLower : row.remarksUpper,
+    });
+  });
+  flushUpper();
+  return merged;
+}
+
 /** 内訳書の行をBCS形式のCSV文字列にする（改行はCRLF） */
 export function toBcsCsv(
   rows: readonly BreakdownRow[],
@@ -49,7 +96,9 @@ export function toBcsCsv(
     open = false;
   };
 
-  rows.forEach((row) => {
+  const merged = mergeTwoLines(rows);
+
+  merged.forEach((row) => {
     if (row.rowKind === "subject") {
       closeSubject();
       subjectNo += 1;
@@ -67,13 +116,17 @@ export function toBcsCsv(
       open = true;
     }
     detailNo += 1;
-    const name = [row.nameUpper, row.nameLower].filter((v) => v !== "").join(" ");
-    if (row.rowKind === "note" || row.unit === "") {
+    if (row.unit === "") {
       lines.push(
         line([
           2, 1, subjectNo, "", "", "", "", 4, detailNo, "A",
-          name,
+          row.nameLower === "" ? row.nameUpper : row.nameLower,
           row.descriptionLower,
+          "", "", "",
+          row.remarksLower,
+          row.nameLower === "" ? "" : row.nameUpper,
+          row.descriptionUpper,
+          row.remarksUpper,
         ]),
       );
       return;
@@ -81,13 +134,15 @@ export function toBcsCsv(
     lines.push(
       line([
         2, 1, subjectNo, "", "", "", "", 4, detailNo, "D",
-        name,
+        row.nameLower,
         row.descriptionLower,
         row.quantity ?? "",
         row.unit,
         0,
-        "",
         row.remarksLower,
+        row.nameUpper,
+        row.descriptionUpper,
+        row.remarksUpper,
       ]),
     );
   });

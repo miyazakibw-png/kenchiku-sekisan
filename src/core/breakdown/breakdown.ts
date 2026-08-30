@@ -419,9 +419,13 @@ function detailRows(
     hasQuantity,
   );
   const name = applyWidth(item.name, settings.nameWidth);
-  const partName = applyWidth(item.partName, settings.nameWidth);
+  const partName = item.partName;
 
-  if (settings.layout === BREAKDOWN_LAYOUT.twoRow) {
+  // 書式③（エクセルへ1行で転記）も、ソフト内の表示は書式④と同じ2段2行にする
+  if (
+    settings.layout === BREAKDOWN_LAYOUT.twoRow ||
+    settings.layout === BREAKDOWN_LAYOUT.excel
+  ) {
     return twoRowDetail(item, subjectId, subjectName, name, partName, settings);
   }
 

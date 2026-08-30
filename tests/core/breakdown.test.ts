@@ -159,13 +159,13 @@ describe("内訳書の行づくり", () => {
     ]);
   });
 
-  it("名称の文字を全角・半角にそろえる（半角カタカナも）", () => {
+  it("名称の文字を全角・半角にそろえる（部位名はそのまま）", () => {
     const source = item({ partName: "ﾌｶｼ壁", name: "ﾒﾀｶﾗｰSK-FB" });
     const full = buildBreakdownRows([source], subjects, {
       ...DEFAULT_BREAKDOWN_SETTINGS,
       nameWidth: "full",
     });
-    expect(full[1].nameUpper).toBe("フカシ壁");
+    expect(full[1].nameUpper).toBe("ﾌｶｼ壁");
     expect(full[1].nameLower).toBe("メタカラーＳＫ－ＦＢ");
 
     const half = buildBreakdownRows([source], subjects, {
@@ -223,6 +223,30 @@ describe("BCS.CSV", () => {
       expect(line.split(",").length).toBeGreaterThanOrEqual(19);
     });
   });
+
+  it("2段1明細を1行にまとめ、上段は名称・摘要・備考の右の欄へ出す", () => {
+    const rows = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.excel,
+    });
+    const csv = toBcsCsv(rows, {
+      projectName: "港区計画",
+      workCategory: "建築主体工事",
+    });
+    const detail = csv
+      .split("\r\n")
+      .filter((line) => line.includes('"D"'));
+    expect(detail.length).toBe(1);
+    const cells = detail[0].split(",");
+    expect(cells[10]).toBe('"普通コンクリート"');
+    expect(cells[11]).toBe('"呼び強度21"');
+    expect(cells[12]).toBe("12.3");
+    expect(cells[13]).toBe('"m3"');
+    expect(cells[15]).toBe('"下段備考"');
+    expect(cells[16]).toBe('"基礎"');
+    expect(cells[17]).toBe('"FC21*18"');
+    expect(cells[18]).toBe('"上段備考"');
+  });
 });
 
 describe("エクセル掃き出し", () => {
@@ -267,6 +291,21 @@ describe("エクセル掃き出し", () => {
       row.map((cell) => cell.value),
     );
     expect(values).toContain("基礎\n普通コンクリート");
+  });
+
+  it("書式③はソフト内は2段2行、エクセルでは1行にまとめる", () => {
+    const rows = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.excel,
+    });
+    // ソフト内の表示は2段2行（上段＝部位・下段＝名称）
+    expect(rows[1].nameLower).toBe("基礎");
+    expect(rows[2].nameLower).toBe("普通コンクリート");
+    const book = toSpreadsheetSheets([{ name: "内訳書", rows }], BREAKDOWN_LAYOUT.excel);
+    const values = book[0].rows.flatMap((row) => row.map((cell) => cell.value));
+    expect(values).toContain("基礎\n普通コンクリート");
+    expect(values).toContain("FC21*18\n呼び強度21");
+    expect(values).toContain("上段備考\n下段備考");
   });
 
   it("工種科目ごとに決めた明細数分の枠を空けて次の科目へ進む", () => {

@@ -73,6 +73,31 @@ function TextInput({
   );
 }
 
+/** 1ページの明細数。空欄や数字でないときは既定の数に戻す */
+function pageCount(value: string, fallback: number): number {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/**
+ * 設定に出す単位の一覧。
+ * 転記のときに集計書から抜き出した並びを使い、そこに無い単位は今の内訳書の行から拾う
+ * （変更後の単位はもう置き換わっているので出さない）。
+ */
+function unitsOf(
+  settings: BreakdownSettingsRecord,
+  rows: readonly BreakdownRowRecord[],
+): string[] {
+  const units = [...settings.unitOrder];
+  const replaced = settings.unitReplacements.map((rule) => rule.to);
+  rows.forEach((row) => {
+    if (row.unit === "" || units.includes(row.unit)) return;
+    if (replaced.includes(row.unit)) return;
+    units.push(row.unit);
+  });
+  return units;
+}
+
 function blankRow(): BreakdownRowRecord {
   return {
     id: null,
@@ -166,6 +191,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   }, [reload]);
 
   const settings = view.settings;
+  const unitList = useMemo(
+    () => unitsOf(settings, view.rows),
+    [settings, view.rows],
+  );
 
   const transfer = async (): Promise<void> => {
     const next = await window.sekisan.transferBreakdown(project.id);
@@ -494,7 +523,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               <option value={BREAKDOWN_LAYOUT.twoLine}>①2段1行</option>
               <option value={BREAKDOWN_LAYOUT.oneLine}>②1段</option>
               <option value={BREAKDOWN_LAYOUT.excel}>
-                ③エクセル転記用（2段を1行）
+                ③エクセル1行転記（2段2行）
               </option>
               <option value={BREAKDOWN_LAYOUT.twoRow}>
                 ④2段2行（集計書のまま）
@@ -514,7 +543,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </select>
           </label>
           <label>
-            名称の文字（部位名も）
+            名称
             <select
               value={settings.nameWidth}
               onChange={(e) => void saveSettings({ nameWidth: e.target.value })}
@@ -613,7 +642,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               type="number"
               value={settings.detailsPerPage}
               onChange={(e) =>
-                void saveSettings({ detailsPerPage: Number(e.target.value) })
+                void saveSettings({
+                  detailsPerPage: pageCount(e.target.value, 17),
+                })
               }
             />
             明細（1ページ目・タイトル行を含む）、2ページ目以降は
@@ -622,7 +653,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               value={settings.detailsPerPageLater}
               onChange={(e) =>
                 void saveSettings({
-                  detailsPerPageLater: Number(e.target.value),
+                  detailsPerPageLater: pageCount(e.target.value, 16),
                 })
               }
             />
@@ -630,10 +661,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           </label>
           <div className="units">
             <span>単位の変更（入れなければそのまま）</span>
-            {settings.unitOrder.length === 0 && (
+            {unitList.length === 0 && (
               <span>（転記すると自動で並びます）</span>
             )}
-            {settings.unitOrder.map((unit) => (
+            {unitList.map((unit) => (
               <span key={unit} className="rule">
                 {unit} →
                 <TextInput

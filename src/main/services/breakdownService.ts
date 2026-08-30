@@ -54,6 +54,12 @@ function parseStrings(json: string): string[] {
   return parsed.filter((value): value is string => typeof value === "string");
 }
 
+/** 1ページの明細数。空欄や壊れた値のときは既定の数に戻す */
+function pageCount(value: number | null, fallback: number): number {
+  if (value === null || !Number.isFinite(value) || value < 1) return fallback;
+  return Math.floor(value);
+}
+
 /** 内訳書の設定。無ければ既定値で作る */
 export function getBreakdownSettings(
   db: AppDatabase,
@@ -99,8 +105,14 @@ export function getBreakdownSettings(
     replacements: parseReplacements(row.replacementsJson),
     unitOrder: parseStrings(row.unitOrderJson),
     unitReplacements: parseReplacements(row.unitReplacementsJson),
-    detailsPerPage: row.detailsPerPage,
-    detailsPerPageLater: row.detailsPerPageLater,
+    detailsPerPage: pageCount(
+      row.detailsPerPage,
+      DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
+    ),
+    detailsPerPageLater: pageCount(
+      row.detailsPerPageLater,
+      DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
+    ),
     workCategory: row.workCategory,
   };
 }
@@ -124,8 +136,14 @@ export function saveBreakdownSettings(
       replacementsJson: JSON.stringify(settings.replacements),
       unitOrderJson: JSON.stringify(settings.unitOrder),
       unitReplacementsJson: JSON.stringify(settings.unitReplacements),
-      detailsPerPage: settings.detailsPerPage,
-      detailsPerPageLater: settings.detailsPerPageLater,
+      detailsPerPage: pageCount(
+        settings.detailsPerPage,
+        DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
+      ),
+      detailsPerPageLater: pageCount(
+        settings.detailsPerPageLater,
+        DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
+      ),
       workCategory: settings.workCategory,
     })
     .where(eq(projectBreakdownSettings.projectId, settings.projectId))

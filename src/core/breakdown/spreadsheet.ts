@@ -81,8 +81,46 @@ function detailBlocks(
   };
   const twoRowHeading =
     layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow;
+  /** 書式③：上段の行（画面では2段2行）を、下段の行と1行にまとめるまで持っておく */
+  let pending: BreakdownRow | null = null;
+  /** 下段の行が来ないまま次へ進むときは、上段だけで1行にする */
+  const excelLine = (upper: BreakdownRow | null, lower: BreakdownRow | null): void => {
+    const text = (
+      pick: (row: BreakdownRow) => string,
+      fallback: (row: BreakdownRow) => string,
+    ): string => {
+      if (upper !== null) return pick(upper);
+      return lower === null ? "" : fallback(lower);
+    };
+    lines.push([
+      wrapCell(
+        text((row) => row.nameLower, (row) => row.nameUpper),
+        lower === null ? "" : lower.nameLower,
+      ),
+      wrapCell(
+        text((row) => row.descriptionLower, (row) => row.descriptionUpper),
+        lower === null ? "" : lower.descriptionLower,
+      ),
+      numberCell(lower === null ? null : lower.quantity),
+      textCell(lower === null ? "" : lower.unit),
+      numberCell(lower === null ? null : lower.unitPrice),
+      numberCell(lower === null ? null : lower.amount),
+      wrapCell(
+        text((row) => row.remarksLower, (row) => row.remarksUpper),
+        lower === null ? "" : lower.remarksLower,
+      ),
+    ]);
+    flush();
+  };
+  const flushPending = (): void => {
+    if (pending === null) return;
+    const upper = pending;
+    pending = null;
+    excelLine(upper, null);
+  };
   rows.forEach((row) => {
     if (row.rowKind === "subject" || row.rowKind === "title") {
+      flushPending();
       // 2段の書式では工種科目・タイトルの見出しも2行で、文字は下の行に出す
       const text = row.rowKind === "subject" ? row.subjectName : row.nameLower;
       if (twoRowHeading) {
@@ -95,20 +133,14 @@ function detailBlocks(
       return;
     }
     if (layout === BREAKDOWN_LAYOUT.excel) {
-      // 書式③：2段を1行にまとめ、上段と下段はセルの中で改行する（上：部位／下：名称）
-      const name = wrapCell(row.nameUpper, row.nameLower);
-      const description = wrapCell(row.descriptionUpper, row.descriptionLower);
-      const remarks = wrapCell(row.remarksUpper, row.remarksLower);
-      lines.push([
-        name,
-        description,
-        numberCell(row.quantity),
-        textCell(row.unit),
-        numberCell(row.unitPrice),
-        numberCell(row.amount),
-        remarks,
-      ]);
-      flush();
+      // 書式③：画面の2段2行を1行にまとめ、上段と下段はセルの中で改行する（上：部位／下：名称）
+      if (row.rowKind === "note") {
+        pending = row;
+        return;
+      }
+      const upper = pending;
+      pending = null;
+      excelLine(upper, row);
       return;
     }
     if (
@@ -156,6 +188,7 @@ function detailBlocks(
     ]);
     flush();
   });
+  flushPending();
   flush();
   return blocks;
 }
@@ -175,6 +208,14 @@ function titleRows(): XlsxCell[][] {
   return [upper, lower];
 }
 
+/** 1ページの明細数。空欄や壊れた値のときは既定の数に戻す */
+function pageDetails(value: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
 function blankRow(): XlsxCell[] {
   return HEADER.map(() => textCell(""));
 }
@@ -191,8 +232,9 @@ function paginate(
   page: PageLayout,
 ): XlsxCell[][] {
   const unit = rowsPerDetail(layout);
-  const firstPage = Math.max(page.detailsPerPage, 1) * unit;
-  const laterPage = Math.max(page.detailsPerPageLater, 1) * unit;
+  const firstPage = pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
+  const laterPage =
+    pageDetails(page.detailsPerPageLater, DEFAULT_PAGE_LAYOUT.detailsPerPageLater) * unit;
 
   const rows: XlsxCell[][] = [];
   const title = titleRows();
