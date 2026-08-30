@@ -890,7 +890,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <td />
                   </tr>
                 ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-                  settings.layout === BREAKDOWN_LAYOUT.twoRow ? (
+                  settings.layout === BREAKDOWN_LAYOUT.twoRow ||
+                  settings.layout === BREAKDOWN_LAYOUT.excel ? (
                   <tr
                     key={`d-${index}`}
                     className={pairClass(shownRows, index, settings.layout)}
@@ -971,7 +972,7 @@ function pairClass(
   index: number,
   layout: number,
 ): string {
-  if (layout !== BREAKDOWN_LAYOUT.twoRow) return "";
+  if (!twoRowPairs(layout)) return "";
   const row = rows[index];
   if (row.rowKind === "note" && rows[index + 1]?.rowKind === "detail")
     return "detail-upper";
@@ -986,7 +987,7 @@ function comparePairClass(
   index: number,
   layout: number,
 ): string {
-  if (layout !== BREAKDOWN_LAYOUT.twoRow) return "";
+  if (!twoRowPairs(layout)) return "";
   const kind = diffs[index]?.left?.rowKind;
   if (kind === "note" && diffs[index + 1]?.left?.rowKind === "detail")
     return "detail-upper";
@@ -995,11 +996,16 @@ function comparePairClass(
   return "";
 }
 
+/** 1明細を上下2行1組で出す書式か（④と、画面表示が同じ③） */
+function twoRowPairs(layout: number): boolean {
+  return (
+    layout === BREAKDOWN_LAYOUT.twoRow || layout === BREAKDOWN_LAYOUT.excel
+  );
+}
+
 /** 2段（1明細を2行分で見せる）の書式か */
 function twoStage(layout: number): boolean {
-  return (
-    layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow
-  );
+  return layout === BREAKDOWN_LAYOUT.twoLine || twoRowPairs(layout);
 }
 
 /** 見出し行（工種科目・部位Ⅰのタイトル）の文字 */
@@ -1073,7 +1079,7 @@ function renderCompareCells(
     ];
   }
   const oneLineName =
-    layout === BREAKDOWN_LAYOUT.oneLine || layout === BREAKDOWN_LAYOUT.twoRow;
+    layout === BREAKDOWN_LAYOUT.oneLine || twoRowPairs(layout);
   const name = oneLineName
     ? row.nameLower
     : [row.nameUpper, row.nameLower].filter((v) => v !== "").join(" ");
@@ -1088,7 +1094,7 @@ function renderCompareCells(
   return [
     <td key="n" className={mark("name")}>
       {row.rowKind === "subject" || row.rowKind === "title"
-        ? layout === BREAKDOWN_LAYOUT.twoRow
+        ? twoRowPairs(layout)
           ? subjectLines(headingText(row))
           : headingText(row)
         : name}
