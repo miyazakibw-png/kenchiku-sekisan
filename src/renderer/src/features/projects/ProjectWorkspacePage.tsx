@@ -28,6 +28,7 @@ import RoomAggregatePage from "../aggregate/RoomAggregatePage";
 import CheckSheetPage from "../aggregate/CheckSheetPage";
 import FormworkTransferPage from "../aggregate/FormworkTransferPage";
 import BreakdownPage from "../breakdown/BreakdownPage";
+import ProjectSummarySheet from "./ProjectSummarySheet";
 import "./ProjectWorkspacePage.css";
 
 interface Props {
@@ -64,6 +65,7 @@ export default function ProjectWorkspacePage({
   const [draft, setDraft] = useState<ProjectSummary>(project);
   const [hidden, setHidden] = useState<string[]>(loadHiddenFields);
   const [showPicker, setShowPicker] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
   const [message, setMessage] = useState("");
   const [openedMenu, setOpenedMenu] = useState<string | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
@@ -279,6 +281,18 @@ export default function ProjectWorkspacePage({
     );
   }
 
+  if (showSheet) {
+    return (
+      <ProjectSummarySheet
+        lines={headerFields
+          .filter((field) => field.key !== "note")
+          .map((field) => ({ label: field.label, value: field.value }))}
+        note={draft.note}
+        onBack={() => setShowSheet(false)}
+      />
+    );
+  }
+
   if (openedMenu === "statement") {
     return <BreakdownPage project={draft} onBack={() => setOpenedMenu(null)} />;
   }
@@ -292,6 +306,13 @@ export default function ProjectWorkspacePage({
         <h2>積算操作（管理・移動・集計指示）</h2>
         <button type="button" onClick={() => setShowPicker((prev) => !prev)}>
           ⚙ 表示項目
+        </button>
+        <button
+          type="button"
+          title="工事概要をA4縦の書式で印刷します"
+          onClick={() => setShowSheet(true)}
+        >
+          🖨 工事概要印刷
         </button>
         <span className="status">{message}</span>
       </div>

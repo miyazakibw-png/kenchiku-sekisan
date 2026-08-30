@@ -1038,7 +1038,25 @@ export default function RoomCalcSheet({
       }
 
       if (!currentSet) {
-        onMessage("貼り付ける場所を選んでください");
+        if (clip) {
+          onMessage("貼り付ける場所を選んでください");
+          return;
+        }
+        // 汎用計算書などでセットが無いときは、新しいセットを作って取り込む
+        const created = calcSet(1);
+        const pasted = pasteRows(created.details, created.lines, 0, text);
+        commit([
+          ...sets,
+          {
+            ...created,
+            details: pasted.details,
+            lines: fillLines(pasted.details, pasted.lines),
+          },
+        ]);
+        onFocus({ setId: created.id, area: "detail", index: 0 });
+        onMessage(
+          `エクセルの表を${pasted.details.length}行の明細として貼り付けました`,
+        );
         return;
       }
 
@@ -1093,8 +1111,10 @@ export default function RoomCalcSheet({
         return;
       }
 
-      if (focus?.area === "detail") {
-        const at = focus.index;
+      // 列の多いエクセルの表は、カーソルが明細に無くても明細へ取り込む
+      const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
+      if (focus?.area === "detail" || (!focus && wideTable)) {
+        const at = focus?.index ?? 0;
         const base =
           mode === "insert"
             ? [
