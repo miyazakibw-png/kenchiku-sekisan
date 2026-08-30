@@ -30,6 +30,11 @@
   background: #fff;
 }
 
+/* 積算操作画面に置く印刷専用の書式（画面には出さない） */
+.summary-sheet-print {
+  display: none;
+}
+
 .summary-sheet-date {
   text-align: right;
   font-size: 12pt;

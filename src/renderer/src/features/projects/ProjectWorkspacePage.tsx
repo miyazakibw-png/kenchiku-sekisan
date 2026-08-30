@@ -28,7 +28,7 @@ import RoomAggregatePage from "../aggregate/RoomAggregatePage";
 import CheckSheetPage from "../aggregate/CheckSheetPage";
 import FormworkTransferPage from "../aggregate/FormworkTransferPage";
 import BreakdownPage from "../breakdown/BreakdownPage";
-import ProjectSummarySheet from "./ProjectSummarySheet";
+import ProjectSummarySheet, { SummarySheetBody } from "./ProjectSummarySheet";
 import "./ProjectWorkspacePage.css";
 
 interface Props {
@@ -368,6 +368,16 @@ export default function ProjectWorkspacePage({
             </div>
           ))}
       </dl>
+
+      {/* 紙に出すのは工事概要の書式（画面には出さない） */}
+      <div className="summary-sheet-print">
+        <SummarySheetBody
+          lines={headerFields
+            .filter((field) => field.key !== "note")
+            .map((field) => ({ label: field.label, value: field.value }))}
+          note={draft.note}
+        />
+      </div>
 
       <div className="workspace-menu">
         {(["master", "input", "aggregate", "output"] as const).map((group) => (

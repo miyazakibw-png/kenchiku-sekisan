@@ -321,12 +321,15 @@ describe("エクセル掃き出し", () => {
     );
     // 1ページ目は17明細＝34行、2つ目の科目は次のページ（16明細＝32行）から
     expect(book[0].rows.length).toBe(34 + 32);
-    // タイトル行は先頭だけ（2段目に文字）
-    expect(book[0].rows[0][0].value).toBe("");
-    expect(book[0].rows[1][0].value).toBe("名称");
-    expect(book[0].rows.slice(2).some((row) => row[0].value === "名称")).toBe(
+    // タイトル行は先頭だけ（2段目に文字）。先頭の列は「印」のあきで文字は出さない
+    expect(book[0].rows[0][1].value).toBe("");
+    expect(book[0].rows[1][0].value).toBe("");
+    expect(book[0].rows[1][1].value).toBe("名称");
+    expect(book[0].rows.slice(2).some((row) => row[1].value === "名称")).toBe(
       false,
     );
+    // 明細の無い空欄の行にも罫線を引く
+    expect(book[0].rows[33].every((cell) => cell.border === "one")).toBe(true);
   });
 
   it("単位は設定した表記へ置き換える（未入力ならそのまま）", () => {

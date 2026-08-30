@@ -29,8 +29,14 @@ export const DEFAULT_PAGE_LAYOUT: PageLayout = {
   detailsPerPageLater: 16,
 };
 
-const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
-const COLUMN_WIDTHS = [40, 30, 12, 8, 12, 14, 20];
+/** 先頭は「印」の列。文字は出さず、1列分のあき（罫線つき）だけ残す */
+const HEADER = ["", "名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
+const COLUMN_WIDTHS = [4, 40, 30, 12, 8, 12, 14, 20];
+
+/** 印の列（常に空欄） */
+function markCell(border: RowBorder = "one"): XlsxCell {
+  return { value: "", kind: "text", border };
+}
 
 /**
  * 行の罫線の種類。
@@ -50,7 +56,7 @@ function numberCell(value: number | null, border: RowBorder = "one"): XlsxCell {
 /** 見出し（工種科目・タイトル）の1行。列のタテ線を残すため全列分のセルを出す */
 function headingRow(name: string, border: RowBorder): XlsxCell[] {
   return HEADER.map((_title, index) => ({
-    value: index === 0 ? name : "",
+    value: index === 1 ? name : "",
     kind: "header" as const,
     border,
   }));
@@ -93,6 +99,7 @@ function detailBlocks(
       return lower === null ? "" : fallback(lower);
     };
     lines.push([
+      markCell(),
       wrapCell(
         text((row) => row.nameLower, (row) => row.nameUpper),
         lower === null ? "" : lower.nameLower,
@@ -157,6 +164,7 @@ function detailBlocks(
               ? "lower"
               : "one";
       lines.push([
+        markCell(border),
         textCell(row.nameLower, border),
         textCell(row.descriptionLower, border),
         numberCell(row.quantity, border),
@@ -169,6 +177,7 @@ function detailBlocks(
       return;
     }
     lines.push([
+      markCell("upper"),
       textCell(row.nameUpper, "upper"),
       textCell(row.descriptionUpper, "upper"),
       textCell("", "upper"),
@@ -178,6 +187,7 @@ function detailBlocks(
       textCell(row.remarksUpper, "upper"),
     ]);
     lines.push([
+      markCell("lower"),
       textCell(row.nameLower, "lower"),
       textCell(row.descriptionLower, "lower"),
       numberCell(row.quantity, "lower"),

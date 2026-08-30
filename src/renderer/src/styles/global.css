@@ -276,28 +276,26 @@ body.print-a3-landscape .app {
 
   .summary-sheet {
     margin: 0 auto !important;
+    /* 用紙の余白（8mm）を引いたA4縦1枚に必ず収める */
+    height: 275mm;
+    page-break-inside: avoid;
+    page-break-after: avoid;
   }
 
-  /* 積算操作画面は工事情報の欄だけ紙に出す（下のボタンの一覧は出さない） */
+  /* 積算操作画面は工事概要の書式（A4縦1枚）だけ紙に出す */
   .workspace-page .field-picker,
-  .workspace-page .workspace-menu {
+  .workspace-page .workspace-menu,
+  .workspace-page .workspace-header {
     display: none !important;
   }
 
-  /* 工事情報の欄は3倍の大きさで出す（A3横1枚に収まる幅にする） */
-  .workspace-page .workspace-header {
-    zoom: 3;
-    max-width: 500px;
-    margin: 0;
+  .app-main:has(.summary-sheet-print) {
+    transform: none !important;
+    width: 100% !important;
   }
 
-  body.print-a4-portrait .workspace-page .workspace-header {
-    max-width: 240px;
-    grid-template-columns: 70px 1fr;
-  }
-
-  body.print-a4-landscape .workspace-page .workspace-header {
-    max-width: 350px;
+  .summary-sheet-print {
+    display: block;
   }
 }
 

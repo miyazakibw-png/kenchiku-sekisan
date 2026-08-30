@@ -10,18 +10,50 @@ export interface SummaryLine {
   value: string;
 }
 
-interface Props {
+interface BodyProps {
   lines: readonly SummaryLine[];
   /** 下の大きな備考欄に出す文字 */
   note?: string;
   /** 右上に出す印刷日（既定は今日） */
   printedOn?: Date;
+}
+
+interface Props extends BodyProps {
   onBack: () => void;
 }
 
 /** 2026/8/27 の形にする */
 export function printDateText(date: Date): string {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/** 用紙の中身だけ（積算操作画面の印刷でも同じ書式を使う） */
+export function SummarySheetBody({
+  lines,
+  note,
+  printedOn,
+}: BodyProps): JSX.Element {
+  return (
+    <div className="summary-sheet">
+        <div className="summary-sheet-date">
+          {printDateText(printedOn ?? new Date())}
+        </div>
+        <table className="summary-sheet-table">
+          <tbody>
+            {lines.map((line, index) => (
+              <tr key={`${line.label}-${index}`}>
+                <th>{line.label}</th>
+                <td>{line.value}</td>
+              </tr>
+            ))}
+            <tr className="summary-sheet-note">
+              <th>備考</th>
+              <td>{note ?? ""}</td>
+            </tr>
+          </tbody>
+        </table>
+    </div>
+  );
 }
 
 export default function ProjectSummarySheet({
@@ -42,25 +74,7 @@ export default function ProjectSummarySheet({
         </span>
       </div>
 
-      <div className="summary-sheet">
-        <div className="summary-sheet-date">
-          {printDateText(printedOn ?? new Date())}
-        </div>
-        <table className="summary-sheet-table">
-          <tbody>
-            {lines.map((line, index) => (
-              <tr key={`${line.label}-${index}`}>
-                <th>{line.label}</th>
-                <td>{line.value}</td>
-              </tr>
-            ))}
-            <tr className="summary-sheet-note">
-              <th>備考</th>
-              <td>{note ?? ""}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <SummarySheetBody lines={lines} note={note} printedOn={printedOn} />
     </div>
   );
 }
