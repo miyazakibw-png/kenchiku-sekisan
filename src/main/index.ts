@@ -8,6 +8,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { fileToDataUrl, readWindowsClipboardImage } from "./clipboardImage";
+import { pdfPageImage } from "./pdfImage";
 import {
   app,
   BrowserWindow,
@@ -769,6 +770,37 @@ function registerIpcHandlers(): void {
       image: image.toDataURL(),
       note: `絵 ${size.width}×${size.height}（${formats}）`,
     };
+  });
+  // 図面のPDFや画像ファイルを選んで、画像（data URL）として取り込む
+  ipcMain.handle(IPC.drawingOpen, async (event, page: number) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: "図面のファイルを選んでください",
+      properties: ["openFile" as const],
+      filters: [
+        {
+          name: "図面（PDF・画像）",
+          extensions: ["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp"],
+        },
+      ],
+    };
+    const picked = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
+    recoverInput(window);
+    if (picked.canceled || picked.filePaths.length === 0)
+      return { image: "", note: "取り消しました" };
+    const file = picked.filePaths[0];
+    if (file.toLowerCase().endsWith(".pdf")) {
+      const image = await pdfPageImage(file, page > 0 ? page : 1);
+      return image === ""
+        ? { image: "", note: "PDFを読めませんでした" }
+        : { image, note: `PDF ${page > 0 ? page : 1}ページ` };
+    }
+    const image = fileToDataUrl(file);
+    return image === ""
+      ? { image: "", note: "画像を読めませんでした" }
+      : { image, note: "画像ファイル" };
   });
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {

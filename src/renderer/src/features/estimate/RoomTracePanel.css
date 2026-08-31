@@ -40,6 +40,12 @@
   display: none;
 }
 
+.room-trace-panel .page input {
+  width: 44px;
+  margin-left: 4px;
+  text-align: right;
+}
+
 .room-trace-panel .num {
   width: 72px;
   text-align: right;

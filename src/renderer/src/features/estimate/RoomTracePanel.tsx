@@ -53,6 +53,7 @@ export default function RoomTracePanel({
   const [points, setPoints] = useState<Point[]>(trace.points);
   const [snap, setSnap] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [pageText, setPageText] = useState("1");
   const [message, setMessage] = useState(
     "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
   );
@@ -118,6 +119,19 @@ export default function RoomTracePanel({
     },
     [setImage],
   );
+
+  // PDF・画像のファイルを選んで図面にする
+  const openFile = useCallback(async (): Promise<void> => {
+    const page = Number(pageText);
+    setMessage("ファイルを読んでいます…");
+    const got = await window.sekisan.openDrawingFile(page > 0 ? page : 1);
+    if (got.image === "") {
+      setMessage(got.note);
+      return;
+    }
+    setImage(got.image);
+    setMessage(`読み込みました：${got.note}`);
+  }, [pageText, setImage]);
 
   // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
   useEffect(() => {
@@ -239,15 +253,20 @@ export default function RoomTracePanel({
         >
           ② なぞる
         </button>
-        <label className="file">
-          画像を開く
+        <button
+          type="button"
+          title="PDFや画像のファイルを選んで図面にします（PDFは右のページを画像にします）"
+          onClick={() => void openFile()}
+        >
+          📂 画像・PDFを開く
+        </button>
+        <label className="page">
+          ページ
           <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void readAsDataUrl(file).then(setImage);
-            }}
+            type="number"
+            min={1}
+            value={pageText}
+            onChange={(event) => setPageText(event.target.value)}
           />
         </label>
         <button
@@ -374,7 +393,7 @@ export default function RoomTracePanel({
         {trace.image === "" ? (
           <p className="empty">
             Shift+Windows+S で図面を切り取り、この画面で Ctrl+V
-            を押すと貼り付きます（「画像を開く」でファイルからも読めます）
+            を押すと貼り付きます（「📂 画像・PDFを開く」でPDFや画像ファイルからも読めます）
           </p>
         ) : (
           <svg

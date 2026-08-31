@@ -297,6 +297,10 @@ const api = {
   readClipboardImage: (): Promise<{ image: string; note: string }> =>
     ipcRenderer.invoke(IPC.clipboardImage),
 
+  /** 図面のPDF・画像ファイルを選んで取り込む（PDFは指定ページを画像にする） */
+  openDrawingFile: (page: number): Promise<{ image: string; note: string }> =>
+    ipcRenderer.invoke(IPC.drawingOpen, page),
+
   /** 欄に入ったときにWindowsの日本語入力を切り替える（戻り値は調べるための記録） */
   setImeMode: (mode: ImeMode): Promise<string> =>
     ipcRenderer.invoke(IPC.imeMode, mode),
