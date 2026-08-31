@@ -109,3 +109,9 @@
 .pit-print-upper .pit-drawing {
   flex: 1;
 }
+
+.pit-list td.symbol {
+  cursor: pointer;
+  color: #0b5cab;
+  text-decoration: underline;
+}

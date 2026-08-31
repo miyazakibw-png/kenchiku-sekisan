@@ -5,7 +5,10 @@ import {
   beamLines,
   layoutPits,
   normalizeRects,
+  pitCornerCount,
+  pitPolygon,
   pitQuantities,
+  pitSymbolForPart,
   pitSymbol,
   pitVariables,
   type PitBeam,
@@ -187,5 +190,69 @@ describe("梁Hの高い方が優先", () => {
   it("消した本は長さにも図にも出ない", () => {
     const cut = { ...small, removed: [1] };
     expect(beamLength(pit, cut, [big, cut])).toBeCloseTo(1.8, 6);
+  });
+});
+
+describe("台形・Ｌ型・コ型", () => {
+  const base = {
+    depth: 1,
+    gap: DEFAULT_PIT_GAP,
+    direction: "right" as const,
+  };
+
+  it("台形の床面積と壁面長さ", () => {
+    const pit: PitShape = {
+      id: "a",
+      symbol: "Ｐ1",
+      x: 4,
+      y: 2,
+      kind: "trapezoid",
+      cutX: 2,
+      ...base,
+    };
+    const [quantity] = pitQuantities([pit], []);
+    expect(quantity.floorArea).toBeCloseTo(6, 6);
+    expect(pitPolygon(pit)).toHaveLength(4);
+  });
+
+  it("Ｌ型は欠いた分だけ床面積が減り6角になる", () => {
+    const pit: PitShape = {
+      id: "a",
+      symbol: "Ｐ1",
+      x: 4,
+      y: 4,
+      kind: "l",
+      cutX: 1,
+      cutY: 2,
+      ...base,
+    };
+    const [quantity] = pitQuantities([pit], []);
+    expect(quantity.floorArea).toBeCloseTo(14, 6);
+    expect(quantity.wallLength).toBeCloseTo(16, 6);
+    expect(pitCornerCount([pit])).toBe(6);
+  });
+
+  it("コ型は8角になる", () => {
+    const pit: PitShape = {
+      id: "a",
+      symbol: "Ｐ1",
+      x: 4,
+      y: 4,
+      kind: "u",
+      cutX: 2,
+      cutY: 1,
+      ...base,
+    };
+    expect(pitCornerCount([pit])).toBe(8);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(14, 6);
+  });
+});
+
+describe("部位に合わせた記号", () => {
+  it("床はFA・壁はWA・梁型はGA・天井はCA", () => {
+    expect(pitSymbolForPart(0, "床")).toBe("FA1");
+    expect(pitSymbolForPart(1, "壁")).toBe("WA2");
+    expect(pitSymbolForPart(2, "梁型")).toBe("GA3");
+    expect(pitSymbolForPart(3, "天井")).toBe("CA4");
   });
 });

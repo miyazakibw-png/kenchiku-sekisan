@@ -29,6 +29,21 @@ export interface PitShape {
   align?: PitAlign;
   /** どのピットを基準に置くか（未指定はすぐ前のピット） */
   baseId?: string;
+  /** 形（未指定は四角） */
+  kind?: PitKind;
+  /** 欠き込みのX方向寸法（台形は上辺の長さ） */
+  cutX?: number;
+  /** 欠き込みのY方向寸法（台形では使わない） */
+  cutY?: number;
+}
+
+/** ピットの形。四角・台形・Ｌ型（右上を欠く）・コ型（上辺の真ん中を欠く） */
+export type PitKind = "rect" | "trapezoid" | "l" | "u";
+
+/** 図形の角（ピットの左上を0とした座標） */
+export interface PitPoint {
+  x: number;
+  y: number;
 }
 
 /** 天井付き梁型（X方向・Y方向のどちらかに通る） */
@@ -46,6 +61,73 @@ export interface PitBeam {
   position: number;
   /** 消した本（高い梁で分かれた何本目か。0から数える） */
   removed?: number[];
+}
+
+/** ピットの形を角の並びにする（ピットの左上が0） */
+export function pitPolygon(pit: PitShape): PitPoint[] {
+  const kind = pit.kind ?? "rect";
+  const cutX = Math.min(Math.max(pit.cutX ?? 0, 0), pit.x);
+  const cutY = Math.min(Math.max(pit.cutY ?? 0, 0), pit.y);
+  if (kind === "trapezoid" && cutX > 0)
+    return [
+      { x: 0, y: 0 },
+      { x: cutX, y: 0 },
+      { x: pit.x, y: pit.y },
+      { x: 0, y: pit.y },
+    ];
+  if (kind === "l" && cutX > 0 && cutY > 0)
+    return [
+      { x: 0, y: 0 },
+      { x: pit.x - cutX, y: 0 },
+      { x: pit.x - cutX, y: cutY },
+      { x: pit.x, y: cutY },
+      { x: pit.x, y: pit.y },
+      { x: 0, y: pit.y },
+    ];
+  if (kind === "u" && cutX > 0 && cutY > 0) {
+    const from = (pit.x - cutX) / 2;
+    return [
+      { x: 0, y: 0 },
+      { x: from, y: 0 },
+      { x: from, y: cutY },
+      { x: from + cutX, y: cutY },
+      { x: from + cutX, y: 0 },
+      { x: pit.x, y: 0 },
+      { x: pit.x, y: pit.y },
+      { x: 0, y: pit.y },
+    ];
+  }
+  return [
+    { x: 0, y: 0 },
+    { x: pit.x, y: 0 },
+    { x: pit.x, y: pit.y },
+    { x: 0, y: pit.y },
+  ];
+}
+
+/** 多角形の面積（座標の順に足し引きして出す） */
+export function polygonArea(points: readonly PitPoint[]): number {
+  let total = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    total += point.x * next.y - next.x * point.y;
+  });
+  return Math.abs(total) / 2;
+}
+
+/** 多角形の周りの長さ */
+export function polygonPerimeter(points: readonly PitPoint[]): number {
+  let total = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    total += Math.hypot(next.x - point.x, next.y - point.y);
+  });
+  return total;
+}
+
+/** 図形全体の角の数（ピットごとの角を足したもの） */
+export function pitCornerCount(pits: readonly PitShape[]): number {
+  return pits.reduce((total, pit) => total + pitPolygon(pit).length, 0);
 }
 
 /** 高い梁で分かれた梁1本の区間 */
@@ -284,8 +366,9 @@ export function pitQuantities(
 ): PitQuantity[] {
   return pits.map((pit) => {
     const own = beams.filter((beam) => beam.pitId === pit.id);
-    const floorArea = pit.x * pit.y;
-    const wallLength = (pit.x + pit.y) * 2;
+    const points = pitPolygon(pit);
+    const floorArea = polygonArea(points);
+    const wallLength = polygonPerimeter(points);
     let beamBottomArea = 0;
     let beamArea = 0;
     own.forEach((beam) => {
@@ -305,6 +388,18 @@ export function pitQuantities(
       ceilingArea: floorArea - beamBottomArea,
     };
   });
+}
+
+/**
+ * セットの部位に合わせて使うピットの記号。
+ * 床＝床面積FA*／壁＝壁面面積WA*／梁型＝梁面積GA*／天井＝天井面積CA*
+ */
+export function pitSymbolForPart(index: number, partName: string): string {
+  const no = pitNumber(index);
+  if (partName.includes("天井")) return `CA${no}`;
+  if (partName.includes("梁")) return `GA${no}`;
+  if (partName.includes("壁")) return `WA${no}`;
+  return `FA${no}`;
 }
 
 /** 計算式に使える記号（FA1…はピットごと、FA…は全部の合計） */

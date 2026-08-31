@@ -17,12 +17,16 @@ import {
   beamSegments,
   layoutPits,
   normalizeRects,
+  pitCornerCount,
+  pitPolygon,
   pitQuantities,
+  pitSymbolForPart,
   pitSymbol,
   pitVariables,
   type PitAlign,
   type PitBeam,
   type PitDirection,
+  type PitKind,
   type PitShape,
 } from "../../../../core/pit/pit";
 import { computeFitting } from "../../../../core/fittings/fitting";
@@ -148,7 +152,19 @@ export default function PitSheetPage({
   const plan = useMemo(() => {
     const rects = layoutPits(pits);
     const placed = normalizeRects(rects);
-    return { ...placed, beams: beamLines(pits, placed.rects, beams) };
+    const outlines: Record<string, string> = {};
+    placed.rects.forEach((rect) => {
+      const pit = pits.find((each) => each.id === rect.id);
+      if (!pit) return;
+      outlines[rect.id] = pitPolygon(pit)
+        .map((point) => `${rect.left + point.x},${rect.top + point.y}`)
+        .join(" ");
+    });
+    return {
+      ...placed,
+      outlines,
+      beams: beamLines(pits, placed.rects, beams),
+    };
   }, [beams, pits]);
 
   /** 計算式に使える記号（ピットごとのFA1…と、全部の合計FA・WA・GA・CA） */
@@ -236,6 +252,41 @@ export default function PitSheetPage({
     );
   }, []);
 
+  /**
+   * Ｐ記号クリック：入れる先のセットの部位に合わせた記号を計算式へ入れる。
+   * 床＝FA*／壁＝WA*／梁型＝GA*／天井＝CA*（式にカーソルが無いときはコピー）
+   */
+  const useSymbol = useCallback(
+    (index: number) => {
+      const target = calcFocus;
+      const set = lower.find((each) => each.id === target?.setId);
+      const symbol = pitSymbolForPart(index, set?.partName ?? "");
+      if (!target || target.area === "detail") {
+        void navigator.clipboard.writeText(symbol);
+        setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`);
+        return;
+      }
+      setLower((current) =>
+        current.map((each) =>
+          each.id !== target.setId
+            ? each
+            : {
+                ...each,
+                lines: each.lines.map((line, lineIndex) =>
+                  lineIndex !== target.index
+                    ? line
+                    : target.area === "formulaA"
+                      ? { ...line, formulaA: line.formulaA + symbol }
+                      : { ...line, formulaB: line.formulaB + symbol },
+                ),
+              },
+        ),
+      );
+      setMessage(`${symbol} を計算式に入れました`);
+    },
+    [calcFocus, lower],
+  );
+
   /** 梁の1本（高い梁で分かれた区間）を消す。全部消したら梁ごと消す */
   const removeBeamSegment = useCallback(
     (id: string, index: number) => {
@@ -290,11 +341,8 @@ export default function PitSheetPage({
         >
           {plan.rects.map((rect) => (
             <g key={rect.id}>
-              <rect
-                x={rect.left}
-                y={rect.top}
-                width={rect.x}
-                height={rect.y}
+              <polygon
+                points={plan.outlines[rect.id] ?? ""}
                 className="pit-rect"
                 onClick={(event) => {
                   if (printMode) return;
@@ -358,7 +406,7 @@ export default function PitSheetPage({
       <thead>
         <tr>
           <th>記号</th>
-          <th className="num">面積</th>
+          <th className="num">床面積</th>
           <th className="num">壁面長さ</th>
           <th className="num">深さ</th>
           <th className="num">壁面面積</th>
@@ -439,11 +487,14 @@ export default function PitSheetPage({
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
+                <th>形</th>
+                <th className="num">欠きX（m）</th>
+                <th className="num">欠きY（m）</th>
                 <th>基準</th>
                 <th>置き方</th>
                 <th>そろえ</th>
                 <th className="num">すき間（m）</th>
-                <th className="num">面積</th>
+                <th className="num">床面積</th>
                 <th className="num">壁面長さ</th>
                 <th className="num">壁面面積</th>
                 <th className="num">梁底面積</th>
@@ -455,7 +506,13 @@ export default function PitSheetPage({
             <tbody>
               {pits.map((pit, index) => (
                 <tr key={pit.id}>
-                  <td>{pit.symbol}</td>
+                  <td
+                    className="symbol"
+                    onClick={() => useSymbol(index)}
+                    title="クリックで部位に合った記号を計算式へ"
+                  >
+                    {pit.symbol}
+                  </td>
                   <td className="num">
                     <input
                       data-half="1"
@@ -487,6 +544,56 @@ export default function PitSheetPage({
                       onBlur={(e) =>
                         editPit(pit.id, {
                           depth: parseNumber(e.target.value) ?? 0,
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={pit.kind ?? "rect"}
+                      onChange={(e) =>
+                        editPit(pit.id, { kind: e.target.value as PitKind })
+                      }
+                    >
+                      <option value="rect">四角</option>
+                      <option value="trapezoid">台形</option>
+                      <option value="l">Ｌ型</option>
+                      <option value="u">コ型</option>
+                    </select>
+                  </td>
+                  <td className="num">
+                    <input
+                      data-half="1"
+                      className="num"
+                      defaultValue={pit.cutX ?? 0}
+                      key={`cx-${pit.id}-${pit.cutX ?? 0}`}
+                      disabled={(pit.kind ?? "rect") === "rect"}
+                      title={
+                        pit.kind === "trapezoid"
+                          ? "上辺の長さ"
+                          : "欠き込みのX方向寸法"
+                      }
+                      onBlur={(e) =>
+                        editPit(pit.id, {
+                          cutX: parseNumber(e.target.value) ?? 0,
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="num">
+                    <input
+                      data-half="1"
+                      className="num"
+                      defaultValue={pit.cutY ?? 0}
+                      key={`cy-${pit.id}-${pit.cutY ?? 0}`}
+                      disabled={
+                        (pit.kind ?? "rect") === "rect" ||
+                        pit.kind === "trapezoid"
+                      }
+                      title="欠き込みのY方向寸法"
+                      onBlur={(e) =>
+                        editPit(pit.id, {
+                          cutY: parseNumber(e.target.value) ?? 0,
                         })
                       }
                     />
@@ -709,7 +816,9 @@ export default function PitSheetPage({
 
         <section className="pit-plan-area">
           <div className="section-bar">
-            <h3>平面図（クリックで梁型を置く）</h3>
+            <h3>
+              平面図（クリックで梁型を置く）／全体 {pitCornerCount(pits)}角
+            </h3>
             <label>
               向き
               <select
