@@ -279,7 +279,7 @@ export default function PitSheetPage({
   const addNotchPit = useCallback((id: string) => {
     setPits((current) => {
       const base = current.find((pit) => pit.id === id);
-      const notch = base ? pitNotch(base) : null;
+      const notch = base ? pitNotch(base, base.gap) : null;
       if (!base || !notch) return current;
       return renumber([
         ...current,
@@ -297,7 +297,9 @@ export default function PitSheetPage({
         },
       ]);
     });
-    setMessage("欠いた所に□のピットを足しました（深さ・寸法は表で直せます）");
+    setMessage(
+      "欠いた所に□のピットを足しました（すき間は元のＰの「すき間」欄の値。Ｌ型は2方・コ型は3方）",
+    );
   }, []);
 
   const removePit = useCallback((id: string) => {
@@ -1059,7 +1061,7 @@ export default function PitSheetPage({
                     {pitNotch(pit) && (
                       <button
                         type="button"
-                        title="欠いた所にぴったり収まる四角のピットを足します"
+                        title="欠いた所に四角のピットを足します（囲まれる側は「すき間」欄の分だけ離します）"
                         onClick={() => addNotchPit(pit.id)}
                       >
                         □を作る

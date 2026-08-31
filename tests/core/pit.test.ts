@@ -576,3 +576,42 @@ describe("欠いた所に入る□", () => {
     expect(pitNotch(free)).toBeNull();
   });
 });
+
+describe("欠いた所の□とすき間", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 6,
+    y: 4,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("Ｌ型は2方にすき間を空ける（外側の2辺はそろう）", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    expect(pitNotch(shaped, 0.2)).toEqual({
+      x: 1.8,
+      y: 0.8,
+      offsetX: 4.2,
+      offsetY: 3.2,
+    });
+  });
+
+  it("コ型は3方にすき間を空ける（開いた側はそろう）", () => {
+    const shaped = { ...setPitKind(base, "U"), cutW: 2, cutD: 1, cutAt: 1 };
+    expect(pitNotch(shaped, 0.2)).toEqual({
+      x: 1.6,
+      y: 0.8,
+      offsetX: 1.2,
+      offsetY: 3.2,
+    });
+  });
+
+  it("すき間が大きすぎても□がつぶれない", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    const notch = pitNotch(shaped, 9);
+    expect(notch?.x).toBeGreaterThan(0);
+    expect(notch?.y).toBeGreaterThan(0);
+  });
+});

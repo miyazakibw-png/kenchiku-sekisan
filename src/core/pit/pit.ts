@@ -406,6 +406,7 @@ export function rectanglePit(pit: PitShape): PitShape {
  */
 export function pitNotch(
   pit: PitShape,
+  gap = 0,
 ): { x: number; y: number; offsetX: number; offsetY: number } | null {
   if (pit.points && pit.points.length >= 3) return null;
   const w = Math.min(Math.max(pit.cutW ?? 0, 0), pit.x);
@@ -413,12 +414,16 @@ export function pitNotch(
   if (w <= 0 || d <= 0) return null;
 
   if (pit.kind === "L") {
+    // Ｌ型は2方（たてとよこの内側）にすき間を空ける
+    const g = Math.max(Math.min(gap, w / 2, d / 2), 0);
     const corner = pit.cutCorner ?? "br";
+    const right = corner === "tr" || corner === "br";
+    const bottom = corner === "bl" || corner === "br";
     return {
-      x: w,
-      y: d,
-      offsetX: corner === "tr" || corner === "br" ? round4(pit.x - w) : 0,
-      offsetY: corner === "bl" || corner === "br" ? round4(pit.y - d) : 0,
+      x: round4(w - g),
+      y: round4(d - g),
+      offsetX: right ? round4(pit.x - (w - g)) : 0,
+      offsetY: bottom ? round4(pit.y - (d - g)) : 0,
     };
   }
 
@@ -430,15 +435,37 @@ export function pitNotch(
       Math.max(pit.cutAt ?? (along - size) / 2, 0),
       along - size,
     );
+    // コ型は3方（両わきと奥）にすき間を空ける
+    const g = Math.max(Math.min(gap, w / 3, d / 3), 0);
     switch (side) {
       case "top":
-        return { x: w, y: d, offsetX: round4(at), offsetY: 0 };
+        return {
+          x: round4(w - g * 2),
+          y: round4(d - g),
+          offsetX: round4(at + g),
+          offsetY: 0,
+        };
       case "bottom":
-        return { x: w, y: d, offsetX: round4(at), offsetY: round4(pit.y - d) };
+        return {
+          x: round4(w - g * 2),
+          y: round4(d - g),
+          offsetX: round4(at + g),
+          offsetY: round4(pit.y - (d - g)),
+        };
       case "left":
-        return { x: w, y: d, offsetX: 0, offsetY: round4(at) };
+        return {
+          x: round4(w - g),
+          y: round4(d - g * 2),
+          offsetX: 0,
+          offsetY: round4(at + g),
+        };
       default:
-        return { x: w, y: d, offsetX: round4(pit.x - w), offsetY: round4(at) };
+        return {
+          x: round4(w - g),
+          y: round4(d - g * 2),
+          offsetX: round4(pit.x - (w - g)),
+          offsetY: round4(at + g),
+        };
     }
   }
 
