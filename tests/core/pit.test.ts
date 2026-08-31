@@ -19,6 +19,7 @@ import {
   pitEdges,
   nearestPitEdge,
   keepPitPlaces,
+  keepPitPlacesByShift,
   layoutPits,
   normalizeRects,
   pitCornerCount,
@@ -800,5 +801,24 @@ describe("四角をまとめてそろえる", () => {
   it("2つ未満なら何も動かさない", () => {
     const list = [pit("a"), pit("b")];
     expect(alignPits(list, ["a"], "right")).toEqual(list);
+  });
+});
+
+describe("いくつものピットの角をまとめて動かす", () => {
+  it("基準にしているピットの分だけ倍に動かない", () => {
+    const before = [
+      pit("a", { x: 4, y: 2 }),
+      pit("b", { x: 4, y: 2, direction: "right", baseId: "a", gap: 0.5 }),
+      pit("c", { x: 4, y: 2, direction: "right", baseId: "b", gap: 0.5 }),
+    ];
+    // 3つとも左上の角を1m左へ動かす
+    const after = before.map((one) => movePitCorners(one, [0], -1, 0));
+    const kept = keepPitPlacesByShift(before, after);
+    const was = layoutPits(before);
+    const now = layoutPits(kept);
+    now.forEach((rect, index) => {
+      expect(rect.left).toBeCloseTo(was[index].left - 1, 6);
+      expect(rect.top).toBeCloseTo(was[index].top, 6);
+    });
   });
 });

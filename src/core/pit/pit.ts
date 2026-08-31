@@ -832,6 +832,41 @@ export function keepPitPlaces(
   return kept;
 }
 
+/**
+ * 角を動かしたあと、図の上で動くのは「動かした分」だけにする。
+ * 基準にしているピットの外形が変わって押し出される分は打ち消すので、
+ * いくつものピットの角をまとめて動かしても、倍に動かない。
+ */
+export function keepPitPlacesByShift(
+  before: readonly PitShape[],
+  after: readonly PitShape[],
+): PitShape[] {
+  const places = layoutPits(before);
+  let kept = after.map((pit) => ({ ...pit }));
+  kept.forEach((pit, index) => {
+    const was = places.find((rect) => rect.id === pit.id);
+    const old = before.find((each) => each.id === pit.id);
+    if (!was || !old) return;
+    const wantLeft = was.left + ((pit.shiftX ?? 0) - (old.shiftX ?? 0));
+    const wantTop = was.top + ((pit.shiftY ?? 0) - (old.shiftY ?? 0));
+    const now = layoutPits(kept).find((rect) => rect.id === pit.id);
+    if (!now) return;
+    const dx = now.left - wantLeft;
+    const dy = now.top - wantTop;
+    if (dx === 0 && dy === 0) return;
+    kept = kept.map((each, at) =>
+      at === index
+        ? {
+            ...each,
+            shiftX: round4((each.shiftX ?? 0) - dx),
+            shiftY: round4((each.shiftY ?? 0) - dy),
+          }
+        : each,
+    );
+  });
+  return kept;
+}
+
 /** 図全体の大きさ（左上を0にそろえた並び） */
 export function normalizeRects(rects: readonly PitRect[]): {
   rects: PitRect[];

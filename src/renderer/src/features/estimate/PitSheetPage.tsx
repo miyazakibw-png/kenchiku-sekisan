@@ -23,6 +23,7 @@ import {
   beamLines,
   beamSegments,
   keepPitPlaces,
+  keepPitPlacesByShift,
   layoutPits,
   movePitCorners,
   rectanglePit,
@@ -198,7 +199,7 @@ export default function PitSheetPage({
     (ids: readonly string[], update: (pit: PitShape) => PitShape) => {
       planHistory.push({ pits, beams });
       const next = pits.map((pit) => (ids.includes(pit.id) ? update(pit) : pit));
-      setPits(keepPitPlaces(pits, next, ids));
+      setPits(keepPitPlacesByShift(pits, next));
     },
     [beams, pits, planHistory],
   );
