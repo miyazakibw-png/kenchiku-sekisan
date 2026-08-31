@@ -283,6 +283,8 @@ const api = {
   exportScreenExcel: (request: ScreenExcelRequest): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.screenExcel, request),
   closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose),
+  /** 文字が入らなくなったときに、この画面へ入力先（フォーカス）を戻す */
+  focusWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowFocus),
 
   /** 明細入力を独立したウィンドウで開く */
   openCalcWindow: (title: string): Promise<void> =>

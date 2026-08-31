@@ -9,6 +9,7 @@ import BasicMasterPage from "./features/masters/BasicMasterPage";
 import PrintBar from "./features/print/PrintBar";
 import { useGridKeyNav } from "./features/grid/useGridKeyNav";
 import { useHalfWidthFields } from "./hooks/useHalfWidthFields";
+import { refocusWindow, useInputRecovery } from "./hooks/useInputRecovery";
 import { useStickyHeaders } from "./features/grid/useStickyHeaders";
 import SettingsPage from "./features/settings/SettingsPage";
 import CalcWindowPage from "./features/estimate/CalcWindowPage";
@@ -51,6 +52,7 @@ export default function App(): JSX.Element {
   const mainRef = useRef<HTMLElement>(null);
   useStickyHeaders(mainRef);
   useHalfWidthFields();
+  useInputRecovery();
 
   // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
   // 工事の画面ではその工事専用のマスター（無い種類は基本マスター）を使う
@@ -79,6 +81,14 @@ export default function App(): JSX.Element {
         <header className="app-bar">
           <div className="app-bar-title">🏗 建築積算システム</div>
           <div className="app-bar-project">{projectName}</div>
+          <button
+            type="button"
+            className="refocus"
+            title="欄に文字が入らなくなったときに押してください（Escキーでも同じです）"
+            onClick={() => void refocusWindow()}
+          >
+            ⌨ 入力復帰
+          </button>
           <PrintBar projectName={projectName} />
         </header>
         {projectId === null && (

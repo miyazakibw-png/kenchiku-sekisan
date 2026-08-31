@@ -63,7 +63,7 @@ body,
 .app-bar {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 180px 1fr 220px;
+  grid-template-columns: 180px 1fr auto 220px;
   align-items: center;
   background: #111827;
   color: #e5e7eb;
@@ -126,6 +126,17 @@ body,
 .placeholder {
   padding: 32px;
   color: #666;
+}
+
+/* 文字が入らなくなったときに入力先を戻すボタン */
+.app-bar .refocus {
+  background: #374151;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 /* 最上部右端の 印刷／PDF／エクセル */

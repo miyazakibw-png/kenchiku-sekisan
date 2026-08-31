@@ -30,6 +30,7 @@ import {
 import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { askConfirm } from "../../hooks/useInputRecovery";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -164,7 +165,7 @@ export default function AssemblyMasterPage({
       const applyToAllSets =
         !quiet &&
         sharing.length > 0 &&
-        window.confirm(
+        askConfirm(
           `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
             "［OK］この明細を使う全セットを直す\n［キャンセル］このセットだけ直す",
         );

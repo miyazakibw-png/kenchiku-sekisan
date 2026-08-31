@@ -82,6 +82,7 @@ export const IPC = {
   printPdf: "print:pdf",
   screenExcel: "print:excel",
   windowClose: "window:close",
+  windowFocus: "window:focus",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

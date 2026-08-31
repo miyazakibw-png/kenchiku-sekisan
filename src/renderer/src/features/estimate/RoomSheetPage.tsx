@@ -75,6 +75,7 @@ import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import CalcPrintSheet from "../print/CalcPrintSheet";
+import { askConfirm } from "../../hooks/useInputRecovery";
 
 interface Props {
   project: ProjectSummary;
@@ -979,7 +980,7 @@ export default function RoomSheetPage({
   const startShape = (next: RoomShape): void => {
     if (
       shape.edges.length > 0 &&
-      !window.confirm("いまの形と寸法を消して、四角から作り直しますか？")
+      !askConfirm("いまの形と寸法を消して、四角から作り直しますか？")
     ) {
       return;
     }
@@ -1243,679 +1244,1400 @@ export default function RoomSheetPage({
 
   /** 上段（図・寸法入力・記号・建具・天井伏図）。印刷では紙の1枚目に入れる */
   const upperArea = (
-      <div className={expanded ? "upper expanded" : "upper"}>
-        <section className="drawing">
-          <div className="section-bar">
-            <span>
-              部屋形状イメージ（{showCeiling ? "天井伏図" : "平面図"}）
+    <div className={expanded ? "upper expanded" : "upper"}>
+      <section className="drawing">
+        <div className="section-bar">
+          <span>部屋形状イメージ（{showCeiling ? "天井伏図" : "平面図"}）</span>
+          <button
+            type="button"
+            className={showCeiling ? "on" : ""}
+            onClick={() => setShowCeiling(!showCeiling)}
+          >
+            {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+          </button>
+          <button
+            type="button"
+            className={expanded ? "on" : ""}
+            title="図を画面いっぱいに開いて、そのまま入力できます"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+          </button>
+        </div>
+        <div className="drawing-body">
+          <div className="shape-tools">
+            <button
+              type="button"
+              title="小窓で横・縦の寸法を入れて四角を作ります"
+              onClick={() =>
+                setPrompt({
+                  kind: "rect",
+                  across: "4.00",
+                  along: "3.00",
+                  edgeKind: "wall",
+                })
+              }
+            >
+              □ 四角
+            </button>
+            <button
+              type="button"
+              title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
+              onClick={() => {
+                if (selectedCorner === null) {
+                  setShowCorners(true);
+                  setMessage(
+                    "図の角（○印）をクリックで選んでから、もう一度L型を押してください",
+                  );
+                  return;
+                }
+                setPrompt({
+                  kind: "cut",
+                  across: cutAcross,
+                  along: cutAlong,
+                  edgeKind: promptEdgeKind,
+                });
+              }}
+            >
+              L型を角に追加
+            </button>
+            <button
+              type="button"
+              title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
+              onClick={() => {
+                if (!shape.edges.some((item) => item.id === selectedEdge)) {
+                  setMessage("凹ませる辺を選んでからコ型を押してください");
+                  return;
+                }
+                setPrompt({
+                  kind: "notch",
+                  across: cutAcross,
+                  along: cutAlong,
+                  edgeKind: promptEdgeKind,
+                });
+              }}
+            >
+              コ型を辺に追加
+            </button>
+            <button
+              type="button"
+              className={addCornerMode ? "on" : ""}
+              title="押してから図の辺をクリックすると、小窓で位置の寸法を確かめて辺を分け、角を追加します"
+              onClick={() => {
+                const next = !addCornerMode;
+                setAddCornerMode(next);
+                setMessage(
+                  next ? "角を足す位置で図の辺をクリックしてください" : "",
+                );
+              }}
+            >
+              ○ 角を追加
+            </button>
+            <button
+              type="button"
+              disabled={shape.edges.length === 0}
+              title="今の図形を左右に反転します（寸法はそのまま）"
+              onClick={() => flipShape("x")}
+            >
+              ⇔ 左右反転
+            </button>
+            <button
+              type="button"
+              disabled={shape.edges.length === 0}
+              title="今の図形を上下に反転します（寸法はそのまま）"
+              onClick={() => flipShape("y")}
+            >
+              ⇕ 上下反転
+            </button>
+            <button
+              type="button"
+              disabled={shapePast.length === 0}
+              title="図形の操作を1つ前に戻します"
+              onClick={undoShape}
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              disabled={shapeFuture.length === 0}
+              title="戻した図形の操作を1つ先へ進めます"
+              onClick={redoShape}
+            >
+              ↷ 進む
+            </button>
+            <span className="corner-move">
+              <label title="角を動かす寸法（右がプラス・左がマイナス）">
+                横
+                <input
+                  className="num cut"
+                  value={moveX}
+                  onChange={(e) => setMoveX(e.target.value)}
+                />
+              </label>
+              <label title="角を動かす寸法（下がプラス・上がマイナス）">
+                縦
+                <input
+                  className="num cut"
+                  value={moveY}
+                  onChange={(e) => setMoveY(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を左へ動かします"
+                onClick={() => moveSelectedCorner(-Math.abs(Number(moveX)), 0)}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を右へ動かします"
+                onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
+              >
+                →
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を上へ動かします"
+                onClick={() => moveSelectedCorner(0, -Math.abs(Number(moveY)))}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="角（○印）を選んでから押すと、その角を下へ動かします"
+                onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                disabled={selectedCorner === null}
+                title="横・縦の両方へ同時に動かします（斜めの辺になります）"
+                onClick={() => moveSelectedCorner(Number(moveX), Number(moveY))}
+              >
+                ╱ 斜めへ
+              </button>
             </span>
             <button
               type="button"
-              className={showCeiling ? "on" : ""}
-              onClick={() => setShowCeiling(!showCeiling)}
+              onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
             >
-              {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+              ＋
             </button>
             <button
               type="button"
-              className={expanded ? "on" : ""}
-              title="図を画面いっぱいに開いて、そのまま入力できます"
-              onClick={() => setExpanded(!expanded)}
+              onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}
             >
-              {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+              －
+            </button>
+            <button type="button" onClick={() => setZoom(1)}>
+              全体
+            </button>
+            <button
+              type="button"
+              className={showCorners ? "on" : ""}
+              title="角の○印を出す／消す（形が決まったら消せます）"
+              onClick={() => {
+                if (showCorners) setSelectedCorner(null);
+                setShowCorners(!showCorners);
+              }}
+            >
+              {showCorners ? "○角を消す" : "○角を出す"}
             </button>
           </div>
-          <div className="drawing-body">
-            <div className="shape-tools">
-              <button
-                type="button"
-                title="小窓で横・縦の寸法を入れて四角を作ります"
-                onClick={() =>
-                  setPrompt({
-                    kind: "rect",
-                    across: "4.00",
-                    along: "3.00",
-                    edgeKind: "wall",
-                  })
-                }
-              >
-                □ 四角
-              </button>
-              <button
-                type="button"
-                title="図の角（○印）を選んでから押すと、小窓で寸法を入れてその角を欠き取ります（何度でも使えます）"
-                onClick={() => {
-                  if (selectedCorner === null) {
-                    setShowCorners(true);
-                    setMessage(
-                      "図の角（○印）をクリックで選んでから、もう一度L型を押してください",
-                    );
-                    return;
-                  }
-                  setPrompt({
-                    kind: "cut",
-                    across: cutAcross,
-                    along: cutAlong,
-                    edgeKind: promptEdgeKind,
-                  });
-                }}
-              >
-                L型を角に追加
-              </button>
-              <button
-                type="button"
-                title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
-                onClick={() => {
-                  if (!shape.edges.some((item) => item.id === selectedEdge)) {
-                    setMessage("凹ませる辺を選んでからコ型を押してください");
-                    return;
-                  }
-                  setPrompt({
-                    kind: "notch",
-                    across: cutAcross,
-                    along: cutAlong,
-                    edgeKind: promptEdgeKind,
-                  });
-                }}
-              >
-                コ型を辺に追加
-              </button>
-              <button
-                type="button"
-                className={addCornerMode ? "on" : ""}
-                title="押してから図の辺をクリックすると、小窓で位置の寸法を確かめて辺を分け、角を追加します"
-                onClick={() => {
-                  const next = !addCornerMode;
-                  setAddCornerMode(next);
-                  setMessage(
-                    next ? "角を足す位置で図の辺をクリックしてください" : "",
-                  );
-                }}
-              >
-                ○ 角を追加
-              </button>
-              <button
-                type="button"
-                disabled={shape.edges.length === 0}
-                title="今の図形を左右に反転します（寸法はそのまま）"
-                onClick={() => flipShape("x")}
-              >
-                ⇔ 左右反転
-              </button>
-              <button
-                type="button"
-                disabled={shape.edges.length === 0}
-                title="今の図形を上下に反転します（寸法はそのまま）"
-                onClick={() => flipShape("y")}
-              >
-                ⇕ 上下反転
-              </button>
-              <button
-                type="button"
-                disabled={shapePast.length === 0}
-                title="図形の操作を1つ前に戻します"
-                onClick={undoShape}
-              >
-                ↶ 戻る
-              </button>
-              <button
-                type="button"
-                disabled={shapeFuture.length === 0}
-                title="戻した図形の操作を1つ先へ進めます"
-                onClick={redoShape}
-              >
-                ↷ 進む
-              </button>
-              <span className="corner-move">
-                <label title="角を動かす寸法（右がプラス・左がマイナス）">
-                  横
-                  <input
-                    className="num cut"
-                    value={moveX}
-                    onChange={(e) => setMoveX(e.target.value)}
-                  />
-                </label>
-                <label title="角を動かす寸法（下がプラス・上がマイナス）">
-                  縦
-                  <input
-                    className="num cut"
-                    value={moveY}
-                    onChange={(e) => setMoveY(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={selectedCorner === null}
-                  title="角（○印）を選んでから押すと、その角を左へ動かします"
-                  onClick={() =>
-                    moveSelectedCorner(-Math.abs(Number(moveX)), 0)
-                  }
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedCorner === null}
-                  title="角（○印）を選んでから押すと、その角を右へ動かします"
-                  onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
-                >
-                  →
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedCorner === null}
-                  title="角（○印）を選んでから押すと、その角を上へ動かします"
-                  onClick={() =>
-                    moveSelectedCorner(0, -Math.abs(Number(moveY)))
-                  }
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedCorner === null}
-                  title="角（○印）を選んでから押すと、その角を下へ動かします"
-                  onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedCorner === null}
-                  title="横・縦の両方へ同時に動かします（斜めの辺になります）"
-                  onClick={() =>
-                    moveSelectedCorner(Number(moveX), Number(moveY))
-                  }
-                >
-                  ╱ 斜めへ
-                </button>
-              </span>
-              <button
-                type="button"
-                onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
-              >
-                ＋
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}
-              >
-                －
-              </button>
-              <button type="button" onClick={() => setZoom(1)}>
-                全体
-              </button>
-              <button
-                type="button"
-                className={showCorners ? "on" : ""}
-                title="角の○印を出す／消す（形が決まったら消せます）"
-                onClick={() => {
-                  if (showCorners) setSelectedCorner(null);
-                  setShowCorners(!showCorners);
-                }}
-              >
-                {showCorners ? "○角を消す" : "○角を出す"}
-              </button>
-            </div>
-            <div className="canvas" ref={canvasRef}>
-              <svg
-                viewBox={view.box}
-                style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
-              >
-                {solved.points.map((point, index) => {
-                  const line = solved.edges[index];
-                  const next =
-                    solved.points[(index + 1) % solved.points.length];
-                  const middle = {
-                    x: (point.x + next.x) / 2,
-                    y: (point.y + next.y) / 2,
-                  };
-                  const vertical = point.x === next.x;
-                  const className = [
-                    "edge",
-                    line.kind,
-                    selectedEdgeIds.includes(line.id) ? "selected" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                  // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
-                  const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
-                  const span = Math.hypot(next.x - point.x, next.y - point.y);
-                  const normal =
-                    span === 0
-                      ? { x: 0, y: 0 }
-                      : {
-                          x: -(next.y - point.y) / span,
-                          y: (next.x - point.x) / span,
-                        };
-                  const control = {
-                    x: middle.x - normal.x * bulge * 2,
-                    y: middle.y - normal.y * bulge * 2,
-                  };
-                  return (
-                    <g
-                      key={line.id}
-                      onClick={(event) => {
-                        if (addCornerMode) {
-                          splitEdgeAt(line.id, point, next, event);
-                          return;
-                        }
-                        selectEdge(line.id, event.shiftKey);
-                        setSelectedCorner(null);
-                        // 閉じていないときは、押した辺の寸法で合わせる
-                        if (!event.shiftKey && solved.error !== null)
-                          fitEdge(line.id);
-                      }}
-                    >
-                      {/* 線は細いので、当たり判定用の太い線を重ねる */}
+          <div className="canvas" ref={canvasRef}>
+            <svg
+              viewBox={view.box}
+              style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+            >
+              {solved.points.map((point, index) => {
+                const line = solved.edges[index];
+                const next = solved.points[(index + 1) % solved.points.length];
+                const middle = {
+                  x: (point.x + next.x) / 2,
+                  y: (point.y + next.y) / 2,
+                };
+                const vertical = point.x === next.x;
+                const className = [
+                  "edge",
+                  line.kind,
+                  selectedEdgeIds.includes(line.id) ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
+                const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
+                const span = Math.hypot(next.x - point.x, next.y - point.y);
+                const normal =
+                  span === 0
+                    ? { x: 0, y: 0 }
+                    : {
+                        x: -(next.y - point.y) / span,
+                        y: (next.x - point.x) / span,
+                      };
+                const control = {
+                  x: middle.x - normal.x * bulge * 2,
+                  y: middle.y - normal.y * bulge * 2,
+                };
+                return (
+                  <g
+                    key={line.id}
+                    onClick={(event) => {
+                      if (addCornerMode) {
+                        splitEdgeAt(line.id, point, next, event);
+                        return;
+                      }
+                      selectEdge(line.id, event.shiftKey);
+                      setSelectedCorner(null);
+                      // 閉じていないときは、押した辺の寸法で合わせる
+                      if (!event.shiftKey && solved.error !== null)
+                        fitEdge(line.id);
+                    }}
+                  >
+                    {/* 線は細いので、当たり判定用の太い線を重ねる */}
+                    <line
+                      x1={point.x}
+                      y1={point.y}
+                      x2={next.x}
+                      y2={next.y}
+                      className="edge-hit"
+                      strokeWidth={cornerRadius * 1.6}
+                    />
+                    {bulge !== 0 ? (
+                      <path
+                        d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
+                        className={className}
+                        fill="none"
+                      />
+                    ) : (
                       <line
                         x1={point.x}
                         y1={point.y}
                         x2={next.x}
                         y2={next.y}
-                        className="edge-hit"
-                        strokeWidth={cornerRadius * 1.6}
+                        className={className}
                       />
-                      {bulge !== 0 ? (
-                        <path
-                          d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
-                          className={className}
-                          fill="none"
-                        />
-                      ) : (
-                        <line
-                          x1={point.x}
-                          y1={point.y}
-                          x2={next.x}
-                          y2={next.y}
-                          className={className}
-                        />
-                      )}
+                    )}
+                    <text
+                      x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
+                      y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
+                      className={line.auto ? "dim auto" : "dim"}
+                      fontSize={dimFontSize}
+                      transform={
+                        vertical
+                          ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
+                          : undefined
+                      }
+                    >
+                      {formatNumber(line.resolved, 2)}
+                    </text>
+                  </g>
+                );
+              })}
+              {showCorners &&
+                solved.points.map((point, index) => (
+                  <g
+                    key={`corner-${solved.edges[index].id}`}
+                    onClick={() => {
+                      setSelectedCorner(index);
+                      setSelectedEdge(null);
+                      setAddCornerMode(false);
+                    }}
+                  >
+                    {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={cornerRadius * 2.6}
+                      className="corner-hit"
+                    />
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={cornerRadius}
+                      className={`corner ${selectedCorner === index ? "selected" : ""}`}
+                    />
+                  </g>
+                ))}
+              {showCeiling &&
+                ceilingLines.map((line) => (
+                  <g key={line.key}>
+                    <line
+                      x1={line.x1}
+                      y1={line.y1}
+                      x2={line.x2}
+                      y2={line.y2}
+                      className={`ceiling-line ${line.kind}`}
+                    />
+                    {line.label !== "" && (
                       <text
-                        x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
-                        y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
-                        className={line.auto ? "dim auto" : "dim"}
+                        x={line.labelX}
+                        y={line.labelY + dimFontSize * 0.9}
+                        className="dim ceiling"
                         fontSize={dimFontSize}
-                        transform={
-                          vertical
-                            ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
-                            : undefined
-                        }
                       >
-                        {formatNumber(line.resolved, 2)}
+                        CH {line.label}
                       </text>
-                    </g>
+                    )}
+                  </g>
+                ))}
+              {showCeiling &&
+                ceilingCodes.map((region) => {
+                  const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
+                  return (
+                    <text
+                      key={region.code}
+                      x={region.center.x + moved.x}
+                      y={region.center.y + moved.y}
+                      className="ceiling-code"
+                      textAnchor="middle"
+                      fontSize={dimFontSize * 1.3}
+                      onPointerDown={(event) =>
+                        startCodeDrag(region.code, event)
+                      }
+                      onPointerMove={moveCodeDrag}
+                      onPointerUp={endCodeDrag}
+                      onDoubleClick={() =>
+                        setCodeMoves((current) => {
+                          const next = { ...current };
+                          delete next[region.code];
+                          return next;
+                        })
+                      }
+                    >
+                      {region.code}
+                    </text>
                   );
                 })}
-                {showCorners &&
-                  solved.points.map((point, index) => (
-                    <g
-                      key={`corner-${solved.edges[index].id}`}
-                      onClick={() => {
-                        setSelectedCorner(index);
-                        setSelectedEdge(null);
-                        setAddCornerMode(false);
-                      }}
-                    >
-                      {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={cornerRadius * 2.6}
-                        className="corner-hit"
-                      />
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={cornerRadius}
-                        className={`corner ${selectedCorner === index ? "selected" : ""}`}
-                      />
-                    </g>
-                  ))}
-                {showCeiling &&
-                  ceilingLines.map((line) => (
-                    <g key={line.key}>
-                      <line
-                        x1={line.x1}
-                        y1={line.y1}
-                        x2={line.x2}
-                        y2={line.y2}
-                        className={`ceiling-line ${line.kind}`}
-                      />
-                      {line.label !== "" && (
-                        <text
-                          x={line.labelX}
-                          y={line.labelY + dimFontSize * 0.9}
-                          className="dim ceiling"
-                          fontSize={dimFontSize}
-                        >
-                          CH {line.label}
-                        </text>
-                      )}
-                    </g>
-                  ))}
-                {showCeiling &&
-                  ceilingCodes.map((region) => {
-                    const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
-                    return (
-                      <text
-                        key={region.code}
-                        x={region.center.x + moved.x}
-                        y={region.center.y + moved.y}
-                        className="ceiling-code"
-                        textAnchor="middle"
-                        fontSize={dimFontSize * 1.3}
-                        onPointerDown={(event) =>
-                          startCodeDrag(region.code, event)
-                        }
-                        onPointerMove={moveCodeDrag}
-                        onPointerUp={endCodeDrag}
-                        onDoubleClick={() =>
-                          setCodeMoves((current) => {
-                            const next = { ...current };
-                            delete next[region.code];
-                            return next;
-                          })
-                        }
-                      >
-                        {region.code}
-                      </text>
-                    );
-                  })}
-              </svg>
-              {solved.points.length === 0 && (
-                <p className="empty">
-                  {solved.missing.length > 0
-                    ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
-                    : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
-                </p>
-              )}
-              {extents && (
-                <p className="extents">
-                  X={formatNumber(extents.x, 2)}, Y={formatNumber(extents.y, 2)}
-                </p>
-              )}
-            </div>
+            </svg>
+            {solved.points.length === 0 && (
+              <p className="empty">
+                {solved.missing.length > 0
+                  ? "寸法が足りません（同じ方向に未入力が2辺あります）。点滅している行に寸法を入れてください。"
+                  : "「□ 四角」から始めて寸法を入れ、角の○印や辺を選んでL型・コ型を足してください。"}
+              </p>
+            )}
+            {extents && (
+              <p className="extents">
+                X={formatNumber(extents.x, 2)}, Y={formatNumber(extents.y, 2)}
+              </p>
+            )}
           </div>
-          {solved.error && (
-            <p className="error">
-              {solved.error}
-              <button type="button" onClick={fixClosure}>
-                寸法を自動で合わせる
-              </button>
-              <button
-                type="button"
-                disabled={selectedEdge === null}
-                onClick={() => selectedEdge !== null && fitEdge(selectedEdge)}
-              >
-                選んだ辺で合わせる
-              </button>
-              <span>
-                （図の直したい辺をクリックすると、その辺で合わせます）
-              </span>
-            </p>
-          )}
-        </section>
+        </div>
+        {solved.error && (
+          <p className="error">
+            {solved.error}
+            <button type="button" onClick={fixClosure}>
+              寸法を自動で合わせる
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null}
+              onClick={() => selectedEdge !== null && fitEdge(selectedEdge)}
+            >
+              選んだ辺で合わせる
+            </button>
+            <span>（図の直したい辺をクリックすると、その辺で合わせます）</span>
+          </p>
+        )}
+      </section>
 
-        {!(expanded && showCeiling) && (
-          <section className="edges">
-            <div className="section-bar">
-              <span>寸法入力（空欄は自動算出）</span>
-              <label className="ceiling-height">
-                天井高さ
-                <input
-                  className="num"
-                  key={`ech-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
-                  defaultValue={formatNumber(ceilingHeight, 2)}
-                  title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
-                  onBlur={(e) => applyCeilingHeight(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
-                onClick={() =>
-                  applyShape({
-                    edges: [
-                      ...shape.edges,
-                      edge(nextEdgeDirection(shape), null),
-                    ],
-                  })
+      {!(expanded && showCeiling) && (
+        <section className="edges">
+          <div className="section-bar">
+            <span>寸法入力（空欄は自動算出）</span>
+            <label className="ceiling-height">
+              天井高さ
+              <input
+                className="num"
+                key={`ech-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
+                defaultValue={formatNumber(ceilingHeight, 2)}
+                title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+                onBlur={(e) => applyCeilingHeight(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
+              onClick={() =>
+                applyShape({
+                  edges: [...shape.edges, edge(nextEdgeDirection(shape), null)],
+                })
+              }
+            >
+              ＋ 辺追加
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null}
+              onClick={() => {
+                if (selectedEdge === null) return;
+                const target = shape.edges.find(
+                  (item) => item.id === selectedEdge,
+                );
+                const half =
+                  target?.length === null ? 1 : (target?.length ?? 2) / 2;
+                applyShape(
+                  splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
+                );
+              }}
+            >
+              ✂ 線分割
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null}
+              onClick={() =>
+                selectedEdge !== null &&
+                applyShape({
+                  edges: shape.edges.filter((item) => item.id !== selectedEdge),
+                })
+              }
+            >
+              🗑 辺削除
+            </button>
+            <button
+              type="button"
+              disabled={selectedEdge === null || rangeEdge === null}
+              title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺（表の並び順に進みます。一周をまたいでも選べます）をまとめて消し、まっすぐな壁でそろえます"
+              onClick={() => {
+                if (selectedEdge === null || rangeEdge === null) return;
+                const result = trimEdges(shape, selectedEdge, rangeEdge);
+                if (result.error !== null) {
+                  setMessage(result.error);
+                  return;
                 }
-              >
-                ＋ 辺追加
-              </button>
-              <button
-                type="button"
-                disabled={selectedEdge === null}
-                onClick={() => {
-                  if (selectedEdge === null) return;
-                  const target = shape.edges.find(
-                    (item) => item.id === selectedEdge,
-                  );
-                  const half =
-                    target?.length === null ? 1 : (target?.length ?? 2) / 2;
-                  applyShape(
-                    splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
-                  );
-                }}
-              >
-                ✂ 線分割
-              </button>
-              <button
-                type="button"
-                disabled={selectedEdge === null}
-                onClick={() =>
-                  selectedEdge !== null &&
-                  applyShape({
-                    edges: shape.edges.filter(
-                      (item) => item.id !== selectedEdge,
-                    ),
-                  })
-                }
-              >
-                🗑 辺削除
-              </button>
-              <button
-                type="button"
-                disabled={selectedEdge === null || rangeEdge === null}
-                title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺（表の並び順に進みます。一周をまたいでも選べます）をまとめて消し、まっすぐな壁でそろえます"
-                onClick={() => {
-                  if (selectedEdge === null || rangeEdge === null) return;
-                  const result = trimEdges(shape, selectedEdge, rangeEdge);
-                  if (result.error !== null) {
-                    setMessage(result.error);
-                    return;
-                  }
-                  applyShape(result.shape);
-                  setSelectedEdge(null);
-                  setRangeEdge(null);
-                }}
-              >
-                ▭ 範囲をまとめる
-              </button>
-            </div>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th className="no">No</th>
-                  <th>向き</th>
-                  <th className="num">寸法</th>
-                  <th className="num" title="曲面壁のふくらみ（矢）">
-                    Ｒ向き
-                  </th>
-                  <th>種別</th>
-                </tr>
-              </thead>
-              <tbody>
-                {solved.edges.map((line, index) => (
-                  <tr
-                    key={line.id}
-                    className={[
-                      selectedEdgeIds.includes(line.id) ? "selected" : "",
-                      solved.missing.includes(line.id) ? "missing" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    onClick={(event) => selectEdge(line.id, event.shiftKey)}
-                  >
-                    <td className="no">{index + 1}</td>
-                    <td>
-                      <select
-                        value={line.direction}
-                        onChange={(e) =>
+                applyShape(result.shape);
+                setSelectedEdge(null);
+                setRangeEdge(null);
+              }}
+            >
+              ▭ 範囲をまとめる
+            </button>
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th className="no">No</th>
+                <th>向き</th>
+                <th className="num">寸法</th>
+                <th className="num" title="曲面壁のふくらみ（矢）">
+                  Ｒ向き
+                </th>
+                <th>種別</th>
+              </tr>
+            </thead>
+            <tbody>
+              {solved.edges.map((line, index) => (
+                <tr
+                  key={line.id}
+                  className={[
+                    selectedEdgeIds.includes(line.id) ? "selected" : "",
+                    solved.missing.includes(line.id) ? "missing" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={(event) => selectEdge(line.id, event.shiftKey)}
+                >
+                  <td className="no">{index + 1}</td>
+                  <td>
+                    <select
+                      value={line.direction}
+                      onChange={(e) =>
+                        applyShape(
+                          updateEdge(shape, line.id, {
+                            direction: e.target.value as EdgeDirection,
+                          }),
+                        )
+                      }
+                    >
+                      {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
+                        (key) => (
+                          <option key={key} value={key}>
+                            {DIRECTION_LABEL[key]}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </td>
+                  <td>
+                    {isDiagonal(line.direction) ? (
+                      <span className="diagonal">
+                        <input
+                          className="num"
+                          defaultValue={formatNumber(line.dx ?? 0, 2)}
+                          key={`${line.id}-dx-${line.dx ?? 0}`}
+                          title="斜め辺の横移動（右がプラス）。計算式も入れられます"
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && e.currentTarget.blur()
+                          }
+                          onBlur={(e) =>
+                            applyShape(
+                              updateEdge(shape, line.id, {
+                                dx: textToNumber(e.target.value) ?? 0,
+                              }),
+                            )
+                          }
+                        />
+                        <input
+                          className="num"
+                          defaultValue={formatNumber(line.dy ?? 0, 2)}
+                          key={`${line.id}-dy-${line.dy ?? 0}`}
+                          title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && e.currentTarget.blur()
+                          }
+                          onBlur={(e) =>
+                            applyShape(
+                              updateEdge(shape, line.id, {
+                                dy: textToNumber(e.target.value) ?? 0,
+                              }),
+                            )
+                          }
+                        />
+                      </span>
+                    ) : (
+                      <input
+                        className="num"
+                        defaultValue={
+                          line.length === null
+                            ? ""
+                            : formatNumber(line.length, 2)
+                        }
+                        key={`${line.id}-${line.length ?? "auto"}`}
+                        placeholder={
+                          line.auto ? formatNumber(line.resolved, 2) : ""
+                        }
+                        title={
+                          line.kind === "curve"
+                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
+                            : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          showAnswer(e.currentTarget);
+                          e.currentTarget.blur();
+                        }}
+                        onBlur={(e) => {
                           applyShape(
                             updateEdge(shape, line.id, {
-                              direction: e.target.value as EdgeDirection,
+                              length: textToNumber(e.target.value),
                             }),
-                          )
-                        }
-                      >
-                        {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
-                          (key) => (
-                            <option key={key} value={key}>
-                              {DIRECTION_LABEL[key]}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    </td>
-                    <td>
-                      {isDiagonal(line.direction) ? (
-                        <span className="diagonal">
-                          <input
-                            className="num"
-                            defaultValue={formatNumber(line.dx ?? 0, 2)}
-                            key={`${line.id}-dx-${line.dx ?? 0}`}
-                            title="斜め辺の横移動（右がプラス）。計算式も入れられます"
-                            onKeyDown={(e) =>
-                              e.key === "Enter" && e.currentTarget.blur()
-                            }
-                            onBlur={(e) =>
-                              applyShape(
-                                updateEdge(shape, line.id, {
-                                  dx: textToNumber(e.target.value) ?? 0,
-                                }),
-                              )
-                            }
-                          />
-                          <input
-                            className="num"
-                            defaultValue={formatNumber(line.dy ?? 0, 2)}
-                            key={`${line.id}-dy-${line.dy ?? 0}`}
-                            title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
-                            onKeyDown={(e) =>
-                              e.key === "Enter" && e.currentTarget.blur()
-                            }
-                            onBlur={(e) =>
-                              applyShape(
-                                updateEdge(shape, line.id, {
-                                  dy: textToNumber(e.target.value) ?? 0,
-                                }),
-                              )
-                            }
-                          />
-                        </span>
-                      ) : (
+                          );
+                        }}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {line.kind === "curve" ? (
+                      <span className="curve">
                         <input
                           className="num"
                           defaultValue={
-                            line.length === null
+                            line.bulge === null || line.bulge === undefined
                               ? ""
-                              : formatNumber(line.length, 2)
+                              : formatNumber(Math.abs(line.bulge), 2)
                           }
-                          key={`${line.id}-${line.length ?? "auto"}`}
-                          placeholder={
-                            line.auto ? formatNumber(line.resolved, 2) : ""
-                          }
-                          title={
-                            line.kind === "curve"
-                              ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
-                              : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
-                          }
+                          key={`${line.id}-bulge-${line.bulge ?? "none"}`}
+                          title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
                           onKeyDown={(e) => {
                             if (e.key !== "Enter") return;
                             showAnswer(e.currentTarget);
                             e.currentTarget.blur();
                           }}
                           onBlur={(e) => {
+                            const value = textToNumber(e.target.value);
+                            const size =
+                              value === null ? null : Math.abs(value);
                             applyShape(
                               updateEdge(shape, line.id, {
-                                length: textToNumber(e.target.value),
+                                bulge:
+                                  size === null
+                                    ? null
+                                    : (line.bulge ?? 0) < 0
+                                      ? -size
+                                      : size,
                               }),
                             );
+                          }}
+                        />
+                        <select
+                          value={(line.bulge ?? 0) < 0 ? "in" : "out"}
+                          title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
+                          onChange={(e) => {
+                            const size = Math.abs(line.bulge ?? 0);
+                            applyShape(
+                              updateEdge(shape, line.id, {
+                                bulge:
+                                  size === 0
+                                    ? line.bulge
+                                    : e.target.value === "in"
+                                      ? -size
+                                      : size,
+                              }),
+                            );
+                          }}
+                        >
+                          <option value="out">外</option>
+                          <option value="in">内</option>
+                        </select>
+                      </span>
+                    ) : (
+                      <span className="none">－</span>
+                    )}
+                  </td>
+                  <td>
+                    <select
+                      value={line.kind}
+                      onChange={(e) =>
+                        applyShape(
+                          updateEdge(shape, line.id, {
+                            kind: e.target.value as EdgeKind,
+                          }),
+                        )
+                      }
+                    >
+                      {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
+                        <option key={key} value={key}>
+                          {KIND_LABEL[key]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">
+            辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
+            範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
+          </p>
+        </section>
+      )}
+
+      <section className="symbols">
+        <div className="section-bar">
+          <span>記号（クリックでコピー：計算式に使えます）</span>
+        </div>
+        <table className="grid two-up">
+          <tbody>
+            {symbolPairs.map(([left, right]) => (
+              <tr key={left.symbol}>
+                <td className="symbol" onClick={() => useSymbol(left.symbol)}>
+                  {left.symbol}
+                </td>
+                <td className="label" onClick={() => useSymbol(left.symbol)}>
+                  {left.label}
+                </td>
+                <td className="num" onClick={() => useSymbol(left.symbol)}>
+                  {formatNumber(left.value, 2)}
+                </td>
+                <td
+                  className="symbol"
+                  onClick={() => right && useSymbol(right.symbol)}
+                >
+                  {right?.symbol ?? ""}
+                </td>
+                <td
+                  className="label"
+                  onClick={() => right && useSymbol(right.symbol)}
+                >
+                  {right?.label ?? ""}
+                </td>
+                <td
+                  className="num"
+                  onClick={() => right && useSymbol(right.symbol)}
+                >
+                  {right ? formatNumber(right.value, 2) : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="totals">
+          床面積 {formatNumber(quantities.floorArea, 2)}／壁長さ{" "}
+          {formatNumber(quantities.wallLength, 2)}／柱長さ{" "}
+          {formatNumber(quantities.columnLength, 2)}
+        </p>
+      </section>
+
+      <section className="room-fittings">
+        <div className="section-bar">
+          <span>この部屋の建具（上段の自動計算に使います）</span>
+        </div>
+        <table className="grid">
+          <thead>
+            <tr>
+              <th className="symbol">記号</th>
+              <th className="num">数</th>
+              <th className="num">W</th>
+              <th className="num">H</th>
+              <th className="num">腰高</th>
+              <th className="num">面積</th>
+              <th className="num">巾木減</th>
+              <th className="num">横補強</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {roomFittings.map((item, index) => {
+              const resolved = resolvedFittings[index];
+              const master = fittings.find(
+                (fitting) => fitting.symbol === item.symbol,
+              );
+              const computed = master ? computeFitting(master) : null;
+              const unknown = master === undefined;
+              return (
+                <tr key={item.id} className={unknown ? "unknown" : ""}>
+                  <td className="symbol">
+                    <input
+                      list="room-fitting-symbols"
+                      onMouseDown={selectWholeOnFirstClick}
+                      onFocus={(e) => e.currentTarget.select()}
+                      defaultValue={item.symbol}
+                      onBlur={(e) =>
+                        setRoomFittings((current) =>
+                          current.map((each) =>
+                            each.id === item.id
+                              ? { ...each, symbol: e.target.value.trim() }
+                              : each,
+                          ),
+                        )
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="num"
+                      value={
+                        fittingCountText[item.id] ?? String(item.multiplier)
+                      }
+                      onMouseDown={selectWholeOnFirstClick}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setFittingCountText((current) => ({
+                          ...current,
+                          [item.id]: text,
+                        }));
+                        const value = Number(text);
+                        if (text.trim() === "" || !Number.isFinite(value))
+                          return;
+                        setRoomFittings((current) =>
+                          current.map((each) =>
+                            each.id === item.id
+                              ? { ...each, multiplier: value }
+                              : each,
+                          ),
+                        );
+                      }}
+                      onBlur={() =>
+                        setFittingCountText((current) => {
+                          const next = { ...current };
+                          delete next[item.id];
+                          return next;
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="num"
+                      key={`w-${item.id}-${master?.width ?? ""}`}
+                      defaultValue={formatNumber(master?.width ?? null, 2)}
+                      onMouseDown={selectWholeOnFirstClick}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onBlur={(e) =>
+                        void writeFittingSize(item.symbol, {
+                          width: textToNumber(e.target.value),
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="num"
+                      key={`h-${item.id}-${master?.height ?? ""}`}
+                      defaultValue={formatNumber(master?.height ?? null, 2)}
+                      onMouseDown={selectWholeOnFirstClick}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onBlur={(e) =>
+                        void writeFittingSize(item.symbol, {
+                          height: textToNumber(e.target.value),
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="num"
+                      key={`s-${item.id}-${master?.sillHeight ?? ""}`}
+                      defaultValue={formatNumber(master?.sillHeight ?? null, 2)}
+                      onMouseDown={selectWholeOnFirstClick}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onBlur={(e) =>
+                        void writeFittingSize(item.symbol, {
+                          sill: textToNumber(e.target.value),
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="num">
+                    {formatNumber(resolved?.area ?? null, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(resolved?.baseboardDeduction ?? null, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(computed?.reinforcement ?? null, 2)}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRoomFittings((current) =>
+                          current.filter((each) => each.id !== item.id),
+                        )
+                      }
+                    >
+                      🗑
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {/* いちばん下は空行。記号・数・寸法を直接書き込める（Enterで確定） */}
+            <tr
+              className="blank"
+              // 空行の外へ出たときに確定する（欄を移る途中では確定しない）
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget)) {
+                  void commitNewFitting();
+                }
+              }}
+            >
+              <td className="symbol">
+                <input
+                  list="room-fitting-symbols"
+                  value={newFitting.symbol}
+                  placeholder="記号"
+                  onChange={(e) =>
+                    setNewFitting({ ...newFitting, symbol: e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && void commitNewFitting()
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  className="num"
+                  value={newFitting.count}
+                  onMouseDown={selectWholeOnFirstClick}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) =>
+                    setNewFitting({ ...newFitting, count: e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && void commitNewFitting()
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  className="num"
+                  value={newFitting.width}
+                  onChange={(e) =>
+                    setNewFitting({ ...newFitting, width: e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && void commitNewFitting()
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  className="num"
+                  value={newFitting.height}
+                  onChange={(e) =>
+                    setNewFitting({ ...newFitting, height: e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && void commitNewFitting()
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  className="num"
+                  value={newFitting.sill}
+                  onChange={(e) =>
+                    setNewFitting({ ...newFitting, sill: e.target.value })
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && void commitNewFitting()
+                  }
+                />
+              </td>
+              <td className="num" />
+              <td className="num" />
+              <td className="num" />
+              <td>
+                <button type="button" onClick={() => void commitNewFitting()}>
+                  ＋
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <datalist id="room-fitting-symbols">
+          {fittings.map((fitting) => (
+            <option key={fitting.id} value={fitting.symbol} />
+          ))}
+        </datalist>
+        <p className="note">
+          いちばん下の空行に、記号・数・W・H・腰高をそのまま書き込めます（記号は一覧から選ぶこともできます）。建具表に無い記号は建具表へ登録し、W・H・腰高を打ち替えると建具表にも反映します。上段の建具は壁面積・巾木長さから自動で差し引きます。下段の計算式で使う建具記号（&lt;AW1&gt;
+          など）は、ここに書かなくても建具表から数量を引用します。
+        </p>
+      </section>
+
+      {showCeiling && (
+        <section className="ceiling">
+          <div className="section-bar">
+            <span>天井伏図（平面図の壁沿いに線を追加します）</span>
+            <label className="ceiling-height">
+              天井高さ
+              <input
+                className="num"
+                key={`cch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
+                defaultValue={formatNumber(ceilingHeight, 2)}
+                title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+                onBlur={(e) => applyCeilingHeight(e.target.value)}
+              />
+            </label>
+            {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
+              (kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  disabled={wallEdges.length === 0}
+                  onClick={() =>
+                    setCeiling((current) => [
+                      ...current,
+                      ceilingElement(
+                        kind,
+                        selectedEdge ?? wallEdges[0]?.id ?? null,
+                      ),
+                    ])
+                  }
+                >
+                  ＋ {CEILING_KIND_LABEL[kind]}
+                </button>
+              ),
+            )}
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th className="no">番号</th>
+                <th>種別</th>
+                <th>沿う壁</th>
+                <th className="num">長さ</th>
+                <th className="num" title="梁幅・下がり天井の見付">
+                  Ｗ幅
+                </th>
+                <th
+                  className="num"
+                  title="梁せい・下がり壁の高さ（入れると壁の高さは自動）"
+                >
+                  Ｈ高さ
+                </th>
+                <th className="num">壁からの離れ</th>
+                <th
+                  className="num"
+                  title="その梁・下がり壁が取りつく天井の高さ。空なら自動（下がり天井の中なら下がった天井）"
+                >
+                  取りつく天井(m)
+                </th>
+                <th
+                  className="num"
+                  title="取りつく天井高さ−Ｈ。ここに入れるとＨが自動で合います"
+                >
+                  壁高さ(m)
+                </th>
+                <th className="num" title="部屋の天井高さからの下がり">
+                  下がり(m)
+                </th>
+                <th className="num">面積(㎡)</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {ceilingResult.items.map((item, itemNo) => {
+                const element = item.element;
+                return (
+                  <tr key={element.id}>
+                    <td className="no">{itemNo + 1}</td>
+                    <td>
+                      <select
+                        value={element.kind}
+                        onChange={(e) =>
+                          updateCeiling(element.id, {
+                            kind: e.target.value as CeilingElementKind,
+                          })
+                        }
+                      >
+                        {(
+                          Object.keys(
+                            CEILING_KIND_LABEL,
+                          ) as CeilingElementKind[]
+                        ).map((kind) => (
+                          <option key={kind} value={kind}>
+                            {CEILING_KIND_LABEL[kind]}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={element.edgeId ?? ""}
+                        onChange={(e) =>
+                          updateCeiling(element.id, {
+                            edgeId:
+                              e.target.value === "" ? null : e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">指定なし</option>
+                        {wallEdges.map((line, wallIndex) => (
+                          <option key={line.id} value={line.id}>
+                            壁{wallIndex + 1}（{formatNumber(line.resolved, 2)}
+                            ）
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      {element.kind === "dropCeiling" ||
+                      element.kind === "ceilingBeam" ? (
+                        // 図で止まったところまでの長さ（手入力できると図と合わなくなる）
+                        <span
+                          className="num"
+                          title="自動（突き当たる壁か、自分より低い下がり天井・梁型まで）"
+                        >
+                          {formatNumber(item.length, 2)}
+                        </span>
+                      ) : (
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.length === null
+                              ? ""
+                              : formatNumber(element.length, 2)
+                          }
+                          placeholder={formatNumber(item.length, 2)}
+                          title="空欄なら沿う壁の長さ"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              length: text === "" ? null : Number(text),
+                            });
                           }}
                         />
                       )}
                     </td>
                     <td>
-                      {line.kind === "curve" ? (
-                        <span className="curve">
-                          <input
-                            className="num"
-                            defaultValue={
-                              line.bulge === null || line.bulge === undefined
-                                ? ""
-                                : formatNumber(Math.abs(line.bulge), 2)
-                            }
-                            key={`${line.id}-bulge-${line.bulge ?? "none"}`}
-                            title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
-                            onKeyDown={(e) => {
-                              if (e.key !== "Enter") return;
-                              showAnswer(e.currentTarget);
-                              e.currentTarget.blur();
-                            }}
-                            onBlur={(e) => {
-                              const value = textToNumber(e.target.value);
-                              const size =
-                                value === null ? null : Math.abs(value);
-                              applyShape(
-                                updateEdge(shape, line.id, {
-                                  bulge:
-                                    size === null
-                                      ? null
-                                      : (line.bulge ?? 0) < 0
-                                        ? -size
-                                        : size,
-                                }),
-                              );
-                            }}
-                          />
-                          <select
-                            value={(line.bulge ?? 0) < 0 ? "in" : "out"}
-                            title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
-                            onChange={(e) => {
-                              const size = Math.abs(line.bulge ?? 0);
-                              applyShape(
-                                updateEdge(shape, line.id, {
-                                  bulge:
-                                    size === 0
-                                      ? line.bulge
-                                      : e.target.value === "in"
-                                        ? -size
-                                        : size,
-                                }),
-                              );
-                            }}
-                          >
-                            <option value="out">外</option>
-                            <option value="in">内</option>
-                          </select>
-                        </span>
+                      <input
+                        className="num"
+                        defaultValue={
+                          element.width === null
+                            ? ""
+                            : formatNumber(element.width, 2)
+                        }
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          updateCeiling(element.id, {
+                            width: text === "" ? null : Number(text),
+                          });
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="num"
+                        defaultValue={
+                          element.height === null ||
+                          element.height === undefined
+                            ? ""
+                            : formatNumber(element.height, 2)
+                        }
+                        title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると壁高さは取りつく天井から自動で決まります"
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          updateCeiling(element.id, {
+                            height: text === "" ? null : Number(text),
+                            ceilingHeight: null,
+                          });
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="num"
+                        defaultValue={
+                          element.offset === null
+                            ? ""
+                            : formatNumber(element.offset, 2)
+                        }
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          updateCeiling(element.id, {
+                            offset: text === "" ? null : Number(text),
+                          });
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="num"
+                        key={`base-${element.id}-${item.baseHeight ?? ""}`}
+                        defaultValue={
+                          element.baseHeight === null ||
+                          element.baseHeight === undefined
+                            ? ""
+                            : formatNumber(element.baseHeight, 2)
+                        }
+                        placeholder={formatNumber(item.baseHeight, 2)}
+                        title="空なら自動（その位置の天井。梁の前に下がり天井があればその高さ）"
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          updateCeiling(element.id, {
+                            baseHeight: text === "" ? null : Number(text),
+                          });
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="num"
+                        key={`wall-${element.id}-${item.wallHeight ?? ""}`}
+                        defaultValue={formatNumber(item.wallHeight, 2)}
+                        title="取りつく天井高さ−Ｈ。ここを直すとＨが自動で合います"
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          if (text === "") {
+                            updateCeiling(element.id, {
+                              height: null,
+                              ceilingHeight: null,
+                            });
+                            return;
+                          }
+                          const value = Number(text);
+                          if (Number.isNaN(value)) return;
+                          // 壁高さを入れたらＨ（梁せい・下がり）を合わせる
+                          updateCeiling(
+                            element.id,
+                            item.baseHeight === null
+                              ? { ceilingHeight: value, height: null }
+                              : {
+                                  height: round2(item.baseHeight - value),
+                                  ceilingHeight: null,
+                                },
+                          );
+                        }}
+                      />
+                    </td>
+                    <td className="num">{formatNumber(item.drop, 2)}</td>
+                    <td className="num">
+                      {element.kind === "dropCeiling" ? (
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.area === null
+                              ? ""
+                              : formatNumber(element.area, 2)
+                          }
+                          title="下がり天井の範囲面積"
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              area: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
                       ) : (
-                        <span className="none">－</span>
+                        formatNumber(item.area, 2)
                       )}
                     </td>
                     <td>
-                      <select
-                        value={line.kind}
-                        onChange={(e) =>
-                          applyShape(
-                            updateEdge(shape, line.id, {
-                              kind: e.target.value as EdgeKind,
-                            }),
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCeiling((current) =>
+                            current.filter((each) => each.id !== element.id),
                           )
                         }
+                      >
+                        🗑
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="note">
+            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+          </p>
+          {ceilingCodes.length > 0 && (
+            <table className="grid ceiling-regions">
+              <thead>
+                <tr>
+                  <th className="no">番号</th>
+                  <th className="num">天井高さ(m)</th>
+                  <th className="num">下がり(m)</th>
+                  <th className="num">区画の面積(㎡)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ceilingCodes.map((region) => (
+                  <tr key={region.code}>
+                    <td className="no">{region.code}</td>
+                    <td className="num">
+                      <input
+                        className="num"
+                        key={`h${formatNumber(region.height, 2)}`}
+                        defaultValue={formatNumber(region.height, 2)}
+                        title="この区画の天井高さ（下がり天井の行に入ります）"
+                        onBlur={(e) => setRegionHeight(region, e.target.value)}
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        className="num"
+                        key={`d${formatNumber(region.drop, 2)}`}
+                        defaultValue={formatNumber(region.drop, 2)}
+                        title="この区画の下がり（部屋の天井高さからの下がり）"
+                        onBlur={(e) =>
+                          setRegionDropText(region, e.target.value)
+                        }
+                      />
+                    </td>
+                    <td className="num">{formatNumber(region.area, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
+
+      {prompt && (
+        <div
+          className="shape-prompt-overlay"
+          // 後ろを押したときは寸法欄へカーソルを戻す（入力先が外れないようにする）
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            const input = promptInputRef.current;
+            if (input) {
+              input.focus();
+              input.select();
+            }
+          }}
+        >
+          <div
+            className="shape-prompt"
+            ref={promptBoxRef}
+            // 小窓の余白や文字を押しても、カーソルは寸法欄に置いたままにする
+            onClick={(e) => {
+              const target = e.target;
+              const onControl =
+                target instanceof HTMLInputElement ||
+                target instanceof HTMLSelectElement ||
+                target instanceof HTMLButtonElement;
+              if (onControl) return;
+              const input = promptInputRef.current;
+              if (
+                input &&
+                !(document.activeElement instanceof HTMLInputElement)
+              ) {
+                input.focus();
+                input.select();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPrompt(null);
+            }}
+          >
+            <div className="section-bar">
+              <span>{PROMPT_TITLE[prompt.kind]}</span>
+            </div>
+            <div className="body">
+              {prompt.kind === "split" ? (
+                <label>
+                  角までの寸法
+                  <input
+                    className="num"
+                    ref={promptInputRef}
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onMouseDown={selectWholeOnFirstClick}
+                    value={prompt.first}
+                    onChange={(e) =>
+                      setPrompt({ ...prompt, first: e.target.value })
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                  />
+                  <span className="hint">
+                    （辺の長さ {formatNumber(prompt.span, 2)}）
+                  </span>
+                </label>
+              ) : (
+                <>
+                  <label>
+                    横
+                    <input
+                      className="num"
+                      ref={promptInputRef}
+                      autoFocus
+                      onFocus={(e) => e.currentTarget.select()}
+                      onMouseDown={selectWholeOnFirstClick}
+                      value={prompt.across}
+                      onChange={(e) =>
+                        setPrompt({ ...prompt, across: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                    />
+                  </label>
+                  <label>
+                    縦
+                    <input
+                      className="num"
+                      onFocus={(e) => e.currentTarget.select()}
+                      onMouseDown={selectWholeOnFirstClick}
+                      value={prompt.along}
+                      onChange={(e) =>
+                        setPrompt({ ...prompt, along: e.target.value })
+                      }
+                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                    />
+                  </label>
+                  {prompt.kind !== "rect" && (
+                    <label>
+                      種別
+                      <select
+                        value={prompt.edgeKind}
+                        onChange={(e) => {
+                          const edgeKind = e.target.value as EdgeKind;
+                          setPromptEdgeKind(edgeKind);
+                          setPrompt({ ...prompt, edgeKind });
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
                       >
                         {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
                           <option key={key} value={key}>
@@ -1923,73 +2645,51 @@ export default function RoomSheetPage({
                           </option>
                         ))}
                       </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="note">
-              辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
-              範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
-            </p>
-          </section>
-        )}
-
-        <section className="symbols">
-          <div className="section-bar">
-            <span>記号（クリックでコピー：計算式に使えます）</span>
+                      <span className="hint">（足す辺の種別）</span>
+                    </label>
+                  )}
+                </>
+              )}
+              <button type="button" onClick={submitPrompt}>
+                OK
+              </button>
+              <button type="button" onClick={() => setPrompt(null)}>
+                取消
+              </button>
+            </div>
           </div>
-          <table className="grid two-up">
-            <tbody>
-              {symbolPairs.map(([left, right]) => (
-                <tr key={left.symbol}>
-                  <td className="symbol" onClick={() => useSymbol(left.symbol)}>
-                    {left.symbol}
-                  </td>
-                  <td className="label" onClick={() => useSymbol(left.symbol)}>
-                    {left.label}
-                  </td>
-                  <td className="num" onClick={() => useSymbol(left.symbol)}>
-                    {formatNumber(left.value, 2)}
-                  </td>
-                  <td
-                    className="symbol"
-                    onClick={() => right && useSymbol(right.symbol)}
-                  >
-                    {right?.symbol ?? ""}
-                  </td>
-                  <td
-                    className="label"
-                    onClick={() => right && useSymbol(right.symbol)}
-                  >
-                    {right?.label ?? ""}
-                  </td>
-                  <td
-                    className="num"
-                    onClick={() => right && useSymbol(right.symbol)}
-                  >
-                    {right ? formatNumber(right.value, 2) : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="totals">
-            床面積 {formatNumber(quantities.floorArea, 2)}／壁長さ{" "}
-            {formatNumber(quantities.wallLength, 2)}／柱長さ{" "}
-            {formatNumber(quantities.columnLength, 2)}
-          </p>
-        </section>
+        </div>
+      )}
 
-        <section className="room-fittings">
+      {showFittings && (
+        <section className="fittings popup">
           <div className="section-bar">
-            <span>この部屋の建具（上段の自動計算に使います）</span>
+            <span>
+              建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
+            </span>
+            <label className="deduction">
+              取合欠除
+              <input
+                className="num"
+                defaultValue={String(deductionLimit)}
+                onBlur={(e) => {
+                  const value = Number(e.target.value);
+                  if (!Number.isFinite(value)) return;
+                  setDeductionLimit(value);
+                  void window.sekisan.saveDeductionLimit(value);
+                  setMessage(`${value}m2以下は差し引かない設定にしました`);
+                }}
+              />
+              m2以下は引かない
+            </label>
+            <button type="button" onClick={() => setShowFittings(false)}>
+              ✕ 閉じる
+            </button>
           </div>
           <table className="grid">
             <thead>
               <tr>
-                <th className="symbol">記号</th>
-                <th className="num">数</th>
+                <th>記号</th>
                 <th className="num">W</th>
                 <th className="num">H</th>
                 <th className="num">腰高</th>
@@ -2000,771 +2700,49 @@ export default function RoomSheetPage({
               </tr>
             </thead>
             <tbody>
-              {roomFittings.map((item, index) => {
-                const resolved = resolvedFittings[index];
-                const master = fittings.find(
-                  (fitting) => fitting.symbol === item.symbol,
-                );
-                const computed = master ? computeFitting(master) : null;
-                const unknown = master === undefined;
+              {fittings.map((fitting) => {
+                const computed = computeFitting(fitting);
                 return (
-                  <tr key={item.id} className={unknown ? "unknown" : ""}>
-                    <td className="symbol">
-                      <input
-                        list="room-fitting-symbols"
-                        onMouseDown={selectWholeOnFirstClick}
-                        onFocus={(e) => e.currentTarget.select()}
-                        defaultValue={item.symbol}
-                        onBlur={(e) =>
-                          setRoomFittings((current) =>
-                            current.map((each) =>
-                              each.id === item.id
-                                ? { ...each, symbol: e.target.value.trim() }
-                                : each,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        value={
-                          fittingCountText[item.id] ?? String(item.multiplier)
-                        }
-                        onMouseDown={selectWholeOnFirstClick}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onChange={(e) => {
-                          const text = e.target.value;
-                          setFittingCountText((current) => ({
-                            ...current,
-                            [item.id]: text,
-                          }));
-                          const value = Number(text);
-                          if (text.trim() === "" || !Number.isFinite(value))
-                            return;
-                          setRoomFittings((current) =>
-                            current.map((each) =>
-                              each.id === item.id
-                                ? { ...each, multiplier: value }
-                                : each,
-                            ),
-                          );
-                        }}
-                        onBlur={() =>
-                          setFittingCountText((current) => {
-                            const next = { ...current };
-                            delete next[item.id];
-                            return next;
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`w-${item.id}-${master?.width ?? ""}`}
-                        defaultValue={formatNumber(master?.width ?? null, 2)}
-                        onMouseDown={selectWholeOnFirstClick}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onBlur={(e) =>
-                          void writeFittingSize(item.symbol, {
-                            width: textToNumber(e.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`h-${item.id}-${master?.height ?? ""}`}
-                        defaultValue={formatNumber(master?.height ?? null, 2)}
-                        onMouseDown={selectWholeOnFirstClick}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onBlur={(e) =>
-                          void writeFittingSize(item.symbol, {
-                            height: textToNumber(e.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`s-${item.id}-${master?.sillHeight ?? ""}`}
-                        defaultValue={formatNumber(
-                          master?.sillHeight ?? null,
-                          2,
-                        )}
-                        onMouseDown={selectWholeOnFirstClick}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onBlur={(e) =>
-                          void writeFittingSize(item.symbol, {
-                            sill: textToNumber(e.target.value),
-                          })
-                        }
-                      />
-                    </td>
+                  <tr
+                    key={fitting.id}
+                    onClick={() => insertFittingSymbol(fitting.symbol)}
+                  >
+                    <td>{fitting.symbol}</td>
+                    <td className="num">{formatNumber(fitting.width, 2)}</td>
+                    <td className="num">{formatNumber(fitting.height, 2)}</td>
                     <td className="num">
-                      {formatNumber(resolved?.area ?? null, 2)}
+                      {formatNumber(fitting.sillHeight, 2)}
                     </td>
+                    <td className="num">{formatNumber(computed.area, 2)}</td>
                     <td className="num">
-                      {formatNumber(resolved?.baseboardDeduction ?? null, 2)}
+                      {formatNumber(computed.baseboardDeduction, 2)}
                     </td>
-                    <td className="num">
-                      {formatNumber(computed?.reinforcement ?? null, 2)}
+                    <td
+                      className="num"
+                      title="軸組の開口部横補強（自動計算には使いません）"
+                    >
+                      {formatNumber(computed.reinforcement, 2)}
                     </td>
                     <td>
                       <button
                         type="button"
-                        onClick={() =>
-                          setRoomFittings((current) =>
-                            current.filter((each) => each.id !== item.id),
-                          )
-                        }
+                        title="この部屋の自動計算へ加える"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addRoomFitting(fitting.symbol);
+                        }}
                       >
-                        🗑
+                        ＋部屋
                       </button>
                     </td>
                   </tr>
                 );
               })}
-              {/* いちばん下は空行。記号・数・寸法を直接書き込める（Enterで確定） */}
-              <tr
-                className="blank"
-                // 空行の外へ出たときに確定する（欄を移る途中では確定しない）
-                onBlur={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget)) {
-                    void commitNewFitting();
-                  }
-                }}
-              >
-                <td className="symbol">
-                  <input
-                    list="room-fitting-symbols"
-                    value={newFitting.symbol}
-                    placeholder="記号"
-                    onChange={(e) =>
-                      setNewFitting({ ...newFitting, symbol: e.target.value })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && void commitNewFitting()
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    className="num"
-                    value={newFitting.count}
-                    onMouseDown={selectWholeOnFirstClick}
-                    onFocus={(e) => e.currentTarget.select()}
-                    onChange={(e) =>
-                      setNewFitting({ ...newFitting, count: e.target.value })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && void commitNewFitting()
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    className="num"
-                    value={newFitting.width}
-                    onChange={(e) =>
-                      setNewFitting({ ...newFitting, width: e.target.value })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && void commitNewFitting()
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    className="num"
-                    value={newFitting.height}
-                    onChange={(e) =>
-                      setNewFitting({ ...newFitting, height: e.target.value })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && void commitNewFitting()
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    className="num"
-                    value={newFitting.sill}
-                    onChange={(e) =>
-                      setNewFitting({ ...newFitting, sill: e.target.value })
-                    }
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && void commitNewFitting()
-                    }
-                  />
-                </td>
-                <td className="num" />
-                <td className="num" />
-                <td className="num" />
-                <td>
-                  <button type="button" onClick={() => void commitNewFitting()}>
-                    ＋
-                  </button>
-                </td>
-              </tr>
             </tbody>
           </table>
-          <datalist id="room-fitting-symbols">
-            {fittings.map((fitting) => (
-              <option key={fitting.id} value={fitting.symbol} />
-            ))}
-          </datalist>
-          <p className="note">
-            いちばん下の空行に、記号・数・W・H・腰高をそのまま書き込めます（記号は一覧から選ぶこともできます）。建具表に無い記号は建具表へ登録し、W・H・腰高を打ち替えると建具表にも反映します。上段の建具は壁面積・巾木長さから自動で差し引きます。下段の計算式で使う建具記号（&lt;AW1&gt;
-            など）は、ここに書かなくても建具表から数量を引用します。
-          </p>
         </section>
-
-        {showCeiling && (
-          <section className="ceiling">
-            <div className="section-bar">
-              <span>天井伏図（平面図の壁沿いに線を追加します）</span>
-              <label className="ceiling-height">
-                天井高さ
-                <input
-                  className="num"
-                  key={`cch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
-                  defaultValue={formatNumber(ceilingHeight, 2)}
-                  title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
-                  onBlur={(e) => applyCeilingHeight(e.target.value)}
-                />
-              </label>
-              {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
-                (kind) => (
-                  <button
-                    key={kind}
-                    type="button"
-                    disabled={wallEdges.length === 0}
-                    onClick={() =>
-                      setCeiling((current) => [
-                        ...current,
-                        ceilingElement(
-                          kind,
-                          selectedEdge ?? wallEdges[0]?.id ?? null,
-                        ),
-                      ])
-                    }
-                  >
-                    ＋ {CEILING_KIND_LABEL[kind]}
-                  </button>
-                ),
-              )}
-            </div>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th className="no">番号</th>
-                  <th>種別</th>
-                  <th>沿う壁</th>
-                  <th className="num">長さ</th>
-                  <th className="num" title="梁幅・下がり天井の見付">
-                    Ｗ幅
-                  </th>
-                  <th
-                    className="num"
-                    title="梁せい・下がり壁の高さ（入れると壁の高さは自動）"
-                  >
-                    Ｈ高さ
-                  </th>
-                  <th className="num">壁からの離れ</th>
-                  <th
-                    className="num"
-                    title="その梁・下がり壁が取りつく天井の高さ。空なら自動（下がり天井の中なら下がった天井）"
-                  >
-                    取りつく天井(m)
-                  </th>
-                  <th
-                    className="num"
-                    title="取りつく天井高さ−Ｈ。ここに入れるとＨが自動で合います"
-                  >
-                    壁高さ(m)
-                  </th>
-                  <th className="num" title="部屋の天井高さからの下がり">
-                    下がり(m)
-                  </th>
-                  <th className="num">面積(㎡)</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {ceilingResult.items.map((item, itemNo) => {
-                  const element = item.element;
-                  return (
-                    <tr key={element.id}>
-                      <td className="no">{itemNo + 1}</td>
-                      <td>
-                        <select
-                          value={element.kind}
-                          onChange={(e) =>
-                            updateCeiling(element.id, {
-                              kind: e.target.value as CeilingElementKind,
-                            })
-                          }
-                        >
-                          {(
-                            Object.keys(
-                              CEILING_KIND_LABEL,
-                            ) as CeilingElementKind[]
-                          ).map((kind) => (
-                            <option key={kind} value={kind}>
-                              {CEILING_KIND_LABEL[kind]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          value={element.edgeId ?? ""}
-                          onChange={(e) =>
-                            updateCeiling(element.id, {
-                              edgeId:
-                                e.target.value === "" ? null : e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">指定なし</option>
-                          {wallEdges.map((line, wallIndex) => (
-                            <option key={line.id} value={line.id}>
-                              壁{wallIndex + 1}（
-                              {formatNumber(line.resolved, 2)}）
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        {element.kind === "dropCeiling" ||
-                        element.kind === "ceilingBeam" ? (
-                          // 図で止まったところまでの長さ（手入力できると図と合わなくなる）
-                          <span
-                            className="num"
-                            title="自動（突き当たる壁か、自分より低い下がり天井・梁型まで）"
-                          >
-                            {formatNumber(item.length, 2)}
-                          </span>
-                        ) : (
-                          <input
-                            className="num"
-                            defaultValue={
-                              element.length === null
-                                ? ""
-                                : formatNumber(element.length, 2)
-                            }
-                            placeholder={formatNumber(item.length, 2)}
-                            title="空欄なら沿う壁の長さ"
-                            onBlur={(e) => {
-                              const text = e.target.value.trim();
-                              updateCeiling(element.id, {
-                                length: text === "" ? null : Number(text),
-                              });
-                            }}
-                          />
-                        )}
-                      </td>
-                      <td>
-                        <input
-                          className="num"
-                          defaultValue={
-                            element.width === null
-                              ? ""
-                              : formatNumber(element.width, 2)
-                          }
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              width: text === "" ? null : Number(text),
-                            });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="num"
-                          defaultValue={
-                            element.height === null ||
-                            element.height === undefined
-                              ? ""
-                              : formatNumber(element.height, 2)
-                          }
-                          title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると壁高さは取りつく天井から自動で決まります"
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              height: text === "" ? null : Number(text),
-                              ceilingHeight: null,
-                            });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="num"
-                          defaultValue={
-                            element.offset === null
-                              ? ""
-                              : formatNumber(element.offset, 2)
-                          }
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              offset: text === "" ? null : Number(text),
-                            });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="num"
-                          key={`base-${element.id}-${item.baseHeight ?? ""}`}
-                          defaultValue={
-                            element.baseHeight === null ||
-                            element.baseHeight === undefined
-                              ? ""
-                              : formatNumber(element.baseHeight, 2)
-                          }
-                          placeholder={formatNumber(item.baseHeight, 2)}
-                          title="空なら自動（その位置の天井。梁の前に下がり天井があればその高さ）"
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              baseHeight: text === "" ? null : Number(text),
-                            });
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="num"
-                          key={`wall-${element.id}-${item.wallHeight ?? ""}`}
-                          defaultValue={formatNumber(item.wallHeight, 2)}
-                          title="取りつく天井高さ−Ｈ。ここを直すとＨが自動で合います"
-                          onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            if (text === "") {
-                              updateCeiling(element.id, {
-                                height: null,
-                                ceilingHeight: null,
-                              });
-                              return;
-                            }
-                            const value = Number(text);
-                            if (Number.isNaN(value)) return;
-                            // 壁高さを入れたらＨ（梁せい・下がり）を合わせる
-                            updateCeiling(
-                              element.id,
-                              item.baseHeight === null
-                                ? { ceilingHeight: value, height: null }
-                                : {
-                                    height: round2(item.baseHeight - value),
-                                    ceilingHeight: null,
-                                  },
-                            );
-                          }}
-                        />
-                      </td>
-                      <td className="num">{formatNumber(item.drop, 2)}</td>
-                      <td className="num">
-                        {element.kind === "dropCeiling" ? (
-                          <input
-                            className="num"
-                            defaultValue={
-                              element.area === null
-                                ? ""
-                                : formatNumber(element.area, 2)
-                            }
-                            title="下がり天井の範囲面積"
-                            onBlur={(e) => {
-                              const text = e.target.value.trim();
-                              updateCeiling(element.id, {
-                                area: text === "" ? null : Number(text),
-                              });
-                            }}
-                          />
-                        ) : (
-                          formatNumber(item.area, 2)
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCeiling((current) =>
-                              current.filter((each) => each.id !== element.id),
-                            )
-                          }
-                        >
-                          🗑
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <p className="note">
-              梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じでつながっている区画（コ型・L型の下がり天井）は1つにまとめて番号も1つにします。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
-            </p>
-            {ceilingCodes.length > 0 && (
-              <table className="grid ceiling-regions">
-                <thead>
-                  <tr>
-                    <th className="no">番号</th>
-                    <th className="num">天井高さ(m)</th>
-                    <th className="num">下がり(m)</th>
-                    <th className="num">区画の面積(㎡)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ceilingCodes.map((region) => (
-                    <tr key={region.code}>
-                      <td className="no">{region.code}</td>
-                      <td className="num">
-                        <input
-                          className="num"
-                          key={`h${formatNumber(region.height, 2)}`}
-                          defaultValue={formatNumber(region.height, 2)}
-                          title="この区画の天井高さ（下がり天井の行に入ります）"
-                          onBlur={(e) =>
-                            setRegionHeight(region, e.target.value)
-                          }
-                        />
-                      </td>
-                      <td className="num">
-                        <input
-                          className="num"
-                          key={`d${formatNumber(region.drop, 2)}`}
-                          defaultValue={formatNumber(region.drop, 2)}
-                          title="この区画の下がり（部屋の天井高さからの下がり）"
-                          onBlur={(e) =>
-                            setRegionDropText(region, e.target.value)
-                          }
-                        />
-                      </td>
-                      <td className="num">{formatNumber(region.area, 2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-        )}
-
-        {prompt && (
-          <div
-            className="shape-prompt-overlay"
-            // 後ろを押したときは寸法欄へカーソルを戻す（入力先が外れないようにする）
-            onClick={(e) => {
-              if (e.target !== e.currentTarget) return;
-              const input = promptInputRef.current;
-              if (input) {
-                input.focus();
-                input.select();
-              }
-            }}
-          >
-            <div
-              className="shape-prompt"
-              ref={promptBoxRef}
-              // 小窓の余白や文字を押しても、カーソルは寸法欄に置いたままにする
-              onClick={(e) => {
-                const target = e.target;
-                const onControl =
-                  target instanceof HTMLInputElement ||
-                  target instanceof HTMLSelectElement ||
-                  target instanceof HTMLButtonElement;
-                if (onControl) return;
-                const input = promptInputRef.current;
-                if (
-                  input &&
-                  !(document.activeElement instanceof HTMLInputElement)
-                ) {
-                  input.focus();
-                  input.select();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setPrompt(null);
-              }}
-            >
-              <div className="section-bar">
-                <span>{PROMPT_TITLE[prompt.kind]}</span>
-              </div>
-              <div className="body">
-                {prompt.kind === "split" ? (
-                  <label>
-                    角までの寸法
-                    <input
-                      className="num"
-                      ref={promptInputRef}
-                      autoFocus
-                      onFocus={(e) => e.currentTarget.select()}
-                      onMouseDown={selectWholeOnFirstClick}
-                      value={prompt.first}
-                      onChange={(e) =>
-                        setPrompt({ ...prompt, first: e.target.value })
-                      }
-                      onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                    />
-                    <span className="hint">
-                      （辺の長さ {formatNumber(prompt.span, 2)}）
-                    </span>
-                  </label>
-                ) : (
-                  <>
-                    <label>
-                      横
-                      <input
-                        className="num"
-                        ref={promptInputRef}
-                        autoFocus
-                        onFocus={(e) => e.currentTarget.select()}
-                        onMouseDown={selectWholeOnFirstClick}
-                        value={prompt.across}
-                        onChange={(e) =>
-                          setPrompt({ ...prompt, across: e.target.value })
-                        }
-                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                      />
-                    </label>
-                    <label>
-                      縦
-                      <input
-                        className="num"
-                        onFocus={(e) => e.currentTarget.select()}
-                        onMouseDown={selectWholeOnFirstClick}
-                        value={prompt.along}
-                        onChange={(e) =>
-                          setPrompt({ ...prompt, along: e.target.value })
-                        }
-                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                      />
-                    </label>
-                    {prompt.kind !== "rect" && (
-                      <label>
-                        種別
-                        <select
-                          value={prompt.edgeKind}
-                          onChange={(e) => {
-                            const edgeKind = e.target.value as EdgeKind;
-                            setPromptEdgeKind(edgeKind);
-                            setPrompt({ ...prompt, edgeKind });
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
-                        >
-                          {(Object.keys(KIND_LABEL) as EdgeKind[]).map(
-                            (key) => (
-                              <option key={key} value={key}>
-                                {KIND_LABEL[key]}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                        <span className="hint">（足す辺の種別）</span>
-                      </label>
-                    )}
-                  </>
-                )}
-                <button type="button" onClick={submitPrompt}>
-                  OK
-                </button>
-                <button type="button" onClick={() => setPrompt(null)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showFittings && (
-          <section className="fittings popup">
-            <div className="section-bar">
-              <span>
-                建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
-              </span>
-              <label className="deduction">
-                取合欠除
-                <input
-                  className="num"
-                  defaultValue={String(deductionLimit)}
-                  onBlur={(e) => {
-                    const value = Number(e.target.value);
-                    if (!Number.isFinite(value)) return;
-                    setDeductionLimit(value);
-                    void window.sekisan.saveDeductionLimit(value);
-                    setMessage(`${value}m2以下は差し引かない設定にしました`);
-                  }}
-                />
-                m2以下は引かない
-              </label>
-              <button type="button" onClick={() => setShowFittings(false)}>
-                ✕ 閉じる
-              </button>
-            </div>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>記号</th>
-                  <th className="num">W</th>
-                  <th className="num">H</th>
-                  <th className="num">腰高</th>
-                  <th className="num">面積</th>
-                  <th className="num">巾木減</th>
-                  <th className="num">横補強</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {fittings.map((fitting) => {
-                  const computed = computeFitting(fitting);
-                  return (
-                    <tr
-                      key={fitting.id}
-                      onClick={() => insertFittingSymbol(fitting.symbol)}
-                    >
-                      <td>{fitting.symbol}</td>
-                      <td className="num">{formatNumber(fitting.width, 2)}</td>
-                      <td className="num">{formatNumber(fitting.height, 2)}</td>
-                      <td className="num">
-                        {formatNumber(fitting.sillHeight, 2)}
-                      </td>
-                      <td className="num">{formatNumber(computed.area, 2)}</td>
-                      <td className="num">
-                        {formatNumber(computed.baseboardDeduction, 2)}
-                      </td>
-                      <td
-                        className="num"
-                        title="軸組の開口部横補強（自動計算には使いません）"
-                      >
-                        {formatNumber(computed.reinforcement, 2)}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          title="この部屋の自動計算へ加える"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addRoomFitting(fitting.symbol);
-                          }}
-                        >
-                          ＋部屋
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
-        )}
-      </div>
+      )}
+    </div>
   );
 
   if (printMode)

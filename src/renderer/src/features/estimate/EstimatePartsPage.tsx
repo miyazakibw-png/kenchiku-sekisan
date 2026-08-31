@@ -31,6 +31,7 @@ import GeneralSheetPage from "./GeneralSheetPage";
 import "./EstimatePartsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { askConfirm } from "../../hooks/useInputRecovery";
 
 interface Props {
   project: ProjectSummary;
@@ -755,7 +756,7 @@ export default function EstimatePartsPage({
                           row.id === null ? [] : (filledSheets[row.id] ?? []);
                         if (
                           filled.includes(row.calcType) &&
-                          !window.confirm(
+                          !askConfirm(
                             "入力済みの計算書があります。種類を変えると集計に入らなくなります（中身は残ります）。変えますか？",
                           )
                         )

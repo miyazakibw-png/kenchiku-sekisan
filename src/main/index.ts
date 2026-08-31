@@ -525,7 +525,8 @@ function registerIpcHandlers(): void {
     // 台帳と工事概要（別ウィンドウで開いていることもある）を同じ内容にそろえる
     for (const opened of BrowserWindow.getAllWindows()) {
       if (opened.webContents.id === event.sender.id) continue;
-      if (!opened.isDestroyed()) opened.webContents.send(IPC.projectChanged, saved);
+      if (!opened.isDestroyed())
+        opened.webContents.send(IPC.projectChanged, saved);
     }
     return saved;
   });
@@ -704,6 +705,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.windowClose, (event) =>
     BrowserWindow.fromWebContents(event.sender)?.close(),
   );
+  // 文字が入らなくなったとき（入力先が別の窓に残ったとき）に入力先を戻す
+  ipcMain.handle(IPC.windowFocus, (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.focus();
+    window.webContents.focus();
+  });
 }
 
 const AUTO_BACKUP_KEEP = 10;

@@ -19,6 +19,7 @@ import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
+import { askConfirm } from "../../hooks/useInputRecovery";
 
 interface Props {
   project: ProjectSummary;
@@ -244,9 +245,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const deleteVersion = async (): Promise<void> => {
     const target = view.version;
     if (!target) return;
-    if (
-      !window.confirm(`${target.round}回目の内訳書を消します。よろしいですか。`)
-    )
+    if (!askConfirm(`${target.round}回目の内訳書を消します。よろしいですか。`))
       return;
     await window.sekisan.deleteBreakdownVersion(target.id);
     setPanel("none");
@@ -661,9 +660,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           </label>
           <div className="units">
             <span>単位の変更（入れなければそのまま）</span>
-            {unitList.length === 0 && (
-              <span>（転記すると自動で並びます）</span>
-            )}
+            {unitList.length === 0 && <span>（転記すると自動で並びます）</span>}
             {unitList.map((unit) => (
               <span key={unit} className="rule">
                 {unit} →
@@ -843,7 +840,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           >
             <thead>
               <tr>
-                <th className="mark" data-noexport>印</th>
+                <th className="mark" data-noexport>
+                  印
+                </th>
                 <th>名称</th>
                 <th>摘要</th>
                 <th className="qty">数量</th>
