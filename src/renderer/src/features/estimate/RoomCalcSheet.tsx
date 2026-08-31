@@ -48,6 +48,8 @@ import {
   pasteRows,
   pasteSheet,
   rowsAsTsv,
+  rowsToSets,
+  type CopiedBanner,
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
@@ -926,10 +928,14 @@ export default function RoomCalcSheet({
     );
   }, [currentDetail, onMessage]);
 
-  /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため） */
+  /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため。※行も含む） */
   const flatRows = useMemo(() => {
     const list: { setId: string; index: number }[] = [];
     sets.forEach((set) => {
+      if (isCommentSet(set)) {
+        list.push({ setId: set.id, index: 0 });
+        return;
+      }
       for (let index = 0; index < setRowCount(set); index += 1) {
         list.push({ setId: set.id, index });
       }
@@ -975,14 +981,32 @@ export default function RoomCalcSheet({
     }
     const details: CalcDetail[] = [];
     const lines: CalcLine[] = [];
+    const banners: CopiedBanner[] = [];
     rangeRows.forEach((row) => {
       const set = sets.find((item) => item.id === row.setId);
       if (!set) return;
+      // ※行（コメント行）は、何行目の上にあったかを覚えて一緒にコピーする
+      if (isCommentSet(set)) {
+        banners.push({
+          at: details.length,
+          text: set.banner?.text ?? "",
+          color: set.banner?.color ?? "#e2e8f0",
+        });
+        return;
+      }
       details.push(set.details[row.index] ?? calcDetail());
       lines.push(set.lines[row.index] ?? calcLine());
     });
-    const source = sets.find((item) => item.id === rangeRows[0].setId);
-    const text = rowsAsTsv(details, lines);
+    const source = sets.find(
+      (item) =>
+        !isCommentSet(item) && rangeRows.some((row) => row.setId === item.id),
+    );
+    const textRows =
+      details.length === 0 ? [] : rowsAsTsv(details, lines).split(/\r?\n/);
+    [...banners]
+      .sort((a, b) => b.at - a.at)
+      .forEach((banner) => textRows.splice(banner.at, 0, banner.text));
+    const text = textRows.join("\r\n");
     await navigator.clipboard.writeText(text);
     setCalcClip({
       kind: "rows",
@@ -991,6 +1015,7 @@ export default function RoomCalcSheet({
       lines,
       partNumber: source?.partNumber ?? null,
       partName: source?.partName ?? "",
+      banners,
     });
     onMessage(
       `${rangeRows.length}行をコピーしました（貼り付けたい行にカーソルを置いて上書貼付／挿入貼付）`,
@@ -1043,6 +1068,48 @@ export default function RoomCalcSheet({
           mode === "overwrite"
             ? "コピーしたセットで上書きしました"
             : "コピーしたセットを差し込みました",
+        );
+        return;
+      }
+
+      if (clip?.kind === "rows" && (clip.banners?.length ?? 0) > 0) {
+        // ※行を含むコピーは、※行と明細の並びのままセットとして差し込む
+        const copiedDetails = clip.details.map(duplicateDetail);
+        const copiedLines = clip.lines.map(duplicateLine);
+        const created = rowsToSets(
+          copiedDetails,
+          copiedLines,
+          clip.banners ?? [],
+          {
+            partNumber: clip.partNumber,
+            partName: clip.partName,
+          },
+        );
+        let base = sets;
+        let at = bannerAt;
+        if (at < 0) {
+          const target = currentSet;
+          const setAt = target
+            ? sets.findIndex((set) => set.id === target.id)
+            : -1;
+          const cursor = focus ? focus.index : 0;
+          if (!target || setAt < 0) at = sets.length;
+          else if (cursor > 0 && cursor < target.details.length) {
+            // セットの途中に貼るときは、その行でセットを分けて間へ入れる
+            base = splitSetAt(sets, target.id, cursor, {
+              partNumber: null,
+              partName: "",
+            });
+            at = setAt + 1;
+          } else at = setAt;
+        }
+        const next = [...base];
+        next.splice(at, 0, ...created);
+        commit(next);
+        const head = created.find((set) => !isCommentSet(set));
+        if (head) onFocus({ setId: head.id, area: "detail", index: 0 });
+        onMessage(
+          `コピーした${copiedDetails.length}行と※行をカーソルの行の上へ差し込みました`,
         );
         return;
       }
@@ -1459,7 +1526,7 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="先頭の行にカーソルを置き、最後の行を Shift+クリックしてから押すと、その範囲の行（明細と計算式）をコピーします"
+          title="先頭の行にカーソルを置き、最後の行を Shift+クリックしてから押すと、その範囲の行（明細と計算式。※行も一緒に）をコピーします"
           onClick={() => void copyRows()}
         >
           ⧉ 複数行コピー
@@ -1522,7 +1589,23 @@ export default function RoomCalcSheet({
             return (
               <tbody key={set.id} className="set">
                 {set.banner && (
-                  <tr className="banner-row">
+                  <tr
+                    className={`banner-row${
+                      isSelectedRow(set.id, 0) ? " row-selected" : ""
+                    }`}
+                    onMouseDownCapture={(e) => {
+                      shiftClicking.current = e.shiftKey;
+                    }}
+                    onClick={(e) => {
+                      if (e.shiftKey) {
+                        setRangeEnd({ setId: set.id, index: 0 });
+                      } else {
+                        setRangeStart({ setId: set.id, index: 0 });
+                        setRangeEnd(null);
+                      }
+                      shiftClicking.current = false;
+                    }}
+                  >
                     <td
                       colSpan={CALC_COLUMNS.length}
                       style={{ background: set.banner.color }}

@@ -10,9 +10,15 @@ import {
   pasteLines,
   pasteRows,
   pasteSheet,
+  rowsToSets,
   setAsTsv
 } from '../../src/core/room/calcClipboard'
-import { calcDetail, calcLine, calcSet } from '../../src/core/room/calcSheet'
+import {
+  calcDetail,
+  calcLine,
+  calcSet,
+  isCommentSet
+} from '../../src/core/room/calcSheet'
 
 describe('セット明細計算表のコピー・貼り付け', () => {
   it('Excelの表を明細として取り込む（足りない行は追加する）', () => {
@@ -185,6 +191,23 @@ describe('カーソルのある列から貼り付ける', () => {
     expect(pasted.lines[0].comment).toBe('FA')
     expect(pasted.lines[0].formulaA).toBe('1*2')
     expect(pasted.lines[0].formulaB).toBe('3')
+  })
+
+  it('※行を含めてコピーした行は、※行の位置のままセットに戻る', () => {
+    const details = [calcDetail({ name: '床' }), calcDetail({ name: '壁' })]
+    const lines = [calcLine({ formulaA: '1' }), calcLine({ formulaA: '2' })]
+    const sets = rowsToSets(details, lines, [{ at: 1, text: '※ 見出し', color: '#dcfce7' }], {
+      partNumber: 3,
+      partName: '床'
+    })
+    expect(sets.map((set) => (isCommentSet(set) ? '※' : set.details[0].name))).toEqual([
+      '床',
+      '※',
+      '壁'
+    ])
+    expect(sets[0].partName).toBe('床')
+    expect(sets[2].partName).toBe('')
+    expect(sets[2].lines[0].formulaA).toBe('2')
   })
 
   it('部位合計の列を含んでいても、その列は飛ばして右へ入る', () => {

@@ -1,3 +1,4 @@
+import type { CopiedBanner } from "../../../../core/room/calcClipboard";
 import type {
   CalcDetail,
   CalcLine,
@@ -21,6 +22,8 @@ export type CalcClip =
       /** 写し元のセットの部位（貼り付け先の部位が空のときだけ使う） */
       partNumber: number | null;
       partName: string;
+      /** コピーした範囲に入っていた※行 */
+      banners?: CopiedBanner[];
     };
 
 const STORAGE_KEY = "calcClip";

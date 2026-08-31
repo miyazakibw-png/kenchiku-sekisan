@@ -9,10 +9,15 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  commentSet,
+  padLines,
   type CalcDetail,
   type CalcLine,
   type CalcSet,
 } from "./calcSheet";
+
+/** コピーした行に混ざっていた※行（at＝その※行より上にある明細の数） */
+export type CopiedBanner = { at: number; text: string; color: string };
 
 /** 明細欄へ貼り付けるときの列（画面の並びと同じ） */
 export const DETAIL_PASTE_COLUMNS = [
@@ -314,6 +319,42 @@ export function pasteRows(
     else nextLines.push(merged);
   });
   return { details: nextDetails, lines: fillLines(nextDetails, nextLines) };
+}
+
+/**
+ * コピーした行（※行を含む）をセットの並びに戻す。
+ * ※行の位置でセットを区切るので、貼り付けても※行と明細の並びが変わらない。
+ */
+export function rowsToSets(
+  details: CalcDetail[],
+  lines: CalcLine[],
+  banners: CopiedBanner[],
+  part: { partNumber: number | null; partName: string },
+): CalcSet[] {
+  const created: CalcSet[] = [];
+  let from = 0;
+  let firstChunk = true;
+  const pushRows = (to: number): void => {
+    if (to <= from) return;
+    const chunk = details.slice(from, to);
+    created.push({
+      ...calcSet(0),
+      partNumber: firstChunk ? part.partNumber : null,
+      partName: firstChunk ? part.partName : "",
+      details: chunk,
+      lines: padLines(chunk, lines.slice(from, to)),
+    });
+    from = to;
+    firstChunk = false;
+  };
+  [...banners]
+    .sort((a, b) => a.at - b.at)
+    .forEach((banner) => {
+      pushRows(Math.min(Math.max(banner.at, 0), details.length));
+      created.push(commentSet(banner.text, banner.color));
+    });
+  pushRows(details.length);
+  return created;
 }
 
 /** 明細を写す（IDは新しくする。写し元の明細IDは根拠として残す） */

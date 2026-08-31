@@ -9,6 +9,7 @@ import {
   calcLine,
   calcSet,
   commentSet,
+  detachBanners,
   displayQuantity,
   evaluateCalcSheet,
   insertSetBefore,
@@ -350,6 +351,31 @@ describe("行の追加と削除", () => {
     expect(next.map((set) => set.id)).toEqual([added.id, comment.id]);
     expect(next[1].banner?.text).toBe("※ 見出し");
     expect(next[0].banner).toBeNull();
+  });
+
+  it("セットに付いていた※行は、そのセットの上の独立した※行になる", () => {
+    const host = calcSet(1);
+    host.partName = "壁";
+    host.details = [calcDetail({ name: "壁" })];
+    host.banner = { text: "※ 見出し", color: "#dcfce7" };
+    const next = detachBanners([host]);
+    expect(next.length).toBe(2);
+    expect(next[0].banner?.text).toBe("※ 見出し");
+    expect(next[0].details.length).toBe(0);
+    expect(next[1].banner).toBeNull();
+    expect(next[1].partName).toBe("壁");
+  });
+
+  it("読み込み（trimEmptySets）でも※行は独立した行にそろう", () => {
+    const host = calcSet(1);
+    host.partName = "壁";
+    host.details = [calcDetail({ name: "壁" })];
+    host.banner = { text: "※ 見出し", color: "#dcfce7" };
+    const next = trimEmptySets([host]);
+    expect(next.map((set) => set.banner?.text ?? null)).toEqual([
+      "※ 見出し",
+      null,
+    ]);
   });
 
   it("明細の無い計算式だけの行を削除できる", () => {

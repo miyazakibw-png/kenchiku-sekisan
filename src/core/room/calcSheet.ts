@@ -118,6 +118,23 @@ export function isCommentSet(set: CalcSet): boolean {
 }
 
 /**
+ * ※行をすべて独立した1行（コメント行）にそろえる。
+ * 古いデータにはセットに付いた※行があるので、そのセットの上の行として切り離す。
+ */
+export function detachBanners(sets: CalcSet[]): CalcSet[] {
+  const next: CalcSet[] = [];
+  sets.forEach((set) => {
+    if (set.banner != null && !isCommentSet(set)) {
+      next.push(commentSet(set.banner.text, set.banner.color));
+      next.push({ ...set, banner: null });
+      return;
+    }
+    next.push(set);
+  });
+  return next;
+}
+
+/**
  * セットの上へ新しいセットを差し込む。
  * ※行が付いているセットの上へ入れるときは、※行を上に残して
  * その下（※行と元のセットの間）に新しいセットが並ぶようにする。
@@ -157,16 +174,18 @@ export function calcSet(detailCount = 1): CalcSet {
  * 古い工事のデータには無い項目があり、そのままだと集計で落ちるため。
  */
 export function normalizeSets(sets: CalcSet[]): CalcSet[] {
-  return sets.map((set) => ({
-    ...set,
-    id: set.id ?? newId("s"),
-    partNumber: set.partNumber ?? null,
-    partName: set.partName ?? "",
-    banner: set.banner ?? null,
-    assemblyId: set.assemblyId ?? null,
-    details: (set.details ?? []).map((detail) => calcDetail(detail)),
-    lines: (set.lines ?? []).map((line) => calcLine(line)),
-  }));
+  return detachBanners(
+    sets.map((set) => ({
+      ...set,
+      id: set.id ?? newId("s"),
+      partNumber: set.partNumber ?? null,
+      partName: set.partName ?? "",
+      banner: set.banner ?? null,
+      assemblyId: set.assemblyId ?? null,
+      details: (set.details ?? []).map((detail) => calcDetail(detail)),
+      lines: (set.lines ?? []).map((line) => calcLine(line)),
+    })),
+  );
 }
 
 /** 計算式行に何か入っているか（詰めてよい空行かの判定） */
@@ -292,7 +311,7 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
  */
 export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
   const trimmed: CalcSet[] = [];
-  for (const set of sets) {
+  for (const set of detachBanners(sets)) {
     if (isCommentSet(set)) {
       trimmed.push(set);
       continue;
