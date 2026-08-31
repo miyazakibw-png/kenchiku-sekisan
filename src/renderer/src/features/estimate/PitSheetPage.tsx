@@ -18,7 +18,7 @@ import {
   beamLines,
   beamSegments,
   layoutPits,
-  movePitCorner,
+  movePitCorners,
   rectanglePit,
   removePitCorner,
   normalizeRects,
@@ -136,8 +136,8 @@ export default function PitSheetPage({
   /** 図のクリックで何をするか（梁を置く／形の角を直す） */
   const [planMode, setPlanMode] = useState<"beam" | "shape">("beam");
   /** 選んでいる角（○印） */
-  const [corner, setCorner] = useState<{ pitId: string; index: number } | null>(
-    null,
+  const [corners, setCorners] = useState<{ pitId: string; index: number }[]>(
+    [],
   );
   /** 角を動かす寸法（m） */
   const [cornerStep, setCornerStep] = useState(1);
@@ -336,25 +336,28 @@ export default function PitSheetPage({
     );
   }, []);
 
-  /** 選んだ角を上下左右へ動かす（右・下がプラス） */
+  /** 選んだ角（複数可）を上下左右へまとめて動かす（右・下がプラス） */
   const moveCorner = useCallback(
     (dx: number, dy: number) => {
-      if (!corner) {
+      if (corners.length === 0) {
         setMessage("図の角（○印）を選んでから↑↓→←を押してください");
         return;
       }
       setPits((current) =>
-        current.map((pit) =>
-          pit.id === corner.pitId
-            ? movePitCorner(pit, corner.index, dx, dy)
-            : pit,
-        ),
+        current.map((pit) => {
+          const indexes = corners
+            .filter((each) => each.pitId === pit.id)
+            .map((each) => each.index);
+          return indexes.length === 0
+            ? pit
+            : movePitCorners(pit, indexes, dx, dy);
+        }),
       );
       setMessage(
-        `角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
+        `角${corners.length}か所を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
       );
     },
-    [corner],
+    [corners],
   );
 
   /** 辺の近くをクリックしたら、その場所へ角を足す */
@@ -364,36 +367,45 @@ export default function PitSheetPage({
         pit.id === pitId ? addPitCorner(pit, { x, y }) : pit,
       ),
     );
+    setCorners([]);
     setMessage("角を足しました（○印を選んで↑↓→←で動かします）");
   }, []);
 
   /** 選んだ角を消す */
   const dropCorner = useCallback(() => {
-    if (!corner) {
+    if (corners.length === 0) {
       setMessage("図の角（○印）を選んでから押してください");
       return;
     }
     setPits((current) =>
-      current.map((pit) =>
-        pit.id === corner.pitId ? removePitCorner(pit, corner.index) : pit,
-      ),
+      current.map((pit) => {
+        const indexes = corners
+          .filter((each) => each.pitId === pit.id)
+          .map((each) => each.index)
+          .sort((a, b) => b - a);
+        return indexes.reduce(
+          (shape, index) => removePitCorner(shape, index),
+          pit,
+        );
+      }),
     );
-    setCorner(null);
+    setCorners([]);
     setMessage("角を消しました");
-  }, [corner]);
+  }, [corners]);
 
   /** 選んだ角のピットを四角に戻す */
   const resetShape = useCallback(() => {
-    if (!corner) {
+    if (corners.length === 0) {
       setMessage("図の角（○印）を選んでから押してください");
       return;
     }
+    const ids = corners.map((each) => each.pitId);
     setPits((current) =>
-      current.map((pit) => (pit.id === corner.pitId ? rectanglePit(pit) : pit)),
+      current.map((pit) => (ids.includes(pit.id) ? rectanglePit(pit) : pit)),
     );
-    setCorner(null);
+    setCorners([]);
     setMessage("四角に戻しました");
-  }, [corner]);
+  }, [corners]);
 
   /** 図の中をクリックすると、そのピットへ梁を置く（長さは当たる壁まで自動） */
   const placeBeam = useCallback(
@@ -511,16 +523,33 @@ export default function PitSheetPage({
                   cy={rect.top + point.y}
                   r={size}
                   className={
-                    corner?.pitId === rect.id && corner.index === index
+                    corners.some(
+                      (each) =>
+                        each.pitId === rect.id && each.index === index,
+                    )
                       ? "pit-corner on"
                       : "pit-corner"
                   }
                   onClick={(event) => {
                     event.stopPropagation();
-                    setCorner({ pitId: rect.id, index });
-                    setMessage(
-                      `${rect.symbol} の角を選びました（↑↓→←で動かします）`,
-                    );
+                    setCorners((current) => {
+                      const on = current.some(
+                        (each) =>
+                          each.pitId === rect.id && each.index === index,
+                      );
+                      const next = on
+                        ? current.filter(
+                            (each) =>
+                              each.pitId !== rect.id || each.index !== index,
+                          )
+                        : [...current, { pitId: rect.id, index }];
+                      setMessage(
+                        on
+                          ? `${rect.symbol} の角を外しました（選んでいる角 ${next.length}か所）`
+                          : `${rect.symbol} の角を選びました（選んでいる角 ${next.length}か所・↑↓→←でまとめて動きます）`,
+                      );
+                      return next;
+                    });
                   }}
                 />
               ));
@@ -945,7 +974,7 @@ export default function PitSheetPage({
               title="図の角を動かして台形・Ｌ型・コ型を作ります"
               onClick={() => {
                 setPlanMode(planMode === "shape" ? "beam" : "shape");
-                setCorner(null);
+                setCorners([]);
                 setMessage(
                   planMode === "shape"
                     ? "梁を置くに戻しました"
@@ -1002,20 +1031,33 @@ export default function PitSheetPage({
                 <button type="button" onClick={resetShape}>
                   □ 四角に戻す
                 </button>
+                <button
+                  type="button"
+                  title="選んだ角を全部外す"
+                  onClick={() => {
+                    setCorners([]);
+                    setMessage("選んだ角を外しました");
+                  }}
+                >
+                  選び直す
+                </button>
                 <span className="status">
-                  {corner === null
-                    ? "角（○印）を選んでください"
-                    : (() => {
-                        const pit = pits.find(
-                          (each) => each.id === corner.pitId,
-                        );
-                        const point = pit
-                          ? pitPolygon(pit)[corner.index]
-                          : undefined;
-                        return point
-                          ? `${pit?.symbol} の角 X=${formatNumber(point.x, 2)} Y=${formatNumber(point.y, 2)}`
-                          : "";
-                      })()}
+                  {corners.length === 0
+                    ? "角（○印）をクリック（続けて押すと何か所でも選べます）"
+                    : corners
+                        .map((each) => {
+                          const pit = pits.find(
+                            (one) => one.id === each.pitId,
+                          );
+                          const point = pit
+                            ? pitPolygon(pit)[each.index]
+                            : undefined;
+                          return point
+                            ? `${pit?.symbol} X=${formatNumber(point.x, 2)} Y=${formatNumber(point.y, 2)}`
+                            : "";
+                        })
+                        .filter((text) => text !== "")
+                        .join(" ／ ")}
                 </span>
               </>
             )}
@@ -1069,6 +1111,7 @@ export default function PitSheetPage({
 
       <p className="hint">
         形（台形・Ｌ型・コ型）は「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。
+        ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
         Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。

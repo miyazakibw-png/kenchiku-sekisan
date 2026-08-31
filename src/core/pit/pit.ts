@@ -144,10 +144,23 @@ export function movePitCorner(
   dx: number,
   dy: number,
 ): PitShape {
+  return movePitCorners(pit, [index], dx, dy);
+}
+
+/** 選んだいくつかの角をまとめて上下左右へ動かす（右・下がプラス） */
+export function movePitCorners(
+  pit: PitShape,
+  indexes: readonly number[],
+  dx: number,
+  dy: number,
+): PitShape {
   const points = pitPolygon(pit);
-  if (index < 0 || index >= points.length) return pit;
+  const targets = indexes.filter(
+    (index) => index >= 0 && index < points.length,
+  );
+  if (targets.length === 0) return pit;
   const moved = points.map((point, at) =>
-    at === index ? { x: point.x + dx, y: point.y + dy } : point,
+    targets.includes(at) ? { x: point.x + dx, y: point.y + dy } : point,
   );
   return withPoints(pit, moved);
 }

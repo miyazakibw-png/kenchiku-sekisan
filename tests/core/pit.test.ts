@@ -3,6 +3,7 @@ import {
   DEFAULT_PIT_GAP,
   addPitCorner,
   movePitCorner,
+  movePitCorners,
   rectanglePit,
   removePitCorner,
   beamLength,
@@ -357,5 +358,39 @@ describe("角を動かして形を作る", () => {
     const rects = layoutPits([base, second]);
     expect(rects[1].left).toBe(2);
     expect(rects[1].top).toBe(0.5);
+  });
+});
+
+describe("角をまとめて動かす", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 2,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("上の2つの角を下へ1m動かすと外形Yが1mになる", () => {
+    const pit = movePitCorners(base, [0, 1], 0, 1);
+    expect(pitPolygon(pit)).toEqual([
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 4, y: 1 },
+      { x: 0, y: 1 },
+    ]);
+    expect(pit.y).toBe(1);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(4, 6);
+  });
+
+  it("右上と右下を左へ動かすと幅が縮む（台形にならない）", () => {
+    const pit = movePitCorners(base, [1, 2], -1, 0);
+    expect(pit.x).toBe(3);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(6, 6);
+  });
+
+  it("無い角番号は動かさない", () => {
+    expect(movePitCorners(base, [9], 0, 1)).toBe(base);
   });
 });
