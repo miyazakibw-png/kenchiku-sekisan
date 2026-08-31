@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_PIT_GAP,
   beamLines,
+  beamSegments,
   layoutPits,
   normalizeRects,
   pitQuantities,
@@ -234,6 +235,23 @@ export default function PitSheetPage({
       current.map((pit) => (pit.id === id ? { ...pit, ...values } : pit)),
     );
   }, []);
+
+  /** 梁の1本（高い梁で分かれた区間）を消す。全部消したら梁ごと消す */
+  const removeBeamSegment = useCallback(
+    (id: string, index: number) => {
+      setBeams((current) =>
+        current.flatMap((beam) => {
+          if (beam.id !== id) return [beam];
+          const removed = [...(beam.removed ?? []), index];
+          const pit = pits.find((each) => each.id === beam.pitId);
+          const next = { ...beam, removed };
+          if (pit && beamSegments(pit, next, current).length === 0) return [];
+          return [next];
+        }),
+      );
+    },
+    [pits],
+  );
 
   const editBeam = useCallback((id: string, values: Partial<PitBeam>) => {
     setBeams((current) =>
@@ -580,7 +598,7 @@ export default function PitSheetPage({
           </table>
 
           <div className="section-bar beam-bar">
-            <h3>梁型（置いたあとも直せます／高い梁Hが優先で低い梁はそこで止まります）</h3>
+            <h3>梁型（置いたあとも直せます／高い梁Hで分かれた1本ずつ消せます）</h3>
           </div>
           <table className="grid pit-beams">
             <thead>
@@ -590,6 +608,7 @@ export default function PitSheetPage({
                 <th className="num">梁W（m）</th>
                 <th className="num">梁H（m）</th>
                 <th className="num">位置（m）</th>
+                <th className="num">区間（m）</th>
                 <th className="num">長さ（m）</th>
                 <th></th>
               </tr>
@@ -597,78 +616,92 @@ export default function PitSheetPage({
             <tbody>
               {plan.beams.map((beam) => {
                 const pit = pits.find((each) => each.id === beam.pitId);
-                const across =
-                  (beam.axis === "X" ? pit?.y : pit?.x) ?? 0;
-                return (
-                  <tr key={beam.id}>
-                    <td>{beam.symbol}</td>
-                    <td>
-                      <select
-                        value={beam.axis}
-                        onChange={(e) =>
-                          editBeam(beam.id, {
-                            axis: e.target.value === "Y" ? "Y" : "X",
-                          })
-                        }
-                      >
-                        <option value="X">X方向</option>
-                        <option value="Y">Y方向</option>
-                      </select>
+                const across = (beam.axis === "X" ? pit?.y : pit?.x) ?? 0;
+                const span = beam.segments.length || 1;
+                return beam.segments.map((segment, order) => (
+                  <tr key={`${beam.id}-${segment.index}`}>
+                    {order === 0 && (
+                      <>
+                        <td rowSpan={span}>{beam.symbol}</td>
+                        <td rowSpan={span}>
+                          <select
+                            value={beam.axis}
+                            onChange={(e) =>
+                              editBeam(beam.id, {
+                                axis: e.target.value === "Y" ? "Y" : "X",
+                                removed: [],
+                              })
+                            }
+                          >
+                            <option value="X">X方向</option>
+                            <option value="Y">Y方向</option>
+                          </select>
+                        </td>
+                        <td className="num" rowSpan={span}>
+                          <input
+                            data-half="1"
+                            className="num"
+                            key={`bw-${beam.id}-${beam.width}`}
+                            defaultValue={beam.width}
+                            onBlur={(e) =>
+                              editBeam(beam.id, {
+                                width: parseNumber(e.target.value) ?? 0.3,
+                              })
+                            }
+                          />
+                        </td>
+                        <td className="num" rowSpan={span}>
+                          <input
+                            data-half="1"
+                            className="num"
+                            key={`bh-${beam.id}-${beam.height}`}
+                            defaultValue={beam.height}
+                            onBlur={(e) =>
+                              editBeam(beam.id, {
+                                height: parseNumber(e.target.value) ?? 0.6,
+                                removed: [],
+                              })
+                            }
+                          />
+                        </td>
+                        <td className="num" rowSpan={span}>
+                          <input
+                            data-half="1"
+                            className="num"
+                            key={`bp-${beam.id}-${beam.position}`}
+                            defaultValue={formatNumber(
+                              beam.position * across,
+                              2,
+                            )}
+                            onBlur={(e) => {
+                              const value = parseNumber(e.target.value);
+                              if (value === null || across <= 0) return;
+                              editBeam(beam.id, {
+                                position: value / across,
+                                removed: [],
+                              });
+                            }}
+                          />
+                        </td>
+                      </>
+                    )}
+                    <td className="num">
+                      {formatNumber(segment.from, 2)}〜
+                      {formatNumber(segment.to, 2)}
                     </td>
                     <td className="num">
-                      <input
-                        data-half="1"
-                        className="num"
-                        key={`bw-${beam.id}-${beam.width}`}
-                        defaultValue={beam.width}
-                        onBlur={(e) =>
-                          editBeam(beam.id, {
-                            width: parseNumber(e.target.value) ?? 0.3,
-                          })
-                        }
-                      />
+                      {formatNumber(segment.to - segment.from, 2)}
                     </td>
-                    <td className="num">
-                      <input
-                        data-half="1"
-                        className="num"
-                        key={`bh-${beam.id}-${beam.height}`}
-                        defaultValue={beam.height}
-                        onBlur={(e) =>
-                          editBeam(beam.id, {
-                            height: parseNumber(e.target.value) ?? 0.6,
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="num">
-                      <input
-                        data-half="1"
-                        className="num"
-                        key={`bp-${beam.id}-${beam.position}`}
-                        defaultValue={formatNumber(beam.position * across, 2)}
-                        onBlur={(e) => {
-                          const value = parseNumber(e.target.value);
-                          if (value === null || across <= 0) return;
-                          editBeam(beam.id, { position: value / across });
-                        }}
-                      />
-                    </td>
-                    <td className="num">{formatNumber(beam.length, 2)}</td>
                     <td>
                       <button
                         type="button"
-                        onClick={() =>
-                          setBeams((current) =>
-                            current.filter((each) => each.id !== beam.id),
-                          )
-                        }
+                        onClick={() => removeBeamSegment(beam.id, segment.index)}
                       >
                         削除
                       </button>
                     </td>
                   </tr>
-                );
+                ));
               })}
             </tbody>
           </table>

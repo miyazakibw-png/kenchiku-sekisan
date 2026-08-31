@@ -164,20 +164,28 @@ describe("梁Hの高い方が優先", () => {
     position: 0.5,
   };
 
-  it("低い梁は最初に当たる高い梁で終わる", () => {
-    expect(beamLength(pit, small, [big, small])).toBeCloseTo(1.8, 6);
+  it("低い梁は高い梁の分を抜いた本数に分かれる", () => {
+    expect(beamLength(pit, small, [big, small])).toBeCloseTo(3.6, 6);
     expect(beamLength(pit, big, [big, small])).toBeCloseTo(4, 6);
   });
 
   it("止まった分は梁底面積・梁面積にも効く", () => {
     const [quantity] = pitQuantities([pit], [big, small]);
-    expect(quantity.beamBottomArea).toBeCloseTo(0.4 * 4 + 0.3 * 1.8, 6);
+    expect(quantity.beamBottomArea).toBeCloseTo(0.4 * 4 + 0.3 * 3.6, 6);
   });
 
-  it("図の梁も高い梁の手前で終わる", () => {
+  it("図の梁は高い梁のところで分かれる", () => {
     const rects = normalizeRects(layoutPits([pit])).rects;
     const lines = beamLines([pit], rects, [big, small]);
     const line = lines.find((each) => each.id === "small");
-    expect(line?.segments).toEqual([{ from: 0, to: 1.8 }]);
+    expect(line?.segments).toEqual([
+      { index: 0, from: 0, to: 1.8 },
+      { index: 1, from: 2.2, to: 4 },
+    ]);
+  });
+
+  it("消した本は長さにも図にも出ない", () => {
+    const cut = { ...small, removed: [1] };
+    expect(beamLength(pit, cut, [big, cut])).toBeCloseTo(1.8, 6);
   });
 });

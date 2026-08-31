@@ -44,6 +44,16 @@ export interface PitBeam {
   height: number;
   /** 図の中で置いた位置（0〜1。梁の長さは壁までで自動） */
   position: number;
+  /** 消した本（高い梁で分かれた何本目か。0から数える） */
+  removed?: number[];
+}
+
+/** 高い梁で分かれた梁1本の区間 */
+export interface PitBeamSegment {
+  /** 何本目か（消すときの目印） */
+  index: number;
+  from: number;
+  to: number;
 }
 
 /** 図に置いたピットの位置（左上を基準とした座標） */
@@ -86,8 +96,8 @@ export interface PitBeamLine {
   height: number;
   /** 梁の長さ（壁から壁まで。高い梁に当たる分は引く） */
   length: number;
-  /** 切れ目を除いた梁の区間（梁の向きに沿った位置） */
-  segments: { from: number; to: number }[];
+  /** 高い梁で分かれた1本ずつの区間（梁の向きに沿った位置） */
+  segments: PitBeamSegment[];
   /** 図の中で置いた位置（0〜1） */
   position: number;
   /** 図の中の位置（左上を基準とした梁の中心線） */
@@ -163,13 +173,14 @@ export function normalizeRects(rects: readonly PitRect[]): {
 }
 
 /**
- * 梁の区間。壁から始まり、梁成Hの高い直交する梁に当たったところで終わる（向こう側は付けない）。
+ * 梁の区間。壁から壁までを、梁成Hの高い直交する梁で分けて1本ずつにする。
+ * 消した本（removed）は外す。
  */
 export function beamSegments(
   pit: PitShape,
   beam: PitBeam,
   beams: readonly PitBeam[],
-): { from: number; to: number }[] {
+): PitBeamSegment[] {
   const span = beam.axis === "X" ? pit.x : pit.y;
   const cuts = beams
     .filter(
@@ -188,10 +199,17 @@ export function beamSegments(
     })
     .sort((a, b) => a.from - b.from);
 
-  const first = cuts[0];
-  if (!first) return [{ from: 0, to: span }];
-  if (first.from <= 0) return [];
-  return [{ from: 0, to: first.from }];
+  const pieces: PitBeamSegment[] = [];
+  let start = 0;
+  cuts.forEach((cut) => {
+    if (cut.from > start)
+      pieces.push({ index: pieces.length, from: start, to: cut.from });
+    start = Math.max(start, cut.to);
+  });
+  if (start < span)
+    pieces.push({ index: pieces.length, from: start, to: span });
+  const removed = beam.removed ?? [];
+  return pieces.filter((piece) => !removed.includes(piece.index));
 }
 
 /** 梁の長さ（高い梁で止まった分を除いた合計） */
