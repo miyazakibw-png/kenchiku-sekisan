@@ -385,16 +385,30 @@ export function pitQuantities(
   });
 }
 
+/** 計算式に書くピットの記号（Ｐ1→P1）。中身はセットの部位で変わる */
+export function pitFormulaSymbol(index: number): string {
+  return `P${pitNumber(index)}`;
+}
+
 /**
- * セットの部位に合わせて使うピットの記号。
- * 床＝床面積FA*／壁＝壁面面積WA*／梁型＝梁面積GA*／天井＝天井面積CA*
+ * セットの部位で中身が変わるＰ記号。
+ * 床＝床面積／壁＝壁面面積／梁型＝梁面積／天井＝天井面積
  */
-export function pitSymbolForPart(index: number, partName: string): string {
-  const no = pitNumber(index);
-  if (partName.includes("天井")) return `CA${no}`;
-  if (partName.includes("梁")) return `GA${no}`;
-  if (partName.includes("壁")) return `WA${no}`;
-  return `FA${no}`;
+export function pitPartVariables(
+  quantities: readonly PitQuantity[],
+  partName: string,
+): Record<string, number> {
+  const values: Record<string, number> = {};
+  quantities.forEach((quantity, index) => {
+    values[pitFormulaSymbol(index)] = partName.includes("天井")
+      ? quantity.ceilingArea
+      : partName.includes("梁")
+        ? quantity.beamArea
+        : partName.includes("壁")
+          ? quantity.wallArea
+          : quantity.floorArea;
+  });
+  return values;
 }
 
 /** 計算式に使える記号（FA1…はピットごと、FA…は全部の合計） */

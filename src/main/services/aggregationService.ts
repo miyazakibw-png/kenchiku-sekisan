@@ -71,6 +71,7 @@ import {
 } from "../../core/frame/frame";
 import {
   pitQuantities,
+  pitPartVariables,
   pitVariables,
   type PitBeam,
   type PitShape,
@@ -398,7 +399,9 @@ export function collectEntries(
         ...entriesFromCalcSheet(
           context,
           sets,
-          evaluateCalcSheet(sets, variables),
+          evaluateCalcSheet(sets, variables, (set) =>
+            pitPartVariables(quantities, set.partName),
+          ),
         ),
       );
       return;

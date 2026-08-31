@@ -8,7 +8,7 @@ import {
   pitCornerCount,
   pitPolygon,
   pitQuantities,
-  pitSymbolForPart,
+  pitPartVariables,
   pitSymbol,
   pitVariables,
   type PitBeam,
@@ -273,11 +273,26 @@ describe("角を斜めにする", () => {
   });
 });
 
-describe("部位に合わせた記号", () => {
-  it("床はFA・壁はWA・梁型はGA・天井はCA", () => {
-    expect(pitSymbolForPart(0, "床")).toBe("FA1");
-    expect(pitSymbolForPart(1, "壁")).toBe("WA2");
-    expect(pitSymbolForPart(2, "梁型")).toBe("GA3");
-    expect(pitSymbolForPart(3, "天井")).toBe("CA4");
+describe("Ｐ記号は部位で中身が変わる", () => {
+  const pit: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 2,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+  const quantities = pitQuantities([pit], []);
+
+  it("床は床面積・壁は壁面積・梁型は梁面積・天井は天井面積", () => {
+    expect(pitPartVariables(quantities, "床").P1).toBeCloseTo(8, 6);
+    expect(pitPartVariables(quantities, "壁").P1).toBeCloseTo(12, 6);
+    expect(pitPartVariables(quantities, "梁型").P1).toBeCloseTo(0, 6);
+    expect(pitPartVariables(quantities, "天井").P1).toBeCloseTo(8, 6);
+  });
+
+  it("部位が空のときは床面積", () => {
+    expect(pitPartVariables(quantities, "").P1).toBeCloseTo(8, 6);
   });
 });

@@ -21,7 +21,8 @@ import {
   pitCornerCount,
   pitPolygon,
   pitQuantities,
-  pitSymbolForPart,
+  pitFormulaSymbol,
+  pitPartVariables,
   pitSymbol,
   pitVariables,
   type PitAlign,
@@ -202,7 +203,10 @@ export default function PitSheetPage({
   }, [fittings, quantities]);
 
   const calcResult = useMemo(
-    () => evaluateCalcSheet(lower, calcVariables),
+    () =>
+      evaluateCalcSheet(lower, calcVariables, (set) =>
+        pitPartVariables(quantities, partOfSet(set)),
+      ),
     [calcVariables, lower],
   );
 
@@ -277,41 +281,31 @@ export default function PitSheetPage({
   const useSymbol = useCallback(
     (index: number) => {
       const target = calcFocus;
+      const symbol = pitFormulaSymbol(index);
       if (!target || target.area === "detail") {
-        const set = lower.find((each) => each.id === target?.setId);
-        const symbol = pitSymbolForPart(index, partOfSet(set));
         void navigator.clipboard.writeText(symbol);
         setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`);
         return;
       }
-      let used = "";
-      let usedPart = "";
       setLower((current) =>
-        current.map((each) => {
-          if (each.id !== target.setId || used !== "") return each;
-          const part = partOfSet(each);
-          const symbol = pitSymbolForPart(index, part);
-          used = symbol;
-          usedPart = part === "" ? "部位なし" : part;
-          return {
-            ...each,
-            lines: each.lines.map((line, lineIndex) =>
-              lineIndex !== target.index
-                ? line
-                : target.area === "formulaA"
-                  ? { ...line, formulaA: line.formulaA + symbol }
-                  : { ...line, formulaB: line.formulaB + symbol },
-            ),
-          };
-        }),
+        current.map((each) =>
+          each.id !== target.setId
+            ? each
+            : {
+                ...each,
+                lines: each.lines.map((line, lineIndex) =>
+                  lineIndex !== target.index
+                    ? line
+                    : target.area === "formulaA"
+                      ? { ...line, formulaA: line.formulaA + symbol }
+                      : { ...line, formulaB: line.formulaB + symbol },
+                ),
+              },
+        ),
       );
-      setMessage(
-        used === ""
-          ? "計算式の欄を選んでから記号を押してください"
-          : `${usedPart}の行なので ${used} を計算式に入れました`,
-      );
+      setMessage(`${symbol} を計算式に入れました`);
     },
-    [calcFocus, lower],
+    [calcFocus],
   );
 
   /** 梁の1本（高い梁で分かれた区間）を消す。全部消したら梁ごと消す */
@@ -536,7 +530,7 @@ export default function PitSheetPage({
                   <td
                     className="symbol"
                     onClick={() => useSymbol(index)}
-                    title="クリックで部位に合った記号を計算式へ"
+                    title="クリックで計算式へ（部位で中身が変わります）"
                   >
                     {pit.symbol}
                   </td>
@@ -893,8 +887,8 @@ export default function PitSheetPage({
       />
 
       <p className="hint">
-        計算式には FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積 が使えます（全部の合計）。
-        ピットごとは FA1・WA1・CA1 …（1がＰ1）、深さは DP1 …です。
+        Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
+        FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積 は全部の合計、FA1・WA1・CA1・DP1 …はピットごとです。
       </p>
     </div>
   );
