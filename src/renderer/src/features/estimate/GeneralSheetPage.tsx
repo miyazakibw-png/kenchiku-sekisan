@@ -13,6 +13,7 @@ import {
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
+import CalcPrintSheet from "../print/CalcPrintSheet";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 
@@ -21,6 +22,8 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
+  printMode?: boolean;
 }
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -38,6 +41,7 @@ export default function GeneralSheetPage({
   row,
   roomName,
   onBack,
+  printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<GeneralSheet | null>(null);
   const [lower, setLower] = useState<CalcSet[]>([]);
@@ -87,7 +91,8 @@ export default function GeneralSheetPage({
   );
 
   const save = useCallback(async () => {
-    if (!sheet) return;
+    // 印刷は見るだけなので、直したことにしない
+    if (!sheet || printMode) return;
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
@@ -99,7 +104,7 @@ export default function GeneralSheetPage({
     });
     setSheet(saved);
     setMessage("保存しました");
-  }, [lower, markSaved, note, sheet]);
+  }, [lower, markSaved, note, printMode, sheet]);
 
   const closePage = useCallback(() => {
     if (calcResult.errors.length > 0 && !warned) {
@@ -120,6 +125,16 @@ export default function GeneralSheetPage({
       onBack();
     })();
   }, [calcResult.errors, lower, onBack, warned, save]);
+
+  if (printMode)
+    return (
+      <CalcPrintSheet
+        title={`汎用計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
+        upper={null}
+        sets={lower}
+        result={calcResult}
+      />
+    );
 
   return (
     <div className="room-sheet-page general-sheet-page">

@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import type { EstimateRowDraft, ProjectSummary } from "@shared/types";
 import RoomSheetPage from "./RoomSheetPage";
+import FrameSheetPage from "./FrameSheetPage";
+import GeneralSheetPage from "./GeneralSheetPage";
 import "./RoomCalcPrintPage.css";
 
 interface Props {
   project: ProjectSummary;
-  /** 印刷する部屋（1部屋だけ／全部屋）。部屋計算書の行だけを渡す */
+  /** 印刷する計算書の行（1行だけ／一括）。部屋別・軸組・汎用のどれでもよい */
   rows: EstimateRowDraft[];
   onBack: () => void;
 }
 
 /**
- * 部屋別計算書の印刷画面（A3横）。
- * 選んだ1部屋、または全部屋を続けて紙の書式で並べ、そのまま印刷／PDFにする。
+ * 計算書の印刷画面（A3横）。
+ * 選んだ1行、または全部を続けて紙の書式で並べ、そのまま印刷／PDFにする。
+ * 部屋別・軸組・汎用のどの計算書でも同じ書式で出す。
  */
 export default function RoomCalcPrintPage({
   project,
@@ -53,9 +56,9 @@ export default function RoomCalcPrintPage({
         <button type="button" onClick={onBack}>
           ← 戻る
         </button>
-        <h2>部屋別計算書 印刷</h2>
+        <h2>計算書 印刷</h2>
         <span className="project">
-          {project.managementNo} {project.name}（{rows.length} 部屋・A3横）
+          {project.managementNo} {project.name}（{rows.length} 件・A3横）
         </span>
         <button
           type="button"
@@ -84,16 +87,42 @@ export default function RoomCalcPrintPage({
         </button>
       </div>
       <div className="sheets">
-        {rows.map((row) => (
-          <RoomSheetPage
-            key={row.id ?? `${row.part2}-${row.part3}`}
-            project={project}
-            row={row}
-            roomName={`${row.part2} ${row.part3}`.trim()}
-            printMode
-            onBack={onBack}
-          />
-        ))}
+        {rows.map((row) => {
+          const key = row.id ?? `${row.part2}-${row.part3}`;
+          const roomName = `${row.part2} ${row.part3}`.trim();
+          if (row.calcType === "frame")
+            return (
+              <FrameSheetPage
+                key={key}
+                project={project}
+                row={row}
+                roomName={roomName}
+                printMode
+                onBack={onBack}
+              />
+            );
+          if (row.calcType === "general")
+            return (
+              <GeneralSheetPage
+                key={key}
+                project={project}
+                row={row}
+                roomName={roomName}
+                printMode
+                onBack={onBack}
+              />
+            );
+          return (
+            <RoomSheetPage
+              key={key}
+              project={project}
+              row={row}
+              roomName={roomName}
+              printMode
+              onBack={onBack}
+            />
+          );
+        })}
       </div>
     </div>
   );

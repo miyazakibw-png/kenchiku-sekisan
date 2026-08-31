@@ -271,7 +271,7 @@ export default function EstimatePartsPage({
 
   /**
    * 計算書の印刷（A3横）を開く。保存済みの行しか紙にできないので、先に保存する。
-   * all なら部屋計算書の行を全部、そうでなければカーソルの行だ1部屋。
+   * all なら部屋別・軸組・汎用の計算書を全部、そうでなければカーソルの行だ1件。
    */
   const openCalcPrint = useCallback(
     async (all: boolean) => {
@@ -282,18 +282,18 @@ export default function EstimatePartsPage({
         }),
       );
       setRows(saved);
-      const isRoom = (row: EstimateRowDraft): boolean =>
-        row.rowType !== "subtotal" &&
-        row.calcType !== "frame" &&
-        row.calcType !== "general" &&
-        row.id !== null;
+      // 部屋別・軸組・汎用のどの計算書も印刷する（小計行だけ除く）
+      const isSheet = (row: EstimateRowDraft): boolean =>
+        row.rowType !== "subtotal" && row.id !== null;
       const target = all
-        ? saved.filter(isRoom)
-        : saved[selected] && isRoom(saved[selected])
+        ? saved.filter(isSheet)
+        : saved[selected] && isSheet(saved[selected])
           ? [saved[selected]]
           : [];
       if (target.length === 0) {
-        setMessage("印刷できる部屋計算書の行がありません（保存してから選んでください）");
+        setMessage(
+          "印刷できる計算書の行がありません（保存してから選んでください）",
+        );
         return;
       }
       setPrintRows(target);
@@ -431,7 +431,7 @@ export default function EstimatePartsPage({
             </button>
             <button
               type="button"
-              title="この工事の部屋計算書を全部、A3横の書式で続けて印刷します"
+              title="この工事の計算書（部屋別・軸組・汎用）を全部、A3横の書式で続けて印刷します"
               onClick={() => void openCalcPrint(true)}
             >
               🖨 計算書一括印刷

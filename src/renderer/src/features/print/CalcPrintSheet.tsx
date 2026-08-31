@@ -12,8 +12,10 @@ import "./CalcPrintSheet.css";
 interface Props {
   /** 紙の右上に出す見出し（工事名・部屋名） */
   title: string;
-  /** 1枚目の上に入れる図と入力表（スクロールなしで全部出す） */
-  upper: ReactNode;
+  /** 1枚目の上に入れる図と入力表（スクロールなしで全部出す）。汎用計算書のように上段が無いときは null */
+  upper: ReactNode | null;
+  /** 上段を包む入れ物の組（画面と同じ見た目にするため、軸組なら frame-sheet-page を足す） */
+  upperClass?: string;
   sets: CalcSet[];
   result: CalcSheetResult;
 }
@@ -121,6 +123,7 @@ function LowerTable({ page }: { page: CalcPrintPage }): JSX.Element {
 export default function CalcPrintSheet({
   title,
   upper,
+  upperClass = "",
   sets,
   result,
 }: Props): JSX.Element {
@@ -142,12 +145,14 @@ export default function CalcPrintSheet({
   const pages = useMemo(() => {
     const head = (TITLE_HEIGHT + HEAD_HEIGHT * SCALE) | 0;
     const later = Math.floor((PAGE_HEIGHT - head) / (ROW_HEIGHT * SCALE));
+    // 上段が無い計算書（汎用）は1枚目から下段だけを目いっぱい入れる
+    if (upper === null) return paginateCalcRows(rows, later, later);
     if (upperHeight === null) return paginateCalcRows([], 0, later);
     const first = Math.floor(
       (PAGE_HEIGHT - upperHeight - head) / (ROW_HEIGHT * SCALE),
     );
     return paginateCalcRows(rows, first, later);
-  }, [rows, upperHeight]);
+  }, [rows, upper, upperHeight]);
 
   return (
     <div className="calc-print-sheet">
@@ -156,11 +161,13 @@ export default function CalcPrintSheet({
           <TitleRow
             title={index === 0 ? title : `${title}（続き ${index + 1}）`}
           />
-          {index === 0 && (
+          {index === 0 && upper !== null && (
             <div className="calc-print-upper" ref={upperRef}>
               {/* 画面と同じ並び（図・寸法入力・記号・建具）で出すため、
                   画面の入れ物ごと紙の中に置く */}
-              <div className="room-sheet-page">{upper}</div>
+              <div className={`room-sheet-page ${upperClass}`.trim()}>
+                {upper}
+              </div>
             </div>
           )}
           <LowerTable page={page} />
