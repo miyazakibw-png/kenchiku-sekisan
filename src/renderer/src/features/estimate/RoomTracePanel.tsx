@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { Point, RoomShape } from "../../../../core/room/shape";
 import {
+  EMPTY_TRACE,
   metersPerPixel,
   pointsToShape,
   snapToAxis,
@@ -253,6 +254,20 @@ export default function RoomTracePanel({
           onClick={() => void pasteImage()}
         >
           📋 画像を貼り付け
+        </button>
+        <button
+          type="button"
+          title="貼った図面となぞりを消します（部屋形状はそのまま残ります）"
+          disabled={trace.image === ""}
+          onClick={() => {
+            onChange({ ...EMPTY_TRACE });
+            setScalePoints([]);
+            setPoints([]);
+            setMode("scale");
+            setMessage("図面を消しました（部屋形状はそのままです）");
+          }}
+        >
+          🗑 画像を消す
         </button>
         <button type="button" onClick={() => setZoom(Math.min(zoom * 1.25, 8))}>
           ＋
