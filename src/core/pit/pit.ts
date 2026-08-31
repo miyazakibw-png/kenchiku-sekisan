@@ -39,6 +39,18 @@ export interface PitShape {
   shiftX?: number;
   /** 角を動かして外枠が変わっても図の位置を保つためのずれ（縦） */
   shiftY?: number;
+  /** 形の種類（四角・Ｌ型・コ型）。角を動かすと自由な形になる */
+  kind?: PitKind;
+  /** Ｌ型・コ型の欠きX（よこの欠き寸法） */
+  cutW?: number;
+  /** Ｌ型・コ型の欠きY（たての欠き寸法） */
+  cutD?: number;
+  /** Ｌ型でどの角を欠くか（初期は右下） */
+  cutCorner?: PitCorner;
+  /** コ型でどの辺を欠くか（初期は下） */
+  cutSide?: PitSide;
+  /** コ型の欠きの位置（辺の左または上からの寸法） */
+  cutAt?: number;
   /** 斜めにする角（古いデータ用。角を動かす方式に置き換え） */
   corners?: PitCorner[];
   /** 斜めのX方向の量（古いデータ用） */
@@ -49,6 +61,12 @@ export interface PitShape {
 
 /** ピットの角。左上・右上・右下・左下 */
 export type PitCorner = "tl" | "tr" | "br" | "bl";
+
+/** ピットの辺。上・下・左・右 */
+export type PitSide = "top" | "bottom" | "left" | "right";
+
+/** 形の種類。四角／Ｌ型／コ型 */
+export type PitKind = "rect" | "L" | "U";
 
 /** 図形の角（ピットの左上を0とした座標） */
 export interface PitPoint {
@@ -77,9 +95,118 @@ export interface PitBeam {
  * ピットの形を角の並びにする（ピットの左上が0）。
  * X・Yは最大寸法のまま。斜めにした角は、欠きX・欠きYの分だけ切り落とす。
  */
+function shapePoints(pit: PitShape): PitPoint[] | null {
+  const w = Math.min(Math.max(pit.cutW ?? 0, 0), pit.x);
+  const d = Math.min(Math.max(pit.cutD ?? 0, 0), pit.y);
+  if (w <= 0 || d <= 0) return null;
+  const x = pit.x;
+  const y = pit.y;
+
+  if (pit.kind === "L") {
+    switch (pit.cutCorner ?? "br") {
+      case "tl":
+        return [
+          { x: w, y: 0 },
+          { x, y: 0 },
+          { x, y },
+          { x: 0, y },
+          { x: 0, y: d },
+          { x: w, y: d },
+        ];
+      case "tr":
+        return [
+          { x: 0, y: 0 },
+          { x: x - w, y: 0 },
+          { x: x - w, y: d },
+          { x, y: d },
+          { x, y },
+          { x: 0, y },
+        ];
+      case "bl":
+        return [
+          { x: 0, y: 0 },
+          { x, y: 0 },
+          { x, y },
+          { x: w, y },
+          { x: w, y: y - d },
+          { x: 0, y: y - d },
+        ];
+      default:
+        return [
+          { x: 0, y: 0 },
+          { x, y: 0 },
+          { x, y: y - d },
+          { x: x - w, y: y - d },
+          { x: x - w, y },
+          { x: 0, y },
+        ];
+    }
+  }
+
+  if (pit.kind === "U") {
+    const side = pit.cutSide ?? "bottom";
+    const along = side === "top" || side === "bottom" ? x : y;
+    const size = side === "top" || side === "bottom" ? w : d;
+    const deep = side === "top" || side === "bottom" ? d : w;
+    const at = Math.min(Math.max(pit.cutAt ?? (along - size) / 2, 0), along - size);
+    const end = at + size;
+
+    switch (side) {
+      case "top":
+        return [
+          { x: 0, y: 0 },
+          { x: at, y: 0 },
+          { x: at, y: deep },
+          { x: end, y: deep },
+          { x: end, y: 0 },
+          { x, y: 0 },
+          { x, y },
+          { x: 0, y },
+        ];
+      case "left":
+        return [
+          { x: 0, y: 0 },
+          { x, y: 0 },
+          { x, y },
+          { x: 0, y },
+          { x: 0, y: end },
+          { x: deep, y: end },
+          { x: deep, y: at },
+          { x: 0, y: at },
+        ];
+      case "right":
+        return [
+          { x: 0, y: 0 },
+          { x, y: 0 },
+          { x, y: at },
+          { x: x - deep, y: at },
+          { x: x - deep, y: end },
+          { x, y: end },
+          { x, y },
+          { x: 0, y },
+        ];
+      default:
+        return [
+          { x: 0, y: 0 },
+          { x, y: 0 },
+          { x, y },
+          { x: end, y },
+          { x: end, y: y - deep },
+          { x: at, y: y - deep },
+          { x: at, y },
+          { x: 0, y },
+        ];
+    }
+  }
+
+  return null;
+}
+
 export function pitPolygon(pit: PitShape): PitPoint[] {
   const free = pit.points ?? [];
   if (free.length >= 3) return free.map((point) => ({ ...point }));
+  const shape = shapePoints(pit);
+  if (shape) return shape;
   const cutX = Math.min(Math.max(pit.cutX ?? 0, 0), pit.x);
   const cutY = Math.min(Math.max(pit.cutY ?? 0, 0), pit.y);
   const corners = pit.corners ?? [];
@@ -142,6 +269,7 @@ function withPoints(pit: PitShape, points: readonly PitPoint[]): PitShape {
     shiftY: round4((pit.shiftY ?? 0) + minY),
     x: round4(Math.max(...fixed.map((point) => point.x))),
     y: round4(Math.max(...fixed.map((point) => point.y))),
+    kind: undefined,
     corners: undefined,
     cutX: undefined,
     cutY: undefined,
@@ -260,9 +388,33 @@ export function rectanglePit(pit: PitShape): PitShape {
     points: undefined,
     shiftX: undefined,
     shiftY: undefined,
+    kind: undefined,
+    cutW: undefined,
+    cutD: undefined,
+    cutCorner: undefined,
+    cutSide: undefined,
+    cutAt: undefined,
     corners: undefined,
     cutX: undefined,
     cutY: undefined,
+  };
+}
+
+/**
+ * 形の種類（四角／Ｌ型／コ型）を選び直す。
+ * 角を動かして作った自由な形は消し、X・Yと欠き寸法から作り直す。
+ */
+export function setPitKind(pit: PitShape, kind: PitKind): PitShape {
+  const base = rectanglePit(pit);
+  if (kind === "rect") return base;
+  return {
+    ...base,
+    kind,
+    cutW: pit.cutW && pit.cutW > 0 ? pit.cutW : round4(pit.x / 3),
+    cutD: pit.cutD && pit.cutD > 0 ? pit.cutD : round4(pit.y / 3),
+    cutCorner: pit.cutCorner ?? "br",
+    cutSide: pit.cutSide ?? "bottom",
+    cutAt: pit.cutAt,
   };
 }
 

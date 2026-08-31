@@ -4,6 +4,8 @@ import {
   addPitCorner,
   alignPitCorners,
   setPitCorner,
+  polygonArea,
+  setPitKind,
   movePitCorner,
   movePitCorners,
   rectanglePit,
@@ -468,5 +470,70 @@ describe("角の位置を数字で決める・そろえる", () => {
     const points = pitPolygon(aligned);
     expect(points[1].y).toBeCloseTo(1, 6);
     expect(points[2].y).toBeCloseTo(1, 6);
+  });
+});
+
+describe("形を選んで寸法で作る（Ｌ型・コ型）", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 6,
+    y: 4,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("Ｌ型は右下を欠いた6角になる", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    const points = pitPolygon(shaped);
+    expect(points).toHaveLength(6);
+    expect(polygonArea(points)).toBeCloseTo(6 * 4 - 2 * 1, 6);
+  });
+
+  it("Ｌ型の欠く角を左上に変えられる", () => {
+    const shaped = {
+      ...setPitKind(base, "L"),
+      cutW: 2,
+      cutD: 1,
+      cutCorner: "tl" as const,
+    };
+    expect(pitPolygon(shaped)[0]).toEqual({ x: 2, y: 0 });
+    expect(polygonArea(pitPolygon(shaped))).toBeCloseTo(22, 6);
+  });
+
+  it("コ型は下の辺の真ん中を欠いた8角になる", () => {
+    const shaped = { ...setPitKind(base, "U"), cutW: 2, cutD: 1 };
+    const points = pitPolygon(shaped);
+    expect(points).toHaveLength(8);
+    expect(polygonArea(points)).toBeCloseTo(22, 6);
+    expect(points[4]).toEqual({ x: 4, y: 3 });
+  });
+
+  it("コ型の欠く辺と位置を決められる", () => {
+    const shaped = {
+      ...setPitKind(base, "U"),
+      cutW: 1,
+      cutD: 2,
+      cutSide: "left" as const,
+      cutAt: 1,
+    };
+    const points = pitPolygon(shaped);
+    expect(points).toHaveLength(8);
+    expect(polygonArea(points)).toBeCloseTo(6 * 4 - 1 * 2, 6);
+  });
+
+  it("四角に戻すと欠きも消える", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    const back = setPitKind(shaped, "rect");
+    expect(pitPolygon(back)).toHaveLength(4);
+    expect(back.cutW).toBeUndefined();
+  });
+
+  it("角を動かすと自由な形になる", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    const moved = movePitCorners(shaped, [0], 1, 0);
+    expect(moved.kind).toBeUndefined();
+    expect(moved.points).toHaveLength(6);
   });
 });

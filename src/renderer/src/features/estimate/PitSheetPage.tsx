@@ -17,6 +17,7 @@ import {
   addPitCorner,
   alignPitCorners,
   setPitCorner,
+  setPitKind,
   beamLines,
   beamSegments,
   layoutPits,
@@ -32,6 +33,9 @@ import {
   pitSymbol,
   pitVariables,
   type PitAlign,
+  type PitCorner,
+  type PitKind,
+  type PitSide,
   type PitBeam,
   type PitDirection,
   type PitShape,
@@ -722,6 +726,10 @@ export default function PitSheetPage({
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
                 <th>形</th>
+                <th>欠く所</th>
+                <th className="num">欠きX（m）</th>
+                <th className="num">欠きY（m）</th>
+                <th className="num">欠き位置（m）</th>
                 <th>基準</th>
                 <th>置き方</th>
                 <th>そろえ／Y位置</th>
@@ -792,7 +800,113 @@ export default function PitSheetPage({
                       }
                     />
                   </td>
-                  <td>{`${pitPolygon(pit).length}角`}</td>
+                  <td>
+                    {pit.points ? (
+                      `自由 ${pitPolygon(pit).length}角`
+                    ) : (
+                      <select
+                        value={pit.kind ?? "rect"}
+                        onChange={(e) =>
+                          setPits((current) =>
+                            current.map((one) =>
+                              one.id === pit.id
+                                ? setPitKind(one, e.target.value as PitKind)
+                                : one,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="rect">四角</option>
+                        <option value="L">Ｌ型</option>
+                        <option value="U">コ型</option>
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    {pit.points || !pit.kind ? (
+                      ""
+                    ) : pit.kind === "L" ? (
+                      <select
+                        value={pit.cutCorner ?? "br"}
+                        onChange={(e) =>
+                          editPit(pit.id, {
+                            cutCorner: e.target.value as PitCorner,
+                          })
+                        }
+                      >
+                        <option value="tl">左上</option>
+                        <option value="tr">右上</option>
+                        <option value="bl">左下</option>
+                        <option value="br">右下</option>
+                      </select>
+                    ) : (
+                      <select
+                        value={pit.cutSide ?? "bottom"}
+                        onChange={(e) =>
+                          editPit(pit.id, {
+                            cutSide: e.target.value as PitSide,
+                          })
+                        }
+                      >
+                        <option value="top">上の辺</option>
+                        <option value="bottom">下の辺</option>
+                        <option value="left">左の辺</option>
+                        <option value="right">右の辺</option>
+                      </select>
+                    )}
+                  </td>
+                  <td className="num">
+                    {pit.points || !pit.kind ? (
+                      ""
+                    ) : (
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`cw-${pit.id}-${pit.cutW ?? 0}`}
+                        defaultValue={pit.cutW ?? 0}
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            cutW: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    )}
+                  </td>
+                  <td className="num">
+                    {pit.points || !pit.kind ? (
+                      ""
+                    ) : (
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`cd-${pit.id}-${pit.cutD ?? 0}`}
+                        defaultValue={pit.cutD ?? 0}
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            cutD: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    )}
+                  </td>
+                  <td className="num">
+                    {pit.points || pit.kind !== "U" ? (
+                      ""
+                    ) : (
+                      <input
+                        data-half="1"
+                        className="num"
+                        title="欠きの始まり（上の辺・下の辺は左から、左の辺・右の辺は上から）"
+                        key={`ca-${pit.id}-${pit.cutAt ?? ""}`}
+                        defaultValue={pit.cutAt ?? ""}
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            cutAt: parseNumber(e.target.value) ?? undefined,
+                          })
+                        }
+                      />
+                    )}
+                  </td>
                   <td>
                     {index === 0 ? (
                       "基準（中央）"
@@ -1241,7 +1355,8 @@ export default function PitSheetPage({
       />
 
       <p className="hint">
-        形（台形・Ｌ型・コ型）は「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。
+        Ｌ型・コ型は表の「形」で選び、欠く所（Ｌ型＝角／コ型＝辺）と欠きX・欠きY（コ型は欠き位置も）を入れるだけで作れます。
+        こまかく直したいときだけ「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。角を動かすと「形」は自由になります（「□ 四角に戻す」で戻せます）。
         ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
         1つ選ぶと「角のX・角のY」の欄で位置を数字で決められ、2つ以上選ぶと「たてにそろえる」「よこにそろえる」で一直線になります。
         Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
