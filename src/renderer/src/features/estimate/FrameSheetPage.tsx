@@ -1492,7 +1492,7 @@ export default function FrameSheetPage({
             </section>
           ))}
 
-          {mode !== "layout" && (
+          {!printMode && mode !== "layout" && (
             <section className="symbols">
               <div className="section-bar">
                 <span>記号（クリックでコピー：計算式に使えます）</span>
@@ -1541,7 +1541,7 @@ export default function FrameSheetPage({
             </section>
           )}
 
-          {mode !== "layout" && (
+          {!printMode && mode !== "layout" && (
             <section className="frame-lines">
               <div className="section-bar">
                 <span>軸組寸法表（拾わない線はチェックを外します）</span>
@@ -1677,7 +1677,7 @@ export default function FrameSheetPage({
             </section>
           )}
 
-          {mode !== "layout" && (
+          {!printMode && mode !== "layout" && (
             <section className="frame-fittings">
               <div className="section-bar">
                 <span>
@@ -1810,7 +1810,7 @@ export default function FrameSheetPage({
             </section>
           )}
 
-          {mode !== "layout" && (
+          {!printMode && mode !== "layout" && (
             <section className="fittings">
               <div className="section-bar">
                 <span>建具表（クリックで &lt;記号&gt; をコピー）</span>
@@ -1883,7 +1883,7 @@ export default function FrameSheetPage({
             </section>
           )}
 
-          {mode === "check" && (
+          {!printMode && mode === "check" && (
             <section className="check">
               <div className="section-bar">
                 <span>確認（壁の共有・数量根拠）</span>
