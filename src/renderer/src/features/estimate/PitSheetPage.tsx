@@ -110,10 +110,10 @@ export default function PitSheetPage({
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [message, setMessage] = useState("");
   const [warned, setWarned] = useState(false);
-  /** 図をクリックしたときに置く梁の向きと寸法（mm） */
+  /** 図をクリックしたときに置く梁の向きと寸法（m） */
   const [beamAxis, setBeamAxis] = useState<"X" | "Y">("X");
-  const [beamWidth, setBeamWidth] = useState(300);
-  const [beamHeight, setBeamHeight] = useState(600);
+  const [beamWidth, setBeamWidth] = useState(0.3);
+  const [beamHeight, setBeamHeight] = useState(0.6);
 
   const { markSaved } = useSaveOnLeave({ pits, beams, lower, note }, () =>
     save(),
@@ -250,8 +250,8 @@ export default function PitSheetPage({
           id: newId("beam"),
           pitId,
           axis: beamAxis,
-          width: beamWidth / 1000,
-          height: beamHeight / 1000,
+          width: beamWidth,
+          height: beamHeight,
           position: Math.min(Math.max(ratio, 0), 1),
         },
       ]);
@@ -304,17 +304,19 @@ export default function PitSheetPage({
               </text>
             </g>
           ))}
-          {plan.beams.map((beam) => (
-            <line
-              key={beam.id}
-              x1={beam.left}
-              y1={beam.top}
-              x2={beam.axis === "X" ? beam.left + beam.length : beam.left}
-              y2={beam.axis === "X" ? beam.top : beam.top + beam.length}
-              className="pit-beam"
-              strokeWidth={Math.max(beam.width, 0.08)}
-            />
-          ))}
+          {plan.beams.flatMap((beam) =>
+            beam.segments.map((segment, index) => (
+              <line
+                key={`${beam.id}-${index}`}
+                x1={beam.axis === "X" ? beam.left + segment.from : beam.left}
+                y1={beam.axis === "X" ? beam.top : beam.top + segment.from}
+                x2={beam.axis === "X" ? beam.left + segment.to : beam.left}
+                y2={beam.axis === "X" ? beam.top : beam.top + segment.to}
+                className="pit-beam"
+                strokeWidth={Math.max(beam.width, 0.08)}
+              />
+            )),
+          )}
         </svg>
       )}
     </div>
@@ -563,56 +565,28 @@ export default function PitSheetPage({
               ))}
             </tbody>
           </table>
-        </section>
 
-        <section className="pit-plan-area">
-          <div className="section-bar">
-            <h3>平面図（クリックで梁型を置く）</h3>
-            <label>
-              向き
-              <select
-                value={beamAxis}
-                onChange={(e) => setBeamAxis(e.target.value === "Y" ? "Y" : "X")}
-              >
-                <option value="X">X方向（よこ）</option>
-                <option value="Y">Y方向（たて）</option>
-              </select>
-            </label>
-            <label>
-              梁W（mm）
-              <input
-                data-half="1"
-                className="num"
-                defaultValue={beamWidth}
-                onBlur={(e) => setBeamWidth(parseNumber(e.target.value) ?? 300)}
-              />
-            </label>
-            <label>
-              梁H（mm）
-              <input
-                data-half="1"
-                className="num"
-                defaultValue={beamHeight}
-                onBlur={(e) => setBeamHeight(parseNumber(e.target.value) ?? 600)}
-              />
-            </label>
+          <div className="section-bar beam-bar">
+            <h3>梁型（置いたあとも直せます／高い梁Hが優先で低い梁はそこで止まります）</h3>
           </div>
-          {drawing}
-          {beams.length > 0 && (
-            <table className="grid pit-beams">
-              <thead>
-                <tr>
-                  <th>ピット</th>
-                  <th>向き</th>
-                  <th className="num">梁W（mm）</th>
-
-                  <th className="num">梁H（mm）</th>
-                  <th className="num">長さ（m）</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {plan.beams.map((beam) => (
+          <table className="grid pit-beams">
+            <thead>
+              <tr>
+                <th>ピット</th>
+                <th>向き</th>
+                <th className="num">梁W（m）</th>
+                <th className="num">梁H（m）</th>
+                <th className="num">位置（m）</th>
+                <th className="num">長さ（m）</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.beams.map((beam) => {
+                const pit = pits.find((each) => each.id === beam.pitId);
+                const across =
+                  (beam.axis === "X" ? pit?.y : pit?.x) ?? 0;
+                return (
                   <tr key={beam.id}>
                     <td>{beam.symbol}</td>
                     <td>
@@ -633,10 +607,10 @@ export default function PitSheetPage({
                         data-half="1"
                         className="num"
                         key={`bw-${beam.id}-${beam.width}`}
-                        defaultValue={Math.round(beam.width * 1000)}
+                        defaultValue={beam.width}
                         onBlur={(e) =>
                           editBeam(beam.id, {
-                            width: (parseNumber(e.target.value) ?? 300) / 1000,
+                            width: parseNumber(e.target.value) ?? 0.3,
                           })
                         }
                       />
@@ -646,12 +620,25 @@ export default function PitSheetPage({
                         data-half="1"
                         className="num"
                         key={`bh-${beam.id}-${beam.height}`}
-                        defaultValue={Math.round(beam.height * 1000)}
+                        defaultValue={beam.height}
                         onBlur={(e) =>
                           editBeam(beam.id, {
-                            height: (parseNumber(e.target.value) ?? 600) / 1000,
+                            height: parseNumber(e.target.value) ?? 0.6,
                           })
                         }
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`bp-${beam.id}-${beam.position}`}
+                        defaultValue={formatNumber(beam.position * across, 2)}
+                        onBlur={(e) => {
+                          const value = parseNumber(e.target.value);
+                          if (value === null || across <= 0) return;
+                          editBeam(beam.id, { position: value / across });
+                        }}
                       />
                     </td>
                     <td className="num">{formatNumber(beam.length, 2)}</td>
@@ -668,10 +655,45 @@ export default function PitSheetPage({
                       </button>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="pit-plan-area">
+          <div className="section-bar">
+            <h3>平面図（クリックで梁型を置く）</h3>
+            <label>
+              向き
+              <select
+                value={beamAxis}
+                onChange={(e) => setBeamAxis(e.target.value === "Y" ? "Y" : "X")}
+              >
+                <option value="X">X方向（よこ）</option>
+                <option value="Y">Y方向（たて）</option>
+              </select>
+            </label>
+            <label>
+              梁W（m）
+              <input
+                data-half="1"
+                className="num"
+                defaultValue={beamWidth}
+                onBlur={(e) => setBeamWidth(parseNumber(e.target.value) ?? 0.3)}
+              />
+            </label>
+            <label>
+              梁H（m）
+              <input
+                data-half="1"
+                className="num"
+                defaultValue={beamHeight}
+                onBlur={(e) => setBeamHeight(parseNumber(e.target.value) ?? 0.6)}
+              />
+            </label>
+          </div>
+          {drawing}
         </section>
 
       </div>

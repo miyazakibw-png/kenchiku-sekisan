@@ -84,8 +84,12 @@ export interface PitBeamLine {
   axis: "X" | "Y";
   width: number;
   height: number;
-  /** 梁の長さ（壁から壁まで） */
+  /** 梁の長さ（壁から壁まで。高い梁に当たる分は引く） */
   length: number;
+  /** 切れ目を除いた梁の区間（梁の向きに沿った位置） */
+  segments: { from: number; to: number }[];
+  /** 図の中で置いた位置（0〜1） */
+  position: number;
   /** 図の中の位置（左上を基準とした梁の中心線） */
   left: number;
   top: number;
@@ -158,6 +162,54 @@ export function normalizeRects(rects: readonly PitRect[]): {
   };
 }
 
+/**
+ * 梁の区間。壁から壁までのうち、梁成Hの高い直交する梁に当たる分で止める。
+ */
+export function beamSegments(
+  pit: PitShape,
+  beam: PitBeam,
+  beams: readonly PitBeam[],
+): { from: number; to: number }[] {
+  const span = beam.axis === "X" ? pit.x : pit.y;
+  const cuts = beams
+    .filter(
+      (other) =>
+        other.pitId === beam.pitId &&
+        other.id !== beam.id &&
+        other.axis !== beam.axis &&
+        other.height > beam.height,
+    )
+    .map((other) => {
+      const center = Math.min(Math.max(other.position, 0), 1) * span;
+      return {
+        from: Math.max(center - other.width / 2, 0),
+        to: Math.min(center + other.width / 2, span),
+      };
+    })
+    .sort((a, b) => a.from - b.from);
+
+  const segments: { from: number; to: number }[] = [];
+  let start = 0;
+  cuts.forEach((cut) => {
+    if (cut.from > start) segments.push({ from: start, to: cut.from });
+    start = Math.max(start, cut.to);
+  });
+  if (start < span) segments.push({ from: start, to: span });
+  return segments;
+}
+
+/** 梁の長さ（高い梁で止まった分を除いた合計） */
+export function beamLength(
+  pit: PitShape,
+  beam: PitBeam,
+  beams: readonly PitBeam[],
+): number {
+  return beamSegments(pit, beam, beams).reduce(
+    (total, segment) => total + (segment.to - segment.from),
+    0,
+  );
+}
+
 /** 梁を図に置く。長さは付いているピットの壁から壁まで */
 export function beamLines(
   pits: readonly PitShape[],
@@ -170,6 +222,11 @@ export function beamLines(
     const pit = pits.find((each) => each.id === beam.pitId);
     if (!rect || !pit) return;
     const ratio = Math.min(Math.max(beam.position, 0), 1);
+    const segments = beamSegments(pit, beam, beams);
+    const length = segments.reduce(
+      (total, segment) => total + (segment.to - segment.from),
+      0,
+    );
     if (beam.axis === "X") {
       lines.push({
         id: beam.id,
@@ -178,7 +235,9 @@ export function beamLines(
         axis: "X",
         width: beam.width,
         height: beam.height,
-        length: rect.x,
+        length,
+        segments,
+        position: ratio,
         left: rect.left,
         top: rect.top + rect.y * ratio,
       });
@@ -191,7 +250,9 @@ export function beamLines(
       axis: "Y",
       width: beam.width,
       height: beam.height,
-      length: rect.y,
+      length,
+      segments,
+      position: ratio,
       left: rect.left + rect.x * ratio,
       top: rect.top,
     });
@@ -214,7 +275,7 @@ export function pitQuantities(
     let beamBottomArea = 0;
     let beamArea = 0;
     own.forEach((beam) => {
-      const length = beam.axis === "X" ? pit.x : pit.y;
+      const length = beamLength(pit, beam, beams);
       beamBottomArea += beam.width * length;
       beamArea += (beam.width + beam.height * 2) * length;
     });

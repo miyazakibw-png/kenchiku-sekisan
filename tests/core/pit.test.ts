@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PIT_GAP,
+  beamLength,
   beamLines,
   layoutPits,
   normalizeRects,
@@ -133,5 +134,50 @@ describe("基準のピット", () => {
     ]);
     expect(rects[2].left).toBe(0);
     expect(rects[2].top).toBe(4.5);
+  });
+});
+
+describe("梁Hの高い方が優先", () => {
+  const pit: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 4,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+  const big: PitBeam = {
+    id: "big",
+    pitId: "a",
+    axis: "Y",
+    width: 0.4,
+    height: 0.8,
+    position: 0.5,
+  };
+  const small: PitBeam = {
+    id: "small",
+    pitId: "a",
+    axis: "X",
+    width: 0.3,
+    height: 0.5,
+    position: 0.5,
+  };
+
+  it("低い梁は高い梁のところで止まる", () => {
+    expect(beamLength(pit, small, [big, small])).toBeCloseTo(3.6, 6);
+    expect(beamLength(pit, big, [big, small])).toBeCloseTo(4, 6);
+  });
+
+  it("止まった分は梁底面積・梁面積にも効く", () => {
+    const [quantity] = pitQuantities([pit], [big, small]);
+    expect(quantity.beamBottomArea).toBeCloseTo(0.4 * 4 + 0.3 * 3.6, 6);
+  });
+
+  it("図の梁は切れ目で分かれる", () => {
+    const rects = normalizeRects(layoutPits([pit])).rects;
+    const lines = beamLines([pit], rects, [big, small]);
+    const line = lines.find((each) => each.id === "small");
+    expect(line?.segments).toHaveLength(2);
   });
 });
