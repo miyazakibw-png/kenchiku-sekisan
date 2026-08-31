@@ -25,8 +25,8 @@ import {
   pitVariables,
   type PitAlign,
   type PitBeam,
+  type PitCorner,
   type PitDirection,
-  type PitKind,
   type PitShape,
 } from "../../../../core/pit/pit";
 import { computeFitting } from "../../../../core/fittings/fitting";
@@ -35,6 +35,13 @@ import CalcPrintSheet from "../print/CalcPrintSheet";
 import "./RoomSheetPage.css";
 import "./PitSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+
+const PIT_CORNERS: { key: PitCorner; mark: string; name: string }[] = [
+  { key: "tl", mark: "◤", name: "左上" },
+  { key: "tr", mark: "◥", name: "右上" },
+  { key: "bl", mark: "◣", name: "左下" },
+  { key: "br", mark: "◢", name: "右下" },
+];
 
 interface Props {
   project: ProjectSummary;
@@ -487,9 +494,9 @@ export default function PitSheetPage({
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
-                <th>形</th>
-                <th className="num">欠きX（m）</th>
-                <th className="num">欠きY（m）</th>
+                <th>斜めの角</th>
+                <th className="num">斜めX（m）</th>
+                <th className="num">斜めY（m）</th>
                 <th>基準</th>
                 <th>置き方</th>
                 <th>そろえ</th>
@@ -548,18 +555,25 @@ export default function PitSheetPage({
                       }
                     />
                   </td>
-                  <td>
-                    <select
-                      value={pit.kind ?? "rect"}
-                      onChange={(e) =>
-                        editPit(pit.id, { kind: e.target.value as PitKind })
-                      }
-                    >
-                      <option value="rect">四角</option>
-                      <option value="trapezoid">台形</option>
-                      <option value="l">Ｌ型</option>
-                      <option value="u">コ型</option>
-                    </select>
+                  <td className="corners">
+                    {PIT_CORNERS.map((corner) => (
+                      <label key={corner.key} title={`${corner.name}を斜めに`}>
+                        <input
+                          type="checkbox"
+                          checked={(pit.corners ?? []).includes(corner.key)}
+                          onChange={(e) =>
+                            editPit(pit.id, {
+                              corners: e.target.checked
+                                ? [...(pit.corners ?? []), corner.key]
+                                : (pit.corners ?? []).filter(
+                                    (each) => each !== corner.key,
+                                  ),
+                            })
+                          }
+                        />
+                        {corner.mark}
+                      </label>
+                    ))}
                   </td>
                   <td className="num">
                     <input
@@ -567,12 +581,7 @@ export default function PitSheetPage({
                       className="num"
                       defaultValue={pit.cutX ?? 0}
                       key={`cx-${pit.id}-${pit.cutX ?? 0}`}
-                      disabled={(pit.kind ?? "rect") === "rect"}
-                      title={
-                        pit.kind === "trapezoid"
-                          ? "上辺の長さ"
-                          : "欠き込みのX方向寸法"
-                      }
+                      title="斜めのX方向の量"
                       onBlur={(e) =>
                         editPit(pit.id, {
                           cutX: parseNumber(e.target.value) ?? 0,
@@ -586,11 +595,7 @@ export default function PitSheetPage({
                       className="num"
                       defaultValue={pit.cutY ?? 0}
                       key={`cy-${pit.id}-${pit.cutY ?? 0}`}
-                      disabled={
-                        (pit.kind ?? "rect") === "rect" ||
-                        pit.kind === "trapezoid"
-                      }
-                      title="欠き込みのY方向寸法"
+                      title="斜めのY方向の量"
                       onBlur={(e) =>
                         editPit(pit.id, {
                           cutY: parseNumber(e.target.value) ?? 0,

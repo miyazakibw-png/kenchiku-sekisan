@@ -115,3 +115,18 @@
   color: #0b5cab;
   text-decoration: underline;
 }
+
+.pit-list td.corners {
+  white-space: nowrap;
+}
+
+.pit-list td.corners label {
+  display: inline-block;
+  margin-right: 2px;
+  font-size: 11px;
+}
+
+.pit-list td.corners input {
+  margin: 0 1px 0 0;
+  vertical-align: middle;
+}

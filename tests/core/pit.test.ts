@@ -193,58 +193,83 @@ describe("梁Hの高い方が優先", () => {
   });
 });
 
-describe("台形・Ｌ型・コ型", () => {
+describe("角を斜めにする", () => {
   const base = {
     depth: 1,
     gap: DEFAULT_PIT_GAP,
     direction: "right" as const,
   };
 
-  it("台形の床面積と壁面長さ", () => {
+  it("角を切らないうちは4角", () => {
+    const pit: PitShape = { id: "a", symbol: "Ｐ1", x: 4, y: 2, ...base };
+    expect(pitCornerCount([pit])).toBe(4);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(8, 6);
+  });
+
+  it("1か所斜めにすると5角になり床面積が減る", () => {
     const pit: PitShape = {
       id: "a",
       symbol: "Ｐ1",
       x: 4,
       y: 2,
-      kind: "trapezoid",
-      cutX: 2,
+      corners: ["tr"],
+      cutX: 1,
+      cutY: 1,
       ...base,
     };
-    const [quantity] = pitQuantities([pit], []);
-    expect(quantity.floorArea).toBeCloseTo(6, 6);
-    expect(pitPolygon(pit)).toHaveLength(4);
+    expect(pitCornerCount([pit])).toBe(5);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(7.5, 6);
   });
 
-  it("Ｌ型は欠いた分だけ床面積が減り6角になる", () => {
+  it("斜めをY一杯にすると台形（4角）になる", () => {
     const pit: PitShape = {
       id: "a",
       symbol: "Ｐ1",
       x: 4,
-      y: 4,
-      kind: "l",
+      y: 2,
+      corners: ["tr"],
       cutX: 1,
       cutY: 2,
       ...base,
     };
-    const [quantity] = pitQuantities([pit], []);
-    expect(quantity.floorArea).toBeCloseTo(14, 6);
-    expect(quantity.wallLength).toBeCloseTo(16, 6);
-    expect(pitCornerCount([pit])).toBe(6);
+    expect(pitCornerCount([pit])).toBe(4);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(7, 6);
   });
 
-  it("コ型は8角になる", () => {
+  it("隣り合う2か所を斜めにできる", () => {
     const pit: PitShape = {
       id: "a",
       symbol: "Ｐ1",
       x: 4,
-      y: 4,
-      kind: "u",
-      cutX: 2,
+      y: 2,
+      corners: ["tr", "br"],
+      cutX: 1,
       cutY: 1,
       ...base,
     };
-    expect(pitCornerCount([pit])).toBe(8);
-    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(14, 6);
+    expect(pitPolygon(pit)).toEqual([
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+      { x: 4, y: 1 },
+      { x: 3, y: 2 },
+      { x: 0, y: 2 },
+    ]);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(7, 6);
+  });
+
+  it("X・Yは最大寸法のまま（壁面長さに斜め分が入る）", () => {
+    const pit: PitShape = {
+      id: "a",
+      symbol: "Ｐ1",
+      x: 4,
+      y: 2,
+      corners: ["tr"],
+      cutX: 1,
+      cutY: 1,
+      ...base,
+    };
+    const [quantity] = pitQuantities([pit], []);
+    expect(quantity.wallLength).toBeCloseTo(3 + Math.hypot(1, 1) + 1 + 4 + 2, 6);
   });
 });
 

@@ -29,16 +29,16 @@ export interface PitShape {
   align?: PitAlign;
   /** どのピットを基準に置くか（未指定はすぐ前のピット） */
   baseId?: string;
-  /** 形（未指定は四角） */
-  kind?: PitKind;
-  /** 欠き込みのX方向寸法（台形は上辺の長さ） */
+  /** 斜めにする角（隣り合う2つを入れると台形になる） */
+  corners?: PitCorner[];
+  /** 斜めのX方向の量 */
   cutX?: number;
-  /** 欠き込みのY方向寸法（台形では使わない） */
+  /** 斜めのY方向の量 */
   cutY?: number;
 }
 
-/** ピットの形。四角・台形・Ｌ型（右上を欠く）・コ型（上辺の真ん中を欠く） */
-export type PitKind = "rect" | "trapezoid" | "l" | "u";
+/** ピットの角。左上・右上・右下・左下 */
+export type PitCorner = "tl" | "tr" | "br" | "bl";
 
 /** 図形の角（ピットの左上を0とした座標） */
 export interface PitPoint {
@@ -63,46 +63,41 @@ export interface PitBeam {
   removed?: number[];
 }
 
-/** ピットの形を角の並びにする（ピットの左上が0） */
+/**
+ * ピットの形を角の並びにする（ピットの左上が0）。
+ * X・Yは最大寸法のまま。斜めにした角は、欠きX・欠きYの分だけ切り落とす。
+ */
 export function pitPolygon(pit: PitShape): PitPoint[] {
-  const kind = pit.kind ?? "rect";
   const cutX = Math.min(Math.max(pit.cutX ?? 0, 0), pit.x);
   const cutY = Math.min(Math.max(pit.cutY ?? 0, 0), pit.y);
-  if (kind === "trapezoid" && cutX > 0)
-    return [
-      { x: 0, y: 0 },
-      { x: cutX, y: 0 },
-      { x: pit.x, y: pit.y },
-      { x: 0, y: pit.y },
-    ];
-  if (kind === "l" && cutX > 0 && cutY > 0)
-    return [
-      { x: 0, y: 0 },
-      { x: pit.x - cutX, y: 0 },
-      { x: pit.x - cutX, y: cutY },
-      { x: pit.x, y: cutY },
-      { x: pit.x, y: pit.y },
-      { x: 0, y: pit.y },
-    ];
-  if (kind === "u" && cutX > 0 && cutY > 0) {
-    const from = (pit.x - cutX) / 2;
-    return [
-      { x: 0, y: 0 },
-      { x: from, y: 0 },
-      { x: from, y: cutY },
-      { x: from + cutX, y: cutY },
-      { x: from + cutX, y: 0 },
-      { x: pit.x, y: 0 },
-      { x: pit.x, y: pit.y },
-      { x: 0, y: pit.y },
-    ];
+  const corners = pit.corners ?? [];
+  const cut = (corner: PitCorner): boolean =>
+    corners.includes(corner) && cutX > 0 && cutY > 0;
+  const points: PitPoint[] = [];
+  if (cut("tl")) {
+    points.push({ x: 0, y: cutY }, { x: cutX, y: 0 });
+  } else {
+    points.push({ x: 0, y: 0 });
   }
-  return [
-    { x: 0, y: 0 },
-    { x: pit.x, y: 0 },
-    { x: pit.x, y: pit.y },
-    { x: 0, y: pit.y },
-  ];
+  if (cut("tr")) {
+    points.push({ x: pit.x - cutX, y: 0 }, { x: pit.x, y: cutY });
+  } else {
+    points.push({ x: pit.x, y: 0 });
+  }
+  if (cut("br")) {
+    points.push({ x: pit.x, y: pit.y - cutY }, { x: pit.x - cutX, y: pit.y });
+  } else {
+    points.push({ x: pit.x, y: pit.y });
+  }
+  if (cut("bl")) {
+    points.push({ x: cutX, y: pit.y }, { x: 0, y: pit.y - cutY });
+  } else {
+    points.push({ x: 0, y: pit.y });
+  }
+  return points.filter((point, index) => {
+    const before = points[(index + points.length - 1) % points.length];
+    return before.x !== point.x || before.y !== point.y;
+  });
 }
 
 /** 多角形の面積（座標の順に足し引きして出す） */
