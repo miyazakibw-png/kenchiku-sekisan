@@ -95,10 +95,16 @@ function borderXml(border: XlsxBorder): string {
   return `<border><left style="thin">${line}</left><right style="thin">${line}</right>${top}${bottom}<diagonal/></border>`;
 }
 
+/** 罫線の番号。0番はエクセルが「罫線なし」として扱うので、実際の罫線は1番から */
+function borderIndex(border: XlsxBorder): number {
+  return 1 + BORDERS.indexOf(border);
+}
+
 function stylesXml(): string {
-  const borders = BORDERS.map(borderXml).join("");
+  // 0番は罫線なし（エクセルの決まり。ここに罫線を置くと線が引かれない）
+  const borders = `<border><left/><right/><top/><bottom/><diagonal/></border>${BORDERS.map(borderXml).join("")}`;
   // 0番は罫線なしの既定書式（エクセルが 0番を書式なしとして扱うため、実際には使わない）
-  const plain = `<xf numFmtId="0" fontId="0" fillId="0" borderId="${BORDERS.length}" xfId="0"/>`;
+  const plain = `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`;
   const xfs = KINDS.flatMap((kind) =>
     BORDERS.map((border) => {
       const fontId = kind === "header" ? 1 : 0;
@@ -110,7 +116,7 @@ function stylesXml(): string {
           : kind === "wrap"
             ? '<alignment vertical="center" wrapText="1"/>'
             : '<alignment vertical="center"/>';
-      return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${BORDERS.indexOf(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
+      return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
     }),
   ).join("");
   const count = KINDS.length * BORDERS.length + 1;
@@ -119,8 +125,8 @@ function stylesXml(): string {
 <numFmts count="1"><numFmt numFmtId="176" formatCode="#,##0.00"/></numFmts>
 <fonts count="2"><font><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill></fills>
-<borders count="${BORDERS.length + 1}">${borders}<border><left/><right/><top/><bottom/><diagonal/></border></borders>
-<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="${BORDERS.length}"/></cellStyleXfs>
+<borders count="${BORDERS.length + 1}">${borders}</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
 <cellXfs count="${count}">${plain}${xfs}</cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 <dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
@@ -196,6 +202,9 @@ interface ZipEntry {
   data: Buffer;
 }
 
+/** zip の日時（1980年1月1日。0のままだと日付として正しくない） */
+const ZIP_DATE = (1 << 5) | 1;
+
 /** zip を組み立てる（.xlsx は zip の中に XML を並べたもの） */
 function zip(entries: ZipEntry[]): Buffer {
   const locals: Buffer[] = [];
@@ -211,7 +220,8 @@ function zip(entries: ZipEntry[]): Buffer {
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x0800, 6);
     local.writeUInt16LE(8, 8);
-    local.writeUInt32LE(0, 10);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(ZIP_DATE, 12);
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(entry.data.length, 22);
@@ -225,7 +235,8 @@ function zip(entries: ZipEntry[]): Buffer {
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(0x0800, 8);
     central.writeUInt16LE(8, 10);
-    central.writeUInt32LE(0, 12);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(ZIP_DATE, 14);
     central.writeUInt32LE(crc, 16);
     central.writeUInt32LE(compressed.length, 20);
     central.writeUInt32LE(entry.data.length, 24);

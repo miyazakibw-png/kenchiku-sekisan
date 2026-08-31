@@ -90,4 +90,22 @@ describe("エクセル（.xlsx）の書き出し", () => {
       '<c r="B2" s="1" t="inlineStr"><is><t xml:space="preserve"></t></is></c>',
     );
   });
+
+  it("罫線の0番は罫線なしにする（エクセルは0番を「罫線なし」として描かない）", () => {
+    const file = toXlsx([
+      {
+        name: "内訳書",
+        rows: [[{ value: "", kind: "text", border: "one" }]],
+      },
+    ]);
+    const styles = entry(file, "xl/styles.xml");
+    const borders = /<borders[^>]*>(.*?)<\/borders>/s.exec(styles)?.[1] ?? "";
+    expect(borders.startsWith("<border><left/><right/><top/><bottom/>")).toBe(
+      true,
+    );
+    // 実際に使う罫線は1番から。空欄のセルにもその番号が付く
+    expect(styles).toContain('borderId="1"');
+    const sheet = entry(file, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="A1" s="1"');
+  });
 });
