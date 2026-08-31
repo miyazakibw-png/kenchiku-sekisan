@@ -1,6 +1,21 @@
 import { useEffect } from "react";
 import type { ImeMode } from "@shared/types";
-import { isJapaneseField } from "./useHalfWidthFields";
+import { isHalfWidthField } from "./useHalfWidthFields";
+
+/**
+ * 日本語で入れる欄か。画面全体（html・body）の lang="ja" は数えない
+ * （数えると計算式などの欄まで日本語の欄になってしまう）。
+ */
+function japaneseField(input: HTMLInputElement): boolean {
+  if (isHalfWidthField(input)) return false;
+  if (input.lang === "ja") return true;
+  const holder = input.closest('[lang="ja"]');
+  return (
+    holder !== null &&
+    holder !== document.documentElement &&
+    holder !== document.body
+  );
+}
 
 /**
  * 入った欄に合わせてWindowsの日本語入力を切り替える。
@@ -11,7 +26,7 @@ function modeOf(target: EventTarget | null): ImeMode | null {
   if (target instanceof HTMLTextAreaElement) return "hiragana";
   if (!(target instanceof HTMLInputElement)) return null;
   if (target.type !== "text" && target.type !== "search") return null;
-  return isJapaneseField(target) ? "hiragana" : "alphanumeric";
+  return japaneseField(target) ? "hiragana" : "alphanumeric";
 }
 
 const SETTING_KEY = "ime-auto";
