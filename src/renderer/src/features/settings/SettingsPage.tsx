@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import type { BackupInfo } from "@shared/types";
-import { isAutoKanaOn, setAutoKana } from "../../hooks/useHalfWidthFields";
 import "./SettingsPage.css";
 
 function sizeText(size: number): string {
@@ -14,7 +13,6 @@ export default function SettingsPage(): JSX.Element {
   const [info, setInfo] = useState<BackupInfo | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [autoKana, setAutoKanaState] = useState(isAutoKanaOn());
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
@@ -101,20 +99,8 @@ export default function SettingsPage(): JSX.Element {
         <h3>文字の入力</h3>
         <p className="settings-note">
           部位・区分・科目・部位ID・名称ID・単位・計算式の欄は、全角で打っても、日本語入力（ひらがな）のまま打っても、半角の英数字に直します（この動きは常に働きます。Windowsの日本語入力の切り替えそのものはソフトからは変えられないので、打った文字の方を直します）。
-          下の印を付けると、部位名・名称・摘要・コメント・備考・仕上下地摘要の欄で、日本語入力が切れていてもローマ字をひらがなに直します（大文字は全部ひらがなに直せるときだけ。W900・ROOM-A・SD1・t12.5
-          のような記号・寸法はそのまま残ります。日本語入力で変換している間は触らないので、漢字変換はこれまでどおり使えます）。
+          部位名・名称・摘要・コメント・備考・仕上下地摘要の欄は、打った文字をそのまま入れます。日本語はキーボードの「半角/全角」で日本語入力をオンにして打ってください（スペースでの漢字変換はこれまでどおりです）。
         </p>
-        <label className="settings-check">
-          <input
-            type="checkbox"
-            checked={autoKana}
-            onChange={(e) => {
-              setAutoKana(e.target.checked);
-              setAutoKanaState(e.target.checked);
-            }}
-          />
-          日本語の欄でローマ字を自動でひらがなに直す
-        </label>
       </section>
     </div>
   );
