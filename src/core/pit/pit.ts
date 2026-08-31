@@ -74,13 +74,15 @@ export interface PitPoint {
   y: number;
 }
 
-/** 天井付き梁型（X方向・Y方向のどちらかに通る） */
+/** 天井付き梁型（X方向・Y方向、または斜めの壁に沿う梁） */
 export interface PitBeam {
   id: string;
   /** どのピットに付くか */
   pitId: string;
-  /** X：よこ向きに通る梁／Y：たて向きに通る梁 */
-  axis: "X" | "Y";
+  /** X：よこ向きに通る梁／Y：たて向きに通る梁／E：壁（辺）に沿う梁 */
+  axis: "X" | "Y" | "E";
+  /** Eのとき、どの辺に沿わせるか（形の角の番号。角i→角i+1の辺） */
+  edge?: number;
   /** 梁幅 */
   width: number;
   /** 梁成 */
@@ -575,6 +577,50 @@ export function pitLabelPoint(pit: PitShape): PitPoint {
   return { x: round4(best.x), y: round4(best.y) };
 }
 
+/** ピットの壁の1辺（斜めの壁に梁を付けるときに使う） */
+export interface PitEdge {
+  /** 何番目の辺か（角i→角i+1） */
+  index: number;
+  from: PitPoint;
+  to: PitPoint;
+  /** 辺の長さ */
+  length: number;
+  /** たて・よこのどちらでもない斜めの辺か */
+  slant: boolean;
+}
+
+/** ピットの壁（辺）の一覧 */
+export function pitEdges(pit: PitShape): PitEdge[] {
+  const points = pitPolygon(pit);
+  return points.map((from, index) => {
+    const to = points[(index + 1) % points.length];
+    return {
+      index,
+      from,
+      to,
+      length: round4(Math.hypot(to.x - from.x, to.y - from.y)),
+      slant:
+        Math.abs(to.x - from.x) > 1e-9 && Math.abs(to.y - from.y) > 1e-9,
+    };
+  });
+}
+
+/** クリックした所に一番近い壁（辺） */
+export function nearestPitEdge(pit: PitShape, at: PitPoint): PitEdge | null {
+  const edges = pitEdges(pit).filter((edge) => edge.length > 0);
+  if (edges.length === 0) return null;
+  let best = edges[0];
+  let near = Number.POSITIVE_INFINITY;
+  edges.forEach((edge) => {
+    const away = distanceToSegment(at, edge.from, edge.to);
+    if (away < near) {
+      near = away;
+      best = edge;
+    }
+  });
+  return best;
+}
+
 /** 図形全体の角の数（ピットごとの角を足したもの） */
 export function pitCornerCount(pits: readonly PitShape[]): number {
   return pits.reduce((total, pit) => total + pitPolygon(pit).length, 0);
@@ -623,7 +669,7 @@ export interface PitBeamLine {
   id: string;
   pitId: string;
   symbol: string;
-  axis: "X" | "Y";
+  axis: "X" | "Y" | "E";
   width: number;
   height: number;
   /** 梁の長さ（壁から壁まで。高い梁に当たる分は引く） */
@@ -635,6 +681,8 @@ export interface PitBeamLine {
   /** 図の中の位置（左上を基準とした梁の中心線） */
   left: number;
   top: number;
+  /** 壁（辺）に沿う梁のときの両端（図全体の座標） */
+  line?: { x1: number; y1: number; x2: number; y2: number };
 }
 
 export const DEFAULT_PIT_GAP = 0.5;
@@ -770,6 +818,12 @@ export function beamSegments(
   beam: PitBeam,
   beams: readonly PitBeam[],
 ): PitBeamSegment[] {
+  if (beam.axis === "E") {
+    const edge = pitEdges(pit).find((each) => each.index === (beam.edge ?? -1));
+    const removed = beam.removed ?? [];
+    if (!edge || edge.length <= 0 || removed.includes(0)) return [];
+    return [{ index: 0, from: 0, to: edge.length }];
+  }
   const span = beam.axis === "X" ? pit.x : pit.y;
   const cuts = beams
     .filter(
@@ -830,6 +884,32 @@ export function beamLines(
       (total, segment) => total + (segment.to - segment.from),
       0,
     );
+    if (beam.axis === "E") {
+      const edge = pitEdges(pit).find(
+        (each) => each.index === (beam.edge ?? -1),
+      );
+      if (!edge) return;
+      lines.push({
+        id: beam.id,
+        pitId: beam.pitId,
+        symbol: rect.symbol,
+        axis: "E",
+        width: beam.width,
+        height: beam.height,
+        length,
+        segments,
+        position: ratio,
+        left: rect.left + (edge.from.x + edge.to.x) / 2,
+        top: rect.top + (edge.from.y + edge.to.y) / 2,
+        line: {
+          x1: rect.left + edge.from.x,
+          y1: rect.top + edge.from.y,
+          x2: rect.left + edge.to.x,
+          y2: rect.top + edge.to.y,
+        },
+      });
+      return;
+    }
     if (beam.axis === "X") {
       lines.push({
         id: beam.id,

@@ -100,6 +100,12 @@
   stroke-width: 0.03;
 }
 
+/* 壁（辺）に沿う梁。斜めの壁にも付く */
+.pit-plan .pit-beam-line {
+  stroke: #e8a76e;
+  stroke-opacity: 0.9;
+}
+
 .pit-print-upper {
   display: flex;
   gap: 8px;

@@ -14,6 +14,8 @@ import {
   removePitCorner,
   beamLength,
   beamLines,
+  pitEdges,
+  nearestPitEdge,
   keepPitPlaces,
   layoutPits,
   normalizeRects,
@@ -687,5 +689,48 @@ describe("記号を置く場所", () => {
     const at = pitLabelPoint(shaped);
     const inNotch = at.x > 1 && at.x < 5 && at.y > base.y - 3;
     expect(inNotch).toBe(false);
+  });
+});
+
+describe("壁（辺）に沿う梁", () => {
+  const slant: PitShape = {
+    ...pit("a", { x: 4, y: 4 }),
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 4 },
+      { x: 0, y: 4 },
+    ],
+  };
+
+  it("斜めの壁の辺を拾える", () => {
+    const edges = pitEdges(slant);
+    expect(edges).toHaveLength(3);
+    expect(edges[0].slant).toBe(true);
+    expect(edges[0].length).toBeCloseTo(Math.hypot(4, 4), 3);
+    expect(edges[2].slant).toBe(false);
+  });
+
+  it("クリックした所に近い辺を選ぶ", () => {
+    expect(nearestPitEdge(slant, { x: 2, y: 2.1 })?.index).toBe(0);
+    expect(nearestPitEdge(slant, { x: 2, y: 3.9 })?.index).toBe(1);
+  });
+
+  it("斜めの壁の梁は辺の長さで数量に入る", () => {
+    const beam: PitBeam = {
+      id: "slant",
+      pitId: "a",
+      axis: "E",
+      edge: 0,
+      width: 0.3,
+      height: 0.6,
+      position: 0,
+    };
+    const length = Math.hypot(4, 4);
+    expect(beamLength(slant, beam, [beam])).toBeCloseTo(length, 3);
+    const [quantity] = pitQuantities([slant], [beam]);
+    expect(quantity.beamBottomArea).toBeCloseTo(0.3 * length, 3);
+    const rects = normalizeRects(layoutPits([slant])).rects;
+    const [line] = beamLines([slant], rects, [beam]);
+    expect(line.line).toEqual({ x1: 0, y1: 0, x2: 4, y2: 4 });
   });
 });

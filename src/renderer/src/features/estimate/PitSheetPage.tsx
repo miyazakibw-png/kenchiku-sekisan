@@ -14,6 +14,7 @@ import {
 } from "../../../../core/room/calcSheet";
 import {
   DEFAULT_PIT_GAP,
+  nearestPitEdge,
   addPitCorner,
   alignPitCorners,
   setPitCorner,
@@ -146,7 +147,7 @@ export default function PitSheetPage({
   const [message, setMessage] = useState("");
   const [warned, setWarned] = useState(false);
   /** 図をクリックしたときに置く梁の向きと寸法（m） */
-  const [beamAxis, setBeamAxis] = useState<"X" | "Y">("X");
+  const [beamAxis, setBeamAxis] = useState<"X" | "Y" | "E">("X");
   const [beamWidth, setBeamWidth] = useState(0.3);
   const [beamHeight, setBeamHeight] = useState(0.6);
   /** 図のクリックで何をするか（梁を置く／形の角を直す） */
@@ -600,6 +601,31 @@ export default function PitSheetPage({
     [beamAxis, beamHeight, beamWidth, changeBeams],
   );
 
+  /** 壁（辺）をクリックして、その壁に沿う梁を置く（斜めの壁にも付く） */
+  const placeEdgeBeam = useCallback(
+    (pitId: string, at: { x: number; y: number }) => {
+      const pit = pits.find((each) => each.id === pitId);
+      const edge = pit ? nearestPitEdge(pit, at) : null;
+      if (!pit || !edge) return;
+      changeBeams((current) => [
+        ...current,
+        {
+          id: newId("beam"),
+          pitId,
+          axis: "E",
+          edge: edge.index,
+          width: beamWidth,
+          height: beamHeight,
+          position: 0,
+        },
+      ]);
+      setMessage(
+        `${pit.symbol} の壁に沿う梁を置きました（長さ ${formatNumber(edge.length, 2)}m）`,
+      );
+    },
+    [beamHeight, beamWidth, changeBeams, pits],
+  );
+
   const drawing = (
     <div className="pit-drawing">
       {plan.rects.length === 0 ? (
@@ -619,7 +645,7 @@ export default function PitSheetPage({
                 onClick={(event) => {
                   if (printMode) return;
                   const box = event.currentTarget.getBoundingClientRect();
-                  if (planMode === "shape") {
+                  if (planMode === "shape" || beamAxis === "E") {
                     const svg = event.currentTarget.ownerSVGElement;
                     if (!svg) return;
                     const area = svg.getBoundingClientRect();
@@ -633,7 +659,8 @@ export default function PitSheetPage({
                       ((event.clientY - area.top) / area.height) *
                         (plan.height + 2) -
                       rect.top;
-                    addCorner(rect.id, px, py);
+                    if (planMode === "shape") addCorner(rect.id, px, py);
+                    else placeEdgeBeam(rect.id, { x: px, y: py });
                     return;
                   }
                   const ratio =
@@ -648,7 +675,18 @@ export default function PitSheetPage({
           {[...plan.beams]
             .sort((a, b) => a.height - b.height)
             .flatMap((beam) =>
-              beam.segments.map((segment, index) => (
+              beam.segments.map((segment, index) =>
+                beam.line ? (
+                  <line
+                    key={`${beam.id}-${index}`}
+                    x1={beam.line.x1}
+                    y1={beam.line.y1}
+                    x2={beam.line.x2}
+                    y2={beam.line.y2}
+                    strokeWidth={beam.width}
+                    className="pit-beam-line"
+                  />
+                ) : (
                 <rect
                   key={`${beam.id}-${index}`}
                   x={
@@ -669,7 +707,8 @@ export default function PitSheetPage({
                   }
                   className="pit-beam"
                 />
-              )),
+                ),
+              ),
             )}
           {plan.rects.map((rect) => {
             const pit = pits.find((each) => each.id === rect.id);
@@ -1185,18 +1224,22 @@ export default function PitSheetPage({
                       <>
                         <td rowSpan={span}>{beam.symbol}</td>
                         <td rowSpan={span}>
-                          <select
-                            value={beam.axis}
-                            onChange={(e) =>
-                              editBeam(beam.id, {
-                                axis: e.target.value === "Y" ? "Y" : "X",
-                                removed: [],
-                              })
-                            }
-                          >
-                            <option value="X">X方向</option>
-                            <option value="Y">Y方向</option>
-                          </select>
+                          {beam.axis === "E" ? (
+                            "壁沿い（斜め可）"
+                          ) : (
+                            <select
+                              value={beam.axis}
+                              onChange={(e) =>
+                                editBeam(beam.id, {
+                                  axis: e.target.value === "Y" ? "Y" : "X",
+                                  removed: [],
+                                })
+                              }
+                            >
+                              <option value="X">X方向</option>
+                              <option value="Y">Y方向</option>
+                            </select>
+                          )}
                         </td>
                         <td className="num" rowSpan={span}>
                           <input
@@ -1226,6 +1269,9 @@ export default function PitSheetPage({
                           />
                         </td>
                         <td className="num" rowSpan={span}>
+                          {beam.axis === "E" ? (
+                            "壁の上"
+                          ) : (
                           <input
                             data-half="1"
                             className="num"
@@ -1243,6 +1289,7 @@ export default function PitSheetPage({
                               });
                             }}
                           />
+                          )}
                         </td>
                       </>
                     )}
@@ -1451,10 +1498,19 @@ export default function PitSheetPage({
               向き
               <select
                 value={beamAxis}
-                onChange={(e) => setBeamAxis(e.target.value === "Y" ? "Y" : "X")}
+                onChange={(e) =>
+                  setBeamAxis(
+                    e.target.value === "Y"
+                      ? "Y"
+                      : e.target.value === "E"
+                        ? "E"
+                        : "X",
+                  )
+                }
               >
                 <option value="X">X方向（よこ）</option>
                 <option value="Y">Y方向（たて）</option>
+                <option value="E">壁沿い（斜めの壁も／壁の近くをクリック）</option>
               </select>
             </label>
             <label>
