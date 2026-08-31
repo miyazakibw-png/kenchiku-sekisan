@@ -3,12 +3,11 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
-  readFileSync,
   rmSync,
   statSync,
 } from "fs";
-import { dirname, extname, join } from "path";
-import { execFileSync } from "child_process";
+import { dirname, join } from "path";
+import { fileToDataUrl, readWindowsClipboardImage } from "./clipboardImage";
 import {
   app,
   BrowserWindow,
@@ -753,21 +752,22 @@ function registerIpcHandlers(): void {
   );
   // Shift+Windows+S の切り取りや、コピーした画像ファイルを取り込む
   ipcMain.handle(IPC.clipboardImage, () => {
-    const formats = clipboard.availableFormats().join(" / ");
-    const fromWindows = clipboardImageWindows();
-    if (fromWindows !== "")
-      return { image: fromWindows, note: `Windows（${formats}）` };
-    const fromFile = clipboardImageFile();
-    if (fromFile !== "")
-      return { image: fromFile, note: `ファイル（${formats}）` };
+    const fromWindows = readWindowsClipboardImage();
+    if (fromWindows.image !== "") return fromWindows;
     const fromHtml = clipboardImageHtml();
-    if (fromHtml !== "") return { image: fromHtml, note: `HTML（${formats}）` };
+    if (fromHtml !== "") return { image: fromHtml, note: "HTMLの画像" };
     const image = clipboard.readImage();
-    if (image.isEmpty()) return { image: "", note: `画像なし（${formats}）` };
+    const formats = clipboard.availableFormats().join(" / ");
+    if (image.isEmpty())
+      return {
+        image: "",
+        note:
+          fromWindows.note === "" ? `画像なし（${formats}）` : fromWindows.note,
+      };
     const size = image.getSize();
     return {
       image: image.toDataURL(),
-      note: `画像 ${size.width}×${size.height}（${formats}）`,
+      note: `絵 ${size.width}×${size.height}（${formats}）`,
     };
   });
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
@@ -775,91 +775,6 @@ function registerIpcHandlers(): void {
     const window = BrowserWindow.fromWebContents(event.sender);
     return window ? await setImeMode(window, mode) : "画面がありません";
   });
-}
-
-const IMAGE_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".bmp": "image/bmp",
-  ".webp": "image/webp",
-};
-
-/**
- * エクスプローラーで画像ファイルをコピーしたとき、そのファイルを読んでdata URLにする。
- * （このときクリップボードの絵はファイルのアイコンなので、そのままでは使えない）
- */
-function clipboardImageFile(): string {
-  const names = ["FileNameW", "FileName", "public.file-url", "text/uri-list"];
-  for (const name of names) {
-    let path = "";
-    try {
-      const buffer = clipboard.readBuffer(name);
-      if (buffer.length === 0) continue;
-      path = (
-        name === "FileNameW" ? buffer.toString("ucs2") : buffer.toString("utf8")
-      )
-        .replace(/\0+$/, "")
-        .split(/\r?\n/)[0]
-        .trim();
-    } catch {
-      continue;
-    }
-    if (path.startsWith("file:///")) path = decodeURI(path.slice(8));
-    if (path === "") continue;
-    const type = IMAGE_TYPES[extname(path).toLowerCase()];
-    if (type === undefined || !existsSync(path)) continue;
-    try {
-      return `data:${type};base64,${readFileSync(path).toString("base64")}`;
-    } catch {
-      continue;
-    }
-  }
-  return "";
-}
-
-const CLIP_SCRIPT = [
-  "Add-Type -AssemblyName System.Windows.Forms",
-  "Add-Type -AssemblyName System.Drawing",
-  "$out = ''",
-  "if ([Windows.Forms.Clipboard]::ContainsFileDropList()) {",
-  "  $list = [Windows.Forms.Clipboard]::GetFileDropList()",
-  "  if ($list.Count -gt 0) { $out = $list[0] }",
-  "}",
-  "if ($out -eq '' -and [Windows.Forms.Clipboard]::ContainsImage()) {",
-  "  $img = [Windows.Forms.Clipboard]::GetImage()",
-  "  $path = Join-Path $env:TEMP 'sekisan_clipboard.png'",
-  "  $img.Save($path, [Drawing.Imaging.ImageFormat]::Png)",
-  "  $out = $path",
-  "}",
-  "Write-Output $out",
-].join("; ");
-
-/**
- * Windowsのクリップボードを、ワードやペイントと同じやり方（.NET）で読む。
- * 切り取り画像も、コピーした画像ファイルも、これで取り込める。
- */
-function clipboardImageWindows(): string {
-  if (process.platform !== "win32") return "";
-  let path = "";
-  try {
-    path = execFileSync(
-      "powershell.exe",
-      ["-NoProfile", "-Sta", "-Command", CLIP_SCRIPT],
-      { encoding: "utf8", timeout: 10000, windowsHide: true },
-    ).trim();
-  } catch {
-    return "";
-  }
-  if (path === "" || !existsSync(path)) return "";
-  const type = IMAGE_TYPES[extname(path).toLowerCase()];
-  if (type === undefined) return "";
-  try {
-    return `data:${type};base64,${readFileSync(path).toString("base64")}`;
-  } catch {
-    return "";
-  }
 }
 
 /** Word・PDF・ブラウザなどからのコピーで、HTMLの中にある画像を取り出す */
@@ -875,14 +790,7 @@ function clipboardImageHtml(): string {
   const source = found[1];
   if (source.startsWith("data:image/")) return source;
   if (!source.startsWith("file:///")) return "";
-  const path = decodeURI(source.slice(8));
-  const type = IMAGE_TYPES[extname(path).toLowerCase()];
-  if (type === undefined || !existsSync(path)) return "";
-  try {
-    return `data:${type};base64,${readFileSync(path).toString("base64")}`;
-  } catch {
-    return "";
-  }
+  return fileToDataUrl(decodeURI(source.slice(8)));
 }
 
 const AUTO_BACKUP_KEEP = 10;
