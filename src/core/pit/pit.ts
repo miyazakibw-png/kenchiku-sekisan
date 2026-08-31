@@ -810,6 +810,38 @@ export function normalizeRects(rects: readonly PitRect[]): {
 }
 
 /**
+ * 梁の通り道のうち、形の中に入っている区間。
+ * 斜めの壁や欠き込みで切られるので、四角の端から端までではなくこの区間を使う。
+ */
+function insideSpans(
+  pit: PitShape,
+  axis: "X" | "Y",
+  at: number,
+): { from: number; to: number }[] {
+  const points = pitPolygon(pit);
+  const span = axis === "X" ? pit.x : pit.y;
+  if (points.length < 3) return [{ from: 0, to: span }];
+  const hits: number[] = [];
+  points.forEach((a, index) => {
+    const b = points[(index + 1) % points.length];
+    const a0 = axis === "X" ? a.y : a.x;
+    const b0 = axis === "X" ? b.y : b.x;
+    if (a0 > at === b0 > at) return;
+    const a1 = axis === "X" ? a.x : a.y;
+    const b1 = axis === "X" ? b.x : b.y;
+    hits.push(a1 + ((b1 - a1) * (at - a0)) / (b0 - a0));
+  });
+  hits.sort((a, b) => a - b);
+  const spans: { from: number; to: number }[] = [];
+  for (let index = 0; index + 1 < hits.length; index += 2) {
+    const from = round4(Math.max(hits[index], 0));
+    const to = round4(Math.min(hits[index + 1], span));
+    if (to - from > 1e-6) spans.push({ from, to });
+  }
+  return spans.length > 0 ? spans : [{ from: 0, to: span }];
+}
+
+/**
  * 梁の区間。壁から壁までを、梁成Hの高い直交する梁で分けて1本ずつにする。
  * 消した本（removed）は外す。
  */
@@ -825,6 +857,8 @@ export function beamSegments(
     return [{ index: 0, from: 0, to: edge.length }];
   }
   const span = beam.axis === "X" ? pit.x : pit.y;
+  const across = beam.axis === "X" ? pit.y : pit.x;
+  const at = Math.min(Math.max(beam.position, 0), 1) * across;
   const cuts = beams
     .filter(
       (other) =>
@@ -843,14 +877,17 @@ export function beamSegments(
     .sort((a, b) => a.from - b.from);
 
   const pieces: PitBeamSegment[] = [];
-  let start = 0;
-  cuts.forEach((cut) => {
-    if (cut.from > start)
-      pieces.push({ index: pieces.length, from: start, to: cut.from });
-    start = Math.max(start, cut.to);
+  insideSpans(pit, beam.axis, at).forEach((inside) => {
+    let start = inside.from;
+    cuts.forEach((cut) => {
+      if (cut.to <= start || cut.from >= inside.to) return;
+      if (cut.from > start)
+        pieces.push({ index: pieces.length, from: start, to: cut.from });
+      start = Math.max(start, cut.to);
+    });
+    if (start < inside.to)
+      pieces.push({ index: pieces.length, from: start, to: inside.to });
   });
-  if (start < span)
-    pieces.push({ index: pieces.length, from: start, to: span });
   const removed = beam.removed ?? [];
   return pieces.filter((piece) => !removed.includes(piece.index));
 }

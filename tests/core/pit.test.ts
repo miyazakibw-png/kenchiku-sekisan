@@ -13,6 +13,7 @@ import {
   rectanglePit,
   removePitCorner,
   beamLength,
+  beamSegments,
   beamLines,
   pitEdges,
   nearestPitEdge,
@@ -732,5 +733,52 @@ describe("壁（辺）に沿う梁", () => {
     const rects = normalizeRects(layoutPits([slant])).rects;
     const [line] = beamLines([slant], rects, [beam]);
     expect(line.line).toEqual({ x1: 0, y1: 0, x2: 4, y2: 4 });
+  });
+});
+
+describe("斜めの壁で梁を切る", () => {
+  const slant: PitShape = {
+    ...pit("a", { x: 4, y: 4 }),
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 4 },
+      { x: 0, y: 4 },
+    ],
+  };
+
+  it("X方向の梁は斜めの壁で止まる", () => {
+    const beam: PitBeam = {
+      id: "x",
+      pitId: "a",
+      axis: "X",
+      width: 0.3,
+      height: 0.6,
+      position: 0.5,
+    };
+    expect(beamSegments(slant, beam, [beam])).toEqual([
+      { index: 0, from: 0, to: 2 },
+    ]);
+  });
+
+  it("コ型の欠き込みでも梁が分かれる", () => {
+    const shaped: PitShape = {
+      ...setPitKind(pit("b", { x: 6, y: 4 }), "U"),
+      cutW: 2,
+      cutD: 3,
+      cutAt: 2,
+      cutSide: "top",
+    };
+    const beam: PitBeam = {
+      id: "x2",
+      pitId: "b",
+      axis: "X",
+      width: 0.3,
+      height: 0.6,
+      position: 0.25,
+    };
+    expect(beamSegments(shaped, beam, [beam])).toEqual([
+      { index: 0, from: 0, to: 2 },
+      { index: 1, from: 4, to: 6 },
+    ]);
   });
 });
