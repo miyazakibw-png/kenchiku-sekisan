@@ -14,9 +14,13 @@ import {
 } from "../../../../core/room/calcSheet";
 import {
   DEFAULT_PIT_GAP,
+  addPitCorner,
   beamLines,
   beamSegments,
   layoutPits,
+  movePitCorner,
+  rectanglePit,
+  removePitCorner,
   normalizeRects,
   pitCornerCount,
   pitPolygon,
@@ -27,7 +31,6 @@ import {
   pitVariables,
   type PitAlign,
   type PitBeam,
-  type PitCorner,
   type PitDirection,
   type PitShape,
 } from "../../../../core/pit/pit";
@@ -37,13 +40,6 @@ import CalcPrintSheet from "../print/CalcPrintSheet";
 import "./RoomSheetPage.css";
 import "./PitSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
-
-const PIT_CORNERS: { key: PitCorner; mark: string; name: string }[] = [
-  { key: "tl", mark: "◤", name: "左上" },
-  { key: "tr", mark: "◥", name: "右上" },
-  { key: "bl", mark: "◣", name: "左下" },
-  { key: "br", mark: "◢", name: "右下" },
-];
 
 /** セットの部位名（左端の部位。空なら明細の部位名で見る） */
 function partOfSet(set: CalcSet | undefined): string {
@@ -79,6 +75,7 @@ const DIRECTIONS: { key: PitDirection; label: string }[] = [
   { key: "left", label: "←（左）" },
   { key: "up", label: "↑（上）" },
   { key: "down", label: "↓（下）" },
+  { key: "free", label: "自由（位置指定）" },
 ];
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -136,6 +133,14 @@ export default function PitSheetPage({
   const [beamAxis, setBeamAxis] = useState<"X" | "Y">("X");
   const [beamWidth, setBeamWidth] = useState(0.3);
   const [beamHeight, setBeamHeight] = useState(0.6);
+  /** 図のクリックで何をするか（梁を置く／形の角を直す） */
+  const [planMode, setPlanMode] = useState<"beam" | "shape">("beam");
+  /** 選んでいる角（○印） */
+  const [corner, setCorner] = useState<{ pitId: string; index: number } | null>(
+    null,
+  );
+  /** 角を動かす寸法（m） */
+  const [cornerStep, setCornerStep] = useState(1);
 
   const { markSaved } = useSaveOnLeave({ pits, beams, lower, note }, () =>
     save(),
@@ -331,6 +336,65 @@ export default function PitSheetPage({
     );
   }, []);
 
+  /** 選んだ角を上下左右へ動かす（右・下がプラス） */
+  const moveCorner = useCallback(
+    (dx: number, dy: number) => {
+      if (!corner) {
+        setMessage("図の角（○印）を選んでから↑↓→←を押してください");
+        return;
+      }
+      setPits((current) =>
+        current.map((pit) =>
+          pit.id === corner.pitId
+            ? movePitCorner(pit, corner.index, dx, dy)
+            : pit,
+        ),
+      );
+      setMessage(
+        `角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
+      );
+    },
+    [corner],
+  );
+
+  /** 辺の近くをクリックしたら、その場所へ角を足す */
+  const addCorner = useCallback((pitId: string, x: number, y: number) => {
+    setPits((current) =>
+      current.map((pit) =>
+        pit.id === pitId ? addPitCorner(pit, { x, y }) : pit,
+      ),
+    );
+    setMessage("角を足しました（○印を選んで↑↓→←で動かします）");
+  }, []);
+
+  /** 選んだ角を消す */
+  const dropCorner = useCallback(() => {
+    if (!corner) {
+      setMessage("図の角（○印）を選んでから押してください");
+      return;
+    }
+    setPits((current) =>
+      current.map((pit) =>
+        pit.id === corner.pitId ? removePitCorner(pit, corner.index) : pit,
+      ),
+    );
+    setCorner(null);
+    setMessage("角を消しました");
+  }, [corner]);
+
+  /** 選んだ角のピットを四角に戻す */
+  const resetShape = useCallback(() => {
+    if (!corner) {
+      setMessage("図の角（○印）を選んでから押してください");
+      return;
+    }
+    setPits((current) =>
+      current.map((pit) => (pit.id === corner.pitId ? rectanglePit(pit) : pit)),
+    );
+    setCorner(null);
+    setMessage("四角に戻しました");
+  }, [corner]);
+
   /** 図の中をクリックすると、そのピットへ梁を置く（長さは当たる壁まで自動） */
   const placeBeam = useCallback(
     (pitId: string, ratio: number) => {
@@ -368,6 +432,23 @@ export default function PitSheetPage({
                 onClick={(event) => {
                   if (printMode) return;
                   const box = event.currentTarget.getBoundingClientRect();
+                  if (planMode === "shape") {
+                    const svg = event.currentTarget.ownerSVGElement;
+                    if (!svg) return;
+                    const area = svg.getBoundingClientRect();
+                    const px =
+                      -1 +
+                      ((event.clientX - area.left) / area.width) *
+                        (plan.width + 2) -
+                      rect.left;
+                    const py =
+                      -1 +
+                      ((event.clientY - area.top) / area.height) *
+                        (plan.height + 2) -
+                      rect.top;
+                    addCorner(rect.id, px, py);
+                    return;
+                  }
                   const ratio =
                     beamAxis === "X"
                       ? (event.clientY - box.top) / box.height
@@ -417,6 +498,33 @@ export default function PitSheetPage({
                 />
               )),
             )}
+          {!printMode &&
+            planMode === "shape" &&
+            plan.rects.flatMap((rect) => {
+              const pit = pits.find((each) => each.id === rect.id);
+              if (!pit) return [];
+              const size = Math.max(plan.width, plan.height) / 70;
+              return pitPolygon(pit).map((point, index) => (
+                <circle
+                  key={`${rect.id}-${index}`}
+                  cx={rect.left + point.x}
+                  cy={rect.top + point.y}
+                  r={size}
+                  className={
+                    corner?.pitId === rect.id && corner.index === index
+                      ? "pit-corner on"
+                      : "pit-corner"
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setCorner({ pitId: rect.id, index });
+                    setMessage(
+                      `${rect.symbol} の角を選びました（↑↓→←で動かします）`,
+                    );
+                  }}
+                />
+              ));
+            })}
         </svg>
       )}
     </div>
@@ -508,13 +616,11 @@ export default function PitSheetPage({
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
-                <th>斜めの角</th>
-                <th className="num">斜めX（m）</th>
-                <th className="num">斜めY（m）</th>
+                <th>形</th>
                 <th>基準</th>
                 <th>置き方</th>
-                <th>そろえ</th>
-                <th className="num">すき間（m）</th>
+                <th>そろえ／Y位置</th>
+                <th className="num">すき間／X位置</th>
                 <th className="num">床面積</th>
                 <th className="num">壁面長さ</th>
                 <th className="num">壁面面積</th>
@@ -535,26 +641,38 @@ export default function PitSheetPage({
                     {pit.symbol}
                   </td>
                   <td className="num">
-                    <input
-                      data-half="1"
-                      className="num"
-                      defaultValue={pit.x}
-                      key={`x-${pit.id}-${pit.x}`}
-                      onBlur={(e) =>
-                        editPit(pit.id, { x: parseNumber(e.target.value) ?? 0 })
-                      }
-                    />
+                    {pit.points ? (
+                      formatNumber(pit.x, 2)
+                    ) : (
+                      <input
+                        data-half="1"
+                        className="num"
+                        defaultValue={pit.x}
+                        key={`x-${pit.id}-${pit.x}`}
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            x: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    )}
                   </td>
                   <td className="num">
-                    <input
-                      data-half="1"
-                      className="num"
-                      defaultValue={pit.y}
-                      key={`y-${pit.id}-${pit.y}`}
-                      onBlur={(e) =>
-                        editPit(pit.id, { y: parseNumber(e.target.value) ?? 0 })
-                      }
-                    />
+                    {pit.points ? (
+                      formatNumber(pit.y, 2)
+                    ) : (
+                      <input
+                        data-half="1"
+                        className="num"
+                        defaultValue={pit.y}
+                        key={`y-${pit.id}-${pit.y}`}
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            y: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    )}
                   </td>
                   <td className="num">
                     <input
@@ -569,54 +687,7 @@ export default function PitSheetPage({
                       }
                     />
                   </td>
-                  <td className="corners">
-                    {PIT_CORNERS.map((corner) => (
-                      <label key={corner.key} title={`${corner.name}を斜めに`}>
-                        <input
-                          type="checkbox"
-                          checked={(pit.corners ?? []).includes(corner.key)}
-                          onChange={(e) =>
-                            editPit(pit.id, {
-                              corners: e.target.checked
-                                ? [...(pit.corners ?? []), corner.key]
-                                : (pit.corners ?? []).filter(
-                                    (each) => each !== corner.key,
-                                  ),
-                            })
-                          }
-                        />
-                        {corner.mark}
-                      </label>
-                    ))}
-                  </td>
-                  <td className="num">
-                    <input
-                      data-half="1"
-                      className="num"
-                      defaultValue={pit.cutX ?? 0}
-                      key={`cx-${pit.id}-${pit.cutX ?? 0}`}
-                      title="斜めのX方向の量"
-                      onBlur={(e) =>
-                        editPit(pit.id, {
-                          cutX: parseNumber(e.target.value) ?? 0,
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="num">
-                    <input
-                      data-half="1"
-                      className="num"
-                      defaultValue={pit.cutY ?? 0}
-                      key={`cy-${pit.id}-${pit.cutY ?? 0}`}
-                      title="斜めのY方向の量"
-                      onBlur={(e) =>
-                        editPit(pit.id, {
-                          cutY: parseNumber(e.target.value) ?? 0,
-                        })
-                      }
-                    />
-                  </td>
+                  <td>{`${pitPolygon(pit).length}角`}</td>
                   <td>
                     {index === 0 ? (
                       "基準（中央）"
@@ -658,6 +729,19 @@ export default function PitSheetPage({
                   <td>
                     {index === 0 ? (
                       ""
+                    ) : pit.direction === "free" ? (
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`oy-${pit.id}-${pit.offsetY ?? 0}`}
+                        defaultValue={pit.offsetY ?? 0}
+                        title="基準ピットの上からの位置（m）"
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            offsetY: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
                     ) : (
                       <select
                         value={pit.align ?? "start"}
@@ -681,6 +765,19 @@ export default function PitSheetPage({
                   <td className="num">
                     {index === 0 ? (
                       ""
+                    ) : pit.direction === "free" ? (
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`ox-${pit.id}-${pit.offsetX ?? 0}`}
+                        defaultValue={pit.offsetX ?? 0}
+                        title="基準ピットの左からの位置（m）"
+                        onBlur={(e) =>
+                          editPit(pit.id, {
+                            offsetX: parseNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
                     ) : (
                       <input
                         data-half="1"
@@ -836,8 +933,92 @@ export default function PitSheetPage({
         <section className="pit-plan-area">
           <div className="section-bar">
             <h3>
-              平面図（クリックで梁型を置く）／全体 {pitCornerCount(pits)}角
+              平面図（
+              {planMode === "beam"
+                ? "クリックで梁型を置く"
+                : "○角を選んで↑↓→←で動かす／辺をクリックで角を足す"}）／全体{" "}
+              {pitCornerCount(pits)}角
             </h3>
+            <button
+              type="button"
+              className={planMode === "shape" ? "on" : ""}
+              title="図の角を動かして台形・Ｌ型・コ型を作ります"
+              onClick={() => {
+                setPlanMode(planMode === "shape" ? "beam" : "shape");
+                setCorner(null);
+                setMessage(
+                  planMode === "shape"
+                    ? "梁を置くに戻しました"
+                    : "形を直します（○角を選んで↑↓→←、辺をクリックで角を足す）",
+                );
+              }}
+            >
+              {planMode === "shape" ? "○ 形を直す（中）" : "○ 形を直す"}
+            </button>
+            {planMode === "shape" && (
+              <>
+                <label>
+                  動かす寸法（m）
+                  <input
+                    data-half="1"
+                    className="num"
+                    defaultValue={cornerStep}
+                    onBlur={(e) =>
+                      setCornerStep(parseNumber(e.target.value) ?? 1)
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  title="選んだ角を左へ"
+                  onClick={() => moveCorner(-cornerStep, 0)}
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  title="選んだ角を右へ"
+                  onClick={() => moveCorner(cornerStep, 0)}
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  title="選んだ角を上へ"
+                  onClick={() => moveCorner(0, -cornerStep)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  title="選んだ角を下へ"
+                  onClick={() => moveCorner(0, cornerStep)}
+                >
+                  ↓
+                </button>
+                <button type="button" onClick={dropCorner}>
+                  角を消す
+                </button>
+                <button type="button" onClick={resetShape}>
+                  □ 四角に戻す
+                </button>
+                <span className="status">
+                  {corner === null
+                    ? "角（○印）を選んでください"
+                    : (() => {
+                        const pit = pits.find(
+                          (each) => each.id === corner.pitId,
+                        );
+                        const point = pit
+                          ? pitPolygon(pit)[corner.index]
+                          : undefined;
+                        return point
+                          ? `${pit?.symbol} の角 X=${formatNumber(point.x, 2)} Y=${formatNumber(point.y, 2)}`
+                          : "";
+                      })()}
+                </span>
+              </>
+            )}
             <label>
               向き
               <select
@@ -887,6 +1068,9 @@ export default function PitSheetPage({
       />
 
       <p className="hint">
+        形（台形・Ｌ型・コ型）は「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。
+        Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
+        <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
         FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積 は全部の合計、FA1・WA1・CA1・DP1 …はピットごとです。
       </p>

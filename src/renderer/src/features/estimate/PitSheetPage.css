@@ -130,3 +130,20 @@
   margin: 0 1px 0 0;
   vertical-align: middle;
 }
+
+.pit-plan .pit-corner {
+  fill: #fff;
+  stroke: #0b5cab;
+  stroke-width: 0.03;
+  cursor: pointer;
+}
+
+.pit-plan .pit-corner.on {
+  fill: #f0a03c;
+  stroke: #b45f06;
+}
+
+.pit-plan-area .section-bar button.on {
+  background: #dce9f7;
+  font-weight: bold;
+}

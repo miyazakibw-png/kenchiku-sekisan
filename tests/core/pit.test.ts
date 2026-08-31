@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PIT_GAP,
+  addPitCorner,
+  movePitCorner,
+  rectanglePit,
+  removePitCorner,
   beamLength,
   beamLines,
   layoutPits,
@@ -294,5 +298,64 @@ describe("Ｐ記号は部位で中身が変わる", () => {
 
   it("部位が空のときは床面積", () => {
     expect(pitPartVariables(quantities, "").P1).toBeCloseTo(8, 6);
+  });
+});
+
+describe("角を動かして形を作る", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 2,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("右上の角を左へ動かすと台形になる（X・Yは最大寸法のまま）", () => {
+    const pit = movePitCorner(base, 1, -1, 0);
+    expect(pitPolygon(pit)).toEqual([
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+      { x: 4, y: 2 },
+      { x: 0, y: 2 },
+    ]);
+    expect(pit.x).toBe(4);
+    expect(pit.y).toBe(2);
+    expect(pitQuantities([pit], [])[0].floorArea).toBeCloseTo(7, 6);
+  });
+
+  it("辺の近くをクリックすると角が増え、動かすとＬ型になる", () => {
+    const added = addPitCorner(base, { x: 2, y: 0 });
+    expect(pitPolygon(added).length).toBe(5);
+    const shaped = movePitCorner(added, 1, 0, 1);
+    expect(pitCornerCount([shaped])).toBe(5);
+    expect(pitQuantities([shaped], [])[0].floorArea).toBeCloseTo(6, 6);
+  });
+
+  it("角は3つより減らさない・四角に戻せる", () => {
+    const pit = movePitCorner(base, 1, -1, 0);
+    const three = removePitCorner(pit, 0);
+    expect(pitPolygon(three).length).toBe(3);
+    expect(pitPolygon(removePitCorner(three, 0)).length).toBe(3);
+    expect(pitPolygon(rectanglePit(pit)).length).toBe(4);
+    expect(pitQuantities([rectanglePit(pit)], [])[0].floorArea).toBeCloseTo(8, 6);
+  });
+
+  it("置き方が自由のときは基準ピットからの位置で置く", () => {
+    const second: PitShape = {
+      ...base,
+      id: "b",
+      symbol: "Ｐ2",
+      x: 1,
+      y: 1,
+      direction: "free",
+      offsetX: 2,
+      offsetY: 0.5,
+      baseId: "a",
+    };
+    const rects = layoutPits([base, second]);
+    expect(rects[1].left).toBe(2);
+    expect(rects[1].top).toBe(0.5);
   });
 });

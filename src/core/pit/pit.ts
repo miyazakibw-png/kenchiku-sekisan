@@ -5,7 +5,7 @@
  */
 
 /** 前のピットから見た置き方 */
-export type PitDirection = "right" | "left" | "up" | "down";
+export type PitDirection = "right" | "left" | "up" | "down" | "free";
 
 /** 前のピットとどの辺をそろえるか（左右に置くときは上下、上下に置くときは左右） */
 export type PitAlign = "start" | "center" | "end";
@@ -29,11 +29,17 @@ export interface PitShape {
   align?: PitAlign;
   /** どのピットを基準に置くか（未指定はすぐ前のピット） */
   baseId?: string;
-  /** 斜めにする角（隣り合う2つを入れると台形になる） */
+  /** 自由な形の角（左上を0とした座標。無いときは四角） */
+  points?: PitPoint[];
+  /** 置き方が「自由」のときの、基準ピットの左からの位置 */
+  offsetX?: number;
+  /** 置き方が「自由」のときの、基準ピットの上からの位置 */
+  offsetY?: number;
+  /** 斜めにする角（古いデータ用。角を動かす方式に置き換え） */
   corners?: PitCorner[];
-  /** 斜めのX方向の量 */
+  /** 斜めのX方向の量（古いデータ用） */
   cutX?: number;
-  /** 斜めのY方向の量 */
+  /** 斜めのY方向の量（古いデータ用） */
   cutY?: number;
 }
 
@@ -68,6 +74,8 @@ export interface PitBeam {
  * X・Yは最大寸法のまま。斜めにした角は、欠きX・欠きYの分だけ切り落とす。
  */
 export function pitPolygon(pit: PitShape): PitPoint[] {
+  const free = pit.points ?? [];
+  if (free.length >= 3) return free.map((point) => ({ ...point }));
   const cutX = Math.min(Math.max(pit.cutX ?? 0, 0), pit.x);
   const cutY = Math.min(Math.max(pit.cutY ?? 0, 0), pit.y);
   const corners = pit.corners ?? [];
@@ -98,6 +106,96 @@ export function pitPolygon(pit: PitShape): PitPoint[] {
     const before = points[(index + points.length - 1) % points.length];
     return before.x !== point.x || before.y !== point.y;
   });
+}
+
+/** 小数4桁で丸める（角を動かしたときの端数をためない） */
+function round4(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+/** 角の並びを左上0にそろえる */
+function normalizePoints(points: readonly PitPoint[]): PitPoint[] {
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  return points.map((point) => ({
+    x: round4(point.x - minX),
+    y: round4(point.y - minY),
+  }));
+}
+
+/** 角の並びを入れ替えたピット（X・Yは外形の最大寸法に直す） */
+function withPoints(pit: PitShape, points: readonly PitPoint[]): PitShape {
+  const fixed = normalizePoints(points);
+  return {
+    ...pit,
+    points: fixed,
+    x: round4(Math.max(...fixed.map((point) => point.x))),
+    y: round4(Math.max(...fixed.map((point) => point.y))),
+    corners: undefined,
+    cutX: undefined,
+    cutY: undefined,
+  };
+}
+
+/** 選んだ角を上下左右へ動かす（右・下がプラス） */
+export function movePitCorner(
+  pit: PitShape,
+  index: number,
+  dx: number,
+  dy: number,
+): PitShape {
+  const points = pitPolygon(pit);
+  if (index < 0 || index >= points.length) return pit;
+  const moved = points.map((point, at) =>
+    at === index ? { x: point.x + dx, y: point.y + dy } : point,
+  );
+  return withPoints(pit, moved);
+}
+
+/** クリックした場所に近い辺へ角を足す */
+export function addPitCorner(pit: PitShape, at: PitPoint): PitShape {
+  const points = pitPolygon(pit);
+  let bestIndex = 0;
+  let bestPoint: PitPoint = points[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const vx = next.x - point.x;
+    const vy = next.y - point.y;
+    const span = vx * vx + vy * vy;
+    const ratio =
+      span === 0
+        ? 0
+        : Math.min(
+            Math.max(((at.x - point.x) * vx + (at.y - point.y) * vy) / span, 0),
+            1,
+          );
+    const on = { x: point.x + vx * ratio, y: point.y + vy * ratio };
+    const distance = Math.hypot(at.x - on.x, at.y - on.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+      bestPoint = on;
+    }
+  });
+  const next = [...points];
+  next.splice(bestIndex + 1, 0, bestPoint);
+  return withPoints(pit, next);
+}
+
+/** 選んだ角を消す（3つより減らさない） */
+export function removePitCorner(pit: PitShape, index: number): PitShape {
+  const points = pitPolygon(pit);
+  if (points.length <= 3 || index < 0 || index >= points.length) return pit;
+  return withPoints(
+    pit,
+    points.filter((_point, at) => at !== index),
+  );
+}
+
+/** 形を四角に戻す（X・Yはそのまま） */
+export function rectanglePit(pit: PitShape): PitShape {
+  return { ...pit, points: undefined, corners: undefined, cutX: undefined, cutY: undefined };
 }
 
 /** 多角形の面積（座標の順に足し引きして出す） */
@@ -208,6 +306,17 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
     const align = pit.align ?? "start";
     let left = previous.left;
     let top = previous.top;
+    if (pit.direction === "free") {
+      rects.push({
+        id: pit.id,
+        symbol: pit.symbol,
+        left: previous.left + (pit.offsetX ?? 0),
+        top: previous.top + (pit.offsetY ?? 0),
+        x: pit.x,
+        y: pit.y,
+      });
+      return;
+    }
     if (pit.direction === "right" || pit.direction === "left") {
       left =
         pit.direction === "right"
