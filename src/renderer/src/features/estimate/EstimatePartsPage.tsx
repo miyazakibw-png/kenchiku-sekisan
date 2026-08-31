@@ -12,6 +12,7 @@ import { buildPastePreview } from "../grid/gridClipboard";
 import {
   buildEstimateColumns,
   copyRowsInto,
+  duplicateRoomFlags,
   emptyRow,
   formatNumber,
   insertRow,
@@ -70,6 +71,8 @@ export default function EstimatePartsPage({
     [options.formworkCategories],
   );
   const inherited = useMemo(() => resolveInherited(rows), [rows]);
+  /** 同じ部屋名（部位Ⅱ＋部位Ⅲ）が重なっている行 */
+  const duplicated = useMemo(() => duplicateRoomFlags(rows), [rows]);
   /** チェック列（1部位＝名称＋数量の2列）。各行の計算書から拾う */
   const [checks, setChecks] = useState<EstimateRowCheck[]>([]);
   /** ↶戻る・↷進む用の履歴 */
@@ -704,21 +707,31 @@ export default function EstimatePartsPage({
                     />
                   )}
                 </td>
-                <td>
+                <td className={duplicated[index] ? "duplicate-room" : ""}>
                   {isSubtotal ? (
                     <span className="subtotal-label">
                       {row.part3 || "小計"}
                     </span>
                   ) : (
-                    <input
-                      lang="ja"
-                      value={row.part3}
-                      onChange={(e) =>
-                        editRows(
-                          updateRow(rows, index, { part3: e.target.value }),
-                        )
-                      }
-                    />
+                    <>
+                      {duplicated[index] && (
+                        <span
+                          className="duplicate-mark"
+                          title="同じ部位Ⅱ＋部位Ⅲの行が他にもあります。集計は2部屋分になりますが、数量根拠では見分けられません"
+                        >
+                          ⚠
+                        </span>
+                      )}
+                      <input
+                        lang="ja"
+                        value={row.part3}
+                        onChange={(e) =>
+                          editRows(
+                            updateRow(rows, index, { part3: e.target.value }),
+                          )
+                        }
+                      />
+                    </>
                   )}
                 </td>
                 <td>

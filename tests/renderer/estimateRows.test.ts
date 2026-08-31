@@ -3,6 +3,7 @@ import type { EstimateRowDraft } from '../../src/shared/types'
 import {
   buildEstimateColumns,
   copyRowsInto,
+  duplicateRoomFlags,
   emptyRow,
   insertRow,
   moveRow,
@@ -141,5 +142,23 @@ describe('Excelからの貼り付け', () => {
       emptyRow()
     )
     expect(preview.errorCount).toBe(1)
+  })
+})
+
+describe('duplicateRoomFlags', () => {
+  it('部位Ⅱ＋部位Ⅲが同じ部屋の行に印を付ける', () => {
+    const row = (part2: string, part3: string): EstimateRowDraft => ({
+      ...emptyRow(),
+      part2,
+      part3
+    })
+    const rows = [
+      row('1F', '事務所'),
+      row('1F', '事務所'),
+      row('2F', '事務所'),
+      subtotalRow(),
+      row('', '')
+    ]
+    expect(duplicateRoomFlags(rows)).toEqual([true, true, false, false, false])
   })
 })

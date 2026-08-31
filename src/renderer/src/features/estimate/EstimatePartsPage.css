@@ -180,3 +180,14 @@ table.estimate tr.subtotal .subtotal-label {
   max-width: 1000px;
   line-height: 1.6;
 }
+
+/* 同じ部屋名（部位Ⅱ＋部位Ⅲ）が重なっている行の印 */
+.duplicate-room {
+  background: #fff7ed;
+}
+
+.duplicate-mark {
+  color: #c2410c;
+  margin-right: 2px;
+  cursor: help;
+}
