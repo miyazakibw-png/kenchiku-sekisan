@@ -122,7 +122,15 @@ export default function RoomTracePanel({
       if (file) {
         void readAsDataUrl(file).then((dataUrl) => {
           setImage(dataUrl);
-          setMessage(`貼り付けました：ファイル ${file.name}`);
+          const shown = new Image();
+          shown.onload = () =>
+            setMessage(
+              `貼り付けました：${file.name} ${shown.naturalWidth}×${shown.naturalHeight}` +
+                (shown.naturalWidth < 400
+                  ? "（小さすぎます。切り取った図面がクリップボードに入っていないようです）"
+                  : ""),
+            );
+          shown.src = dataUrl;
         });
         return;
       }
