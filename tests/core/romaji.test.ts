@@ -3,6 +3,7 @@ import {
   hasKana,
   kanaToRomaji,
   romajiToKana,
+  typedToKana,
 } from "../../src/core/text/romaji";
 
 describe("romajiToKana", () => {
@@ -24,6 +25,26 @@ describe("romajiToKana", () => {
 
   it("打ちかけの子音は残す", () => {
     expect(romajiToKana("yuk")).toBe("ゆk");
+  });
+});
+
+describe("typedToKana", () => {
+  it("大文字でも全部ひらがなに直せるときは直す", () => {
+    expect(typedToKana("TE")).toBe("て");
+    expect(typedToKana("KABE")).toBe("かべ");
+    expect(typedToKana("Kabe")).toBe("かべ");
+    expect(typedToKana("ビニール床タイル TE")).toBe("ビニール床タイル て");
+  });
+
+  it("記号・寸法はそのまま残す", () => {
+    expect(typedToKana("W900")).toBe("W900");
+    expect(typedToKana("ROOM-A")).toBe("ROOM-A");
+    expect(typedToKana("SD1")).toBe("SD1");
+    expect(typedToKana("t12.5")).toBe("t12.5");
+  });
+
+  it("小文字はこれまでどおり直す", () => {
+    expect(typedToKana("kabe")).toBe("かべ");
   });
 });
 

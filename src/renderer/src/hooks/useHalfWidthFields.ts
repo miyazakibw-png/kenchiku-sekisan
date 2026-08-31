@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { needsHalfWidth, toHalfWidth } from "../../../core/text/halfWidth";
-import { hasKana, kanaToRomaji, romajiToKana } from "../../../core/text/romaji";
+import { hasKana, kanaToRomaji, typedToKana } from "../../../core/text/romaji";
 
 /** 日本語で入れる欄（部位名・名称・摘要・備考など）は lang="ja" を付けて分ける */
 export function isJapaneseField(input: HTMLInputElement): boolean {
@@ -50,7 +50,7 @@ function editable(input: EventTarget | null): input is HTMLInputElement {
 /**
  * 欄ごとに入力の文字を自動で合わせる。
  * ・ID・番号・計算式など半角の欄：全角の英数字を半角へ、かなで打ったらローマ字（半角）へ
- * ・部位名・名称・摘要・備考など日本語の欄：小文字のローマ字をひらがなへ
+ * ・部位名・名称・摘要・備考など日本語の欄：ローマ字をひらがなへ（大文字は全部かなに直せるときだけ）
  * 変換中（IMEで文字を作っている間）は触らず、確定してから直す。
  */
 export function useHalfWidthFields(): void {
@@ -77,7 +77,7 @@ export function useHalfWidthFields(): void {
         // 変換を確定した文字は触らない（漢字変換を壊さない）
         if (!isAutoKanaOn() || event.type === "compositionend") return;
         const head = input.value.slice(0, at);
-        const converted = romajiToKana(head);
+        const converted = typedToKana(head);
         if (converted === head) return;
         setValue(input, converted + input.value.slice(at));
         input.setSelectionRange(converted.length, converted.length);

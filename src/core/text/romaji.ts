@@ -249,6 +249,18 @@ export function romajiToKana(text: string): string {
   return result;
 }
 
+/**
+ * 日本語の欄で打った文字をひらがなへ直す。
+ * 小文字はそのまま直し、大文字は全部ひらがなに直せるときだけ直す
+ * （W900・ROOM-A・t12.5・SD1 のような記号・寸法はそのまま残す）。
+ */
+export function typedToKana(text: string): string {
+  const kana = romajiToKana(text);
+  if (!/[A-Z]/.test(text)) return kana;
+  const upper = romajiToKana(text.toLowerCase());
+  return /[A-Za-z0-9]/.test(upper) ? kana : upper;
+}
+
 const TO_ROMAJI = ((): Record<string, string> => {
   const table: Record<string, string> = {};
   const add = (romaji: string, kana: string): void => {
