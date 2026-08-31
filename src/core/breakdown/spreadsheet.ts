@@ -226,8 +226,8 @@ function pageDetails(value: number, fallback: number): number {
   return Math.floor(value);
 }
 
-function blankRow(): XlsxCell[] {
-  return HEADER.map(() => textCell(""));
+function blankRow(border: RowBorder): XlsxCell[] {
+  return HEADER.map(() => textCell("", border));
 }
 
 /**
@@ -252,7 +252,12 @@ function paginate(
   let remaining = firstPage - title.length;
 
   const fillPage = (): void => {
-    for (let count = 0; count < remaining; count += 1) rows.push(blankRow());
+    // 2段の書式では、空欄も1明細2行として上下段の間に線を入れない
+    for (let count = 0; count < remaining; count += 1) {
+      const border: RowBorder =
+        unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
+      rows.push(blankRow(border));
+    }
     remaining = laterPage;
   };
 

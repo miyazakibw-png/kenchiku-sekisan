@@ -328,8 +328,9 @@ describe("エクセル掃き出し", () => {
     expect(book[0].rows.slice(2).some((row) => row[1].value === "名称")).toBe(
       false,
     );
-    // 明細の無い空欄の行にも罫線を引く
-    expect(book[0].rows[33].every((cell) => cell.border === "one")).toBe(true);
+    // 明細の無い空欄の行にも罫線を引く。2段の書式なので上下段の間には線を入れない
+    expect(book[0].rows[32].every((cell) => cell.border === "upper")).toBe(true);
+    expect(book[0].rows[33].every((cell) => cell.border === "lower")).toBe(true);
   });
 
   it("単位は設定した表記へ置き換える（未入力ならそのまま）", () => {

@@ -47,7 +47,6 @@ import {
   pasteRows,
   pasteSheet,
   rowsAsTsv,
-  SHEET_PART_NAME_COLUMN,
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
@@ -244,6 +243,8 @@ export default function RoomCalcSheet({
   } | null>(null);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
+  /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
+  const lastColumn = useRef<number | null>(null);
   /** 元に戻す・やり直しのための履歴 */
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
@@ -355,9 +356,14 @@ export default function RoomCalcSheet({
     [options],
   );
 
-  /** 入力の変更（履歴に残す） */
+  /** 入力の変更（履歴に残す）。中身が変わらないときは履歴に残さない */
   const commit = useCallback(
     (next: CalcSet[]): void => {
+      // 欄を離れただけなどの変わらない入力で履歴が埋まると、「戻る」が効かなくなる
+      if (JSON.stringify(next) === JSON.stringify(sets)) {
+        onChange(next);
+        return;
+      }
       setPast((rows) => [...rows.slice(-49), sets]);
       setFuture([]);
       onChange(next);
@@ -981,12 +987,14 @@ export default function RoomCalcSheet({
       const text = await navigator.clipboard.readText();
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
-      // カーソルのある列（この列から画面の並びどおりに貼り付ける）
+      // カーソルのある列（この列から画面の並びどおりに貼り付ける）。
+      // 貼付ボタンを押すと欄から離れるので、最後にいた列を覚えておいて使う
       const active = document.activeElement;
-      const cursorColumn =
+      const activeColumn =
         active instanceof HTMLElement && active.dataset.col !== undefined
           ? Number(active.dataset.col)
           : null;
+      const cursorColumn = activeColumn ?? lastColumn.current;
       // コメント行（※行）にカーソルがあるときは、その行が貼り付け先
       const bannerAt =
         bannerSetId === null
@@ -1121,10 +1129,7 @@ export default function RoomCalcSheet({
 
       // 列の多いエクセルの表は、カーソルが明細に無くても明細へ取り込む
       const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
-      const byColumn =
-        cursorColumn !== null &&
-        Number.isFinite(cursorColumn) &&
-        cursorColumn !== SHEET_PART_NAME_COLUMN;
+      const byColumn = cursorColumn !== null && Number.isFinite(cursorColumn);
       if (byColumn || focus?.area === "detail" || (!focus && wideTable)) {
         const at = focus?.index ?? 0;
         const base =
@@ -1163,7 +1168,7 @@ export default function RoomCalcSheet({
         });
         onMessage(
           byColumn
-            ? "Excelの表を、カーソルのある列から画面の並びどおりに貼り付けました"
+            ? "Excelの表を、カーソルのある列から画面の並びどおりに貼り付けました（部位合計・Ａ*Ｂ・累計・記号の列は飛ばします）"
             : "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順。後ろにコメント／計算式Ａ／計算式Ｂがあれば計算式へも入ります）",
         );
         return;
@@ -1312,6 +1317,12 @@ export default function RoomCalcSheet({
   return (
     <div
       className="room-calc-sheet"
+      onFocusCapture={(e) => {
+        const el = e.target;
+        if (!(el instanceof HTMLElement)) return;
+        const col = el.dataset.col;
+        if (col !== undefined) lastColumn.current = Number(col);
+      }}
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
         if (e.key === "c") {
