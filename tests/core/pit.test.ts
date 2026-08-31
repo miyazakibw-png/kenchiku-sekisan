@@ -394,3 +394,41 @@ describe("角をまとめて動かす", () => {
     expect(movePitCorners(base, [9], 0, 1)).toBe(base);
   });
 });
+
+describe("角を動かしても動かしていない角は動かない", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 2,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("上の2つの角を下へ1m動かすと、図では下の辺の位置が変わらない", () => {
+    const pit = movePitCorners(base, [0, 1], 0, 1);
+    const rect = layoutPits([pit])[0];
+    expect(rect.top).toBeCloseTo(1, 6);
+    expect(rect.top + rect.y).toBeCloseTo(2, 6);
+  });
+
+  it("次のピットのすき間は動かした外枠から測る", () => {
+    const first = movePitCorners(base, [1, 2], -1, 0);
+    const second: PitShape = {
+      ...base,
+      id: "b",
+      symbol: "Ｐ2",
+      x: 2,
+      baseId: "a",
+    };
+    const rects = layoutPits([first, second]);
+    expect(rects[1].left).toBeCloseTo(3 + DEFAULT_PIT_GAP, 6);
+  });
+
+  it("四角に戻すとずれも消える", () => {
+    const pit = rectanglePit(movePitCorners(base, [0, 1], 0, 1));
+    const rect = layoutPits([pit])[0];
+    expect(rect.top).toBe(0);
+  });
+});

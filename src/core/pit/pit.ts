@@ -35,6 +35,10 @@ export interface PitShape {
   offsetX?: number;
   /** 置き方が「自由」のときの、基準ピットの上からの位置 */
   offsetY?: number;
+  /** 角を動かして外枠が変わっても図の位置を保つためのずれ（横） */
+  shiftX?: number;
+  /** 角を動かして外枠が変わっても図の位置を保つためのずれ（縦） */
+  shiftY?: number;
   /** 斜めにする角（古いデータ用。角を動かす方式に置き換え） */
   corners?: PitCorner[];
   /** 斜めのX方向の量（古いデータ用） */
@@ -123,12 +127,19 @@ function normalizePoints(points: readonly PitPoint[]): PitPoint[] {
   }));
 }
 
-/** 角の並びを入れ替えたピット（X・Yは外形の最大寸法に直す） */
+/**
+ * 角の並びを入れ替えたピット（X・Yは外形の最大寸法に直す）。
+ * 角を左上に寄せ直した分は、ずれ（shiftX・shiftY）に入れて図の位置を保つ。
+ */
 function withPoints(pit: PitShape, points: readonly PitPoint[]): PitShape {
   const fixed = normalizePoints(points);
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
   return {
     ...pit,
     points: fixed,
+    shiftX: round4((pit.shiftX ?? 0) + minX),
+    shiftY: round4((pit.shiftY ?? 0) + minY),
     x: round4(Math.max(...fixed.map((point) => point.x))),
     y: round4(Math.max(...fixed.map((point) => point.y))),
     corners: undefined,
@@ -208,7 +219,15 @@ export function removePitCorner(pit: PitShape, index: number): PitShape {
 
 /** 形を四角に戻す（X・Yはそのまま） */
 export function rectanglePit(pit: PitShape): PitShape {
-  return { ...pit, points: undefined, corners: undefined, cutX: undefined, cutY: undefined };
+  return {
+    ...pit,
+    points: undefined,
+    shiftX: undefined,
+    shiftY: undefined,
+    corners: undefined,
+    cutX: undefined,
+    cutY: undefined,
+  };
 }
 
 /** 多角形の面積（座標の順に足し引きして出す） */
@@ -310,7 +329,14 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
   const rects: PitRect[] = [];
   pits.forEach((pit, index) => {
     if (index === 0) {
-      rects.push({ id: pit.id, symbol: pit.symbol, left: 0, top: 0, x: pit.x, y: pit.y });
+      rects.push({
+        id: pit.id,
+        symbol: pit.symbol,
+        left: pit.shiftX ?? 0,
+        top: pit.shiftY ?? 0,
+        x: pit.x,
+        y: pit.y,
+      });
       return;
     }
     const previous =
@@ -323,8 +349,8 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
       rects.push({
         id: pit.id,
         symbol: pit.symbol,
-        left: previous.left + (pit.offsetX ?? 0),
-        top: previous.top + (pit.offsetY ?? 0),
+        left: previous.left + (pit.offsetX ?? 0) + (pit.shiftX ?? 0),
+        top: previous.top + (pit.offsetY ?? 0) + (pit.shiftY ?? 0),
         x: pit.x,
         y: pit.y,
       });
@@ -345,7 +371,14 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
       if (align === "center") left = previous.left + (previous.x - pit.x) / 2;
       if (align === "end") left = previous.left + previous.x - pit.x;
     }
-    rects.push({ id: pit.id, symbol: pit.symbol, left, top, x: pit.x, y: pit.y });
+    rects.push({
+      id: pit.id,
+      symbol: pit.symbol,
+      left: left + (pit.shiftX ?? 0),
+      top: top + (pit.shiftY ?? 0),
+      x: pit.x,
+      y: pit.y,
+    });
   });
   return rects;
 }
