@@ -830,6 +830,16 @@ export default function PitSheetPage({
         </tr>
       </thead>
       <tbody>
+        <tr className="pit-total">
+          <td>ＰＡ</td>
+          <td className="num">{formatNumber(total.floorArea, 2)}</td>
+          <td className="num">{formatNumber(total.wallLength, 2)}</td>
+          <td className="num"></td>
+          <td className="num">{formatNumber(total.wallArea, 2)}</td>
+          <td className="num">{formatNumber(total.beamBottomArea, 2)}</td>
+          <td className="num">{formatNumber(total.beamArea, 2)}</td>
+          <td className="num">{formatNumber(total.ceilingArea, 2)}</td>
+        </tr>
         {quantities.map((quantity) => (
           <tr key={quantity.id}>
             <td>{quantity.symbol}</td>

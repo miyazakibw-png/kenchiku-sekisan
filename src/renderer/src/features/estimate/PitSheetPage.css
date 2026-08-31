@@ -112,8 +112,27 @@
   align-items: flex-start;
 }
 
+/* 紙の上では図の幅を決めておく（表がつぶしてしまうと図が出ない） */
 .pit-print-upper .pit-drawing {
-  flex: 1;
+  flex: 0 0 760px;
+  width: 760px;
+  height: 380px;
+  min-height: 0;
+}
+
+.pit-print-upper .pit-drawing .pit-plan {
+  width: 100%;
+  height: 100%;
+}
+
+.pit-print-upper table.pit-quantities {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pit-quantities tr.pit-total td {
+  background: #eef3fb;
+  font-weight: 600;
 }
 
 .pit-list td.symbol {
