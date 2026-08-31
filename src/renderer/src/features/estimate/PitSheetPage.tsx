@@ -388,7 +388,7 @@ export default function PitSheetPage({
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
                 <th>置き方</th>
-                <th className="num">すき間（mm）</th>
+                <th className="num">すき間（m）</th>
                 <th></th>
               </tr>
             </thead>
@@ -458,11 +458,11 @@ export default function PitSheetPage({
                       <input
                         data-half="1"
                         className="num"
-                        defaultValue={Math.round(pit.gap * 1000)}
+                        defaultValue={pit.gap}
                         key={`g-${pit.id}-${pit.gap}`}
                         onBlur={(e) =>
                           editPit(pit.id, {
-                            gap: (parseNumber(e.target.value) ?? 500) / 1000,
+                            gap: parseNumber(e.target.value) ?? DEFAULT_PIT_GAP,
                           })
                         }
                       />
