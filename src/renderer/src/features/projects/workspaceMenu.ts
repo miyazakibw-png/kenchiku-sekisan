@@ -59,6 +59,27 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
+    key: "printCalcAll",
+    label: "計算書一括印刷",
+    group: "input",
+    note: "部位別入力表を表紙に付けて、部屋別・軸組・汎用の計算書を全部A3横で印刷",
+    ready: true,
+  },
+  {
+    key: "printCalcSelect",
+    label: "部屋別計算書印刷",
+    group: "input",
+    note: "部位別入力表からチェックを付けた計算書だけをA3横で印刷（複数可）",
+    ready: true,
+  },
+  {
+    key: "printAggregate",
+    label: "集計書印刷",
+    group: "input",
+    note: "1明細ごとに数量根拠（部屋ごとの拾い）を付けてA4横で印刷",
+    ready: true,
+  },
+  {
     key: "aggregate",
     label: "集計処理",
     group: "aggregate",
@@ -106,13 +127,6 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     group: "output",
     note: "集計書兼工事マスターから材種区分別に抜き出した部位別チェック（Excel貼り付け可）",
     ready: true,
-  },
-  {
-    key: "print",
-    label: "印刷",
-    group: "output",
-    note: "各画面の右上「🖨 印刷／📄 PDF／📊 Excel」から、A3横1枚の幅で出せます",
-    ready: false,
   },
 ];
 

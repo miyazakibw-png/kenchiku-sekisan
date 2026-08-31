@@ -23,6 +23,8 @@ import DetailChangeHistoryPage from "../details/DetailChangeHistoryPage";
 import FittingsPage from "../fittings/FittingsPage";
 import EstimatePartsPage from "../estimate/EstimatePartsPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
+import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
+import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
 import AggregatePage from "../aggregate/AggregatePage";
 import RoomAggregatePage from "../aggregate/RoomAggregatePage";
 import CheckSheetPage from "../aggregate/CheckSheetPage";
@@ -251,6 +253,25 @@ export default function ProjectWorkspacePage({
       <TransferSheetPage
         project={draft}
         options={options}
+        onBack={() => setOpenedMenu(null)}
+      />
+    );
+  }
+
+  if (openedMenu === "printCalcAll" || openedMenu === "printCalcSelect") {
+    return (
+      <CalcPrintLauncher
+        project={draft}
+        mode={openedMenu === "printCalcAll" ? "all" : "select"}
+        onBack={() => setOpenedMenu(null)}
+      />
+    );
+  }
+
+  if (openedMenu === "printAggregate") {
+    return (
+      <AggregatePrintLauncher
+        project={draft}
         onBack={() => setOpenedMenu(null)}
       />
     );
