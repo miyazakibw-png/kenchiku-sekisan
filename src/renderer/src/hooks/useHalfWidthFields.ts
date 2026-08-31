@@ -62,7 +62,10 @@ export function useHalfWidthFields(): void {
       const at = input.selectionStart ?? input.value.length;
 
       if (isHalfWidthField(input)) {
-        const value = toHalfWidth(input.value);
+        // 日本語入力のまま打った「かな」も半角の英数字へ直す
+        let value = input.value;
+        if (hasKana(value)) value = kanaToRomaji(value);
+        value = toHalfWidth(value);
         if (value === input.value) return;
         setValue(input, value);
         const caret = Math.min(at, value.length);
