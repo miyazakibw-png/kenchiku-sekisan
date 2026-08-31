@@ -34,6 +34,13 @@
   padding: 12px;
 }
 
+/* 何枚も続けて並べるので、1枚ずつではなく全部を続けてめくれるようにする */
+.room-calc-print-page > .sheets > .calc-print-sheet {
+  height: auto;
+  overflow: visible;
+  margin-bottom: 12px;
+}
+
 @media print {
   .room-calc-print-page {
     display: block;
