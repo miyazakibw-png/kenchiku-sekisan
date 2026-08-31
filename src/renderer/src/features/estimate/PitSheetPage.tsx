@@ -17,6 +17,7 @@ import {
   nearestPitEdge,
   addPitCorner,
   alignPitCorners,
+  alignPits,
   setPitCorner,
   setPitKind,
   beamLines,
@@ -37,6 +38,7 @@ import {
   pitSymbol,
   pitVariables,
   type PitAlign,
+  type PitAlignSide,
   type PitCorner,
   type PitKind,
   type PitSide,
@@ -160,6 +162,8 @@ export default function PitSheetPage({
   const [cornerStep, setCornerStep] = useState(1);
   /** 「□を作る」で元の形との間に空けるすき間（m） */
   const [notchGap, setNotchGap] = useState(DEFAULT_PIT_GAP);
+  /** まとめてそろえるために選んでいるピット */
+  const [picked, setPicked] = useState<string[]>([]);
 
   const { markSaved } = useSaveOnLeave({ pits, beams, lower, note }, () =>
     save(),
@@ -626,6 +630,31 @@ export default function PitSheetPage({
     [beamHeight, beamWidth, changeBeams, pits],
   );
 
+  /** 選んだピットを、はじめに選んだピットの辺にそろえる */
+  const alignPicked = useCallback(
+    (side: PitAlignSide) => {
+      if (picked.length < 2) {
+        setMessage("そろえるピットを「選」で2つ以上選んでください");
+        return;
+      }
+      planHistory.push({ pits, beams });
+      const next = alignPits(pits, picked, side);
+      setPits(keepPitPlaces(pits, next, picked));
+      const label =
+        side === "left"
+          ? "左の辺"
+          : side === "right"
+            ? "右の辺"
+            : side === "top"
+              ? "上の辺"
+              : "下の辺";
+      setMessage(
+        `選んだ ${picked.length} つのピットを、はじめのＰの${label}にそろえました`,
+      );
+    },
+    [beams, picked, pits, planHistory],
+  );
+
   const drawing = (
     <div className="pit-drawing">
       {plan.rects.length === 0 ? (
@@ -870,10 +899,53 @@ export default function PitSheetPage({
             <button type="button" onClick={addPit}>
               ＋ ピット追加
             </button>
+            <span className="status">
+              そろえ（「選」を2つ以上・はじめのＰに合わせます）
+            </span>
+            <button
+              type="button"
+              title="選んだ四角の左の辺を一直線にします"
+              disabled={picked.length < 2}
+              onClick={() => alignPicked("left")}
+            >
+              左でそろえる
+            </button>
+            <button
+              type="button"
+              title="選んだ四角の右の辺を一直線にします（Ｘ通りに合わせるとき）"
+              disabled={picked.length < 2}
+              onClick={() => alignPicked("right")}
+            >
+              右でそろえる
+            </button>
+            <button
+              type="button"
+              title="選んだ四角の上の辺を一直線にします"
+              disabled={picked.length < 2}
+              onClick={() => alignPicked("top")}
+            >
+              上でそろえる
+            </button>
+            <button
+              type="button"
+              title="選んだ四角の下の辺を一直線にします"
+              disabled={picked.length < 2}
+              onClick={() => alignPicked("bottom")}
+            >
+              下でそろえる
+            </button>
+            <button
+              type="button"
+              disabled={picked.length === 0}
+              onClick={() => setPicked([])}
+            >
+              選び直す
+            </button>
           </div>
           <table className="grid">
             <thead>
               <tr>
+                <th title="まとめてそろえるピットを選びます">選</th>
                 <th>記号</th>
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
@@ -899,6 +971,19 @@ export default function PitSheetPage({
             <tbody>
               {pits.map((pit, index) => (
                 <tr key={pit.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(pit.id)}
+                      onChange={() =>
+                        setPicked((current) =>
+                          current.includes(pit.id)
+                            ? current.filter((each) => each !== pit.id)
+                            : [...current, pit.id],
+                        )
+                      }
+                    />
+                  </td>
                   <td
                     className="symbol"
                     onClick={() => useSymbol(index)}

@@ -756,6 +756,50 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
   return rects;
 }
 
+/** まとめてそろえる辺（左・右・上・下） */
+export type PitAlignSide = "left" | "right" | "top" | "bottom";
+
+/**
+ * 選んだピットを、はじめに選んだピットの辺にそろえる。
+ * 例：右でそろえると、四角の右の辺がＸ通りのように一直線になる。
+ */
+export function alignPits(
+  pits: readonly PitShape[],
+  ids: readonly string[],
+  side: PitAlignSide,
+): PitShape[] {
+  const rects = layoutPits(pits);
+  const chosen = pits.filter((pit) => ids.includes(pit.id));
+  const first = chosen[0]
+    ? rects.find((rect) => rect.id === chosen[0].id)
+    : undefined;
+  if (chosen.length < 2 || !first) return pits.map((pit) => ({ ...pit }));
+  const target =
+    side === "left"
+      ? first.left
+      : side === "right"
+        ? first.left + first.x
+        : side === "top"
+          ? first.top
+          : first.top + first.y;
+  // 基準にしているピットを動かすと他も動くので、1つずつ置き直しながらそろえる
+  let moved = pits.map((pit) => ({ ...pit }));
+  chosen.slice(1).forEach((pit) => {
+    const rect = layoutPits(moved).find((each) => each.id === pit.id);
+    if (!rect) return;
+    moved = moved.map((each) => {
+      if (each.id !== pit.id) return each;
+      if (side === "left" || side === "right") {
+        const now = side === "left" ? rect.left : rect.left + rect.x;
+        return { ...each, shiftX: round4((each.shiftX ?? 0) + (target - now)) };
+      }
+      const now = side === "top" ? rect.top : rect.top + rect.y;
+      return { ...each, shiftY: round4((each.shiftY ?? 0) + (target - now)) };
+    });
+  });
+  return moved;
+}
+
 /**
  * 形を直したあとも、直していないピットが図の上で動かないようにする。
  * 基準にしたピットの外形が変わると置き位置も変わるので、そのずれを打ち消す。

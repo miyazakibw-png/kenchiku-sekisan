@@ -3,6 +3,7 @@ import {
   DEFAULT_PIT_GAP,
   addPitCorner,
   alignPitCorners,
+  alignPits,
   setPitCorner,
   pitLabelPoint,
   pitNotch,
@@ -780,5 +781,24 @@ describe("斜めの壁で梁を切る", () => {
       { index: 0, from: 0, to: 2 },
       { index: 1, from: 4, to: 6 },
     ]);
+  });
+});
+
+describe("四角をまとめてそろえる", () => {
+  it("右の辺で一直線にそろえる", () => {
+    const list = [
+      pit("a", { x: 4, y: 2 }),
+      pit("b", { x: 2, y: 2, direction: "down" }),
+      pit("c", { x: 3, y: 2, direction: "down", baseId: "b" }),
+    ];
+    const aligned = alignPits(list, ["a", "b", "c"], "right");
+    const rects = layoutPits(aligned);
+    expect(rects[1].left + rects[1].x).toBeCloseTo(4, 6);
+    expect(rects[2].left + rects[2].x).toBeCloseTo(4, 6);
+  });
+
+  it("2つ未満なら何も動かさない", () => {
+    const list = [pit("a"), pit("b")];
+    expect(alignPits(list, ["a"], "right")).toEqual(list);
   });
 });
