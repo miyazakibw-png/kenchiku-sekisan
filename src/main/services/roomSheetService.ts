@@ -26,6 +26,7 @@ function toSheet(row: typeof projectRoomSheets.$inferSelect): RoomSheet {
     ceilingJson: row.ceilingJson,
     ceilingCodesJson: row.ceilingCodesJson,
     lowerJson: row.lowerJson,
+    traceJson: row.traceJson,
     ceilingHeight: row.ceilingHeight,
     note: row.note,
   };
@@ -80,6 +81,9 @@ export function saveRoomSheet(
           ? {}
           : { ceilingCodesJson: request.ceilingCodesJson }),
         lowerJson: request.lowerJson,
+        ...(request.traceJson === undefined
+          ? {}
+          : { traceJson: request.traceJson }),
         ceilingHeight: request.ceilingHeight,
         note: request.note,
       })

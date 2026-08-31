@@ -16,6 +16,12 @@ import type {
   RoomSheetFitting,
 } from "@shared/types";
 import {
+  EMPTY_TRACE,
+  parseTrace,
+  type RoomTrace,
+} from "../../../../core/room/trace";
+import RoomTracePanel from "./RoomTracePanel";
+import {
   closeShape,
   closeShapeAtEdge,
   cutCorner,
@@ -315,6 +321,9 @@ export default function RoomSheetPage({
   const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
   /** 辺をクリックした位置に角を足すモード */
   const [addCornerMode, setAddCornerMode] = useState(false);
+  /** 図面画像となぞった点（数量根拠として一緒に保存する） */
+  const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
+  const [showTrace, setShowTrace] = useState(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const promptBoxRef = useRef<HTMLDivElement | null>(null);
@@ -324,7 +333,7 @@ export default function RoomSheetPage({
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
-    { shape, roomFittings, ceiling, codeMoves, lower, ceilingHeight },
+    { shape, roomFittings, ceiling, codeMoves, lower, ceilingHeight, trace },
     () => save(),
   );
 
@@ -347,7 +356,9 @@ export default function RoomSheetPage({
       setCeiling(parseCeiling(loaded.ceilingJson, height));
       setCodeMoves(parseCeilingCodes(loaded.ceilingCodesJson));
       setLower(parseLower(loaded.lowerJson));
+      setTrace(parseTrace(loaded.traceJson));
       markSaved({
+        trace: parseTrace(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
@@ -573,6 +584,7 @@ export default function RoomSheetPage({
       codeMoves,
       lower: trimmed,
       ceilingHeight,
+      trace,
     });
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
@@ -581,6 +593,7 @@ export default function RoomSheetPage({
       ceilingJson: JSON.stringify(ceiling),
       ceilingCodesJson: JSON.stringify(codeMoves),
       lowerJson: JSON.stringify(trimmed),
+      traceJson: JSON.stringify(trace),
       ceilingHeight,
       note: sheet.note,
     });
@@ -596,6 +609,7 @@ export default function RoomSheetPage({
     roomFittings,
     shape,
     sheet,
+    trace,
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
@@ -1254,6 +1268,14 @@ export default function RoomSheetPage({
             onClick={() => setShowCeiling(!showCeiling)}
           >
             {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+          </button>
+          <button
+            type="button"
+            className={showTrace ? "on" : ""}
+            title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け、なぞって部屋形状にします"
+            onClick={() => setShowTrace(true)}
+          >
+            🖼 図面をなぞる
           </button>
           <button
             type="button"
@@ -2819,6 +2841,21 @@ export default function RoomSheetPage({
         onMessage={setMessage}
         windowTitle={`部屋計算書　${project.managementNo} ${roomName || "（部屋名なし）"}`}
       />
+
+      {showTrace && !printMode && (
+        <RoomTracePanel
+          trace={trace}
+          onChange={setTrace}
+          onApply={(next) => {
+            applyShape(next);
+            setShowTrace(false);
+            setMessage(
+              "なぞった形を部屋形状にしました（寸法は表で直せます。図面となぞりは数量根拠として保存します）",
+            );
+          }}
+          onClose={() => setShowTrace(false)}
+        />
+      )}
 
       {showCheck && (
         <div className="check-window">

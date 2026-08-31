@@ -895,4 +895,8 @@ ALTER TABLE project_fittings ADD COLUMN width_formula TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_fittings ADD COLUMN height_formula TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_fittings ADD COLUMN sill_height_formula TEXT NOT NULL DEFAULT '';
 `,
+  // 部屋計算書に図面画像を貼ってなぞれるようにする
+  `
+ALTER TABLE project_room_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
+`,
 ];

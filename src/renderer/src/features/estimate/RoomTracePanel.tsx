@@ -1,0 +1,365 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { JSX } from "react";
+import type { Point, RoomShape } from "../../../../core/room/shape";
+import {
+  metersPerPixel,
+  pointsToShape,
+  snapToAxis,
+  toMeters,
+  traceArea,
+  type RoomTrace,
+} from "../../../../core/room/trace";
+import "./RoomTracePanel.css";
+
+interface Props {
+  trace: RoomTrace;
+  onChange: (trace: RoomTrace) => void;
+  onApply: (shape: RoomShape) => void;
+  onClose: () => void;
+}
+
+/** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
+interface ImageSize {
+  width: number;
+  height: number;
+}
+
+function readAsDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("画像を読めませんでした"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 図面画像をなぞって部屋形状を作る画面。
+ * 画像は Shift+Windows+S で切り取って Ctrl+V で貼り付けるのが主な使い方。
+ */
+export default function RoomTracePanel({
+  trace,
+  onChange,
+  onApply,
+  onClose,
+}: Props): JSX.Element {
+  const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
+  const [mode, setMode] = useState<"scale" | "trace">("scale");
+  const [scalePoints, setScalePoints] = useState<Point[]>(trace.scalePoints);
+  const [scaleText, setScaleText] = useState(
+    trace.scaleLength > 0 ? String(trace.scaleLength) : "3.640",
+  );
+  const [points, setPoints] = useState<Point[]>(trace.points);
+  const [snap, setSnap] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [message, setMessage] = useState(
+    "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
+  );
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  const perPixel = trace.metersPerPixel;
+
+  // 画像の大きさ（画素）を測る
+  useEffect(() => {
+    if (trace.image === "") return;
+    const image = new Image();
+    image.onload = () =>
+      setSize({ width: image.naturalWidth, height: image.naturalHeight });
+    image.src = trace.image;
+  }, [trace.image]);
+
+  const setImage = useCallback(
+    (dataUrl: string) => {
+      onChange({
+        image: dataUrl,
+        metersPerPixel: 0,
+        scalePoints: [],
+        scaleLength: 0,
+        points: [],
+      });
+      setScalePoints([]);
+      setPoints([]);
+      setMode("scale");
+      setMessage(
+        "図の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
+      );
+    },
+    [onChange],
+  );
+
+  // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent): void => {
+      const items = Array.from(event.clipboardData?.items ?? []);
+      const item = items.find((entry) => entry.type.startsWith("image/"));
+      const file = item?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      void readAsDataUrl(file).then(setImage);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [setImage]);
+
+  /** 画像の画素座標へ直す */
+  const pointAt = (event: React.MouseEvent<SVGSVGElement>): Point | null => {
+    const svg = event.currentTarget;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const origin = svg.createSVGPoint();
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    const local = origin.matrixTransform(matrix.inverse());
+    return { x: local.x, y: local.y };
+  };
+
+  const click = (event: React.MouseEvent<SVGSVGElement>): void => {
+    const point = pointAt(event);
+    if (point === null || trace.image === "") return;
+    if (mode === "scale") {
+      const next = scalePoints.length >= 2 ? [point] : [...scalePoints, point];
+      setScalePoints(next);
+      setMessage(
+        next.length < 2
+          ? "もう1点クリックしてください"
+          : "実寸（m）を入れて「縮尺を決める」を押してください",
+      );
+      return;
+    }
+    const previous = points[points.length - 1];
+    const placed = snap && previous ? snapToAxis(previous, point) : point;
+    setPoints([...points, placed]);
+  };
+
+  const fixScale = (): void => {
+    const length = Number(scaleText);
+    if (scalePoints.length < 2 || !(length > 0)) {
+      setMessage("2点をクリックしてから、実寸（m）を入れてください");
+      return;
+    }
+    const value = metersPerPixel(scalePoints[0], scalePoints[1], length);
+    if (value === 0) {
+      setMessage("2点が同じ場所です。離れた2点をクリックしてください");
+      return;
+    }
+    onChange({
+      ...trace,
+      metersPerPixel: value,
+      scalePoints,
+      scaleLength: length,
+      points,
+    });
+    setMode("trace");
+    setMessage(
+      "部屋の角を順にクリックしてなぞってください（直角に合わせます）。最後に「この形にする」",
+    );
+  };
+
+  const keep = (next: Point[]): void => {
+    setPoints(next);
+    onChange({ ...trace, scalePoints, points: next });
+  };
+
+  const apply = (): void => {
+    if (perPixel === 0) {
+      setMessage("先に縮尺を決めてください");
+      return;
+    }
+    if (points.length < 3) {
+      setMessage("部屋の角を3点以上クリックしてください");
+      return;
+    }
+    const shape = pointsToShape(toMeters(points, perPixel));
+    onChange({ ...trace, scalePoints, points });
+    onApply(shape);
+  };
+
+  const area =
+    perPixel === 0 || points.length < 3
+      ? null
+      : traceArea(toMeters(points, perPixel));
+
+  const polygon = points.map((point) => `${point.x},${point.y}`).join(" ");
+  const dotSize = Math.max(size.width, size.height) / 150;
+
+  return (
+    <div className="room-trace-panel">
+      <div className="section-bar">
+        <span>図面をなぞる</span>
+        <button
+          type="button"
+          className={mode === "scale" ? "on" : ""}
+          onClick={() => setMode("scale")}
+        >
+          ① 縮尺合わせ
+        </button>
+        <button
+          type="button"
+          className={mode === "trace" ? "on" : ""}
+          onClick={() => setMode("trace")}
+        >
+          ② なぞる
+        </button>
+        <label className="file">
+          画像を開く
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void readAsDataUrl(file).then(setImage);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          title="Shift+Windows+S で切り取った画像を貼り付けます（この画面で Ctrl+V でも貼れます）"
+          onClick={() => {
+            void (async () => {
+              try {
+                const items = await navigator.clipboard.read();
+                for (const item of items) {
+                  const type = item.types.find((entry) =>
+                    entry.startsWith("image/"),
+                  );
+                  if (type === undefined) continue;
+                  setImage(await readAsDataUrl(await item.getType(type)));
+                  return;
+                }
+                setMessage("クリップボードに画像がありません");
+              } catch {
+                setMessage(
+                  "貼り付けられませんでした。この画面で Ctrl+V を押してください",
+                );
+              }
+            })();
+          }}
+        >
+          📋 画像を貼り付け
+        </button>
+        <button type="button" onClick={() => setZoom(Math.min(zoom * 1.25, 8))}>
+          ＋
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom(Math.max(zoom / 1.25, 0.2))}
+        >
+          －
+        </button>
+        <button type="button" onClick={() => setZoom(1)}>
+          等倍
+        </button>
+        <button type="button" onClick={onClose}>
+          ✕ 閉じる
+        </button>
+      </div>
+
+      <div className="trace-tools">
+        {mode === "scale" ? (
+          <>
+            <span>この2点の実寸</span>
+            <input
+              className="num"
+              value={scaleText}
+              onChange={(event) => setScaleText(event.target.value)}
+            />
+            <span>m</span>
+            <button type="button" onClick={fixScale}>
+              縮尺を決める
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="snap">
+              <input
+                type="checkbox"
+                checked={snap}
+                onChange={(event) => setSnap(event.target.checked)}
+              />
+              直角に合わせる
+            </label>
+            <button
+              type="button"
+              onClick={() => keep(points.slice(0, -1))}
+              disabled={points.length === 0}
+            >
+              ↶ 1点戻す
+            </button>
+            <button
+              type="button"
+              onClick={() => keep([])}
+              disabled={points.length === 0}
+            >
+              なぞりを消す
+            </button>
+            <button type="button" className="apply" onClick={apply}>
+              ✓ この形にする
+            </button>
+          </>
+        )}
+        <span className="scale-note">
+          {perPixel === 0
+            ? "縮尺 未設定"
+            : `縮尺 1画素＝${(perPixel * 1000).toFixed(1)}mm`}
+        </span>
+        {area === null ? null : (
+          <span className="area">なぞった面積 {area.toFixed(2)}㎡</span>
+        )}
+      </div>
+
+      <div className="trace-body" ref={boxRef} tabIndex={-1}>
+        {trace.image === "" ? (
+          <p className="empty">
+            Shift+Windows+S で図面を切り取り、この画面で Ctrl+V
+            を押すと貼り付きます（「画像を開く」でファイルからも読めます）
+          </p>
+        ) : (
+          <svg
+            viewBox={`0 0 ${size.width} ${size.height}`}
+            style={{ width: `${size.width * zoom}px` }}
+            onClick={click}
+          >
+            <image href={trace.image} width={size.width} height={size.height} />
+            {scalePoints.length === 2 ? (
+              <line
+                className="scale-line"
+                x1={scalePoints[0].x}
+                y1={scalePoints[0].y}
+                x2={scalePoints[1].x}
+                y2={scalePoints[1].y}
+                strokeWidth={dotSize / 2}
+              />
+            ) : null}
+            {scalePoints.map((point, index) => (
+              <circle
+                key={`s${index}`}
+                className="scale-dot"
+                cx={point.x}
+                cy={point.y}
+                r={dotSize}
+              />
+            ))}
+            {points.length >= 2 ? (
+              <polygon
+                className="trace-shape"
+                points={polygon}
+                strokeWidth={dotSize / 2}
+              />
+            ) : null}
+            {points.map((point, index) => (
+              <circle
+                key={`p${index}`}
+                className="trace-dot"
+                cx={point.x}
+                cy={point.y}
+                r={dotSize}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+
+      <p className="trace-message">{message}</p>
+    </div>
+  );
+}

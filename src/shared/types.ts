@@ -270,6 +270,8 @@ export interface RoomSheet {
   ceilingCodesJson: string;
   /** 下段のセット明細計算表 */
   lowerJson: string;
+  /** 図面画像となぞった点・縮尺（RoomTrace）のJSON */
+  traceJson: string;
   ceilingHeight: number | null;
   note: string;
 }
@@ -290,10 +292,12 @@ export interface RoomSheetFitting {
 
 export type SaveRoomSheetRequest = Omit<
   RoomSheet,
-  "projectId" | "estimateRowId" | "ceilingCodesJson"
+  "projectId" | "estimateRowId" | "ceilingCodesJson" | "traceJson"
 > & {
   /** 天井伏図のC番号を動かした位置（省略したときは今の位置のまま） */
   ceilingCodesJson?: string;
+  /** 図面画像となぞった点（省略したときは今のまま） */
+  traceJson?: string;
 };
 
 /** 軸組計算書の上段（建物レイアウト・軸組ライン） */

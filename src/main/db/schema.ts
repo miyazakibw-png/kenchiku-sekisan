@@ -368,6 +368,8 @@ export const projectRoomSheets = sqliteTable("project_room_sheets", {
   ceilingCodesJson: text("ceiling_codes_json").notNull().default("{}"),
   /** 下段のセット明細計算表（部位ごとのセット・明細・計算式） */
   lowerJson: text("lower_json").notNull().default("[]"),
+  /** 図面画像となぞった点・縮尺（数量根拠として残す） */
+  traceJson: text("trace_json").notNull().default("{}"),
   ceilingHeight: real("ceiling_height"),
   note: text("note").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
