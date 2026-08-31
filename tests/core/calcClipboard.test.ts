@@ -196,10 +196,9 @@ describe('カーソルのある列から貼り付ける', () => {
   it('※行を含めてコピーした行は、※行の位置のままセットに戻る', () => {
     const details = [calcDetail({ name: '床' }), calcDetail({ name: '壁' })]
     const lines = [calcLine({ formulaA: '1' }), calcLine({ formulaA: '2' })]
-    const sets = rowsToSets(details, lines, [{ at: 1, text: '※ 見出し', color: '#dcfce7' }], {
-      partNumber: 3,
-      partName: '床'
-    })
+    const sets = rowsToSets(details, lines, [{ at: 1, text: '※ 見出し', color: '#dcfce7' }], [
+      { at: 0, partNumber: 3, partName: '床' }
+    ])
     expect(sets.map((set) => (isCommentSet(set) ? '※' : set.details[0].name))).toEqual([
       '床',
       '※',
@@ -208,6 +207,21 @@ describe('カーソルのある列から貼り付ける', () => {
     expect(sets[0].partName).toBe('床')
     expect(sets[2].partName).toBe('')
     expect(sets[2].lines[0].formulaA).toBe('2')
+  })
+
+  it('複数のセットをまたいでコピーしても、各セットの左端の部位が残る', () => {
+    const details = [calcDetail(), calcDetail(), calcDetail()]
+    const lines = [calcLine(), calcLine(), calcLine()]
+    const sets = rowsToSets(details, lines, [], [
+      { at: 0, partNumber: 1, partName: '壁' },
+      { at: 2, partNumber: 2, partName: '軸組' }
+    ])
+    expect(sets).toHaveLength(2)
+    expect(sets[0].details).toHaveLength(2)
+    expect(sets[0].partName).toBe('壁')
+    expect(sets[1].details).toHaveLength(1)
+    expect(sets[1].partNumber).toBe(2)
+    expect(sets[1].partName).toBe('軸組')
   })
 
   it('部位合計の列を含んでいても、その列は飛ばして右へ入る', () => {

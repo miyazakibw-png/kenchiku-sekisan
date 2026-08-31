@@ -50,6 +50,7 @@ import {
   rowsAsTsv,
   rowsToSets,
   type CopiedBanner,
+  type CopiedPart,
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
@@ -982,6 +983,8 @@ export default function RoomCalcSheet({
     const details: CalcDetail[] = [];
     const lines: CalcLine[] = [];
     const banners: CopiedBanner[] = [];
+    const parts: CopiedPart[] = [];
+    let lastSetId = "";
     rangeRows.forEach((row) => {
       const set = sets.find((item) => item.id === row.setId);
       if (!set) return;
@@ -992,7 +995,17 @@ export default function RoomCalcSheet({
           text: set.banner?.text ?? "",
           color: set.banner?.color ?? "#e2e8f0",
         });
+        lastSetId = "";
         return;
+      }
+      // セットの区切りと左端の部位も覚えておく（貼り付けで同じ形に戻す）
+      if (row.setId !== lastSetId) {
+        parts.push({
+          at: details.length,
+          partNumber: row.index === 0 ? set.partNumber : null,
+          partName: row.index === 0 ? set.partName : "",
+        });
+        lastSetId = row.setId;
       }
       details.push(set.details[row.index] ?? calcDetail());
       lines.push(set.lines[row.index] ?? calcLine());
@@ -1016,6 +1029,7 @@ export default function RoomCalcSheet({
       partNumber: source?.partNumber ?? null,
       partName: source?.partName ?? "",
       banners,
+      parts,
     });
     onMessage(
       `${rangeRows.length}行をコピーしました（貼り付けたい行にカーソルを置いて上書貼付／挿入貼付）`,
@@ -1072,18 +1086,20 @@ export default function RoomCalcSheet({
         return;
       }
 
-      if (clip?.kind === "rows" && (clip.banners?.length ?? 0) > 0) {
-        // ※行を含むコピーは、※行と明細の並びのままセットとして差し込む
+      if (
+        clip?.kind === "rows" &&
+        ((clip.banners?.length ?? 0) > 0 || (clip.parts?.length ?? 0) > 1)
+      ) {
+        // ※行や複数のセットを含むコピーは、その並びのままセットとして差し込む
         const copiedDetails = clip.details.map(duplicateDetail);
         const copiedLines = clip.lines.map(duplicateLine);
         const created = rowsToSets(
           copiedDetails,
           copiedLines,
           clip.banners ?? [],
-          {
-            partNumber: clip.partNumber,
-            partName: clip.partName,
-          },
+          clip.parts ?? [
+            { at: 0, partNumber: clip.partNumber, partName: clip.partName },
+          ],
         );
         let base = sets;
         let at = bannerAt;
@@ -1109,7 +1125,7 @@ export default function RoomCalcSheet({
         const head = created.find((set) => !isCommentSet(set));
         if (head) onFocus({ setId: head.id, area: "detail", index: 0 });
         onMessage(
-          `コピーした${copiedDetails.length}行と※行をカーソルの行の上へ差し込みました`,
+          `コピーした${copiedDetails.length}行を部位・※行ごとカーソルの行の上へ差し込みました`,
         );
         return;
       }

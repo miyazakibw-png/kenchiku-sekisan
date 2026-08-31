@@ -19,6 +19,13 @@ import {
 /** コピーした行に混ざっていた※行（at＝その※行より上にある明細の数） */
 export type CopiedBanner = { at: number; text: string; color: string };
 
+/** コピーした行のセットの区切りと左端の部位（at＝そのセットの先頭の明細番号） */
+export type CopiedPart = {
+  at: number;
+  partNumber: number | null;
+  partName: string;
+};
+
 /** 明細欄へ貼り付けるときの列（画面の並びと同じ） */
 export const DETAIL_PASTE_COLUMNS = [
   "部位名",
@@ -323,36 +330,42 @@ export function pasteRows(
 
 /**
  * コピーした行（※行を含む）をセットの並びに戻す。
- * ※行の位置でセットを区切るので、貼り付けても※行と明細の並びが変わらない。
+ * ※行とセットの区切りで分けるので、貼り付けても並びと左端の部位が変わらない。
  */
 export function rowsToSets(
   details: CalcDetail[],
   lines: CalcLine[],
   banners: CopiedBanner[],
-  part: { partNumber: number | null; partName: string },
+  parts: CopiedPart[],
 ): CalcSet[] {
   const created: CalcSet[] = [];
+  const clamp = (at: number): number =>
+    Math.min(Math.max(at, 0), details.length);
+  const partAt = new Map<number, CopiedPart>();
+  parts.forEach((part) => partAt.set(clamp(part.at), part));
   let from = 0;
-  let firstChunk = true;
   const pushRows = (to: number): void => {
     if (to <= from) return;
     const chunk = details.slice(from, to);
+    const part = partAt.get(from);
     created.push({
       ...calcSet(0),
-      partNumber: firstChunk ? part.partNumber : null,
-      partName: firstChunk ? part.partName : "",
+      partNumber: part?.partNumber ?? null,
+      partName: part?.partName ?? "",
       details: chunk,
       lines: padLines(chunk, lines.slice(from, to)),
     });
     from = to;
-    firstChunk = false;
   };
-  [...banners]
-    .sort((a, b) => a.at - b.at)
-    .forEach((banner) => {
-      pushRows(Math.min(Math.max(banner.at, 0), details.length));
-      created.push(commentSet(banner.text, banner.color));
-    });
+  const stops = [
+    ...new Set([...banners, ...parts].map((item) => clamp(item.at))),
+  ].sort((a, b) => a - b);
+  stops.forEach((at) => {
+    pushRows(at);
+    banners
+      .filter((banner) => clamp(banner.at) === at)
+      .forEach((banner) => created.push(commentSet(banner.text, banner.color)));
+  });
   pushRows(details.length);
   return created;
 }

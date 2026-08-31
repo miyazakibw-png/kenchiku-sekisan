@@ -1,4 +1,7 @@
-import type { CopiedBanner } from "../../../../core/room/calcClipboard";
+import type {
+  CopiedBanner,
+  CopiedPart,
+} from "../../../../core/room/calcClipboard";
 import type {
   CalcDetail,
   CalcLine,
@@ -24,6 +27,8 @@ export type CalcClip =
       partName: string;
       /** コピーした範囲に入っていた※行 */
       banners?: CopiedBanner[];
+      /** コピーした範囲のセットの区切りと左端の部位 */
+      parts?: CopiedPart[];
     };
 
 const STORAGE_KEY = "calcClip";
