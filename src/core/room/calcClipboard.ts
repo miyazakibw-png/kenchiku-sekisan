@@ -129,6 +129,100 @@ export function fillLines(
   return next;
 }
 
+/**
+ * 画面の列の並び（左から）。カーソルのある列から貼り付けるときに使う。
+ * null の列は貼り付けても入らない（計算で出る欄・記号）。
+ */
+export const SHEET_PASTE_FIELDS = [
+  "setPartName",
+  "materialCategory",
+  "subjectId",
+  "partNumber",
+  "detailNumber",
+  "partName",
+  "name",
+  "descriptionLower",
+  "descriptionUpper",
+  "unit",
+  "coefficient",
+  null,
+  "comment",
+  "formulaA",
+  "formulaB",
+  null,
+  null,
+  null,
+  "remarksLower",
+  "remarksUpper",
+  "estimateDisplay",
+] as const;
+
+/** 明細の部位名の列（画面の左から6列目） */
+export const SHEET_PART_NAME_COLUMN = SHEET_PASTE_FIELDS.indexOf("partName");
+
+function numberOf(text: string): number | null {
+  const value = Number(text.trim());
+  return text.trim() !== "" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * カーソルのある列から、画面の並びどおりにエクセルの表を取り込む。
+ * 部位ID・名称IDなどの左側の列に貼り付けても列がずれない。
+ */
+export function pasteSheet(
+  details: CalcDetail[],
+  lines: CalcLine[],
+  startIndex: number,
+  startColumn: number,
+  clipboardText: string,
+): { details: CalcDetail[]; lines: CalcLine[] } {
+  const matrix = normalizePastedMatrix(parseTsv(clipboardText));
+  const nextDetails = [...details];
+  const nextLines = [...lines];
+  const at = Math.min(Math.max(startIndex, 0), nextDetails.length);
+  matrix.forEach((row, offset) => {
+    const index = at + offset;
+    const detail = { ...(nextDetails[index] ?? calcDetail()) };
+    const line = { ...(nextLines[index] ?? calcLine()) };
+    row.forEach((text, cell) => {
+      const field = SHEET_PASTE_FIELDS[Math.max(startColumn, 0) + cell];
+      if (field === undefined || field === null) return;
+      switch (field) {
+        case "setPartName":
+          break;
+        case "subjectId":
+          detail.subjectId = numberOf(text);
+          break;
+        case "partNumber":
+          detail.partNumber = numberOf(text);
+          break;
+        case "detailNumber":
+          detail.detailNumber = numberOf(text);
+          break;
+        case "coefficient":
+          detail.coefficient = coefficientOf(text, detail.coefficient);
+          break;
+        case "comment":
+          line.comment = text;
+          break;
+        case "formulaA":
+          line.formulaA = text;
+          break;
+        case "formulaB":
+          line.formulaB = text;
+          break;
+        default:
+          detail[field] = text;
+      }
+    });
+    if (index < nextDetails.length) nextDetails[index] = detail;
+    else nextDetails.push(detail);
+    if (index < nextLines.length) nextLines[index] = line;
+    else nextLines.push(line);
+  });
+  return { details: nextDetails, lines: fillLines(nextDetails, nextLines) };
+}
+
 /** 明細1件をExcelへ貼れる形（1行）にする */
 export function detailAsTsv(detail: CalcDetail): string {
   return toTsv([

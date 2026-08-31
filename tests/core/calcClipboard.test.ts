@@ -9,6 +9,7 @@ import {
   pasteDetails,
   pasteLines,
   pasteRows,
+  pasteSheet,
   setAsTsv
 } from '../../src/core/room/calcClipboard'
 import { calcDetail, calcLine, calcSet } from '../../src/core/room/calcSheet'
@@ -160,5 +161,38 @@ describe('セット明細計算表のコピー・貼り付け', () => {
     expect(copiedSet.details[0].id).not.toBe(detail.id)
     expect(copiedSet.lines[0].formulaA).toBe('3*4')
     expect(copiedSet.lines[0].bSymbol).toBe('')
+  })
+})
+
+describe('カーソルのある列から貼り付ける', () => {
+  it('区分の列（左から2列目）から画面の並びどおりに入る', () => {
+    const text = '仕上\t34\t10\t12\t床\tビニール床タイル\tt2.5 コンクリート面\t\tm2'
+    const pasted = pasteSheet([calcDetail()], [calcLine()], 0, 1, text)
+    const detail = pasted.details[0]
+    expect(detail.materialCategory).toBe('仕上')
+    expect(detail.subjectId).toBe(34)
+    expect(detail.partNumber).toBe(10)
+    expect(detail.detailNumber).toBe(12)
+    expect(detail.partName).toBe('床')
+    expect(detail.name).toBe('ビニール床タイル')
+    expect(detail.descriptionLower).toBe('t2.5 コンクリート面')
+    expect(detail.unit).toBe('m2')
+  })
+
+  it('計算式の列から貼り付けるとコメント・計算式に入る（計算で出る欄は変えない）', () => {
+    const text = 'FA\t1*2\t3'
+    const pasted = pasteSheet([calcDetail()], [calcLine()], 0, 12, text)
+    expect(pasted.lines[0].comment).toBe('FA')
+    expect(pasted.lines[0].formulaA).toBe('1*2')
+    expect(pasted.lines[0].formulaB).toBe('3')
+  })
+
+  it('部位合計の列を含んでいても、その列は飛ばして右へ入る', () => {
+    const text = 'm2\t1\t9.99\tFA\t1+2'
+    const pasted = pasteSheet([calcDetail()], [calcLine()], 0, 9, text)
+    expect(pasted.details[0].unit).toBe('m2')
+    expect(pasted.details[0].coefficient).toBe(1)
+    expect(pasted.lines[0].comment).toBe('FA')
+    expect(pasted.lines[0].formulaA).toBe('1+2')
   })
 })

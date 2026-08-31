@@ -45,7 +45,9 @@ import {
   fillLines,
   pasteLines,
   pasteRows,
+  pasteSheet,
   rowsAsTsv,
+  SHEET_PART_NAME_COLUMN,
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
@@ -979,6 +981,12 @@ export default function RoomCalcSheet({
       const text = await navigator.clipboard.readText();
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
+      // カーソルのある列（この列から画面の並びどおりに貼り付ける）
+      const active = document.activeElement;
+      const cursorColumn =
+        active instanceof HTMLElement && active.dataset.col !== undefined
+          ? Number(active.dataset.col)
+          : null;
       // コメント行（※行）にカーソルがあるときは、その行が貼り付け先
       const bannerAt =
         bannerSetId === null
@@ -1113,7 +1121,11 @@ export default function RoomCalcSheet({
 
       // 列の多いエクセルの表は、カーソルが明細に無くても明細へ取り込む
       const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
-      if (focus?.area === "detail" || (!focus && wideTable)) {
+      const byColumn =
+        cursorColumn !== null &&
+        Number.isFinite(cursorColumn) &&
+        cursorColumn !== SHEET_PART_NAME_COLUMN;
+      if (byColumn || focus?.area === "detail" || (!focus && wideTable)) {
         const at = focus?.index ?? 0;
         const base =
           mode === "insert"
@@ -1141,13 +1153,18 @@ export default function RoomCalcSheet({
                 ...currentSet.lines.slice(at),
               ]
             : currentSet.lines;
-        const pasted = pasteRows(base, baseLines, at, text);
+        const pasted =
+          byColumn && cursorColumn !== null
+            ? pasteSheet(base, baseLines, at, cursorColumn, text)
+            : pasteRows(base, baseLines, at, text);
         updateSet(currentSet.id, {
           details: pasted.details,
           lines: fillLines(pasted.details, pasted.lines),
         });
         onMessage(
-          "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順。後ろにコメント／計算式Ａ／計算式Ｂがあれば計算式へも入ります）",
+          byColumn
+            ? "Excelの表を、カーソルのある列から画面の並びどおりに貼り付けました"
+            : "Excelの表を明細へ貼り付けました（部位名／名称／摘要（上）／摘要（下）／単位／掛け率／備考（上）／備考（下）／積算用表示の順。後ろにコメント／計算式Ａ／計算式Ｂがあれば計算式へも入ります）",
         );
         return;
       }

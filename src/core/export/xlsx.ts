@@ -82,10 +82,17 @@ function styleIndex(cell: XlsxCell): number {
 }
 
 function borderXml(border: XlsxBorder): string {
-  const top = border === "one" || border === "upper" ? "<top style=\"thin\"/>" : "<top/>";
+  // 線の色を書かないと、エクセルの版によっては線が見えないことがある
+  const line = '<color indexed="64"/>';
+  const top =
+    border === "one" || border === "upper"
+      ? `<top style="thin">${line}</top>`
+      : "<top/>";
   const bottom =
-    border === "one" || border === "lower" ? "<bottom style=\"thin\"/>" : "<bottom/>";
-  return `<border><left style="thin"/><right style="thin"/>${top}${bottom}<diagonal/></border>`;
+    border === "one" || border === "lower"
+      ? `<bottom style="thin">${line}</bottom>`
+      : "<bottom/>";
+  return `<border><left style="thin">${line}</left><right style="thin">${line}</right>${top}${bottom}<diagonal/></border>`;
 }
 
 function stylesXml(): string {
@@ -116,6 +123,7 @@ function stylesXml(): string {
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="${BORDERS.length}"/></cellStyleXfs>
 <cellXfs count="${count}">${plain}${xfs}</cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+<dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
 }
 
@@ -264,12 +272,12 @@ ${named
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
 
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${named
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${named
     .map(
       (sheet, index) =>
         `<sheet name="${escapeXml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
     )
-    .join("")}</sheets></workbook>`;
+    .join("")}</sheets><calcPr calcId="0"/></workbook>`;
 
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${named
