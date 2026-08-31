@@ -235,6 +235,12 @@ export default function PitSheetPage({
     );
   }, []);
 
+  const editBeam = useCallback((id: string, values: Partial<PitBeam>) => {
+    setBeams((current) =>
+      current.map((beam) => (beam.id === id ? { ...beam, ...values } : beam)),
+    );
+  }, []);
+
   /** 図の中をクリックすると、そのピットへ梁を置く（長さは当たる壁まで自動） */
   const placeBeam = useCallback(
     (pitId: string, ratio: number) => {
@@ -388,7 +394,7 @@ export default function PitSheetPage({
       <div className="pit-upper">
         <section className="pit-list">
           <div className="section-bar">
-            <h3>ピット（Ｐ1が基準／2個目からは向きとすき間で置く）</h3>
+            <h3>ピット（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
             <button type="button" onClick={addPit}>
               ＋ ピット追加
             </button>
@@ -404,6 +410,12 @@ export default function PitSheetPage({
                 <th>置き方</th>
                 <th>そろえ</th>
                 <th className="num">すき間（m）</th>
+                <th className="num">面積</th>
+                <th className="num">壁面長さ</th>
+                <th className="num">壁面面積</th>
+                <th className="num">梁底面積</th>
+                <th className="num">梁面積</th>
+                <th className="num">天井面積</th>
                 <th></th>
               </tr>
             </thead>
@@ -524,6 +536,24 @@ export default function PitSheetPage({
                       />
                     )}
                   </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.floorArea ?? 0, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.wallLength ?? 0, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.wallArea ?? 0, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.beamBottomArea ?? 0, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.beamArea ?? 0, 2)}
+                  </td>
+                  <td className="num">
+                    {formatNumber(quantities[index]?.ceilingArea ?? 0, 2)}
+                  </td>
                   <td>
                     <button type="button" onClick={() => removePit(pit.id)}>
                       削除
@@ -575,6 +605,7 @@ export default function PitSheetPage({
                   <th>ピット</th>
                   <th>向き</th>
                   <th className="num">梁W（mm）</th>
+
                   <th className="num">梁H（mm）</th>
                   <th className="num">長さ（m）</th>
                   <th></th>
@@ -584,9 +615,45 @@ export default function PitSheetPage({
                 {plan.beams.map((beam) => (
                   <tr key={beam.id}>
                     <td>{beam.symbol}</td>
-                    <td>{beam.axis === "X" ? "X方向" : "Y方向"}</td>
-                    <td className="num">{Math.round(beam.width * 1000)}</td>
-                    <td className="num">{Math.round(beam.height * 1000)}</td>
+                    <td>
+                      <select
+                        value={beam.axis}
+                        onChange={(e) =>
+                          editBeam(beam.id, {
+                            axis: e.target.value === "Y" ? "Y" : "X",
+                          })
+                        }
+                      >
+                        <option value="X">X方向</option>
+                        <option value="Y">Y方向</option>
+                      </select>
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`bw-${beam.id}-${beam.width}`}
+                        defaultValue={Math.round(beam.width * 1000)}
+                        onBlur={(e) =>
+                          editBeam(beam.id, {
+                            width: (parseNumber(e.target.value) ?? 300) / 1000,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`bh-${beam.id}-${beam.height}`}
+                        defaultValue={Math.round(beam.height * 1000)}
+                        onBlur={(e) =>
+                          editBeam(beam.id, {
+                            height: (parseNumber(e.target.value) ?? 600) / 1000,
+                          })
+                        }
+                      />
+                    </td>
                     <td className="num">{formatNumber(beam.length, 2)}</td>
                     <td>
                       <button
@@ -607,12 +674,6 @@ export default function PitSheetPage({
           )}
         </section>
 
-        <section className="pit-quantity-area">
-          <div className="section-bar">
-            <h3>ピットごとの数量（深さだけ手入力・他は自動）</h3>
-          </div>
-          {quantityTable}
-        </section>
       </div>
 
       <RoomCalcSheet

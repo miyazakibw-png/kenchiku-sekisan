@@ -1,13 +1,33 @@
 .pit-upper {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: 1fr 1.35fr;
   gap: 8px;
   padding: 8px;
   align-items: start;
 }
 
-.pit-upper .pit-quantity-area {
-  grid-column: 1 / -1;
+.pit-upper .pit-plan-area {
+  order: 1;
+}
+
+.pit-upper .pit-list {
+  order: 2;
+  overflow-x: auto;
+}
+
+.pit-list table.grid {
+  font-size: 11px;
+}
+
+.pit-list table.grid th,
+.pit-list table.grid td {
+  padding: 1px 3px;
+  white-space: nowrap;
+}
+
+.pit-list select {
+  font-size: 11px;
+  padding: 0;
 }
 
 .pit-upper .section-bar {
@@ -25,6 +45,11 @@
 .pit-upper input.num {
   width: 72px;
   text-align: right;
+}
+
+.pit-list input.num {
+  width: 46px;
+  font-size: 11px;
 }
 
 .pit-drawing {
