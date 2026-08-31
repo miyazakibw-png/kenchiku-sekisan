@@ -24,7 +24,11 @@ import {
   toDrafts,
   updateRow,
 } from "./fittingRows";
-import { buildPastePreview, copyRangeAsTsv } from "../grid/gridClipboard";
+import {
+  buildInsertPastePreview,
+  buildPastePreview,
+  copyRangeAsTsv,
+} from "../grid/gridClipboard";
 import "./FittingsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -54,6 +58,8 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-fittings-v1");
   const [rows, setRows] = useState<FittingDraft[]>([]);
   const [selected, setSelected] = useState(0);
+  /** Shift+クリックで広げた選択の終わりの行 */
+  const [selectedEnd, setSelectedEnd] = useState(0);
   const [message, setMessage] = useState("");
   const [series, setSeries] = useState<SeriesForm | null>(null);
   /** 部位ごとの採用値の設定を開いているか */
@@ -154,22 +160,48 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
     [columns, rows],
   );
 
-  /** 選んだ行をExcelへ貼れる形（TSV）でコピーする */
-  const copyRow = useCallback(
-    async (index: number) => {
-      if (index < 0 || index >= rows.length) return;
-      await navigator.clipboard.writeText(
-        copyRangeAsTsv(rows, columns, {
-          startRow: index,
-          startCol: 0,
-          endRow: index,
-          endCol: columns.length - 1,
-        }),
+  /** 元の行を消さずに差し込む貼り付け（at が行数なら最終行への追加） */
+  const pasteInsert = useCallback(
+    async (at: number, appended: boolean): Promise<void> => {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) return;
+      const preview = buildInsertPastePreview(
+        rows,
+        columns,
+        text,
+        at,
+        emptyRow,
       );
-      setMessage("1行コピーしました");
+      setRows(preview.rows);
+      const notes = [
+        `${preview.addedRows} 行`,
+        preview.errorCount > 0 ? `取り込めない値 ${preview.errorCount} 件` : "",
+        preview.warningCount > 0
+          ? `自動計算列 ${preview.warningCount} 件は取り込みません`
+          : "",
+      ].filter(Boolean);
+      setMessage(
+        `${appended ? "最終行に追加" : "差し込み"}しました（${notes.join("／")}）`,
+      );
     },
     [columns, rows],
   );
+
+  /** 選んだ行（複数可）をExcelへ貼れる形（TSV）でコピーする */
+  const copyRow = useCallback(async () => {
+    const from = Math.min(selected, selectedEnd);
+    const to = Math.max(selected, selectedEnd);
+    if (from < 0 || from >= rows.length) return;
+    await navigator.clipboard.writeText(
+      copyRangeAsTsv(rows, columns, {
+        startRow: from,
+        startCol: 0,
+        endRow: Math.min(to, rows.length - 1),
+        endCol: columns.length - 1,
+      }),
+    );
+    setMessage(`${Math.min(to, rows.length - 1) - from + 1}行コピーしました`);
+  }, [columns, rows, selected, selectedEnd]);
 
   const addSeries = (form: SeriesForm): void => {
     const symbols = expandSymbols({
@@ -213,7 +245,10 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
       className="fittings-page"
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
-        if (e.key === "v") {
+        if (e.key === "V" && e.shiftKey) {
+          e.preventDefault();
+          void pasteInsert(Math.min(selected, selectedEnd), false);
+        } else if (e.key === "v") {
           e.preventDefault();
           void paste(selected);
         } else if (e.key === "c") {
@@ -225,7 +260,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
           )
             return;
           e.preventDefault();
-          void copyRow(selected);
+          void copyRow();
         }
       }}
     >
@@ -270,10 +305,26 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
         </button>
         <button
           type="button"
-          title="選んだ行をExcelへコピーします（Ctrl+C）"
-          onClick={() => void copyRow(selected)}
+          title="選んだ行をコピーします。Shift＋クリックで複数行選べます（Ctrl+C）"
+          onClick={() => void copyRow()}
         >
-          ⧉ 行コピー
+          ⧉ 行コピー（複数可）
+        </button>
+        <button
+          type="button"
+          title="選んだ行の上に差し込みます。元の行は下へずれます（Ctrl+Shift+V）"
+          onClick={() =>
+            void pasteInsert(Math.min(selected, selectedEnd), false)
+          }
+        >
+          ⤓ 挿入貼り付け
+        </button>
+        <button
+          type="button"
+          title="一番下に足します"
+          onClick={() => void pasteInsert(rows.length, true)}
+        >
+          ⤓ 追加貼り付け（最終行）
         </button>
         <button
           type="button"
@@ -417,13 +468,22 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                 key={row.id ?? `new-${index}`}
                 className={
                   [
-                    index === selected ? "selected" : "",
+                    index >= Math.min(selected, selectedEnd) &&
+                    index <= Math.max(selected, selectedEnd)
+                      ? "selected"
+                      : "",
                     row.fromEstimate === 1 ? "from-estimate" : "",
                   ]
                     .filter(Boolean)
                     .join(" ") || undefined
                 }
-                onClick={() => setSelected(index)}
+                onClick={(e) => {
+                  if (e.shiftKey) setSelectedEnd(index);
+                  else {
+                    setSelected(index);
+                    setSelectedEnd(index);
+                  }
+                }}
               >
                 <td className="no">{index + 1}</td>
                 <td>
