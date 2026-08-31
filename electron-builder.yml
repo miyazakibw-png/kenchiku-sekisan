@@ -9,8 +9,12 @@ files:
   - package.json
   # 開発パソコン用（Linux）のバイナリは同梱しない
   - '!node_modules/better-sqlite3/bin/**'
+  # Windows以外のIME切替部品（koffi）は同梱しない
+  - '!node_modules/koffi/build/koffi/!(win32_x64)/**'
+  - '!node_modules/koffi/src/**'
 asarUnpack:
   - node_modules/better-sqlite3/**
+  - node_modules/koffi/**
 # Windows用のbetter-sqlite3は scripts/prepare-win-native.mjs で用意するため、ここでは作り直さない
 npmRebuild: false
 win:

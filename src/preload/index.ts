@@ -23,6 +23,7 @@ import type {
   Detail,
   DetailChangeLog,
   EstimateRow,
+  ImeMode,
   FinishAssembly,
   Fitting,
   FormworkTransferView,
@@ -285,6 +286,9 @@ const api = {
   closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose),
   /** 文字が入らなくなったときに、この画面へ入力先（フォーカス）を戻す */
   focusWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowFocus),
+  /** 欄に入ったときにWindowsの日本語入力を切り替える */
+  setImeMode: (mode: ImeMode): Promise<void> =>
+    ipcRenderer.invoke(IPC.imeMode, mode),
 
   /** 明細入力を独立したウィンドウで開く */
   openCalcWindow: (title: string): Promise<void> =>

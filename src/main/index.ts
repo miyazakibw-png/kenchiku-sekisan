@@ -132,8 +132,10 @@ import { toScreenWorkbook } from "../core/export/screenSheet";
 import type { FittingPartValue } from "../core/fittings/partValue";
 import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import { IPC } from "../shared/ipc";
+import { setImeMode } from "./ime";
 import type {
   BackupInfo,
+  ImeMode,
   BackupResult,
   PrintPaper,
   PrintResult,
@@ -738,6 +740,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.windowFocus, (event) =>
     recoverInput(BrowserWindow.fromWebContents(event.sender)),
   );
+  // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
+  ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) await setImeMode(window, mode);
+  });
 }
 
 const AUTO_BACKUP_KEEP = 10;

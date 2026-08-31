@@ -815,6 +815,9 @@ export interface SaveBasicMasterRequest {
   projectId?: number | null;
 }
 
+/** 欄ごとの日本語入力（IME）の状態 */
+export type ImeMode = "hiragana" | "alphanumeric";
+
 export interface SaveBasicMasterResult {
   masters: BasicMasters;
   /** 番号・名称の不備。1件でもあれば保存しない */

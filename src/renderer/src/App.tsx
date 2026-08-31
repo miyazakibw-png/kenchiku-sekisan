@@ -10,6 +10,7 @@ import PrintBar from "./features/print/PrintBar";
 import { useGridKeyNav } from "./features/grid/useGridKeyNav";
 import { useHalfWidthFields } from "./hooks/useHalfWidthFields";
 import { refocusWindow, useInputRecovery } from "./hooks/useInputRecovery";
+import { useImeMode } from "./hooks/useImeMode";
 import { useStickyHeaders } from "./features/grid/useStickyHeaders";
 import SettingsPage from "./features/settings/SettingsPage";
 import CalcWindowPage from "./features/estimate/CalcWindowPage";
@@ -53,6 +54,7 @@ export default function App(): JSX.Element {
   useStickyHeaders(mainRef);
   useHalfWidthFields();
   useInputRecovery();
+  useImeMode();
 
   // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
   // 工事の画面ではその工事専用のマスター（無い種類は基本マスター）を使う

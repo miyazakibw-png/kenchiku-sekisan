@@ -83,6 +83,7 @@ export const IPC = {
   screenExcel: "print:excel",
   windowClose: "window:close",
   windowFocus: "window:focus",
+  imeMode: "ime:mode",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

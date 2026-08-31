@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { BackupInfo } from "@shared/types";
+import { imeAutoEnabled, setImeAutoEnabled } from "../../hooks/useImeMode";
 import "./SettingsPage.css";
 
 function sizeText(size: number): string {
@@ -13,6 +14,7 @@ export default function SettingsPage(): JSX.Element {
   const [info, setInfo] = useState<BackupInfo | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [imeAuto, setImeAuto] = useState(imeAutoEnabled);
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
@@ -98,8 +100,22 @@ export default function SettingsPage(): JSX.Element {
       <section className="settings-card">
         <h3>文字の入力</h3>
         <p className="settings-note">
-          部位・区分・科目・部位ID・名称ID・単位・計算式の欄は、全角で打っても、日本語入力（ひらがな）のまま打っても、半角の英数字に直します（この動きは常に働きます。Windowsの日本語入力の切り替えそのものはソフトからは変えられないので、打った文字の方を直します）。
+          部位・区分・科目・部位ID・名称ID・単位・計算式の欄は、全角で打っても、日本語入力（ひらがな）のまま打っても、半角の英数字に直します（この動きは常に働きます）。
           部位名・名称・摘要・コメント・備考・仕上下地摘要の欄は、打った文字をそのまま入れます。日本語はキーボードの「半角/全角」で日本語入力をオンにして打ってください（スペースでの漢字変換はこれまでどおりです）。
+        </p>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={imeAuto}
+            onChange={(e) => {
+              setImeAuto(e.target.checked);
+              setImeAutoEnabled(e.target.checked);
+            }}
+          />
+          欄に入ったとき、日本語入力を自動で切り替える（部位名・名称・摘要などはひらがな、ID・計算式などは半角英数）
+        </label>
+        <p className="settings-note">
+          Windowsでのみ働きます。日本語入力の種類によっては切り替わらないことがあります。その場合はこの印を外して、「半角/全角」キーで切り替えてください。
         </p>
       </section>
     </div>

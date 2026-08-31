@@ -89,3 +89,15 @@
   font-size: 13px;
   color: #1f3864;
 }
+
+.settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.settings-check input {
+  margin-top: 2px;
+}
