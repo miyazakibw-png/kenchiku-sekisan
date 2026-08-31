@@ -1586,10 +1586,10 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="いちばん下の行に足します"
+          title="カーソルのあるセット明細のいちばん下の行に足します（※行の手前まで）"
           onClick={() => void paste("append")}
         >
-          📋 追加貼付（最終行）
+          📋 追加貼付（ｾｯﾄ明細行↓）
         </button>
         <button
           type="button"
