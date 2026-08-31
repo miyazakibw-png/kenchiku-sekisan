@@ -299,6 +299,22 @@ export default function RoomTracePanel({
             <button type="button" onClick={fixScale}>
               縮尺を決める
             </button>
+            <button
+              type="button"
+              title="縮尺合わせに引いた赤い線（2点）を消します。決めた縮尺はそのまま使えます"
+              disabled={scalePoints.length === 0}
+              onClick={() => {
+                setScalePoints([]);
+                onChange({ ...trace, scalePoints: [], points });
+                setMessage(
+                  perPixel === 0
+                    ? "赤い線を消しました。2点をクリックし直してください"
+                    : "赤い線を消しました（縮尺はそのままです）",
+                );
+              }}
+            >
+              赤線を消す
+            </button>
           </>
         ) : (
           <>
