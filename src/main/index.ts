@@ -752,10 +752,19 @@ function registerIpcHandlers(): void {
   );
   // Shift+Windows+S の切り取りや、コピーした画像ファイルを取り込む
   ipcMain.handle(IPC.clipboardImage, () => {
+    const formats = clipboard.availableFormats().join(" / ");
     const fromFile = clipboardImageFile();
-    if (fromFile !== "") return fromFile;
+    if (fromFile !== "")
+      return { image: fromFile, note: `ファイル（${formats}）` };
+    const fromHtml = clipboardImageHtml();
+    if (fromHtml !== "") return { image: fromHtml, note: `HTML（${formats}）` };
     const image = clipboard.readImage();
-    return image.isEmpty() ? "" : image.toDataURL();
+    if (image.isEmpty()) return { image: "", note: `画像なし（${formats}）` };
+    const size = image.getSize();
+    return {
+      image: image.toDataURL(),
+      note: `画像 ${size.width}×${size.height}（${formats}）`,
+    };
   });
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
@@ -804,6 +813,29 @@ function clipboardImageFile(): string {
     }
   }
   return "";
+}
+
+/** Word・PDF・ブラウザなどからのコピーで、HTMLの中にある画像を取り出す */
+function clipboardImageHtml(): string {
+  let html = "";
+  try {
+    html = clipboard.readHTML();
+  } catch {
+    return "";
+  }
+  const found = /<img[^>]+src=["']([^"']+)["']/i.exec(html);
+  if (found === null) return "";
+  const source = found[1];
+  if (source.startsWith("data:image/")) return source;
+  if (!source.startsWith("file:///")) return "";
+  const path = decodeURI(source.slice(8));
+  const type = IMAGE_TYPES[extname(path).toLowerCase()];
+  if (type === undefined || !existsSync(path)) return "";
+  try {
+    return `data:${type};base64,${readFileSync(path).toString("base64")}`;
+  } catch {
+    return "";
+  }
 }
 
 const AUTO_BACKUP_KEEP = 10;

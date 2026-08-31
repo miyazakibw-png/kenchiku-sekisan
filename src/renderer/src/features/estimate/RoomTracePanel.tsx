@@ -91,8 +91,9 @@ export default function RoomTracePanel({
   /** Windowsのクリップボードから画像を取り込む（Shift+Windows+S の切り取り） */
   const pasteImage = useCallback(async (): Promise<void> => {
     const fromApp = await window.sekisan.readClipboardImage();
-    if (fromApp !== "") {
-      setImage(fromApp);
+    if (fromApp.image !== "") {
+      setImage(fromApp.image);
+      setMessage(`貼り付けました：${fromApp.note}`);
       return;
     }
     try {
@@ -106,9 +107,7 @@ export default function RoomTracePanel({
     } catch {
       // クリップボードを読めないときは下の案内を出す
     }
-    setMessage(
-      "クリップボードに画像がありません（Shift+Windows+S で切り取ってから押してください）",
-    );
+    setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
   }, [setImage]);
 
   // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
