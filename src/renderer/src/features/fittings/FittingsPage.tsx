@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FittingDraft, MasterEntry, ProjectSummary } from "@shared/types";
 import {
   computeFitting,
@@ -60,6 +60,8 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
   const [selected, setSelected] = useState(0);
   /** Shift+クリックで広げた選択の終わりの行 */
   const [selectedEnd, setSelectedEnd] = useState(0);
+  /** Shift+クリックの最中は、欄へカーソルが入っても選択範囲を消さない */
+  const shiftClick = useRef(false);
   const [message, setMessage] = useState("");
   const [series, setSeries] = useState<SeriesForm | null>(null);
   /** 部位ごとの採用値の設定を開いているか */
@@ -488,12 +490,22 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                     .filter(Boolean)
                     .join(" ") || undefined
                 }
+                onMouseDown={(e) => {
+                  shiftClick.current = e.shiftKey;
+                }}
                 onClick={(e) => {
+                  shiftClick.current = false;
                   if (e.shiftKey) setSelectedEnd(index);
                   else {
                     setSelected(index);
                     setSelectedEnd(index);
                   }
+                }}
+                onFocus={() => {
+                  // 入力欄へEnterや矢印キーで移った時も、その行を選択行にする
+                  if (shiftClick.current) return;
+                  setSelected(index);
+                  setSelectedEnd(index);
                 }}
               >
                 <td className="no">{index + 1}</td>
