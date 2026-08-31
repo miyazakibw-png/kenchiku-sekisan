@@ -156,3 +156,9 @@
   color: #111;
   font-weight: bold;
 }
+
+/* 表の先頭の合計行（ＰＡ） */
+.pit-list .grid tbody tr.pit-total td {
+  background: #eef3fb;
+  font-weight: 600;
+}

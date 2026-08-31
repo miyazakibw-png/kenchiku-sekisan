@@ -25,6 +25,7 @@ import {
   pitCornerCount,
   pitPolygon,
   pitQuantities,
+  pitTotal,
   pitPartVariables,
   pitSymbol,
   pitVariables,
@@ -820,5 +821,25 @@ describe("いくつものピットの角をまとめて動かす", () => {
       expect(rect.left).toBeCloseTo(was[index].left - 1, 6);
       expect(rect.top).toBeCloseTo(was[index].top, 6);
     });
+  });
+});
+
+describe("ＰＡ（全ピットの合計）", () => {
+  it("床面積などを足した合計を返す", () => {
+    const list = [pit("a", { x: 4, y: 2 }), pit("b", { x: 3, y: 2 })];
+    const quantities = pitQuantities(list, []);
+    const total = pitTotal(quantities);
+    expect(total.floorArea).toBeCloseTo(8 + 6, 6);
+    expect(total.wallLength).toBeCloseTo(12 + 10, 6);
+  });
+
+  it("PAは部位で中身が変わる", () => {
+    const list = [pit("a", { x: 4, y: 2 }), pit("b", { x: 3, y: 2 })];
+    const quantities = pitQuantities(list, []);
+    expect(pitPartVariables(quantities, "床").PA).toBeCloseTo(14, 6);
+    expect(pitPartVariables(quantities, "壁").PA).toBeCloseTo(
+      quantities[0].wallArea + quantities[1].wallArea,
+      6,
+    );
   });
 });

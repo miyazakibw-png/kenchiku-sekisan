@@ -32,6 +32,7 @@ import {
   pitCornerCount,
   pitPolygon,
   pitQuantities,
+  pitTotal,
   pitFormulaSymbol,
   pitLabelPoint,
   pitNotch,
@@ -248,6 +249,8 @@ export default function PitSheetPage({
   }, [markSaved, project.id, row.id]);
 
   const quantities = useMemo(() => pitQuantities(pits, beams), [beams, pits]);
+  /** 表の先頭のＰＡ行に出す合計 */
+  const total = useMemo(() => pitTotal(quantities), [quantities]);
 
   const plan = useMemo(() => {
     const rects = layoutPits(pits);
@@ -395,9 +398,8 @@ export default function PitSheetPage({
    * 床＝FA*／壁＝WA*／梁型＝GA*／天井＝CA*（式にカーソルが無いときはコピー）
    */
   const useSymbol = useCallback(
-    (index: number) => {
+    (symbol: string) => {
       const target = calcFocus;
-      const symbol = pitFormulaSymbol(index);
       if (!target || target.area === "detail") {
         void navigator.clipboard.writeText(symbol);
         setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`);
@@ -970,6 +972,32 @@ export default function PitSheetPage({
               </tr>
             </thead>
             <tbody>
+              <tr className="pit-total">
+                <td></td>
+                <td
+                  className="symbol"
+                  onClick={() => useSymbol("PA")}
+                  title="全部のピットの合計。クリックで計算式へ（部位で中身が変わります）"
+                >
+                  ＰＡ
+                </td>
+                <td colSpan={11}>合計（全ピット）</td>
+                <td className="num">
+                  {formatNumber(total.floorArea, 2)}
+                </td>
+                <td className="num">
+                  {formatNumber(total.wallLength, 2)}
+                </td>
+                <td className="num">{formatNumber(total.wallArea, 2)}</td>
+                <td className="num">
+                  {formatNumber(total.beamBottomArea, 2)}
+                </td>
+                <td className="num">{formatNumber(total.beamArea, 2)}</td>
+                <td className="num">
+                  {formatNumber(total.ceilingArea, 2)}
+                </td>
+                <td></td>
+              </tr>
               {pits.map((pit, index) => (
                 <tr key={pit.id}>
                   <td>
@@ -987,7 +1015,7 @@ export default function PitSheetPage({
                   </td>
                   <td
                     className="symbol"
-                    onClick={() => useSymbol(index)}
+                    onClick={() => useSymbol(pitFormulaSymbol(index))}
                     title="クリックで計算式へ（部位で中身が変わります）"
                   >
                     {pit.symbol}

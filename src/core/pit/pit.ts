@@ -1107,16 +1107,59 @@ export function pitPartVariables(
   partName: string,
 ): Record<string, number> {
   const values: Record<string, number> = {};
+  let total = 0;
   quantities.forEach((quantity, index) => {
-    values[pitFormulaSymbol(index)] = partName.includes("天井")
+    const value = partName.includes("天井")
       ? quantity.ceilingArea
       : partName.includes("梁")
         ? quantity.beamArea
         : partName.includes("壁")
           ? quantity.wallArea
           : quantity.floorArea;
+    values[pitFormulaSymbol(index)] = value;
+    total += value;
   });
+  values.PA = round4(total);
   return values;
+}
+
+/** 全部のピットを足した数量（表の先頭のＰＡ行に出す） */
+export function pitTotal(quantities: readonly PitQuantity[]): PitQuantity {
+  const total = quantities.reduce<PitQuantity>(
+    (sum, quantity) => ({
+      id: "PA",
+      symbol: "ＰＡ",
+      depth: 0,
+      floorArea: sum.floorArea + quantity.floorArea,
+      wallLength: sum.wallLength + quantity.wallLength,
+      wallArea: sum.wallArea + quantity.wallArea,
+      beamBottomArea: sum.beamBottomArea + quantity.beamBottomArea,
+      beamArea: sum.beamArea + quantity.beamArea,
+      ceilingArea: sum.ceilingArea + quantity.ceilingArea,
+    }),
+    {
+      id: "PA",
+      symbol: "ＰＡ",
+      depth: 0,
+      floorArea: 0,
+      wallLength: 0,
+      wallArea: 0,
+      beamBottomArea: 0,
+      beamArea: 0,
+      ceilingArea: 0,
+    },
+  );
+  return {
+    id: "PA",
+    symbol: "ＰＡ",
+    depth: 0,
+    floorArea: round4(total.floorArea),
+    wallLength: round4(total.wallLength),
+    wallArea: round4(total.wallArea),
+    beamBottomArea: round4(total.beamBottomArea),
+    beamArea: round4(total.beamArea),
+    ceilingArea: round4(total.ceilingArea),
+  };
 }
 
 /** 計算式に使える記号（FA1…はピットごと、FA…は全部の合計） */
