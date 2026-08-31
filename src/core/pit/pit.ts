@@ -7,6 +7,9 @@
 /** 前のピットから見た置き方 */
 export type PitDirection = "right" | "left" | "up" | "down";
 
+/** 前のピットとどの辺をそろえるか（左右に置くときは上下、上下に置くときは左右） */
+export type PitAlign = "start" | "center" | "end";
+
 /** ピット1個（四角の平面） */
 export interface PitShape {
   id: string;
@@ -22,6 +25,8 @@ export interface PitShape {
   direction: PitDirection;
   /** 前のピットとのすき間 */
   gap: number;
+  /** 前のピットとのそろえ方（初期は start＝上そろえ・左そろえ） */
+  align?: PitAlign;
 }
 
 /** 天井付き梁型（X方向・Y方向のどちらかに通る） */
@@ -106,12 +111,24 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
     }
     const previous = rects[index - 1];
     const gap = pit.gap;
+    const align = pit.align ?? "start";
     let left = previous.left;
     let top = previous.top;
-    if (pit.direction === "right") left = previous.left + previous.x + gap;
-    if (pit.direction === "left") left = previous.left - (pit.x + gap);
-    if (pit.direction === "down") top = previous.top + previous.y + gap;
-    if (pit.direction === "up") top = previous.top - (pit.y + gap);
+    if (pit.direction === "right" || pit.direction === "left") {
+      left =
+        pit.direction === "right"
+          ? previous.left + previous.x + gap
+          : previous.left - (pit.x + gap);
+      if (align === "center") top = previous.top + (previous.y - pit.y) / 2;
+      if (align === "end") top = previous.top + previous.y - pit.y;
+    } else {
+      top =
+        pit.direction === "down"
+          ? previous.top + previous.y + gap
+          : previous.top - (pit.y + gap);
+      if (align === "center") left = previous.left + (previous.x - pit.x) / 2;
+      if (align === "end") left = previous.left + previous.x - pit.x;
+    }
     rects.push({ id: pit.id, symbol: pit.symbol, left, top, x: pit.x, y: pit.y });
   });
   return rects;

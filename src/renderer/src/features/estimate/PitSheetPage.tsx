@@ -19,6 +19,7 @@ import {
   pitQuantities,
   pitSymbol,
   pitVariables,
+  type PitAlign,
   type PitBeam,
   type PitDirection,
   type PitShape,
@@ -38,6 +39,18 @@ interface Props {
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
 }
+
+const ALIGNS_SIDE: { key: PitAlign; label: string }[] = [
+  { key: "start", label: "上そろえ" },
+  { key: "center", label: "中央" },
+  { key: "end", label: "下そろえ" },
+];
+
+const ALIGNS_UPDOWN: { key: PitAlign; label: string }[] = [
+  { key: "start", label: "左そろえ" },
+  { key: "center", label: "中央" },
+  { key: "end", label: "右そろえ" },
+];
 
 const DIRECTIONS: { key: PitDirection; label: string }[] = [
   { key: "right", label: "→（右）" },
@@ -388,6 +401,7 @@ export default function PitSheetPage({
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
                 <th>置き方</th>
+                <th>そろえ</th>
                 <th className="num">すき間（m）</th>
                 <th></th>
               </tr>
@@ -446,6 +460,29 @@ export default function PitSheetPage({
                         {DIRECTIONS.map((direction) => (
                           <option key={direction.key} value={direction.key}>
                             {`${pits[index - 1]?.symbol ?? ""}${direction.label}`}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    {index === 0 ? (
+                      ""
+                    ) : (
+                      <select
+                        value={pit.align ?? "start"}
+                        onChange={(e) =>
+                          editPit(pit.id, {
+                            align: e.target.value as PitAlign,
+                          })
+                        }
+                      >
+                        {(pit.direction === "up" || pit.direction === "down"
+                          ? ALIGNS_UPDOWN
+                          : ALIGNS_SIDE
+                        ).map((align) => (
+                          <option key={align.key} value={align.key}>
+                            {align.label}
                           </option>
                         ))}
                       </select>

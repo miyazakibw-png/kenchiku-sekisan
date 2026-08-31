@@ -90,3 +90,35 @@ describe("ピットの数量", () => {
     expect(values.DP1).toBeCloseTo(1.5);
   });
 });
+
+describe("そろえ方", () => {
+  const base = {
+    depth: 1,
+    direction: "right" as const,
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("右に置くとき下そろえ・中央そろえで上下位置が変わる", () => {
+    const rects = layoutPits([
+      { id: "a", symbol: "Ｐ1", x: 4, y: 6, ...base },
+      { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base, align: "end" },
+    ]);
+    expect(rects[1].top).toBe(4);
+    expect(rects[1].left).toBe(4.5);
+
+    const centered = layoutPits([
+      { id: "a", symbol: "Ｐ1", x: 4, y: 6, ...base },
+      { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base, align: "center" },
+    ]);
+    expect(centered[1].top).toBe(2);
+  });
+
+  it("上に置くとき右そろえで左右位置が変わる", () => {
+    const rects = layoutPits([
+      { id: "a", symbol: "Ｐ1", x: 6, y: 2, ...base },
+      { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base, direction: "up", align: "end" },
+    ]);
+    expect(rects[1].left).toBe(4);
+    expect(rects[1].top).toBe(-2.5);
+  });
+});
