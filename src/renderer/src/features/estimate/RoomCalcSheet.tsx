@@ -20,6 +20,7 @@ import {
   displayQuantity,
   displayedValue,
   evaluateCalcSheet,
+  insertSetBefore,
   isCommentSet,
   mergeWithPreviousSet,
   moveSetDetail,
@@ -804,8 +805,7 @@ export default function RoomCalcSheet({
       const next = [...sets];
       // ※行にカーソルがあるときは、その※行の下へ新しいセットとして入れる
       if (bannerAt >= 0 && isCommentSet(sets[bannerAt])) {
-        next.splice(bannerAt + 1, 0, created);
-        commit(next);
+        commit(insertSetBefore(sets, bannerAt + 1, created));
         onFocus({ setId: created.id, area: "detail", index: 0 });
         onMessage(
           `${assembly.items[0]?.name ?? "セット明細"} を呼び出しました`,
@@ -814,15 +814,15 @@ export default function RoomCalcSheet({
       }
       const at = sets.findIndex((set) => set.id === currentSet?.id);
       if (insertMode || at < 0 || isCommentSet(sets[at])) {
-        // ※行の上に入れる（※行そのものは上書きしない）
-        next.splice(at < 0 ? next.length : at, 0, created);
+        // ※行は上に残し、その下へ入れる
+        commit(insertSetBefore(sets, at, created));
       } else {
         // 上書きは元のセット1つ分を丸ごと置き換える（計算式と※行は残す）
         created.lines = syncLines(created.details, sets[at].lines);
         created.banner = sets[at].banner ?? null;
         next[at] = created;
+        commit(next);
       }
-      commit(next);
       onFocus({ setId: created.id, area: "detail", index: 0 });
       onMessage(
         `${assembly.items[0]?.name ?? "セット明細"} を${insertMode ? "挿入" : "上書き"}呼出しました`,
@@ -878,9 +878,7 @@ export default function RoomCalcSheet({
         ? bannerAt
         : sets.findIndex((set) => set.id === currentSet?.id);
     const created = calcSet(1);
-    const next = [...sets];
-    next.splice(at < 0 ? next.length : at, 0, created);
-    commit(next);
+    commit(insertSetBefore(sets, at, created));
     onFocus({ setId: created.id, area: "detail", index: 0 });
     onMessage("上に空の明細（1明細）を入れました");
   }, [bannerSetId, commit, currentSet?.id, onFocus, onMessage, sets]);

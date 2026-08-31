@@ -11,6 +11,7 @@ import {
   commentSet,
   displayQuantity,
   evaluateCalcSheet,
+  insertSetBefore,
   mergeWithPreviousSet,
   nextBSymbol,
   openSetDetail,
@@ -329,6 +330,26 @@ describe("行の追加と削除", () => {
     const opened = openSetDetail(set, 1);
     expect(opened.details.length).toBe(2);
     expect(opened.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("※行付きのセットの上へ入れるときは、※行の下に新しいセットが入る", () => {
+    const host = calcSet(1);
+    host.partName = "壁";
+    host.banner = { text: "※ 見出し", color: "#dcfce7" };
+    const added = calcSet(1);
+    const next = insertSetBefore([host], 0, added);
+    expect(next.map((set) => set.id)).toEqual([added.id, host.id]);
+    expect(next[0].banner?.text).toBe("※ 見出し");
+    expect(next[1].banner).toBeNull();
+  });
+
+  it("※行（コメント行）の上へ入れるときは※行はそのまま", () => {
+    const comment = commentSet("※ 見出し", "#dcfce7");
+    const added = calcSet(1);
+    const next = insertSetBefore([comment], 0, added);
+    expect(next.map((set) => set.id)).toEqual([added.id, comment.id]);
+    expect(next[1].banner?.text).toBe("※ 見出し");
+    expect(next[0].banner).toBeNull();
   });
 
   it("明細の無い計算式だけの行を削除できる", () => {

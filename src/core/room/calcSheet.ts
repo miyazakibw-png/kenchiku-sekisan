@@ -117,6 +117,28 @@ export function isCommentSet(set: CalcSet): boolean {
   );
 }
 
+/**
+ * セットの上へ新しいセットを差し込む。
+ * ※行が付いているセットの上へ入れるときは、※行を上に残して
+ * その下（※行と元のセットの間）に新しいセットが並ぶようにする。
+ */
+export function insertSetBefore(
+  sets: CalcSet[],
+  at: number,
+  created: CalcSet,
+): CalcSet[] {
+  const next = [...sets];
+  const to = at < 0 || at > next.length ? next.length : at;
+  const host = next[to];
+  let added = created;
+  if (host !== undefined && !isCommentSet(host) && host.banner != null) {
+    added = { ...created, banner: host.banner };
+    next[to] = { ...host, banner: null };
+  }
+  next.splice(to, 0, added);
+  return next;
+}
+
 /** 空のセット明細（1明細＝1行） */
 export function calcSet(detailCount = 1): CalcSet {
   return {
