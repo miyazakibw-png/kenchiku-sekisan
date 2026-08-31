@@ -309,6 +309,29 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
  * 入力の無い明細・セットを取り除く（保存・読み込みのときに使う）。
  * 明細1件＝計算式1行の対応を崩さないよう、末尾の空明細だけを詰める。
  */
+/**
+ * セット・明細・計算式行の目印（ID）が重なっているときに付け直す。
+ * コピーで同じIDのセットが増えると、記号の差し込みや計算結果が別の行にも出てしまう。
+ */
+export function withUniqueIds(sets: CalcSet[]): CalcSet[] {
+  const used = new Set<string>();
+  const fresh = (id: string, prefix: string): string => {
+    const keep = id !== "" && !used.has(id);
+    const next = keep ? id : newId(prefix);
+    used.add(next);
+    return next;
+  };
+  return sets.map((set) => ({
+    ...set,
+    id: fresh(set.id, "s"),
+    details: set.details.map((detail) => ({
+      ...detail,
+      id: fresh(detail.id, "d"),
+    })),
+    lines: set.lines.map((line) => ({ ...line, id: fresh(line.id, "l") })),
+  }));
+}
+
 export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
   const trimmed: CalcSet[] = [];
   for (const set of detachBanners(sets)) {

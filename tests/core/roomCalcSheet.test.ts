@@ -18,6 +18,7 @@ import {
   openSetDetail,
   padLines,
   quantityByPart,
+  withUniqueIds,
   removeSet,
   removeSetLine,
   splitSetAt,
@@ -385,5 +386,17 @@ describe("行の追加と削除", () => {
     const removed = removeSetLine(set, 1);
     expect(removed.lines.map((item) => item.formulaA)).toEqual(["1"]);
     expect(removed.details.length).toBe(1);
+  });
+});
+
+describe("重なったIDを付け直す", () => {
+  it("同じIDのセットは別のIDになる（中身はそのまま）", () => {
+    const one = { ...calcSet(1), id: "s1", partName: "壁" };
+    const two = { ...calcSet(1), id: "s1", partName: "天井" };
+    const fixed = withUniqueIds([one, two]);
+    expect(fixed[0].id).toBe("s1");
+    expect(fixed[1].id).not.toBe("s1");
+    expect(fixed[1].partName).toBe("天井");
+    expect(fixed[0].lines[0].id).not.toBe(fixed[1].lines[0].id);
   });
 });

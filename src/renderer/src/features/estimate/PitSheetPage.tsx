@@ -9,6 +9,7 @@ import type {
 import {
   evaluateCalcSheet,
   trimEmptySets,
+  withUniqueIds,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import {
@@ -42,6 +43,14 @@ const PIT_CORNERS: { key: PitCorner; mark: string; name: string }[] = [
   { key: "bl", mark: "◣", name: "左下" },
   { key: "br", mark: "◢", name: "右下" },
 ];
+
+/** セットの部位名（左端の部位。空なら明細の部位名で見る） */
+function partOfSet(set: CalcSet | undefined): string {
+  if (!set) return "";
+  const part = set.partName.trim();
+  if (part !== "") return part;
+  return set.details.find((detail) => detail.partName.trim() !== "")?.partName ?? "";
+}
 
 interface Props {
   project: ProjectSummary;
@@ -137,7 +146,9 @@ export default function PitSheetPage({
       const loaded = await window.sekisan.getPitSheet(row.id as number);
       const loadedPits = renumber(parseJson<PitShape[]>(loaded.pitsJson, []));
       const loadedBeams = parseJson<PitBeam[]>(loaded.beamsJson, []);
-      const sets = trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, []));
+      const sets = withUniqueIds(
+        trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
+      );
       setSheet(loaded);
       setPits(loadedPits);
       setBeams(loadedBeams);
@@ -266,30 +277,39 @@ export default function PitSheetPage({
   const useSymbol = useCallback(
     (index: number) => {
       const target = calcFocus;
-      const set = lower.find((each) => each.id === target?.setId);
-      const symbol = pitSymbolForPart(index, set?.partName ?? "");
       if (!target || target.area === "detail") {
+        const set = lower.find((each) => each.id === target?.setId);
+        const symbol = pitSymbolForPart(index, partOfSet(set));
         void navigator.clipboard.writeText(symbol);
         setMessage(`${symbol} をコピーしました（計算式に貼り付けられます）`);
         return;
       }
+      let used = "";
+      let usedPart = "";
       setLower((current) =>
-        current.map((each) =>
-          each.id !== target.setId
-            ? each
-            : {
-                ...each,
-                lines: each.lines.map((line, lineIndex) =>
-                  lineIndex !== target.index
-                    ? line
-                    : target.area === "formulaA"
-                      ? { ...line, formulaA: line.formulaA + symbol }
-                      : { ...line, formulaB: line.formulaB + symbol },
-                ),
-              },
-        ),
+        current.map((each) => {
+          if (each.id !== target.setId || used !== "") return each;
+          const part = partOfSet(each);
+          const symbol = pitSymbolForPart(index, part);
+          used = symbol;
+          usedPart = part === "" ? "部位なし" : part;
+          return {
+            ...each,
+            lines: each.lines.map((line, lineIndex) =>
+              lineIndex !== target.index
+                ? line
+                : target.area === "formulaA"
+                  ? { ...line, formulaA: line.formulaA + symbol }
+                  : { ...line, formulaB: line.formulaB + symbol },
+            ),
+          };
+        }),
       );
-      setMessage(`${symbol} を計算式に入れました`);
+      setMessage(
+        used === ""
+          ? "計算式の欄を選んでから記号を押してください"
+          : `${usedPart}の行なので ${used} を計算式に入れました`,
+      );
     },
     [calcFocus, lower],
   );
