@@ -61,6 +61,8 @@ export default function EstimatePartsPage({
   const [returnSheet, setReturnSheet] = useState<number | null>(null);
   /** 計算書を印刷書式で見ている部屋（1部屋分または一括） */
   const [printRows, setPrintRows] = useState<EstimateRowDraft[] | null>(null);
+  /** 一括印刷のときだけ、表紙に出す部位別入力表の全行 */
+  const [printCover, setPrintCover] = useState<EstimateRowDraft[] | null>(null);
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
   const [checkCategory, setCheckCategory] = useState(
     options.materialCategories.some((category) => category.name === "仕上")
@@ -296,6 +298,7 @@ export default function EstimatePartsPage({
         );
         return;
       }
+      setPrintCover(all ? saved : null);
       setPrintRows(target);
     },
     [project.id, rows, selected],
@@ -338,7 +341,11 @@ export default function EstimatePartsPage({
       <RoomCalcPrintPage
         project={project}
         rows={printRows}
-        onBack={() => setPrintRows(null)}
+        coverRows={printCover}
+        onBack={() => {
+          setPrintRows(null);
+          setPrintCover(null);
+        }}
       />
     );
   }

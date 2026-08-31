@@ -1,0 +1,51 @@
+/* 計算書一括印刷の表紙（部位別入力表）。紙の大きさは計算書と同じA3横 */
+.estimate-cover-sheet .calc-print-page {
+  padding: 0;
+}
+
+.estimate-cover-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.estimate-cover-sheet th,
+.estimate-cover-sheet td {
+  border: 1px solid #000;
+  padding: 0 3px;
+  height: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.estimate-cover-sheet thead th {
+  background: #e5e7eb;
+  color: #000;
+  font-weight: 600;
+  text-align: center;
+}
+
+.estimate-cover-sheet th.no,
+.estimate-cover-sheet td.no {
+  width: 44px;
+  text-align: right;
+}
+
+.estimate-cover-sheet th.flag,
+.estimate-cover-sheet td.flag {
+  width: 84px;
+  text-align: center;
+}
+
+.estimate-cover-sheet th.num,
+.estimate-cover-sheet td.num {
+  width: 76px;
+  text-align: right;
+}
+
+.estimate-cover-sheet th.note,
+.estimate-cover-sheet td.note {
+  width: 300px;
+}

@@ -3,12 +3,15 @@ import type { EstimateRowDraft, ProjectSummary } from "@shared/types";
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
+import EstimateCoverSheet from "./EstimateCoverSheet";
 import "./RoomCalcPrintPage.css";
 
 interface Props {
   project: ProjectSummary;
   /** 印刷する計算書の行（1行だけ／一括）。部屋別・軸組・汎用のどれでもよい */
   rows: EstimateRowDraft[];
+  /** 表紙に出す部位別入力表の全行（一括印刷のときだけ渡す） */
+  coverRows?: EstimateRowDraft[] | null;
   onBack: () => void;
 }
 
@@ -20,6 +23,7 @@ interface Props {
 export default function RoomCalcPrintPage({
   project,
   rows,
+  coverRows = null,
   onBack,
 }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
@@ -87,6 +91,9 @@ export default function RoomCalcPrintPage({
         </button>
       </div>
       <div className="sheets">
+        {coverRows !== null && (
+          <EstimateCoverSheet project={project} rows={coverRows} />
+        )}
         {rows.map((row) => {
           const key = row.id ?? `${row.part2}-${row.part3}`;
           const roomName = `${row.part2} ${row.part3}`.trim();
