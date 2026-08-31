@@ -3,10 +3,11 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
 } from "fs";
-import { dirname, join } from "path";
+import { dirname, extname, join } from "path";
 import {
   app,
   BrowserWindow,
@@ -749,8 +750,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.windowFocus, (event) =>
     recoverInput(BrowserWindow.fromWebContents(event.sender)),
   );
-  // Shift+Windows+S などで切り取った画像を、クリップボードから直接取り込む
+  // Shift+Windows+S の切り取りや、コピーした画像ファイルを取り込む
   ipcMain.handle(IPC.clipboardImage, () => {
+    const fromFile = clipboardImageFile();
+    if (fromFile !== "") return fromFile;
     const image = clipboard.readImage();
     return image.isEmpty() ? "" : image.toDataURL();
   });
@@ -759,6 +762,48 @@ function registerIpcHandlers(): void {
     const window = BrowserWindow.fromWebContents(event.sender);
     return window ? await setImeMode(window, mode) : "画面がありません";
   });
+}
+
+const IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".bmp": "image/bmp",
+  ".webp": "image/webp",
+};
+
+/**
+ * エクスプローラーで画像ファイルをコピーしたとき、そのファイルを読んでdata URLにする。
+ * （このときクリップボードの絵はファイルのアイコンなので、そのままでは使えない）
+ */
+function clipboardImageFile(): string {
+  const names = ["FileNameW", "FileName", "public.file-url", "text/uri-list"];
+  for (const name of names) {
+    let path = "";
+    try {
+      const buffer = clipboard.readBuffer(name);
+      if (buffer.length === 0) continue;
+      path = (
+        name === "FileNameW" ? buffer.toString("ucs2") : buffer.toString("utf8")
+      )
+        .replace(/\0+$/, "")
+        .split(/\r?\n/)[0]
+        .trim();
+    } catch {
+      continue;
+    }
+    if (path.startsWith("file:///")) path = decodeURI(path.slice(8));
+    if (path === "") continue;
+    const type = IMAGE_TYPES[extname(path).toLowerCase()];
+    if (type === undefined || !existsSync(path)) continue;
+    try {
+      return `data:${type};base64,${readFileSync(path).toString("base64")}`;
+    } catch {
+      continue;
+    }
+  }
+  return "";
 }
 
 const AUTO_BACKUP_KEEP = 10;

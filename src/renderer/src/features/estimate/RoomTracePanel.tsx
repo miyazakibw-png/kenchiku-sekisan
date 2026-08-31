@@ -355,7 +355,20 @@ export default function RoomTracePanel({
         )}
       </div>
 
-      <div className="trace-body" ref={boxRef} tabIndex={-1}>
+      <div
+        className="trace-body"
+        ref={boxRef}
+        tabIndex={-1}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          const file = Array.from(event.dataTransfer.files).find((entry) =>
+            entry.type.startsWith("image/"),
+          );
+          if (!file) return;
+          event.preventDefault();
+          void readAsDataUrl(file).then(setImage);
+        }}
+      >
         {trace.image === "" ? (
           <p className="empty">
             Shift+Windows+S で図面を切り取り、この画面で Ctrl+V
