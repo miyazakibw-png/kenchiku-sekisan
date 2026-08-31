@@ -31,7 +31,7 @@ import GeneralSheetPage from "./GeneralSheetPage";
 import "./EstimatePartsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
-import { askConfirm } from "../../hooks/useInputRecovery";
+import { ask } from "../common/askDialog";
 
 interface Props {
   project: ProjectSummary;
@@ -754,16 +754,23 @@ export default function EstimatePartsPage({
                       onChange={(e) => {
                         const filled =
                           row.id === null ? [] : (filledSheets[row.id] ?? []);
-                        if (
-                          filled.includes(row.calcType) &&
-                          !askConfirm(
-                            "入力済みの計算書があります。種類を変えると集計に入らなくなります（中身は残ります）。変えますか？",
-                          )
-                        )
+                        const picked = e.target.value;
+                        if (!filled.includes(row.calcType)) {
+                          editRows(
+                            updateRow(rows, index, { calcType: picked }),
+                          );
                           return;
-                        editRows(
-                          updateRow(rows, index, { calcType: e.target.value }),
-                        );
+                        }
+                        const before = row.calcType;
+                        e.target.value = before;
+                        void ask(
+                          "入力済みの計算書があります。種類を変えると集計に入らなくなります（中身は残ります）。変えますか？",
+                        ).then((ok) => {
+                          if (ok)
+                            editRows(
+                              updateRow(rows, index, { calcType: picked }),
+                            );
+                        });
                       }}
                     >
                       {options.calcSheets.map((sheet) => (

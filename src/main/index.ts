@@ -11,6 +11,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   shell,
   webContents,
@@ -251,6 +252,27 @@ function openCalcWindow(parent: WebContents, title: string): void {
   }
 }
 
+/**
+ * 欄に文字が入らなくなったときの復帰。
+ * Windowsでは確認の窓などを出したあと、窓が「操作できない状態」のまま残ることがあるので、
+ * すべての窓を操作できる状態に戻し、指定の窓へ入力先を渡す。
+ */
+function recoverInput(target: BrowserWindow | null): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue;
+    window.setEnabled(true);
+    if (window.isMinimized()) window.restore();
+  }
+  const window =
+    target && !target.isDestroyed()
+      ? target
+      : (BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]);
+  if (!window || window.isDestroyed()) return;
+  window.show();
+  window.focus();
+  window.webContents.focus();
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC.masterOptions, (_event, projectId: number | null = null) =>
     listMasterOptions(getDatabase(), projectId),
@@ -441,6 +463,7 @@ function registerIpcHandlers(): void {
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath: defaultName })
         : await dialog.showSaveDialog({ defaultPath: defaultName });
+      recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       writeExport(result.filePath, content);
       return { filePath: result.filePath };
@@ -587,6 +610,7 @@ function registerIpcHandlers(): void {
     const result = window
       ? await dialog.showSaveDialog(window, options)
       : await dialog.showSaveDialog(options);
+    recoverInput(window);
     if (result.canceled || !result.filePath)
       return { done: false, filePath: null, message: "取り消しました。" };
     await backupDatabaseTo(result.filePath);
@@ -606,6 +630,7 @@ function registerIpcHandlers(): void {
     const picked = window
       ? await dialog.showOpenDialog(window, options)
       : await dialog.showOpenDialog(options);
+    recoverInput(window);
     if (picked.canceled || picked.filePaths.length === 0)
       return { done: false, filePath: null, message: "取り消しました。" };
     const sourcePath = picked.filePaths[0];
@@ -624,6 +649,7 @@ function registerIpcHandlers(): void {
     const answer = window
       ? await dialog.showMessageBox(window, confirmOptions)
       : await dialog.showMessageBox(confirmOptions);
+    recoverInput(window);
     if (answer.response !== 0)
       return { done: false, filePath: sourcePath, message: "取り消しました。" };
     const rollbackPath = join(
@@ -640,6 +666,7 @@ function registerIpcHandlers(): void {
     };
     if (window) await dialog.showMessageBox(window, doneOptions);
     else await dialog.showMessageBox(doneOptions);
+    recoverInput(window);
     for (const opened of BrowserWindow.getAllWindows()) {
       opened.webContents.reload();
     }
@@ -678,6 +705,7 @@ function registerIpcHandlers(): void {
             defaultPath: `${defaultName}.pdf`,
           })
         : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
+      recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       const pdf = await event.sender.printToPDF({
         landscape: paper.landscape,
@@ -697,6 +725,7 @@ function registerIpcHandlers(): void {
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath })
         : await dialog.showSaveDialog({ defaultPath });
+      recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       writeExport(result.filePath, toScreenWorkbook(request.sheets));
       return { filePath: result.filePath };
@@ -706,13 +735,9 @@ function registerIpcHandlers(): void {
     BrowserWindow.fromWebContents(event.sender)?.close(),
   );
   // 文字が入らなくなったとき（入力先が別の窓に残ったとき）に入力先を戻す
-  ipcMain.handle(IPC.windowFocus, (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window || window.isDestroyed()) return;
-    if (window.isMinimized()) window.restore();
-    window.focus();
-    window.webContents.focus();
-  });
+  ipcMain.handle(IPC.windowFocus, (event) =>
+    recoverInput(BrowserWindow.fromWebContents(event.sender)),
+  );
 }
 
 const AUTO_BACKUP_KEEP = 10;
@@ -746,6 +771,10 @@ app.whenReady().then(() => {
   keepAutoBackup(dbFile);
   initDatabase(dbFile);
   registerIpcHandlers();
+  // 窓が操作できなくなっても押せるように、Windows全体のキーとして登録する
+  globalShortcut.register("CommandOrControl+Alt+R", () =>
+    recoverInput(BrowserWindow.getFocusedWindow()),
+  );
   createWindow();
 
   app.on("activate", () => {
@@ -757,4 +786,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("will-quit", closeDatabase);
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+  closeDatabase();
+});

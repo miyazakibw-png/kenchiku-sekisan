@@ -358,3 +358,51 @@ body.print-a3-landscape .app {
 .table-col-resize:hover {
   background: rgba(255, 255, 255, 0.5);
 }
+
+/* 画面の中に出す「はい／いいえ」の確認 */
+.ask-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ask-box {
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  min-width: 320px;
+  max-width: 640px;
+  padding: 16px;
+}
+
+.ask-message {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.ask-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.ask-buttons button {
+  min-width: 88px;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ask-buttons .ask-ok {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+}

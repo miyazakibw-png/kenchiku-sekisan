@@ -75,7 +75,7 @@ import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import CalcPrintSheet from "../print/CalcPrintSheet";
-import { askConfirm } from "../../hooks/useInputRecovery";
+import { ask } from "../common/askDialog";
 
 interface Props {
   project: ProjectSummary;
@@ -977,10 +977,10 @@ export default function RoomSheetPage({
     setMessage("図形を1つ先へ進めました");
   };
 
-  const startShape = (next: RoomShape): void => {
+  const startShape = async (next: RoomShape): Promise<void> => {
     if (
       shape.edges.length > 0 &&
-      !askConfirm("いまの形と寸法を消して、四角から作り直しますか？")
+      !(await ask("いまの形と寸法を消して、四角から作り直しますか？"))
     ) {
       return;
     }
@@ -1079,7 +1079,7 @@ export default function RoomSheetPage({
     }
     setPrompt(null);
     if (prompt.kind === "rect") {
-      startShape(rectangleShape(across, along));
+      void startShape(rectangleShape(across, along));
       setMessage(
         `横${formatNumber(across, 2)}／縦${formatNumber(along, 2)} の四角を作りました`,
       );

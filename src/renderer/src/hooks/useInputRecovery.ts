@@ -2,8 +2,7 @@ import { useEffect } from "react";
 
 /**
  * 画面へ入力先（フォーカス）を戻す。
- * 一覧の「計算書の種類」などの選択欄や確認の窓を使ったあと、
- * Windowsで入力先が別の窓に残って文字が入らなくなることがあるため。
+ * 選択欄や窓を使ったあと、Windowsで入力先が別の窓に残って文字が入らなくなることがあるため。
  */
 export async function refocusWindow(): Promise<void> {
   const active =
@@ -13,13 +12,6 @@ export async function refocusWindow(): Promise<void> {
   await window.sekisan.focusWindow();
   window.focus();
   if (active !== null && document.contains(active)) active.focus();
-}
-
-/** 確認の窓（はい／いいえ）。閉じたあとに入力先を画面へ戻す */
-export function askConfirm(message: string): boolean {
-  const answer = window.confirm(message);
-  void refocusWindow();
-  return answer;
 }
 
 /**

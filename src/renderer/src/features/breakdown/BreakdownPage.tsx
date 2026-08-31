@@ -19,7 +19,7 @@ import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
-import { askConfirm } from "../../hooks/useInputRecovery";
+import { ask } from "../common/askDialog";
 
 interface Props {
   project: ProjectSummary;
@@ -245,8 +245,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const deleteVersion = async (): Promise<void> => {
     const target = view.version;
     if (!target) return;
-    if (!askConfirm(`${target.round}回目の内訳書を消します。よろしいですか。`))
-      return;
+    const ok = await ask(
+      `${target.round}回目の内訳書を消します。よろしいですか。`,
+    );
+    if (!ok) return;
     await window.sekisan.deleteBreakdownVersion(target.id);
     setPanel("none");
     setCompareTarget(null);

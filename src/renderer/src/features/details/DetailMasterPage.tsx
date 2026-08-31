@@ -49,7 +49,7 @@ import {
 } from "./detailColumns";
 import DetailChangeHistoryPage from "./DetailChangeHistoryPage";
 import "./DetailMasterPage.css";
-import { askConfirm } from "../../hooks/useInputRecovery";
+import { ask } from "../common/askDialog";
 
 const STATUS_LABEL: Record<string, string> = {
   idle: "─",
@@ -225,7 +225,7 @@ export default function DetailMasterPage({
   /** 以前に作った工事など、物件専用明細がまだ無いときに基本マスターから複製する */
   const handleCopyFromBasic = useCallback(async () => {
     if (projectId === null || !subject) return;
-    const ok = askConfirm(
+    const ok = await ask(
       "基本マスターから複製します。中身の違う行は基本マスターの内容に戻ります（この画面で直した分も戻ります）。よろしいですか。",
     );
     if (!ok) return;
