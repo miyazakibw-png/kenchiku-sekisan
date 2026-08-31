@@ -294,6 +294,26 @@ body.print-a3-landscape .app {
     width: 100% !important;
   }
 
+  /* 部屋別計算書の印刷書式はA3横の大きさで作ってあるので縮めない */
+  .app-main:has(.calc-print-sheet) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  /* 集計書の印刷書式はA4横の大きさで作ってあるので縮めない */
+  .app-main:has(.aggregate-print-page) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  /* 計算書・集計書の紙は1枚ずつ切る（各欄のはみ出しは隠したまま） */
+  .calc-print-page,
+  .calc-print-page *,
+  .aggregate-print-sheet,
+  .aggregate-print-sheet * {
+    overflow: hidden !important;
+  }
+
   .summary-sheet-print {
     display: block;
   }

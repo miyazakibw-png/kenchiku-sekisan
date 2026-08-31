@@ -12,6 +12,7 @@ import { displayQuantity } from "../../../../core/room/calcSheet";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
+import AggregatePrintPage from "./AggregatePrintPage";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
 
@@ -152,6 +153,8 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   /** 同じ明細マスターから拾った行をまとめて直す（既定は直した行だけ） */
   const [applyToSameDetail, setApplyToSameDetail] = useState(false);
   const [message, setMessage] = useState("");
+  /** 印刷書式（根拠付きの集計書）を見ている間は true */
+  const [printing, setPrinting] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const basisRef = useRef<HTMLElement>(null);
   /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
@@ -332,6 +335,17 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     return () => body.removeEventListener("scroll", placeBasis);
   }, [basis, placeBasis]);
 
+  if (printing) {
+    return (
+      <AggregatePrintPage
+        project={project}
+        items={view.items}
+        subjects={subjects}
+        onBack={() => setPrinting(false)}
+      />
+    );
+  }
+
   return (
     <div className="estimate-page aggregate-page">
       <div className="toolbar">
@@ -344,6 +358,14 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         </span>
         <button type="button" onClick={() => void run()}>
           🧮 集計実行
+        </button>
+        <button
+          type="button"
+          disabled={view.items.length === 0}
+          onClick={() => setPrinting(true)}
+          title="1明細ごとに数量根拠（部屋ごとの拾い）を付けてA4横で印刷します"
+        >
+          🖨 集計書印刷
         </button>
         <button
           type="button"

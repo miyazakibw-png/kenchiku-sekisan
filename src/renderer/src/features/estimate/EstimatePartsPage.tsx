@@ -26,6 +26,7 @@ import {
   updateRow,
 } from "./estimateRows";
 import RoomSheetPage from "./RoomSheetPage";
+import RoomCalcPrintPage from "./RoomCalcPrintPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
 import "./EstimatePartsPage.css";
@@ -58,6 +59,8 @@ export default function EstimatePartsPage({
   const [openedSheet, setOpenedSheet] = useState<number | null>(null);
   /** 軸組の「置ける部屋」から部屋計算書へ飛んだとき、戻り先の軸組計算書 */
   const [returnSheet, setReturnSheet] = useState<number | null>(null);
+  /** 計算書を印刷書式で見ている部屋（1部屋分または一括） */
+  const [printRows, setPrintRows] = useState<EstimateRowDraft[] | null>(null);
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
   const [checkCategory, setCheckCategory] = useState(
     options.materialCategories.some((category) => category.name === "仕上")
@@ -266,6 +269,38 @@ export default function EstimatePartsPage({
     [project.id, rows],
   );
 
+  /**
+   * 計算書の印刷（A3横）を開く。保存済みの行しか紙にできないので、先に保存する。
+   * all なら部屋計算書の行を全部、そうでなければカーソルの行だ1部屋。
+   */
+  const openCalcPrint = useCallback(
+    async (all: boolean) => {
+      const saved = toDrafts(
+        await window.sekisan.saveEstimateRows({
+          projectId: project.id,
+          rows,
+        }),
+      );
+      setRows(saved);
+      const isRoom = (row: EstimateRowDraft): boolean =>
+        row.rowType !== "subtotal" &&
+        row.calcType !== "frame" &&
+        row.calcType !== "general" &&
+        row.id !== null;
+      const target = all
+        ? saved.filter(isRoom)
+        : saved[selected] && isRoom(saved[selected])
+          ? [saved[selected]]
+          : [];
+      if (target.length === 0) {
+        setMessage("印刷できる部屋計算書の行がありません（保存してから選んでください）");
+        return;
+      }
+      setPrintRows(target);
+    },
+    [project.id, rows, selected],
+  );
+
   const numberCell = (
     index: number,
     value: number | null,
@@ -297,6 +332,16 @@ export default function EstimatePartsPage({
       />
     );
   };
+
+  if (printRows !== null) {
+    return (
+      <RoomCalcPrintPage
+        project={project}
+        rows={printRows}
+        onBack={() => setPrintRows(null)}
+      />
+    );
+  }
 
   if (openedSheet !== null && rows[openedSheet]?.calcType === "frame") {
     return (
@@ -376,6 +421,20 @@ export default function EstimatePartsPage({
             </button>
             <button type="button" onClick={() => void pasteFromExcel()}>
               📋 Excelから貼り付け
+            </button>
+            <button
+              type="button"
+              title="カーソルの行の計算書をA3横の書式で印刷します"
+              onClick={() => void openCalcPrint(false)}
+            >
+              🖨 計算書印刷
+            </button>
+            <button
+              type="button"
+              title="この工事の部屋計算書を全部、A3横の書式で続けて印刷します"
+              onClick={() => void openCalcPrint(true)}
+            >
+              🖨 計算書一括印刷
             </button>
             <button type="button" onClick={() => void save()}>
               💾 保存

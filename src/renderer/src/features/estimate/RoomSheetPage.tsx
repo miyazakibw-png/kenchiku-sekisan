@@ -74,6 +74,7 @@ import {
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import CalcPrintSheet from "../print/CalcPrintSheet";
 
 interface Props {
   project: ProjectSummary;
@@ -82,6 +83,8 @@ interface Props {
   onBack: () => void;
   /** 天井高さを直したときに部位別入力表の行へも伝える */
   onCeilingHeightChange?: (height: number | null) => void;
+  /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
+  printMode?: boolean;
 }
 
 /** チェック表で合計する材種区分 */
@@ -244,6 +247,7 @@ export default function RoomSheetPage({
   roomName,
   onBack,
   onCeilingHeightChange,
+  printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<RoomSheet | null>(null);
   const [shape, setShape] = useState<RoomShape>({ edges: [] });
@@ -275,7 +279,7 @@ export default function RoomSheetPage({
     baseX: number;
     baseY: number;
   } | null>(null);
-  const [showCeiling, setShowCeiling] = useState(false);
+  const [showCeiling, setShowCeiling] = useState(printMode);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
   const [lower, setLower] = useState<CalcSet[]>([]);
@@ -556,7 +560,8 @@ export default function RoomSheetPage({
   );
 
   const save = useCallback(async () => {
-    if (!sheet) return;
+    // 印刷は見るだけなので、直したことにしない
+    if (!sheet || printMode) return;
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
@@ -586,6 +591,7 @@ export default function RoomSheetPage({
     codeMoves,
     lower,
     markSaved,
+    printMode,
     roomFittings,
     shape,
     sheet,
@@ -1235,56 +1241,8 @@ export default function RoomSheetPage({
     );
   };
 
-  return (
-    <div className="room-sheet-page">
-      <div className="toolbar">
-        <button type="button" onClick={closePage}>
-          ← 部位別入力表へ
-        </button>
-        <h2>部屋別計算書</h2>
-        <span className="project">
-          {project.managementNo} {roomName || "（部屋名なし）"}
-        </span>
-        <label>
-          天井高さ
-          <input
-            className="num"
-            defaultValue={formatNumber(ceilingHeight, 2)}
-            key={`ch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
-            onBlur={(e) => applyCeilingHeight(e.target.value)}
-          />
-        </label>
-        <button type="button" onClick={() => void save()}>
-          💾 保存
-        </button>
-        <button
-          type="button"
-          className={showFittings ? "on" : ""}
-          onClick={() => setShowFittings(!showFittings)}
-        >
-          🚪 建具表
-        </button>
-        <button type="button" onClick={() => setShowCheck(!showCheck)}>
-          ✓ チェック表
-        </button>
-        <button
-          type="button"
-          className={showCeiling ? "on" : ""}
-          onClick={() => setShowCeiling(!showCeiling)}
-        >
-          {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
-        </button>
-        <button
-          type="button"
-          className={expanded ? "on" : ""}
-          title="図を画面いっぱいに開いて、そのまま入力できます"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
-        </button>
-        <span className="status">{message}</span>
-      </div>
-
+  /** 上段（図・寸法入力・記号・建具・天井伏図）。印刷では紙の1枚目に入れる */
+  const upperArea = (
       <div className={expanded ? "upper expanded" : "upper"}>
         <section className="drawing">
           <div className="section-bar">
@@ -2807,6 +2765,69 @@ export default function RoomSheetPage({
           </section>
         )}
       </div>
+  );
+
+  if (printMode)
+    return (
+      <CalcPrintSheet
+        title={`部屋別計算書　${project.managementNo} ${project.name}　${roomName || "（部屋名なし）"}`}
+        upper={upperArea}
+        sets={lower}
+        result={calcResult}
+      />
+    );
+
+  return (
+    <div className="room-sheet-page">
+      <div className="toolbar">
+        <button type="button" onClick={closePage}>
+          ← 部位別入力表へ
+        </button>
+        <h2>部屋別計算書</h2>
+        <span className="project">
+          {project.managementNo} {roomName || "（部屋名なし）"}
+        </span>
+        <label>
+          天井高さ
+          <input
+            className="num"
+            defaultValue={formatNumber(ceilingHeight, 2)}
+            key={`ch-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
+            onBlur={(e) => applyCeilingHeight(e.target.value)}
+          />
+        </label>
+        <button type="button" onClick={() => void save()}>
+          💾 保存
+        </button>
+        <button
+          type="button"
+          className={showFittings ? "on" : ""}
+          onClick={() => setShowFittings(!showFittings)}
+        >
+          🚪 建具表
+        </button>
+        <button type="button" onClick={() => setShowCheck(!showCheck)}>
+          ✓ チェック表
+        </button>
+        <button
+          type="button"
+          className={showCeiling ? "on" : ""}
+          onClick={() => setShowCeiling(!showCeiling)}
+        >
+          {showCeiling ? "□ 平面図へ" : "▤ 天井伏図へ"}
+        </button>
+        <button
+          type="button"
+          className={expanded ? "on" : ""}
+          title="図を画面いっぱいに開いて、そのまま入力できます"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+        </button>
+        <span className="status">{message}</span>
+      </div>
+
+      {upperArea}
 
       <RoomCalcSheet
         sets={lower}
