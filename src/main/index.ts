@@ -8,6 +8,7 @@ import {
   statSync,
 } from "fs";
 import { dirname, extname, join } from "path";
+import { execFileSync } from "child_process";
 import {
   app,
   BrowserWindow,
@@ -753,6 +754,9 @@ function registerIpcHandlers(): void {
   // Shift+Windows+S の切り取りや、コピーした画像ファイルを取り込む
   ipcMain.handle(IPC.clipboardImage, () => {
     const formats = clipboard.availableFormats().join(" / ");
+    const fromWindows = clipboardImageWindows();
+    if (fromWindows !== "")
+      return { image: fromWindows, note: `Windows（${formats}）` };
     const fromFile = clipboardImageFile();
     if (fromFile !== "")
       return { image: fromFile, note: `ファイル（${formats}）` };
@@ -813,6 +817,49 @@ function clipboardImageFile(): string {
     }
   }
   return "";
+}
+
+const CLIP_SCRIPT = [
+  "Add-Type -AssemblyName System.Windows.Forms",
+  "Add-Type -AssemblyName System.Drawing",
+  "$out = ''",
+  "if ([Windows.Forms.Clipboard]::ContainsFileDropList()) {",
+  "  $list = [Windows.Forms.Clipboard]::GetFileDropList()",
+  "  if ($list.Count -gt 0) { $out = $list[0] }",
+  "}",
+  "if ($out -eq '' -and [Windows.Forms.Clipboard]::ContainsImage()) {",
+  "  $img = [Windows.Forms.Clipboard]::GetImage()",
+  "  $path = Join-Path $env:TEMP 'sekisan_clipboard.png'",
+  "  $img.Save($path, [Drawing.Imaging.ImageFormat]::Png)",
+  "  $out = $path",
+  "}",
+  "Write-Output $out",
+].join("; ");
+
+/**
+ * Windowsのクリップボードを、ワードやペイントと同じやり方（.NET）で読む。
+ * 切り取り画像も、コピーした画像ファイルも、これで取り込める。
+ */
+function clipboardImageWindows(): string {
+  if (process.platform !== "win32") return "";
+  let path = "";
+  try {
+    path = execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-Sta", "-Command", CLIP_SCRIPT],
+      { encoding: "utf8", timeout: 10000, windowsHide: true },
+    ).trim();
+  } catch {
+    return "";
+  }
+  if (path === "" || !existsSync(path)) return "";
+  const type = IMAGE_TYPES[extname(path).toLowerCase()];
+  if (type === undefined) return "";
+  try {
+    return `data:${type};base64,${readFileSync(path).toString("base64")}`;
+  } catch {
+    return "";
+  }
 }
 
 /** Word・PDF・ブラウザなどからのコピーで、HTMLの中にある画像を取り出す */

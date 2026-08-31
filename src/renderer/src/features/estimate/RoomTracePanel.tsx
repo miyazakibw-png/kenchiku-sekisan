@@ -89,52 +89,44 @@ export default function RoomTracePanel({
   );
 
   /** Windowsのクリップボードから画像を取り込む（Shift+Windows+S の切り取り） */
-  const pasteImage = useCallback(async (): Promise<void> => {
-    const fromApp = await window.sekisan.readClipboardImage();
-    if (fromApp.image !== "") {
-      setImage(fromApp.image);
-      setMessage(`貼り付けました：${fromApp.note}`);
-      return;
-    }
-    try {
-      const items = await navigator.clipboard.read();
-      for (const item of items) {
-        const type = item.types.find((entry) => entry.startsWith("image/"));
-        if (type === undefined) continue;
-        setImage(await readAsDataUrl(await item.getType(type)));
-        setMessage(`貼り付けました：${type}（中身：${fromApp.note}）`);
+  const pasteImage = useCallback(
+    async (fallback?: File): Promise<void> => {
+      const fromApp = await window.sekisan.readClipboardImage();
+      if (fromApp.image !== "") {
+        setImage(fromApp.image);
+        setMessage(`貼り付けました：${fromApp.note}`);
         return;
       }
-    } catch {
-      // クリップボードを読めないときは下の案内を出す
-    }
-    setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
-  }, [setImage]);
+      try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const type = item.types.find((entry) => entry.startsWith("image/"));
+          if (type === undefined) continue;
+          setImage(await readAsDataUrl(await item.getType(type)));
+          setMessage(`貼り付けました：${type}（中身：${fromApp.note}）`);
+          return;
+        }
+      } catch {
+        // クリップボードを読めないときは、貼り付けに付いてきたファイルを使う
+      }
+      if (fallback) {
+        setImage(await readAsDataUrl(fallback));
+        setMessage(`貼り付けました：${fallback.name}（中身：${fromApp.note}）`);
+        return;
+      }
+      setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
+    },
+    [setImage],
+  );
 
   // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
   useEffect(() => {
     const onPaste = (event: ClipboardEvent): void => {
       event.preventDefault();
-      // コピーしたファイルが付いてくるときは、その中身をそのまま使う
       const file = Array.from(event.clipboardData?.files ?? []).find((entry) =>
         entry.type.startsWith("image/"),
       );
-      if (file) {
-        void readAsDataUrl(file).then((dataUrl) => {
-          setImage(dataUrl);
-          const shown = new Image();
-          shown.onload = () =>
-            setMessage(
-              `貼り付けました：${file.name} ${shown.naturalWidth}×${shown.naturalHeight}` +
-                (shown.naturalWidth < 400
-                  ? "（小さすぎます。切り取った図面がクリップボードに入っていないようです）"
-                  : ""),
-            );
-          shown.src = dataUrl;
-        });
-        return;
-      }
-      void pasteImage();
+      void pasteImage(file);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose();
