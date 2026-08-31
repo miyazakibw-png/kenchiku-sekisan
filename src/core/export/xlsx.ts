@@ -122,7 +122,9 @@ function stylesXml(): string {
 function cellXml(cell: XlsxCell, reference: string): string {
   const style = styleIndex(cell);
   if (cell.value === null || cell.value === "") {
-    return `<c r="${reference}" s="${style}"/>`;
+    // 空でも中身のあるセルとして出す。文字を持たないセルだけの行は、
+    // エクセルが読み飛ばして罫線を描かないことがあるため
+    return `<c r="${reference}" s="${style}" t="inlineStr"><is><t xml:space="preserve"></t></is></c>`;
   }
   if (typeof cell.value === "number") {
     return `<c r="${reference}" s="${style}"><v>${cell.value}</v></c>`;
@@ -140,6 +142,11 @@ function sheetXml(sheet: XlsxSheet): string {
           )
           .join("")}</cols>`
       : "";
+  const columnCount = sheet.rows.reduce(
+    (most, cells) => Math.max(most, cells.length),
+    1,
+  );
+  const spans = `1:${columnCount}`;
   const rows = sheet.rows
     .map((cells, rowIndex) => {
       const body = cells
@@ -147,11 +154,13 @@ function sheetXml(sheet: XlsxSheet): string {
           cellXml(cell, `${columnName(columnIndex)}${rowIndex + 1}`),
         )
         .join("");
-      return `<row r="${rowIndex + 1}">${body}</row>`;
+      return `<row r="${rowIndex + 1}" spans="${spans}">${body}</row>`;
     })
     .join("");
+  // 表の範囲。書いておかないとエクセルが空の行を読み飛ばすことがある
+  const dimension = `<dimension ref="A1:${columnName(columnCount - 1)}${Math.max(sheet.rows.length, 1)}"/>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${rows}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${dimension}<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="13.5"/>${cols}<sheetData>${rows}</sheetData></worksheet>`;
 }
 
 const CRC_TABLE = ((): Uint32Array => {

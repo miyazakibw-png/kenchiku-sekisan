@@ -62,4 +62,32 @@ describe("エクセル（.xlsx）の書き出し", () => {
     expect(entry(file, "xl/workbook.xml")).toContain('name="内訳書"');
     expect(entry(file, "xl/styles.xml")).toContain("#,##0.00");
   });
+
+  it("文字の無い行も表の範囲に入れ、罫線つきのセルとして出す", () => {
+    const file = toXlsx([
+      {
+        name: "内訳書",
+        rows: [
+          [
+            { value: "名称", kind: "header", border: "one" },
+            { value: "数量", kind: "header", border: "one" },
+          ],
+          [
+            { value: "", kind: "text", border: "one" },
+            { value: null, kind: "text", border: "one" },
+          ],
+        ],
+      },
+    ]);
+    const sheet = entry(file, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<dimension ref="A1:B2"/>');
+    expect(sheet).toContain('<row r="2" spans="1:2">');
+    // 空のセルも中身を持たせて出す（エクセルが読み飛ばして罫線が消えるのを防ぐ）
+    expect(sheet).toContain(
+      '<c r="A2" s="1" t="inlineStr"><is><t xml:space="preserve"></t></is></c>',
+    );
+    expect(sheet).toContain(
+      '<c r="B2" s="1" t="inlineStr"><is><t xml:space="preserve"></t></is></c>',
+    );
+  });
 });
