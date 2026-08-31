@@ -21,6 +21,7 @@ export function PickInput({
   placeholder,
   title,
   japanese = false,
+  halfWidth = false,
   row,
   col,
   commitOnBlur = false,
@@ -35,6 +36,8 @@ export function PickInput({
   title?: string;
   /** 日本語で入れる欄（半角へ自動変換しない） */
   japanese?: boolean;
+  /** 番号でも名前でも入れる欄（全角の英数字だけ半角へ直す） */
+  halfWidth?: boolean;
   /** 表のマス目の位置（矢印キーで動ける表だけ使う） */
   row?: number;
   col?: number;
@@ -86,6 +89,7 @@ export function PickInput({
       <input
         ref={ref}
         lang={japanese ? "ja" : undefined}
+        data-half={halfWidth ? "1" : undefined}
         className={className}
         list={entries ? undefined : listId}
         data-row={row}

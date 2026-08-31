@@ -7,6 +7,14 @@ export function isJapaneseField(input: HTMLInputElement): boolean {
   return input.lang === "ja" || input.closest('[lang="ja"]') !== null;
 }
 
+/**
+ * 番号でもマスターの名前でも入れる欄（部位・区分・科目・ID・単位）は
+ * data-half を付けて、全角の英数字だけ半角へ直す（かな・カタカナはそのまま）。
+ */
+export function isHalfWidthField(input: HTMLInputElement): boolean {
+  return input.dataset.half === "1";
+}
+
 /** React の管理下にある input の値を書き換える（onChange を通す） */
 export function setValue(input: HTMLInputElement, value: string): void {
   const descriptor = Object.getOwnPropertyDescriptor(
@@ -21,10 +29,11 @@ const KANA_SETTING = "sekisan.autoKana";
 
 /**
  * 「ローマ字を自動でひらがなにする」を使うか（設定画面で切り替える）。
- * Windowsの日本語入力（IME）を使うと漢字変換できなくなるため、初期は使わない。
+ * 日本語入力（IME）で文字を作っている間は触らないので、漢字変換はそのまま使える。
+ * 初期は使う（IMEが切れたままでも日本語の欄にひらがなが入る）。
  */
 export function isAutoKanaOn(): boolean {
-  return window.localStorage.getItem(KANA_SETTING) === "on";
+  return window.localStorage.getItem(KANA_SETTING) !== "off";
 }
 
 export function setAutoKana(on: boolean): void {
@@ -51,6 +60,15 @@ export function useHalfWidthFields(): void {
       if (!editable(input)) return;
       if (event instanceof InputEvent && event.isComposing) return;
       const at = input.selectionStart ?? input.value.length;
+
+      if (isHalfWidthField(input)) {
+        const value = toHalfWidth(input.value);
+        if (value === input.value) return;
+        setValue(input, value);
+        const caret = Math.min(at, value.length);
+        input.setSelectionRange(caret, caret);
+        return;
+      }
 
       if (isJapaneseField(input)) {
         // 変換を確定した文字は触らない（漢字変換を壊さない）

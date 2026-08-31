@@ -863,6 +863,28 @@ export default function RoomCalcSheet({
     [bannerSetId, commit, currentSet, focus, sets, updateSet],
   );
 
+  /**
+   * カーソルのあるセット明細の上へ、空の明細（1明細）を1行入れる。
+   * 左端の部位が入っている行はその行の上、入っていない行（複数明細セットの途中）は
+   * そのセットの上、※行（コメント行）はその行の上へ入る。
+   */
+  const insertSet = useCallback(() => {
+    const bannerAt =
+      bannerSetId === null
+        ? -1
+        : sets.findIndex((set) => set.id === bannerSetId);
+    const at =
+      bannerAt >= 0
+        ? bannerAt
+        : sets.findIndex((set) => set.id === currentSet?.id);
+    const created = calcSet(1);
+    const next = [...sets];
+    next.splice(at < 0 ? next.length : at, 0, created);
+    commit(next);
+    onFocus({ setId: created.id, area: "detail", index: 0 });
+    onMessage("上に空の明細（1明細）を入れました");
+  }, [bannerSetId, commit, currentSet?.id, onFocus, onMessage, sets]);
+
   /** コメント行を入れる（明細とは別の独立した1行。何行でも続けて入れられる） */
   const insertBanner = useCallback(
     (color: string) => {
@@ -1417,6 +1439,13 @@ export default function RoomCalcSheet({
         <button type="button" onClick={() => commit([...sets, calcSet(1)])}>
           ＋ 明細（1明細）
         </button>
+        <button
+          type="button"
+          title="カーソルのあるセット明細の上に、空の明細（1明細）を1行入れます（複数明細セットの途中の行やコメント行にカーソルがあるときも、そのセット・その行の上に入ります）"
+          onClick={insertSet}
+        >
+          ↑ 明細（1明細）挿入
+        </button>
         <button type="button" onClick={() => addRow(false)}>
           ＋ 行追加
         </button>
@@ -1566,7 +1595,7 @@ export default function RoomCalcSheet({
                           row={gridRow}
                           col={0}
                           entries={aggregationPartEntries}
-                          japanese
+                          halfWidth
                           commitOnBlur
                           value={rowIndex === 0 ? set.partName : ""}
                           title="管理用部位。番号を打つと名称に変わります。途中の行に入れると、その行から別のセットになります"
@@ -1582,7 +1611,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={1}
                               entries={materialEntries}
-                              japanese
+                              halfWidth
                               value={detail.materialCategory}
                               title="材種区分。番号を打つと名称に変わります"
                               onFocus={focusDetail}
@@ -1606,6 +1635,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={2}
                               entries={subjectEntries}
+                              halfWidth
                               value={
                                 detail.subjectId === null
                                   ? ""
@@ -1630,6 +1660,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={3}
                               entries={pickupPartEntries}
+                              halfWidth
                               value={
                                 detail.partNumber === null
                                   ? ""
@@ -1654,6 +1685,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={4}
                               entries={numberEntries}
+                              halfWidth
                               commitOnBlur
                               value={detail.detailNumber?.toFixed(2) ?? ""}
                               title="明細番号を入れるとマスターの明細を呼び出します（科目IDを入れると一覧から選べます）"
@@ -1732,6 +1764,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={9}
                               entries={unitEntries}
+                              halfWidth
                               value={detail.unit}
                               title="単位。番号を打つと単位の文字に変わります"
                               onFocus={focusDetail}
