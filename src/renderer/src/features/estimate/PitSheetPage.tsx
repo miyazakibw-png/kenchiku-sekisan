@@ -15,6 +15,8 @@ import {
 import {
   DEFAULT_PIT_GAP,
   addPitCorner,
+  alignPitCorners,
+  setPitCorner,
   beamLines,
   beamSegments,
   layoutPits,
@@ -361,15 +363,28 @@ export default function PitSheetPage({
   );
 
   /** 辺の近くをクリックしたら、その場所へ角を足す */
-  const addCorner = useCallback((pitId: string, x: number, y: number) => {
-    setPits((current) =>
-      current.map((pit) =>
-        pit.id === pitId ? addPitCorner(pit, { x, y }) : pit,
-      ),
-    );
-    setCorners([]);
-    setMessage("角を足しました（○印を選んで↑↓→←で動かします）");
-  }, []);
+  const addCorner = useCallback(
+    (pitId: string, x: number, y: number) => {
+      const target = pits.find((pit) => pit.id === pitId);
+      if (!target) return;
+      const added = addPitCorner(target, { x, y });
+      let index = 0;
+      let best = Number.POSITIVE_INFINITY;
+      pitPolygon(added).forEach((point, at) => {
+        const distance = Math.hypot(x - point.x, y - point.y);
+        if (distance < best) {
+          best = distance;
+          index = at;
+        }
+      });
+      setPits((current) =>
+        current.map((pit) => (pit.id === pitId ? added : pit)),
+      );
+      setCorners([{ pitId, index }]);
+      setMessage("角を足しました（X・Yの欄で位置を決められます）");
+    },
+    [pits],
+  );
 
   /** 選んだ角を消す */
   const dropCorner = useCallback(() => {
@@ -406,6 +421,67 @@ export default function PitSheetPage({
     setCorners([]);
     setMessage("四角に戻しました");
   }, [corners]);
+
+  /** 選んだ角を、はじめに選んだ角と同じ通り（たて・よこ）にそろえる */
+  const alignCorners = useCallback(
+    (axis: "x" | "y") => {
+      if (corners.length < 2) {
+        setMessage("そろえる角を2か所以上選んでください");
+        return;
+      }
+      const at = (place: { pitId: string; index: number }): number | null => {
+        const rect = plan.rects.find((one) => one.id === place.pitId);
+        const pit = pits.find((one) => one.id === place.pitId);
+        const point = pit ? pitPolygon(pit)[place.index] : undefined;
+        if (!rect || !point) return null;
+        return axis === "x" ? rect.left + point.x : rect.top + point.y;
+      };
+      const target = at(corners[0]);
+      if (target === null) return;
+      setPits((current) =>
+        current.map((pit) => {
+          const rect = plan.rects.find((one) => one.id === pit.id);
+          const indexes = corners
+            .filter((each) => each.pitId === pit.id)
+            .map((each) => each.index);
+          if (!rect || indexes.length === 0) return pit;
+          return alignPitCorners(
+            pit,
+            indexes,
+            axis,
+            target - (axis === "x" ? rect.left : rect.top),
+          );
+        }),
+      );
+      setMessage(
+        axis === "x"
+          ? `角${corners.length}か所を たて一直線 にそろえました`
+          : `角${corners.length}か所を よこ一直線 にそろえました`,
+      );
+    },
+    [corners, pits, plan.rects],
+  );
+
+  /** 選んだ1つの角の位置（X・Y）を数字で決める */
+  const placeCorner = useCallback(
+    (values: { x?: number; y?: number }) => {
+      if (corners.length !== 1) return;
+      const place = corners[0];
+      setPits((current) =>
+        current.map((pit) => {
+          if (pit.id !== place.pitId) return pit;
+          const point = pitPolygon(pit)[place.index];
+          if (!point) return pit;
+          return setPitCorner(pit, place.index, {
+            x: values.x ?? point.x,
+            y: values.y ?? point.y,
+          });
+        }),
+      );
+      setMessage("角の位置を決めました");
+    },
+    [corners],
+  );
 
   /** 図の中をクリックすると、そのピットへ梁を置く（長さは当たる壁まで自動） */
   const placeBeam = useCallback(
@@ -1033,6 +1109,61 @@ export default function PitSheetPage({
                 </button>
                 <button
                   type="button"
+                  title="選んだ角を、はじめに選んだ角と同じたての通りにそろえる"
+                  onClick={() => alignCorners("x")}
+                >
+                  たてにそろえる
+                </button>
+                <button
+                  type="button"
+                  title="選んだ角を、はじめに選んだ角と同じよこの通りにそろえる"
+                  onClick={() => alignCorners("y")}
+                >
+                  よこにそろえる
+                </button>
+                {corners.length === 1 &&
+                  (() => {
+                    const place = corners[0];
+                    const pit = pits.find((one) => one.id === place.pitId);
+                    const point = pit
+                      ? pitPolygon(pit)[place.index]
+                      : undefined;
+                    if (!point) return null;
+                    return (
+                      <>
+                        <label>
+                          角のX
+                          <input
+                            data-half="1"
+                            className="num"
+                            key={`cx-${place.pitId}-${place.index}-${point.x}`}
+                            defaultValue={point.x}
+                            onBlur={(e) =>
+                              placeCorner({
+                                x: parseNumber(e.target.value) ?? point.x,
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          角のY
+                          <input
+                            data-half="1"
+                            className="num"
+                            key={`cy-${place.pitId}-${place.index}-${point.y}`}
+                            defaultValue={point.y}
+                            onBlur={(e) =>
+                              placeCorner({
+                                y: parseNumber(e.target.value) ?? point.y,
+                              })
+                            }
+                          />
+                        </label>
+                      </>
+                    );
+                  })()}
+                <button
+                  type="button"
                   title="選んだ角を全部外す"
                   onClick={() => {
                     setCorners([]);
@@ -1112,6 +1243,7 @@ export default function PitSheetPage({
       <p className="hint">
         形（台形・Ｌ型・コ型）は「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。
         ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
+        1つ選ぶと「角のX・角のY」の欄で位置を数字で決められ、2つ以上選ぶと「たてにそろえる」「よこにそろえる」で一直線になります。
         Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。

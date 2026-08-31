@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PIT_GAP,
   addPitCorner,
+  alignPitCorners,
+  setPitCorner,
   movePitCorner,
   movePitCorners,
   rectanglePit,
@@ -430,5 +432,41 @@ describe("角を動かしても動かしていない角は動かない", () => {
     const pit = rectanglePit(movePitCorners(base, [0, 1], 0, 1));
     const rect = layoutPits([pit])[0];
     expect(rect.top).toBe(0);
+  });
+});
+
+describe("角の位置を数字で決める・そろえる", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 4,
+    y: 2,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("足した角の位置を数字で決められる", () => {
+    const added = addPitCorner(base, { x: 2.3, y: 0 });
+    const fixed = setPitCorner(added, 1, { x: 2, y: 0 });
+    expect(pitPolygon(fixed)[1]).toEqual({ x: 2, y: 0 });
+  });
+
+  it("選んだ角をたて（x）にそろえられる", () => {
+    const added = addPitCorner(base, { x: 2.3, y: 0 });
+    const shaped = movePitCorners(added, [1], 0, 1);
+    const aligned = alignPitCorners(shaped, [1, 2], "x", 3);
+    const points = pitPolygon(aligned);
+    expect(points[1].x).toBeCloseTo(3, 6);
+    expect(points[2].x).toBeCloseTo(3, 6);
+  });
+
+  it("よこ（y）にそろえると同じ高さになる", () => {
+    const added = addPitCorner(base, { x: 2, y: 0 });
+    const shaped = movePitCorners(added, [1], 0, 1);
+    const aligned = alignPitCorners(shaped, [1, 2], "y", 1);
+    const points = pitPolygon(aligned);
+    expect(points[1].y).toBeCloseTo(1, 6);
+    expect(points[2].y).toBeCloseTo(1, 6);
   });
 });

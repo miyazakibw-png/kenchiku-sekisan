@@ -176,6 +176,42 @@ export function movePitCorners(
   return withPoints(pit, moved);
 }
 
+/** 選んだいくつかの角の横（x）または縦（y）の位置を、同じ値にそろえる */
+export function alignPitCorners(
+  pit: PitShape,
+  indexes: readonly number[],
+  axis: "x" | "y",
+  value: number,
+): PitShape {
+  const points = pitPolygon(pit);
+  const targets = indexes.filter(
+    (index) => index >= 0 && index < points.length,
+  );
+  if (targets.length === 0) return pit;
+  const moved = points.map((point, at) =>
+    targets.includes(at)
+      ? axis === "x"
+        ? { x: value, y: point.y }
+        : { x: point.x, y: value }
+      : point,
+  );
+  return withPoints(pit, moved);
+}
+
+/** 選んだ角を指す場所へ動かす（ピットの左上を0とした座標） */
+export function setPitCorner(
+  pit: PitShape,
+  index: number,
+  at: PitPoint,
+): PitShape {
+  const points = pitPolygon(pit);
+  if (index < 0 || index >= points.length) return pit;
+  return withPoints(
+    pit,
+    points.map((point, position) => (position === index ? at : point)),
+  );
+}
+
 /** クリックした場所に近い辺へ角を足す */
 export function addPitCorner(pit: PitShape, at: PitPoint): PitShape {
   const points = pitPolygon(pit);
