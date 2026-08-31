@@ -13,6 +13,7 @@ import {
   removePitCorner,
   beamLength,
   beamLines,
+  keepPitPlaces,
   layoutPits,
   normalizeRects,
   pitCornerCount,
@@ -613,5 +614,47 @@ describe("欠いた所の□とすき間", () => {
     const notch = pitNotch(shaped, 9);
     expect(notch?.x).toBeGreaterThan(0);
     expect(notch?.y).toBeGreaterThan(0);
+  });
+});
+
+describe("形を直しても他のピットは動かない", () => {
+  const pits: PitShape[] = [
+    {
+      id: "a",
+      symbol: "Ｐ1",
+      x: 4,
+      y: 3,
+      depth: 1,
+      direction: "right",
+      gap: DEFAULT_PIT_GAP,
+    },
+    {
+      id: "b",
+      symbol: "Ｐ2",
+      x: 2,
+      y: 2,
+      depth: 1,
+      direction: "right",
+      gap: 0.5,
+    },
+  ];
+
+  it("基準のＰの角を動かしても、置いたＰはその場に残る", () => {
+    const before = layoutPits(pits);
+    const moved = pits.map((pit) =>
+      pit.id === "a" ? movePitCorners(pit, [1], -1, 0) : pit,
+    );
+    const kept = keepPitPlaces(pits, moved, ["a"]);
+    const after = layoutPits(kept);
+    expect(after[1].left).toBeCloseTo(before[1].left, 4);
+    expect(after[1].top).toBeCloseTo(before[1].top, 4);
+  });
+
+  it("直したＰ自身は形が変わる", () => {
+    const moved = pits.map((pit) =>
+      pit.id === "a" ? movePitCorners(pit, [1], -1, 0) : pit,
+    );
+    const kept = keepPitPlaces(pits, moved, ["a"]);
+    expect(pitPolygon(kept[0])).not.toEqual(pitPolygon(pits[0]));
   });
 });
