@@ -868,4 +868,21 @@ ALTER TABLE project_breakdown_settings ADD COLUMN details_per_page_later INTEGER
   `
 ALTER TABLE project_transfer_rows ADD COLUMN remarks_lower TEXT NOT NULL DEFAULT '';
 `,
+  // ピット計算書（Ｐ1・Ｐ2…の四角の平面と天井付き梁型から床・壁・天井を拾う）
+  `
+CREATE TABLE project_pit_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  estimate_row_id INTEGER NOT NULL REFERENCES project_estimate_rows(id) ON DELETE CASCADE,
+  pits_json TEXT NOT NULL DEFAULT '[]',
+  beams_json TEXT NOT NULL DEFAULT '[]',
+  lower_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_pit_sheet_row ON project_pit_sheets(estimate_row_id);
+INSERT INTO calc_sheet_definitions (key, name, display_order)
+  SELECT 'pit', 'ピット計算書', 3
+  WHERE NOT EXISTS (SELECT 1 FROM calc_sheet_definitions WHERE key = 'pit');
+`,
 ];

@@ -8,6 +8,7 @@ const SOURCE_KINDS: AggregateSourceKind[] = [
   "room",
   "frame",
   "general",
+  "pit",
   "transfer",
 ];
 
@@ -15,6 +16,7 @@ export const SOURCE_LABEL: Record<AggregateSourceKind, string> = {
   room: "部屋計算書",
   frame: "軸組計算書",
   general: "汎用計算書",
+  pit: "ピット計算書",
   transfer: "転記入力表",
 };
 

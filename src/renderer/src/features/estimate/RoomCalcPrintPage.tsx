@@ -3,6 +3,7 @@ import type { EstimateRowDraft, ProjectSummary } from "@shared/types";
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
+import PitSheetPage from "./PitSheetPage";
 import EstimateCoverSheet from "./EstimateCoverSheet";
 import "./RoomCalcPrintPage.css";
 
@@ -111,6 +112,17 @@ export default function RoomCalcPrintPage({
           if (row.calcType === "general")
             return (
               <GeneralSheetPage
+                key={key}
+                project={project}
+                row={row}
+                roomName={roomName}
+                printMode
+                onBack={onBack}
+              />
+            );
+          if (row.calcType === "pit")
+            return (
+              <PitSheetPage
                 key={key}
                 project={project}
                 row={row}

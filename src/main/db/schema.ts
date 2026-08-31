@@ -407,6 +407,25 @@ export const projectGeneralSheets = sqliteTable("project_general_sheets", {
   updatedAt: text("updated_at").notNull().default(now),
 });
 
+/** ピット計算書（Ｐ1・Ｐ2…の四角の平面と梁型から床・壁・天井を拾う計算書） */
+export const projectPitSheets = sqliteTable("project_pit_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  estimateRowId: integer("estimate_row_id")
+    .notNull()
+    .references(() => projectEstimateRows.id, { onDelete: "cascade" }),
+  /** ピットの一覧（PitShapeの配列） */
+  pitsJson: text("pits_json").notNull().default("[]"),
+  /** 天井付き梁型の一覧（PitBeamの配列） */
+  beamsJson: text("beams_json").notNull().default("[]"),
+  /** 下段のセット明細計算表 */
+  lowerJson: text("lower_json").notNull().default("[]"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
 /**
  * 転記入力表の1行（1明細）。
  * 集計書兼工事マスターへ直接計上する入力で、根拠集計（計算書の数量根拠）には含めない。

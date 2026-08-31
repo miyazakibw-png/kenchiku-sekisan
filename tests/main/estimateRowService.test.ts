@@ -166,11 +166,12 @@ describe('部位別入力表', () => {
 })
 
 describe('計算書の書式', () => {
-  it('3書式（部屋別・軸組・汎用）を選べる', () => {
+  it('4書式（部屋別・軸組・汎用・ピット）を選べる', () => {
     expect(listMasterOptions(db).calcSheets.map((sheet) => sheet.key)).toEqual([
       'room',
       'frame',
-      'general'
+      'general',
+      'pit'
     ])
   })
 

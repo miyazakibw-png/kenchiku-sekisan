@@ -101,6 +101,7 @@ import {
   getGeneralSheet,
   saveGeneralSheet,
 } from "./services/generalSheetService";
+import { getPitSheet, savePitSheet } from "./services/pitSheetService";
 import {
   listTransferRows,
   saveTransferRows,
@@ -152,6 +153,7 @@ import type {
   SaveFittingsRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
+  SavePitSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SaveAggregateEditsRequest,
@@ -373,6 +375,12 @@ function registerIpcHandlers(): void {
     IPC.generalSheetSave,
     (_event, request: SaveGeneralSheetRequest) =>
       saveGeneralSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.pitSheetGet, (_event, estimateRowId: number) =>
+    getPitSheet(getDatabase(), estimateRowId),
+  );
+  ipcMain.handle(IPC.pitSheetSave, (_event, request: SavePitSheetRequest) =>
+    savePitSheet(getDatabase(), request),
   );
   ipcMain.handle(IPC.transferRowsList, (_event, projectId: number) =>
     listTransferRows(getDatabase(), projectId),

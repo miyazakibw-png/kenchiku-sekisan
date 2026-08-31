@@ -29,6 +29,8 @@ export const IPC = {
   frameRoomsList: "frameSheet:rooms",
   generalSheetGet: "generalSheet:get",
   generalSheetSave: "generalSheet:save",
+  pitSheetGet: "pitSheet:get",
+  pitSheetSave: "pitSheet:save",
   transferRowsList: "transferRows:list",
   transferRowsSave: "transferRows:save",
   aggregateRun: "aggregate:run",

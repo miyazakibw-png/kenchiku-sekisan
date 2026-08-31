@@ -4,6 +4,7 @@ import {
   projectEstimateRows,
   projectFrameSheets,
   projectGeneralSheets,
+  projectPitSheets,
   projectRoomSheets
 } from '../db/schema'
 import type { CalcType, EstimateRow, SaveEstimateRowsRequest } from '../../shared/types'
@@ -140,6 +141,16 @@ export function listFilledCalcSheets(
       if (hasContent(sheet.lowerJson)) add(sheet.estimateRowId, 'general')
     })
 
+  db.select()
+    .from(projectPitSheets)
+    .where(eq(projectPitSheets.projectId, projectId))
+    .all()
+    .forEach((sheet) => {
+      if (hasContent(sheet.pitsJson, sheet.beamsJson, sheet.lowerJson)) {
+        add(sheet.estimateRowId, 'pit')
+      }
+    })
+
   return filled
 }
 
@@ -206,6 +217,24 @@ function copyCalcSheets(
         estimateRowId: targetRowId,
         lowerJson: general.lowerJson,
         note: general.note
+      })
+      .run()
+  }
+
+  const pit = tx
+    .select()
+    .from(projectPitSheets)
+    .where(eq(projectPitSheets.estimateRowId, sourceRowId))
+    .get()
+  if (pit) {
+    tx.insert(projectPitSheets)
+      .values({
+        projectId,
+        estimateRowId: targetRowId,
+        pitsJson: pit.pitsJson,
+        beamsJson: pit.beamsJson,
+        lowerJson: pit.lowerJson,
+        note: pit.note
       })
       .run()
   }

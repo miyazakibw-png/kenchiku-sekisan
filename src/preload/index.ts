@@ -30,6 +30,7 @@ import type {
   FrameRoomOption,
   FrameSheet,
   GeneralSheet,
+  PitSheet,
   MasterOptions,
   ProjectField,
   PrintPaper,
@@ -47,6 +48,7 @@ import type {
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
+  SavePitSheetRequest,
   RoomSheet,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -170,6 +172,11 @@ const api = {
     ipcRenderer.invoke(IPC.generalSheetGet, estimateRowId),
   saveGeneralSheet: (request: SaveGeneralSheetRequest): Promise<GeneralSheet> =>
     ipcRenderer.invoke(IPC.generalSheetSave, request),
+  /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
+  getPitSheet: (estimateRowId: number): Promise<PitSheet> =>
+    ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),
+  savePitSheet: (request: SavePitSheetRequest): Promise<PitSheet> =>
+    ipcRenderer.invoke(IPC.pitSheetSave, request),
   /** 転記入力表（集計書兼工事マスターへ直接計上する1明細入力） */
   listTransferRows: (projectId: number): Promise<TransferRow[]> =>
     ipcRenderer.invoke(IPC.transferRowsList, projectId),

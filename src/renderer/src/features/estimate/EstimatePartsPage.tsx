@@ -29,6 +29,7 @@ import {
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
+import PitSheetPage from "./PitSheetPage";
 import "./EstimatePartsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -331,6 +332,20 @@ export default function EstimatePartsPage({
   if (openedSheet !== null && rows[openedSheet]?.calcType === "general") {
     return (
       <GeneralSheetPage
+        project={project}
+        row={rows[openedSheet]}
+        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        onBack={() => {
+          setOpenedSheet(null);
+          void reload();
+        }}
+      />
+    );
+  }
+
+  if (openedSheet !== null && rows[openedSheet]?.calcType === "pit") {
+    return (
+      <PitSheetPage
         project={project}
         row={rows[openedSheet]}
         roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}

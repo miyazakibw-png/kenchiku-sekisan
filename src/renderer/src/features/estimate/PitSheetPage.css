@@ -1,0 +1,84 @@
+.pit-upper {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 8px;
+  padding: 8px;
+  align-items: start;
+}
+
+.pit-upper .pit-quantity-area {
+  grid-column: 1 / -1;
+}
+
+.pit-upper .section-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pit-upper .section-bar h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.pit-upper input.num {
+  width: 72px;
+  text-align: right;
+}
+
+.pit-drawing {
+  border: 1px solid #ccc;
+  background: #fff;
+  min-height: 220px;
+}
+
+.pit-drawing .empty {
+  margin: 0;
+  padding: 24px;
+  color: #666;
+  text-align: center;
+}
+
+.pit-plan {
+  width: 100%;
+  height: 320px;
+}
+
+.pit-plan .pit-rect {
+  fill: #f5f8ff;
+  stroke: #333;
+  stroke-width: 0.05;
+  cursor: crosshair;
+}
+
+.pit-plan .pit-label,
+.pit-plan .pit-size {
+  text-anchor: middle;
+  fill: #222;
+  pointer-events: none;
+}
+
+.pit-plan .pit-label {
+  font-size: 0.5px;
+}
+
+.pit-plan .pit-size {
+  font-size: 0.3px;
+  fill: #555;
+}
+
+.pit-plan .pit-beam {
+  stroke: #c25b00;
+  opacity: 0.6;
+}
+
+.pit-print-upper {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.pit-print-upper .pit-drawing {
+  flex: 1;
+}

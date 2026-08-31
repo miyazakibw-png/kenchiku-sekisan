@@ -15,6 +15,7 @@ import {
   projectFittings,
   projectFrameSheets,
   projectGeneralSheets,
+  projectPitSheets,
   projectRoomSheets,
   projectTransferRows,
   projectUnusedDetails,
@@ -68,6 +69,12 @@ import {
   type FrameManualLine,
   type FramePlacement,
 } from "../../core/frame/frame";
+import {
+  pitQuantities,
+  pitVariables,
+  type PitBeam,
+  type PitShape,
+} from "../../core/pit/pit";
 import { computeFitting } from "../../core/fittings/fitting";
 import type {
   AggregateDetail,
@@ -322,6 +329,15 @@ export function collectEntries(
       .map((sheet) => [sheet.estimateRowId, sheet]),
   );
 
+  const pitSheets = new Map(
+    db
+      .select()
+      .from(projectPitSheets)
+      .where(eq(projectPitSheets.projectId, projectId))
+      .all()
+      .map((sheet) => [sheet.estimateRowId, sheet]),
+  );
+
   /** 軸組計算書で置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = new Map(
     [...roomSheets.values()].map((sheet) => [
@@ -361,8 +377,32 @@ export function collectEntries(
           ? ("frame" as const)
           : row.calcType === "general"
             ? ("general" as const)
-            : ("room" as const),
+            : row.calcType === "pit"
+              ? ("pit" as const)
+              : ("room" as const),
     };
+
+    if (row.calcType === "pit") {
+      const sheet = pitSheets.get(row.id);
+      if (!sheet) return;
+      const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
+      const quantities = pitQuantities(
+        parseJson<PitShape[]>(sheet.pitsJson, []),
+        parseJson<PitBeam[]>(sheet.beamsJson, []),
+      );
+      const variables = {
+        ...calcVariables([], fittings),
+        ...pitVariables(quantities),
+      };
+      entries.push(
+        ...entriesFromCalcSheet(
+          context,
+          sets,
+          evaluateCalcSheet(sets, variables),
+        ),
+      );
+      return;
+    }
 
     if (row.calcType === "general") {
       const sheet = generalSheets.get(row.id);
@@ -641,7 +681,9 @@ export function saveAggregateEdits(
             ? projectFrameSheets
             : sourceKind === "general"
               ? projectGeneralSheets
-              : projectRoomSheets;
+              : sourceKind === "pit"
+                ? projectPitSheets
+                : projectRoomSheets;
         const sheet = tx
           .select()
           .from(table)

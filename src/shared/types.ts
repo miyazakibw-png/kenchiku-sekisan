@@ -331,6 +331,23 @@ export type SaveGeneralSheetRequest = Omit<
   "projectId" | "estimateRowId"
 >;
 
+/** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
+export interface PitSheet {
+  id: number;
+  projectId: number;
+  /** 部位別入力表の行（1行＝1ピット計算書） */
+  estimateRowId: number;
+  /** ピットの一覧（PitShapeの配列） */
+  pitsJson: string;
+  /** 天井付き梁型の一覧（PitBeamの配列） */
+  beamsJson: string;
+  /** セット明細計算表 */
+  lowerJson: string;
+  note: string;
+}
+
+export type SavePitSheetRequest = Omit<PitSheet, "projectId" | "estimateRowId">;
+
 /**
  * 転記入力表の1行（1明細）。
  * 集計書兼工事マスターへ直接計上し、根拠集計（計算書の数量根拠）には含めない。

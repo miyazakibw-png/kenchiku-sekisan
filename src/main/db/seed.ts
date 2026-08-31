@@ -136,7 +136,8 @@ const PART_BRACKET_FORMATS = [
 const CALC_SHEETS = [
   { key: 'room', name: '部屋別計算書' },
   { key: 'frame', name: '軸組計算書' },
-  { key: 'general', name: '汎用計算書' }
+  { key: 'general', name: '汎用計算書' },
+  { key: 'pit', name: 'ピット計算書' }
 ]
 
 /** 初回起動時のみ基礎マスターを投入する（既存データがある場合は何もしない） */
@@ -179,9 +180,9 @@ export function seedInitialData(db: AppDatabase): void {
   if (db.select().from(mPartBracketFormats).limit(1).all().length === 0) {
     db.insert(mPartBracketFormats).values(PART_BRACKET_FORMATS).run()
   }
-  if (db.select().from(calcSheetDefinitions).limit(1).all().length === 0) {
-    db.insert(calcSheetDefinitions)
-      .values(CALC_SHEETS.map((s, i) => ({ ...s, isBuiltin: true, displayOrder: i })))
-      .run()
-  }
+  // 計算書の書式は後から増えるので、足りないものだけ入れる
+  db.insert(calcSheetDefinitions)
+    .values(CALC_SHEETS.map((s, i) => ({ ...s, isBuiltin: true, displayOrder: i })))
+    .onConflictDoNothing()
+    .run()
 }
