@@ -743,7 +743,7 @@ function registerIpcHandlers(): void {
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
     const window = BrowserWindow.fromWebContents(event.sender);
-    if (window) await setImeMode(window, mode);
+    return window ? await setImeMode(window, mode) : "画面がありません";
   });
 }
 

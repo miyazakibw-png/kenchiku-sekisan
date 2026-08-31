@@ -15,6 +15,7 @@ export default function SettingsPage(): JSX.Element {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [imeAuto, setImeAuto] = useState(imeAutoEnabled);
+  const [imeReport, setImeReport] = useState("");
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
@@ -114,6 +115,25 @@ export default function SettingsPage(): JSX.Element {
           />
           欄に入ったとき、日本語入力を自動で切り替える（部位名・名称・摘要などはひらがな、ID・計算式などは半角英数）
         </label>
+        <div className="settings-buttons">
+          <button
+            type="button"
+            onClick={() => {
+              void window.sekisan.setImeMode("hiragana").then(setImeReport);
+            }}
+          >
+            あ 日本語入力の切り替えを試す（ひらがな）
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void window.sekisan.setImeMode("alphanumeric").then(setImeReport);
+            }}
+          >
+            A 半角英数に戻す
+          </button>
+        </div>
+        {imeReport !== "" && <p className="settings-message">{imeReport}</p>}
         <p className="settings-note">
           Windowsでのみ働きます。日本語入力の種類によっては切り替わらないことがあります。その場合はこの印を外して、「半角/全角」キーで切り替えてください。
         </p>
