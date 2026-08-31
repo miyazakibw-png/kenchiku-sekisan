@@ -1,20 +1,20 @@
-import { useEffect, type RefObject } from 'react'
-import { stickyTops } from './stickyHeader'
+import { useEffect, type RefObject } from "react";
+import { stickyTops } from "./stickyHeader";
 
-const TOOLBARS = '.toolbar,.grid-toolbar'
+const TOOLBARS = ".toolbar,.grid-toolbar";
 
 function isScrollable(el: HTMLElement): boolean {
-  const overflow = getComputedStyle(el).overflowY
-  return overflow === 'auto' || overflow === 'scroll'
+  const overflow = getComputedStyle(el).overflowY;
+  return overflow === "auto" || overflow === "scroll";
 }
 
 function scrollParent(el: HTMLElement, root: HTMLElement): HTMLElement {
-  let parent = el.parentElement
+  let parent = el.parentElement;
   while (parent && parent !== root) {
-    if (isScrollable(parent)) return parent
-    parent = parent.parentElement
+    if (isScrollable(parent)) return parent;
+    parent = parent.parentElement;
   }
-  return root
+  return root;
 }
 
 /**
@@ -23,54 +23,73 @@ function scrollParent(el: HTMLElement, root: HTMLElement): HTMLElement {
  * 実際に見えているのは表の直前の1本だけ。その高さだけ見出しを下げる。
  */
 function toolbarHeight(container: HTMLElement, table: HTMLElement): number {
-  let height = 0
+  let height = 0;
   container.querySelectorAll<HTMLElement>(TOOLBARS).forEach((toolbar) => {
-    const after = toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING
-    if (after !== 0) height = toolbar.offsetHeight
-  })
-  return height
+    const after =
+      toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING;
+    if (after !== 0) height = toolbar.offsetHeight;
+  });
+  return height;
 }
 
 function setTop(cell: HTMLElement, top: number): void {
-  const value = `${top}px`
-  if (cell.style.top !== value) cell.style.top = value
+  const value = `${top}px`;
+  if (cell.style.top !== value) cell.style.top = value;
 }
 
 /** 操作ボタンの行と表の見出し行を、画面を下げても見えるように固定する */
-export function useStickyHeaders(ref: RefObject<HTMLElement>, deps: unknown[] = []): void {
+export function useStickyHeaders(
+  ref: RefObject<HTMLElement>,
+  deps: unknown[] = [],
+): void {
   useEffect(() => {
-    const root = ref.current
-    if (!root) return
+    const root = ref.current;
+    if (!root) return;
 
-    let queued = 0
+    let queued = 0;
     const apply = (): void => {
-      queued = 0
-      root.querySelectorAll('table').forEach((table) => {
-        const container = scrollParent(table, root)
-        const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('thead tr'))
-        const tops = stickyTops(
-          toolbarHeight(container, table),
-          rows.map((row) => row.offsetHeight)
-        )
+      queued = 0;
+      root.querySelectorAll("table").forEach((table) => {
+        const container = scrollParent(table, root);
+        const rows = Array.from(
+          table.querySelectorAll<HTMLTableRowElement>("thead tr"),
+        );
+        const heights = rows.map((row) => row.offsetHeight);
+        const tops = stickyTops(toolbarHeight(container, table), heights);
         rows.forEach((row, index) => {
-          row.querySelectorAll<HTMLElement>('th,td').forEach((cell) => setTop(cell, tops[index]))
-        })
-      })
-    }
+          row
+            .querySelectorAll<HTMLElement>("th,td")
+            .forEach((cell) => setTop(cell, tops[index]));
+        });
+        // 欄を選んだときに、その行が見出しの下へ隠れないようにする
+        const covered =
+          (tops[tops.length - 1] ?? 0) + (heights[heights.length - 1] ?? 0);
+        container.style.scrollPaddingTop = `${covered}px`;
+      });
+    };
     const schedule = (): void => {
-      if (queued === 0) queued = requestAnimationFrame(apply)
-    }
+      if (queued === 0) queued = requestAnimationFrame(apply);
+    };
 
-    schedule()
-    const mutations = new MutationObserver(schedule)
-    mutations.observe(root, { childList: true, subtree: true })
-    const resizes = new ResizeObserver(schedule)
-    resizes.observe(root)
+    // 欄を選んだ拍子に、動かないはずの外枠がずれて見出しに隠れるのを戻す
+    const unscroll = (): void => {
+      if (isScrollable(root)) return;
+      if (root.scrollTop !== 0) root.scrollTop = 0;
+      if (root.scrollLeft !== 0) root.scrollLeft = 0;
+    };
+
+    schedule();
+    root.addEventListener("scroll", unscroll);
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(root, { childList: true, subtree: true });
+    const resizes = new ResizeObserver(schedule);
+    resizes.observe(root);
     return () => {
-      if (queued !== 0) cancelAnimationFrame(queued)
-      mutations.disconnect()
-      resizes.disconnect()
-    }
+      if (queued !== 0) cancelAnimationFrame(queued);
+      root.removeEventListener("scroll", unscroll);
+      mutations.disconnect();
+      resizes.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, ...deps])
+  }, [ref, ...deps]);
 }

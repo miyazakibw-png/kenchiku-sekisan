@@ -82,18 +82,15 @@ export default function ProjectLedgerPage({
   const [columnSettings, setColumnSettings] = useState<LedgerColumnSetting[]>(
     () => loadColumnSettings(),
   );
-  const [columnEditor, setColumnEditor] = useState<LedgerColumnSetting[] | null>(
-    null,
-  );
+  const [columnEditor, setColumnEditor] = useState<
+    LedgerColumnSetting[] | null
+  >(null);
   const [columnWidths, setColumnWidths] =
     useState<Record<string, number>>(loadColumnWidths);
   const widthRef = useRef(columnWidths);
   widthRef.current = columnWidths;
 
-  const columns = useMemo(
-    () => allLedgerColumns(fields),
-    [fields],
-  );
+  const columns = useMemo(() => allLedgerColumns(fields), [fields]);
   const shownColumns = useMemo(
     () => applyColumnSettings(columns, columnSettings),
     [columns, columnSettings],
@@ -333,118 +330,130 @@ export default function ProjectLedgerPage({
         <span className="status">{toast}</span>
       </div>
 
-      <table className="grid project-list">
-        <colgroup>
-          <col style={{ width: "20px" }} />
-          {shownColumns.map((column) => (
-            <col
-              key={column.key}
-              style={{
-                width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
-              }}
-            />
-          ))}
-        </colgroup>
-        <thead>
-          <tr>
-            <th className="handle" />
+      <div className="project-list-area">
+        <table className="grid project-list">
+          <colgroup>
+            <col style={{ width: "20px" }} />
             {shownColumns.map((column) => (
-              <th
+              <col
                 key={column.key}
-                onClick={() => sortColumn(column)}
-                title="クリックで並べ替え／右端のドラッグで列幅"
-              >
-                {column.title}
-                <span
-                  className="col-resize"
-                  onMouseDown={(e) => startResize(column.key, e)}
-                />
-              </th>
+                style={{
+                  width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
+                }}
+              />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {projects.length === 0 && (
+          </colgroup>
+          <thead>
             <tr>
-              <td colSpan={1 + shownColumns.length} className="empty">
-                物件がまだありません。「新規作成」から追加してください。
-              </td>
-            </tr>
-          )}
-          {projects.map((project, index) => (
-            <tr
-              key={project.id}
-              draggable
-              className={selectedId === project.id ? "selected" : ""}
-              onClick={() => setSelectedId(project.id)}
-              onDoubleClick={() =>
-                void window.sekisan.openProjectWindow(project.id)
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter")
-                  void window.sekisan.openProjectWindow(project.id);
-              }}
-              onDragStart={() => {
-                dragIndex.current = index;
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragIndex.current !== null) move(dragIndex.current, index);
-                dragIndex.current = null;
-              }}
-            >
-              <td className="handle" title="ドラッグで並べ替え">
-                ⋮⋮
-              </td>
+              <th className="handle" />
               {shownColumns.map((column) => (
-                <td
+                <th
                   key={column.key}
-                  className={
-                    column.key === "managementNo" ? "management-no" : undefined
-                  }
-                  title={
-                    column.key === "managementNo"
-                      ? "管理用の自動採番のため変更できません"
-                      : undefined
-                  }
+                  onClick={() => sortColumn(column)}
+                  title="クリックで並べ替え／右端のドラッグで列幅"
                 >
-                  {column.key === "managementNo" ? (
-                    project.managementNo
-                  ) : column.key === "projectDate" ? (
-                    <input
-                      className="date"
-                      value={project.projectDate}
-                      onChange={(e) =>
-                        editRow(project.id, { projectDate: e.target.value })
-                      }
-                      onBlur={(e) => commitDate(project, e.target.value)}
-                    />
-                  ) : column.fieldId !== undefined ? (
-                    <input
-                      lang="ja"
-                      value={project.fieldValues[column.fieldId] ?? ""}
-                      onChange={(e) =>
-                        column.fieldId !== undefined &&
-                        editFieldValue(project, column.fieldId, e.target.value)
-                      }
-                      onBlur={() => void saveProject(project)}
-                    />
-                  ) : (
-                    <input
-                      lang="ja"
-                      value={textValue(project, column.key)}
-                      onChange={(e) =>
-                        editRow(project.id, textPatch(column.key, e.target.value))
-                      }
-                      onBlur={() => void saveProject(project)}
-                    />
-                  )}
-                </td>
+                  {column.title}
+                  <span
+                    className="col-resize"
+                    onMouseDown={(e) => startResize(column.key, e)}
+                  />
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {projects.length === 0 && (
+              <tr>
+                <td colSpan={1 + shownColumns.length} className="empty">
+                  物件がまだありません。「新規作成」から追加してください。
+                </td>
+              </tr>
+            )}
+            {projects.map((project, index) => (
+              <tr
+                key={project.id}
+                draggable
+                className={selectedId === project.id ? "selected" : ""}
+                onClick={() => setSelectedId(project.id)}
+                onDoubleClick={() =>
+                  void window.sekisan.openProjectWindow(project.id)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter")
+                    void window.sekisan.openProjectWindow(project.id);
+                }}
+                onDragStart={() => {
+                  dragIndex.current = index;
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex.current !== null)
+                    move(dragIndex.current, index);
+                  dragIndex.current = null;
+                }}
+              >
+                <td className="handle" title="ドラッグで並べ替え">
+                  ⋮⋮
+                </td>
+                {shownColumns.map((column) => (
+                  <td
+                    key={column.key}
+                    className={
+                      column.key === "managementNo"
+                        ? "management-no"
+                        : undefined
+                    }
+                    title={
+                      column.key === "managementNo"
+                        ? "管理用の自動採番のため変更できません"
+                        : undefined
+                    }
+                  >
+                    {column.key === "managementNo" ? (
+                      project.managementNo
+                    ) : column.key === "projectDate" ? (
+                      <input
+                        className="date"
+                        value={project.projectDate}
+                        onChange={(e) =>
+                          editRow(project.id, { projectDate: e.target.value })
+                        }
+                        onBlur={(e) => commitDate(project, e.target.value)}
+                      />
+                    ) : column.fieldId !== undefined ? (
+                      <input
+                        lang="ja"
+                        value={project.fieldValues[column.fieldId] ?? ""}
+                        onChange={(e) =>
+                          column.fieldId !== undefined &&
+                          editFieldValue(
+                            project,
+                            column.fieldId,
+                            e.target.value,
+                          )
+                        }
+                        onBlur={() => void saveProject(project)}
+                      />
+                    ) : (
+                      <input
+                        lang="ja"
+                        value={textValue(project, column.key)}
+                        onChange={(e) =>
+                          editRow(
+                            project.id,
+                            textPatch(column.key, e.target.value),
+                          )
+                        }
+                        onBlur={() => void saveProject(project)}
+                      />
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {columnEditor && (
         <div className="modal-backdrop" role="dialog">

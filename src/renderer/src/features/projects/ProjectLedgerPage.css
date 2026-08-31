@@ -28,9 +28,12 @@
   font-size: 12px;
 }
 
-.project-list {
-  margin: 8px;
+/* 一覧はこの枠の中だけで動かす（画面全体がずれて見出しに隠れないように） */
+.project-list-area {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: 8px;
 }
 
 .project-list {
@@ -83,7 +86,7 @@
 .project-page .date,
 .project-page .management-no {
   font-variant-numeric: tabular-nums;
-  font-family: 'Consolas', 'Menlo', monospace;
+  font-family: "Consolas", "Menlo", monospace;
   width: 11ch;
 }
 
