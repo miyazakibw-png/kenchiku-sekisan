@@ -242,6 +242,19 @@ body.print-a3-landscape .app {
     display: none !important;
   }
 
+  /* 建具記号は数量の根拠なので紙にも出す（付け外しの操作欄だけ消す） */
+  .app-main .fitting-cell button.chip {
+    display: inline-block !important;
+    border: none;
+    background: none;
+    padding: 0 4px 0 0;
+    color: #000;
+  }
+
+  .app-main .fitting-cell select {
+    display: none !important;
+  }
+
   .app-main {
     overflow: visible !important;
     transform: scale(var(--print-scale, 1));
