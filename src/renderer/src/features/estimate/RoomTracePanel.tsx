@@ -87,19 +87,55 @@ export default function RoomTracePanel({
     [onChange],
   );
 
+  /** Windowsのクリップボードから画像を取り込む（Shift+Windows+S の切り取り） */
+  const pasteImage = useCallback(async (): Promise<void> => {
+    const fromApp = await window.sekisan.readClipboardImage();
+    if (fromApp !== "") {
+      setImage(fromApp);
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((entry) => entry.startsWith("image/"));
+        if (type === undefined) continue;
+        setImage(await readAsDataUrl(await item.getType(type)));
+        return;
+      }
+    } catch {
+      // クリップボードを読めないときは下の案内を出す
+    }
+    setMessage(
+      "クリップボードに画像がありません（Shift+Windows+S で切り取ってから押してください）",
+    );
+  }, [setImage]);
+
   // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
   useEffect(() => {
     const onPaste = (event: ClipboardEvent): void => {
       const items = Array.from(event.clipboardData?.items ?? []);
       const item = items.find((entry) => entry.type.startsWith("image/"));
       const file = item?.getAsFile();
-      if (!file) return;
+      if (file) {
+        event.preventDefault();
+        void readAsDataUrl(file).then(setImage);
+        return;
+      }
+      // 画像が付いてこないときは、Windowsのクリップボードから直接読む
       event.preventDefault();
-      void readAsDataUrl(file).then(setImage);
+      void pasteImage();
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [setImage]);
+    window.addEventListener("keydown", onKeyDown);
+    boxRef.current?.focus();
+    return () => {
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose, pasteImage, setImage]);
 
   /** 画像の画素座標へ直す */
   const pointAt = (event: React.MouseEvent<SVGSVGElement>): Point | null => {
@@ -214,26 +250,7 @@ export default function RoomTracePanel({
         <button
           type="button"
           title="Shift+Windows+S で切り取った画像を貼り付けます（この画面で Ctrl+V でも貼れます）"
-          onClick={() => {
-            void (async () => {
-              try {
-                const items = await navigator.clipboard.read();
-                for (const item of items) {
-                  const type = item.types.find((entry) =>
-                    entry.startsWith("image/"),
-                  );
-                  if (type === undefined) continue;
-                  setImage(await readAsDataUrl(await item.getType(type)));
-                  return;
-                }
-                setMessage("クリップボードに画像がありません");
-              } catch {
-                setMessage(
-                  "貼り付けられませんでした。この画面で Ctrl+V を押してください",
-                );
-              }
-            })();
-          }}
+          onClick={() => void pasteImage()}
         >
           📋 画像を貼り付け
         </button>

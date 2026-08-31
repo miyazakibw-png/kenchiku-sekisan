@@ -293,6 +293,10 @@ const api = {
   closeWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowClose),
   /** 文字が入らなくなったときに、この画面へ入力先（フォーカス）を戻す */
   focusWindow: (): Promise<void> => ipcRenderer.invoke(IPC.windowFocus),
+  /** クリップボードの画像（Shift+Windows+S の切り取りなど）をdata URLで受け取る。無ければ空文字 */
+  readClipboardImage: (): Promise<string> =>
+    ipcRenderer.invoke(IPC.clipboardImage),
+
   /** 欄に入ったときにWindowsの日本語入力を切り替える（戻り値は調べるための記録） */
   setImeMode: (mode: ImeMode): Promise<string> =>
     ipcRenderer.invoke(IPC.imeMode, mode),

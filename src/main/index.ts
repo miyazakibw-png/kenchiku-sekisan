@@ -10,6 +10,7 @@ import { dirname, join } from "path";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -748,6 +749,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.windowFocus, (event) =>
     recoverInput(BrowserWindow.fromWebContents(event.sender)),
   );
+  // Shift+Windows+S などで切り取った画像を、クリップボードから直接取り込む
+  ipcMain.handle(IPC.clipboardImage, () => {
+    const image = clipboard.readImage();
+    return image.isEmpty() ? "" : image.toDataURL();
+  });
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
     const window = BrowserWindow.fromWebContents(event.sender);

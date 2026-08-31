@@ -86,6 +86,7 @@ export const IPC = {
   windowClose: "window:close",
   windowFocus: "window:focus",
   imeMode: "ime:mode",
+  clipboardImage: "clipboard:image",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
