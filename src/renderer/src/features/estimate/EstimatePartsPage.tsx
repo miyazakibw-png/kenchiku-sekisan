@@ -187,6 +187,8 @@ export default function EstimatePartsPage({
       const drafts = toDrafts(saved);
       setRows(drafts);
       markSaved(drafts);
+      // 貼り付けで複製した計算書も「入力済み」として扱う（種類を変える前の確認に使う）
+      setFilledSheets(await window.sekisan.listFilledCalcSheets(project.id));
       setMessage(note);
     },
     [markSaved, project.id],
