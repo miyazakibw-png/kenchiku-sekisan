@@ -31,6 +31,8 @@ export const projects = sqliteTable(
     /** 延べ床面積（㎡）。歩掛・比率計算のベース値 */
     totalArea: real("total_area"),
     note: text("note"),
+    /** 取引先などの仕分け用チェック（付けた番号をカンマ区切りで持つ） */
+    marks: text("marks").notNull().default(""),
     /** 作成順とは無関係に台帳で並べ替えるための順序 */
     displayOrder: integer("display_order").notNull().default(0),
     /** コピー作成元の物件 */

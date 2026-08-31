@@ -885,4 +885,8 @@ INSERT INTO calc_sheet_definitions (key, name, display_order)
   SELECT 'pit', 'ピット計算書', 3
   WHERE NOT EXISTS (SELECT 1 FROM calc_sheet_definitions WHERE key = 'pit');
 `,
+  // 物件管理台帳の仕分け用チェック（取引先別などの表示切替に使う）
+  `
+ALTER TABLE projects ADD COLUMN marks TEXT NOT NULL DEFAULT '';
+`,
 ];

@@ -78,7 +78,8 @@ describe('物件管理台帳', () => {
       builderName: '○○建設',
       designerName: '△△設計',
       note: 'メモ',
-      fieldValues: {}
+      fieldValues: {},
+      marks: []
     })
 
     expect(saved.managementNo).toBe(created.managementNo)
@@ -144,7 +145,8 @@ describe('物件管理台帳', () => {
       builderName: '',
       designerName: '',
       note: '',
-      fieldValues: { [fields[0].id]: '宮崎' }
+      fieldValues: { [fields[0].id]: '宮崎' },
+      marks: []
     })
 
     expect(fields[0].displayWidth).toBe(30)

@@ -17,7 +17,8 @@ function project(id: number, name: string, projectDate: string): ProjectSummary 
     designerName: '',
     note: '',
     displayOrder: id,
-    fieldValues: {}
+    fieldValues: {},
+    marks: []
   }
 }
 

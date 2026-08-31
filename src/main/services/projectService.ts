@@ -67,6 +67,22 @@ function listFieldValues(
   return values;
 }
 
+/** 仕分け用チェックは "1,3" のような文字で持つ */
+function parseMarks(text: string): number[] {
+  return text
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((mark) => Number.isInteger(mark) && mark >= 1 && mark <= 5)
+    .sort((a, b) => a - b);
+}
+
+function marksText(marks: readonly number[]): string {
+  return [...new Set(marks)]
+    .filter((mark) => Number.isInteger(mark) && mark >= 1 && mark <= 5)
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
 function toSummary(
   db: AppDatabase,
   row: typeof projects.$inferSelect,
@@ -81,6 +97,7 @@ function toSummary(
     note: row.note ?? "",
     displayOrder: row.displayOrder,
     fieldValues: listFieldValues(db, row.id),
+    marks: parseMarks(row.marks),
   };
 }
 
@@ -184,6 +201,7 @@ export function copyProject(
           location: source.location,
           totalArea: source.totalArea,
           note: source.note,
+          marks: source.marks,
           displayOrder: nextDisplayOrder(db),
           sourceProjectId: sourceId,
         })
@@ -370,6 +388,7 @@ export function saveProject(
         builderName: request.builderName,
         designerName: request.designerName,
         note: request.note,
+        marks: marksText(request.marks),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(projects.id, request.id))

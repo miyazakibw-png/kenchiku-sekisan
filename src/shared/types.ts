@@ -508,6 +508,8 @@ export interface ProjectSummary {
   displayOrder: number;
   /** ユーザー定義列の値（キーは m_project_fields.id） */
   fieldValues: Record<number, string>;
+  /** 取引先などの仕分け用チェック（1〜5のうち付けたもの） */
+  marks: number[];
 }
 
 /** 管理番号以外を更新する（台帳・工事概要のどちらからでも同じ内容を更新する） */
@@ -519,6 +521,7 @@ export interface SaveProjectRequest {
   designerName: string;
   note: string;
   fieldValues: Record<number, string>;
+  marks: number[];
 }
 
 export interface ProjectLedger {

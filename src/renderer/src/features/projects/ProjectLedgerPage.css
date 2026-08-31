@@ -28,6 +28,47 @@
   font-size: 12px;
 }
 
+/* 取引先などのチェックによる表示切替 */
+.project-page .mark-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid #d5d9e0;
+  background: #f7f9fc;
+}
+
+.project-page .mark-filter .label {
+  font-weight: 600;
+}
+
+.project-page .mark-filter label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #c7cdd6;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.project-page .mark-filter label.on {
+  border-color: #2563eb;
+  background: #e6efff;
+}
+
+.project-page .mark-filter .hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.project-list td input[type="checkbox"] {
+  width: auto;
+}
+
 /* 一覧はこの枠の中だけで動かす（画面全体がずれて見出しに隠れないように） */
 .project-list-area {
   flex: 1;

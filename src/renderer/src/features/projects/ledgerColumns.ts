@@ -7,6 +7,8 @@ export interface LedgerColumn {
   fixed: boolean;
   /** ユーザー定義列のときだけ入る */
   fieldId?: number;
+  /** 仕分け用チェックの列のときだけ入る（1〜5） */
+  mark?: number;
 }
 
 /** 表示するかどうかと並び順（この端末に記憶する） */
@@ -27,11 +29,20 @@ const OPTIONAL_COLUMNS: LedgerColumn[] = [
   { key: "note", title: "備考", fixed: false },
 ];
 
-/** 台帳に出しうる列を、固定列＋標準列＋ユーザー定義列の順に並べる */
-export function allLedgerColumns(fields: ProjectField[]): LedgerColumn[] {
+/** 台帳に出しうる列を、固定列＋標準列＋チェック列＋ユーザー定義列の順に並べる */
+export function allLedgerColumns(
+  fields: ProjectField[],
+  markNames: readonly string[] = [],
+): LedgerColumn[] {
   return [
     ...FIXED_COLUMNS,
     ...OPTIONAL_COLUMNS,
+    ...markNames.map((title, index) => ({
+      key: `mark:${index + 1}`,
+      title,
+      fixed: false,
+      mark: index + 1,
+    })),
     ...fields.map((field) => ({
       key: `field:${field.id}`,
       title: field.title,

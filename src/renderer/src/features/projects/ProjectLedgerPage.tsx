@@ -24,6 +24,13 @@ import {
   type LedgerColumn,
   type LedgerColumnSetting,
 } from "./ledgerColumns";
+import {
+  MARK_NUMBERS,
+  filterProjectsByMarks,
+  loadMarkNames,
+  saveMarkNames,
+  toggleMark,
+} from "./projectMarks";
 import "./ProjectLedgerPage.css";
 
 const DEFAULT_WIDTH = 140;
@@ -89,11 +96,22 @@ export default function ProjectLedgerPage({
     useState<Record<string, number>>(loadColumnWidths);
   const widthRef = useRef(columnWidths);
   widthRef.current = columnWidths;
+  const [markNames, setMarkNames] = useState<string[]>(() => loadMarkNames());
+  const [markNameEditor, setMarkNameEditor] = useState<string[] | null>(null);
+  /** 表示するチェック。空なら全表示 */
+  const [markFilter, setMarkFilter] = useState<number[]>([]);
 
-  const columns = useMemo(() => allLedgerColumns(fields), [fields]);
+  const columns = useMemo(
+    () => allLedgerColumns(fields, markNames),
+    [fields, markNames],
+  );
   const shownColumns = useMemo(
     () => applyColumnSettings(columns, columnSettings),
     [columns, columnSettings],
+  );
+  const shownProjects = useMemo(
+    () => filterProjectsByMarks(projects, markFilter),
+    [projects, markFilter],
   );
 
   const startResize = useCallback(
@@ -161,6 +179,7 @@ export default function ProjectLedgerPage({
       designerName: project.designerName,
       note: project.note,
       fieldValues: project.fieldValues,
+      marks: project.marks,
     });
     setProjects((prev) =>
       prev.map((row) => (row.id === saved.id ? saved : row)),
@@ -185,6 +204,16 @@ export default function ProjectLedgerPage({
       prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
     );
   }, []);
+
+  /** チェックは押した時点で保存する（表示切替にすぐ効かせる） */
+  const setMark = useCallback(
+    (project: ProjectSummary, mark: number, on: boolean) => {
+      const next = { ...project, marks: toggleMark(project.marks, mark, on) };
+      editRow(project.id, { marks: next.marks });
+      void saveProject(next);
+    },
+    [editRow, saveProject],
+  );
 
   const editFieldValue = useCallback(
     (project: ProjectSummary, fieldId: number, value: string) =>
@@ -324,10 +353,46 @@ export default function ProjectLedgerPage({
         >
           🗔 工事を開く
         </button>
+        <button type="button" onClick={() => setMarkNameEditor([...markNames])}>
+          🏷 チェックの名前
+        </button>
         <span className="hint">
           ダブルクリックで別ウィンドウ（複数物件を同時に作業できます）／ドラッグ・列見出しで並べ替え
         </span>
         <span className="status">{toast}</span>
+      </div>
+
+      <div className="mark-filter">
+        <span className="label">表示切替</span>
+        <label className={markFilter.length === 0 ? "on" : ""}>
+          <input
+            type="radio"
+            checked={markFilter.length === 0}
+            onChange={() => setMarkFilter([])}
+          />
+          全表示
+        </label>
+        {MARK_NUMBERS.map((mark) => (
+          <label
+            key={mark}
+            className={markFilter.includes(mark) ? "on" : ""}
+            title="複数選べます（選んだチェックのどれかが付いた工事を出します）"
+          >
+            <input
+              type="checkbox"
+              checked={markFilter.includes(mark)}
+              onChange={(e) =>
+                setMarkFilter(toggleMark(markFilter, mark, e.target.checked))
+              }
+            />
+            {markNames[mark - 1]}
+          </label>
+        ))}
+        <span className="hint">
+          {markFilter.length === 0
+            ? `全${projects.length}件`
+            : `${shownProjects.length} / ${projects.length}件`}
+        </span>
       </div>
 
       <div className="project-list-area">
@@ -369,88 +434,107 @@ export default function ProjectLedgerPage({
                 </td>
               </tr>
             )}
-            {projects.map((project, index) => (
-              <tr
-                key={project.id}
-                draggable
-                className={selectedId === project.id ? "selected" : ""}
-                onClick={() => setSelectedId(project.id)}
-                onDoubleClick={() =>
-                  void window.sekisan.openProjectWindow(project.id)
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter")
-                    void window.sekisan.openProjectWindow(project.id);
-                }}
-                onDragStart={() => {
-                  dragIndex.current = index;
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (dragIndex.current !== null)
-                    move(dragIndex.current, index);
-                  dragIndex.current = null;
-                }}
-              >
-                <td className="handle" title="ドラッグで並べ替え">
-                  ⋮⋮
+            {projects.length > 0 && shownProjects.length === 0 && (
+              <tr>
+                <td colSpan={1 + shownColumns.length} className="empty">
+                  選んだチェックの工事はありません。「全表示」に戻せます。
                 </td>
-                {shownColumns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={
-                      column.key === "managementNo"
-                        ? "management-no"
-                        : undefined
-                    }
-                    title={
-                      column.key === "managementNo"
-                        ? "管理用の自動採番のため変更できません"
-                        : undefined
-                    }
-                  >
-                    {column.key === "managementNo" ? (
-                      project.managementNo
-                    ) : column.key === "projectDate" ? (
-                      <input
-                        className="date"
-                        value={project.projectDate}
-                        onChange={(e) =>
-                          editRow(project.id, { projectDate: e.target.value })
-                        }
-                        onBlur={(e) => commitDate(project, e.target.value)}
-                      />
-                    ) : column.fieldId !== undefined ? (
-                      <input
-                        lang="ja"
-                        value={project.fieldValues[column.fieldId] ?? ""}
-                        onChange={(e) =>
-                          column.fieldId !== undefined &&
-                          editFieldValue(
-                            project,
-                            column.fieldId,
-                            e.target.value,
-                          )
-                        }
-                        onBlur={() => void saveProject(project)}
-                      />
-                    ) : (
-                      <input
-                        lang="ja"
-                        value={textValue(project, column.key)}
-                        onChange={(e) =>
-                          editRow(
-                            project.id,
-                            textPatch(column.key, e.target.value),
-                          )
-                        }
-                        onBlur={() => void saveProject(project)}
-                      />
-                    )}
-                  </td>
-                ))}
               </tr>
-            ))}
+            )}
+            {shownProjects.map((project) => {
+              const index = projects.findIndex((row) => row.id === project.id);
+              return (
+                <tr
+                  key={project.id}
+                  draggable
+                  className={selectedId === project.id ? "selected" : ""}
+                  onClick={() => setSelectedId(project.id)}
+                  onDoubleClick={() =>
+                    void window.sekisan.openProjectWindow(project.id)
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      void window.sekisan.openProjectWindow(project.id);
+                  }}
+                  onDragStart={() => {
+                    dragIndex.current = index;
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (dragIndex.current !== null)
+                      move(dragIndex.current, index);
+                    dragIndex.current = null;
+                  }}
+                >
+                  <td className="handle" title="ドラッグで並べ替え">
+                    ⋮⋮
+                  </td>
+                  {shownColumns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={
+                        column.key === "managementNo"
+                          ? "management-no"
+                          : undefined
+                      }
+                      title={
+                        column.key === "managementNo"
+                          ? "管理用の自動採番のため変更できません"
+                          : undefined
+                      }
+                    >
+                      {column.key === "managementNo" ? (
+                        project.managementNo
+                      ) : column.mark !== undefined ? (
+                        <input
+                          type="checkbox"
+                          checked={project.marks.includes(column.mark)}
+                          onChange={(e) =>
+                            column.mark !== undefined &&
+                            setMark(project, column.mark, e.target.checked)
+                          }
+                        />
+                      ) : column.key === "projectDate" ? (
+                        <input
+                          className="date"
+                          value={project.projectDate}
+                          onChange={(e) =>
+                            editRow(project.id, { projectDate: e.target.value })
+                          }
+                          onBlur={(e) => commitDate(project, e.target.value)}
+                        />
+                      ) : column.fieldId !== undefined ? (
+                        <input
+                          lang="ja"
+                          value={project.fieldValues[column.fieldId] ?? ""}
+                          onChange={(e) =>
+                            column.fieldId !== undefined &&
+                            editFieldValue(
+                              project,
+                              column.fieldId,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={() => void saveProject(project)}
+                        />
+                      ) : (
+                        <input
+                          lang="ja"
+                          value={textValue(project, column.key)}
+                          onChange={(e) =>
+                            editRow(
+                              project.id,
+                              textPatch(column.key, e.target.value),
+                            )
+                          }
+                          onBlur={() => void saveProject(project)}
+                        />
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -637,6 +721,66 @@ export default function ProjectLedgerPage({
                 type="button"
                 className="primary"
                 onClick={() => void saveFields()}
+              >
+                💾 保存
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {markNameEditor && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal fields">
+            <header>
+              <h3>チェックの名前</h3>
+              <span className="hint">
+                取引先名などに変えられます（この端末に記憶します）
+              </span>
+            </header>
+            <div className="modal-body">
+              <table className="grid">
+                <tbody>
+                  {markNameEditor.map((name, index) => (
+                    <tr key={MARK_NUMBERS[index]}>
+                      <td>{`チェック${MARK_NUMBERS[index]}`}</td>
+                      <td>
+                        <input
+                          lang="ja"
+                          value={name}
+                          onChange={(e) =>
+                            setMarkNameEditor(
+                              markNameEditor.map((row, i) =>
+                                i === index ? e.target.value : row,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <footer>
+              <span className="spacer" />
+              <button type="button" onClick={() => setMarkNameEditor(null)}>
+                閉じる
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  const names = markNameEditor.map((name, index) =>
+                    name.trim() === ""
+                      ? `チェック${MARK_NUMBERS[index]}`
+                      : name,
+                  );
+                  saveMarkNames(names);
+                  setMarkNames(names);
+                  setMarkNameEditor(null);
+                  setToast("チェックの名前を保存しました");
+                }}
               >
                 💾 保存
               </button>
