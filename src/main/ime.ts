@@ -8,8 +8,12 @@ import type { ImeMode } from '../shared/types'
 const WM_IME_CONTROL = 0x0283
 const IMC_SETCONVERSIONMODE = 0x0002
 const IMC_SETOPENSTATUS = 0x0006
-/** ひらがな（全角・ローマ字入力） */
-const HIRAGANA_MODE = 0x0001 | 0x0008 | 0x0010
+/** ひらがな（全角） */
+const HIRAGANA_MODE = 0x0001 | 0x0008
+/** ローマ字入力 */
+const IME_CMODE_ROMAN = 0x0010
+/** 文の変換のしかた（0のままにすると漢字変換ができなくなる） */
+const IME_SMODE_PHRASEPREDICT = 0x0008
 const GW_CHILD = 5
 const GW_HWNDNEXT = 2
 
@@ -36,6 +40,11 @@ interface Win32Api {
   immGetContext: (hwnd: Handle) => Handle
   immReleaseContext: (hwnd: Handle, context: Handle) => number
   immSetOpenStatus: (context: Handle, open: number) => number
+  immGetConversionStatus: (
+    context: Handle,
+    conversion: number[],
+    sentence: number[]
+  ) => number
   immSetConversionStatus: (context: Handle, conversion: number, sentence: number) => number
 }
 
@@ -109,6 +118,11 @@ async function loadApi(): Promise<Win32Api | null> {
         'uintptr'
       ]),
       immSetOpenStatus: imm32.func('__stdcall', 'ImmSetOpenStatus', 'int', ['uintptr', 'int']),
+      immGetConversionStatus: imm32.func('__stdcall', 'ImmGetConversionStatus', 'int', [
+        'uintptr',
+        koffi.out(koffi.pointer('uint32')),
+        koffi.out(koffi.pointer('uint32'))
+      ]),
       immSetConversionStatus: imm32.func('__stdcall', 'ImmSetConversionStatus', 'int', [
         'uintptr',
         'uint32',
@@ -157,18 +171,24 @@ export async function setImeMode(window: BrowserWindow, mode: ImeMode): Promise<
 
   for (const handle of windowHandles(win32, top)) {
     const context = toHandle(win32.immGetContext(handle))
+    let hiragana = HIRAGANA_MODE | IME_CMODE_ROMAN
     if (context !== 0n) {
+      const conversion = [0]
+      const sentence = [0]
+      const read = win32.immGetConversionStatus(context, conversion, sentence)
+      if (read !== 0) hiragana = HIRAGANA_MODE | (conversion[0] & IME_CMODE_ROMAN)
+      const keep = read !== 0 && sentence[0] !== 0 ? sentence[0] : IME_SMODE_PHRASEPREDICT
       const opened = win32.immSetOpenStatus(context, open ? 1 : 0)
       let converted = 0
-      if (open) converted = win32.immSetConversionStatus(context, HIRAGANA_MODE, 0)
+      if (open) converted = win32.immSetConversionStatus(context, hiragana, keep)
       win32.immReleaseContext(handle, context)
-      report.push(`窓${handle}: 入力状態=${opened} 変換=${converted}`)
+      report.push(`窓${handle}: 入力状態=${opened} 変換=${converted} 文=${keep}`)
     }
 
     const ime = toHandle(win32.immGetDefaultIMEWnd(handle))
     if (ime === 0n) continue
     win32.sendMessage(ime, WM_IME_CONTROL, IMC_SETOPENSTATUS, open ? 1 : 0)
-    if (open) win32.sendMessage(ime, WM_IME_CONTROL, IMC_SETCONVERSIONMODE, HIRAGANA_MODE)
+    if (open) win32.sendMessage(ime, WM_IME_CONTROL, IMC_SETCONVERSIONMODE, hiragana)
     report.push(`窓${handle}: IMEの窓=${ime}`)
   }
 
