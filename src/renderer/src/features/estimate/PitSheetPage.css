@@ -145,5 +145,8 @@
 
 .pit-plan-area .section-bar button.on {
   background: #dce9f7;
+  border: 1px solid #1e3a8a;
+  /* 背景が薄い青なので、文字は黒でしっかり見えるようにする */
+  color: #111;
   font-weight: bold;
 }
