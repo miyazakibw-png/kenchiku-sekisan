@@ -10,6 +10,7 @@ import {
   traceArea,
   type RoomTrace,
 } from "../../../../core/room/trace";
+import { pdfPageImage } from "./pdfPage";
 import "./RoomTracePanel.css";
 
 interface Props {
@@ -125,6 +126,22 @@ export default function RoomTracePanel({
     const page = Number(pageText);
     setMessage("ファイルを読んでいます…");
     const got = await window.sekisan.openDrawingFile(page > 0 ? page : 1);
+    if (got.pdf !== "") {
+      try {
+        const made = await pdfPageImage(got.pdf, page > 0 ? page : 1);
+        if (made.image === "") {
+          setMessage("PDFを画像にできませんでした");
+          return;
+        }
+        setImage(made.image);
+        setMessage(
+          `読み込みました：PDF ${Math.min(Math.max(page > 0 ? page : 1, 1), made.pages)}ページ（全${made.pages}ページ）`,
+        );
+      } catch {
+        setMessage("PDFを読めませんでした");
+      }
+      return;
+    }
     if (got.image === "") {
       setMessage(got.note);
       return;

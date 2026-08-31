@@ -1,6 +1,6 @@
 {
   "name": "kenchiku-sekisan",
-  "version": "0.9.48",
+  "version": "0.9.49",
   "description": "建築積算システム（完全オフラインのWindowsデスクトップアプリ）",
   "main": "./out/main/index.js",
   "author": "有限会社ビルズワーク",
@@ -22,7 +22,8 @@
     "better-sqlite3": "11.6.0",
     "drizzle-orm": "0.36.4",
     "iconv-lite": "^0.6.3",
-    "koffi": "2.16.3"
+    "koffi": "2.16.3",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "3.0.1",

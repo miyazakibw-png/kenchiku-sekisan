@@ -3,12 +3,12 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
 } from "fs";
 import { dirname, join } from "path";
 import { fileToDataUrl, readWindowsClipboardImage } from "./clipboardImage";
-import { pdfPageImage } from "./pdfImage";
 import {
   app,
   BrowserWindow,
@@ -789,18 +789,23 @@ function registerIpcHandlers(): void {
       : await dialog.showOpenDialog(options);
     recoverInput(window);
     if (picked.canceled || picked.filePaths.length === 0)
-      return { image: "", note: "取り消しました" };
+      return { image: "", pdf: "", note: "取り消しました" };
     const file = picked.filePaths[0];
     if (file.toLowerCase().endsWith(".pdf")) {
-      const image = await pdfPageImage(file, page > 0 ? page : 1);
-      return image === ""
-        ? { image: "", note: "PDFを読めませんでした" }
-        : { image, note: `PDF ${page > 0 ? page : 1}ページ` };
+      try {
+        return {
+          image: "",
+          pdf: readFileSync(file).toString("base64"),
+          note: `PDF ${page > 0 ? page : 1}ページ`,
+        };
+      } catch {
+        return { image: "", pdf: "", note: "PDFを読めませんでした" };
+      }
     }
     const image = fileToDataUrl(file);
     return image === ""
-      ? { image: "", note: "画像を読めませんでした" }
-      : { image, note: "画像ファイル" };
+      ? { image: "", pdf: "", note: "画像を読めませんでした" }
+      : { image, pdf: "", note: "画像ファイル" };
   });
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
