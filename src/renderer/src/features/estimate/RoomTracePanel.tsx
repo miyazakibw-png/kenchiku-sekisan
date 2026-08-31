@@ -102,6 +102,7 @@ export default function RoomTracePanel({
         const type = item.types.find((entry) => entry.startsWith("image/"));
         if (type === undefined) continue;
         setImage(await readAsDataUrl(await item.getType(type)));
+        setMessage(`貼り付けました：${type}（中身：${fromApp.note}）`);
         return;
       }
     } catch {
@@ -113,16 +114,18 @@ export default function RoomTracePanel({
   // Ctrl+V で貼り付け（Shift+Windows+S で切り取った画面をそのまま使う）
   useEffect(() => {
     const onPaste = (event: ClipboardEvent): void => {
-      const items = Array.from(event.clipboardData?.items ?? []);
-      const item = items.find((entry) => entry.type.startsWith("image/"));
-      const file = item?.getAsFile();
+      event.preventDefault();
+      // コピーしたファイルが付いてくるときは、その中身をそのまま使う
+      const file = Array.from(event.clipboardData?.files ?? []).find((entry) =>
+        entry.type.startsWith("image/"),
+      );
       if (file) {
-        event.preventDefault();
-        void readAsDataUrl(file).then(setImage);
+        void readAsDataUrl(file).then((dataUrl) => {
+          setImage(dataUrl);
+          setMessage(`貼り付けました：ファイル ${file.name}`);
+        });
         return;
       }
-      // 画像が付いてこないときは、Windowsのクリップボードから直接読む
-      event.preventDefault();
       void pasteImage();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
