@@ -304,19 +304,32 @@ export default function PitSheetPage({
               </text>
             </g>
           ))}
-          {plan.beams.flatMap((beam) =>
-            beam.segments.map((segment, index) => (
-              <line
-                key={`${beam.id}-${index}`}
-                x1={beam.axis === "X" ? beam.left + segment.from : beam.left}
-                y1={beam.axis === "X" ? beam.top : beam.top + segment.from}
-                x2={beam.axis === "X" ? beam.left + segment.to : beam.left}
-                y2={beam.axis === "X" ? beam.top : beam.top + segment.to}
-                className="pit-beam"
-                strokeWidth={Math.max(beam.width, 0.08)}
-              />
-            )),
-          )}
+          {[...plan.beams]
+            .sort((a, b) => a.height - b.height)
+            .flatMap((beam) =>
+              beam.segments.map((segment, index) => (
+                <rect
+                  key={`${beam.id}-${index}`}
+                  x={
+                    beam.axis === "X"
+                      ? beam.left + segment.from
+                      : beam.left - beam.width / 2
+                  }
+                  y={
+                    beam.axis === "X"
+                      ? beam.top - beam.width / 2
+                      : beam.top + segment.from
+                  }
+                  width={
+                    beam.axis === "X" ? segment.to - segment.from : beam.width
+                  }
+                  height={
+                    beam.axis === "X" ? beam.width : segment.to - segment.from
+                  }
+                  className="pit-beam"
+                />
+              )),
+            )}
         </svg>
       )}
     </div>

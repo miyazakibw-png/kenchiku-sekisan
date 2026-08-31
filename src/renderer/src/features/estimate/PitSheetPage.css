@@ -94,8 +94,10 @@
 }
 
 .pit-plan .pit-beam {
-  stroke: #c25b00;
-  opacity: 0.6;
+  fill: #e8a76e;
+  fill-opacity: 0.85;
+  stroke: #8c4300;
+  stroke-width: 0.03;
 }
 
 .pit-print-upper {
