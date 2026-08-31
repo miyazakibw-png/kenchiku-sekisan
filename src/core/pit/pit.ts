@@ -163,7 +163,7 @@ export function normalizeRects(rects: readonly PitRect[]): {
 }
 
 /**
- * 梁の区間。壁から壁までのうち、梁成Hの高い直交する梁に当たる分で止める。
+ * 梁の区間。壁から始まり、梁成Hの高い直交する梁に当たったところで終わる（向こう側は付けない）。
  */
 export function beamSegments(
   pit: PitShape,
@@ -188,14 +188,10 @@ export function beamSegments(
     })
     .sort((a, b) => a.from - b.from);
 
-  const segments: { from: number; to: number }[] = [];
-  let start = 0;
-  cuts.forEach((cut) => {
-    if (cut.from > start) segments.push({ from: start, to: cut.from });
-    start = Math.max(start, cut.to);
-  });
-  if (start < span) segments.push({ from: start, to: span });
-  return segments;
+  const first = cuts[0];
+  if (!first) return [{ from: 0, to: span }];
+  if (first.from <= 0) return [];
+  return [{ from: 0, to: first.from }];
 }
 
 /** 梁の長さ（高い梁で止まった分を除いた合計） */
