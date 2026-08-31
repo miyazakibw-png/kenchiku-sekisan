@@ -122,3 +122,16 @@ describe("そろえ方", () => {
     expect(rects[1].top).toBe(-2.5);
   });
 });
+
+describe("基準のピット", () => {
+  it("すぐ前でないピットを基準に置ける", () => {
+    const base = { depth: 1, gap: DEFAULT_PIT_GAP, direction: "right" as const };
+    const rects = layoutPits([
+      { id: "a", symbol: "Ｐ1", x: 4, y: 4, ...base },
+      { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base },
+      { id: "c", symbol: "Ｐ3", x: 2, y: 2, ...base, direction: "down", baseId: "a" },
+    ]);
+    expect(rects[2].left).toBe(0);
+    expect(rects[2].top).toBe(4.5);
+  });
+});

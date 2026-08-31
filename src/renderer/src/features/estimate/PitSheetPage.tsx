@@ -400,6 +400,7 @@ export default function PitSheetPage({
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
                 <th className="num">深さ（m）</th>
+                <th>基準</th>
                 <th>置き方</th>
                 <th>そろえ</th>
                 <th className="num">すき間（m）</th>
@@ -450,6 +451,24 @@ export default function PitSheetPage({
                       "基準（中央）"
                     ) : (
                       <select
+                        value={pit.baseId ?? pits[index - 1]?.id ?? ""}
+                        onChange={(e) =>
+                          editPit(pit.id, { baseId: e.target.value })
+                        }
+                      >
+                        {pits.slice(0, index).map((base) => (
+                          <option key={base.id} value={base.id}>
+                            {base.symbol}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    {index === 0 ? (
+                      ""
+                    ) : (
+                      <select
                         value={pit.direction}
                         onChange={(e) =>
                           editPit(pit.id, {
@@ -459,7 +478,7 @@ export default function PitSheetPage({
                       >
                         {DIRECTIONS.map((direction) => (
                           <option key={direction.key} value={direction.key}>
-                            {`${pits[index - 1]?.symbol ?? ""}${direction.label}`}
+                            {direction.label}
                           </option>
                         ))}
                       </select>

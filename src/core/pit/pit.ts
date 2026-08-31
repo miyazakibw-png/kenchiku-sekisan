@@ -27,6 +27,8 @@ export interface PitShape {
   gap: number;
   /** 前のピットとのそろえ方（初期は start＝上そろえ・左そろえ） */
   align?: PitAlign;
+  /** どのピットを基準に置くか（未指定はすぐ前のピット） */
+  baseId?: string;
 }
 
 /** 天井付き梁型（X方向・Y方向のどちらかに通る） */
@@ -109,7 +111,8 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
       rects.push({ id: pit.id, symbol: pit.symbol, left: 0, top: 0, x: pit.x, y: pit.y });
       return;
     }
-    const previous = rects[index - 1];
+    const previous =
+      rects.find((rect) => rect.id === pit.baseId) ?? rects[index - 1];
     const gap = pit.gap;
     const align = pit.align ?? "start";
     let left = previous.left;
