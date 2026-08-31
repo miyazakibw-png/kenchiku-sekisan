@@ -30,6 +30,7 @@ import {
   pitPolygon,
   pitQuantities,
   pitFormulaSymbol,
+  pitLabelPoint,
   pitNotch,
   pitPartVariables,
   pitSymbol,
@@ -156,6 +157,8 @@ export default function PitSheetPage({
   );
   /** 角を動かす寸法（m） */
   const [cornerStep, setCornerStep] = useState(1);
+  /** 「□を作る」で元の形との間に空けるすき間（m） */
+  const [notchGap, setNotchGap] = useState(DEFAULT_PIT_GAP);
 
   const { markSaved } = useSaveOnLeave({ pits, beams, lower, note }, () =>
     save(),
@@ -340,7 +343,7 @@ export default function PitSheetPage({
     (id: string) => {
       changePits((current) => {
         const base = current.find((pit) => pit.id === id);
-        const notch = base ? pitNotch(base, base.gap) : null;
+        const notch = base ? pitNotch(base, notchGap) : null;
         if (!base || !notch) return current;
         return renumber([
           ...current,
@@ -359,10 +362,10 @@ export default function PitSheetPage({
         ]);
       });
       setMessage(
-        "欠いた所に□のピットを足しました（すき間は元のＰの「すき間」欄の値。Ｌ型は2方・コ型は3方）",
+        `欠いた所に□のピットを足しました（すき間 ${formatNumber(notchGap, 2)}m・Ｌ型は2方・コ型は3方）`,
       );
     },
-    [changePits],
+    [changePits, notchGap],
   );
 
   const removePit = useCallback(
@@ -640,20 +643,6 @@ export default function PitSheetPage({
                   placeBeam(rect.id, ratio);
                 }}
               />
-              <text
-                x={rect.left + rect.x / 2}
-                y={rect.top + rect.y / 2}
-                className="pit-label"
-              >
-                {rect.symbol}
-              </text>
-              <text
-                x={rect.left + rect.x / 2}
-                y={rect.top + rect.y / 2 + 0.45}
-                className="pit-size"
-              >
-                {`X=${formatNumber(rect.x, 2)} Y=${formatNumber(rect.y, 2)}`}
-              </text>
             </g>
           ))}
           {[...plan.beams]
@@ -682,6 +671,30 @@ export default function PitSheetPage({
                 />
               )),
             )}
+          {plan.rects.map((rect) => {
+            const pit = pits.find((each) => each.id === rect.id);
+            const at = pit
+              ? pitLabelPoint(pit)
+              : { x: rect.x / 2, y: rect.y / 2 };
+            return (
+              <g key={`label-${rect.id}`}>
+                <text
+                  x={rect.left + at.x}
+                  y={rect.top + at.y}
+                  className="pit-label"
+                >
+                  {rect.symbol}
+                </text>
+                <text
+                  x={rect.left + at.x}
+                  y={rect.top + at.y + 0.45}
+                  className="pit-size"
+                >
+                  {`X=${formatNumber(rect.x, 2)} Y=${formatNumber(rect.y, 2)}`}
+                </text>
+              </g>
+            );
+          })}
           {!printMode &&
             planMode === "shape" &&
             plan.rects.flatMap((rect) => {
@@ -806,6 +819,15 @@ export default function PitSheetPage({
         <section className="pit-list">
           <div className="section-bar">
             <h3>ピット（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
+            <label title="「□を作る」で、欠いた所の内側に空けるすき間（Ｌ型は2方・コ型は3方）">
+              □のすき間（m）
+              <input
+                data-half="1"
+                className="num"
+                defaultValue={notchGap}
+                onBlur={(e) => setNotchGap(parseNumber(e.target.value) ?? 0)}
+              />
+            </label>
             <button type="button" onClick={addPit}>
               ＋ ピット追加
             </button>

@@ -510,6 +510,71 @@ export function polygonPerimeter(points: readonly PitPoint[]): number {
   return total;
 }
 
+/** 点が図形の中にあるか */
+function insidePolygon(points: readonly PitPoint[], at: PitPoint): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const a = points[i];
+    const b = points[j];
+    if (
+      a.y > at.y !== b.y > at.y &&
+      at.x < ((b.x - a.x) * (at.y - a.y)) / (b.y - a.y) + a.x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+
+/** 点から線分までの近さ */
+function distanceToSegment(at: PitPoint, a: PitPoint, b: PitPoint): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = dx * dx + dy * dy;
+  const t =
+    length === 0
+      ? 0
+      : Math.min(
+          Math.max(((at.x - a.x) * dx + (at.y - a.y) * dy) / length, 0),
+          1,
+        );
+  return Math.hypot(at.x - (a.x + dx * t), at.y - (a.y + dy * t));
+}
+
+/**
+ * 記号や寸法の文字を置く場所（ピットの左上を0とした座標）。
+ * 欠いた所（Ｌ型・コ型の中）や、細い所を避けて、いちばん広い所に置く。
+ */
+export function pitLabelPoint(pit: PitShape): PitPoint {
+  const points = pitPolygon(pit);
+  if (points.length < 3) return { x: pit.x / 2, y: pit.y / 2 };
+  const width = Math.max(...points.map((point) => point.x));
+  const height = Math.max(...points.map((point) => point.y));
+  const steps = 24;
+  const middle = { x: width / 2, y: height / 2 };
+  let best = middle;
+  let bestRoom = -1;
+  let bestNear = Number.POSITIVE_INFINITY;
+  for (let ix = 1; ix < steps; ix += 1) {
+    for (let iy = 1; iy < steps; iy += 1) {
+      const at = { x: (width * ix) / steps, y: (height * iy) / steps };
+      if (!insidePolygon(points, at)) continue;
+      let room = Number.POSITIVE_INFINITY;
+      points.forEach((point, index) => {
+        const next = points[(index + 1) % points.length];
+        room = Math.min(room, distanceToSegment(at, point, next));
+      });
+      // 同じ広さなら真ん中に近い所へ置く
+      const near = Math.hypot(at.x - middle.x, at.y - middle.y);
+      if (room > bestRoom + 1e-9 || (room > bestRoom - 1e-9 && near < bestNear)) {
+        bestRoom = room;
+        bestNear = near;
+        best = at;
+      }
+    }
+  }
+  return { x: round4(best.x), y: round4(best.y) };
+}
+
 /** 図形全体の角の数（ピットごとの角を足したもの） */
 export function pitCornerCount(pits: readonly PitShape[]): number {
   return pits.reduce((total, pit) => total + pitPolygon(pit).length, 0);

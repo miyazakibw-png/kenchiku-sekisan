@@ -4,6 +4,7 @@ import {
   addPitCorner,
   alignPitCorners,
   setPitCorner,
+  pitLabelPoint,
   pitNotch,
   polygonArea,
   setPitKind,
@@ -656,5 +657,35 @@ describe("形を直しても他のピットは動かない", () => {
     );
     const kept = keepPitPlaces(pits, moved, ["a"]);
     expect(pitPolygon(kept[0])).not.toEqual(pitPolygon(pits[0]));
+  });
+});
+
+describe("記号を置く場所", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 6,
+    y: 4,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("四角は真ん中に置く", () => {
+    expect(pitLabelPoint(base)).toEqual({ x: 3, y: 2 });
+  });
+
+  it("Ｌ型は欠いた所を避けて置く", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 4, cutD: 3 };
+    const at = pitLabelPoint(shaped);
+    const inNotch = at.x > base.x - 4 && at.y > base.y - 3;
+    expect(inNotch).toBe(false);
+  });
+
+  it("コ型は欠いた所を避けて置く", () => {
+    const shaped = { ...setPitKind(base, "U"), cutW: 4, cutD: 3, cutAt: 1 };
+    const at = pitLabelPoint(shaped);
+    const inNotch = at.x > 1 && at.x < 5 && at.y > base.y - 3;
+    expect(inNotch).toBe(false);
   });
 });
