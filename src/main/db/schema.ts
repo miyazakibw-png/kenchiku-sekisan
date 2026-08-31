@@ -280,6 +280,10 @@ export const projectFittings = sqliteTable("project_fittings", {
   height: real("height"),
   /** 腰高（FLから建具下端まで）。値がある場合は巾木の差し引きをしない */
   sillHeight: real("sill_height"),
+  /** W・H・腰高の欄に入れた計算式（数字だけのときは空） */
+  widthFormula: text("width_formula").notNull().default(""),
+  heightFormula: text("height_formula").notNull().default(""),
+  sillHeightFormula: text("sill_height_formula").notNull().default(""),
   /** 面積計算（自動計算修正用）の計算式 */
   areaFormula: text("area_formula").notNull().default(""),
   /** 巾木長さ（自動計算修正用）の計算式 */
@@ -759,10 +763,14 @@ export const projectBreakdownSettings = sqliteTable(
     replacementsJson: text("replacements_json").notNull().default("[]"),
     unitOrderJson: text("unit_order_json").notNull().default("[]"),
     /** 単位の置き換え（[{from,to}]。変更後が空ならそのまま） */
-    unitReplacementsJson: text("unit_replacements_json").notNull().default("[]"),
+    unitReplacementsJson: text("unit_replacements_json")
+      .notNull()
+      .default("[]"),
     /** エクセル掃き出しの1ページの明細数（1ページ目はタイトル行を含む） */
     detailsPerPage: integer("details_per_page").notNull().default(17),
-    detailsPerPageLater: integer("details_per_page_later").notNull().default(16),
+    detailsPerPageLater: integer("details_per_page_later")
+      .notNull()
+      .default(16),
     workCategory: text("work_category").notNull().default("建築主体工事"),
   },
 );

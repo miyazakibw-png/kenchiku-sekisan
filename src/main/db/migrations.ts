@@ -889,4 +889,10 @@ INSERT INTO calc_sheet_definitions (key, name, display_order)
   `
 ALTER TABLE projects ADD COLUMN marks TEXT NOT NULL DEFAULT '';
 `,
+  // 建具表のW・H・腰高を計算式で入れられるようにする
+  `
+ALTER TABLE project_fittings ADD COLUMN width_formula TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fittings ADD COLUMN height_formula TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fittings ADD COLUMN sill_height_formula TEXT NOT NULL DEFAULT '';
+`,
 ];

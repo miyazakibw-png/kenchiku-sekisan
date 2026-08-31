@@ -18,7 +18,7 @@ import {
   emptyRow,
   formatNumber,
   insertRow,
-  parseNumber,
+  parseSize,
   removeRow,
   sortBySymbol,
   toDrafts,
@@ -220,22 +220,33 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
     setMessage(`${symbols.length} 行追加しました`);
   };
 
+  /**
+   * W・H・腰高の欄。計算式（例 900+150）でも入れられる。
+   * ふだんは計算結果を出し、その欄を選んだときだけ元の式に戻す。
+   */
   const numberCell = (
     index: number,
     value: number | null,
-    apply: (parsed: number | null) => Partial<FittingDraft>,
+    formula: string,
+    apply: (parsed: number | null, formula: string) => Partial<FittingDraft>,
   ): JSX.Element => (
     <input
       className="num"
+      title={formula === "" ? undefined : `計算式：${formula}`}
       defaultValue={formatNumber(value)}
-      key={`${index}-${formatNumber(value)}`}
+      key={`${index}-${formula}-${formatNumber(value)}`}
+      onFocus={(e) => {
+        if (formula !== "") e.target.value = formula;
+      }}
       onBlur={(e) => {
-        const parsed = parseNumber(e.target.value);
+        const parsed = parseSize(e.target.value);
         if (parsed.error) {
           setMessage(parsed.error);
+          e.target.value = formula === "" ? formatNumber(value) : formula;
           return;
         }
-        setRows(updateRow(rows, index, apply(parsed.value)));
+        e.target.value = formatNumber(parsed.value);
+        setRows(updateRow(rows, index, apply(parsed.value, parsed.formula)));
       }}
     />
   );
@@ -503,17 +514,37 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                   />
                 </td>
                 <td>
-                  {numberCell(index, row.width, (value) => ({ width: value }))}
+                  {numberCell(
+                    index,
+                    row.width,
+                    row.widthFormula,
+                    (value, formula) => ({
+                      width: value,
+                      widthFormula: formula,
+                    }),
+                  )}
                 </td>
                 <td>
-                  {numberCell(index, row.height, (value) => ({
-                    height: value,
-                  }))}
+                  {numberCell(
+                    index,
+                    row.height,
+                    row.heightFormula,
+                    (value, formula) => ({
+                      height: value,
+                      heightFormula: formula,
+                    }),
+                  )}
                 </td>
                 <td>
-                  {numberCell(index, row.sillHeight, (value) => ({
-                    sillHeight: value,
-                  }))}
+                  {numberCell(
+                    index,
+                    row.sillHeight,
+                    row.sillHeightFormula,
+                    (value, formula) => ({
+                      sillHeight: value,
+                      sillHeightFormula: formula,
+                    }),
+                  )}
                 </td>
                 <td className="num calc">{formatNumber(calc.area)}</td>
                 <td className="num calc">

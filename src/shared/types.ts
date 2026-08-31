@@ -52,6 +52,12 @@ export interface Fitting {
   width: number | null;
   height: number | null;
   sillHeight: number | null;
+  /** W欄に入れた計算式（数字だけのときは空。表示は計算結果） */
+  widthFormula: string;
+  /** H欄に入れた計算式 */
+  heightFormula: string;
+  /** 腰高欄に入れた計算式 */
+  sillHeightFormula: string;
   areaFormula: string;
   baseboardFormula: string;
   note: string;
