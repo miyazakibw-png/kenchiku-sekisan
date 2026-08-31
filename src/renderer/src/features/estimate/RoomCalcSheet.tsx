@@ -1036,13 +1036,22 @@ export default function RoomCalcSheet({
     );
   }, [onMessage, rangeRows, sets]);
 
+  /** 行コピー（Shift+クリックで複数行を選んでいればその範囲、無ければカーソルの1明細） */
+  const copySelection = useCallback(async () => {
+    if (rangeRows.length > 0) {
+      await copyRows();
+      return;
+    }
+    await copyRow();
+  }, [copyRow, copyRows, rangeRows]);
+
   /**
    * 貼り付け。この画面でコピーしたセット・明細ならそのまま写し、
    * Excelなど他から持ってきた表なら、カーソルの欄（明細／計算式）へ取り込む。
-   * mode が insert なら差し込み、overwrite ならその位置に上書きする。
+   * mode が insert なら差し込み、append なら最後の行へ足し、overwrite ならその位置に上書きする。
    */
   const paste = useCallback(
-    async (mode: "overwrite" | "insert") => {
+    async (mode: "overwrite" | "insert" | "append") => {
       const text = await navigator.clipboard.readText();
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
@@ -1063,9 +1072,11 @@ export default function RoomCalcSheet({
       if (clip?.kind === "set") {
         const created = duplicateSet(clip.set);
         const at =
-          bannerAt >= 0
-            ? bannerAt
-            : sets.findIndex((set) => set.id === currentSet?.id);
+          mode === "append"
+            ? sets.length
+            : bannerAt >= 0
+              ? bannerAt
+              : sets.findIndex((set) => set.id === currentSet?.id);
         const next = [...sets];
         if (
           mode === "overwrite" &&
@@ -1081,7 +1092,9 @@ export default function RoomCalcSheet({
         onMessage(
           mode === "overwrite"
             ? "コピーしたセットで上書きしました"
-            : "コピーしたセットを差し込みました",
+            : mode === "append"
+              ? "コピーしたセットを最後に足しました"
+              : "コピーしたセットを差し込みました",
         );
         return;
       }
@@ -1102,7 +1115,7 @@ export default function RoomCalcSheet({
           ],
         );
         let base = sets;
-        let at = bannerAt;
+        let at = mode === "append" ? sets.length : bannerAt;
         if (at < 0) {
           const target = currentSet;
           const setAt = target
@@ -1125,12 +1138,18 @@ export default function RoomCalcSheet({
         const head = created.find((set) => !isCommentSet(set));
         if (head) onFocus({ setId: head.id, area: "detail", index: 0 });
         onMessage(
-          `コピーした${copiedDetails.length}行を部位・※行ごとカーソルの行の上へ差し込みました`,
+          mode === "append"
+            ? `コピーした${copiedDetails.length}行を部位・※行ごと最後に足しました`
+            : `コピーした${copiedDetails.length}行を部位・※行ごとカーソルの行の上へ差し込みました`,
         );
         return;
       }
 
-      if (bannerAt >= 0 && (clip?.kind === "detail" || clip?.kind === "rows")) {
+      if (
+        mode !== "append" &&
+        bannerAt >= 0 &&
+        (clip?.kind === "detail" || clip?.kind === "rows")
+      ) {
         // コメント行の上へ、コピーした行を新しいセットとして差し込む
         const copiedDetails =
           clip.kind === "detail"
@@ -1192,9 +1211,11 @@ export default function RoomCalcSheet({
         // 計算式の欄にカーソルがあるときも、その行が貼り付け先（明細1件＝計算式1行）
         const cursor = focus ? focus.index : details.length - 1;
         const at =
-          mode === "overwrite"
-            ? Math.max(cursor, 0)
-            : Math.min(Math.max(cursor, 0), details.length);
+          mode === "append"
+            ? details.length
+            : mode === "overwrite"
+              ? Math.max(cursor, 0)
+              : Math.min(Math.max(cursor, 0), details.length);
 
         copiedDetails.forEach((copied, offset) => {
           const line = copiedLines[offset];
@@ -1225,7 +1246,9 @@ export default function RoomCalcSheet({
         onMessage(
           mode === "overwrite"
             ? `コピーした${copiedDetails.length}行でカーソルの行から上書きしました`
-            : `コピーした${copiedDetails.length}行をカーソルの行の上へ差し込みました`,
+            : mode === "append"
+              ? `コピーした${copiedDetails.length}行を最後の行に足しました`
+              : `コピーした${copiedDetails.length}行をカーソルの行の上へ差し込みました`,
         );
         return;
       }
@@ -1234,9 +1257,9 @@ export default function RoomCalcSheet({
       const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
       const byColumn = cursorColumn !== null && Number.isFinite(cursorColumn);
       if (byColumn || focus?.area === "detail" || (!focus && wideTable)) {
-        const at = focus?.index ?? 0;
+        const at = mode === "append" ? currentSet.details.length : (focus?.index ?? 0);
         const base =
-          mode === "insert"
+          mode !== "overwrite"
             ? [
                 ...currentSet.details.slice(0, at),
                 ...Array.from(
@@ -1249,7 +1272,7 @@ export default function RoomCalcSheet({
               ]
             : currentSet.details;
         const baseLines =
-          mode === "insert"
+          mode !== "overwrite"
             ? [
                 ...currentSet.lines.slice(0, at),
                 ...Array.from(
@@ -1277,7 +1300,11 @@ export default function RoomCalcSheet({
         return;
       }
 
-      const lines = pasteLines(currentSet.lines, focus?.index ?? 0, text);
+      const lines = pasteLines(
+        currentSet.lines,
+        mode === "append" ? currentSet.lines.length : (focus?.index ?? 0),
+        text,
+      );
       updateSet(currentSet.id, { lines });
       onMessage(
         "Excelの数量表を計算式へ貼り付けました（コメント／計算式Ａ／計算式Ｂの順。1列だけなら計算式Ａ）",
@@ -1439,7 +1466,10 @@ export default function RoomCalcSheet({
             return;
           e.preventDefault();
           // Shift+クリックで範囲を選んでいればその範囲、無ければカーソルの1行
-          void (rangeRows.length > 0 ? copyRows() : copyRow());
+          void copySelection();
+        } else if (e.key === "V" && e.shiftKey) {
+          e.preventDefault();
+          void paste("insert");
         } else if (e.key === "v") {
           e.preventDefault();
           void paste("overwrite");
@@ -1535,17 +1565,10 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="カーソルのある明細1件をコピーします（Ctrl+C）"
-          onClick={() => void copyRow()}
+          title="カーソルのある明細1件をコピーします。先頭の行にカーソルを置いて最後の行を Shift+クリックすると、その範囲の行（明細と計算式。※行も一緒に）をまとめてコピーします（Ctrl+C）"
+          onClick={() => void copySelection()}
         >
-          ⧉ 1行コピー
-        </button>
-        <button
-          type="button"
-          title="先頭の行にカーソルを置き、最後の行を Shift+クリックしてから押すと、その範囲の行（明細と計算式。※行も一緒に）をコピーします"
-          onClick={() => void copyRows()}
-        >
-          ⧉ 複数行コピー
+          ⧉ 行コピー（複数可）
         </button>
         <button
           type="button"
@@ -1556,10 +1579,17 @@ export default function RoomCalcSheet({
         </button>
         <button
           type="button"
-          title="カーソルのある行の下へ差し込みます"
+          title="カーソルのある行の上へ差し込みます（元の行は下へずれます）"
           onClick={() => void paste("insert")}
         >
           📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="いちばん下の行に足します"
+          onClick={() => void paste("append")}
+        >
+          📋 追加貼付（最終行）
         </button>
         <button
           type="button"
