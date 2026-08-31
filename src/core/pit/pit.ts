@@ -401,6 +401,51 @@ export function rectanglePit(pit: PitShape): PitShape {
 }
 
 /**
+ * Ｌ型・コ型で欠いた所へぴったり収まる□の大きさと、ピットの左上から見た位置。
+ * 欠きが無い（四角・自由な形）ときは null。
+ */
+export function pitNotch(
+  pit: PitShape,
+): { x: number; y: number; offsetX: number; offsetY: number } | null {
+  if (pit.points && pit.points.length >= 3) return null;
+  const w = Math.min(Math.max(pit.cutW ?? 0, 0), pit.x);
+  const d = Math.min(Math.max(pit.cutD ?? 0, 0), pit.y);
+  if (w <= 0 || d <= 0) return null;
+
+  if (pit.kind === "L") {
+    const corner = pit.cutCorner ?? "br";
+    return {
+      x: w,
+      y: d,
+      offsetX: corner === "tr" || corner === "br" ? round4(pit.x - w) : 0,
+      offsetY: corner === "bl" || corner === "br" ? round4(pit.y - d) : 0,
+    };
+  }
+
+  if (pit.kind === "U") {
+    const side = pit.cutSide ?? "bottom";
+    const along = side === "top" || side === "bottom" ? pit.x : pit.y;
+    const size = side === "top" || side === "bottom" ? w : d;
+    const at = Math.min(
+      Math.max(pit.cutAt ?? (along - size) / 2, 0),
+      along - size,
+    );
+    switch (side) {
+      case "top":
+        return { x: w, y: d, offsetX: round4(at), offsetY: 0 };
+      case "bottom":
+        return { x: w, y: d, offsetX: round4(at), offsetY: round4(pit.y - d) };
+      case "left":
+        return { x: w, y: d, offsetX: 0, offsetY: round4(at) };
+      default:
+        return { x: w, y: d, offsetX: round4(pit.x - w), offsetY: round4(at) };
+    }
+  }
+
+  return null;
+}
+
+/**
  * 形の種類（四角／Ｌ型／コ型）を選び直す。
  * 角を動かして作った自由な形は消し、X・Yと欠き寸法から作り直す。
  */

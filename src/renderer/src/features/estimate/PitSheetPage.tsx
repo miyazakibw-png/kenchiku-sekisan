@@ -29,6 +29,7 @@ import {
   pitPolygon,
   pitQuantities,
   pitFormulaSymbol,
+  pitNotch,
   pitPartVariables,
   pitSymbol,
   pitVariables,
@@ -272,6 +273,31 @@ export default function PitSheetPage({
         },
       ]);
     });
+  }, []);
+
+  /** Ｌ型・コ型で欠いた所へ、ぴったり収まる四角のピットを足す */
+  const addNotchPit = useCallback((id: string) => {
+    setPits((current) => {
+      const base = current.find((pit) => pit.id === id);
+      const notch = base ? pitNotch(base) : null;
+      if (!base || !notch) return current;
+      return renumber([
+        ...current,
+        {
+          id: newId("pit"),
+          symbol: pitSymbol(current.length),
+          x: notch.x,
+          y: notch.y,
+          depth: base.depth,
+          direction: "free",
+          gap: base.gap,
+          baseId: base.id,
+          offsetX: notch.offsetX,
+          offsetY: notch.offsetY,
+        },
+      ]);
+    });
+    setMessage("欠いた所に□のピットを足しました（深さ・寸法は表で直せます）");
   }, []);
 
   const removePit = useCallback((id: string) => {
@@ -1030,6 +1056,15 @@ export default function PitSheetPage({
                     {formatNumber(quantities[index]?.ceilingArea ?? 0, 2)}
                   </td>
                   <td>
+                    {pitNotch(pit) && (
+                      <button
+                        type="button"
+                        title="欠いた所にぴったり収まる四角のピットを足します"
+                        onClick={() => addNotchPit(pit.id)}
+                      >
+                        □を作る
+                      </button>
+                    )}
                     <button type="button" onClick={() => removePit(pit.id)}>
                       削除
                     </button>

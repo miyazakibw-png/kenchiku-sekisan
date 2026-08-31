@@ -4,6 +4,7 @@ import {
   addPitCorner,
   alignPitCorners,
   setPitCorner,
+  pitNotch,
   polygonArea,
   setPitKind,
   movePitCorner,
@@ -535,5 +536,43 @@ describe("形を選んで寸法で作る（Ｌ型・コ型）", () => {
     const moved = movePitCorners(shaped, [0], 1, 0);
     expect(moved.kind).toBeUndefined();
     expect(moved.points).toHaveLength(6);
+  });
+});
+
+describe("欠いた所に入る□", () => {
+  const base: PitShape = {
+    id: "a",
+    symbol: "Ｐ1",
+    x: 6,
+    y: 4,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("Ｌ型（右下）は右下に□が入る", () => {
+    const shaped = { ...setPitKind(base, "L"), cutW: 2, cutD: 1 };
+    expect(pitNotch(shaped)).toEqual({ x: 2, y: 1, offsetX: 4, offsetY: 3 });
+  });
+
+  it("Ｌ型（左上）は左上に□が入る", () => {
+    const shaped = {
+      ...setPitKind(base, "L"),
+      cutW: 2,
+      cutD: 1,
+      cutCorner: "tl" as const,
+    };
+    expect(pitNotch(shaped)).toEqual({ x: 2, y: 1, offsetX: 0, offsetY: 0 });
+  });
+
+  it("コ型（下の辺）は欠きの位置に□が入る", () => {
+    const shaped = { ...setPitKind(base, "U"), cutW: 2, cutD: 1, cutAt: 1 };
+    expect(pitNotch(shaped)).toEqual({ x: 2, y: 1, offsetX: 1, offsetY: 3 });
+  });
+
+  it("四角や自由な形では□を作らない", () => {
+    expect(pitNotch(base)).toBeNull();
+    const free = movePitCorners(base, [0], 1, 0);
+    expect(pitNotch(free)).toBeNull();
   });
 });
