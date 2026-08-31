@@ -66,7 +66,8 @@
   grid-template-columns:
     minmax(340px, 0.95fr) minmax(280px, 0.95fr)
     minmax(200px, 0.6fr) minmax(270px, 0.9fr);
-  grid-auto-rows: auto;
+  /* 天井伏図の欄が増えても図や表を縮めない（入りきらない分は上段をスクロール） */
+  grid-auto-rows: min-content;
   gap: 8px;
   padding: 8px;
   /* 上段は画面の1/3まで。入りきらない分は各欄を別々にスクロールする */
@@ -698,7 +699,9 @@
   font-weight: 700;
   paint-order: stroke;
   stroke: #fff;
+  /* 縁取りは画面上の太さで描く（図の縮尺で太らせると線を隠してしまう） */
   stroke-width: 3;
+  vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
 }
 
