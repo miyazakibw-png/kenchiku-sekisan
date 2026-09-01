@@ -673,6 +673,8 @@ export function ceilingRegions(
   roomCeilingHeight: number | null,
   /** 同じ高さなら離れていても1つの区画にまとめるか（既定は隣り合う所だけまとめる） */
   mergeSameHeight = false,
+  /** まとめずに、線で区切られた範囲すべてに番号を出すか（拡大して高さを入れるとき） */
+  splitAll = false,
 ): CeilingRegion[] {
   const points = solved.points;
   if (points.length < 3) return [];
@@ -744,9 +746,11 @@ export function ceilingRegions(
       piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`;
     merged.set(key, [...(merged.get(key) ?? []), piece]);
   });
-  const groups = [...merged.values()].flatMap((rows) =>
-    mergeSameHeight ? [rows] : clusterPieces(rows),
-  );
+  const groups = splitAll
+    ? pieces.map((piece) => [piece])
+    : [...merged.values()].flatMap((rows) =>
+        mergeSameHeight ? [rows] : clusterPieces(rows),
+      );
 
   return groups
     .map((rows) => {
