@@ -396,6 +396,10 @@ export const projectFrameSheets = sqliteTable("project_frame_sheets", {
   lowerJson: text("lower_json").notNull().default("[]"),
   /** 軸組の施工高さ（1か所直すと全体が再計算される） */
   workHeight: real("work_height"),
+  /** 下敷きにする図面画像となぞりの縮尺（FrameTrace） */
+  traceJson: text("trace_json").notNull().default("{}"),
+  /** 軸組種類（線の色分け。FrameKindの配列） */
+  kindsJson: text("kinds_json").notNull().default("[]"),
   note: text("note").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
 });

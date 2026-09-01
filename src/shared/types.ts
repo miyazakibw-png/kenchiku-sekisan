@@ -317,6 +317,10 @@ export interface FrameSheet {
   /** 下段のセット明細計算表 */
   lowerJson: string;
   workHeight: number | null;
+  /** 下敷きにする図面画像となぞりの縮尺（FrameTrace）のJSON */
+  traceJson: string;
+  /** 軸組種類（FrameKindの配列）のJSON */
+  kindsJson: string;
   note: string;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calcVariables } from "../../src/core/aggregate/variables";
 import {
   buildFrameLines,
+  defaultFrameKinds,
   findSharedWalls,
   frameLineAttribute,
   frameQuantities,
@@ -380,5 +381,57 @@ describe("軸組数量", () => {
       attributes: {},
     });
     expect(built).toHaveLength(0);
+  });
+});
+
+describe("軸組種類（線の色分け）", () => {
+  it("たて・よこをまとめて種類ごとに長さ・面積・補強を合計する", () => {
+    const kinds = defaultFrameKinds();
+    const lines = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [
+        { id: "m1", x1: 0, y1: 0, x2: 4, y2: 0 },
+        { id: "m2", x1: 0, y1: 0, x2: 0, y2: 3 },
+        { id: "m3", x1: 4, y1: 0, x2: 4, y2: 3 },
+      ],
+      attributes: {
+        m1: frameLineAttribute({ kindId: kinds[0].id }),
+        m2: frameLineAttribute({ kindId: kinds[0].id }),
+        m3: frameLineAttribute({ kindId: kinds[1].id }),
+      },
+    });
+    const quantities = frameQuantities(lines, [], 3);
+    const first = quantities.byKind.find((row) => row.kindId === kinds[0].id);
+    const second = quantities.byKind.find((row) => row.kindId === kinds[1].id);
+    // よこ4m＋たて3m＝7m（X・Yをまとめる）
+    expect(first?.length).toBe(7);
+    expect(first?.area).toBe(21);
+    expect(second?.length).toBe(3);
+  });
+
+  it("種類ごとの記号（ALK1・AAK1）が出る", () => {
+    const kinds = defaultFrameKinds();
+    const lines = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [{ id: "m1", x1: 0, y1: 0, x2: 4, y2: 0 }],
+      attributes: { m1: frameLineAttribute({ kindId: kinds[0].id }) },
+    });
+    const symbols = frameSymbols(frameQuantities(lines, [], 3), 3, kinds);
+    expect(symbols.find((item) => item.symbol === "ALK1")?.value).toBe(4);
+    expect(symbols.find((item) => item.symbol === "AAK1")?.value).toBe(12);
+    // 使っていない種類の記号は出さない
+    expect(symbols.some((item) => item.symbol === "ALK2")).toBe(false);
+  });
+
+  it("種類を決めていない線は種類の合計に入らない", () => {
+    const lines = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [{ id: "m1", x1: 0, y1: 0, x2: 4, y2: 0 }],
+      attributes: {},
+    });
+    expect(frameQuantities(lines, [], 3).byKind).toEqual([]);
   });
 });

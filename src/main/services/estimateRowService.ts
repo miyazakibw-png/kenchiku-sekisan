@@ -200,6 +200,8 @@ function copyCalcSheets(
         fittingsJson: frame.fittingsJson,
         lowerJson: frame.lowerJson,
         workHeight: frame.workHeight,
+        traceJson: frame.traceJson,
+        kindsJson: frame.kindsJson,
         note: frame.note
       })
       .run()

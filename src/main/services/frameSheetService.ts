@@ -22,6 +22,8 @@ function toSheet(row: typeof projectFrameSheets.$inferSelect): FrameSheet {
     fittingsJson: row.fittingsJson,
     lowerJson: row.lowerJson,
     workHeight: row.workHeight,
+    traceJson: row.traceJson,
+    kindsJson: row.kindsJson,
     note: row.note,
   };
 }
@@ -71,6 +73,8 @@ export function saveFrameSheet(
       fittingsJson: request.fittingsJson,
       lowerJson: request.lowerJson,
       workHeight: request.workHeight,
+      traceJson: request.traceJson,
+      kindsJson: request.kindsJson,
       note: request.note,
     })
     .where(eq(projectFrameSheets.id, request.id))

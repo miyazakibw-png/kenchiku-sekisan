@@ -91,6 +91,8 @@ describe("軸組計算書", () => {
       fittingsJson: '[{"id":"f1","symbol":"SD-2","multiplier":1}]',
       lowerJson: '[{"id":"s1"}]',
       workHeight: 3.2,
+      traceJson: "{}",
+      kindsJson: "[]",
       note: "",
     });
 
@@ -146,6 +148,8 @@ describe("軸組計算書", () => {
       fittingsJson: "[]",
       lowerJson: "[]",
       workHeight: 2.9,
+      traceJson: "{}",
+      kindsJson: "[]",
       note: "",
     });
 

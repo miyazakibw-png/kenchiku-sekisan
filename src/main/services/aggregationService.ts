@@ -61,10 +61,12 @@ import {
 } from "../../core/room/ceiling";
 import {
   buildFrameLines,
+  defaultFrameKinds,
   frameQuantities,
   frameSymbols,
   linePartVariables,
   type FrameFitting,
+  type FrameKind,
   type FrameLineAttribute,
   type FrameManualLine,
   type FramePlacement,
@@ -459,7 +461,11 @@ export function collectEntries(
         sheetFittings,
         sheet.workHeight,
       );
-      const symbols = frameSymbols(quantities, sheet.workHeight);
+      const symbols = frameSymbols(
+        quantities,
+        sheet.workHeight,
+        parseJson<FrameKind[]>(sheet.kindsJson, defaultFrameKinds()),
+      );
       const variables = calcVariables(symbols, fittings, sheet.workHeight);
       entries.push(
         ...entriesFromCalcSheet(

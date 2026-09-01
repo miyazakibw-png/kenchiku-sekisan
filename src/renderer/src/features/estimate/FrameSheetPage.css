@@ -39,7 +39,8 @@
   z-index: 60;
   /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
   grid-template-columns: 42% 16% 21% 21%;
-  grid-template-rows: 100%;
+  /* 軸組種類の表が増えたときは下の段に折り返す */
+  grid-auto-rows: minmax(0, 1fr);
   max-height: none;
   height: 100%;
   background: #fff;
@@ -281,84 +282,104 @@
   pointer-events: none;
 }
 
-/* Y・X寸法表は長さ・高さを狭く、建具の欄を広くし、行を詰めて多く見せる */
-.frame-sheet-page .rooms.lines-Y table.grid,
-.frame-sheet-page .rooms.lines-X table.grid {
+/* 軸組種類ごとの寸法表（たて・よこをまとめて色別に出す） */
+.frame-sheet-page .rooms.lines-kind table.grid {
   table-layout: fixed;
   font-size: 11px;
   /* 建具の欄に記号が並ぶ幅を残す（狭いときは横スクロールする） */
-  min-width: 420px;
+  min-width: 460px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid th,
-.frame-sheet-page .rooms.lines-X table.grid th,
-.frame-sheet-page .rooms.lines-Y table.grid td,
-.frame-sheet-page .rooms.lines-X table.grid td {
+.frame-sheet-page .rooms.lines-kind table.grid th,
+.frame-sheet-page .rooms.lines-kind table.grid td {
   padding: 0 2px;
   line-height: 1.4;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid input,
-.frame-sheet-page .rooms.lines-X table.grid input {
+.frame-sheet-page .rooms.lines-kind table.grid input {
   height: 18px;
   padding: 0 2px;
   font-size: 11px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid input.num,
-.frame-sheet-page .rooms.lines-X table.grid input.num {
+.frame-sheet-page .rooms.lines-kind table.grid input.num {
   min-width: 0;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid col,
-.frame-sheet-page .rooms.lines-X table.grid col {
+.frame-sheet-page .rooms.lines-kind table.grid col {
   width: auto;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(1),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(1) {
+/* 1:選ぶ 2:番号 3:種類 4:長さ 5:高さ 6:建具 7:面積 8:補強 9:操作 */
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(1) {
+  width: 20px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(2) {
   width: 32px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(2),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(2),
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(3),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(3) {
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(3) {
+  width: 60px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(4),
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(5) {
   width: 36px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(5),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(5),
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(6),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(6) {
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(7),
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(8) {
   width: 38px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid th:nth-child(7),
-.frame-sheet-page .rooms.lines-X table.grid th:nth-child(7) {
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(9) {
   width: 22px;
 }
 
+.frame-sheet-page .rooms.lines-kind table.grid select {
+  max-width: 100%;
+  font-size: 10px;
+}
+
 /* 建具は「＋建具」と記号5つくらいが並ぶ幅にする */
-.frame-sheet-page .rooms.lines-Y .fitting-cell,
-.frame-sheet-page .rooms.lines-X .fitting-cell {
+.frame-sheet-page .rooms.lines-kind .fitting-cell {
   min-width: 0;
   white-space: normal;
 }
 
-.frame-sheet-page .rooms.lines-Y .fitting-cell button.chip,
-.frame-sheet-page .rooms.lines-X .fitting-cell button.chip {
+.frame-sheet-page .rooms.lines-kind .fitting-cell button.chip {
   padding: 0 3px;
   font-size: 10px;
 }
 
-.frame-sheet-page .rooms.lines-Y .fitting-cell select,
-.frame-sheet-page .rooms.lines-X .fitting-cell select {
+.frame-sheet-page .rooms.lines-kind .fitting-cell select {
   max-width: 54px;
   font-size: 10px;
 }
 
-.frame-sheet-page .rooms.lines-Y table.grid button,
-.frame-sheet-page .rooms.lines-X table.grid button {
+.frame-sheet-page .rooms.lines-kind table.grid button {
   padding: 0 2px;
+}
+
+/* 軸組種類の色の印（見出しに出す四角） */
+.frame-sheet-page .kind-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border: 1px solid #94a3b8;
+  vertical-align: middle;
+}
+
+.frame-sheet-page .frame-kinds input.kind-color {
+  width: 34px;
+  height: 18px;
+  padding: 0;
+}
+
+/* まとめて種類を付けるために選んだ線 */
+.frame-sheet-page .frame-line.checked {
+  stroke-dasharray: 0.12 0.08;
+  stroke-width: 0.09;
 }

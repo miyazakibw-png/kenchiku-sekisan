@@ -36,8 +36,61 @@ export interface FrameManualLine {
   y2: number;
 }
 
+/** 軸組計算書の下敷きにする図面画像（なぞって線を引くために置く） */
+export interface FrameTrace {
+  /** 画像（データURL） */
+  image: string;
+  /** 画像1画素あたりの実寸（m） */
+  metersPerPixel: number;
+  /** 画像の左上を置く位置（m） */
+  x: number;
+  y: number;
+}
+
+export const EMPTY_FRAME_TRACE: FrameTrace = {
+  image: "",
+  metersPerPixel: 0,
+  x: 0,
+  y: 0,
+};
+
+/**
+ * 軸組種類（引いた線の色分け。普通は5種類ほどだが、特殊な場合に備えて10種類まで持てる）。
+ * たて・よこ（X・Y）に関係なく、この種類ごとにまとめて拾う。
+ */
+export interface FrameKind {
+  id: string;
+  name: string;
+  /** 図の線の色 */
+  color: string;
+}
+
+const FRAME_KIND_COLORS = [
+  "#dc2626",
+  "#2563eb",
+  "#16a34a",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+  "#0f766e",
+  "#b45309",
+];
+
+/** 軸組種類の初期値（10種類。名前は後から直せる） */
+export function defaultFrameKinds(): FrameKind[] {
+  return FRAME_KIND_COLORS.map((color, index) => ({
+    id: `k${index + 1}`,
+    name: `種類${index + 1}`,
+    color,
+  }));
+}
+
 /** 軸組ラインごとの指定（拾う／拾わない・壁種・サイズ種類・施工高さ） */
 export interface FrameLineAttribute {
+  /** 軸組種類（色分けとまとめの単位。空欄は種類なし） */
+  kindId: string;
   wallKind: string;
   sizeKind: string;
   /** 空欄なら軸組全体の施工高さを使う */
@@ -53,6 +106,7 @@ export function frameLineAttribute(
   patch: Partial<FrameLineAttribute> = {},
 ): FrameLineAttribute {
   return {
+    kindId: "",
     wallKind: "",
     sizeKind: "",
     workHeight: null,
@@ -452,6 +506,13 @@ export interface FrameQuantities {
   reinforcement: number;
   /** 壁種ごとの長さ・面積 */
   byWallKind: { wallKind: string; length: number; area: number }[];
+  /** 軸組種類ごとの長さ・面積・補強（たて・よこをまとめて数える） */
+  byKind: {
+    kindId: string;
+    length: number;
+    area: number;
+    reinforcement: number;
+  }[];
 }
 
 /** 拾う線かどうか（外周・共有された側・拾わない指定は数量に入れない） */
@@ -529,6 +590,25 @@ export function frameQuantities(
     });
   });
 
+  const kindTotals = new Map<
+    string,
+    { length: number; area: number; reinforcement: number }
+  >();
+  picked.forEach((result) => {
+    const key = result.line.kindId;
+    if (key === "") return;
+    const current = kindTotals.get(key) ?? {
+      length: 0,
+      area: 0,
+      reinforcement: 0,
+    };
+    kindTotals.set(key, {
+      length: round2(current.length + result.line.length),
+      area: round2(current.area + (result.area ?? 0)),
+      reinforcement: round2(current.reinforcement + result.reinforcement),
+    });
+  });
+
   return {
     lines: results,
     length,
@@ -537,6 +617,10 @@ export function frameQuantities(
     reinforcement,
     byWallKind: [...kinds.entries()].map(([wallKind, value]) => ({
       wallKind,
+      ...value,
+    })),
+    byKind: [...kindTotals.entries()].map(([kindId, value]) => ({
+      kindId,
       ...value,
     })),
   };
@@ -554,6 +638,7 @@ export interface FrameSymbol {
 export function frameSymbols(
   quantities: FrameQuantities,
   workHeight: number | null,
+  kinds: FrameKind[] = [],
 ): FrameSymbol[] {
   const symbols: FrameSymbol[] = [
     { symbol: "AH", label: "施工高さ", value: workHeight },
@@ -562,6 +647,26 @@ export function frameSymbols(
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },
     { symbol: "RF", label: "開口補強", value: quantities.reinforcement },
   ];
+  // 軸組種類ごとの合計（たて・よこをまとめたもの）
+  kinds.forEach((kind, no) => {
+    const total = quantities.byKind.find((row) => row.kindId === kind.id);
+    if (total === undefined) return;
+    symbols.push({
+      symbol: `ALK${no + 1}`,
+      label: `${kind.name} 長さ`,
+      value: total.length,
+    });
+    symbols.push({
+      symbol: `AAK${no + 1}`,
+      label: `${kind.name} 面積`,
+      value: total.area,
+    });
+    symbols.push({
+      symbol: `RFK${no + 1}`,
+      label: `${kind.name} 補強`,
+      value: total.reinforcement,
+    });
+  });
   let index = 0;
   quantities.lines.forEach((result) => {
     if (!isPickedUp(result.line)) return;

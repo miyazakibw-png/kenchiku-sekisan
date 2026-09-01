@@ -903,4 +903,9 @@ ALTER TABLE project_room_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}'
   `
 ALTER TABLE project_pit_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
 `,
+  // 軸組計算書にも図面画像を貼ってなぞれるようにし、軸組種類（線の色分け）を持たせる
+  `
+ALTER TABLE project_frame_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE project_frame_sheets ADD COLUMN kinds_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];
