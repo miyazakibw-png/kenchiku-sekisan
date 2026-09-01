@@ -679,14 +679,44 @@ export default function RoomCalcSheet({
     setBannerSetId(null);
   }, [focus?.setId, focus?.area, focus?.index]);
 
+  /** マスター呼出の書込先。呼出画面を触ってカーソルが外れても最後の明細行を覚えておく */
+  const keptTarget = useRef<{ setId: string; index: number } | null>(null);
+  if (focus && focus.area === "detail") {
+    keptTarget.current = { setId: focus.setId, index: focus.index };
+  }
+  const writeFocus = useMemo(() => {
+    if (
+      focus &&
+      focus.area === "detail" &&
+      sets.some((set) => set.id === focus.setId)
+    ) {
+      return { setId: focus.setId, index: focus.index };
+    }
+    const kept = keptTarget.current;
+    return kept && sets.some((set) => set.id === kept.setId) ? kept : null;
+  }, [focus, sets]);
+
   /** カーソルのあるセット（無ければ最後のセット） */
   const currentSet = useMemo(
     () =>
-      sets.find((set) => set.id === focus?.setId) ??
+      sets.find((set) => set.id === (focus?.setId ?? writeFocus?.setId)) ??
       sets[sets.length - 1] ??
       null,
-    [focus?.setId, sets],
+    [focus?.setId, sets, writeFocus],
   );
+
+  /** 呼び出した明細が書き込まれる行（呼出画面を開いている間、色で示す） */
+  const callRow = useMemo(() => {
+    if (bannerSetId !== null || !currentSet) return null;
+    const at =
+      writeFocus && writeFocus.setId === currentSet.id
+        ? writeFocus.index
+        : currentSet.details.findIndex((row) => row.name.trim() === "");
+    return {
+      setId: currentSet.id,
+      index: at < 0 ? currentSet.details.length : at,
+    };
+  }, [bannerSetId, currentSet, writeFocus]);
 
   /** 明細を1つ呼び出す（上書き基準・空きが無ければ自動で挿入） */
   const callDetail = useCallback(
@@ -694,9 +724,7 @@ export default function RoomCalcSheet({
       const target = currentSet;
       // 上書きする行に先に入れてある部位・区分・単位は、マスターが空欄なら残す
       const at0 =
-        focus && focus.setId === target?.id && focus.area === "detail"
-          ? focus.index
-          : -1;
+        writeFocus && writeFocus.setId === target?.id ? writeFocus.index : -1;
       const kept =
         !insertMode && at0 >= 0 ? (target?.details[at0] ?? null) : null;
       const item = calcDetail({
@@ -745,8 +773,8 @@ export default function RoomCalcSheet({
         return;
       }
       const at =
-        focus && focus.setId === target.id && focus.area === "detail"
-          ? focus.index
+        writeFocus && writeFocus.setId === target.id
+          ? writeFocus.index
           : target.details.findIndex((row) => row.name.trim() === "");
       const details2 = [...target.details];
       let next = 0;
@@ -766,13 +794,13 @@ export default function RoomCalcSheet({
       bannerSetId,
       commit,
       currentSet,
-      focus,
       insertMode,
       onFocus,
       onMessage,
       pickupParts,
       sets,
       updateSet,
+      writeFocus,
     ],
   );
 
@@ -1707,9 +1735,17 @@ export default function RoomCalcSheet({
                     <tr
                       // 行の目印は行番号ではなくIDにする（行を差し込んでも入力中の欄がずれない）
                       key={`${set.id}-${detail?.id ?? line?.id ?? `r${rowIndex}`}`}
-                      className={
-                        isSelectedRow(set.id, rowIndex) ? "row-selected" : ""
-                      }
+                      className={[
+                        isSelectedRow(set.id, rowIndex) ? "row-selected" : "",
+                        callOpen &&
+                        callRow &&
+                        callRow.setId === set.id &&
+                        callRow.index === rowIndex
+                          ? "call-row"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       onMouseDownCapture={(e) => {
                         shiftClicking.current = e.shiftKey;
                       }}
@@ -2232,6 +2268,13 @@ export default function RoomCalcSheet({
               />
               挿入呼出
             </label>
+            <span
+              className="call-target"
+              title="呼び出した明細が入る行（計算書で青く光っている行）"
+            >
+              書込先：
+              {callRow ? `${callRow.index + 1}行目` : "（新しいセット）"}
+            </span>
             <button type="button" onClick={() => setCallOpen(false)}>
               ✕ 閉じる
             </button>
