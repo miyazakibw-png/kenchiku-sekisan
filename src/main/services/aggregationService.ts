@@ -75,6 +75,11 @@ import {
   pitQuantities,
   pitPartVariables,
   pitVariables,
+  pitWallVariables,
+  defaultPitSleeveKinds,
+  type PitWall,
+  type PitSleeve,
+  type PitSleeveKind,
   type PitBeam,
   type PitShape,
 } from "../../core/pit/pit";
@@ -393,9 +398,16 @@ export function collectEntries(
         parseJson<PitShape[]>(sheet.pitsJson, []),
         parseJson<PitBeam[]>(sheet.beamsJson, []),
       );
+      const walls = parseJson<PitWall[]>(sheet.wallsJson, []);
+      const sleeves = parseJson<PitSleeve[]>(sheet.sleevesJson, []);
+      const sleeveKinds = parseJson<PitSleeveKind[]>(
+        sheet.sleeveKindsJson,
+        defaultPitSleeveKinds(),
+      );
       const variables = {
         ...calcVariables([], fittings),
         ...pitVariables(quantities),
+        ...pitWallVariables(walls, sleeves, sleeveKinds),
       };
       entries.push(
         ...entriesFromCalcSheet(

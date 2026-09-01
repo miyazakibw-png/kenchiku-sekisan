@@ -432,6 +432,12 @@ export const projectPitSheets = sqliteTable("project_pit_sheets", {
   pitsJson: text("pits_json").notNull().default("[]"),
   /** 天井付き梁型の一覧（PitBeamの配列） */
   beamsJson: text("beams_json").notNull().default("[]"),
+  /** ピット間（PitWallの配列） */
+  wallsJson: text("walls_json").notNull().default("[]"),
+  /** ピット間に付けた人通口・スリーブ（PitSleeveの配列） */
+  sleevesJson: text("sleeves_json").notNull().default("[]"),
+  /** 人通口・スリーブの種類（PitSleeveKindの配列） */
+  sleeveKindsJson: text("sleeve_kinds_json").notNull().default("[]"),
   /** 下段のセット明細計算表 */
   lowerJson: text("lower_json").notNull().default("[]"),
   /** 図面画像となぞった点・縮尺（数量根拠として残す） */

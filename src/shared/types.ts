@@ -355,6 +355,12 @@ export interface PitSheet {
   pitsJson: string;
   /** 天井付き梁型の一覧（PitBeamの配列） */
   beamsJson: string;
+  /** ピット間の一覧（PitWallの配列） */
+  wallsJson: string;
+  /** ピット間に付けた人通口・スリーブ（PitSleeveの配列） */
+  sleevesJson: string;
+  /** 人通口・スリーブの種類（PitSleeveKindの配列） */
+  sleeveKindsJson: string;
   /** セット明細計算表 */
   lowerJson: string;
   /** 図面画像となぞった点・縮尺（RoomTrace）のJSON */

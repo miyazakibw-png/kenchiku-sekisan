@@ -152,7 +152,10 @@ function shapePoints(pit: PitShape): PitPoint[] | null {
     const along = side === "top" || side === "bottom" ? x : y;
     const size = side === "top" || side === "bottom" ? w : d;
     const deep = side === "top" || side === "bottom" ? d : w;
-    const at = Math.min(Math.max(pit.cutAt ?? (along - size) / 2, 0), along - size);
+    const at = Math.min(
+      Math.max(pit.cutAt ?? (along - size) / 2, 0),
+      along - size,
+    );
     const end = at + size;
 
     switch (side) {
@@ -598,7 +601,10 @@ export function pitLabelPoint(pit: PitShape): PitPoint {
       });
       // 同じ広さなら真ん中に近い所へ置く
       const near = Math.hypot(at.x - middle.x, at.y - middle.y);
-      if (room > bestRoom + 1e-9 || (room > bestRoom - 1e-9 && near < bestNear)) {
+      if (
+        room > bestRoom + 1e-9 ||
+        (room > bestRoom - 1e-9 && near < bestNear)
+      ) {
         bestRoom = room;
         bestNear = near;
         best = at;
@@ -630,8 +636,7 @@ export function pitEdges(pit: PitShape): PitEdge[] {
       from,
       to,
       length: round4(Math.hypot(to.x - from.x, to.y - from.y)),
-      slant:
-        Math.abs(to.x - from.x) > 1e-9 && Math.abs(to.y - from.y) > 1e-9,
+      slant: Math.abs(to.x - from.x) > 1e-9 && Math.abs(to.y - from.y) > 1e-9,
     };
   });
 }
@@ -1234,7 +1239,9 @@ export function pitTotal(quantities: readonly PitQuantity[]): PitQuantity {
 }
 
 /** 計算式に使える記号（FA1…はピットごと、FA…は全部の合計） */
-export function pitVariables(quantities: readonly PitQuantity[]): Record<string, number> {
+export function pitVariables(
+  quantities: readonly PitQuantity[],
+): Record<string, number> {
   const values: Record<string, number> = {};
   let floorArea = 0;
   let wallLength = 0;
@@ -1272,5 +1279,190 @@ export function pitVariables(quantities: readonly PitQuantity[]): Record<string,
   values.GA = beamArea;
   values.GB = beamBottomArea;
   values.CA = ceilingArea;
+  return values;
+}
+
+/** ピット間（ピットとピットの間の基礎梁・壁）。図に引いた1本 */
+export interface PitWall {
+  id: string;
+  /** 図全体の座標（m） */
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** 幅（m）。500と200の2種類が主だが手入力もできる */
+  width: number;
+  /** 図の線の色（幅ごとに分ける） */
+  color: string;
+}
+
+/** よく使うピット間の幅と色（500・200の2種類） */
+export const PIT_WALL_SIZES: { width: number; color: string }[] = [
+  { width: 0.5, color: "#dc2626" },
+  { width: 0.2, color: "#2563eb" },
+];
+
+/** 人通口・通水管・通気管などスリーブの種類（10種類） */
+export interface PitSleeveKind {
+  id: string;
+  name: string;
+  /** 図の印の色 */
+  color: string;
+  /** 既定の長さ（mm）。0のときは付けたピット間の幅を使う */
+  length: number;
+}
+
+const PIT_SLEEVE_KINDS: { name: string; color: string; length: number }[] = [
+  { name: "人通口600φ", color: "#dc2626", length: 0 },
+  { name: "連通管100φ", color: "#2563eb", length: 0 },
+  { name: "通水管150φ半割", color: "#16a34a", length: 0 },
+  { name: "通気管100φ", color: "#d97706", length: 0 },
+  { name: "スリーブ5", color: "#7c3aed", length: 0 },
+  { name: "スリーブ6", color: "#0891b2", length: 0 },
+  { name: "スリーブ7", color: "#db2777", length: 0 },
+  { name: "スリーブ8", color: "#65a30d", length: 0 },
+  { name: "スリーブ9", color: "#0f766e", length: 0 },
+  { name: "スリーブ10", color: "#b45309", length: 0 },
+];
+
+export function defaultPitSleeveKinds(): PitSleeveKind[] {
+  return PIT_SLEEVE_KINDS.map((kind, index) => ({
+    id: `s${index + 1}`,
+    name: kind.name,
+    color: kind.color,
+    length: kind.length,
+  }));
+}
+
+/** ピット間に付けた人通口・スリーブ1か所 */
+export interface PitSleeve {
+  id: string;
+  /** どのピット間に付くか */
+  wallId: string;
+  kindId: string;
+  /** 線に沿った位置（0〜1） */
+  position: number;
+  /** 長さ（mm）。空のときは種類の既定→ピット間の幅の順で決める */
+  length: number | null;
+}
+
+/** ピット間1本の長さ（m） */
+export function pitWallLength(wall: PitWall): number {
+  return round4(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
+}
+
+/** 集計でまとめる長さ（既定は50mmごと） */
+export function groupLengthMm(mm: number, step = 50): number {
+  if (step <= 0) return Math.round(mm);
+  return Math.round(mm / step) * step;
+}
+
+/** スリーブ1か所の長さ（mm）。種類の既定・ピット間の幅から決める */
+export function pitSleeveLength(
+  sleeve: PitSleeve,
+  walls: readonly PitWall[],
+  kinds: readonly PitSleeveKind[],
+): number {
+  if (sleeve.length !== null && sleeve.length > 0) return sleeve.length;
+  const kind = kinds.find((each) => each.id === sleeve.kindId);
+  if (kind && kind.length > 0) return kind.length;
+  const wall = walls.find((each) => each.id === sleeve.wallId);
+  return wall ? Math.round(wall.width * 1000) : 0;
+}
+
+/** ピット間の長さ別集計（幅ごと・長さは50mmでまとめる） */
+export interface PitWallTally {
+  width: number;
+  /** まとめた長さ（mm） */
+  lengthMm: number;
+  count: number;
+  /** 合計長さ（m） */
+  total: number;
+}
+
+export function pitWallTallies(walls: readonly PitWall[]): PitWallTally[] {
+  const rows = new Map<string, PitWallTally>();
+  walls.forEach((wall) => {
+    const lengthMm = groupLengthMm(pitWallLength(wall) * 1000);
+    const key = `${wall.width}-${lengthMm}`;
+    const row = rows.get(key) ?? {
+      width: wall.width,
+      lengthMm,
+      count: 0,
+      total: 0,
+    };
+    row.count += 1;
+    row.total = round4(row.total + pitWallLength(wall));
+    rows.set(key, row);
+  });
+  return [...rows.values()].sort(
+    (a, b) => b.width - a.width || a.lengthMm - b.lengthMm,
+  );
+}
+
+/** 人通口・スリーブの種類別×長さ別の個数表 */
+export interface PitSleeveTable {
+  /** 表の列になる長さ（mm・50mmでまとめたもの） */
+  lengths: number[];
+  rows: { kindId: string; counts: number[]; total: number }[];
+}
+
+export function pitSleeveTable(
+  sleeves: readonly PitSleeve[],
+  walls: readonly PitWall[],
+  kinds: readonly PitSleeveKind[],
+): PitSleeveTable {
+  const lengths = [
+    ...new Set(
+      sleeves.map((sleeve) =>
+        groupLengthMm(pitSleeveLength(sleeve, walls, kinds)),
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  const rows = kinds.map((kind) => {
+    const counts = lengths.map(
+      (length) =>
+        sleeves.filter(
+          (sleeve) =>
+            sleeve.kindId === kind.id &&
+            groupLengthMm(pitSleeveLength(sleeve, walls, kinds)) === length,
+        ).length,
+    );
+    return {
+      kindId: kind.id,
+      counts,
+      total: counts.reduce((sum, count) => sum + count, 0),
+    };
+  });
+  return { lengths, rows };
+}
+
+/**
+ * 計算式に使える記号。
+ * ピット間：MW＝合計長さ、MW1・MN1…＝幅・長さの組ごとの長さ／本数
+ * スリーブ：SV1…＝種類ごとの本数、SV1L500…＝長さごとの本数
+ */
+export function pitWallVariables(
+  walls: readonly PitWall[],
+  sleeves: readonly PitSleeve[],
+  kinds: readonly PitSleeveKind[],
+): Record<string, number> {
+  const values: Record<string, number> = {};
+  const tallies = pitWallTallies(walls);
+  let total = 0;
+  tallies.forEach((row, index) => {
+    values[`MW${index + 1}`] = row.total;
+    values[`MN${index + 1}`] = row.count;
+    total += row.total;
+  });
+  values.MW = round4(total);
+  values.MN = walls.length;
+  const table = pitSleeveTable(sleeves, walls, kinds);
+  table.rows.forEach((row, index) => {
+    values[`SV${index + 1}`] = row.total;
+    table.lengths.forEach((length, column) => {
+      values[`SV${index + 1}L${length}`] = row.counts[column];
+    });
+  });
   return values;
 }

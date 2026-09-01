@@ -10,6 +10,9 @@ function toSheet(row: typeof projectPitSheets.$inferSelect): PitSheet {
     estimateRowId: row.estimateRowId,
     pitsJson: row.pitsJson,
     beamsJson: row.beamsJson,
+    wallsJson: row.wallsJson,
+    sleevesJson: row.sleevesJson,
+    sleeveKindsJson: row.sleeveKindsJson,
     lowerJson: row.lowerJson,
     traceJson: row.traceJson,
     note: row.note,
@@ -53,6 +56,9 @@ export function savePitSheet(
     .set({
       pitsJson: request.pitsJson,
       beamsJson: request.beamsJson,
+      wallsJson: request.wallsJson,
+      sleevesJson: request.sleevesJson,
+      sleeveKindsJson: request.sleeveKindsJson,
       lowerJson: request.lowerJson,
       ...(request.traceJson === undefined
         ? {}

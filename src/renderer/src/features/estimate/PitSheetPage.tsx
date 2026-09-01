@@ -42,6 +42,14 @@ import {
   pitPartVariables,
   pitSymbol,
   pitVariables,
+  pitWallLength,
+  pitWallTallies,
+  pitWallVariables,
+  pitSleeveLength,
+  pitSleeveTable,
+  defaultPitSleeveKinds,
+  groupLengthMm,
+  PIT_WALL_SIZES,
   type PitAlign,
   type PitAlignSide,
   type PitCorner,
@@ -50,6 +58,9 @@ import {
   type PitBeam,
   type PitDirection,
   type PitShape,
+  type PitWall,
+  type PitSleeve,
+  type PitSleeveKind,
 } from "../../../../core/pit/pit";
 import {
   EMPTY_TRACE,
@@ -69,6 +80,8 @@ import { useUndoRedo } from "../../hooks/useUndoRedo";
 interface PlanSnapshot {
   pits: PitShape[];
   beams: PitBeam[];
+  walls: PitWall[];
+  sleeves: PitSleeve[];
 }
 
 /** セットの部位名（左端の部位。空なら明細の部位名で見る） */
@@ -76,7 +89,9 @@ function partOfSet(set: CalcSet | undefined): string {
   if (!set) return "";
   const part = set.partName.trim();
   if (part !== "") return part;
-  return set.details.find((detail) => detail.partName.trim() !== "")?.partName ?? "";
+  return (
+    set.details.find((detail) => detail.partName.trim() !== "")?.partName ?? ""
+  );
 }
 
 interface Props {
@@ -130,9 +145,11 @@ function formatNumber(value: number, digits: number): string {
 
 /** 数字欄の入力（空欄は0にせず、そのまま打ち直せるようにする） */
 function parseNumber(text: string): number | null {
-  const value = Number(text.replace(/[０-９．]/g, (char) =>
-    String.fromCharCode(char.charCodeAt(0) - 0xfee0),
-  ));
+  const value = Number(
+    text.replace(/[０-９．]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0),
+    ),
+  );
   return Number.isFinite(value) ? value : null;
 }
 
@@ -152,6 +169,12 @@ export default function PitSheetPage({
   const [sheet, setSheet] = useState<PitSheet | null>(null);
   const [pits, setPits] = useState<PitShape[]>([]);
   const [beams, setBeams] = useState<PitBeam[]>([]);
+  /** ピット間（基礎梁）と、そこに付けた人通口・スリーブ */
+  const [walls, setWalls] = useState<PitWall[]>([]);
+  const [sleeves, setSleeves] = useState<PitSleeve[]>([]);
+  const [sleeveKinds, setSleeveKinds] = useState<PitSleeveKind[]>(
+    defaultPitSleeveKinds,
+  );
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [note, setNote] = useState("");
   const [fittings, setFittings] = useState<Fitting[]>([]);
@@ -164,9 +187,20 @@ export default function PitSheetPage({
   const [beamWidth, setBeamWidth] = useState(0.3);
   const [beamHeight, setBeamHeight] = useState(0.6);
   /** 図のクリックで何をするか（梁を置く／形の角を直す） */
-  const [planMode, setPlanMode] = useState<"beam" | "shape" | "column">(
-    "beam",
+  const [planMode, setPlanMode] = useState<
+    "beam" | "shape" | "column" | "wall" | "sleeve"
+  >("beam");
+  /** ピット間を引くときの幅（m）と色 */
+  const [wallWidth, setWallWidth] = useState(PIT_WALL_SIZES[0].width);
+  const [wallColor, setWallColor] = useState(PIT_WALL_SIZES[0].color);
+  /** ピット間を引く1点目（2回クリックで1本） */
+  const [wallStart, setWallStart] = useState<{ x: number; y: number } | null>(
+    null,
   );
+  /** これから付ける人通口・スリーブの種類 */
+  const [sleeveKindId, setSleeveKindId] = useState("s1");
+  /** 人通口・スリーブの種類を直す表を出しているか */
+  const [showSleeveKinds, setShowSleeveKinds] = useState(false);
   /** 壁⇄柱 で選んでいる壁（辺） */
   const [pickedEdges, setPickedEdges] = useState<
     { pitId: string; index: number }[]
@@ -188,8 +222,9 @@ export default function PitSheetPage({
   /** 図（平面図）を画面いっぱいに開いているか */
   const [expanded, setExpanded] = useState(false);
 
-  const { markSaved } = useSaveOnLeave({ pits, beams, lower, note, trace }, () =>
-    save(),
+  const { markSaved } = useSaveOnLeave(
+    { pits, beams, walls, sleeves, sleeveKinds, lower, note, trace },
+    () => save(),
   );
 
   /** 図（ピット・梁）の戻る／やり直し */
@@ -198,19 +233,19 @@ export default function PitSheetPage({
   /** ピットを直す（直す前を図の履歴に積む） */
   const changePits = useCallback(
     (update: (current: PitShape[]) => PitShape[]) => {
-      planHistory.push({ pits, beams });
+      planHistory.push({ pits, beams, walls, sleeves });
       setPits(update(pits));
     },
-    [beams, pits, planHistory],
+    [beams, pits, planHistory, sleeves, walls],
   );
 
   /** 梁を直す（直す前を図の履歴に積む） */
   const changeBeams = useCallback(
     (update: (current: PitBeam[]) => PitBeam[]) => {
-      planHistory.push({ pits, beams });
+      planHistory.push({ pits, beams, walls, sleeves });
       setBeams(update(beams));
     },
-    [beams, pits, planHistory],
+    [beams, pits, planHistory, sleeves, walls],
   );
 
   /**
@@ -219,30 +254,36 @@ export default function PitSheetPage({
    */
   const changeShapes = useCallback(
     (ids: readonly string[], update: (pit: PitShape) => PitShape) => {
-      planHistory.push({ pits, beams });
-      const next = pits.map((pit) => (ids.includes(pit.id) ? update(pit) : pit));
+      planHistory.push({ pits, beams, walls, sleeves });
+      const next = pits.map((pit) =>
+        ids.includes(pit.id) ? update(pit) : pit,
+      );
       setPits(keepPitPlacesByShift(pits, next));
     },
-    [beams, pits, planHistory],
+    [beams, pits, planHistory, sleeves, walls],
   );
 
   const undoPlan = useCallback(() => {
-    const previous = planHistory.undo({ pits, beams });
+    const previous = planHistory.undo({ pits, beams, walls, sleeves });
     if (!previous) return;
     setPits(previous.pits);
     setBeams(previous.beams);
+    setWalls(previous.walls);
+    setSleeves(previous.sleeves);
     setCorners([]);
     setMessage("図を1つ前に戻しました");
-  }, [beams, pits, planHistory]);
+  }, [beams, pits, planHistory, sleeves, walls]);
 
   const redoPlan = useCallback(() => {
-    const next = planHistory.redo({ pits, beams });
+    const next = planHistory.redo({ pits, beams, walls, sleeves });
     if (!next) return;
     setPits(next.pits);
     setBeams(next.beams);
+    setWalls(next.walls);
+    setSleeves(next.sleeves);
     setCorners([]);
     setMessage("図を1つ進めました");
-  }, [beams, pits, planHistory]);
+  }, [beams, pits, planHistory, sleeves, walls]);
 
   useEffect(() => {
     if (row.id === null) return;
@@ -250,18 +291,33 @@ export default function PitSheetPage({
       const loaded = await window.sekisan.getPitSheet(row.id as number);
       const loadedPits = renumber(parseJson<PitShape[]>(loaded.pitsJson, []));
       const loadedBeams = parseJson<PitBeam[]>(loaded.beamsJson, []);
+      const loadedWalls = parseJson<PitWall[]>(loaded.wallsJson, []);
+      const loadedSleeves = parseJson<PitSleeve[]>(loaded.sleevesJson, []);
+      const loadedKinds = parseJson<PitSleeveKind[]>(
+        loaded.sleeveKindsJson,
+        [],
+      );
       const sets = withUniqueIds(
         trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
       );
       setSheet(loaded);
       setPits(loadedPits);
       setBeams(loadedBeams);
+      setWalls(loadedWalls);
+      setSleeves(loadedSleeves);
+      setSleeveKinds(
+        loadedKinds.length > 0 ? loadedKinds : defaultPitSleeveKinds(),
+      );
       setLower(sets);
       setNote(loaded.note);
       setTrace(parseTrace(loaded.traceJson));
       markSaved({
         pits: loadedPits,
         beams: loadedBeams,
+        walls: loadedWalls,
+        sleeves: loadedSleeves,
+        sleeveKinds:
+          loadedKinds.length > 0 ? loadedKinds : defaultPitSleeveKinds(),
         lower: sets,
         note: loaded.note,
         trace: parseTrace(loaded.traceJson),
@@ -293,9 +349,21 @@ export default function PitSheetPage({
     };
   }, [beams, pits]);
 
+  /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
+  const wallTallies = useMemo(() => pitWallTallies(walls), [walls]);
+
+  /** 人通口・スリーブの種類別×長さ別の個数表 */
+  const sleeveTable = useMemo(
+    () => pitSleeveTable(sleeves, walls, sleeveKinds),
+    [sleeveKinds, sleeves, walls],
+  );
+
   /** 計算式に使える記号（ピットごとのFA1…と、全部の合計FA・WA・GA・CA） */
   const calcVariables = useMemo(() => {
-    const values: Record<string, number> = pitVariables(quantities);
+    const values: Record<string, number> = {
+      ...pitVariables(quantities),
+      ...pitWallVariables(walls, sleeves, sleeveKinds),
+    };
     fittings.forEach((fitting) => {
       const computed = computeFitting(fitting);
       if (computed.area !== null) values[`<${fitting.symbol}>`] = computed.area;
@@ -307,7 +375,7 @@ export default function PitSheetPage({
         values[`<${fitting.symbol}:HL>`] = computed.baseboardDeduction;
     });
     return values;
-  }, [fittings, quantities]);
+  }, [fittings, quantities, sleeveKinds, sleeves, walls]);
 
   const calcResult = useMemo(
     () =>
@@ -321,18 +389,42 @@ export default function PitSheetPage({
     if (!sheet || printMode) return;
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
-    markSaved({ pits, beams, lower: trimmed, note, trace });
+    markSaved({
+      pits,
+      beams,
+      walls,
+      sleeves,
+      sleeveKinds,
+      lower: trimmed,
+      note,
+      trace,
+    });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
       pitsJson: JSON.stringify(pits),
       beamsJson: JSON.stringify(beams),
+      wallsJson: JSON.stringify(walls),
+      sleevesJson: JSON.stringify(sleeves),
+      sleeveKindsJson: JSON.stringify(sleeveKinds),
       lowerJson: JSON.stringify(trimmed),
       traceJson: JSON.stringify(trace),
       note,
     });
     setSheet(saved);
     setMessage("保存しました");
-  }, [beams, lower, markSaved, note, pits, printMode, sheet, trace]);
+  }, [
+    beams,
+    lower,
+    markSaved,
+    note,
+    pits,
+    printMode,
+    sheet,
+    sleeveKinds,
+    sleeves,
+    trace,
+    walls,
+  ]);
 
   const closePage = useCallback(() => {
     if (calcResult.errors.length > 0 && !warned) {
@@ -431,11 +523,11 @@ export default function PitSheetPage({
 
   const removePit = useCallback(
     (id: string) => {
-      planHistory.push({ pits, beams });
+      planHistory.push({ pits, beams, walls, sleeves });
       setPits(renumber(pits.filter((pit) => pit.id !== id)));
       setBeams(beams.filter((beam) => beam.pitId !== id));
     },
-    [beams, pits, planHistory],
+    [beams, pits, planHistory, sleeves, walls],
   );
 
   const editPit = useCallback(
@@ -502,6 +594,121 @@ export default function PitSheetPage({
       );
     },
     [changeBeams],
+  );
+
+  /** ピット間（基礎梁）を直す（直す前を図の履歴に積む） */
+  const changeWalls = useCallback(
+    (update: (current: PitWall[]) => PitWall[]) => {
+      planHistory.push({ pits, beams, walls, sleeves });
+      setWalls(update(walls));
+    },
+    [beams, pits, planHistory, sleeves, walls],
+  );
+
+  /** 人通口・スリーブを直す（直す前を図の履歴に積む） */
+  const changeSleeves = useCallback(
+    (update: (current: PitSleeve[]) => PitSleeve[]) => {
+      planHistory.push({ pits, beams, walls, sleeves });
+      setSleeves(update(sleeves));
+    },
+    [beams, pits, planHistory, sleeves, walls],
+  );
+
+  /** ピット間を1本引く。ほぼたて・よこのときは通りをそろえる */
+  const placeWall = useCallback(
+    (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const end =
+        Math.abs(dy) <= 0.3 && Math.abs(dx) > Math.abs(dy)
+          ? { x: to.x, y: from.y }
+          : Math.abs(dx) <= 0.3 && Math.abs(dy) > Math.abs(dx)
+            ? { x: from.x, y: to.y }
+            : to;
+      if (Math.hypot(end.x - from.x, end.y - from.y) < 0.05) {
+        setMessage("ピット間が短すぎます（引き直してください）");
+        return;
+      }
+      changeWalls((current) => [
+        ...current,
+        {
+          id: newId("wall"),
+          x1: from.x,
+          y1: from.y,
+          x2: end.x,
+          y2: end.y,
+          width: wallWidth,
+          color: wallColor,
+        },
+      ]);
+      setMessage(
+        `ピット間を引きました（幅 ${Math.round(wallWidth * 1000)}mm・長さ ${formatNumber(
+          Math.hypot(end.x - from.x, end.y - from.y),
+          2,
+        )}m）`,
+      );
+    },
+    [changeWalls, wallColor, wallWidth],
+  );
+
+  /** 図の点にいちばん近いピット間と、その線に沿った位置（0〜1） */
+  const nearestWall = useCallback(
+    (at: { x: number; y: number }) => {
+      type Near = { wall: PitWall; position: number; distance: number };
+      let best: Near | null = null;
+      for (const wall of walls) {
+        const dx = wall.x2 - wall.x1;
+        const dy = wall.y2 - wall.y1;
+        const len2 = dx * dx + dy * dy;
+        if (len2 === 0) continue;
+        const t = Math.min(
+          Math.max(((at.x - wall.x1) * dx + (at.y - wall.y1) * dy) / len2, 0),
+          1,
+        );
+        const distance = Math.hypot(
+          at.x - (wall.x1 + dx * t),
+          at.y - (wall.y1 + dy * t),
+        );
+        if (best === null || distance < best.distance)
+          best = { wall, position: t, distance };
+      }
+      return best;
+    },
+    [walls],
+  );
+
+  /** ピット間に人通口・スリーブを付ける */
+  const placeSleeve = useCallback(
+    (at: { x: number; y: number }) => {
+      const near = nearestWall(at);
+      if (!near || near.distance > 0.6) {
+        setMessage("ピット間の線の近くをクリックしてください");
+        return;
+      }
+      const kind = sleeveKinds.find((each) => each.id === sleeveKindId);
+      changeSleeves((current) => [
+        ...current,
+        {
+          id: newId("sleeve"),
+          wallId: near.wall.id,
+          kindId: sleeveKindId,
+          position: near.position,
+          length: null,
+        },
+      ]);
+      setMessage(`${kind?.name ?? "スリーブ"} を付けました`);
+    },
+    [changeSleeves, nearestWall, sleeveKindId, sleeveKinds],
+  );
+
+  /** ピット間を消す（付いている人通口・スリーブも消す） */
+  const removeWall = useCallback(
+    (id: string) => {
+      planHistory.push({ pits, beams, walls, sleeves });
+      setWalls(walls.filter((wall) => wall.id !== id));
+      setSleeves(sleeves.filter((sleeve) => sleeve.wallId !== id));
+    },
+    [beams, pits, planHistory, sleeves, walls],
   );
 
   /** 選んだ角（複数可）を上下左右へまとめて動かす（右・下がプラス） */
@@ -739,7 +946,7 @@ export default function PitSheetPage({
         setMessage("そろえるピットを「選」で2つ以上選んでください");
         return;
       }
-      planHistory.push({ pits, beams });
+      planHistory.push({ pits, beams, walls, sleeves });
       const next = alignPits(pits, picked, side);
       setPits(keepPitPlaces(pits, next, picked));
       const label =
@@ -767,6 +974,30 @@ export default function PitSheetPage({
         <svg
           viewBox={`${-1} ${-1} ${plan.width + 2} ${plan.height + 2}`}
           className="pit-plan"
+          onClick={(event) => {
+            if (printMode) return;
+            if (planMode !== "wall" && planMode !== "sleeve") return;
+            const area = event.currentTarget.getBoundingClientRect();
+            const at = {
+              x:
+                -1 +
+                ((event.clientX - area.left) / area.width) * (plan.width + 2),
+              y:
+                -1 +
+                ((event.clientY - area.top) / area.height) * (plan.height + 2),
+            };
+            if (planMode === "sleeve") {
+              placeSleeve(at);
+              return;
+            }
+            if (wallStart === null) {
+              setWallStart(at);
+              setMessage("ピット間の終わりをクリックしてください");
+              return;
+            }
+            placeWall(wallStart, at);
+            setWallStart(null);
+          }}
         >
           {plan.rects.map((rect) => (
             <g key={rect.id}>
@@ -775,6 +1006,7 @@ export default function PitSheetPage({
                 className="pit-rect"
                 onClick={(event) => {
                   if (printMode) return;
+                  if (planMode === "wall" || planMode === "sleeve") return;
                   const box = event.currentTarget.getBoundingClientRect();
                   if (
                     planMode === "shape" ||
@@ -824,26 +1056,26 @@ export default function PitSheetPage({
                     className="pit-beam-line"
                   />
                 ) : (
-                <rect
-                  key={`${beam.id}-${index}`}
-                  x={
-                    beam.axis === "X"
-                      ? beam.left + segment.from
-                      : beam.left - beam.width / 2
-                  }
-                  y={
-                    beam.axis === "X"
-                      ? beam.top - beam.width / 2
-                      : beam.top + segment.from
-                  }
-                  width={
-                    beam.axis === "X" ? segment.to - segment.from : beam.width
-                  }
-                  height={
-                    beam.axis === "X" ? beam.width : segment.to - segment.from
-                  }
-                  className="pit-beam"
-                />
+                  <rect
+                    key={`${beam.id}-${index}`}
+                    x={
+                      beam.axis === "X"
+                        ? beam.left + segment.from
+                        : beam.left - beam.width / 2
+                    }
+                    y={
+                      beam.axis === "X"
+                        ? beam.top - beam.width / 2
+                        : beam.top + segment.from
+                    }
+                    width={
+                      beam.axis === "X" ? segment.to - segment.from : beam.width
+                    }
+                    height={
+                      beam.axis === "X" ? beam.width : segment.to - segment.from
+                    }
+                    className="pit-beam"
+                  />
                 ),
               ),
             )}
@@ -868,6 +1100,59 @@ export default function PitSheetPage({
                 />,
               ];
             });
+          })}
+          {/* ピット間（基礎梁）。幅ごとに色を分けて出す */}
+          {walls.map((wall) => (
+            <line
+              key={wall.id}
+              x1={wall.x1}
+              y1={wall.y1}
+              x2={wall.x2}
+              y2={wall.y2}
+              stroke={wall.color}
+              strokeWidth={wall.width}
+              strokeLinecap="butt"
+              opacity={0.7}
+              className="pit-wall"
+            />
+          ))}
+          {/* 人通口・通水管などのスリーブ */}
+          {sleeves.map((sleeve) => {
+            const wall = walls.find((each) => each.id === sleeve.wallId);
+            if (!wall) return null;
+            const kind = sleeveKinds.find((each) => each.id === sleeve.kindId);
+            const at = {
+              x: wall.x1 + (wall.x2 - wall.x1) * sleeve.position,
+              y: wall.y1 + (wall.y2 - wall.y1) * sleeve.position,
+            };
+            const size = Math.max(wall.width * 0.8, 0.18);
+            return (
+              <g key={sleeve.id}>
+                <circle
+                  cx={at.x}
+                  cy={at.y}
+                  r={size / 2}
+                  fill={kind?.color ?? "#111827"}
+                  className="pit-sleeve"
+                  onClick={(event) => {
+                    if (printMode || planMode !== "sleeve") return;
+                    event.stopPropagation();
+                    changeSleeves((current) =>
+                      current.filter((each) => each.id !== sleeve.id),
+                    );
+                    setMessage(`${kind?.name ?? "スリーブ"} を消しました`);
+                  }}
+                />
+                <text
+                  x={at.x}
+                  y={at.y - size}
+                  className="pit-sleeve-label"
+                  fill={kind?.color ?? "#111827"}
+                >
+                  {`${sleeveKinds.findIndex((each) => each.id === sleeve.kindId) + 1}`}
+                </text>
+              </g>
+            );
           })}
           {plan.rects.map((rect) => {
             const pit = pits.find((each) => each.id === rect.id);
@@ -907,8 +1192,7 @@ export default function PitSheetPage({
                   r={size}
                   className={
                     corners.some(
-                      (each) =>
-                        each.pitId === rect.id && each.index === index,
+                      (each) => each.pitId === rect.id && each.index === index,
                     )
                       ? "pit-corner on"
                       : "pit-corner"
@@ -939,6 +1223,139 @@ export default function PitSheetPage({
             })}
         </svg>
       )}
+    </div>
+  );
+
+  const wallTables = (
+    <div className="pit-wall-tables">
+      <table className="grid pit-wall-tally">
+        <thead>
+          <tr>
+            <th colSpan={5}>ピット間（幅別・長さ別／長さは50mmでまとめ）</th>
+          </tr>
+          <tr>
+            <th>記号</th>
+            <th className="num">幅（mm）</th>
+            <th className="num">長さ（mm）</th>
+            <th className="num">本数</th>
+            <th className="num">合計長さ（m）</th>
+          </tr>
+        </thead>
+        <tbody>
+          {wallTallies.length === 0 ? (
+            <tr>
+              <td colSpan={5}>
+                「＝ ピット間」で図に線を引くと、ここに長さ別で出ます
+              </td>
+            </tr>
+          ) : (
+            wallTallies.map((row, index) => (
+              <tr key={`${row.width}-${row.lengthMm}`}>
+                <td
+                  className="symbol"
+                  title="クリックで計算式へ（MW＝長さ・MN＝本数）"
+                  onClick={() => useSymbol(`MW${index + 1}`)}
+                >
+                  {`MW${index + 1}／MN${index + 1}`}
+                </td>
+                <td className="num">{Math.round(row.width * 1000)}</td>
+                <td className="num">{row.lengthMm}</td>
+                <td className="num">{row.count}</td>
+                <td className="num">{formatNumber(row.total, 2)}</td>
+              </tr>
+            ))
+          )}
+          {wallTallies.length > 0 && (
+            <tr className="pit-total">
+              <td
+                className="symbol"
+                title="クリックで計算式へ（ピット間の合計長さ）"
+                onClick={() => useSymbol("MW")}
+              >
+                MW
+              </td>
+              <td className="num"></td>
+              <td className="num"></td>
+              <td className="num">{walls.length}</td>
+              <td className="num">
+                {formatNumber(
+                  wallTallies.reduce((sum, row) => sum + row.total, 0),
+                  2,
+                )}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <table className="grid pit-sleeve-tally">
+        <thead>
+          <tr>
+            <th colSpan={sleeveTable.lengths.length + 3}>
+              人通口・通水管・通気管・スリーブ（種類別×長さ別の個数）
+            </th>
+          </tr>
+          <tr>
+            <th>種類</th>
+            {sleeveTable.lengths.map((length) => (
+              <th className="num" key={length}>
+                {length}
+              </th>
+            ))}
+            <th className="num">計</th>
+            <th>記号</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sleeveTable.rows
+            .map((row, index) => ({ row, index }))
+            .filter(({ row }) => row.total > 0)
+            .map(({ row, index }) => {
+              const kind = sleeveKinds[index];
+              return (
+                <tr key={row.kindId}>
+                  <td>
+                    <span
+                      className="kind-chip"
+                      style={{ background: kind.color }}
+                    />
+                    {`${index + 1} ${kind.name}`}
+                  </td>
+                  {row.counts.map((count, column) => (
+                    <td
+                      className="num symbol"
+                      key={sleeveTable.lengths[column]}
+                      title="クリックで計算式へ（この種類・この長さの個数）"
+                      onClick={() =>
+                        useSymbol(
+                          `SV${index + 1}L${sleeveTable.lengths[column]}`,
+                        )
+                      }
+                    >
+                      {count === 0 ? "" : count}
+                    </td>
+                  ))}
+                  <td className="num">{row.total}</td>
+                  <td
+                    className="symbol"
+                    title="クリックで計算式へ（この種類の合計個数）"
+                    onClick={() => useSymbol(`SV${index + 1}`)}
+                  >
+                    {`SV${index + 1}`}
+                  </td>
+                </tr>
+              );
+            })}
+          {sleeveTable.rows.every((row) => row.total === 0) && (
+            <tr>
+              <td colSpan={3}>
+                「○
+                人通口・スリーブ」でピット間の線の上をクリックすると、ここに種類別・長さ別で出ます
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 
@@ -997,6 +1414,7 @@ export default function PitSheetPage({
           <div className="pit-print-upper">
             {drawing}
             {quantityTable}
+            {walls.length > 0 && wallTables}
           </div>
         }
         sets={lower}
@@ -1126,23 +1544,13 @@ export default function PitSheetPage({
                   ＰＡ
                 </td>
                 <td colSpan={11}>合計（全ピット）</td>
-                <td className="num">
-                  {formatNumber(total.floorArea, 2)}
-                </td>
-                <td className="num">
-                  {formatNumber(total.wallLength, 2)}
-                </td>
-                <td className="num">
-                  {formatNumber(total.columnLength, 2)}
-                </td>
+                <td className="num">{formatNumber(total.floorArea, 2)}</td>
+                <td className="num">{formatNumber(total.wallLength, 2)}</td>
+                <td className="num">{formatNumber(total.columnLength, 2)}</td>
                 <td className="num">{formatNumber(total.wallArea, 2)}</td>
-                <td className="num">
-                  {formatNumber(total.beamBottomArea, 2)}
-                </td>
+                <td className="num">{formatNumber(total.beamBottomArea, 2)}</td>
                 <td className="num">{formatNumber(total.beamArea, 2)}</td>
-                <td className="num">
-                  {formatNumber(total.ceilingArea, 2)}
-                </td>
+                <td className="num">{formatNumber(total.ceilingArea, 2)}</td>
                 <td></td>
               </tr>
               {pits.map((pit, index) => (
@@ -1462,7 +1870,9 @@ export default function PitSheetPage({
           </table>
 
           <div className="section-bar beam-bar">
-            <h3>梁型（置いたあとも直せます／高い梁Hで分かれた1本ずつ消せます）</h3>
+            <h3>
+              梁型（置いたあとも直せます／高い梁Hで分かれた1本ずつ消せます）
+            </h3>
           </div>
           <table className="grid pit-beams">
             <thead>
@@ -1536,23 +1946,23 @@ export default function PitSheetPage({
                           {beam.axis === "E" ? (
                             "壁の上"
                           ) : (
-                          <input
-                            data-half="1"
-                            className="num"
-                            key={`bp-${beam.id}-${beam.position}`}
-                            defaultValue={formatNumber(
-                              beam.position * across,
-                              2,
-                            )}
-                            onBlur={(e) => {
-                              const value = parseNumber(e.target.value);
-                              if (value === null || across <= 0) return;
-                              editBeam(beam.id, {
-                                position: value / across,
-                                removed: [],
-                              });
-                            }}
-                          />
+                            <input
+                              data-half="1"
+                              className="num"
+                              key={`bp-${beam.id}-${beam.position}`}
+                              defaultValue={formatNumber(
+                                beam.position * across,
+                                2,
+                              )}
+                              onBlur={(e) => {
+                                const value = parseNumber(e.target.value);
+                                if (value === null || across <= 0) return;
+                                editBeam(beam.id, {
+                                  position: value / across,
+                                  removed: [],
+                                });
+                              }}
+                            />
                           )}
                         </td>
                       </>
@@ -1567,7 +1977,9 @@ export default function PitSheetPage({
                     <td>
                       <button
                         type="button"
-                        onClick={() => removeBeamSegment(beam.id, segment.index)}
+                        onClick={() =>
+                          removeBeamSegment(beam.id, segment.index)
+                        }
                       >
                         削除
                       </button>
@@ -1587,8 +1999,12 @@ export default function PitSheetPage({
                 ? "クリックで梁型を置く"
                 : planMode === "column"
                   ? "壁⇄柱中：図の壁をまとめてクリックし、「✓ 柱にする」を押す"
-                  : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}）／全体{" "}
-              {pitCornerCount(pits)}角
+                  : planMode === "wall"
+                    ? "ピット間中：始めと終わりの2回クリックで1本引く（ほぼたて・よこの線は通りをそろえます）"
+                    : planMode === "sleeve"
+                      ? "人通口・スリーブ中：ピット間の線の上をクリックで付ける／印をクリックで消す"
+                      : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}
+              ）／全体 {pitCornerCount(pits)}角
             </h3>
             <button
               type="button"
@@ -1672,6 +2088,130 @@ export default function PitSheetPage({
                 </button>
               </span>
             )}
+            <button
+              type="button"
+              className={planMode === "wall" ? "on" : ""}
+              title="ピットとピットの間（基礎梁）に印を付けます。始めと終わりの2回クリックで1本引きます"
+              onClick={() => {
+                const next = planMode === "wall" ? "beam" : "wall";
+                setPlanMode(next);
+                setWallStart(null);
+                setCorners([]);
+                setPickedEdges([]);
+                setMessage(
+                  next === "wall"
+                    ? "ピット間を引きます（始めと終わりの2回クリック）"
+                    : "ピット間の入力をやめました",
+                );
+              }}
+            >
+              ＝ ピット間
+            </button>
+            {planMode === "wall" && (
+              <span className="kind-pick">
+                <label>
+                  幅
+                  <select
+                    value={`${wallWidth}`}
+                    onChange={(e) => {
+                      const width = parseNumber(e.target.value) ?? 0.5;
+                      setWallWidth(width);
+                      const size = PIT_WALL_SIZES.find(
+                        (each) => each.width === width,
+                      );
+                      if (size) setWallColor(size.color);
+                    }}
+                  >
+                    {PIT_WALL_SIZES.map((size) => (
+                      <option key={size.width} value={size.width}>
+                        {`${Math.round(size.width * 1000)}mm`}
+                      </option>
+                    ))}
+                    {PIT_WALL_SIZES.every(
+                      (size) => size.width !== wallWidth,
+                    ) && (
+                      <option value={wallWidth}>
+                        {`${Math.round(wallWidth * 1000)}mm`}
+                      </option>
+                    )}
+                  </select>
+                </label>
+                <label title="500・200以外の幅は、ここに数字（m）で入れます">
+                  手入力（m）
+                  <input
+                    data-half="1"
+                    className="num"
+                    key={`ww-${wallWidth}`}
+                    defaultValue={wallWidth}
+                    onBlur={(e) =>
+                      setWallWidth(parseNumber(e.target.value) ?? wallWidth)
+                    }
+                  />
+                </label>
+                <label title="この幅で引く線の色">
+                  色
+                  <input
+                    type="color"
+                    className="kind-color"
+                    value={wallColor}
+                    onChange={(e) => setWallColor(e.target.value)}
+                  />
+                </label>
+                {wallStart !== null && (
+                  <button type="button" onClick={() => setWallStart(null)}>
+                    引き直す
+                  </button>
+                )}
+              </span>
+            )}
+            <button
+              type="button"
+              className={planMode === "sleeve" ? "on" : ""}
+              title="ピット間に人通口・通水管・通気管などを付けます（種類を選んで、ピット間の線の上をクリック）"
+              onClick={() => {
+                const next = planMode === "sleeve" ? "beam" : "sleeve";
+                setPlanMode(next);
+                setWallStart(null);
+                setCorners([]);
+                setPickedEdges([]);
+                setMessage(
+                  next === "sleeve"
+                    ? "種類を選んで、ピット間の線の上をクリックしてください"
+                    : "人通口・スリーブの入力をやめました",
+                );
+              }}
+            >
+              ○ 人通口・スリーブ
+            </button>
+            {planMode === "sleeve" && (
+              <label>
+                種類
+                <select
+                  value={sleeveKindId}
+                  onChange={(e) => setSleeveKindId(e.target.value)}
+                  style={{
+                    color:
+                      sleeveKinds.find((each) => each.id === sleeveKindId)
+                        ?.color ?? "#111827",
+                    fontWeight: 700,
+                  }}
+                >
+                  {sleeveKinds.map((kind, index) => (
+                    <option key={kind.id} value={kind.id}>
+                      {`${index + 1} ${kind.name}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              type="button"
+              className={showSleeveKinds ? "on" : ""}
+              title="人通口・通水管などの名前・色・長さ（10種類）を直します"
+              onClick={() => setShowSleeveKinds(!showSleeveKinds)}
+            >
+              🎨 種類
+            </button>
             <button
               type="button"
               className={showTrace ? "on" : ""}
@@ -1805,9 +2345,7 @@ export default function PitSheetPage({
                     ? "角（○印）をクリック（続けて押すと何か所でも選べます）"
                     : corners
                         .map((each) => {
-                          const pit = pits.find(
-                            (one) => one.id === each.pitId,
-                          );
+                          const pit = pits.find((one) => one.id === each.pitId);
                           const point = pit
                             ? pitPolygon(pit)[each.index]
                             : undefined;
@@ -1836,7 +2374,9 @@ export default function PitSheetPage({
               >
                 <option value="X">X方向（よこ）</option>
                 <option value="Y">Y方向（たて）</option>
-                <option value="E">壁沿い（斜めの壁も／壁の近くをクリック）</option>
+                <option value="E">
+                  壁沿い（斜めの壁も／壁の近くをクリック）
+                </option>
               </select>
             </label>
             <label>
@@ -1854,13 +2394,249 @@ export default function PitSheetPage({
                 data-half="1"
                 className="num"
                 defaultValue={beamHeight}
-                onBlur={(e) => setBeamHeight(parseNumber(e.target.value) ?? 0.6)}
+                onBlur={(e) =>
+                  setBeamHeight(parseNumber(e.target.value) ?? 0.6)
+                }
               />
             </label>
           </div>
           {drawing}
         </section>
 
+        <section className="pit-walls">
+          <div className="section-bar">
+            <h3>
+              ピット間・人通口／スリーブ（長さは50mmごとにまとめて数えます）
+            </h3>
+          </div>
+
+          {showSleeveKinds && (
+            <table className="grid pit-sleeve-kinds">
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>名前</th>
+                  <th>色</th>
+                  <th className="num">長さ（mm・0はピット間の幅）</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sleeveKinds.map((kind, index) => (
+                  <tr key={kind.id}>
+                    <td className="num">{index + 1}</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        key={`kn-${kind.id}`}
+                        defaultValue={kind.name}
+                        onBlur={(e) =>
+                          setSleeveKinds((current) =>
+                            current.map((each) =>
+                              each.id === kind.id
+                                ? { ...each, name: e.target.value }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="color"
+                        className="kind-color"
+                        value={kind.color}
+                        onChange={(e) =>
+                          setSleeveKinds((current) =>
+                            current.map((each) =>
+                              each.id === kind.id
+                                ? { ...each, color: e.target.value }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`kl-${kind.id}-${kind.length}`}
+                        defaultValue={kind.length}
+                        onBlur={(e) =>
+                          setSleeveKinds((current) =>
+                            current.map((each) =>
+                              each.id === kind.id
+                                ? {
+                                    ...each,
+                                    length: parseNumber(e.target.value) ?? 0,
+                                  }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {wallTables}
+
+          {walls.length > 0 && (
+            <table className="grid pit-wall-list">
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>色</th>
+                  <th className="num">幅（m）</th>
+                  <th className="num">長さ（m）</th>
+                  <th className="num">人通口等</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {walls.map((wall, index) => (
+                  <tr key={wall.id}>
+                    <td className="num">{index + 1}</td>
+                    <td>
+                      <input
+                        type="color"
+                        className="kind-color"
+                        value={wall.color}
+                        onChange={(e) =>
+                          changeWalls((current) =>
+                            current.map((each) =>
+                              each.id === wall.id
+                                ? { ...each, color: e.target.value }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`ww-${wall.id}-${wall.width}`}
+                        defaultValue={wall.width}
+                        onBlur={(e) =>
+                          changeWalls((current) =>
+                            current.map((each) =>
+                              each.id === wall.id
+                                ? {
+                                    ...each,
+                                    width:
+                                      parseNumber(e.target.value) ?? each.width,
+                                  }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      {formatNumber(pitWallLength(wall), 2)}
+                    </td>
+                    <td className="num">
+                      {sleeves.filter((each) => each.wallId === wall.id).length}
+                    </td>
+                    <td>
+                      <button type="button" onClick={() => removeWall(wall.id)}>
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {sleeves.length > 0 && (
+            <table className="grid pit-sleeve-list">
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>種類</th>
+                  <th className="num">ピット間</th>
+                  <th className="num">長さ（mm）</th>
+                  <th className="num">集計（mm）</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sleeves.map((sleeve, index) => (
+                  <tr key={sleeve.id}>
+                    <td className="num">{index + 1}</td>
+                    <td>
+                      <select
+                        value={sleeve.kindId}
+                        onChange={(e) =>
+                          changeSleeves((current) =>
+                            current.map((each) =>
+                              each.id === sleeve.id
+                                ? { ...each, kindId: e.target.value }
+                                : each,
+                            ),
+                          )
+                        }
+                      >
+                        {sleeveKinds.map((kind, no) => (
+                          <option key={kind.id} value={kind.id}>
+                            {`${no + 1} ${kind.name}`}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="num">
+                      {walls.findIndex((each) => each.id === sleeve.wallId) + 1}
+                    </td>
+                    <td className="num">
+                      <input
+                        data-half="1"
+                        className="num"
+                        key={`sl-${sleeve.id}-${sleeve.length ?? ""}`}
+                        defaultValue={sleeve.length ?? ""}
+                        placeholder={`${pitSleeveLength(sleeve, walls, sleeveKinds)}`}
+                        onBlur={(e) =>
+                          changeSleeves((current) =>
+                            current.map((each) =>
+                              each.id === sleeve.id
+                                ? {
+                                    ...each,
+                                    length: parseNumber(e.target.value),
+                                  }
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    </td>
+                    <td className="num">
+                      {groupLengthMm(
+                        pitSleeveLength(sleeve, walls, sleeveKinds),
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          changeSleeves((current) =>
+                            current.filter((each) => each.id !== sleeve.id),
+                          )
+                        }
+                      >
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
       </div>
 
       {showTrace && !printMode && (
@@ -1897,14 +2673,17 @@ export default function PitSheetPage({
 
       <p className="hint">
         Ｌ型・コ型は表の「形」で選び、欠く所（Ｌ型＝角／コ型＝辺）と欠きX・欠きY（コ型は欠き位置も）を入れるだけで作れます。
-        こまかく直したいときだけ「○ 形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。角を動かすと「形」は自由になります（「□ 四角に戻す」で戻せます）。
-        直し終わったら「✓ ○角を消して梁入力に戻る」を押してください（○角が出ている間は梁型を置けません）。
+        こまかく直したいときだけ「○
+        形を直す」を押して、図の○角を選んで↑↓→←で動かします（辺をクリックすると角が増えます）。角を動かすと「形」は自由になります（「□
+        四角に戻す」で戻せます）。 直し終わったら「✓
+        ○角を消して梁入力に戻る」を押してください（○角が出ている間は梁型を置けません）。
         ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
         1つ選ぶと「角のX・角のY」の欄で位置を数字で決められ、2つ以上選ぶと「たてにそろえる」「よこにそろえる」で一直線になります。
         Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
-        FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積 は全部の合計、FA1・WA1・CA1・DP1 …はピットごとです。
+        FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積
+        は全部の合計、FA1・WA1・CA1・DP1 …はピットごとです。
       </p>
     </div>
   );

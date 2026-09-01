@@ -235,6 +235,9 @@ function copyCalcSheets(
         estimateRowId: targetRowId,
         pitsJson: pit.pitsJson,
         beamsJson: pit.beamsJson,
+        wallsJson: pit.wallsJson,
+        sleevesJson: pit.sleevesJson,
+        sleeveKindsJson: pit.sleeveKindsJson,
         lowerJson: pit.lowerJson,
         note: pit.note
       })

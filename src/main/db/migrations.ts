@@ -908,4 +908,10 @@ ALTER TABLE project_pit_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE project_frame_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE project_frame_sheets ADD COLUMN kinds_json TEXT NOT NULL DEFAULT '[]';
 `,
+  // ピット計算書にピット間（基礎梁）と人通口・スリーブを持たせる
+  `
+ALTER TABLE project_pit_sheets ADD COLUMN walls_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE project_pit_sheets ADD COLUMN sleeves_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE project_pit_sheets ADD COLUMN sleeve_kinds_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];
