@@ -796,6 +796,8 @@ export interface CeilingBoundary extends CeilingSegment {
   solid: boolean;
   /** 両側の区画番号 */
   codes: [string, string];
+  /** 両側の天井高さの差（段差の高さ。分からないときは null） */
+  step: number | null;
 }
 
 /**
@@ -889,16 +891,18 @@ export function ceilingBoundaries(
         y: middle.y - normal.y * step,
       });
       if (one === null || other === null || one.code === other.code) continue;
+      const stepHeight =
+        one.height === null || other.height === null
+          ? null
+          : round2(Math.abs(one.height - other.height));
       found.push({
         a: at(start),
         b: at(end),
         length: round2(end - start),
         elementId: element.id,
-        solid:
-          one.height !== null &&
-          other.height !== null &&
-          Math.abs(one.height - other.height) > 1e-6,
+        solid: stepHeight !== null && stepHeight > 1e-6,
         codes: [one.code, other.code],
+        step: stepHeight,
       });
     }
     return found;
@@ -1210,9 +1214,8 @@ export function ceilingQuantities(
   // 下がり天井・天井付梁型は壁や、自分より低くなる線のところで止まる
   const lines = ceilingLines(elements, solved, roomCeilingHeight);
   const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
-  // 下がり天井は、段差になっている所の長さと、下げている範囲の面積で数える
+  // 下がり天井は、段差になっている所の長さと、その見付面積（長さ×段差）で数える
   const spans = dropCeilingSpans(elements, solved, roomCeilingHeight);
-  const dropAreas = dropCeilingAreas(elements, solved, roomCeilingHeight);
 
   const items = elements.map((element) => {
     const crossing =
@@ -1223,7 +1226,7 @@ export function ceilingQuantities(
     // 下がり天井は段差になっている所だけ数える（両側が同じ高さなら0）
     const length =
       element.kind === "dropCeiling" && crossing !== null
-        ? (spans.get(element.id) ?? 0)
+        ? (spans.get(element.id)?.length ?? 0)
         : (crossing?.length ??
           element.length ??
           edgeLength(solved, element.edgeId));
@@ -1254,14 +1257,17 @@ export function ceilingQuantities(
           if (drop !== null) area = round2(length * drop);
           totals.dropWallArea += area ?? 0;
           break;
-        case "dropCeiling":
+        case "dropCeiling": {
           totals.dropCeilingLength += length;
-          area = element.area ?? dropAreas.get(element.id) ?? null;
+          const span = spans.get(element.id) ?? null;
+          area = element.area ?? span?.area ?? null;
           totals.dropCeilingArea += area ?? 0;
-          if (drop !== null) {
-            byHeight.set(drop, round2((byHeight.get(drop) ?? 0) + length));
-          }
+          // 段差の高さごとの長さ（自分のＨが0でも、反対側との差で数える）
+          span?.steps.forEach((value, step) => {
+            byHeight.set(step, round2((byHeight.get(step) ?? 0) + value));
+          });
           break;
+        }
       }
     }
 
@@ -1330,7 +1336,11 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
     { symbol: "DWL", label: "下がり壁 長さ", value: totals.dropWallLength },
     { symbol: "DWA", label: "下がり壁 面積", value: totals.dropWallArea },
     { symbol: "SL", label: "下がり天井 長さ", value: totals.dropCeilingLength },
-    { symbol: "SA", label: "下がり天井 面積", value: totals.dropCeilingArea },
+    {
+      symbol: "SA",
+      label: "下がり天井 見付面積",
+      value: totals.dropCeilingArea,
+    },
   ];
 
   const index: Record<CeilingElementKind, number> = {
@@ -1351,7 +1361,7 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
     });
     symbols.push({
       symbol: `${KIND_SYMBOL[kind].area}${no}`,
-      label: `${KIND_LABEL[kind]}${no} 面積`,
+      label: `${KIND_LABEL[kind]}${no} ${kind === "dropCeiling" ? "見付面積" : "面積"}`,
       value: item.area,
       elementId: item.element.id,
     });
@@ -1360,7 +1370,7 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
   for (const [no, row] of quantities.dropCeilingByHeight.entries()) {
     symbols.push({
       symbol: `SLH${no + 1}`,
-      label: `下がり天井 下がり${row.drop.toFixed(2)} 長さ`,
+      label: `下がり天井 段差${row.drop.toFixed(2)} 長さ`,
       value: row.length,
     });
   }
@@ -1417,6 +1427,16 @@ function overlapLength(base: CeilingSegment, other: CeilingSegment): number {
   return Math.max(0, high - low);
 }
 
+/** 下がり天井の、実際に段差になっている所の数量 */
+export interface CeilingSpan {
+  /** 段差になっている長さ */
+  length: number;
+  /** 段差の見付面積（長さ×段差の高さ） */
+  area: number;
+  /** 段差の高さごとの長さ */
+  steps: Map<number, number>;
+}
+
 /**
  * 下がり天井の、実際に段差になっている長さ。
  * 図に出る線（区画のふちのうち、両側の高さが違う所）の長さで、
@@ -1426,7 +1446,7 @@ export function dropCeilingSpans(
   elements: CeilingElement[],
   solved: SolvedShape,
   roomCeilingHeight: number | null,
-): Map<string, number> {
+): Map<string, CeilingSpan> {
   // 梁型・下がり壁のところでは止めるが、ほかの下がり天井では切らない。
   // 自分より低い線で切られた先にも、高さが違う所（段差）は残るため
   const barriers = ceilingLines(elements, solved, roomCeilingHeight).filter(
@@ -1448,16 +1468,24 @@ export function dropCeilingSpans(
       (row): row is { elementId: string } & CeilingSegment => row !== null,
     );
 
-  const spans = new Map<string, number>();
+  const spans = new Map<string, CeilingSpan>();
   ceilingBoundaries(elements, solved, roomCeilingHeight).forEach((edge) => {
     const length = drawn
       .filter((line) => line.elementId === edge.elementId)
       .reduce((sum, line) => sum + overlapLength(line, edge), 0);
     if (length < 1e-6) return;
-    spans.set(
-      edge.elementId,
-      round2((spans.get(edge.elementId) ?? 0) + length),
-    );
+    const span = spans.get(edge.elementId) ?? {
+      length: 0,
+      area: 0,
+      steps: new Map<number, number>(),
+    };
+    span.length = round2(span.length + length);
+    // 見付面積は、その所の段差の高さ（両側の天井高さの差）で数える
+    const step = edge.step ?? 0;
+    span.area = round2(span.area + length * step);
+    if (step > 1e-6)
+      span.steps.set(step, round2((span.steps.get(step) ?? 0) + length));
+    spans.set(edge.elementId, span);
   });
   return spans;
 }

@@ -90,13 +90,14 @@ describe("天井伏図", () => {
       solved,
       2.7,
     );
-    // 0.3の2本は、より低い0.5の線に当たって止まる（4m→3m）
+    // 段差の高さごとの長さ（0.5の線は、0.3に下がった所に面する2mが差0.2になる）
     expect(result.dropCeilingByHeight).toEqual([
+      { drop: 0.2, length: 2 },
       { drop: 0.3, length: 6 },
-      { drop: 0.5, length: 3 },
+      { drop: 0.5, length: 1 },
     ]);
-    // 面積は入れた分（4）＋入れていない2本は下げている区画から自動（3＋3）
-    expect(result.totals.dropCeilingArea).toBe(10);
+    // 面積は入れた分（4）＋入れていない2本は見付（3×0.3＝0.9、1×0.5＋2×0.2＝0.9）
+    expect(result.totals.dropCeilingArea).toBe(5.8);
   });
 
   it("下がり天井の線は壁に当たるところで止まり、その長さを自動で使う", () => {
@@ -172,6 +173,21 @@ describe("天井伏図", () => {
     const result = ceilingQuantities([drop, beam], solved, 2.7);
     // 壁までの4mではなく、梁の見付（壁から0.5m）で止まる
     expect(result.items[0].length).toBe(3.5);
+  });
+
+  it("下がり0の線でも、反対側との段差で見付面積が出る", () => {
+    const solved = solveShape(rectangleShape(10, 10));
+    const deep = element("dropCeiling", solved.edges[3].id, {
+      offset: 3,
+      height: 1,
+    });
+    const flat = element("dropCeiling", solved.edges[0].id, {
+      offset: 2,
+      height: 0,
+    });
+    const result = ceilingQuantities([deep, flat], solved, 4);
+    // 長さ3×段差1.0
+    expect(result.items[1].area).toBe(3);
   });
 
   it("ほかの下がり天井と交わっても、その先の段差の長さが出る", () => {
@@ -586,7 +602,7 @@ describe("区画の境目の線", () => {
     expect(lines).toHaveLength(1);
   });
 
-  it("下がり天井の長さは段差になっている所だけ、面積は下げている区画から自動で出す", () => {
+  it("下がり天井の長さは段差になっている所だけ、面積は段差の見付で出す", () => {
     // 4×3の部屋。右の壁から1m入った所で下がる（区画は1×3）
     const solved = shape();
     const drop = element("dropCeiling", solved.edges[1].id, {
@@ -595,7 +611,8 @@ describe("区画の境目の線", () => {
     });
     const result = ceilingQuantities([drop], solved, 2.7);
     expect(result.items[0].length).toBe(3);
-    expect(result.items[0].area).toBe(3);
+    // 見付＝長さ3×段差0.5
+    expect(result.items[0].area).toBe(1.5);
     // 高さを部屋と同じ（下がり0）にすると段差がないので長さも面積も出ない
     const flat = ceilingQuantities([{ ...drop, height: 0 }], solved, 2.7);
     expect(flat.totals.dropCeilingLength).toBe(0);
