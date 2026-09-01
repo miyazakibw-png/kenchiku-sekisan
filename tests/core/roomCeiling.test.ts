@@ -174,6 +174,22 @@ describe("天井伏図", () => {
     expect(result.items[0].length).toBe(3.5);
   });
 
+  it("ほかの下がり天井と交わっても、その先の段差の長さが出る", () => {
+    const solved = solveShape(rectangleShape(10, 10));
+    // 縦の下がり天井（下がり1.0）と交わる、下がり0の横の線
+    const deep = element("dropCeiling", solved.edges[3].id, {
+      offset: 3,
+      height: 1,
+    });
+    const flat = element("dropCeiling", solved.edges[0].id, {
+      offset: 2,
+      height: 0,
+    });
+    const result = ceilingQuantities([deep, flat], solved, 4);
+    // 交わった先（下がっている側に面する3m）が段差として残る
+    expect(result.items[1].length).toBe(3);
+  });
+
   it("梁型はＨ（梁せい）を入れれば壁の高さを入れなくても面積が出る", () => {
     const solved = shape();
     const result = ceilingQuantities(

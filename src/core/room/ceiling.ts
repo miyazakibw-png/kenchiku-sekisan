@@ -1427,7 +1427,27 @@ export function dropCeilingSpans(
   solved: SolvedShape,
   roomCeilingHeight: number | null,
 ): Map<string, number> {
-  const drawn = ceilingLines(elements, solved, roomCeilingHeight);
+  // 梁型・下がり壁のところでは止めるが、ほかの下がり天井では切らない。
+  // 自分より低い線で切られた先にも、高さが違う所（段差）は残るため
+  const barriers = ceilingLines(elements, solved, roomCeilingHeight).filter(
+    (line) => line.kind !== "dropCeiling",
+  );
+  const drawn = elements
+    .filter((element) => element.kind === "dropCeiling")
+    .map((element) => {
+      const line = wallToWallLine(
+        solved.points,
+        solved.edges.findIndex((row) => row.id === element.edgeId),
+        element.offset ?? 0,
+      );
+      return line === null
+        ? null
+        : { elementId: element.id, ...cutByBarriers(line, barriers) };
+    })
+    .filter(
+      (row): row is { elementId: string } & CeilingSegment => row !== null,
+    );
+
   const spans = new Map<string, number>();
   ceilingBoundaries(elements, solved, roomCeilingHeight).forEach((edge) => {
     const length = drawn
