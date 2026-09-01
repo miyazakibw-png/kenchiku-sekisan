@@ -785,6 +785,122 @@ export function ceilingRegions(
     .map((row, no) => ({ code: `C${no + 1}`, ...row }));
 }
 
+/** 天井の区画どうしの境目に引く線 */
+export interface CeilingBoundary extends CeilingSegment {
+  elementId: string;
+  /** 高さが違う区画の境目（実線）か、まだ高さが決まっていない境目（点線）か */
+  solid: boolean;
+  /** 両側の区画番号 */
+  codes: [string, string];
+}
+
+/**
+ * 区画のふちから、天井を分けている境目の線を作る。
+ * 高さが違う区画どうしの境目だけを引き（同じ高さの境目は引かない）、
+ * 高さが違うところは実線、まだ高さが決まっていないところは点線にする。
+ */
+export function ceilingBoundaries(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+  mergeSameHeight = false,
+): CeilingBoundary[] {
+  const points = solved.points;
+  if (points.length < 3) return [];
+
+  const regions = ceilingRegions(
+    elements,
+    solved,
+    roomCeilingHeight,
+    mergeSameHeight,
+  );
+  const lines = elements
+    .filter((element) => element.kind === "dropCeiling")
+    .map((element) => ({
+      element,
+      line: wallToWallLine(
+        points,
+        solved.edges.findIndex((row) => row.id === element.edgeId),
+        element.offset ?? 0,
+      ),
+    }))
+    .filter(
+      (row): row is { element: CeilingElement; line: CeilingSegment } =>
+        row.line !== null,
+    );
+
+  const regionAt = (at: CeilingPoint): CeilingRegion | null =>
+    regions.find((region) => region.parts.some((part) => inside(part, at))) ??
+    null;
+
+  const step = 1e-3;
+
+  return lines.flatMap(({ element, line }) => {
+    const span = { x: line.b.x - line.a.x, y: line.b.y - line.a.y };
+    const size = Math.hypot(span.x, span.y);
+    if (size < 1e-9) return [];
+    const dir = { x: span.x / size, y: span.y / size };
+    const normal = { x: -dir.y, y: dir.x };
+
+    // ほかの線や壁と交わるところで区切る
+    const cuts = [0, size];
+    const addCut = (t: number): void => {
+      if (t < 1e-6 || t > size - 1e-6) return;
+      if (!cuts.some((value) => Math.abs(value - t) < 1e-6)) cuts.push(t);
+    };
+    const crossAt = (from: CeilingPoint, to: CeilingPoint): void => {
+      const edge = { x: to.x - from.x, y: to.y - from.y };
+      const denom = cross(dir, edge);
+      if (Math.abs(denom) < 1e-9) return;
+      const gap = { x: from.x - line.a.x, y: from.y - line.a.y };
+      const rate = cross(gap, dir) / denom;
+      if (rate < -1e-9 || rate > 1 + 1e-9) return;
+      addCut(cross(gap, edge) / denom);
+    };
+    points.forEach((point, no) =>
+      crossAt(point, points[(no + 1) % points.length]),
+    );
+    lines.forEach((other) => {
+      if (other.element.id === element.id) return;
+      crossAt(other.line.a, other.line.b);
+    });
+    cuts.sort((left, right) => left - right);
+
+    const at = (t: number): CeilingPoint => ({
+      x: line.a.x + dir.x * t,
+      y: line.a.y + dir.y * t,
+    });
+
+    const found: CeilingBoundary[] = [];
+    for (let no = 0; no + 1 < cuts.length; no += 1) {
+      const [start, end] = [cuts[no], cuts[no + 1]];
+      if (end - start < 1e-6) continue;
+      const middle = at((start + end) / 2);
+      const one = regionAt({
+        x: middle.x + normal.x * step,
+        y: middle.y + normal.y * step,
+      });
+      const other = regionAt({
+        x: middle.x - normal.x * step,
+        y: middle.y - normal.y * step,
+      });
+      if (one === null || other === null || one.code === other.code) continue;
+      found.push({
+        a: at(start),
+        b: at(end),
+        length: round2(end - start),
+        elementId: element.id,
+        solid:
+          one.height !== null &&
+          other.height !== null &&
+          Math.abs(one.height - other.height) > 1e-6,
+        codes: [one.code, other.code],
+      });
+    }
+    return found;
+  });
+}
+
 /** つながっている区画どうしをまとめる（離れている所は別の区画） */
 function clusterPieces<T extends { poly: CeilingPoint[] }>(rows: T[]): T[][] {
   const found = new Map<string, T[]>();

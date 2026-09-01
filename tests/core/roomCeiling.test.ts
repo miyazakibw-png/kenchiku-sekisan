@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   beamFootprintArea,
+  ceilingBoundaries,
   ceilingElement,
   ceilingLines,
   ceilingQuantities,
@@ -516,5 +517,37 @@ describe("天井の区画は高さの種類ごとにまとめる", () => {
     );
 
     expect(regions.map((row) => row.code)).toEqual(["C1", "C2", "C3"]);
+  });
+});
+
+describe("区画の境目の線", () => {
+  it("高さが違う所は実線、同じ高さの所は線を引かない", () => {
+    const solved = shape();
+    const dropped = ceilingBoundaries(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 })],
+      solved,
+      2.7,
+    );
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0].solid).toBe(true);
+    expect(dropped[0].length).toBeCloseTo(4, 6);
+
+    const same = ceilingBoundaries(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0 })],
+      solved,
+      2.7,
+    );
+    expect(same).toHaveLength(0);
+  });
+
+  it("高さがまだのところは点線にする", () => {
+    const solved = shape();
+    const lines = ceilingBoundaries(
+      [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
+      solved,
+      2.7,
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0].solid).toBe(false);
   });
 });
