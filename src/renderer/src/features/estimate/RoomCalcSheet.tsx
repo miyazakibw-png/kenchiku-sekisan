@@ -780,8 +780,15 @@ export default function RoomCalcSheet({
   const callAssembly = useCallback(
     (assembly: FinishAssembly) => {
       const created = calcSet(0);
-      created.partName = assembly.items[0]?.partName ?? "";
-      created.partNumber = assembly.items[0]?.partNumber ?? null;
+      // セットの部位は計算書に入れてあるものを残す（空のときだけマスターの先頭明細から入れる）
+      const at = sets.findIndex((set) => set.id === currentSet?.id);
+      const here = at >= 0 && !isCommentSet(sets[at]) ? sets[at] : null;
+      const keptPart =
+        here !== null && here.partName.trim() !== "" ? here : null;
+      created.partName =
+        keptPart?.partName ?? assembly.items[0]?.partName ?? "";
+      created.partNumber =
+        keptPart?.partNumber ?? assembly.items[0]?.partNumber ?? null;
       created.details = assembly.items.map((item) =>
         calcDetail({
           sourceDetailId: item.sourceDetailId,
@@ -815,7 +822,6 @@ export default function RoomCalcSheet({
         );
         return;
       }
-      const at = sets.findIndex((set) => set.id === currentSet?.id);
       if (insertMode || at < 0 || isCommentSet(sets[at])) {
         // ※行は上に残し、その下へ入れる
         commit(insertSetBefore(sets, at, created));
@@ -1257,7 +1263,8 @@ export default function RoomCalcSheet({
       const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
       const byColumn = cursorColumn !== null && Number.isFinite(cursorColumn);
       if (byColumn || focus?.area === "detail" || (!focus && wideTable)) {
-        const at = mode === "append" ? currentSet.details.length : (focus?.index ?? 0);
+        const at =
+          mode === "append" ? currentSet.details.length : (focus?.index ?? 0);
         const base =
           mode !== "overwrite"
             ? [
