@@ -29,6 +29,7 @@ import MasterCodeInput, {
 } from "../../components/MasterCodeInput";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 import {
+  buildInsertPastePreview,
   buildPastePreview,
   copyRangeAsTsv,
   isInRange,
@@ -427,6 +428,60 @@ export default function DetailMasterPage({
     setPreview(null);
   }, [mutate, preview]);
 
+  /** 行コピー（複数可）。選んでいる行をまるごと（全部の列）コピーする */
+  const handleCopyRows = useCallback(async () => {
+    const r = normalizeRange(
+      range ?? {
+        startRow: selectedIndex,
+        startCol: 0,
+        endRow: selectedIndex,
+        endCol: columns.length - 1,
+      },
+    );
+    const tsv = copyRangeAsTsv(rows, columns, {
+      startRow: r.startRow,
+      startCol: 0,
+      endRow: r.endRow,
+      endCol: columns.length - 1,
+    });
+    await navigator.clipboard.writeText(tsv);
+    setToast(
+      `⧉ ${r.endRow - r.startRow + 1}明細をコピーしました（貼り付けたい行にカーソルを置いて「上書貼付」か「挿入貼付」）`,
+    );
+  }, [columns, range, rows, selectedIndex]);
+
+  /** 上書貼付・挿入貼付（カーソルのある行が貼り付け先） */
+  const handlePasteRows = useCallback(
+    async (mode: "overwrite" | "insert") => {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+      const at = Math.min(Math.max(selectedIndex, 0), rows.length);
+      const built =
+        mode === "insert"
+          ? buildInsertPastePreview(rows, columns, text, at, createEmptyRow)
+          : buildPastePreview(rows, columns, text, at, 0, createEmptyRow);
+      // 取り込めない値があるときは、確かめてから入れられるよう下見を出す
+      if (built.errorCount > 0) {
+        setPasteText(text);
+        setPreview(built);
+        return;
+      }
+      const count = built.cells.length;
+      mutate(built.rows);
+      setSelectedIndex(at);
+      setRange({
+        startRow: at,
+        startCol: 0,
+        endRow: at + count - 1,
+        endCol: columns.length - 1,
+      });
+      setToast(
+        `✅ ${at + 1}行目から ${count}明細を${mode === "insert" ? "挿入" : "上書"}貼付しました。Ctrl+Z で元に戻せます`,
+      );
+    },
+    [columns, mutate, rows, selectedIndex],
+  );
+
   const handleInsert = useCallback(
     (index: number) => {
       mutate(insertRow(rows, index));
@@ -652,24 +707,45 @@ export default function DetailMasterPage({
             </button>
             <button
               type="button"
-              title="行コピー (Ctrl+D)"
+              title="選んでいる行（Shift+クリックで複数可）をまるごとコピーします"
+              onClick={() => void handleCopyRows()}
+            >
+              ⧉ 行コピー（複数可）
+            </button>
+            <button
+              type="button"
+              title="コピーした明細を、カーソルのある行から上書きします"
+              onClick={() => void handlePasteRows("overwrite")}
+            >
+              📋 上書貼付
+            </button>
+            <button
+              type="button"
+              title="コピーした明細を、カーソルのある行の上に差し込みます"
+              onClick={() => void handlePasteRows("insert")}
+            >
+              📋 挿入貼付
+            </button>
+            <button
+              type="button"
+              title="同じ内容の行を1行下に作ります (Ctrl+D)"
               onClick={() => handleCopy(selectedIndex)}
             >
-              ⧉ 行コピー
+              ⧉ 行複製
             </button>
             <button
               type="button"
-              title="選択範囲をExcel形式でコピー (Ctrl+C)"
+              title="選んでいるセル範囲をExcel形式でコピー (Ctrl+C)"
               onClick={() => void handleCopyRange()}
             >
-              📋 コピー
+              📋 セルコピー
             </button>
             <button
               type="button"
-              title="Excelから範囲貼り付け (Ctrl+V)"
+              title="Excelから範囲貼り付け（下見を見てから確定） (Ctrl+V)"
               onClick={() => void handlePasteRequest()}
             >
-              📥 貼り付け
+              📥 Excelから貼付
             </button>
             <button
               type="button"
@@ -940,9 +1016,12 @@ export default function DetailMasterPage({
           </button>
           <span>{rows.length} 明細（1明細=2段）</span>
           <span className="hint">
+            行コピー（複数可）→
+            貼り付けたい行にカーソルを置いて「上書貼付」か「挿入貼付」 ／
             Ctrl+Enter:行挿入 / Ctrl+Delete:行削除 / Alt+↑↓:行移動 /
-            Ctrl+D:行コピー / Ctrl+S:保存 / Ctrl+C:コピー / Ctrl+V:貼り付け /
-            Ctrl+Z:戻す / Ctrl+Y:進む（Shift+クリックで範囲選択）
+            Ctrl+D:行複製 / Ctrl+S:保存 / Ctrl+C:セルコピー /
+            Ctrl+V:Excelから貼付 / Ctrl+Z:戻す /
+            Ctrl+Y:進む（Shift+クリックで複数行を選べます）
           </span>
         </footer>
       </section>
