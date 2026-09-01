@@ -735,13 +735,11 @@ export function ceilingRegions(
     };
   });
 
-  // 天井高さが同じ区画をまとめる。
+  // 天井高さが同じ区画をまとめる（高さを入れていない下がり天井は下がり0＝同じ高さとして扱う）。
   // 「同じ高さをまとめる」を入れていないときは、隣り合っている所だけまとめる（離れた所は別番号）。
-  // 高さがまだ入っていない下がり天井のところは、高さが決まるまで別のままにする。
   const merged = new Map<string, typeof pieces>();
   pieces.forEach((piece) => {
-    const key =
-      piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`;
+    const key = `d${round2(piece.drop)}`;
     merged.set(key, [...(merged.get(key) ?? []), piece]);
   });
   const groups = [...merged.values()].flatMap((rows) =>

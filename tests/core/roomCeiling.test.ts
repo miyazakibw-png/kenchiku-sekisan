@@ -359,10 +359,10 @@ describe("天井伏図", () => {
     expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(26, 6);
   });
 
-  it("天井高さがまだ空でも下がり天井の線で区画を2つに分ける", () => {
+  it("高さの違う下がり天井は区画を2つに分ける", () => {
     const solved = shape();
     const regions = ceilingRegions(
-      [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
+      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 })],
       solved,
       2.7,
     );
@@ -372,7 +372,10 @@ describe("天井伏図", () => {
 
   it("区画には天井高さを入れる先（下がり天井の行）が付く", () => {
     const solved = shape();
-    const drop = element("dropCeiling", solved.edges[0].id, { offset: 1 });
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.3,
+    });
     const regions = ceilingRegions([drop], solved, 2.7);
     // 壁側（下がる側）の区画は、その下がり天井の行へ高さを入れる
     const lowered = regions.filter((row) => row.elementIds.length > 0);
@@ -384,14 +387,14 @@ describe("天井伏図", () => {
     expect(other[0].boundaryIds).toEqual([drop.id]);
   });
 
-  it("高さがまだのうちは下がり天井の線で区画を分ける", () => {
+  it("高さをまだ入れていない下がり天井は、下がり0として隣とひと続きにする", () => {
     const solved = shape();
     const regions = ceilingRegions(
       [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
       solved,
       2.7,
     );
-    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    expect(regions.map((row) => row.code)).toEqual(["C1"]);
   });
 
   it("同じ高さ（下がり0）を入れると隣とひと続きになり、線も引かない", () => {
@@ -540,14 +543,13 @@ describe("区画の境目の線", () => {
     expect(same).toHaveLength(0);
   });
 
-  it("高さがまだのところは点線にする", () => {
+  it("高さをまだ入れていない下がり天井には線を引かない", () => {
     const solved = shape();
     const lines = ceilingBoundaries(
       [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
       solved,
       2.7,
     );
-    expect(lines).toHaveLength(1);
-    expect(lines[0].solid).toBe(false);
+    expect(lines).toHaveLength(0);
   });
 });
