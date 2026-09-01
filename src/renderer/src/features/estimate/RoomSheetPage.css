@@ -419,6 +419,12 @@
   stroke-width: 5;
 }
 
+/* 種別をまとめて変えるときに選んだ線 */
+.room-sheet-page .edge.picked {
+  stroke: #ea580c;
+  stroke-width: 7;
+}
+
 /* 線・○印は細いので、見えない当たり判定を重ねて選びやすくする */
 .room-sheet-page .edge-hit {
   stroke: transparent;
@@ -554,6 +560,20 @@
 
 .room-sheet-page tr.selected {
   background: #e0ecff;
+}
+
+.room-sheet-page tr.picked {
+  background: #ffedd5;
+}
+
+.room-sheet-page .kind-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid #ea580c;
+  border-radius: 4px;
+  background: #fff7ed;
 }
 
 /* 寸法が足りない辺は点滅させて入力を促す */

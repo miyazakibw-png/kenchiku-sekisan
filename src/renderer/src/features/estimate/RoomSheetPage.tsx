@@ -40,6 +40,7 @@ import {
   round2,
   shapeExtents,
   solveShape,
+  setEdgeKinds,
   splitEdge,
   trimEdges,
   updateEdge,
@@ -322,6 +323,8 @@ export default function RoomSheetPage({
   const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
   /** 辺をクリックした位置に角を足すモード */
   const [addCornerMode, setAddCornerMode] = useState(false);
+  /** 種別をまとめて変える選び中の辺（null は選び中でない） */
+  const [kindPick, setKindPick] = useState<string[] | null>(null);
   /** 図面画像となぞった点（数量根拠として一緒に保存する） */
   const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
   const [showTrace, setShowTrace] = useState(false);
@@ -1106,6 +1109,30 @@ export default function RoomSheetPage({
     else addNotch(across, along, prompt.edgeKind);
   };
 
+  /** 種別をまとめて変える選び中に、辺を選ぶ／外す */
+  const toggleKindPick = (edgeId: string): void => {
+    const picked = kindPick ?? [];
+    const next = picked.includes(edgeId)
+      ? picked.filter((item) => item !== edgeId)
+      : [...picked, edgeId];
+    setKindPick(next);
+    setMessage(
+      `${next.length}本えらんでいます（図の壁線をクリックして選び、「柱にする」か「壁に戻す」を押してください）`,
+    );
+  };
+
+  /** 選んだ辺の種別をまとめて変える */
+  const applyPickedKind = (kind: EdgeKind): void => {
+    const picked = kindPick ?? [];
+    if (picked.length === 0) {
+      setMessage("図の線をクリックして選んでから押してください");
+      return;
+    }
+    applyShape(setEdgeKinds(shape, picked, kind));
+    setKindPick(null);
+    setMessage(`${picked.length}本を「${KIND_LABEL[kind]}」にしました`);
+  };
+
   /** 辺を選ぶ（Shift＋クリックでここからここまでの範囲選択） */
   const selectEdge = (edgeId: string, extend: boolean): void => {
     if (extend && selectedEdge !== null && selectedEdge !== edgeId) {
@@ -1358,6 +1385,55 @@ export default function RoomSheetPage({
             </button>
             <button
               type="button"
+              className={kindPick !== null ? "on" : ""}
+              disabled={shape.edges.length === 0}
+              title="押してから図の壁線をまとめてクリックし、「柱にする」（または「壁に戻す」）で一括で種別を変えます"
+              onClick={() => {
+                if (kindPick !== null) {
+                  setKindPick(null);
+                  setMessage("種別の選びをやめました");
+                  return;
+                }
+                setKindPick([]);
+                setAddCornerMode(false);
+                setMessage(
+                  "種別を変える線を図でクリックして選んでください（何本でも）。そのあと「柱にする」か「壁に戻す」を押します",
+                );
+              }}
+            >
+              壁→柱 まとめて変更
+            </button>
+            {kindPick !== null && (
+              <span className="kind-pick">
+                <span>{kindPick.length}本えらび中</span>
+                <button
+                  type="button"
+                  disabled={kindPick.length === 0}
+                  onClick={() => applyPickedKind("column")}
+                >
+                  ✓ 柱にする
+                </button>
+                <button
+                  type="button"
+                  disabled={kindPick.length === 0}
+                  onClick={() => applyPickedKind("wall")}
+                >
+                  ✓ 壁に戻す
+                </button>
+                <button
+                  type="button"
+                  disabled={kindPick.length === 0}
+                  onClick={() => {
+                    setKindPick([]);
+                    setMessage("選びを外しました");
+                  }}
+                >
+                  選び直す
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
               disabled={shape.edges.length === 0}
               title="今の図形を左右に反転します（寸法はそのまま）"
               onClick={() => flipShape("x")}
@@ -1489,6 +1565,7 @@ export default function RoomSheetPage({
                 const className = [
                   "edge",
                   line.kind,
+                  (kindPick ?? []).includes(line.id) ? "picked" : "",
                   selectedEdgeIds.includes(line.id) ? "selected" : "",
                 ]
                   .filter(Boolean)
@@ -1511,6 +1588,10 @@ export default function RoomSheetPage({
                   <g
                     key={line.id}
                     onClick={(event) => {
+                      if (kindPick !== null) {
+                        toggleKindPick(line.id);
+                        return;
+                      }
                       if (addCornerMode) {
                         splitEdgeAt(line.id, point, next, event);
                         return;
@@ -1760,12 +1841,17 @@ export default function RoomSheetPage({
                 <tr
                   key={line.id}
                   className={[
+                    (kindPick ?? []).includes(line.id) ? "picked" : "",
                     selectedEdgeIds.includes(line.id) ? "selected" : "",
                     solved.missing.includes(line.id) ? "missing" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={(event) => selectEdge(line.id, event.shiftKey)}
+                  onClick={(event) =>
+                    kindPick !== null
+                      ? toggleKindPick(line.id)
+                      : selectEdge(line.id, event.shiftKey)
+                  }
                 >
                   <td className="no">{index + 1}</td>
                   <td>

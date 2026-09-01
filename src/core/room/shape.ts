@@ -1001,6 +1001,26 @@ export function roomSymbols(
   return symbols;
 }
 
+/**
+ * 選んだ辺の種別（壁・柱など）をまとめて変える。
+ * なぞった図形はすべて壁になるので、柱の所だけ選んで一括で直すのに使う。
+ */
+export function setEdgeKinds(
+  shape: RoomShape,
+  ids: string[],
+  kind: EdgeKind,
+): RoomShape {
+  if (ids.length === 0) return shape;
+  const targets = new Set(ids);
+  let changed = false;
+  const edges = shape.edges.map((row) => {
+    if (!targets.has(row.id) || row.kind === kind) return row;
+    changed = true;
+    return { ...row, kind };
+  });
+  return changed ? { edges } : shape;
+}
+
 /** 辺を分割する（元の寸法を入れると残りは自動算出になる） */
 export function splitEdge(
   shape: RoomShape,

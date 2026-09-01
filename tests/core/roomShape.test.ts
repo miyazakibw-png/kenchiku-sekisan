@@ -16,6 +16,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  setEdgeKinds,
   shapeExtents,
   solveShape,
   splitEdge,
@@ -505,5 +506,36 @@ describe("部屋形状（単線図）", () => {
       expect(result.error).not.toBeNull();
       expect(result.shape).toBe(shape);
     });
+  });
+});
+
+describe("setEdgeKinds", () => {
+  it("選んだ辺だけまとめて柱にする（複数・とびとびでも）", () => {
+    const shape = rectangleShape(6, 4);
+    const ids = shape.edges.map((row) => row.id);
+    const next = setEdgeKinds(shape, [ids[0], ids[2]], "column");
+
+    expect(next.edges.map((row) => row.kind)).toEqual([
+      "column",
+      "wall",
+      "column",
+      "wall",
+    ]);
+    // 形と寸法は変わらない
+    expect(floorArea(solveShape(next))).toBe(floorArea(solveShape(shape)));
+    // 柱にした分が柱長さになる
+    const quantities = roomQuantities(solveShape(next), 2.5);
+    expect(quantities.columnLength).toBe(12);
+  });
+
+  it("柱を壁に戻せる／選んでいないときと変わらないときは元のまま", () => {
+    const shape = rectangleShape(6, 4);
+    const ids = shape.edges.map((row) => row.id);
+    const columns = setEdgeKinds(shape, [ids[1]], "column");
+
+    expect(setEdgeKinds(columns, [ids[1]], "wall").edges[1].kind).toBe("wall");
+    expect(setEdgeKinds(shape, [], "column")).toBe(shape);
+    expect(setEdgeKinds(shape, [ids[1]], "wall")).toBe(shape);
+    expect(setEdgeKinds(columns, [ids[1]], "column")).toBe(columns);
   });
 });
