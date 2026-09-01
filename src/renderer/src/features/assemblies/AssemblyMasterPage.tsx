@@ -146,9 +146,27 @@ export default function AssemblyMasterPage({
   }, [pickerOpen, pickerScope, pickerSubjectId, projectId]);
 
   /** 明細マスターから内容を写し取る（参照ではなく複製なので以後は連動しない） */
-  const pickDetail = useCallback(async (detail: Detail) => {
-    const item = await window.sekisan.buildAssemblyItem(detail.id);
-    const [draft] = toDraftItems([item]);
+  const pickDetail = useCallback((detail: Detail) => {
+    const [draft] = toDraftItems([
+      {
+        id: null,
+        sourceDetailId: detail.id,
+        subjectId: detail.subjectId,
+        partNumber: detail.partNumber ?? null,
+        detailNumber: detail.detailNumber,
+        materialCategory: detail.materialCategory,
+        partName: detail.partName,
+        name: detail.name,
+        descriptionUpper: detail.descriptionUpper,
+        descriptionLower: detail.descriptionLower,
+        unit: detail.unit,
+        remarksUpper: detail.remarksUpper,
+        remarksLower: detail.remarksLower,
+        estimateDisplay: detail.estimateDisplay,
+        formula: "",
+        coefficient: 1,
+      },
+    ]);
     setEditor((prev) =>
       prev === null
         ? { id: null, note: "", items: [draft] }
@@ -753,13 +771,13 @@ export default function AssemblyMasterPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {pickerDetails.map((detail) => (
+                  {pickerDetails.map((detail, detailIndex) => (
                     <tr
-                      key={detail.id}
+                      key={`${detail.id}-${detailIndex}`}
                       tabIndex={0}
-                      onDoubleClick={() => void pickDetail(detail)}
+                      onDoubleClick={() => pickDetail(detail)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") void pickDetail(detail);
+                        if (e.key === "Enter") pickDetail(detail);
                       }}
                     >
                       <td className="num">
