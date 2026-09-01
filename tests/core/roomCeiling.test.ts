@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   beamFootprintArea,
   ceilingElement,
+  ceilingLines,
   ceilingQuantities,
   ceilingRegions,
   ceilingSymbols,
@@ -382,14 +383,26 @@ describe("天井伏図", () => {
     expect(other[0].boundaryIds).toEqual([drop.id]);
   });
 
-  it("下がり0でも下がり天井の線で区画を分ける", () => {
+  it("高さがまだのうちは下がり天井の線で区画を分ける", () => {
     const solved = shape();
     const regions = ceilingRegions(
-      [element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0 })],
+      [element("dropCeiling", solved.edges[0].id, { offset: 1 })],
       solved,
       2.7,
     );
     expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+  });
+
+  it("同じ高さ（下がり0）を入れると隣とひと続きになり、線も引かない", () => {
+    const solved = shape();
+    const same = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0,
+    });
+    const regions = ceilingRegions([same], solved, 2.7);
+    expect(regions.map((row) => row.code)).toEqual(["C1"]);
+    expect(regions[0].height).toBe(2.7);
+    expect(ceilingLines([same], solved, 2.7)).toHaveLength(0);
   });
 
   it("下がる側を線の向こう側に入れ替えられる", () => {
@@ -462,5 +475,28 @@ describe("天井伏図", () => {
     expect(wide?.center.y).toBeLessThan(3);
     expect(wide?.center.x).toBeGreaterThan(0.5);
     expect(wide?.center.x).toBeLessThan(3.5);
+  });
+});
+
+describe("天井の区画は高さの種類ごとにまとめる", () => {
+  it("離れていても同じ高さなら1つの番号にし、番号は離れた所にも出す", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [
+        element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 }),
+        element("dropCeiling", solved.edges[2].id, { offset: 1, height: 0.3 }),
+      ],
+      solved,
+      2.7,
+    );
+
+    // 高さは2種類（2.40の下がり天井と2.70の天井）＝2行
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    const dropped = regions.find((row) => row.height === 2.4);
+    expect(dropped?.parts).toHaveLength(2);
+    // 離れている2か所それぞれに番号を出す
+    expect(dropped?.centers).toHaveLength(2);
+    expect(dropped?.area).toBeCloseTo(8, 6);
+    expect(regions.find((row) => row.height === 2.7)?.centers).toHaveLength(1);
   });
 });

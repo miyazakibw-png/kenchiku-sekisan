@@ -352,6 +352,12 @@ export function ceilingLines(
 ): CeilingLine[] {
   const points = solved.points;
   if (points.length < 3) return [];
+  // 両側が同じ高さ（下がり0を入れた）下がり天井は、天井を分けないので線を引かない
+  elements = elements.filter(
+    (element) =>
+      element.kind !== "dropCeiling" ||
+      elementDrop(element, roomCeilingHeight) !== 0,
+  );
 
   const distancesOf = (element: CeilingElement): number[] => {
     const width = element.width ?? 0;
@@ -426,7 +432,7 @@ export function ceilingLines(
   });
 }
 
-/** 線で囲まれた天井の区画（C1・C2…）。天井高さが同じで隣り合う区画は1つにまとめる */
+/** 線で囲まれた天井の区画（C1・C2…）。天井高さが同じ区画は1つにまとめる */
 export interface CeilingRegion {
   /** 区画の番号（C1・C2…） */
   code: string;
@@ -434,6 +440,8 @@ export interface CeilingRegion {
   parts: CeilingPoint[][];
   /** 番号を出す位置（一番広いところの中央） */
   center: CeilingPoint;
+  /** 番号を出す位置（離れている所にも1つずつ出す） */
+  centers: CeilingPoint[];
   area: number;
   /** その区画の下がり（部屋の天井高さからの下がり） */
   drop: number;
@@ -726,23 +734,12 @@ export function ceilingRegions(
     };
   });
 
-  // 天井高さが同じで隣り合う区画（コ型・L型の下がり天井）は1つにまとめる
-  const group = pieces.map((_, no) => no);
-  const rootOf = (no: number): number =>
-    group[no] === no ? no : (group[no] = rootOf(group[no]));
-  pieces.forEach((left, no) => {
-    pieces.forEach((right, other) => {
-      if (other <= no) return;
-      if (Math.abs(left.drop - right.drop) > 1e-6) return;
-      if (left.waiting !== right.waiting) return;
-      if (!touching(left.poly, right.poly)) return;
-      group[rootOf(other)] = rootOf(no);
-    });
-  });
-
-  const merged = new Map<number, typeof pieces>();
-  pieces.forEach((piece, no) => {
-    const key = rootOf(no);
+  // 天井高さが同じ区画は1つにまとめる（離れていてもまとめ、番号も1つ）。
+  // 高さがまだ入っていない下がり天井のところは、高さが決まるまで別のままにする。
+  const merged = new Map<string, typeof pieces>();
+  pieces.forEach((piece) => {
+    const key =
+      piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`;
     merged.set(key, [...(merged.get(key) ?? []), piece]);
   });
 
@@ -755,6 +752,16 @@ export function ceilingRegions(
       return {
         parts,
         center: labelPoint(parts, widest.center),
+        centers: clusters(parts).map((group) =>
+          labelPoint(
+            group,
+            polygonCenter(
+              group.reduce((best, poly) =>
+                polygonArea(poly) > polygonArea(best) ? poly : best,
+              ),
+            ),
+          ),
+        ),
         area: round2(rows.reduce((sum, row) => sum + row.area, 0)),
         drop: widest.drop,
         elementIds: widest.elementIds,
@@ -771,6 +778,26 @@ export function ceilingRegions(
         : left.center.x - right.center.x,
     )
     .map((row, no) => ({ code: `C${no + 1}`, ...row }));
+}
+
+/** つながっている形どうしをまとめる（離れている所は別のかたまり） */
+function clusters(parts: CeilingPoint[][]): CeilingPoint[][][] {
+  const group = parts.map((_, no) => no);
+  const rootOf = (no: number): number =>
+    group[no] === no ? no : (group[no] = rootOf(group[no]));
+  parts.forEach((left, no) => {
+    parts.forEach((right, other) => {
+      if (other <= no) return;
+      if (!touching(left, right)) return;
+      group[rootOf(other)] = rootOf(no);
+    });
+  });
+  const found = new Map<number, CeilingPoint[][]>();
+  parts.forEach((poly, no) => {
+    const key = rootOf(no);
+    found.set(key, [...(found.get(key) ?? []), poly]);
+  });
+  return [...found.values()];
 }
 
 /** 番号を出す位置（区画の中で、まわりの線から一番離れているところ） */
@@ -873,11 +900,13 @@ function dropAt(
     if (!lowered) return;
     covering.push({ id: element.id, offset: far });
     const here = elementDrop(element, roomCeilingHeight);
-    // 高さがまだ入っていない（または下がり0）ときも、その線の内と外は別の区画にする
-    if (here === null || Math.abs(here) < 1e-6) {
+    // 高さがまだ入っていないときは、決まるまで内と外を別の区画にしておく。
+    // 同じ高さ（下がり0）を入れたときは高さが決まったので、隣とひと続きになる。
+    if (here === null) {
       waiting.push(element.id);
       return;
     }
+    if (Math.abs(here) < 1e-6) return;
     if (here > drop) drop = here;
   });
   return {
