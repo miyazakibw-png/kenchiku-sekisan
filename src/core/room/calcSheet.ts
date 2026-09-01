@@ -123,7 +123,14 @@ export function isCommentSet(set: CalcSet): boolean {
  */
 export function detachBanners(sets: CalcSet[]): CalcSet[] {
   const next: CalcSet[] = [];
-  sets.forEach((set) => {
+  sets.forEach((item) => {
+    // ※行に明細の無い空の計算式行が付いていたら落とす（空の明細行に見えてしまうため）
+    const set =
+      item.banner != null &&
+      item.details.length === 0 &&
+      item.lines.every(isEmptyLine)
+        ? { ...item, lines: [] }
+        : item;
     if (set.banner != null && !isCommentSet(set)) {
       next.push(commentSet(set.banner.text, set.banner.color));
       next.push({ ...set, banner: null });

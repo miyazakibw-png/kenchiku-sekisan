@@ -367,6 +367,15 @@ describe("行の追加と削除", () => {
     expect(next[1].partName).toBe("壁");
   });
 
+  it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {
+    const banner = commentSet("※ 見出し", "#dcfce7");
+    const stray = { ...banner, lines: [calcLine()] };
+    const next = detachBanners([stray]);
+    expect(next.length).toBe(1);
+    expect(next[0].lines.length).toBe(0);
+    expect(setRowCount(next[0])).toBe(0);
+  });
+
   it("読み込み（trimEmptySets）でも※行は独立した行にそろう", () => {
     const host = calcSet(1);
     host.partName = "壁";

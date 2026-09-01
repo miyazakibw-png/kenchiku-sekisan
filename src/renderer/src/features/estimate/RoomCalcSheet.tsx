@@ -503,6 +503,13 @@ export default function RoomCalcSheet({
         sets.map((set) => {
           if (set.id !== setId) return set;
           const next = { ...set, ...patch };
+          // コメント行（※行）は明細も計算式も持たない。行を足すと空の明細行が出てしまう
+          if (
+            next.banner != null &&
+            next.details.length === 0 &&
+            next.lines.length === 0
+          )
+            return next;
           return { ...next, lines: padLines(next.details, next.lines) };
         }),
       ),
@@ -1691,17 +1698,6 @@ export default function RoomCalcSheet({
                       colSpan={CALC_COLUMNS.length}
                       style={{ background: set.banner.color }}
                     >
-                      <button
-                        type="button"
-                        title="このコメント行を消します"
-                        onClick={() =>
-                          isCommentSet(set)
-                            ? commit(removeSet(sets, set.id))
-                            : updateSet(set.id, { banner: null })
-                        }
-                      >
-                        ✕
-                      </button>
                       <input
                         lang="ja"
                         value={set.banner.text}
@@ -1715,6 +1711,17 @@ export default function RoomCalcSheet({
                           })
                         }
                       />
+                      <button
+                        type="button"
+                        title="このコメント行を消します"
+                        onClick={() =>
+                          isCommentSet(set)
+                            ? commit(removeSet(sets, set.id))
+                            : updateSet(set.id, { banner: null })
+                        }
+                      >
+                        ✕
+                      </button>
                     </td>
                   </tr>
                 )}
