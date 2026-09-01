@@ -40,6 +40,14 @@ interface Props {
   onBack?: () => void;
 }
 
+/** 明細を呼び出すマスター */
+type PickerScope = "basic" | "project";
+
+const SCOPE_LABEL: Record<PickerScope, string> = {
+  basic: "基本マスター（明細）",
+  project: "工事マスター（明細）",
+};
+
 interface EditorState {
   /** 既存セットのID。新規は null */
   id: number | null;
@@ -66,7 +74,13 @@ export default function AssemblyMasterPage({
   );
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [picker, setPicker] = useState<Detail[] | null>(null);
+  /** 明細を選ぶ画面（開いているか・出している明細・どの科目／どのマスターか） */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerDetails, setPickerDetails] = useState<Detail[]>([]);
+  const [pickerSubjectId, setPickerSubjectId] = useState<number | null>(null);
+  const [pickerScope, setPickerScope] = useState<PickerScope>(
+    projectId === null ? "basic" : "project",
+  );
   /** 1行目が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
   const [chooser, setChooser] = useState<FinishAssembly[]>([]);
   const [merge, setMerge] = useState<MergeState | null>(null);
@@ -114,21 +128,32 @@ export default function AssemblyMasterPage({
     setChooser([]);
   }, [subject]);
 
-  const openPicker = useCallback(async () => {
-    if (!subject) return;
-    setPicker(await window.sekisan.listDetails(subject.id, projectId));
-  }, [projectId, subject]);
+  const openPicker = useCallback(() => {
+    setPickerSubjectId(subject?.id ?? null);
+    setPickerOpen(true);
+  }, [subject]);
+
+  // 選んだ科目・マスターの明細を出す（何回でも選び直せます）
+  useEffect(() => {
+    if (!pickerOpen || pickerSubjectId === null) {
+      if (!pickerOpen) setPickerDetails([]);
+      return;
+    }
+    void window.sekisan
+      .listDetails(pickerSubjectId, pickerScope === "basic" ? null : projectId)
+      .then(setPickerDetails);
+  }, [pickerOpen, pickerScope, pickerSubjectId, projectId]);
 
   /** 明細マスターから内容を写し取る（参照ではなく複製なので以後は連動しない） */
   const pickDetail = useCallback(async (detail: Detail) => {
     const item = await window.sekisan.buildAssemblyItem(detail.id);
     const [draft] = toDraftItems([item]);
-    setPicker(null);
     setEditor((prev) =>
       prev === null
         ? { id: null, note: "", items: [draft] }
         : { ...prev, items: addItem(prev.items, draft) },
     );
+    setToast(`「${detail.partName} / ${detail.name}」を足しました`);
   }, []);
 
   const save = useCallback(
@@ -580,7 +605,7 @@ export default function AssemblyMasterPage({
             </div>
 
             <footer>
-              <button type="button" onClick={() => void openPicker()}>
+              <button type="button" onClick={openPicker}>
                 ➕ 明細マスターから追加
               </button>
               <button
@@ -683,11 +708,38 @@ export default function AssemblyMasterPage({
         </div>
       )}
 
-      {picker && (
+      {pickerOpen && (
         <div className="modal-backdrop" role="dialog">
           <div className="modal picker">
             <header>
-              <h3>明細マスターから選ぶ（{subject?.name}）</h3>
+              <h3>明細マスターから選ぶ</h3>
+              {projectId !== null &&
+                (Object.keys(SCOPE_LABEL) as PickerScope[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={pickerScope === key ? "on" : ""}
+                    onClick={() => setPickerScope(key)}
+                  >
+                    {SCOPE_LABEL[key]}
+                  </button>
+                ))}
+              <select
+                value={pickerSubjectId === null ? "" : String(pickerSubjectId)}
+                title="どの工種科目からでも選べます"
+                onChange={(e) => {
+                  const id = Number.parseInt(e.target.value, 10);
+                  setPickerSubjectId(Number.isNaN(id) ? null : id);
+                }}
+              >
+                <option value="">（工種科目を選ぶ）</option>
+                {options.subjects.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.id}：{row.name}
+                  </option>
+                ))}
+              </select>
+              <span className="count">{pickerDetails.length}件</span>
             </header>
             <div className="modal-body">
               <table className="grid">
@@ -700,7 +752,7 @@ export default function AssemblyMasterPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {picker.map((detail) => (
+                  {pickerDetails.map((detail) => (
                     <tr
                       key={detail.id}
                       tabIndex={0}
@@ -726,10 +778,10 @@ export default function AssemblyMasterPage({
             </div>
             <footer>
               <span className="hint">
-                行をダブルクリック／Enterで取り込みます
+                行をダブルクリック／Enterで取り込みます（何件でも続けて足せます）
               </span>
               <span className="spacer" />
-              <button type="button" onClick={() => setPicker(null)}>
+              <button type="button" onClick={() => setPickerOpen(false)}>
                 閉じる
               </button>
             </footer>

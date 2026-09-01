@@ -177,3 +177,15 @@
   color: #8a93a2;
   padding: 12px;
 }
+
+.modal.picker header button.on {
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.modal.picker header .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6b7280;
+}
