@@ -704,6 +704,9 @@ export default function RoomSheetPage({
       if (id === undefined) return;
       // 触っただけ（値が変わっていない）ときは何もしない
       if (Math.abs((drop ?? 0) - region.drop) < 1e-6) return;
+      // 下がっていない区画に部屋と同じ高さ（下がり0）を入れても、
+      // 境目の下がり天井を0にしない（隣の区画の線が消えてしまうため）
+      if (lowered === undefined && (drop === null || drop === 0)) return;
       // 下がり0はどちら側かの入れ替えに使わない
       const flip = lowered === undefined && drop !== null && drop !== 0;
       setCeiling((current) =>
