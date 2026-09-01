@@ -289,6 +289,10 @@ export default function RoomSheetPage({
     baseY: number;
   } | null>(null);
   const [showCeiling, setShowCeiling] = useState(printMode);
+  /** 同じ高さの区画を、離れていても1つの番号にまとめるか */
+  const [mergeCeiling, setMergeCeiling] = useState(false);
+  /** 図でクリックして選んだ天井伏図の線（入力表の行が光ります） */
+  const [pickedCeiling, setPickedCeiling] = useState<string | null>(null);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
   const [lower, setLower] = useState<CalcSet[]>([]);
@@ -566,8 +570,8 @@ export default function RoomSheetPage({
     () =>
       solved.points.length === 0
         ? []
-        : ceilingRegions(ceiling, solved, ceilingHeight),
-    [ceiling, ceilingHeight, solved],
+        : ceilingRegions(ceiling, solved, ceilingHeight, mergeCeiling),
+    [ceiling, ceilingHeight, mergeCeiling, solved],
   );
 
   /** 壁の辺だけ（建具の取付先の選択肢） */
@@ -1677,8 +1681,26 @@ export default function RoomSheetPage({
                       y1={line.y1}
                       x2={line.x2}
                       y2={line.y2}
-                      className={`ceiling-line ${line.kind}${line.same ? " same" : ""}`}
+                      className={`ceiling-line ${line.kind}${line.same ? " same" : ""}${
+                        pickedCeiling === line.elementId ? " picked" : ""
+                      }`}
                     />
+                    <line
+                      x1={line.x1}
+                      y1={line.y1}
+                      x2={line.x2}
+                      y2={line.y2}
+                      className="ceiling-line-hit"
+                      onClick={() =>
+                        setPickedCeiling(
+                          pickedCeiling === line.elementId
+                            ? null
+                            : line.elementId,
+                        )
+                      }
+                    >
+                      <title>入力表の行を光らせます</title>
+                    </line>
                     {line.label !== "" && (
                       <text
                         x={line.labelX}
@@ -1694,31 +1716,31 @@ export default function RoomSheetPage({
               {showCeiling &&
                 ceilingCodes.flatMap((region) =>
                   region.centers.map((center, no) => {
-                  const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
-                  return (
-                    <text
-                      key={`${region.code}-${no}`}
-                      x={center.x + moved.x}
-                      y={center.y + moved.y}
-                      className="ceiling-code"
-                      textAnchor="middle"
-                      fontSize={dimFontSize * 1.3}
-                      onPointerDown={(event) =>
-                        startCodeDrag(region.code, event)
-                      }
-                      onPointerMove={moveCodeDrag}
-                      onPointerUp={endCodeDrag}
-                      onDoubleClick={() =>
-                        setCodeMoves((current) => {
-                          const next = { ...current };
-                          delete next[region.code];
-                          return next;
-                        })
-                      }
-                    >
-                      {region.code}
-                    </text>
-                  );
+                    const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
+                    return (
+                      <text
+                        key={`${region.code}-${no}`}
+                        x={center.x + moved.x}
+                        y={center.y + moved.y}
+                        className="ceiling-code"
+                        textAnchor="middle"
+                        fontSize={dimFontSize * 1.3}
+                        onPointerDown={(event) =>
+                          startCodeDrag(region.code, event)
+                        }
+                        onPointerMove={moveCodeDrag}
+                        onPointerUp={endCodeDrag}
+                        onDoubleClick={() =>
+                          setCodeMoves((current) => {
+                            const next = { ...current };
+                            delete next[region.code];
+                            return next;
+                          })
+                        }
+                      >
+                        {region.code}
+                      </text>
+                    );
                   }),
                 )}
             </svg>
@@ -2332,6 +2354,17 @@ export default function RoomSheetPage({
                 onBlur={(e) => applyCeilingHeight(e.target.value)}
               />
             </label>
+            <label
+              className="ceiling-merge"
+              title="入れると、離れていても天井高さが同じ区画を1つの番号にまとめます"
+            >
+              <input
+                type="checkbox"
+                checked={mergeCeiling}
+                onChange={(e) => setMergeCeiling(e.target.checked)}
+              />
+              同じ高さをまとめる
+            </label>
             {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
               (kind) => (
                 <button
@@ -2393,7 +2426,11 @@ export default function RoomSheetPage({
               {ceilingResult.items.map((item, itemNo) => {
                 const element = item.element;
                 return (
-                  <tr key={element.id}>
+                  <tr
+                    key={element.id}
+                    className={pickedCeiling === element.id ? "picked" : ""}
+                    onClick={() => setPickedCeiling(element.id)}
+                  >
                     <td className="no">{itemNo + 1}</td>
                     <td>
                       <select
@@ -2604,7 +2641,7 @@ export default function RoomSheetPage({
             </tbody>
           </table>
           <p className="note">
-            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。天井高さが同じ区画は、離れていても1つにまとめて番号も1つにし（離れた所にも同じ番号を出します）、その境目には点線を引きません（点線が出るのは高さが違う所だけです）。下がり天井の高さをまだ入れていないところは、その線の内と外を別の区画にしておくので、区画一覧に天井高さ（部屋と同じ高さでも可）を入れてください。同じ高さを入れると点線が消えて隣とひと続きになります。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。両側が同じ高さになった下がり天井の線は、天井を分けないので薄いグレーの細い点線にします（濃い点線は高さが違う所です）。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さをまだ入れていないところは、その線の内と外を別の区画にしておくので、区画一覧に天井高さ（部屋と同じ高さでも可）を入れてください。同じ高さを入れると点線が消えて隣とひと続きになります。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
           </p>
           {ceilingCodes.length > 0 && (
             <table className="grid ceiling-regions">

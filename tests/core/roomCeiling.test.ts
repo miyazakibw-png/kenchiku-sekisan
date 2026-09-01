@@ -491,6 +491,7 @@ describe("天井の区画は高さの種類ごとにまとめる", () => {
       ],
       solved,
       2.7,
+      true,
     );
 
     // 高さは2種類（2.40の下がり天井と2.70の天井）＝2行
@@ -501,5 +502,19 @@ describe("天井の区画は高さの種類ごとにまとめる", () => {
     expect(dropped?.centers).toHaveLength(2);
     expect(dropped?.area).toBeCloseTo(8, 6);
     expect(regions.find((row) => row.height === 2.7)?.centers).toHaveLength(1);
+  });
+
+  it("まとめないときは、離れた同じ高さの区画は別の番号にする", () => {
+    const solved = shape();
+    const regions = ceilingRegions(
+      [
+        element("dropCeiling", solved.edges[0].id, { offset: 1, height: 0.3 }),
+        element("dropCeiling", solved.edges[2].id, { offset: 1, height: 0.3 }),
+      ],
+      solved,
+      2.7,
+    );
+
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2", "C3"]);
   });
 });

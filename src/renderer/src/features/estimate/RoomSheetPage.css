@@ -750,3 +750,21 @@
   stroke-width: 1;
   stroke-dasharray: 3 5;
 }
+
+/* 図でクリックして選んだ天井伏図の線と、入力表のその行 */
+.room-sheet-page .ceiling-line-hit {
+  stroke: transparent;
+  stroke-width: 10;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.room-sheet-page .ceiling-line.picked {
+  stroke: #f97316;
+  stroke-width: 4;
+}
+
+.room-sheet-page .ceiling tr.picked > td {
+  background: #fff7ed;
+  box-shadow: inset 0 0 0 1px #f97316;
+}

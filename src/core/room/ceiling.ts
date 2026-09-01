@@ -671,6 +671,8 @@ export function ceilingRegions(
   elements: CeilingElement[],
   solved: SolvedShape,
   roomCeilingHeight: number | null,
+  /** 同じ高さなら離れていても1つの区画にまとめるか（既定は隣り合う所だけまとめる） */
+  mergeSameHeight = false,
 ): CeilingRegion[] {
   const points = solved.points;
   if (points.length < 3) return [];
@@ -733,7 +735,8 @@ export function ceilingRegions(
     };
   });
 
-  // 天井高さが同じ区画は1つにまとめる（離れていてもまとめ、番号も1つ）。
+  // 天井高さが同じ区画をまとめる。
+  // 「同じ高さをまとめる」を入れていないときは、隣り合っている所だけまとめる（離れた所は別番号）。
   // 高さがまだ入っていない下がり天井のところは、高さが決まるまで別のままにする。
   const merged = new Map<string, typeof pieces>();
   pieces.forEach((piece) => {
@@ -741,8 +744,11 @@ export function ceilingRegions(
       piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`;
     merged.set(key, [...(merged.get(key) ?? []), piece]);
   });
+  const groups = [...merged.values()].flatMap((rows) =>
+    mergeSameHeight ? [rows] : clusterPieces(rows),
+  );
 
-  return [...merged.values()]
+  return groups
     .map((rows) => {
       const widest = rows.reduce((best, row) =>
         row.area > best.area ? row : best,
@@ -777,6 +783,19 @@ export function ceilingRegions(
         : left.center.x - right.center.x,
     )
     .map((row, no) => ({ code: `C${no + 1}`, ...row }));
+}
+
+/** つながっている区画どうしをまとめる（離れている所は別の区画） */
+function clusterPieces<T extends { poly: CeilingPoint[] }>(rows: T[]): T[][] {
+  const found = new Map<string, T[]>();
+  clusters(rows.map((row) => row.poly)).forEach((group, no) =>
+    group.forEach((poly) => {
+      const owner = rows.find((row) => row.poly === poly);
+      if (owner === undefined) return;
+      found.set(`${no}`, [...(found.get(`${no}`) ?? []), owner]);
+    }),
+  );
+  return [...found.values()];
 }
 
 /** つながっている形どうしをまとめる（離れている所は別のかたまり） */
