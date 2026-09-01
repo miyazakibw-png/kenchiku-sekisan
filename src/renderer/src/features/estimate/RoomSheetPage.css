@@ -568,6 +568,7 @@
 
 .room-sheet-page .kind-pick {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   padding: 0 4px;

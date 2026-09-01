@@ -1401,11 +1401,11 @@ export default function RoomSheetPage({
                 );
               }}
             >
-              壁→柱 まとめて変更
+              壁⇄柱
             </button>
             {kindPick !== null && (
               <span className="kind-pick">
-                <span>{kindPick.length}本えらび中</span>
+                <span>{kindPick.length}本選択</span>
                 <button
                   type="button"
                   disabled={kindPick.length === 0}
