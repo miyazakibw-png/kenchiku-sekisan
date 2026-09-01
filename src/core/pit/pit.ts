@@ -39,6 +39,8 @@ export interface PitShape {
   shiftX?: number;
   /** 角を動かして外枠が変わっても図の位置を保つためのずれ（縦） */
   shiftY?: number;
+  /** 柱にした壁（辺）の番号（角i→角i+1）。入っていない辺は壁 */
+  columns?: number[];
   /** 形の種類（四角・Ｌ型・コ型）。角を動かすと自由な形になる */
   kind?: PitKind;
   /** Ｌ型・コ型の欠きX（よこの欠き寸法） */
@@ -388,6 +390,7 @@ export function rectanglePit(pit: PitShape): PitShape {
   return {
     ...pit,
     points: undefined,
+    columns: undefined,
     shiftX: undefined,
     shiftY: undefined,
     kind: undefined,
@@ -605,6 +608,26 @@ export function pitEdges(pit: PitShape): PitEdge[] {
   });
 }
 
+/**
+ * 選んだ壁（辺）をまとめて柱にする／壁に戻す。
+ * 辺の番号は角i→角i+1。柱にした分は壁面長さから外し、柱長さに入る。
+ */
+export function setPitColumns(
+  pit: PitShape,
+  indexes: readonly number[],
+  column: boolean,
+): PitShape {
+  if (indexes.length === 0) return pit;
+  const current = new Set(pit.columns ?? []);
+  const before = current.size;
+  indexes.forEach((index) => {
+    if (column) current.add(index);
+    else current.delete(index);
+  });
+  if (current.size === before) return pit;
+  return { ...pit, columns: [...current].sort((a, b) => a - b) };
+}
+
 /** クリックした所に一番近い壁（辺） */
 export function nearestPitEdge(pit: PitShape, at: PitPoint): PitEdge | null {
   const edges = pitEdges(pit).filter((edge) => edge.length > 0);
@@ -650,8 +673,12 @@ export interface PitQuantity {
   symbol: string;
   /** 床面積 */
   floorArea: number;
-  /** 壁面長さ（内周） */
+  /** 壁面長さ（内周から柱の分を引いたもの） */
   wallLength: number;
+  /** 柱長さ（柱にした辺の合計） */
+  columnLength: number;
+  /** 柱面積（柱長さ×深さ） */
+  columnArea: number;
   /** 深さ */
   depth: number;
   /** 壁面面積 */
@@ -1071,7 +1098,13 @@ export function pitQuantities(
     const own = beams.filter((beam) => beam.pitId === pit.id);
     const points = pitPolygon(pit);
     const floorArea = polygonArea(points);
-    const wallLength = polygonPerimeter(points);
+    const columnSet = new Set(pit.columns ?? []);
+    const columnLength = round4(
+      pitEdges(pit)
+        .filter((each) => columnSet.has(each.index))
+        .reduce((sum, each) => sum + each.length, 0),
+    );
+    const wallLength = Math.max(polygonPerimeter(points) - columnLength, 0);
     let beamBottomArea = 0;
     let beamArea = 0;
     own.forEach((beam) => {
@@ -1084,6 +1117,8 @@ export function pitQuantities(
       symbol: pit.symbol,
       floorArea,
       wallLength,
+      columnLength,
+      columnArea: round4(columnLength * pit.depth),
       depth: pit.depth,
       wallArea: wallLength * pit.depth,
       beamBottomArea,
@@ -1113,9 +1148,11 @@ export function pitPartVariables(
       ? quantity.ceilingArea
       : partName.includes("梁")
         ? quantity.beamArea
-        : partName.includes("壁")
-          ? quantity.wallArea
-          : quantity.floorArea;
+        : partName.includes("柱")
+          ? quantity.columnArea
+          : partName.includes("壁")
+            ? quantity.wallArea
+            : quantity.floorArea;
     values[pitFormulaSymbol(index)] = value;
     total += value;
   });
@@ -1132,6 +1169,8 @@ export function pitTotal(quantities: readonly PitQuantity[]): PitQuantity {
       depth: 0,
       floorArea: sum.floorArea + quantity.floorArea,
       wallLength: sum.wallLength + quantity.wallLength,
+      columnLength: sum.columnLength + quantity.columnLength,
+      columnArea: sum.columnArea + quantity.columnArea,
       wallArea: sum.wallArea + quantity.wallArea,
       beamBottomArea: sum.beamBottomArea + quantity.beamBottomArea,
       beamArea: sum.beamArea + quantity.beamArea,
@@ -1143,6 +1182,8 @@ export function pitTotal(quantities: readonly PitQuantity[]): PitQuantity {
       depth: 0,
       floorArea: 0,
       wallLength: 0,
+      columnLength: 0,
+      columnArea: 0,
       wallArea: 0,
       beamBottomArea: 0,
       beamArea: 0,
@@ -1155,6 +1196,8 @@ export function pitTotal(quantities: readonly PitQuantity[]): PitQuantity {
     depth: 0,
     floorArea: round4(total.floorArea),
     wallLength: round4(total.wallLength),
+    columnLength: round4(total.columnLength),
+    columnArea: round4(total.columnArea),
     wallArea: round4(total.wallArea),
     beamBottomArea: round4(total.beamBottomArea),
     beamArea: round4(total.beamArea),
@@ -1167,6 +1210,8 @@ export function pitVariables(quantities: readonly PitQuantity[]): Record<string,
   const values: Record<string, number> = {};
   let floorArea = 0;
   let wallLength = 0;
+  let columnLength = 0;
+  let columnArea = 0;
   let wallArea = 0;
   let beamArea = 0;
   let beamBottomArea = 0;
@@ -1175,6 +1220,8 @@ export function pitVariables(quantities: readonly PitQuantity[]): Record<string,
     const no = pitNumber(index);
     values[`FA${no}`] = quantity.floorArea;
     values[`WL${no}`] = quantity.wallLength;
+    values[`CL${no}`] = quantity.columnLength;
+    values[`HA${no}`] = quantity.columnArea;
     values[`DP${no}`] = quantity.depth;
     values[`WA${no}`] = quantity.wallArea;
     values[`GB${no}`] = quantity.beamBottomArea;
@@ -1182,6 +1229,8 @@ export function pitVariables(quantities: readonly PitQuantity[]): Record<string,
     values[`CA${no}`] = quantity.ceilingArea;
     floorArea += quantity.floorArea;
     wallLength += quantity.wallLength;
+    columnLength += quantity.columnLength;
+    columnArea += quantity.columnArea;
     wallArea += quantity.wallArea;
     beamArea += quantity.beamArea;
     beamBottomArea += quantity.beamBottomArea;
@@ -1189,6 +1238,8 @@ export function pitVariables(quantities: readonly PitQuantity[]): Record<string,
   });
   values.FA = floorArea;
   values.WL = wallLength;
+  values.CL = columnLength;
+  values.HA = columnArea;
   values.WA = wallArea;
   values.GA = beamArea;
   values.GB = beamBottomArea;

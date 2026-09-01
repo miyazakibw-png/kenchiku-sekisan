@@ -18,6 +18,8 @@ import {
   addPitCorner,
   alignPitCorners,
   alignPits,
+  pitEdges,
+  setPitColumns,
   setPitCorner,
   setPitKind,
   beamLines,
@@ -155,7 +157,13 @@ export default function PitSheetPage({
   const [beamWidth, setBeamWidth] = useState(0.3);
   const [beamHeight, setBeamHeight] = useState(0.6);
   /** 図のクリックで何をするか（梁を置く／形の角を直す） */
-  const [planMode, setPlanMode] = useState<"beam" | "shape">("beam");
+  const [planMode, setPlanMode] = useState<"beam" | "shape" | "column">(
+    "beam",
+  );
+  /** 壁⇄柱 で選んでいる壁（辺） */
+  const [pickedEdges, setPickedEdges] = useState<
+    { pitId: string; index: number }[]
+  >([]);
   /** 選んでいる角（○印） */
   const [corners, setCorners] = useState<{ pitId: string; index: number }[]>(
     [],
@@ -633,6 +641,53 @@ export default function PitSheetPage({
     [beamHeight, beamWidth, changeBeams, pits],
   );
 
+  /** 壁⇄柱 で、壁（辺）を選ぶ／外す */
+  const toggleEdge = useCallback(
+    (pitId: string, at: { x: number; y: number }) => {
+      const pit = pits.find((each) => each.id === pitId);
+      const edge = pit ? nearestPitEdge(pit, at) : null;
+      if (!pit || !edge) return;
+      setPickedEdges((current) => {
+        const on = current.some(
+          (each) => each.pitId === pitId && each.index === edge.index,
+        );
+        const next = on
+          ? current.filter(
+              (each) => each.pitId !== pitId || each.index !== edge.index,
+            )
+          : [...current, { pitId, index: edge.index }];
+        setMessage(`選んでいる壁 ${next.length}本（選んだら「✓ 柱にする」）`);
+        return next;
+      });
+    },
+    [pits],
+  );
+
+  /** 選んだ壁（辺）をまとめて柱にする／壁に戻す */
+  const applyPickedEdges = useCallback(
+    (column: boolean) => {
+      if (pickedEdges.length === 0) {
+        setMessage("図の壁をクリックして選んでから押してください");
+        return;
+      }
+      const count = pickedEdges.length;
+      changePits((current) =>
+        current.map((pit) =>
+          setPitColumns(
+            pit,
+            pickedEdges
+              .filter((each) => each.pitId === pit.id)
+              .map((each) => each.index),
+            column,
+          ),
+        ),
+      );
+      setPickedEdges([]);
+      setMessage(`${count}本を「${column ? "柱" : "壁"}」にしました`);
+    },
+    [changePits, pickedEdges],
+  );
+
   /** 選んだピットを、はじめに選んだピットの辺にそろえる */
   const alignPicked = useCallback(
     (side: PitAlignSide) => {
@@ -677,7 +732,11 @@ export default function PitSheetPage({
                 onClick={(event) => {
                   if (printMode) return;
                   const box = event.currentTarget.getBoundingClientRect();
-                  if (planMode === "shape" || beamAxis === "E") {
+                  if (
+                    planMode === "shape" ||
+                    planMode === "column" ||
+                    beamAxis === "E"
+                  ) {
                     const svg = event.currentTarget.ownerSVGElement;
                     if (!svg) return;
                     const area = svg.getBoundingClientRect();
@@ -692,6 +751,8 @@ export default function PitSheetPage({
                         (plan.height + 2) -
                       rect.top;
                     if (planMode === "shape") addCorner(rect.id, px, py);
+                    else if (planMode === "column")
+                      toggleEdge(rect.id, { x: px, y: py });
                     else placeEdgeBeam(rect.id, { x: px, y: py });
                     return;
                   }
@@ -742,6 +803,28 @@ export default function PitSheetPage({
                 ),
               ),
             )}
+          {/* 柱にした壁・選んでいる壁を色分けして出す */}
+          {plan.rects.flatMap((rect) => {
+            const pit = pits.find((each) => each.id === rect.id);
+            if (!pit) return [];
+            return pitEdges(pit).flatMap((line) => {
+              const on = (pit.columns ?? []).includes(line.index);
+              const pick = pickedEdges.some(
+                (each) => each.pitId === rect.id && each.index === line.index,
+              );
+              if (!on && !pick) return [];
+              return [
+                <line
+                  key={`kind-${rect.id}-${line.index}`}
+                  x1={rect.left + line.from.x}
+                  y1={rect.top + line.from.y}
+                  x2={rect.left + line.to.x}
+                  y2={rect.top + line.to.y}
+                  className={pick ? "pit-edge-picked" : "pit-edge-column"}
+                />,
+              ];
+            });
+          })}
           {plan.rects.map((rect) => {
             const pit = pits.find((each) => each.id === rect.id);
             const at = pit
@@ -822,8 +905,10 @@ export default function PitSheetPage({
           <th>記号</th>
           <th className="num">床面積</th>
           <th className="num">壁面長さ</th>
+          <th className="num">柱長さ</th>
           <th className="num">深さ</th>
           <th className="num">壁面面積</th>
+          <th className="num">柱面積</th>
           <th className="num">梁底面積</th>
           <th className="num">梁面積</th>
           <th className="num">天井面積</th>
@@ -834,8 +919,10 @@ export default function PitSheetPage({
           <td>ＰＡ</td>
           <td className="num">{formatNumber(total.floorArea, 2)}</td>
           <td className="num">{formatNumber(total.wallLength, 2)}</td>
+          <td className="num">{formatNumber(total.columnLength, 2)}</td>
           <td className="num"></td>
           <td className="num">{formatNumber(total.wallArea, 2)}</td>
+          <td className="num">{formatNumber(total.columnArea, 2)}</td>
           <td className="num">{formatNumber(total.beamBottomArea, 2)}</td>
           <td className="num">{formatNumber(total.beamArea, 2)}</td>
           <td className="num">{formatNumber(total.ceilingArea, 2)}</td>
@@ -845,8 +932,10 @@ export default function PitSheetPage({
             <td>{quantity.symbol}</td>
             <td className="num">{formatNumber(quantity.floorArea, 2)}</td>
             <td className="num">{formatNumber(quantity.wallLength, 2)}</td>
+            <td className="num">{formatNumber(quantity.columnLength, 2)}</td>
             <td className="num">{formatNumber(quantity.depth, 2)}</td>
             <td className="num">{formatNumber(quantity.wallArea, 2)}</td>
+            <td className="num">{formatNumber(quantity.columnArea, 2)}</td>
             <td className="num">{formatNumber(quantity.beamBottomArea, 2)}</td>
             <td className="num">{formatNumber(quantity.beamArea, 2)}</td>
             <td className="num">{formatNumber(quantity.ceilingArea, 2)}</td>
@@ -974,6 +1063,7 @@ export default function PitSheetPage({
                 <th className="num">すき間／X位置</th>
                 <th className="num">床面積</th>
                 <th className="num">壁面長さ</th>
+                <th className="num">柱長さ</th>
                 <th className="num">壁面面積</th>
                 <th className="num">梁底面積</th>
                 <th className="num">梁面積</th>
@@ -997,6 +1087,9 @@ export default function PitSheetPage({
                 </td>
                 <td className="num">
                   {formatNumber(total.wallLength, 2)}
+                </td>
+                <td className="num">
+                  {formatNumber(total.columnLength, 2)}
                 </td>
                 <td className="num">{formatNumber(total.wallArea, 2)}</td>
                 <td className="num">
@@ -1291,6 +1384,9 @@ export default function PitSheetPage({
                     {formatNumber(quantities[index]?.wallLength ?? 0, 2)}
                   </td>
                   <td className="num">
+                    {formatNumber(quantities[index]?.columnLength ?? 0, 2)}
+                  </td>
+                  <td className="num">
                     {formatNumber(quantities[index]?.wallArea ?? 0, 2)}
                   </td>
                   <td className="num">
@@ -1445,7 +1541,9 @@ export default function PitSheetPage({
               平面図（
               {planMode === "beam"
                 ? "クリックで梁型を置く"
-                : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}）／全体{" "}
+                : planMode === "column"
+                  ? "壁⇄柱中：図の壁をまとめてクリックし、「✓ 柱にする」を押す"
+                  : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}）／全体{" "}
               {pitCornerCount(pits)}角
             </h3>
             <button
@@ -1486,6 +1584,50 @@ export default function PitSheetPage({
                 ? "✓ ○角を消して梁入力に戻る"
                 : "○ 形を直す"}
             </button>
+            <button
+              type="button"
+              className={planMode === "column" ? "on" : ""}
+              title="押してから図の壁をまとめてクリックし、一括で柱（または壁）にします。柱にした分は壁面長さから外れ、柱長さに入ります"
+              onClick={() => {
+                const next = planMode === "column" ? "beam" : "column";
+                setPlanMode(next);
+                setCorners([]);
+                setPickedEdges([]);
+                setMessage(
+                  next === "column"
+                    ? "柱にする壁を図でクリックして選んでください（何本でも）"
+                    : "壁⇄柱 をやめました",
+                );
+              }}
+            >
+              壁⇄柱
+            </button>
+            {planMode === "column" && (
+              <span className="kind-pick">
+                <span>{pickedEdges.length}本選択</span>
+                <button
+                  type="button"
+                  disabled={pickedEdges.length === 0}
+                  onClick={() => applyPickedEdges(true)}
+                >
+                  ✓ 柱にする
+                </button>
+                <button
+                  type="button"
+                  disabled={pickedEdges.length === 0}
+                  onClick={() => applyPickedEdges(false)}
+                >
+                  ✓ 壁に戻す
+                </button>
+                <button
+                  type="button"
+                  disabled={pickedEdges.length === 0}
+                  onClick={() => setPickedEdges([])}
+                >
+                  選び直す
+                </button>
+              </span>
+            )}
             {planMode === "shape" && (
               <>
                 <label>

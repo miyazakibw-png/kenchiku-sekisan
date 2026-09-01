@@ -25,6 +25,7 @@ import {
   pitCornerCount,
   pitPolygon,
   pitQuantities,
+  setPitColumns,
   pitTotal,
   pitPartVariables,
   pitSymbol,
@@ -841,5 +842,43 @@ describe("ＰＡ（全ピットの合計）", () => {
       quantities[0].wallArea + quantities[1].wallArea,
       6,
     );
+  });
+});
+
+describe("壁⇄柱（ピットの辺をまとめて柱にする）", () => {
+  it("選んだ辺だけ柱になり、壁面長さから外れて柱長さに入る", () => {
+    const base = pit("a", { x: 4, y: 2, depth: 1.5 });
+    const next = setPitColumns(base, [0, 2], true);
+
+    expect(next.columns).toEqual([0, 2]);
+    const [quantity] = pitQuantities([next], []);
+    expect(quantity.columnLength).toBe(8);
+    expect(quantity.wallLength).toBe(4);
+    expect(quantity.columnArea).toBe(12);
+    expect(quantity.wallArea).toBe(6);
+    expect(quantity.floorArea).toBe(pitQuantities([base], [])[0].floorArea);
+  });
+
+  it("柱を壁に戻せる／選んでいないときと変わらないときは元のまま", () => {
+    const base = pit("a");
+    const columns = setPitColumns(base, [1], true);
+
+    expect(setPitColumns(columns, [1], false).columns).toEqual([]);
+    expect(setPitColumns(base, [], true)).toBe(base);
+    expect(setPitColumns(base, [1], false)).toBe(base);
+    expect(setPitColumns(columns, [1], true)).toBe(columns);
+  });
+
+  it("合計（ＰＡ）と計算式の記号にも柱が入る", () => {
+    const shapes = [setPitColumns(pit("a", { x: 4, y: 2, depth: 1 }), [0], true)];
+    const total = pitTotal(pitQuantities(shapes, []));
+    expect(total.columnLength).toBe(4);
+    expect(total.columnArea).toBe(4);
+
+    const values = pitVariables(pitQuantities(shapes, []));
+    expect(values.CL1).toBe(4);
+    expect(values.HA1).toBe(4);
+    expect(values.CL).toBe(4);
+    expect(values.HA).toBe(4);
   });
 });

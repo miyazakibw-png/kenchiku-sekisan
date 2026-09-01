@@ -106,6 +106,20 @@
   stroke-opacity: 0.9;
 }
 
+/* 柱にした壁（辺） */
+.pit-plan .pit-edge-column {
+  stroke: #c81e1e;
+  stroke-width: 0.14;
+  pointer-events: none;
+}
+
+/* 壁⇄柱 で選んでいる壁（辺） */
+.pit-plan .pit-edge-picked {
+  stroke: #ea580c;
+  stroke-width: 0.16;
+  pointer-events: none;
+}
+
 .pit-print-upper {
   display: flex;
   gap: 8px;
@@ -180,4 +194,17 @@
 .pit-list .grid tbody tr.pit-total td {
   background: #eef3fb;
   font-weight: 600;
+}
+
+/* 壁⇄柱 の操作（選んだ本数と確定ボタン） */
+.pit-sheet-page .kind-pick,
+.pit-plan-tools .kind-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid #ea580c;
+  border-radius: 4px;
+  background: #fff7ed;
 }
