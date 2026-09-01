@@ -1359,3 +1359,35 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
 
   return symbols;
 }
+
+/**
+ * 下がり天井の線を、壁から壁まで引き切ったもの（区画を切っている線そのもの）。
+ * 大きく開いて高さを入れるときは、途中で止めずにこの線を出す。
+ */
+export function ceilingCutLines(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): CeilingLine[] {
+  const points = solved.points;
+  if (points.length < 3) return [];
+  return elements.flatMap((element) => {
+    if (element.kind !== "dropCeiling") return [];
+    const line = wallToWallLine(
+      points,
+      solved.edges.findIndex((row) => row.id === element.edgeId),
+      element.offset ?? 0,
+    );
+    if (line === null) return [];
+    return [
+      {
+        ...line,
+        elementId: element.id,
+        kind: element.kind,
+        no: 0,
+        distance: 0,
+        same: elementDrop(element, roomCeilingHeight) === 0,
+      },
+    ];
+  });
+}

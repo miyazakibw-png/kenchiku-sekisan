@@ -57,6 +57,7 @@ import {
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
   ceilingBoundaries,
+  ceilingCutLines,
   ceilingRegions,
   normalizeCeilingHeights,
   type CeilingElement,
@@ -544,7 +545,13 @@ export default function RoomSheetPage({
     // 拡大して高さを入れるときは、入れた線をすべて出す（同じ高さの所は薄い点線）。
     // 通常画面・印刷は、高さが違う区画の境目だけを出す。
     const drawn = editCeiling
-      ? buildCeilingLines(ceiling, solved, ceilingHeight)
+      ? [
+          ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
+            (line) => line.kind !== "dropCeiling",
+          ),
+          // 区画を切っている線は、途中で止めずに壁から壁まで出す
+          ...ceilingCutLines(ceiling, solved, ceilingHeight),
+        ]
       : [
           ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
             (line) => line.kind !== "dropCeiling",
