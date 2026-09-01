@@ -20,6 +20,7 @@ import {
   alignPits,
   pitEdges,
   setPitColumns,
+  setPitPoints,
   setPitCorner,
   setPitKind,
   beamLines,
@@ -50,6 +51,12 @@ import {
   type PitDirection,
   type PitShape,
 } from "../../../../core/pit/pit";
+import {
+  EMPTY_TRACE,
+  parseTrace,
+  type RoomTrace,
+} from "../../../../core/room/trace";
+import RoomTracePanel from "./RoomTracePanel";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import CalcPrintSheet from "../print/CalcPrintSheet";
@@ -174,8 +181,14 @@ export default function PitSheetPage({
   const [notchGap, setNotchGap] = useState(DEFAULT_PIT_GAP);
   /** まとめてそろえるために選んでいるピット */
   const [picked, setPicked] = useState<string[]>([]);
+  /** 図面画像となぞった点・縮尺（数量根拠として保存する） */
+  const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
+  /** 図面をなぞる画面を出しているか */
+  const [showTrace, setShowTrace] = useState(false);
+  /** 図（平面図）を画面いっぱいに開いているか */
+  const [expanded, setExpanded] = useState(false);
 
-  const { markSaved } = useSaveOnLeave({ pits, beams, lower, note }, () =>
+  const { markSaved } = useSaveOnLeave({ pits, beams, lower, note, trace }, () =>
     save(),
   );
 
@@ -245,11 +258,13 @@ export default function PitSheetPage({
       setBeams(loadedBeams);
       setLower(sets);
       setNote(loaded.note);
+      setTrace(parseTrace(loaded.traceJson));
       markSaved({
         pits: loadedPits,
         beams: loadedBeams,
         lower: sets,
         note: loaded.note,
+        trace: parseTrace(loaded.traceJson),
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
@@ -306,17 +321,18 @@ export default function PitSheetPage({
     if (!sheet || printMode) return;
     const trimmed = trimEmptySets(lower);
     setLower(trimmed);
-    markSaved({ pits, beams, lower: trimmed, note });
+    markSaved({ pits, beams, lower: trimmed, note, trace });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
       pitsJson: JSON.stringify(pits),
       beamsJson: JSON.stringify(beams),
       lowerJson: JSON.stringify(trimmed),
+      traceJson: JSON.stringify(trace),
       note,
     });
     setSheet(saved);
     setMessage("保存しました");
-  }, [beams, lower, markSaved, note, pits, printMode, sheet]);
+  }, [beams, lower, markSaved, note, pits, printMode, sheet, trace]);
 
   const closePage = useCallback(() => {
     if (calcResult.errors.length > 0 && !warned) {
@@ -354,6 +370,34 @@ export default function PitSheetPage({
       ]);
     });
   }, [changePits]);
+
+  /**
+   * なぞった図（実寸mの点）をピットの形にする。
+   * 「選」にチェックが1つだけあるときはそのピットの形を直し、無いときは新しいピットを足す。
+   */
+  const applyTrace = useCallback(
+    (points: { x: number; y: number }[]) => {
+      const target = picked.length === 1 ? picked[0] : null;
+      changePits((current) => {
+        if (target !== null && current.some((pit) => pit.id === target))
+          return current.map((pit) =>
+            pit.id === target ? setPitPoints(pit, points) : pit,
+          );
+        const last = current[current.length - 1];
+        const made: PitShape = {
+          id: newId("pit"),
+          symbol: pitSymbol(current.length),
+          x: 4,
+          y: 4,
+          depth: last?.depth ?? 1,
+          direction: "right",
+          gap: last?.gap ?? DEFAULT_PIT_GAP,
+        };
+        return renumber([...current, setPitPoints(made, points)]);
+      });
+    },
+    [changePits, picked],
+  );
 
   /** Ｌ型・コ型で欠いた所へ、ぴったり収まる四角のピットを足す */
   const addNotchPit = useCallback(
@@ -985,7 +1029,7 @@ export default function PitSheetPage({
         <span className="status">{message}</span>
       </div>
 
-      <div className="pit-upper">
+      <div className={expanded ? "pit-upper expanded" : "pit-upper"}>
         <section className="pit-list">
           <div className="section-bar">
             <h3>ピット（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
@@ -1628,6 +1672,22 @@ export default function PitSheetPage({
                 </button>
               </span>
             )}
+            <button
+              type="button"
+              className={showTrace ? "on" : ""}
+              title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け（PDF・画像ファイルも可）、なぞってピットの形にします。「選」を1つだけ付けているとそのピットの形を直し、付けていないときは新しいピットを足します"
+              onClick={() => setShowTrace(true)}
+            >
+              🖼 図面をなぞる
+            </button>
+            <button
+              type="button"
+              className={expanded ? "on" : ""}
+              title="図を画面いっぱいに開いて、そのまま入力できます"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "✕ 閉じる" : "⤡ 大きく開く"}
+            </button>
             {planMode === "shape" && (
               <>
                 <label>
@@ -1802,6 +1862,24 @@ export default function PitSheetPage({
         </section>
 
       </div>
+
+      {showTrace && !printMode && (
+        <RoomTracePanel
+          trace={trace}
+          onChange={setTrace}
+          targetName="ピット"
+          onApply={(_shape, meters) => {
+            applyTrace(meters);
+            setShowTrace(false);
+            setMessage(
+              picked.length === 1
+                ? "なぞった形をそのピットに入れました（寸法は表・「○ 形を直す」で直せます）"
+                : "なぞった形で新しいピットを作りました（寸法は表・「○ 形を直す」で直せます）",
+            );
+          }}
+          onClose={() => setShowTrace(false)}
+        />
+      )}
 
       <RoomCalcSheet
         sets={lower}

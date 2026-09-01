@@ -26,6 +26,7 @@ import {
   pitPolygon,
   pitQuantities,
   setPitColumns,
+  setPitPoints,
   pitTotal,
   pitPartVariables,
   pitSymbol,
@@ -880,5 +881,35 @@ describe("壁⇄柱（ピットの辺をまとめて柱にする）", () => {
     expect(values.HA1).toBe(4);
     expect(values.CL).toBe(4);
     expect(values.HA).toBe(4);
+  });
+});
+
+describe("なぞった図をピットの形にする", () => {
+  it("左上を0にそろえ、X・Yは外形の大きさになる（欠き・柱の指定は作り直す）", () => {
+    const base = setPitColumns(
+      setPitKind(pit("a", { x: 4, y: 2 }), "L"),
+      [0],
+      true,
+    );
+    const next = setPitPoints(base, [
+      { x: 10, y: 5 },
+      { x: 16, y: 5 },
+      { x: 16, y: 9 },
+      { x: 13, y: 9 },
+      { x: 13, y: 8 },
+      { x: 10, y: 8 },
+    ]);
+
+    expect(next.x).toBe(6);
+    expect(next.y).toBe(4);
+    expect(next.kind).toBeUndefined();
+    expect(next.columns).toBeUndefined();
+    expect(pitPolygon(next)[0]).toEqual({ x: 0, y: 0 });
+    expect(polygonArea(pitPolygon(next))).toBe(21);
+  });
+
+  it("3点より少ないときは元のまま", () => {
+    const base = pit("a");
+    expect(setPitPoints(base, [{ x: 0, y: 0 }, { x: 1, y: 0 }])).toBe(base);
   });
 });

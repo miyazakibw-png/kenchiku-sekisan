@@ -353,10 +353,18 @@ export interface PitSheet {
   beamsJson: string;
   /** セット明細計算表 */
   lowerJson: string;
+  /** 図面画像となぞった点・縮尺（RoomTrace）のJSON */
+  traceJson: string;
   note: string;
 }
 
-export type SavePitSheetRequest = Omit<PitSheet, "projectId" | "estimateRowId">;
+export type SavePitSheetRequest = Omit<
+  PitSheet,
+  "projectId" | "estimateRowId" | "traceJson"
+> & {
+  /** 図面画像となぞった点（省略したときは今のまま） */
+  traceJson?: string;
+};
 
 /**
  * 転記入力表の1行（1明細）。

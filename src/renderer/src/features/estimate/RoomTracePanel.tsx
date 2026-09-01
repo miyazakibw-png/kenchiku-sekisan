@@ -17,8 +17,11 @@ import "./RoomTracePanel.css";
 interface Props {
   trace: RoomTrace;
   onChange: (trace: RoomTrace) => void;
-  onApply: (shape: RoomShape) => void;
+  /** なぞった形を使う（meters は実寸（m）の点の並び。ピットの形にも使う） */
+  onApply: (shape: RoomShape, meters: Point[]) => void;
   onClose: () => void;
+  /** 見出しの名前（部屋・ピットなど） */
+  targetName?: string;
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -45,6 +48,7 @@ export default function RoomTracePanel({
   onChange,
   onApply,
   onClose,
+  targetName = "部屋",
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
   const [mode, setMode] = useState<"scale" | "trace">("scale");
@@ -224,7 +228,7 @@ export default function RoomTracePanel({
     });
     setMode("trace");
     setMessage(
-      "部屋の角を順にクリックしてなぞってください（直角に合わせます）。最後に「この形にする」",
+      `${targetName}の角を順にクリックしてなぞってください（直角に合わせます）。最後に「この形にする」`,
     );
   };
 
@@ -236,7 +240,7 @@ export default function RoomTracePanel({
   const apply = (): void => {
     if (points.length < 3) {
       setWarn(true);
-      setMessage("部屋の角を3点以上クリックしてください");
+      setMessage(`${targetName}の角を3点以上クリックしてください`);
       return;
     }
     // 縮尺がまだのときは「一番長い辺の実寸」から出す（やり直さずに済むように）
@@ -253,10 +257,11 @@ export default function RoomTracePanel({
         return;
       }
     }
-    const shape = pointsToShape(toMeters(points, value));
+    const meters = toMeters(points, value);
+    const shape = pointsToShape(meters);
     setWarn(false);
     onChange({ ...trace, metersPerPixel: value, scalePoints, points });
-    onApply(shape);
+    onApply(shape, meters);
   };
 
   const area =
@@ -286,8 +291,8 @@ export default function RoomTracePanel({
             setWarn(perPixel === 0);
             setMessage(
               perPixel === 0
-                ? "縮尺がまだです。部屋の角をなぞったあと、下の「一番長い辺の実寸」に長さ（m）を入れて「✓ この形にする」を押してください"
-                : "部屋の角を順にクリックしてなぞってください。最後に「✓ この形にする」",
+                ? `縮尺がまだです。${targetName}の角をなぞったあと、下の「一番長い辺の実寸」に長さ（m）を入れて「✓ この形にする」を押してください`
+                : `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」`,
             );
           }}
         >
@@ -318,14 +323,14 @@ export default function RoomTracePanel({
         </button>
         <button
           type="button"
-          title="貼った図面となぞりを消します（部屋形状はそのまま残ります）"
+          title={`貼った図面となぞりを消します（${targetName}の形はそのまま残ります）`}
           disabled={trace.image === ""}
           onClick={() => {
             onChange({ ...EMPTY_TRACE });
             setScalePoints([]);
             setPoints([]);
             setMode("scale");
-            setMessage("図面を消しました（部屋形状はそのままです）");
+            setMessage(`図面を消しました（${targetName}の形はそのままです）`);
           }}
         >
           🗑 画像を消す

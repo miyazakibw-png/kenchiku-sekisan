@@ -430,6 +430,8 @@ export const projectPitSheets = sqliteTable("project_pit_sheets", {
   beamsJson: text("beams_json").notNull().default("[]"),
   /** 下段のセット明細計算表 */
   lowerJson: text("lower_json").notNull().default("[]"),
+  /** 図面画像となぞった点・縮尺（数量根拠として残す） */
+  traceJson: text("trace_json").notNull().default("{}"),
   note: text("note").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
 });

@@ -899,4 +899,8 @@ ALTER TABLE project_fittings ADD COLUMN sill_height_formula TEXT NOT NULL DEFAUL
   `
 ALTER TABLE project_room_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
 `,
+  // ピット計算書にも図面画像を貼ってなぞれるようにする
+  `
+ALTER TABLE project_pit_sheets ADD COLUMN trace_json TEXT NOT NULL DEFAULT '{}';
+`,
 ];

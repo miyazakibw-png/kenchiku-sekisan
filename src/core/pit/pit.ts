@@ -280,6 +280,34 @@ function withPoints(pit: PitShape, points: readonly PitPoint[]): PitShape {
   };
 }
 
+/**
+ * なぞった図（mの点の並び）をピットの形にする。
+ * 左上を0にそろえ、X・Yは外形の最大寸法にする（欠き・柱の指定は作り直す）。
+ */
+export function setPitPoints(
+  pit: PitShape,
+  points: readonly PitPoint[],
+): PitShape {
+  if (points.length < 3) return pit;
+  const fixed = normalizePoints(points);
+  return {
+    ...pit,
+    points: fixed,
+    x: round4(Math.max(...fixed.map((point) => point.x))),
+    y: round4(Math.max(...fixed.map((point) => point.y))),
+    kind: undefined,
+    columns: undefined,
+    corners: undefined,
+    cutW: undefined,
+    cutD: undefined,
+    cutCorner: undefined,
+    cutSide: undefined,
+    cutAt: undefined,
+    cutX: undefined,
+    cutY: undefined,
+  };
+}
+
 /** 選んだ角を上下左右へ動かす（右・下がプラス） */
 export function movePitCorner(
   pit: PitShape,
