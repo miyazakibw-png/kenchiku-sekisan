@@ -336,6 +336,8 @@ export interface CeilingLine extends CeilingSegment {
   no: number;
   /** 沿う辺からの離れ */
   distance: number;
+  /** 両側が同じ高さ（下がり0）で、天井を分けていない線か */
+  same: boolean;
 }
 
 /**
@@ -352,12 +354,6 @@ export function ceilingLines(
 ): CeilingLine[] {
   const points = solved.points;
   if (points.length < 3) return [];
-  // 両側が同じ高さ（下がり0を入れた）下がり天井は、天井を分けないので線を引かない
-  elements = elements.filter(
-    (element) =>
-      element.kind !== "dropCeiling" ||
-      elementDrop(element, roomCeilingHeight) !== 0,
-  );
 
   const distancesOf = (element: CeilingElement): number[] => {
     const width = element.width ?? 0;
@@ -392,6 +388,9 @@ export function ceilingLines(
             kind: element.kind,
             no,
             distance,
+            same:
+              element.kind === "dropCeiling" &&
+              elementDrop(element, roomCeilingHeight) === 0,
           };
     });
     return {

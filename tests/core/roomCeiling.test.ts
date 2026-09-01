@@ -402,7 +402,10 @@ describe("天井伏図", () => {
     const regions = ceilingRegions([same], solved, 2.7);
     expect(regions.map((row) => row.code)).toEqual(["C1"]);
     expect(regions[0].height).toBe(2.7);
-    expect(ceilingLines([same], solved, 2.7)).toHaveLength(0);
+    // 線は図に残す（天井を分けていない線として薄く出す）
+    expect(ceilingLines([same], solved, 2.7).map((line) => line.same)).toEqual([
+      true,
+    ]);
   });
 
   it("下がる側を線の向こう側に入れ替えられる", () => {

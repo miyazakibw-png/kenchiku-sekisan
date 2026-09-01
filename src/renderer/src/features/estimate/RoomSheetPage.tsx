@@ -545,6 +545,7 @@ export default function RoomSheetPage({
           key: `${line.elementId}-${line.no}`,
           elementId: line.elementId,
           kind: line.kind,
+          same: line.same,
           x1: line.a.x,
           y1: line.a.y,
           x2: line.b.x,
@@ -1676,7 +1677,7 @@ export default function RoomSheetPage({
                       y1={line.y1}
                       x2={line.x2}
                       y2={line.y2}
-                      className={`ceiling-line ${line.kind}`}
+                      className={`ceiling-line ${line.kind}${line.same ? " same" : ""}`}
                     />
                     {line.label !== "" && (
                       <text

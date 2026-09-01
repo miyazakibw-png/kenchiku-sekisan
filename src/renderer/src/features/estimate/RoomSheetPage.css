@@ -743,3 +743,10 @@
   background: #fff1f2;
   color: #b91c1c;
 }
+
+/* 両側が同じ高さ（下がり0）の下がり天井の線。天井は分けないので薄く出す */
+.room-sheet-page .ceiling-line.dropCeiling.same {
+  stroke: #94a3b8;
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
