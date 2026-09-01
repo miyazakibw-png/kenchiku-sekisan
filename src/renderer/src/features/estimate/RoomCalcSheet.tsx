@@ -1691,6 +1691,17 @@ export default function RoomCalcSheet({
                       colSpan={CALC_COLUMNS.length}
                       style={{ background: set.banner.color }}
                     >
+                      <button
+                        type="button"
+                        title="このコメント行を消します"
+                        onClick={() =>
+                          isCommentSet(set)
+                            ? commit(removeSet(sets, set.id))
+                            : updateSet(set.id, { banner: null })
+                        }
+                      >
+                        ✕
+                      </button>
                       <input
                         lang="ja"
                         value={set.banner.text}
@@ -1704,17 +1715,6 @@ export default function RoomCalcSheet({
                           })
                         }
                       />
-                      <button
-                        type="button"
-                        title="このコメント行を消します"
-                        onClick={() =>
-                          isCommentSet(set)
-                            ? commit(removeSet(sets, set.id))
-                            : updateSet(set.id, { banner: null })
-                        }
-                      >
-                        ✕
-                      </button>
                     </td>
                   </tr>
                 )}

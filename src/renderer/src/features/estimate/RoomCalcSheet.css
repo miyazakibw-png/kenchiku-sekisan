@@ -410,6 +410,7 @@
 
 .room-calc-sheet tr.banner-row input {
   width: calc(100% - 26px);
+  vertical-align: middle;
   background: transparent;
   border: none;
   font: inherit;
