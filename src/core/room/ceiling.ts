@@ -1210,6 +1210,9 @@ export function ceilingQuantities(
   // 下がり天井・天井付梁型は壁や、自分より低くなる線のところで止まる
   const lines = ceilingLines(elements, solved, roomCeilingHeight);
   const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  // 下がり天井は、段差になっている所の長さと、下げている範囲の面積で数える
+  const spans = dropCeilingSpans(elements, solved, roomCeilingHeight);
+  const dropAreas = dropCeilingAreas(elements, solved, roomCeilingHeight);
 
   const items = elements.map((element) => {
     const crossing =
@@ -1217,8 +1220,13 @@ export function ceilingQuantities(
         ? (lines.find((line) => line.elementId === element.id) ?? null)
         : null;
     // 下がり天井・天井付梁型は、壁や自分より低い線で止めた実際の長さで数える
+    // 下がり天井は段差になっている所だけ数える（両側が同じ高さなら0）
     const length =
-      crossing?.length ?? element.length ?? edgeLength(solved, element.edgeId);
+      element.kind === "dropCeiling" && crossing !== null
+        ? (spans.get(element.id) ?? 0)
+        : (crossing?.length ??
+          element.length ??
+          edgeLength(solved, element.edgeId));
     // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは取りつく天井から自動で決める
     const baseHeight = bases.get(element.id) ?? roomCeilingHeight;
     const drop = elementDrop(element, baseHeight);
@@ -1248,7 +1256,7 @@ export function ceilingQuantities(
           break;
         case "dropCeiling":
           totals.dropCeilingLength += length;
-          area = element.area;
+          area = element.area ?? dropAreas.get(element.id) ?? null;
           totals.dropCeilingArea += area ?? 0;
           if (drop !== null) {
             byHeight.set(drop, round2((byHeight.get(drop) ?? 0) + length));
@@ -1390,4 +1398,71 @@ export function ceilingCutLines(
       },
     ];
   });
+}
+
+/** 2つの線分が重なっている長さ（同じ向きに並んでいるとき） */
+function overlapLength(base: CeilingSegment, other: CeilingSegment): number {
+  const span = { x: base.b.x - base.a.x, y: base.b.y - base.a.y };
+  const size = Math.hypot(span.x, span.y);
+  if (size < 1e-9) return 0;
+  const dir = { x: span.x / size, y: span.y / size };
+  const gapA = { x: other.a.x - base.a.x, y: other.a.y - base.a.y };
+  const gapB = { x: other.b.x - base.a.x, y: other.b.y - base.a.y };
+  if (Math.abs(cross(dir, gapA)) > 1e-6 || Math.abs(cross(dir, gapB)) > 1e-6)
+    return 0;
+  const from = gapA.x * dir.x + gapA.y * dir.y;
+  const to = gapB.x * dir.x + gapB.y * dir.y;
+  const low = Math.max(0, Math.min(from, to));
+  const high = Math.min(size, Math.max(from, to));
+  return Math.max(0, high - low);
+}
+
+/**
+ * 下がり天井の、実際に段差になっている長さ。
+ * 図に出る線（区画のふちのうち、両側の高さが違う所）の長さで、
+ * 突き当たる壁・自分より低い線・梁型で止まった分だけ数える。
+ */
+export function dropCeilingSpans(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): Map<string, number> {
+  const drawn = ceilingLines(elements, solved, roomCeilingHeight);
+  const spans = new Map<string, number>();
+  ceilingBoundaries(elements, solved, roomCeilingHeight).forEach((edge) => {
+    const length = drawn
+      .filter((line) => line.elementId === edge.elementId)
+      .reduce((sum, line) => sum + overlapLength(line, edge), 0);
+    if (length < 1e-6) return;
+    spans.set(
+      edge.elementId,
+      round2((spans.get(edge.elementId) ?? 0) + length),
+    );
+  });
+  return spans;
+}
+
+/** 下がり天井が下げている天井の面積（線で区切られた範囲から自動で出す） */
+export function dropCeilingAreas(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): Map<string, number> {
+  const areas = new Map<string, number>();
+  ceilingRegions(elements, solved, roomCeilingHeight, false, true).forEach(
+    (region) => {
+      if (region.drop <= 1e-6) return;
+      // その範囲の高さを決めている下がり天井（重なっているときは後の行）
+      const owner = elements
+        .filter(
+          (element) =>
+            region.elementIds.includes(element.id) &&
+            (elementDrop(element, roomCeilingHeight) ?? 0) > 1e-6,
+        )
+        .at(-1);
+      if (owner === undefined) return;
+      areas.set(owner.id, round2((areas.get(owner.id) ?? 0) + region.area));
+    },
+  );
+  return areas;
 }

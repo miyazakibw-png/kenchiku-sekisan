@@ -95,7 +95,8 @@ describe("天井伏図", () => {
       { drop: 0.3, length: 6 },
       { drop: 0.5, length: 3 },
     ]);
-    expect(result.totals.dropCeilingArea).toBe(4);
+    // 面積は入れた分（4）＋入れていない2本は下げている区画から自動（3＋3）
+    expect(result.totals.dropCeilingArea).toBe(10);
   });
 
   it("下がり天井の線は壁に当たるところで止まり、その長さを自動で使う", () => {
@@ -567,5 +568,21 @@ describe("区画の境目の線", () => {
       2.7,
     );
     expect(lines).toHaveLength(1);
+  });
+
+  it("下がり天井の長さは段差になっている所だけ、面積は下げている区画から自動で出す", () => {
+    // 4×3の部屋。右の壁から1m入った所で下がる（区画は1×3）
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[1].id, {
+      offset: 1,
+      height: 0.5,
+    });
+    const result = ceilingQuantities([drop], solved, 2.7);
+    expect(result.items[0].length).toBe(3);
+    expect(result.items[0].area).toBe(3);
+    // 高さを部屋と同じ（下がり0）にすると段差がないので長さも面積も出ない
+    const flat = ceilingQuantities([{ ...drop, height: 0 }], solved, 2.7);
+    expect(flat.totals.dropCeilingLength).toBe(0);
+    expect(flat.totals.dropCeilingArea).toBe(0);
   });
 });
