@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  longestEdgePixels,
   metersPerPixel,
   pointsToShape,
   snapToAxis,
@@ -66,6 +67,23 @@ describe("図面をなぞる", () => {
     expect(diagonal.dx).toBe(-2);
     expect(diagonal.dy).toBe(3);
     expect(solveShape(shape).error).toBeNull();
+  });
+
+  it("一番長い辺の画素数から縮尺を出せる", () => {
+    const points = [
+      { x: 10, y: 10 },
+      { x: 210, y: 10 },
+      { x: 210, y: 110 },
+      { x: 10, y: 110 },
+    ];
+    expect(longestEdgePixels(points)).toBe(200);
+    expect(longestEdgePixels([{ x: 0, y: 0 }])).toBe(0);
+    const perPixel = 7.28 / longestEdgePixels(points);
+    const shape = pointsToShape(toMeters(points, perPixel));
+    expect(shape.edges.map((row) => row.length)).toEqual([
+      7.28, 3.64, 7.28, 3.64,
+    ]);
+    expect(solveShape(shape).points).toHaveLength(4);
   });
 
   it("壊れたJSONは空のなぞりにする", () => {

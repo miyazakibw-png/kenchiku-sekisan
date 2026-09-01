@@ -117,6 +117,21 @@ export function pointsToShape(
   return { edges };
 }
 
+/**
+ * なぞった点のうち、いちばん長い辺の長さ（画素）。
+ * 縮尺が未設定のまま なぞったときに、その辺の実寸から縮尺を出すのに使う。
+ */
+export function longestEdgePixels(points: Point[]): number {
+  if (points.length < 2) return 0;
+  let longest = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const from = points[index];
+    const to = points[(index + 1) % points.length];
+    longest = Math.max(longest, Math.hypot(to.x - from.x, to.y - from.y));
+  }
+  return longest;
+}
+
 /** なぞった形の面積（㎡）。確かめ用に画面へ出す */
 export function traceArea(points: Point[]): number {
   if (points.length < 3) return 0;

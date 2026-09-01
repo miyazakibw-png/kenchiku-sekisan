@@ -27,6 +27,7 @@ import {
   cutCorner,
   edge,
   edgeRange,
+  floorArea,
   incomingIsVertical,
   isDiagonal,
   mirrorShape,
@@ -2849,8 +2850,13 @@ export default function RoomSheetPage({
           onApply={(next) => {
             applyShape(next);
             setShowTrace(false);
+            const madeSolved = solveShape(next);
+            const madeSize = shapeExtents(madeSolved);
+            const madeArea = floorArea(madeSolved);
             setMessage(
-              "なぞった形を部屋形状にしました（寸法は表で直せます。図面となぞりは数量根拠として保存します）",
+              madeSize === null
+                ? "なぞった形を部屋形状にしました（寸法は表で直せます。図面となぞりは数量根拠として保存します）"
+                : `なぞった形を部屋形状にしました：横${madeSize.x.toFixed(2)}m×縦${madeSize.y.toFixed(2)}m／床面積${(madeArea ?? 0).toFixed(2)}㎡（寸法は表で直せます。図面となぞりは数量根拠として保存します）`,
             );
           }}
           onClose={() => setShowTrace(false)}

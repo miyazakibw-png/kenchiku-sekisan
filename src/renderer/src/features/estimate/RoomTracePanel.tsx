@@ -3,6 +3,7 @@ import type { JSX } from "react";
 import type { Point, RoomShape } from "../../../../core/room/shape";
 import {
   EMPTY_TRACE,
+  longestEdgePixels,
   metersPerPixel,
   pointsToShape,
   snapToAxis,
@@ -55,6 +56,8 @@ export default function RoomTracePanel({
   const [snap, setSnap] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [pageText, setPageText] = useState("1");
+  const [edgeText, setEdgeText] = useState("3.640");
+  const [warn, setWarn] = useState(false);
   const [message, setMessage] = useState(
     "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
   );
@@ -231,16 +234,28 @@ export default function RoomTracePanel({
   };
 
   const apply = (): void => {
-    if (perPixel === 0) {
-      setMessage("先に縮尺を決めてください");
-      return;
-    }
     if (points.length < 3) {
+      setWarn(true);
       setMessage("部屋の角を3点以上クリックしてください");
       return;
     }
-    const shape = pointsToShape(toMeters(points, perPixel));
-    onChange({ ...trace, scalePoints, points });
+    // 縮尺がまだのときは「一番長い辺の実寸」から出す（やり直さずに済むように）
+    let value = perPixel;
+    if (value === 0) {
+      const length = Number(edgeText);
+      const pixels = longestEdgePixels(points);
+      value = pixels === 0 || !(length > 0) ? 0 : length / pixels;
+      if (value === 0) {
+        setWarn(true);
+        setMessage(
+          "縮尺がまだです。「① 縮尺合わせ」で決めるか、下の「一番長い辺の実寸」に長さ（m）を入れてください",
+        );
+        return;
+      }
+    }
+    const shape = pointsToShape(toMeters(points, value));
+    setWarn(false);
+    onChange({ ...trace, metersPerPixel: value, scalePoints, points });
     onApply(shape);
   };
 
@@ -266,7 +281,15 @@ export default function RoomTracePanel({
         <button
           type="button"
           className={mode === "trace" ? "on" : ""}
-          onClick={() => setMode("trace")}
+          onClick={() => {
+            setMode("trace");
+            setWarn(perPixel === 0);
+            setMessage(
+              perPixel === 0
+                ? "縮尺がまだです。部屋の角をなぞったあと、下の「一番長い辺の実寸」に長さ（m）を入れて「✓ この形にする」を押してください"
+                : "部屋の角を順にクリックしてなぞってください。最後に「✓ この形にする」",
+            );
+          }}
         >
           ② なぞる
         </button>
@@ -378,6 +401,17 @@ export default function RoomTracePanel({
             >
               なぞりを消す
             </button>
+            {perPixel === 0 ? (
+              <label className="edge">
+                一番長い辺の実寸
+                <input
+                  className="num"
+                  value={edgeText}
+                  onChange={(event) => setEdgeText(event.target.value)}
+                />
+                m
+              </label>
+            ) : null}
             <button type="button" className="apply" onClick={apply}>
               ✓ この形にする
             </button>
@@ -458,7 +492,7 @@ export default function RoomTracePanel({
         )}
       </div>
 
-      <p className="trace-message">{message}</p>
+      <p className={warn ? "trace-message warn" : "trace-message"}>{message}</p>
     </div>
   );
 }

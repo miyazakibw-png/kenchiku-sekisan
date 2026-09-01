@@ -103,3 +103,15 @@
 .room-trace-panel button.apply {
   font-weight: 600;
 }
+
+.room-trace-panel .trace-message.warn {
+  background: #fee2e2;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.room-trace-panel .edge input {
+  width: 60px;
+  margin: 0 4px;
+  text-align: right;
+}
