@@ -298,6 +298,22 @@ describe("天井伏図", () => {
     expect(regions.map((row) => row.height).sort()).toEqual([2.1, 2.4, 2.7]);
   });
 
+  it("下がり0を入れた下がり天井は、重なっている下がり天井より後の行が優先される", () => {
+    const solved = shape();
+    const elements = [
+      element("dropCeiling", solved.edges[0].id, { offset: 2, height: 0.5 }),
+      element("dropCeiling", solved.edges[1].id, { offset: 0.5, height: 0 }),
+    ];
+    const regions = ceilingRegions(elements, solved, 2.7);
+    // 下がり0の帯は部屋と同じ高さに戻り、下がっている区画との境目に線が出る
+    expect(regions.map((row) => row.drop).sort()).toEqual([0, 0.5]);
+    const codes = ceilingBoundaries(elements, solved, 2.7).map(
+      (edge) => edge.codes,
+    );
+    expect(codes.length).toBeGreaterThan(0);
+    codes.forEach(([left, right]) => expect(left).not.toBe(right));
+  });
+
   it("天井高さが同じでつながる区画（コ型の下がり天井）は1つにまとめて番号も1つ", () => {
     const solved = shape();
     const regions = ceilingRegions(

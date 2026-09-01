@@ -1040,8 +1040,8 @@ function dropAt(
       waiting.push(element.id);
       return;
     }
-    if (Math.abs(here) < 1e-6) return;
-    if (here > drop) drop = here;
+    // 同じ所が重なっているときは後の行が優先（下がり0を入れた所は部屋と同じ高さに戻る）
+    drop = here;
   });
   return {
     drop: round2(drop),
