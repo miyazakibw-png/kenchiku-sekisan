@@ -156,15 +156,15 @@ describe("下段セット明細計算表", () => {
     expect(syncLines(set.details, kept)).toHaveLength(3);
   });
 
-  it("入力の無い明細・セットは取り除く（入力済みは残す）", () => {
+  it("入力の無いセットは取り除くが、入力済みセットの空行は残す", () => {
     const empty = calcSet(2);
     const used = calcSet(2);
     used.partName = "床";
     used.details[0] = calcDetail({ name: "ビニル床タイル" });
     const trimmed = trimEmptySets([empty, used]);
     expect(trimmed).toHaveLength(1);
-    expect(trimmed[0].details).toHaveLength(1);
-    expect(trimmed[0].lines).toHaveLength(1);
+    expect(trimmed[0].details).toHaveLength(2);
+    expect(trimmed[0].lines).toHaveLength(2);
   });
 
   it("計算式だけ入っている明細は残す", () => {

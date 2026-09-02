@@ -353,13 +353,8 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
       trimmed.push(set);
       continue;
     }
+    // 途中に足した空の明細行は残す（中身のあるセットの空行は消さない）
     const details = [...set.details];
-    while (
-      details.length > 0 &&
-      isEmptyDetail(details[details.length - 1]) &&
-      isEmptyLine(set.lines[details.length - 1] ?? calcLine())
-    )
-      details.pop();
     const lines = [...set.lines];
     while (
       lines.length > Math.max(details.length, 1) &&
@@ -367,7 +362,7 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
     )
       lines.pop();
     const empty =
-      details.length === 0 &&
+      details.every(isEmptyDetail) &&
       lines.every(isEmptyLine) &&
       set.partNumber === null &&
       set.partName.trim() === "" &&
