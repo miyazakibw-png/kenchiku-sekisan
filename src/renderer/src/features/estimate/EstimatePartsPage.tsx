@@ -226,7 +226,7 @@ export default function EstimatePartsPage({
           ? overwriteRowsInto(rows, selectionStart, copied)
           : copyRowsInto(
               rows,
-              mode === "insert" ? selectionStart : selectionEnd + 1,
+              mode === "insert" ? selectionStart : rows.length,
               copied,
             );
       const where =
@@ -234,13 +234,13 @@ export default function EstimatePartsPage({
           ? "カーソルの行から上書き"
           : mode === "insert"
             ? "カーソルの行の上へ挿入"
-            : "カーソルの行の下へ追加";
+            : "最終行の下へ追加";
       await saveRows(
         next,
         `${copied.length} 行を${where}しました（計算書の中身も複製）`,
       );
     },
-    [clipboard, rows, saveRows, selectionEnd, selectionStart],
+    [clipboard, rows, saveRows, selectionStart],
   );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
@@ -519,7 +519,7 @@ export default function EstimatePartsPage({
         </button>
         <button
           type="button"
-          title="カーソルの行の下へ、コピーした行を足します"
+          title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
           disabled={clipboard.length === 0}
           onClick={() => void pasteRows("append")}
         >
