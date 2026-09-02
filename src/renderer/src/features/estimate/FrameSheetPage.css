@@ -419,3 +419,14 @@
 .frame-sheet-page .frame-line.hand {
   stroke-width: 5;
 }
+
+/* 別窓では図を左に上下いっぱいで固定し、表は右側に続けて並べる
+   （種類の表が増えても図の大きさは変わりません） */
+.frame-sheet-page > .upper.layout-popup > section.drawing {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing) {
+  overflow: auto;
+}
