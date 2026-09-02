@@ -239,6 +239,9 @@ const PROMPT_TITLE: Record<"rect" | "cut" | "notch" | "split", string> = {
 };
 
 /** 表示スペースいっぱいに、縦横の大きい方に合わせて描く（1m角も100m角も同じ大きさで見える） */
+/** 角の○印を出すかを覚えておく場所（次に開いたときも同じ状態にする） */
+const CORNERS_KEY = "roomSheet.showCorners";
+
 function viewBox(solved: SolvedShape): { box: string; span: number } {
   if (solved.points.length === 0) return { box: "0 0 100 100", span: 100 };
   const xs = solved.points.map((point) => point.x);
@@ -328,8 +331,13 @@ export default function RoomSheetPage({
   /** 建具表はボタンでポップアップ表示する */
   const [showFittings, setShowFittings] = useState(false);
   const [zoom, setZoom] = useState(1);
-  /** 角の○印を出すか（形が決まったら消して寸法を見やすくできます） */
-  const [showCorners, setShowCorners] = useState(true);
+  /**
+   * 角の○印を出すか（形が決まったら消して寸法を見やすくできます）。
+   * 出す／消すは覚えておき、次に開いたときも同じ状態にする。印刷では出さない。
+   */
+  const [showCorners, setShowCorners] = useState(
+    () => window.localStorage.getItem(CORNERS_KEY) !== "0",
+  );
   /** 図形の戻る・進む用（1操作ごとの形を覚えておく） */
   const [shapePast, setShapePast] = useState<RoomShape[]>([]);
   const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
@@ -1736,8 +1744,10 @@ export default function RoomSheetPage({
               className={showCorners ? "on" : ""}
               title="角の○印を出す／消す（形が決まったら消せます）"
               onClick={() => {
-                if (showCorners) setSelectedCorner(null);
-                setShowCorners(!showCorners);
+                const next = !showCorners;
+                if (!next) setSelectedCorner(null);
+                setShowCorners(next);
+                window.localStorage.setItem(CORNERS_KEY, next ? "1" : "0");
               }}
             >
               {showCorners ? "○角を消す" : "○角を出す"}
@@ -1876,6 +1886,7 @@ export default function RoomSheetPage({
                 </g>
               ))}
               {showCorners &&
+                !printMode &&
                 solved.points.map((point, index) => (
                   <g
                     key={`corner-${solved.edges[index].id}`}
