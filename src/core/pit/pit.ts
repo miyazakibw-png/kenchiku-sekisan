@@ -1399,6 +1399,68 @@ export function pitWallTallies(walls: readonly PitWall[]): PitWallTally[] {
   return [...rows.values()].sort((a, b) => a.lengthMm - b.lengthMm);
 }
 
+/** 種類（線色）＋図の太さ（A＝500・B＝200）ごと×長さ別の本数表 */
+export interface PitWallTableRow {
+  color: string;
+  /** 図に出す太さ（m）。0.5＝A・0.2＝B */
+  width: number;
+  counts: number[];
+  total: number;
+}
+
+export interface PitWallTable {
+  /** 表の列になる長さ（mm・50mmでまとめたもの） */
+  lengths: number[];
+  rows: PitWallTableRow[];
+}
+
+/** 図の太さの表記（500描画＝A・200描画＝B） */
+export function pitWallSizeLabel(width: number): string {
+  const size = PIT_WALL_SIZES.findIndex(
+    (each) => Math.abs(each.width - width) < 1e-9,
+  );
+  return size < 0 ? `${Math.round(width * 1000)}` : ["A", "B"][size];
+}
+
+export function pitWallTable(walls: readonly PitWall[]): PitWallTable {
+  const lengths = [
+    ...new Set(walls.map((wall) => groupLengthMm(pitWallLength(wall) * 1000))),
+  ].sort((a, b) => a - b);
+  const keys: { color: string; width: number }[] = [];
+  walls.forEach((wall) => {
+    if (
+      !keys.some(
+        (each) => each.color === wall.color && each.width === wall.width,
+      )
+    )
+      keys.push({ color: wall.color, width: wall.width });
+  });
+  keys.sort(
+    (a, b) =>
+      b.width - a.width ||
+      PIT_MARK_COLORS.findIndex((each) => each.color === a.color) -
+        PIT_MARK_COLORS.findIndex((each) => each.color === b.color),
+  );
+  const rows = keys.map((key) => {
+    const counts = lengths.map(
+      (length) =>
+        walls.filter(
+          (wall) =>
+            wall.color === key.color &&
+            wall.width === key.width &&
+            groupLengthMm(pitWallLength(wall) * 1000) === length,
+        ).length,
+    );
+    return {
+      color: key.color,
+      width: key.width,
+      counts,
+      total: counts.reduce((sum, count) => sum + count, 0),
+    };
+  });
+  return { lengths, rows };
+}
+
 /** 人通口・スリーブの種類別×長さ別の個数表 */
 export interface PitSleeveTable {
   /** 表の列になる長さ（mm・50mmでまとめたもの） */
@@ -1436,8 +1498,8 @@ export function pitSleeveTable(
 
 /**
  * 計算式に使える記号。
- * ピット間：MW＝合計長さ、MW1・MN1…＝長さ（50mmごと）ごとの長さ／本数
- * スリーブ：SV1…＝種類ごとの本数、SV1L500…＝長さごとの本数
+ * ピット間：MW＝合計長さ、MN＝本数、MWL400・MNL400…＝長さ（50mmごと）ごと
+ * 種類（線色＋A・B）ごと：MN1＝本数、MN1L400＝その長さの本数
  */
 export function pitWallVariables(
   walls: readonly PitWall[],
@@ -1447,17 +1509,26 @@ export function pitWallVariables(
   const values: Record<string, number> = {};
   const tallies = pitWallTallies(walls);
   let total = 0;
-  tallies.forEach((row, index) => {
-    values[`MW${index + 1}`] = row.total;
-    values[`MN${index + 1}`] = row.count;
+  tallies.forEach((row) => {
+    values[`MWL${row.lengthMm}`] = row.total;
+    values[`MNL${row.lengthMm}`] = row.count;
     total += row.total;
   });
   values.MW = round4(total);
   values.MN = walls.length;
-  const table = pitSleeveTable(sleeves, walls, kinds);
+
+  const table = pitWallTable(walls);
   table.rows.forEach((row, index) => {
-    values[`SV${index + 1}`] = row.total;
+    values[`MN${index + 1}`] = row.total;
     table.lengths.forEach((length, column) => {
+      values[`MN${index + 1}L${length}`] = row.counts[column];
+    });
+  });
+
+  const sleeveRows = pitSleeveTable(sleeves, walls, kinds);
+  sleeveRows.rows.forEach((row, index) => {
+    values[`SV${index + 1}`] = row.total;
+    sleeveRows.lengths.forEach((length, column) => {
       values[`SV${index + 1}L${length}`] = row.counts[column];
     });
   });

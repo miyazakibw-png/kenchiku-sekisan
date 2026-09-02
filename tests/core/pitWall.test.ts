@@ -6,6 +6,7 @@ import {
   pitSleeveTable,
   pitWallLength,
   pitWallTallies,
+  pitWallTable,
   pitWallVariables,
   pitGapLink,
   layoutPits,
@@ -15,16 +16,13 @@ import {
   type PitWall,
 } from "../../src/core/pit/pit";
 
-function wall(id: string, length: number, width: number): PitWall {
-  return {
-    id,
-    x1: 0,
-    y1: 0,
-    x2: length,
-    y2: 0,
-    width,
-    color: "#000000",
-  };
+function wall(
+  id: string,
+  length: number,
+  width: number,
+  color = "#000000",
+): PitWall {
+  return { id, x1: 0, y1: 0, x2: length, y2: 0, width, color };
 }
 
 function sleeve(
@@ -98,8 +96,10 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     const values = pitWallVariables(walls, sleeves, kinds);
     expect(values.MW).toBe(5);
     expect(values.MN).toBe(2);
-    expect(values.MW1).toBe(2);
-    expect(values.MN2).toBe(1);
+    expect(values.MWL2000).toBe(2);
+    expect(values.MNL3000).toBe(1);
+    expect(values.MN1).toBe(1);
+    expect(values.MN1L3000).toBe(1);
     expect(values.SV1).toBe(1);
     expect(values.SV1L2000).toBe(1);
   });
@@ -130,5 +130,23 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     expect(link).not.toBeNull();
     expect(link?.from).toEqual({ x: 4, y: 1.5 });
     expect(link?.to).toEqual({ x: 4.4, y: 1.5 });
+  });
+});
+
+describe("ピット間の表（種類＝線色＋A・B別×長さ別の本数）", () => {
+  it("線色と図の太さごとに長さ別の本数を数える", () => {
+    const red = "#dc2626";
+    const blue = "#2563eb";
+    const walls = [
+      wall("w1", 0.5, 0.5, red),
+      wall("w2", 0.48, 0.5, red),
+      wall("w3", 0.35, 0.2, blue),
+    ];
+    const table = pitWallTable(walls);
+    expect(table.lengths).toEqual([350, 500]);
+    expect(table.rows).toEqual([
+      { color: red, width: 0.5, counts: [0, 2], total: 2 },
+      { color: blue, width: 0.2, counts: [1, 0], total: 1 },
+    ]);
   });
 });
