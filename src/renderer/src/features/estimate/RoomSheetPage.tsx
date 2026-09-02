@@ -1307,7 +1307,7 @@ export default function RoomSheetPage({
     });
     setSelectedColumn(added.id);
     setMessage(
-      `独立柱を置きました（${formatNumber(added.width, 2)}×${formatNumber(added.depth, 2)}）。記号は IN 本数／IL 周長／IA 見付面積です`,
+      `独立柱を置きました（${formatNumber(added.width, 2)}×${formatNumber(added.depth, 2)}）。柱として数えます（床・天井は面積を減らし、周長を柱長ＣＬ・柱面積ＨＡ・巾木ＨＬ・廻り縁ＭＬへ足します）`,
     );
   };
 
