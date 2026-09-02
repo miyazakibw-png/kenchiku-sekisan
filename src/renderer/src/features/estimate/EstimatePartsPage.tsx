@@ -51,6 +51,10 @@ export default function EstimatePartsPage({
   onBack,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-estimate-parts-v1");
+  /** 計算書を開く前の画面の位置（戻ったときに同じ所を出す） */
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef(0);
+  const restoreScrollRef = useRef(false);
   const [rows, setRows] = useState<EstimateRowDraft[]>([]);
   const [selected, setSelected] = useState(0);
   /** 複数行選択の終わり（Shift+クリックで広げる） */
@@ -272,12 +276,23 @@ export default function EstimatePartsPage({
     setOthers(ledger.projects.filter((row) => row.id !== project.id));
   }, [project.id]);
 
+  // 計算書から戻ったときは、開く前に見ていた位置へ戻す（下の方の部屋でも探し直さずに済む）
+  useEffect(() => {
+    if (openedSheet !== null || !restoreScrollRef.current) return;
+    const page = pageRef.current;
+    if (!page || rows.length === 0) return;
+    page.scrollTop = scrollRef.current;
+    restoreScrollRef.current = false;
+  }, [openedSheet, rows]);
+
   /**
    * 計算書は保存済みの行にしか作れないので、開く前に画面の内容を保存する。
    * 保存しないまま開くと、戻ったときの読み直しで消した行が戻ってしまう。
    */
   const openCalcSheet = useCallback(
     async (index: number) => {
+      scrollRef.current = pageRef.current?.scrollTop ?? 0;
+      restoreScrollRef.current = true;
       const row = rows[index];
       if (!row || row.rowType === "subtotal") return;
       const saved = toDrafts(
@@ -408,7 +423,7 @@ export default function EstimatePartsPage({
   }
 
   return (
-    <div className="estimate-page">
+    <div className="estimate-page" ref={pageRef}>
       <div className="toolbar">
         <div className="left-actions">
           <button type="button" onClick={onBack}>
