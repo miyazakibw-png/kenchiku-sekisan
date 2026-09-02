@@ -438,6 +438,8 @@ export const projectPitSheets = sqliteTable("project_pit_sheets", {
   sleevesJson: text("sleeves_json").notNull().default("[]"),
   /** 人通口・スリーブの種類（PitSleeveKindの配列） */
   sleeveKindsJson: text("sleeve_kinds_json").notNull().default("[]"),
+  /** ピット間の表で長さをまとめる単位（mm・50/100/300/500） */
+  wallStep: integer("wall_step").notNull().default(50),
   /** 下段のセット明細計算表 */
   lowerJson: text("lower_json").notNull().default("[]"),
   /** 図面画像となぞった点・縮尺（数量根拠として残す） */

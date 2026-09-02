@@ -18,11 +18,7 @@ export interface ComparableRow {
 
 /** 比較で色を付ける項目 */
 export type BreakdownField =
-  | "name"
-  | "description"
-  | "quantity"
-  | "unit"
-  | "remarks";
+  "name" | "description" | "quantity" | "unit" | "remarks";
 
 export interface BreakdownDiff<T extends ComparableRow = ComparableRow> {
   /** 行位置（0始まり） */
@@ -87,7 +83,11 @@ export function compareBreakdown<T extends ComparableRow>(
 }
 
 /** 行を1つ上下に動かす（左右それぞれ独立して並べ替える） */
-export function moveRow<T>(rows: readonly T[], index: number, step: number): T[] {
+export function moveRow<T>(
+  rows: readonly T[],
+  index: number,
+  step: number,
+): T[] {
   const target = index + step;
   if (index < 0 || index >= rows.length) return [...rows];
   if (target < 0 || target >= rows.length) return [...rows];

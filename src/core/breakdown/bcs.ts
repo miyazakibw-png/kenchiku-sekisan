@@ -81,10 +81,48 @@ export function toBcsCsv(
 ): string {
   const lines: string[] = [];
   // 1層目：表紙
-  lines.push(line([1, "", "", "", "", "", "", "", "", "P", options.projectName, "", 1, "式", 0]));
+  lines.push(
+    line([
+      1,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "P",
+      options.projectName,
+      "",
+      1,
+      "式",
+      0,
+    ]),
+  );
   // 2層目：総括表・工事区分
-  lines.push(line([2, "", "", "", "", "", "", 1, "", "P", "総括表", "", 0, "", 0]));
-  lines.push(line([2, 1, "", "", "", "", "", 2, "", "P", options.workCategory, "", 0, "", 0]));
+  lines.push(
+    line([2, "", "", "", "", "", "", 1, "", "P", "総括表", "", 0, "", 0]),
+  );
+  lines.push(
+    line([
+      2,
+      1,
+      "",
+      "",
+      "",
+      "",
+      "",
+      2,
+      "",
+      "P",
+      options.workCategory,
+      "",
+      0,
+      "",
+      0,
+    ]),
+  );
 
   let subjectNo = 0;
   let detailNo = 0;
@@ -105,7 +143,23 @@ export function toBcsCsv(
       detailNo = 0;
       open = true;
       lines.push(
-        line([2, 1, subjectNo, "", "", "", "", 3, "", "P", row.subjectName, "", 0, "", 0]),
+        line([
+          2,
+          1,
+          subjectNo,
+          "",
+          "",
+          "",
+          "",
+          3,
+          "",
+          "P",
+          row.subjectName,
+          "",
+          0,
+          "",
+          0,
+        ]),
       );
       return;
     }
@@ -119,10 +173,21 @@ export function toBcsCsv(
     if (row.unit === "") {
       lines.push(
         line([
-          2, 1, subjectNo, "", "", "", "", 4, detailNo, "A",
+          2,
+          1,
+          subjectNo,
+          "",
+          "",
+          "",
+          "",
+          4,
+          detailNo,
+          "A",
           row.nameLower === "" ? row.nameUpper : row.nameLower,
           row.descriptionLower,
-          "", "", "",
+          "",
+          "",
+          "",
           row.remarksLower,
           row.nameLower === "" ? "" : row.nameUpper,
           row.descriptionUpper,
@@ -133,7 +198,16 @@ export function toBcsCsv(
     }
     lines.push(
       line([
-        2, 1, subjectNo, "", "", "", "", 4, detailNo, "D",
+        2,
+        1,
+        subjectNo,
+        "",
+        "",
+        "",
+        "",
+        4,
+        detailNo,
+        "D",
         row.nameLower,
         row.descriptionLower,
         row.quantity ?? "",

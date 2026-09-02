@@ -1,10 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectEstimateRows, projectGeneralSheets } from "../db/schema";
-import type {
-  GeneralSheet,
-  SaveGeneralSheetRequest,
-} from "../../shared/types";
+import type { GeneralSheet, SaveGeneralSheetRequest } from "../../shared/types";
 
 function toSheet(row: typeof projectGeneralSheets.$inferSelect): GeneralSheet {
   return {

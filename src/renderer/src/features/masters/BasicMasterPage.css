@@ -72,7 +72,7 @@
 
 .basic-master-list td.no input {
   text-align: right;
-  font-family: 'Consolas', 'Menlo', monospace;
+  font-family: "Consolas", "Menlo", monospace;
 }
 
 .basic-master-list th.name {

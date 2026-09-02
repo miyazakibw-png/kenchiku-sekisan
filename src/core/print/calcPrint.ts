@@ -1,5 +1,9 @@
 import type { CalcSet, CalcSheetResult } from "../room/calcSheet";
-import { displayQuantity, displayedValue, setRowCount } from "../room/calcSheet";
+import {
+  displayQuantity,
+  displayedValue,
+  setRowCount,
+} from "../room/calcSheet";
 
 /** 計算書（下段）の印刷1行。画面の並びのまま、文字にしてから紙へ出す */
 export interface CalcPrintRow {
@@ -102,8 +106,10 @@ export function calcPrintRows(
         ...emptyRow(),
         setPart: index === 0 ? set.partName : "",
         materialCategory: detail?.materialCategory ?? "",
-        subjectId: detail?.subjectId === null ? "" : String(detail?.subjectId ?? ""),
-        partNumber: detail?.partNumber === null ? "" : String(detail?.partNumber ?? ""),
+        subjectId:
+          detail?.subjectId === null ? "" : String(detail?.subjectId ?? ""),
+        partNumber:
+          detail?.partNumber === null ? "" : String(detail?.partNumber ?? ""),
         detailNumber: detail?.detailNumber?.toFixed(2) ?? "",
         partName: detail?.partName ?? "",
         name: detail?.name ?? "",
@@ -113,12 +119,18 @@ export function calcPrintRows(
         coefficient: detail ? String(detail.coefficient) : "",
         setTotal:
           detail && setTotal !== null
-            ? displayQuantity(displayedValue(setTotal * (detail.coefficient || 1)))
+            ? displayQuantity(
+                displayedValue(setTotal * (detail.coefficient || 1)),
+              )
             : "",
         comment: line?.comment ?? "",
         formulaA: line?.formulaA ?? "",
         formulaB: line?.formulaB ?? "",
-        value: lineResult ? (lineResult.error !== "" ? lineResult.error : lineResult.text) : "",
+        value: lineResult
+          ? lineResult.error !== ""
+            ? lineResult.error
+            : lineResult.text
+          : "",
         total: lineResult?.totalText ?? "",
         bSymbol: index === 0 ? bSymbol : "",
         remarksLower: detail?.remarksLower ?? "",
@@ -148,11 +160,8 @@ export function paginateCalcRows(
 ): CalcPrintPage[] {
   const first = Math.max(firstCapacity, 0);
   const later = Math.max(laterCapacity, 1);
-  if (rows.length <= first)
-    return [{ rows, blankRows: first - rows.length }];
-  const pages: CalcPrintPage[] = [
-    { rows: rows.slice(0, first), blankRows: 0 },
-  ];
+  if (rows.length <= first) return [{ rows, blankRows: first - rows.length }];
+  const pages: CalcPrintPage[] = [{ rows: rows.slice(0, first), blankRows: 0 }];
   let at = first;
   while (at < rows.length) {
     const slice = rows.slice(at, at + later);

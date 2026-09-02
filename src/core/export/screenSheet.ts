@@ -28,7 +28,8 @@ export function sheetName(name: string, index: number, used: string[]): string {
 function cell(value: string, heading: boolean): XlsxCell {
   if (heading) return { value, kind: "header", border: "one" };
   const numeric = numberOf(value);
-  if (numeric !== null) return { value: numeric, kind: "number", border: "one" };
+  if (numeric !== null)
+    return { value: numeric, kind: "number", border: "one" };
   return { value, kind: "text", border: "one" };
 }
 

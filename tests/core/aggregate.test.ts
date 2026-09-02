@@ -76,7 +76,11 @@ describe("集計処理", () => {
   });
 
   it("部位名は明細に無ければセットの部位名を使う", () => {
-    const entries = entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 3));
+    const entries = entriesFromCalcSheet(
+      context(),
+      [set("s1", 1)],
+      result("s1", 3),
+    );
     expect(entries[0].partName).toBe("床");
     expect(entries[0].partNumber).toBe(10);
   });
@@ -153,7 +157,11 @@ describe("集計処理", () => {
   });
 
   it("転記入力表の分は集計書に計上するが根拠集計には出さない", () => {
-    const room = entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 10));
+    const room = entriesFromCalcSheet(
+      context(),
+      [set("s1", 1)],
+      result("s1", 10),
+    );
     const transfer: AggregateEntry = {
       ...room[0],
       traceId: "t:1",
@@ -210,21 +218,19 @@ describe("部屋別集計", () => {
       [set("s3", 1)],
       result("s3", 2.5),
     );
-    const groups = aggregateByRoom(
-      [...a, ...b, ...c],
-      ["事務室", "会議室"],
-    );
-    expect(groups.map((group) => group.roomName)).toEqual([
-      "事務室",
-      "会議室",
-    ]);
+    const groups = aggregateByRoom([...a, ...b, ...c], ["事務室", "会議室"]);
+    expect(groups.map((group) => group.roomName)).toEqual(["事務室", "会議室"]);
     expect(groups[0].items).toHaveLength(1);
     expect(groups[0].items[0].quantity).toBe(12.5);
     expect(groups[0].quantityTotal).toBe(12.5);
   });
 
   it("転記入力表の分と部屋名が空の分は出さない", () => {
-    const room = entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 10));
+    const room = entriesFromCalcSheet(
+      context(),
+      [set("s1", 1)],
+      result("s1", 10),
+    );
     const transfer: AggregateEntry = {
       ...room[0],
       traceId: "t:1",

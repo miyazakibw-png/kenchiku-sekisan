@@ -407,7 +407,7 @@ export function collectEntries(
       const variables = {
         ...calcVariables([], fittings),
         ...pitVariables(quantities),
-        ...pitWallVariables(walls, sleeves, sleeveKinds),
+        ...pitWallVariables(walls, sleeves, sleeveKinds, sheet.wallStep),
       };
       entries.push(
         ...entriesFromCalcSheet(

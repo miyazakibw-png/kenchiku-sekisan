@@ -149,4 +149,13 @@ describe("ピット間の表（種類＝線色＋A・B別×長さ別の本数）
       { color: blue, counts: [1, 0], total: 1 },
     ]);
   });
+
+  it("まとめる長さの単位（50・100・300・500mm）を選べる", () => {
+    const red = "#dc2626";
+    const walls = [wall("w1", 0.44, 0.5, red), wall("w2", 0.56, 0.5, red)];
+    expect(pitWallTable(walls, 50).lengths).toEqual([450, 550]);
+    expect(pitWallTable(walls, 100).lengths).toEqual([400, 600]);
+    expect(pitWallTable(walls, 500).lengths).toEqual([500]);
+    expect(pitWallTable(walls, 500).rows[0].counts).toEqual([2]);
+  });
 });

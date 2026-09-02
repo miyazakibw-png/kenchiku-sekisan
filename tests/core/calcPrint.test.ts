@@ -44,7 +44,10 @@ describe("計算書の印刷", () => {
   });
 
   it("1枚に収まるときは、余りを手書き用の横罫線で埋める", () => {
-    const rows: CalcPrintRow[] = calcPrintRows(sheet(), evaluateCalcSheet(sheet(), {}));
+    const rows: CalcPrintRow[] = calcPrintRows(
+      sheet(),
+      evaluateCalcSheet(sheet(), {}),
+    );
     const pages = paginateCalcRows(rows, 10, 30);
     expect(pages).toHaveLength(1);
     expect(pages[0].rows).toHaveLength(3);

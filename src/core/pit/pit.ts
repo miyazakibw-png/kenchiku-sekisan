@@ -1429,6 +1429,9 @@ export function pitWallLength(wall: PitWall): number {
   return round4(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
 }
 
+/** 集計でまとめる長さの単位（mm）。表の上で選べる */
+export const PIT_LENGTH_STEPS = [50, 100, 300, 500] as const;
+
 /** 集計でまとめる長さ（既定は50mmごと） */
 export function groupLengthMm(mm: number, step = 50): number {
   if (step <= 0) return Math.round(mm);
@@ -1454,10 +1457,13 @@ export interface PitWallTally {
   total: number;
 }
 
-export function pitWallTallies(walls: readonly PitWall[]): PitWallTally[] {
+export function pitWallTallies(
+  walls: readonly PitWall[],
+  step: number = PIT_LENGTH_STEPS[0],
+): PitWallTally[] {
   const rows = new Map<number, PitWallTally>();
   walls.forEach((wall) => {
-    const lengthMm = groupLengthMm(pitWallLength(wall) * 1000);
+    const lengthMm = groupLengthMm(pitWallLength(wall) * 1000, step);
     const row = rows.get(lengthMm) ?? { lengthMm, count: 0, total: 0 };
     row.count += 1;
     row.total = round4(row.total + pitWallLength(wall));
@@ -1487,9 +1493,14 @@ export function pitWallSizeLabel(width: number): string {
   return size < 0 ? `${Math.round(width * 1000)}` : ["A", "B"][size];
 }
 
-export function pitWallTable(walls: readonly PitWall[]): PitWallTable {
+export function pitWallTable(
+  walls: readonly PitWall[],
+  step: number = PIT_LENGTH_STEPS[0],
+): PitWallTable {
   const lengths = [
-    ...new Set(walls.map((wall) => groupLengthMm(pitWallLength(wall) * 1000))),
+    ...new Set(
+      walls.map((wall) => groupLengthMm(pitWallLength(wall) * 1000, step)),
+    ),
   ].sort((a, b) => a - b);
   const colors = PIT_MARK_COLORS.map((each) => each.color).filter((color) =>
     walls.some((wall) => wall.color === color),
@@ -1503,7 +1514,7 @@ export function pitWallTable(walls: readonly PitWall[]): PitWallTable {
         walls.filter(
           (wall) =>
             wall.color === color &&
-            groupLengthMm(pitWallLength(wall) * 1000) === length,
+            groupLengthMm(pitWallLength(wall) * 1000, step) === length,
         ).length,
     );
     return {
@@ -1551,10 +1562,13 @@ export function pitSleeveTable(
   sleeves: readonly PitSleeve[],
   walls: readonly PitWall[],
   kinds: readonly PitSleeveKind[],
+  step: number = PIT_LENGTH_STEPS[0],
 ): PitSleeveTable {
   const lengths = [
     ...new Set(
-      sleeves.map((sleeve) => groupLengthMm(pitSleeveLength(sleeve, walls))),
+      sleeves.map((sleeve) =>
+        groupLengthMm(pitSleeveLength(sleeve, walls), step),
+      ),
     ),
   ].sort((a, b) => a - b);
   const rows = kinds.map((kind) => {
@@ -1563,7 +1577,7 @@ export function pitSleeveTable(
         sleeves.filter(
           (sleeve) =>
             sleeve.kindId === kind.id &&
-            groupLengthMm(pitSleeveLength(sleeve, walls)) === length,
+            groupLengthMm(pitSleeveLength(sleeve, walls), step) === length,
         ).length,
     );
     return {
@@ -1584,9 +1598,10 @@ export function pitWallVariables(
   walls: readonly PitWall[],
   sleeves: readonly PitSleeve[],
   kinds: readonly PitSleeveKind[],
+  step: number = PIT_LENGTH_STEPS[0],
 ): Record<string, number> {
   const values: Record<string, number> = {};
-  const tallies = pitWallTallies(walls);
+  const tallies = pitWallTallies(walls, step);
   let total = 0;
   tallies.forEach((row) => {
     values[`MWL${row.lengthMm}`] = row.total;
@@ -1596,7 +1611,7 @@ export function pitWallVariables(
   values.MW = round4(total);
   values.MN = walls.length;
 
-  const table = pitWallTable(walls);
+  const table = pitWallTable(walls, step);
   table.rows.forEach((row, index) => {
     values[`MN${index + 1}`] = row.total;
     table.lengths.forEach((length, column) => {
@@ -1604,7 +1619,7 @@ export function pitWallVariables(
     });
   });
 
-  const sleeveRows = pitSleeveTable(sleeves, walls, kinds);
+  const sleeveRows = pitSleeveTable(sleeves, walls, kinds, step);
   sleeveRows.rows.forEach((row, index) => {
     values[`SV${index + 1}`] = row.total;
     sleeveRows.lengths.forEach((length, column) => {

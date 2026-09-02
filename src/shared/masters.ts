@@ -5,9 +5,9 @@
  */
 export function resolveMasterName(
   entries: { id: number; name: string }[],
-  input: string
+  input: string,
 ): string {
-  if (!/^\d+$/.test(input)) return input
-  const found = entries.find((entry) => entry.id === Number(input))
-  return found ? found.name : input
+  if (!/^\d+$/.test(input)) return input;
+  const found = entries.find((entry) => entry.id === Number(input));
+  return found ? found.name : input;
 }

@@ -15,9 +15,9 @@ function entry(file: Buffer, name: string): string {
       .toString("utf8");
     const start = offset + 30 + nameLength + extraLength;
     if (entryName === name) {
-      return inflateRawSync(file.subarray(start, start + compressedSize)).toString(
-        "utf8",
-      );
+      return inflateRawSync(
+        file.subarray(start, start + compressedSize),
+      ).toString("utf8");
     }
     offset = start + compressedSize;
   }

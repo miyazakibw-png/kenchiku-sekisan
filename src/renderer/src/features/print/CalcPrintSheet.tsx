@@ -1,4 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { CalcSet, CalcSheetResult } from "../../../../core/room/calcSheet";
 import {
   CALC_PRINT_COLUMNS,

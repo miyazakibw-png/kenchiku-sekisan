@@ -26,7 +26,13 @@ describe("画面のエクセル掃き出し", () => {
 
   it("入力表ごとに1シートで、1行目は見出しになる", () => {
     const book = toScreenSheets([
-      { name: "建具表", rows: [["建具記号", "W"], ["SD2", "1.80"]] },
+      {
+        name: "建具表",
+        rows: [
+          ["建具記号", "W"],
+          ["SD2", "1.80"],
+        ],
+      },
       { name: "部屋計算書", rows: [["名称"], ["ビニル床シート"]] },
     ]);
     expect(book.map((sheet) => sheet.name)).toEqual(["建具表", "部屋計算書"]);
@@ -36,9 +42,9 @@ describe("画面のエクセル掃き出し", () => {
     });
     expect(book[0].rows[1][1]).toMatchObject({ value: 1.8, kind: "number" });
     // 見出し行は数字に見えても文字のまま
-    expect(toScreenSheets([{ name: "表", rows: [["1"]] }])[0].rows[0][0]).toMatchObject(
-      { value: "1", kind: "header" },
-    );
+    expect(
+      toScreenSheets([{ name: "表", rows: [["1"]] }])[0].rows[0][0],
+    ).toMatchObject({ value: "1", kind: "header" });
   });
 
   it(".xlsx（zip）として書き出す", () => {

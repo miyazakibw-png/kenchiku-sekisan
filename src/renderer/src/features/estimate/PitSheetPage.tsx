@@ -42,6 +42,7 @@ import {
   pitPartVariables,
   pitSymbol,
   pitVariables,
+  PIT_LENGTH_STEPS,
   pitWallTable,
   refitPitWalls,
   pitWallVariables,
@@ -217,9 +218,11 @@ export default function PitSheetPage({
   const [showTrace, setShowTrace] = useState(false);
   /** 図（平面図）を画面いっぱいに開いているか */
   const [expanded, setExpanded] = useState(false);
+  /** ピット間の表で長さをまとめる単位（mm） */
+  const [wallStep, setWallStep] = useState<number>(PIT_LENGTH_STEPS[0]);
 
   const { markSaved } = useSaveOnLeave(
-    { pits, beams, walls, sleeves, sleeveKinds, lower, note, trace },
+    { pits, beams, walls, sleeves, sleeveKinds, wallStep, lower, note, trace },
     () => save(),
   );
 
@@ -304,6 +307,7 @@ export default function PitSheetPage({
       setWalls(loadedWalls);
       setSleeves(loadedSleeves);
       setSleeveKinds(loadedKinds);
+      setWallStep(loaded.wallStep);
       setLower(sets);
       setNote(loaded.note);
       setTrace(parseTrace(loaded.traceJson));
@@ -313,6 +317,7 @@ export default function PitSheetPage({
         walls: loadedWalls,
         sleeves: loadedSleeves,
         sleeveKinds: loadedKinds,
+        wallStep: loaded.wallStep,
         lower: sets,
         note: loaded.note,
         trace: parseTrace(loaded.traceJson),
@@ -362,7 +367,10 @@ export default function PitSheetPage({
     });
   }, [pits, plan]);
 
-  const wallTable = useMemo(() => pitWallTable(walls), [walls]);
+  const wallTable = useMemo(
+    () => pitWallTable(walls, wallStep),
+    [walls, wallStep],
+  );
 
   /** 人通口・スリーブの種類別×長さ別の個数表 */
 
@@ -370,7 +378,7 @@ export default function PitSheetPage({
   const calcVariables = useMemo(() => {
     const values: Record<string, number> = {
       ...pitVariables(quantities),
-      ...pitWallVariables(walls, sleeves, sleeveKinds),
+      ...pitWallVariables(walls, sleeves, sleeveKinds, wallStep),
     };
     fittings.forEach((fitting) => {
       const computed = computeFitting(fitting);
@@ -403,6 +411,7 @@ export default function PitSheetPage({
       walls,
       sleeves,
       sleeveKinds,
+      wallStep,
       lower: trimmed,
       note,
       trace,
@@ -414,6 +423,7 @@ export default function PitSheetPage({
       wallsJson: JSON.stringify(walls),
       sleevesJson: JSON.stringify(sleeves),
       sleeveKindsJson: JSON.stringify(sleeveKinds),
+      wallStep,
       lowerJson: JSON.stringify(trimmed),
       traceJson: JSON.stringify(trace),
       note,
@@ -431,6 +441,7 @@ export default function PitSheetPage({
     sleeveKinds,
     sleeves,
     trace,
+    wallStep,
     walls,
   ]);
 
@@ -647,10 +658,11 @@ export default function PitSheetPage({
       setMessage(
         `ピット間に印を付けました（長さ ${Math.round(length * 1000)}mm → 集計は ${groupLengthMm(
           length * 1000,
+          wallStep,
         )}mm）`,
       );
     },
-    [changeWalls, pits, plan.rects, wallColor, wallWidth],
+    [changeWalls, pits, plan.rects, wallColor, wallStep, wallWidth],
   );
 
   /** ピット間を消す（付いている人通口・スリーブも消す） */
@@ -2218,7 +2230,20 @@ export default function PitSheetPage({
 
         <section className="pit-walls">
           <div className="section-bar">
-            <h3>ピット間（種類＝線の色／長さは50mmごと）</h3>
+            <h3>ピット間（種類＝線の色）</h3>
+            <label title="表の長さをまとめる単位を選びます">
+              長さのまとめ
+              <select
+                value={wallStep}
+                onChange={(e) => setWallStep(Number(e.target.value))}
+              >
+                {PIT_LENGTH_STEPS.map((step) => (
+                  <option key={step} value={step}>
+                    {step}mmごと
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {showSleeveKinds && (

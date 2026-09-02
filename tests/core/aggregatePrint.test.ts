@@ -32,7 +32,8 @@ function item(
   };
 }
 
-const subjectName = (id: number | null): string => (id === null ? "" : `科目${id}`);
+const subjectName = (id: number | null): string =>
+  id === null ? "" : `科目${id}`;
 
 describe("集計書の印刷", () => {
   it("明細の下に数量根拠（部屋ごとの拾い）を並べる", () => {

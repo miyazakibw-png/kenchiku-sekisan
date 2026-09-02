@@ -914,4 +914,8 @@ ALTER TABLE project_pit_sheets ADD COLUMN walls_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE project_pit_sheets ADD COLUMN sleeves_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE project_pit_sheets ADD COLUMN sleeve_kinds_json TEXT NOT NULL DEFAULT '[]';
 `,
+  // ピット間の表で長さをまとめる単位（50/100/300/500mm）を選べるようにする
+  `
+ALTER TABLE project_pit_sheets ADD COLUMN wall_step INTEGER NOT NULL DEFAULT 50;
+`,
 ];

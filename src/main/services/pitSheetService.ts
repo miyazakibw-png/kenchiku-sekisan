@@ -13,6 +13,7 @@ function toSheet(row: typeof projectPitSheets.$inferSelect): PitSheet {
     wallsJson: row.wallsJson,
     sleevesJson: row.sleevesJson,
     sleeveKindsJson: row.sleeveKindsJson,
+    wallStep: row.wallStep,
     lowerJson: row.lowerJson,
     traceJson: row.traceJson,
     note: row.note,
@@ -20,10 +21,7 @@ function toSheet(row: typeof projectPitSheets.$inferSelect): PitSheet {
 }
 
 /** ピット計算書を開く。まだ無ければ部位別入力表の行から作る */
-export function getPitSheet(
-  db: AppDatabase,
-  estimateRowId: number,
-): PitSheet {
+export function getPitSheet(db: AppDatabase, estimateRowId: number): PitSheet {
   const existing = db
     .select()
     .from(projectPitSheets)
@@ -59,6 +57,7 @@ export function savePitSheet(
       wallsJson: request.wallsJson,
       sleevesJson: request.sleevesJson,
       sleeveKindsJson: request.sleeveKindsJson,
+      wallStep: request.wallStep,
       lowerJson: request.lowerJson,
       ...(request.traceJson === undefined
         ? {}

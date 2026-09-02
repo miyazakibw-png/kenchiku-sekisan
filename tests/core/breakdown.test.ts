@@ -233,9 +233,7 @@ describe("BCS.CSV", () => {
       projectName: "港区計画",
       workCategory: "建築主体工事",
     });
-    const detail = csv
-      .split("\r\n")
-      .filter((line) => line.includes('"D"'));
+    const detail = csv.split("\r\n").filter((line) => line.includes('"D"'));
     expect(detail.length).toBe(1);
     const cells = detail[0].split(",");
     expect(cells[10]).toBe('"普通コンクリート"');
@@ -261,10 +259,7 @@ describe("エクセル掃き出し", () => {
       "コンクリート工事",
       "型枠工事",
     ]);
-    const book = toSpreadsheetSheets(
-      sheets,
-      DEFAULT_BREAKDOWN_SETTINGS.layout,
-    );
+    const book = toSpreadsheetSheets(sheets, DEFAULT_BREAKDOWN_SETTINGS.layout);
     expect(book.map((sheet) => sheet.name)).toEqual([
       "コンクリート工事",
       "型枠工事",
@@ -287,9 +282,7 @@ describe("エクセル掃き出し", () => {
       [{ name: "内訳書", rows }],
       BREAKDOWN_LAYOUT.excel,
     );
-    const values = book[0].rows.flatMap((row) =>
-      row.map((cell) => cell.value),
-    );
+    const values = book[0].rows.flatMap((row) => row.map((cell) => cell.value));
     expect(values).toContain("基礎\n普通コンクリート");
   });
 
@@ -301,7 +294,10 @@ describe("エクセル掃き出し", () => {
     // ソフト内の表示は2段2行（上段＝部位・下段＝名称）
     expect(rows[1].nameLower).toBe("基礎");
     expect(rows[2].nameLower).toBe("普通コンクリート");
-    const book = toSpreadsheetSheets([{ name: "内訳書", rows }], BREAKDOWN_LAYOUT.excel);
+    const book = toSpreadsheetSheets(
+      [{ name: "内訳書", rows }],
+      BREAKDOWN_LAYOUT.excel,
+    );
     const values = book[0].rows.flatMap((row) => row.map((cell) => cell.value));
     expect(values).toContain("基礎\n普通コンクリート");
     expect(values).toContain("FC21*18\n呼び強度21");
@@ -329,8 +325,12 @@ describe("エクセル掃き出し", () => {
       false,
     );
     // 明細の無い空欄の行にも罫線を引く。2段の書式なので上下段の間には線を入れない
-    expect(book[0].rows[32].every((cell) => cell.border === "upper")).toBe(true);
-    expect(book[0].rows[33].every((cell) => cell.border === "lower")).toBe(true);
+    expect(book[0].rows[32].every((cell) => cell.border === "upper")).toBe(
+      true,
+    );
+    expect(book[0].rows[33].every((cell) => cell.border === "lower")).toBe(
+      true,
+    );
   });
 
   it("単位は設定した表記へ置き換える（未入力ならそのまま）", () => {

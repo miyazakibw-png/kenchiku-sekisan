@@ -279,7 +279,8 @@ export default function FormworkTransferPage({
       </table>
 
       <h3 className="section">
-        ② 型枠の内容を決めて、選んだ分をまとめて変える（選択 {picked.length} 件）
+        ② 型枠の内容を決めて、選んだ分をまとめて変える（選択 {picked.length}{" "}
+        件）
       </h3>
       <div className="toolbar">
         <label>

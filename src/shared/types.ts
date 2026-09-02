@@ -361,6 +361,8 @@ export interface PitSheet {
   sleevesJson: string;
   /** 人通口・スリーブの種類（PitSleeveKindの配列） */
   sleeveKindsJson: string;
+  /** ピット間の表で長さをまとめる単位（mm・50/100/300/500） */
+  wallStep: number;
   /** セット明細計算表 */
   lowerJson: string;
   /** 図面画像となぞった点・縮尺（RoomTrace）のJSON */

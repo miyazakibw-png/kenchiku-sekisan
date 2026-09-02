@@ -449,7 +449,8 @@ export default function RoomTracePanel({
         {trace.image === "" ? (
           <p className="empty">
             Shift+Windows+S で図面を切り取り、この画面で Ctrl+V
-            を押すと貼り付きます（「📂 画像・PDFを開く」でPDFや画像ファイルからも読めます）
+            を押すと貼り付きます（「📂
+            画像・PDFを開く」でPDFや画像ファイルからも読めます）
           </p>
         ) : (
           <svg

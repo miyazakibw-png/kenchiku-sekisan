@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AggregateRun, AggregateView, ProjectSummary } from "@shared/types";
+import type {
+  AggregateRun,
+  AggregateView,
+  ProjectSummary,
+} from "@shared/types";
 import { aggregateByRoom } from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
 import { detailsToEntries } from "./aggregateRows";
@@ -103,7 +107,10 @@ export default function RoomAggregatePage({
               </tr>
             </tbody>,
             ...group.items.map((item) => (
-              <tbody key={`${group.roomName}-${item.masterKey}`} className="row">
+              <tbody
+                key={`${group.roomName}-${item.masterKey}`}
+                className="row"
+              >
                 <tr className="detail-upper">
                   <td className="no" rowSpan={2}>
                     {item.subjectId ?? ""}

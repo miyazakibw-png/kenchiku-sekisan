@@ -34,13 +34,15 @@ const KINDS: XlsxCellKind[] = ["text", "number", "header", "wrap"];
 const BORDERS: XlsxBorder[] = ["one", "upper", "lower"];
 
 function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    // エクセルが読めない制御文字は落とす
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  return (
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      // エクセルが読めない制御文字は落とす
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+  );
 }
 
 /** 列番号（0始まり）を A, B, ... AA へ直す */
@@ -296,13 +298,18 @@ ${named
       (_sheet, index) =>
         `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
     )
-    .join("")}<Relationship Id="rId${named.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+    .join(
+      "",
+    )}<Relationship Id="rId${named.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
 
   const entries: ZipEntry[] = [
     { name: "[Content_Types].xml", data: Buffer.from(contentTypes, "utf8") },
     { name: "_rels/.rels", data: Buffer.from(rootRels, "utf8") },
     { name: "xl/workbook.xml", data: Buffer.from(workbook, "utf8") },
-    { name: "xl/_rels/workbook.xml.rels", data: Buffer.from(workbookRels, "utf8") },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      data: Buffer.from(workbookRels, "utf8"),
+    },
     { name: "xl/styles.xml", data: Buffer.from(stylesXml(), "utf8") },
     ...named.map((sheet, index) => ({
       name: `xl/worksheets/sheet${index + 1}.xml`,

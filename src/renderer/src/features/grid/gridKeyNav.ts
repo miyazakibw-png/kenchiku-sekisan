@@ -4,25 +4,25 @@
  */
 
 export interface CellPosition {
-  row: number
-  col: number
+  row: number;
+  col: number;
 }
 
-export type NavMove = 'up' | 'down' | 'left' | 'right'
+export type NavMove = "up" | "down" | "left" | "right";
 
 /** 押されたキーからどこへ動くかを決める。動かさないときは null */
 export function navMoveOf(
   key: string,
   shiftKey: boolean,
   caretAtStart: boolean,
-  caretAtEnd: boolean
+  caretAtEnd: boolean,
 ): NavMove | null {
-  if (key === 'Enter') return shiftKey ? 'up' : 'down'
-  if (key === 'ArrowUp') return 'up'
-  if (key === 'ArrowDown') return 'down'
-  if (key === 'ArrowLeft') return caretAtStart ? 'left' : null
-  if (key === 'ArrowRight') return caretAtEnd ? 'right' : null
-  return null
+  if (key === "Enter") return shiftKey ? "up" : "down";
+  if (key === "ArrowUp") return "up";
+  if (key === "ArrowDown") return "down";
+  if (key === "ArrowLeft") return caretAtStart ? "left" : null;
+  if (key === "ArrowRight") return caretAtEnd ? "right" : null;
+  return null;
 }
 
 /**
@@ -33,26 +33,31 @@ export function navMoveOf(
 export function nextCellPosition(
   move: NavMove,
   current: CellPosition,
-  counts: readonly number[]
+  counts: readonly number[],
 ): CellPosition | null {
-  const { row, col } = current
-  if (move === 'up' || move === 'down') {
-    const step = move === 'down' ? 1 : -1
-    for (let next = row + step; next >= 0 && next < counts.length; next += step) {
-      if (counts[next] > 0) return { row: next, col: Math.min(col, counts[next] - 1) }
+  const { row, col } = current;
+  if (move === "up" || move === "down") {
+    const step = move === "down" ? 1 : -1;
+    for (
+      let next = row + step;
+      next >= 0 && next < counts.length;
+      next += step
+    ) {
+      if (counts[next] > 0)
+        return { row: next, col: Math.min(col, counts[next] - 1) };
     }
-    return null
+    return null;
   }
-  if (move === 'left') {
-    if (col > 0) return { row, col: col - 1 }
+  if (move === "left") {
+    if (col > 0) return { row, col: col - 1 };
     for (let next = row - 1; next >= 0; next--) {
-      if (counts[next] > 0) return { row: next, col: counts[next] - 1 }
+      if (counts[next] > 0) return { row: next, col: counts[next] - 1 };
     }
-    return null
+    return null;
   }
-  if (col < counts[row] - 1) return { row, col: col + 1 }
+  if (col < counts[row] - 1) return { row, col: col + 1 };
   for (let next = row + 1; next < counts.length; next++) {
-    if (counts[next] > 0) return { row: next, col: 0 }
+    if (counts[next] > 0) return { row: next, col: 0 };
   }
-  return null
+  return null;
 }

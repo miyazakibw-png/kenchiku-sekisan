@@ -70,7 +70,8 @@ function wrapCell(upper: string, lower: string): XlsxCell {
 
 /** 1明細が何行になるか（2段の書式は上下2行、1段・セル内改行の書式は1行） */
 function rowsPerDetail(layout: number): number {
-  return layout === BREAKDOWN_LAYOUT.oneLine || layout === BREAKDOWN_LAYOUT.excel
+  return layout === BREAKDOWN_LAYOUT.oneLine ||
+    layout === BREAKDOWN_LAYOUT.excel
     ? 1
     : 2;
 }
@@ -90,7 +91,10 @@ function detailBlocks(
   /** 書式③：上段の行（画面では2段2行）を、下段の行と1行にまとめるまで持っておく */
   let pending: BreakdownRow | null = null;
   /** 下段の行が来ないまま次へ進むときは、上段だけで1行にする */
-  const excelLine = (upper: BreakdownRow | null, lower: BreakdownRow | null): void => {
+  const excelLine = (
+    upper: BreakdownRow | null,
+    lower: BreakdownRow | null,
+  ): void => {
     const text = (
       pick: (row: BreakdownRow) => string,
       fallback: (row: BreakdownRow) => string,
@@ -101,11 +105,17 @@ function detailBlocks(
     lines.push([
       markCell(),
       wrapCell(
-        text((row) => row.nameLower, (row) => row.nameUpper),
+        text(
+          (row) => row.nameLower,
+          (row) => row.nameUpper,
+        ),
         lower === null ? "" : lower.nameLower,
       ),
       wrapCell(
-        text((row) => row.descriptionLower, (row) => row.descriptionUpper),
+        text(
+          (row) => row.descriptionLower,
+          (row) => row.descriptionUpper,
+        ),
         lower === null ? "" : lower.descriptionLower,
       ),
       numberCell(lower === null ? null : lower.quantity),
@@ -113,7 +123,10 @@ function detailBlocks(
       numberCell(lower === null ? null : lower.unitPrice),
       numberCell(lower === null ? null : lower.amount),
       wrapCell(
-        text((row) => row.remarksLower, (row) => row.remarksUpper),
+        text(
+          (row) => row.remarksLower,
+          (row) => row.remarksUpper,
+        ),
         lower === null ? "" : lower.remarksLower,
       ),
     ]);
@@ -173,7 +186,8 @@ function detailBlocks(
         numberCell(row.amount, border),
         textCell(row.remarksLower, border),
       ]);
-      if (layout === BREAKDOWN_LAYOUT.oneLine || row.rowKind !== "note") flush();
+      if (layout === BREAKDOWN_LAYOUT.oneLine || row.rowKind !== "note")
+        flush();
       return;
     }
     lines.push([
@@ -242,9 +256,13 @@ function paginate(
   page: PageLayout,
 ): XlsxCell[][] {
   const unit = rowsPerDetail(layout);
-  const firstPage = pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
+  const firstPage =
+    pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
   const laterPage =
-    pageDetails(page.detailsPerPageLater, DEFAULT_PAGE_LAYOUT.detailsPerPageLater) * unit;
+    pageDetails(
+      page.detailsPerPageLater,
+      DEFAULT_PAGE_LAYOUT.detailsPerPageLater,
+    ) * unit;
 
   const rows: XlsxCell[][] = [];
   const title = titleRows();

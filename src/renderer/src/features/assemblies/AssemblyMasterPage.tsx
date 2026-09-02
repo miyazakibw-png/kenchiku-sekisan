@@ -139,9 +139,10 @@ export default function AssemblyMasterPage({
       if (!pickerOpen) setPickerDetails([]);
       return;
     }
-    void (pickerScope === "project" && projectId !== null
-      ? window.sekisan.listProjectDetailsInUse(pickerSubjectId, projectId)
-      : window.sekisan.listDetails(pickerSubjectId, null)
+    void (
+      pickerScope === "project" && projectId !== null
+        ? window.sekisan.listProjectDetailsInUse(pickerSubjectId, projectId)
+        : window.sekisan.listDetails(pickerSubjectId, null)
     ).then(setPickerDetails);
   }, [pickerOpen, pickerScope, pickerSubjectId, projectId]);
 

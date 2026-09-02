@@ -35,23 +35,23 @@ export function SummarySheetBody({
 }: BodyProps): JSX.Element {
   return (
     <div className="summary-sheet">
-        <div className="summary-sheet-date">
-          {printDateText(printedOn ?? new Date())}
-        </div>
-        <table className="summary-sheet-table">
-          <tbody>
-            {lines.map((line, index) => (
-              <tr key={`${line.label}-${index}`}>
-                <th>{line.label}</th>
-                <td>{line.value}</td>
-              </tr>
-            ))}
-            <tr className="summary-sheet-note">
-              <th>備考</th>
-              <td>{note ?? ""}</td>
+      <div className="summary-sheet-date">
+        {printDateText(printedOn ?? new Date())}
+      </div>
+      <table className="summary-sheet-table">
+        <tbody>
+          {lines.map((line, index) => (
+            <tr key={`${line.label}-${index}`}>
+              <th>{line.label}</th>
+              <td>{line.value}</td>
             </tr>
-          </tbody>
-        </table>
+          ))}
+          <tr className="summary-sheet-note">
+            <th>備考</th>
+            <td>{note ?? ""}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
