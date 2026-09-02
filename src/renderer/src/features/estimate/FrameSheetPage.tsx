@@ -442,6 +442,10 @@ export default function FrameSheetPage({
     span: number;
   } | null>(null);
   const view = heldView ?? autoView;
+  useEffect(() => {
+    if (trace.image === "" || heldView !== null) return;
+    setHeldView(autoView);
+  }, [autoView, heldView, trace.image]);
 
   /** 計算式に使える数量（軸組の記号＋建具表の記号） */
   const calcVariables = useMemo(() => {
@@ -1624,6 +1628,8 @@ export default function FrameSheetPage({
                     className="line-handle"
                     onPointerDown={(event) => {
                       event.stopPropagation();
+                      // つまんでいる間に表示範囲が変わって図面が動かないよう止める
+                      setHeldView(view);
                       endRef.current = {
                         lineId: line.id,
                         end,
