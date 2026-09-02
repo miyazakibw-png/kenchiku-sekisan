@@ -327,6 +327,19 @@ export default function FrameSheetPage({
     return () => window.removeEventListener("keydown", onKey);
   }, [manualLines, selectedLineId]);
 
+  // 線を引く途中の1点目・縮尺合わせの点は Esc で取り消す
+  useEffect(() => {
+    if (drawStart === null && scalePoints.length === 0) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      setDrawStart(null);
+      setScalePoints([]);
+      setMessage("取り消しました（もう一度1点目からどうぞ）");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawStart, scalePoints]);
+
   // 別窓で開いているときは Esc で閉じられるようにする
   useEffect(() => {
     if (!expanded) return;
@@ -1551,8 +1564,20 @@ export default function FrameSheetPage({
               </select>
             </label>
             <span className="status">
-              始めと終わりをクリックします（引いている間は図の大きさを変えません）
+              始めと終わりをクリックします（1点目のやり直しは Esc か右クリック）
             </span>
+            {drawStart !== null && (
+              <button
+                type="button"
+                title="1点目を取り消して、もう一度始めからクリックします"
+                onClick={() => {
+                  setDrawStart(null);
+                  setMessage("1点目を取り消しました");
+                }}
+              >
+                ↶ 1点目をやり直す
+              </button>
+            )}
           </div>
         )}
         <div className="canvas" ref={canvasRef}>
@@ -1579,6 +1604,13 @@ export default function FrameSheetPage({
             onPointerUp={finishDrag}
             onPointerLeave={finishDrag}
             onClick={onCanvasClick}
+            onContextMenu={(event) => {
+              if (drawStart === null && scalePoints.length === 0) return;
+              event.preventDefault();
+              setDrawStart(null);
+              setScalePoints([]);
+              setMessage("取り消しました（もう一度1点目からどうぞ）");
+            }}
           >
             {traceBox !== null && (
               <image
