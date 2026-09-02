@@ -244,7 +244,8 @@
 }
 
 /* 大きく開いている間は表を隠して、図だけを大きく出す */
-.pit-upper.expanded > .pit-list {
+.pit-upper.expanded > .pit-list,
+.pit-upper.expanded > .pit-walls {
   display: none;
 }
 

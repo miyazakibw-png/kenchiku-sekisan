@@ -1252,57 +1252,6 @@ export default function PitSheetPage({
         title={`ピット計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
         upper={
           <div className="pit-print-upper">
-            {planMode === "beam" && !printMode && (
-              <div className="pit-beam-popup">
-                <strong>梁型入力</strong>
-                <label>
-                  方向
-                  <select
-                    value={beamAxis}
-                    onChange={(e) =>
-                      setBeamAxis(
-                        e.target.value === "Y"
-                          ? "Y"
-                          : e.target.value === "E"
-                            ? "E"
-                            : "X",
-                      )
-                    }
-                  >
-                    <option value="X">X方向（よこ）</option>
-                    <option value="Y">Y方向（たて）</option>
-                    <option value="E">壁沿い（斜めの壁も）</option>
-                  </select>
-                </label>
-                <label>
-                  梁W（m）
-                  <input
-                    data-half="1"
-                    className="num"
-                    defaultValue={beamWidth}
-                    onBlur={(e) =>
-                      setBeamWidth(parseNumber(e.target.value) ?? 0.3)
-                    }
-                  />
-                </label>
-                <label>
-                  梁H（m）
-                  <input
-                    data-half="1"
-                    className="num"
-                    defaultValue={beamHeight}
-                    onBlur={(e) =>
-                      setBeamHeight(parseNumber(e.target.value) ?? 0.6)
-                    }
-                  />
-                </label>
-                <span className="status">
-                  {beamAxis === "E"
-                    ? "壁の近くをクリックすると、その壁に沿う梁が付きます"
-                    : "図の中をクリックすると、その所に梁型が入ります"}
-                </span>
-              </div>
-            )}
             {drawing}
             {quantityTable}
             {walls.length > 0 && wallTables}
@@ -2213,6 +2162,57 @@ export default function PitSheetPage({
               </>
             )}
           </div>
+          {planMode === "beam" && !printMode && (
+            <div className="pit-beam-popup">
+              <strong>梁型入力</strong>
+              <label>
+                方向
+                <select
+                  value={beamAxis}
+                  onChange={(e) =>
+                    setBeamAxis(
+                      e.target.value === "Y"
+                        ? "Y"
+                        : e.target.value === "E"
+                          ? "E"
+                          : "X",
+                    )
+                  }
+                >
+                  <option value="X">X方向（よこ）</option>
+                  <option value="Y">Y方向（たて）</option>
+                  <option value="E">壁沿い（斜めの壁も）</option>
+                </select>
+              </label>
+              <label>
+                梁W（m）
+                <input
+                  data-half="1"
+                  className="num"
+                  defaultValue={beamWidth}
+                  onBlur={(e) =>
+                    setBeamWidth(parseNumber(e.target.value) ?? 0.3)
+                  }
+                />
+              </label>
+              <label>
+                梁H（m）
+                <input
+                  data-half="1"
+                  className="num"
+                  defaultValue={beamHeight}
+                  onBlur={(e) =>
+                    setBeamHeight(parseNumber(e.target.value) ?? 0.6)
+                  }
+                />
+              </label>
+              <span className="status">
+                {beamAxis === "E"
+                  ? "壁の近くをクリックすると、その壁に沿う梁が付きます"
+                  : "図の中をクリックすると、その所に梁型が入ります"}
+              </span>
+            </div>
+          )}
           {drawing}
         </section>
 
