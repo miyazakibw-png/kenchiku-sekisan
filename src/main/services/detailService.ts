@@ -216,9 +216,13 @@ export function listProjectDetailsInUse(
   const projectById = new Map(projectRows.map((row) => [row.id, row]));
   // 集計は基本マスターのIDで残ることがあるので、複製元IDからも工事の明細を引けるようにする
   const projectBySource = new Map<number, Detail>();
+  // 元の明細が消えていても呼び出せるように、明細番号と名称からも引けるようにする
+  const projectByText = new Map<string, Detail>();
   for (const row of projectRows) {
     if (row.sourceDetailId !== null)
       projectBySource.set(row.sourceDetailId, row);
+    const key = `${row.subjectId}\u0001${row.detailNumber ?? ""}\u0001${row.name}`;
+    if (!projectByText.has(key)) projectByText.set(key, row);
   }
 
   // 集計書兼工事マスターは最新の集計結果を出しているので、呼出も最新の集計に揃える
@@ -265,12 +269,34 @@ export function listProjectDetailsInUse(
 
   // 集計書兼工事マスターに出ている明細（部位ごとに1件）
   for (const item of aggregated) {
-    const source =
-      item.sourceDetailId === null
+    const textKey = `${item.subjectId ?? subjectId}\u0001${item.detailNumber ?? ""}\u0001${item.name}`;
+    const found =
+      (item.sourceDetailId === null
         ? undefined
         : (projectById.get(item.sourceDetailId) ??
-          projectBySource.get(item.sourceDetailId));
-    if (source === undefined) continue;
+          projectBySource.get(item.sourceDetailId))) ??
+      projectByText.get(textKey);
+    // 元の明細が見つからなくても、集計書に出ている明細は必ず呼び出せるようにする
+    const source: Detail = found ?? {
+      id: item.sourceDetailId ?? 0,
+      subjectId: item.subjectId ?? subjectId,
+      detailNumber: item.detailNumber,
+      materialCategory: item.materialCategory,
+      partNumber: item.partNumber,
+      partName: item.partName,
+      name: item.name,
+      descriptionUpper: item.descriptionUpper,
+      descriptionLower: item.descriptionLower,
+      unit: item.unit,
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+      estimateDisplay: item.estimateDisplay,
+      displayOrder: 0,
+      isActive: true,
+      scope: "project",
+      projectId,
+      sourceDetailId: null,
+    };
     push({
       ...source,
       subjectId: item.subjectId ?? source.subjectId,

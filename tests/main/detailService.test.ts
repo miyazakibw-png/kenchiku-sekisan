@@ -455,4 +455,32 @@ describe("工事マスター（明細）の呼出一覧", () => {
       ),
     ).toEqual(["壁/石膏ボード", "柱型/石膏ボード"]);
   });
+
+  it("元の明細が見つからない集計行も呼び出せる", () => {
+    const projectId = createProject(db, "元明細なし工事").id;
+    const run = db
+      .insert(schema.projectAggregateRuns)
+      .values({ projectId })
+      .returning()
+      .all()[0];
+    db.insert(schema.projectAggregateDetails)
+      .values({
+        runId: run.id,
+        traceId: "t-廻り縁",
+        subjectId,
+        partName: "廻り縁",
+        detailNumber: 190,
+        name: "塩ビ製",
+        unit: "m",
+        // 元の明細が消えている（複製元IDも残っていない）
+        sourceDetailId: null,
+      })
+      .run();
+
+    expect(
+      listProjectDetailsInUse(db, subjectId, projectId).map(
+        (row) => `${row.partName}/${row.name}`,
+      ),
+    ).toEqual(["廻り縁/塩ビ製"]);
+  });
 });
