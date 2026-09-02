@@ -433,14 +433,27 @@
   stroke-width: 5;
 }
 
-/* 別窓では図を左に上下いっぱいで固定し、表は右側に続けて並べる
-   （種類の表が増えても図の大きさは変わりません） */
+/* 別窓では図を左に上下いっぱいで置き、表は右側に上から続けて並べる
+   （種類の表が増えても図の大きさは変わりません。多いときは右へスクロール） */
+.frame-sheet-page > .upper.layout-popup {
+  display: flex;
+  flex-flow: column wrap;
+  align-content: flex-start;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .frame-sheet-page > .upper.layout-popup > section.drawing {
-  grid-column: 1;
-  grid-row: 1 / -1;
+  flex: 0 0 auto;
+  width: 46%;
+  height: 100%;
 }
 
 .frame-sheet-page > .upper.layout-popup > section:not(.drawing) {
+  flex: 0 0 auto;
+  width: 26%;
+  max-height: 100%;
   overflow: auto;
 }
 
@@ -448,4 +461,13 @@
 .frame-sheet-page > .upper.layout-popup > section:not(.drawing) table.grid {
   width: 100%;
   min-width: 0;
+}
+
+/* せまいときでも右端（🗑）まで見られるようにする */
+.frame-sheet-page > .upper > section.rooms.lines-kind {
+  overflow: auto;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid {
+  min-width: 300px;
 }
