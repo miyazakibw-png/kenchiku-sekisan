@@ -10,8 +10,6 @@ import { resolveMasterName } from "@shared/masters";
 import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import {
-  addSetDetailRow,
-  addSetLineRow,
   addSetRow,
   calcDetail,
   calcLine,
@@ -27,8 +25,8 @@ import {
   openSetDetail,
   padLines,
   removeSet,
-  removeSetDetail,
   removeSetLine,
+  removeSetRow,
   setRowCount,
   splitSetAt,
   syncLines,
@@ -632,12 +630,12 @@ export default function RoomCalcSheet({
     [onMessage, pickupParts, projectId, sets, subjects, updateDetail],
   );
 
-  /** セットの中の明細を1件だけ削除する（他の明細と計算式は残す） */
+  /** その行（明細と計算式の1組）をまとめて削除する */
   const removeDetail = useCallback(
     (setId: string, index: number): void => {
       const target = sets.find((set) => set.id === setId);
       if (!target) return;
-      const next = removeSetDetail(target, index);
+      const next = removeSetRow(target, index);
       updateSet(setId, { details: next.details, lines: next.lines });
       onFocus(null);
     },
@@ -894,14 +892,9 @@ export default function RoomCalcSheet({
         commit([...sets, calcSet()]);
         return;
       }
-      // カーソルのある欄だけに行を入れる（明細を差し込んでも計算式はずれない）
+      // どの欄で押しても、明細と計算式を1組（1行分）足す
       const at = insert ? (focus?.index ?? 0) : undefined;
-      const next =
-        focus === null
-          ? addSetRow(target, at)
-          : focus.area === "detail"
-            ? addSetDetailRow(target, at)
-            : addSetLineRow(target, at);
+      const next = addSetRow(target, at);
       updateSet(target.id, { details: next.details, lines: next.lines });
     },
     [bannerSetId, commit, currentSet, focus, sets, updateSet],
@@ -2172,7 +2165,7 @@ export default function RoomCalcSheet({
                             </button>
                             <button
                               type="button"
-                              title="この明細1件だけを削除します"
+                              title="この行（明細と計算式）を削除します"
                               onClick={() => removeDetail(set.id, rowIndex)}
                             >
                               ✕

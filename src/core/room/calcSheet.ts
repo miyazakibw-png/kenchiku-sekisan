@@ -261,6 +261,13 @@ export function addSetLineRow(set: CalcSet, position?: number): CalcSet {
   return { ...set, lines };
 }
 
+/** 1行を消す（明細と計算式を同じ位置で1組ずつ） */
+export function removeSetRow(set: CalcSet, index: number): CalcSet {
+  const details = set.details.filter((_, rowIndex) => rowIndex !== index);
+  const lines = set.lines.filter((_, rowIndex) => rowIndex !== index);
+  return { ...set, details, lines: syncLines(details, lines) };
+}
+
 /** 明細を1件だけ消す（計算式の行は残して動かさない） */
 export function removeSetDetail(set: CalcSet, index: number): CalcSet {
   const details = set.details.filter((_, rowIndex) => rowIndex !== index);
