@@ -140,7 +140,15 @@ describe("そろえ方", () => {
   it("上に置くとき右そろえで左右位置が変わる", () => {
     const rects = layoutPits([
       { id: "a", symbol: "Ｐ1", x: 6, y: 2, ...base },
-      { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base, direction: "up", align: "end" },
+      {
+        id: "b",
+        symbol: "Ｐ2",
+        x: 2,
+        y: 2,
+        ...base,
+        direction: "up",
+        align: "end",
+      },
     ]);
     expect(rects[1].left).toBe(4);
     expect(rects[1].top).toBe(-2.5);
@@ -149,11 +157,23 @@ describe("そろえ方", () => {
 
 describe("基準のピット", () => {
   it("すぐ前でないピットを基準に置ける", () => {
-    const base = { depth: 1, gap: DEFAULT_PIT_GAP, direction: "right" as const };
+    const base = {
+      depth: 1,
+      gap: DEFAULT_PIT_GAP,
+      direction: "right" as const,
+    };
     const rects = layoutPits([
       { id: "a", symbol: "Ｐ1", x: 4, y: 4, ...base },
       { id: "b", symbol: "Ｐ2", x: 2, y: 2, ...base },
-      { id: "c", symbol: "Ｐ3", x: 2, y: 2, ...base, direction: "down", baseId: "a" },
+      {
+        id: "c",
+        symbol: "Ｐ3",
+        x: 2,
+        y: 2,
+        ...base,
+        direction: "down",
+        baseId: "a",
+      },
     ]);
     expect(rects[2].left).toBe(0);
     expect(rects[2].top).toBe(4.5);
@@ -289,7 +309,10 @@ describe("角を斜めにする", () => {
       ...base,
     };
     const [quantity] = pitQuantities([pit], []);
-    expect(quantity.wallLength).toBeCloseTo(3 + Math.hypot(1, 1) + 1 + 4 + 2, 6);
+    expect(quantity.wallLength).toBeCloseTo(
+      3 + Math.hypot(1, 1) + 1 + 4 + 2,
+      6,
+    );
   });
 });
 
@@ -355,7 +378,10 @@ describe("角を動かして形を作る", () => {
     expect(pitPolygon(three).length).toBe(3);
     expect(pitPolygon(removePitCorner(three, 0)).length).toBe(3);
     expect(pitPolygon(rectanglePit(pit)).length).toBe(4);
-    expect(pitQuantities([rectanglePit(pit)], [])[0].floorArea).toBeCloseTo(8, 6);
+    expect(pitQuantities([rectanglePit(pit)], [])[0].floorArea).toBeCloseTo(
+      8,
+      6,
+    );
   });
 
   it("置き方が自由のときは基準ピットからの位置で置く", () => {
@@ -580,10 +606,28 @@ describe("欠いた所に入る□", () => {
     expect(pitNotch(shaped)).toEqual({ x: 2, y: 1, offsetX: 1, offsetY: 3 });
   });
 
-  it("四角や自由な形では□を作らない", () => {
+  it("四角や斜めの形では□を作らない", () => {
     expect(pitNotch(base)).toBeNull();
     const free = movePitCorners(base, [0], 1, 0);
     expect(pitNotch(free)).toBeNull();
+  });
+
+  it("角を直したＬ型（自由な形）でも欠いた所の□を出す", () => {
+    const free = setPitPoints(base, [
+      { x: 0, y: 0 },
+      { x: 6, y: 0 },
+      { x: 6, y: 3 },
+      { x: 4, y: 3 },
+      { x: 4, y: 4 },
+      { x: 0, y: 4 },
+    ]);
+    expect(pitNotch(free)).toEqual({ x: 2, y: 1, offsetX: 4, offsetY: 3 });
+    expect(pitNotch(free, 0.2)).toEqual({
+      x: 1.8,
+      y: 0.8,
+      offsetX: 4.2,
+      offsetY: 3.2,
+    });
   });
 });
 
@@ -871,7 +915,9 @@ describe("壁⇄柱（ピットの辺をまとめて柱にする）", () => {
   });
 
   it("合計（ＰＡ）と計算式の記号にも柱が入る", () => {
-    const shapes = [setPitColumns(pit("a", { x: 4, y: 2, depth: 1 }), [0], true)];
+    const shapes = [
+      setPitColumns(pit("a", { x: 4, y: 2, depth: 1 }), [0], true),
+    ];
     const total = pitTotal(pitQuantities(shapes, []));
     expect(total.columnLength).toBe(4);
     expect(total.columnArea).toBe(4);
@@ -910,6 +956,11 @@ describe("なぞった図をピットの形にする", () => {
 
   it("3点より少ないときは元のまま", () => {
     const base = pit("a");
-    expect(setPitPoints(base, [{ x: 0, y: 0 }, { x: 1, y: 0 }])).toBe(base);
+    expect(
+      setPitPoints(base, [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+      ]),
+    ).toBe(base);
   });
 });

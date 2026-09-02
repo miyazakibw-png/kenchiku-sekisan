@@ -437,14 +437,81 @@ export function rectanglePit(pit: PitShape): PitShape {
 }
 
 /**
+ * 角を直した形（自由な形）で欠いている所の□。
+ * たて・よこの辺だけでできた形のときに、いちばん大きい欠きを探す。
+ */
+function freeNotch(
+  points: readonly PitPoint[],
+  gap: number,
+): { x: number; y: number; offsetX: number; offsetY: number } | null {
+  const square = points.every((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return (
+      Math.abs(point.x - next.x) < 0.0001 || Math.abs(point.y - next.y) < 0.0001
+    );
+  });
+  if (!square) return null;
+  const xs = [...new Set(points.map((point) => point.x))].sort((a, b) => a - b);
+  const ys = [...new Set(points.map((point) => point.y))].sort((a, b) => a - b);
+  if (xs.length < 2 || ys.length < 2) return null;
+  // ます目ごとに、形の外（欠いた所）かどうかを見る
+  const out = ys.slice(0, -1).map((_y, row) =>
+    xs.slice(0, -1).map(
+      (_x, col) =>
+        !insidePolygon(points, {
+          x: (xs[col] + xs[col + 1]) / 2,
+          y: (ys[row] + ys[row + 1]) / 2,
+        }),
+    ),
+  );
+  let best: { c1: number; c2: number; r1: number; r2: number } | null = null;
+  let bestArea = 0;
+  for (let r1 = 0; r1 < out.length; r1 += 1)
+    for (let r2 = r1; r2 < out.length; r2 += 1)
+      for (let c1 = 0; c1 < out[0].length; c1 += 1)
+        for (let c2 = c1; c2 < out[0].length; c2 += 1) {
+          let all = true;
+          for (let r = r1; r <= r2 && all; r += 1)
+            for (let c = c1; c <= c2 && all; c += 1)
+              if (!out[r][c]) all = false;
+          if (!all) continue;
+          const area = (xs[c2 + 1] - xs[c1]) * (ys[r2 + 1] - ys[r1]);
+          if (area > bestArea) {
+            bestArea = area;
+            best = { c1, c2, r1, r2 };
+          }
+        }
+  if (!best || bestArea <= 0) return null;
+  const left = xs[best.c1];
+  const right = xs[best.c2 + 1];
+  const top = ys[best.r1];
+  const bottom = ys[best.r2 + 1];
+  const w = right - left;
+  const d = bottom - top;
+  // 形に囲まれている側だけ、すき間を空ける（外側の辺はそのまま）
+  const g = Math.max(Math.min(gap, w / 3, d / 3), 0);
+  const gLeft = left > xs[0] ? g : 0;
+  const gRight = right < xs[xs.length - 1] ? g : 0;
+  const gTop = top > ys[0] ? g : 0;
+  const gBottom = bottom < ys[ys.length - 1] ? g : 0;
+  return {
+    x: round4(w - gLeft - gRight),
+    y: round4(d - gTop - gBottom),
+    offsetX: round4(left + gLeft),
+    offsetY: round4(top + gTop),
+  };
+}
+
+/**
  * Ｌ型・コ型で欠いた所へぴったり収まる□の大きさと、ピットの左上から見た位置。
- * 欠きが無い（四角・自由な形）ときは null。
+ * 欠きが無い（四角）ときは null。角を直した形は、欠いた所を探して出す。
  */
 export function pitNotch(
   pit: PitShape,
   gap = 0,
 ): { x: number; y: number; offsetX: number; offsetY: number } | null {
-  if (pit.points && pit.points.length >= 3) return null;
+  if (pit.points && pit.points.length >= 3)
+    return freeNotch(pitPolygon(pit), gap);
   const w = Math.min(Math.max(pit.cutW ?? 0, 0), pit.x);
   const d = Math.min(Math.max(pit.cutD ?? 0, 0), pit.y);
   if (w <= 0 || d <= 0) return null;
