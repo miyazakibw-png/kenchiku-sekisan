@@ -211,9 +211,11 @@ export default function FrameSheetPage({
   const panDragRef = useRef<{
     clientX: number;
     clientY: number;
-    x: number;
-    y: number;
+    left: number;
+    top: number;
   } | null>(null);
+  /** 図の枠（拡大したときはこの中をスクロールする） */
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   /** 図面画像をつまんで動かしているときの位置 */
   const traceDragRef = useRef<{
     clientX: number;
@@ -451,22 +453,15 @@ export default function FrameSheetPage({
     span: number;
   } | null>(null);
   const baseView = heldView ?? autoView;
+  // 図面の大きさ・縮尺が変わったら、いったん範囲を合わせ直す
   useEffect(() => {
-    if (trace.image === "" || heldView !== null) return;
+    setHeldView(null);
+  }, [trace.image, trace.metersPerPixel, traceSize.width, traceSize.height]);
+  useEffect(() => {
+    if (traceBox === null || heldView !== null) return;
     setHeldView(autoView);
-  }, [autoView, heldView, trace.image]);
-  /** 拡大したときに見ている真ん中のずれ（m） */
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const view = useMemo(() => {
-    const [left, top] = baseView.box.split(" ").map(Number);
-    const span = baseView.span / zoom;
-    const centerX = left + baseView.span / 2 + pan.x;
-    const centerY = top + baseView.span / 2 + pan.y;
-    return {
-      box: `${centerX - span / 2} ${centerY - span / 2} ${span} ${span}`,
-      span,
-    };
-  }, [baseView, pan, zoom]);
+  }, [autoView, heldView, traceBox]);
+  const view = baseView;
 
   /** 計算式に使える数量（軸組の記号＋建具表の記号） */
   const calcVariables = useMemo(() => {
@@ -944,15 +939,10 @@ export default function FrameSheetPage({
     (event: React.PointerEvent<SVGSVGElement>) => {
       const movePan = panDragRef.current;
       if (movePan) {
-        const svg = svgRef.current;
-        if (!svg) return;
-        const rect = svg.getBoundingClientRect();
-        const size = Math.min(rect.width, rect.height) || 1;
-        const scale = view.span / size;
-        setPan({
-          x: movePan.x - (event.clientX - movePan.clientX) * scale,
-          y: movePan.y - (event.clientY - movePan.clientY) * scale,
-        });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.scrollLeft = movePan.left - (event.clientX - movePan.clientX);
+        canvas.scrollTop = movePan.top - (event.clientY - movePan.clientY);
         return;
       }
       const moveTrace = traceDragRef.current;
@@ -1214,8 +1204,9 @@ export default function FrameSheetPage({
             title="表示範囲を今の中身に合わせ直します"
             onClick={() => {
               setZoom(1);
-              setPan({ x: 0, y: 0 });
               setPanMode(false);
+              // 図面も入れて、中身ぜんぶが入る大きさに戻す
+              if (trace.image !== "") setFitTrace(true);
               setHeldView(null);
             }}
           >
@@ -1241,7 +1232,6 @@ export default function FrameSheetPage({
               title="図面の紙全体に合わせます（切ると引いた線に合わせて大きく出します）"
               onClick={() => {
                 setHeldView(null);
-                setPan({ x: 0, y: 0 });
                 setZoom(1);
                 setFitTrace(!fitTrace);
               }}
@@ -1477,22 +1467,24 @@ export default function FrameSheetPage({
             </span>
           </div>
         )}
-        <div className="canvas">
+        <div className="canvas" ref={canvasRef}>
           <svg
             ref={svgRef}
             viewBox={view.box}
             style={{
-              width: "100%",
-              height: "100%",
+              width: `${zoom * 100}%`,
+              height: `${zoom * 100}%`,
               cursor: panMode ? "grab" : undefined,
             }}
             onPointerDown={(event) => {
               if (!panMode) return;
+              const canvas = canvasRef.current;
+              if (!canvas) return;
               panDragRef.current = {
                 clientX: event.clientX,
                 clientY: event.clientY,
-                x: pan.x,
-                y: pan.y,
+                left: canvas.scrollLeft,
+                top: canvas.scrollTop,
               };
             }}
             onPointerMove={onPointerMove}
