@@ -8,6 +8,8 @@ import {
   deducts,
   edge,
   floorArea,
+  freeColumn,
+  freeColumnTotals,
   lShape,
   mirrorShape,
   moveCorner,
@@ -537,5 +539,56 @@ describe("setEdgeKinds", () => {
     expect(setEdgeKinds(shape, [], "column")).toBe(shape);
     expect(setEdgeKinds(shape, [ids[1]], "wall")).toBe(shape);
     expect(setEdgeKinds(columns, [ids[1]], "column")).toBe(columns);
+  });
+});
+
+describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
+  it("本数・周長・見付面積を数え、記号（IN・IL・IA）に出す", () => {
+    const shape = {
+      ...rectangleShape(6, 4),
+      columns: [freeColumn(2, 2, 0.6, 0.6), freeColumn(4, 2, 0.5, 0.8)],
+    };
+    const solved = solveShape(shape);
+    const totals = freeColumnTotals(solved.columns, 2.5);
+
+    expect(totals.count).toBe(2);
+    expect(totals.perimeter).toBe(5);
+    expect(totals.plan).toBe(0.76);
+    expect(totals.face).toBe(12.5);
+
+    const quantities = roomQuantities(solved, 2.5);
+    expect(quantities.freeColumnCount).toBe(2);
+    expect(quantities.freeColumnLength).toBe(5);
+    expect(quantities.freeColumnArea).toBe(12.5);
+
+    const symbols = roomSymbols(solved, 2.5);
+    const value = (symbol: string): number | null =>
+      symbols.find((row) => row.symbol === symbol)?.value ?? null;
+    expect(value("IN")).toBe(2);
+    expect(value("IL")).toBe(5);
+    expect(value("IA")).toBe(12.5);
+    expect(value("IL1")).toBe(2.4);
+    expect(value("IA2")).toBe(6.5);
+  });
+
+  it("取合欠除を超える大きさの独立柱だけ床面積から差し引く", () => {
+    const small = solveShape({
+      ...rectangleShape(6, 4),
+      columns: [freeColumn(2, 2, 0.6, 0.6)],
+    });
+    const big = solveShape({
+      ...rectangleShape(6, 4),
+      columns: [freeColumn(2, 2, 1, 1)],
+    });
+
+    expect(floorArea(small, 0.5)).toBe(24);
+    expect(floorArea(big, 0.5)).toBe(23);
+  });
+
+  it("独立柱が無い今までの図形は数量が変わらない", () => {
+    const solved = solveShape(rectangleShape(6, 4));
+    expect(solved.columns).toEqual([]);
+    expect(roomQuantities(solved, 2.5).freeColumnCount).toBe(0);
+    expect(floorArea(solved)).toBe(24);
   });
 });

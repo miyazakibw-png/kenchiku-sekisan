@@ -414,6 +414,21 @@
   stroke-width: 6;
 }
 
+/* 部屋の中の独立柱 */
+.room-sheet-page .free-column {
+  fill: #fecaca;
+  stroke: #b91c1c;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.room-sheet-page .free-column.selected {
+  fill: #bfdbfe;
+  stroke: #2563eb;
+  stroke-width: 4;
+}
+
 .room-sheet-page .edge.selected {
   stroke: #2563eb;
   stroke-width: 5;

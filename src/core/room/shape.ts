@@ -29,8 +29,25 @@ export interface RoomEdge {
   bulge?: number | null;
 }
 
+/**
+ * 部屋の中に立つ独立柱（Ｗ×Ｄ）。
+ * 外周の形には入れず、本数・周長・見付面積だけを数える。
+ */
+export interface FreeColumn {
+  id: string;
+  /** 図の中の中心の位置（m） */
+  x: number;
+  y: number;
+  /** 横幅Ｗ（m） */
+  width: number;
+  /** 奥行Ｄ（m） */
+  depth: number;
+}
+
 export interface RoomShape {
   edges: RoomEdge[];
+  /** 部屋の中の独立柱（無い計算書もあるので任意） */
+  columns?: FreeColumn[];
 }
 
 export interface SolvedEdge extends RoomEdge {
@@ -49,6 +66,8 @@ export interface Point {
 
 export interface SolvedShape {
   edges: SolvedEdge[];
+  /** 部屋の中の独立柱（形の計算には使わない） */
+  columns: FreeColumn[];
   /** 各辺の始点（edges と同じ並び）。寸法が決まらない場合は空 */
   points: Point[];
   /** 寸法が足りず決められない辺のID（画面で点滅させる） */
@@ -125,6 +144,21 @@ let sequence = 0;
 export function edgeId(): string {
   sequence += 1;
   return `e${Date.now().toString(36)}${sequence.toString(36)}`;
+}
+
+export function freeColumnId(): string {
+  sequence += 1;
+  return `c${Date.now().toString(36)}${sequence.toString(36)}`;
+}
+
+/** 独立柱1本（位置と大きさはm） */
+export function freeColumn(
+  x: number,
+  y: number,
+  width: number,
+  depth: number,
+): FreeColumn {
+  return { id: freeColumnId(), x, y, width, depth };
 }
 
 export function edge(
@@ -692,7 +726,39 @@ export function solveShape(shape: RoomShape): SolvedShape {
     }
   }
 
-  return { edges, points, missing, error };
+  return { edges, columns: shape.columns ?? [], points, missing, error };
+}
+
+/** 独立柱の合計（本数・周長・平面の占める面積・見付面積） */
+export interface FreeColumnTotals {
+  /** 本数 */
+  count: number;
+  /** 周長の合計（m） */
+  perimeter: number;
+  /** 平面で占める面積の合計（m2） */
+  plan: number;
+  /** 見付面積の合計（周長×天井高さ）。天井高さが無ければ null */
+  face: number | null;
+}
+
+export function freeColumnTotals(
+  columns: FreeColumn[],
+  ceilingHeight: number | null = null,
+): FreeColumnTotals {
+  const perimeter = columns.reduce(
+    (sum, column) => sum + (column.width + column.depth) * 2,
+    0,
+  );
+  const plan = columns.reduce(
+    (sum, column) => sum + column.width * column.depth,
+    0,
+  );
+  return {
+    count: columns.length,
+    perimeter: round2(perimeter),
+    plan: round2(plan),
+    face: ceilingHeight === null ? null : round2(perimeter * ceilingHeight),
+  };
 }
 
 function polygonArea(points: Point[]): number {
@@ -783,6 +849,7 @@ export function columnNotches(solved: SolvedShape): ColumnNotch[] {
 /**
  * 床面積（多角形の面積）。
  * 柱の欠きは取合欠除の設定より小さければ差し引かない（柱の無いものとして数える）。
+ * 部屋の中の独立柱も同じく、取合欠除を超える大きさのときだけ差し引く。
  */
 export function floorArea(
   solved: SolvedShape,
@@ -792,7 +859,11 @@ export function floorArea(
   const kept = columnNotches(solved)
     .filter((notch) => !deducts(notch.area, limit))
     .reduce((sum, notch) => sum + notch.area, 0);
-  return round2(polygonArea(solved.points) + kept);
+  const free = solved.columns.reduce((sum, column) => {
+    const area = round2(column.width * column.depth);
+    return deducts(area, limit) ? sum + area : sum;
+  }, 0);
+  return round2(polygonArea(solved.points) + kept - free);
 }
 
 /** 図の外形寸法（X＝横の最大、Y＝縦の最大）。曲面壁のふくらみは含めない */
@@ -895,6 +966,12 @@ export interface RoomQuantities {
   fittingArea: number;
   /** DL 差し引いた建具の巾木減 */
   fittingBaseboard: number;
+  /** IN 部屋の中の独立柱の本数 */
+  freeColumnCount: number;
+  /** IL 独立柱の周長計 */
+  freeColumnLength: number;
+  /** IA 独立柱の見付面積計（周長×天井高さ） */
+  freeColumnArea: number | null;
 }
 
 export function roomQuantities(
@@ -908,6 +985,7 @@ export function roomQuantities(
   const area = floorArea(solved, limit);
   const height = ceilingHeight ?? null;
   const fitting = fittingTotals(fittings);
+  const free = freeColumnTotals(solved.columns, height);
   return {
     floorArea: area,
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
@@ -920,6 +998,9 @@ export function roomQuantities(
     moldingLength: round2(totals.wall + totals.column),
     fittingArea: fitting.area,
     fittingBaseboard: fitting.baseboard,
+    freeColumnCount: free.count,
+    freeColumnLength: free.perimeter,
+    freeColumnArea: free.face,
   };
 }
 
@@ -962,7 +1043,28 @@ export function roomSymbols(
     { symbol: "ML", label: "廻り縁", value: quantities.moldingLength },
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },
     { symbol: "DL", label: "建具巾木減", value: quantities.fittingBaseboard },
+    { symbol: "IN", label: "独立柱 本数", value: quantities.freeColumnCount },
+    { symbol: "IL", label: "独立柱 周長", value: quantities.freeColumnLength },
+    {
+      symbol: "IA",
+      label: "独立柱 見付面積",
+      value: quantities.freeColumnArea,
+    },
   ];
+
+  solved.columns.forEach((column, index) => {
+    const perimeter = round2((column.width + column.depth) * 2);
+    symbols.push({
+      symbol: `IL${index + 1}`,
+      label: `独立柱${index + 1} 周長`,
+      value: perimeter,
+    });
+    symbols.push({
+      symbol: `IA${index + 1}`,
+      label: `独立柱${index + 1} 見付面積`,
+      value: ceilingHeight === null ? null : round2(perimeter * ceilingHeight),
+    });
+  });
 
   let wallIndex = 0;
   let columnIndex = 0;

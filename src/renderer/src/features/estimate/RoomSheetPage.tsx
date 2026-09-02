@@ -28,6 +28,7 @@ import {
   edge,
   edgeRange,
   floorArea,
+  freeColumn,
   incomingIsVertical,
   isDiagonal,
   mirrorShape,
@@ -336,6 +337,13 @@ export default function RoomSheetPage({
   const [addCornerMode, setAddCornerMode] = useState(false);
   /** 種別をまとめて変える選び中の辺（null は選び中でない） */
   const [kindPick, setKindPick] = useState<string[] | null>(null);
+  /** 部屋の中の独立柱を置くモード */
+  const [columnMode, setColumnMode] = useState(false);
+  /** これから置く独立柱の大きさ（Ｗ×Ｄ・m） */
+  const [columnWidth, setColumnWidth] = useState("0.60");
+  const [columnDepth, setColumnDepth] = useState("0.60");
+  /** 選んでいる独立柱（消すときに使う） */
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   /** 図面画像となぞった点（数量根拠として一緒に保存する） */
   const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
   const [showTrace, setShowTrace] = useState(false);
@@ -1020,7 +1028,10 @@ export default function RoomSheetPage({
   const applyShape = (next: RoomShape): void => {
     setShapePast((past) => [...past.slice(-49), shape]);
     setShapeFuture([]);
-    setShape(next);
+    // 形を直す操作は外周の辺だけを作るので、置いてある独立柱は残す
+    setShape(
+      next.columns === undefined ? { ...next, columns: shape.columns } : next,
+    );
   };
 
   /** いまの図形を左右（x）・上下（y）に反転する */
@@ -1269,6 +1280,67 @@ export default function RoomSheetPage({
     );
   };
 
+  /** 図をクリックした所へ独立柱（Ｗ×Ｄ）を1本置く */
+  const addFreeColumn = (event: React.MouseEvent<SVGSVGElement>): void => {
+    const svg = event.currentTarget;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const origin = svg.createSVGPoint();
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    const clicked = origin.matrixTransform(matrix.inverse());
+    const width = Number(columnWidth);
+    const depth = Number(columnDepth);
+    if (!(width > 0) || !(depth > 0)) {
+      setMessage("独立柱のＷ・Ｄに0より大きい寸法を入れてください");
+      return;
+    }
+    const added = freeColumn(
+      round2(clicked.x),
+      round2(clicked.y),
+      round2(width),
+      round2(depth),
+    );
+    applyShape({
+      ...shape,
+      columns: [...(shape.columns ?? []), added],
+    });
+    setSelectedColumn(added.id);
+    setMessage(
+      `独立柱を置きました（${formatNumber(added.width, 2)}×${formatNumber(added.depth, 2)}）。記号は IN 本数／IL 周長／IA 見付面積です`,
+    );
+  };
+
+  /** 選んでいる独立柱を消す */
+  const removeFreeColumn = (): void => {
+    const columns = shape.columns ?? [];
+    if (
+      selectedColumn === null ||
+      !columns.some((c) => c.id === selectedColumn)
+    )
+      return;
+    applyShape({
+      ...shape,
+      columns: columns.filter((column) => column.id !== selectedColumn),
+    });
+    setSelectedColumn(null);
+    setMessage("独立柱を消しました");
+  };
+
+  /** 選んでいる独立柱の大きさを直す */
+  const resizeFreeColumn = (width: number, depth: number): void => {
+    const columns = shape.columns ?? [];
+    if (selectedColumn === null) return;
+    applyShape({
+      ...shape,
+      columns: columns.map((column) =>
+        column.id === selectedColumn
+          ? { ...column, width: round2(width), depth: round2(depth) }
+          : column,
+      ),
+    });
+  };
+
   /**
    * 辺をクリックした位置で辺を分けて角を足す。
    * 位置はだいたいでよく、あとから寸法欄で直せる。
@@ -1500,6 +1572,62 @@ export default function RoomSheetPage({
             )}
             <button
               type="button"
+              className={columnMode ? "on" : ""}
+              disabled={shape.edges.length === 0}
+              title="押してからＷ・Ｄを決め、図の中をクリックすると部屋の中に独立柱を置きます"
+              onClick={() => {
+                const next = !columnMode;
+                setColumnMode(next);
+                if (next) {
+                  setKindPick(null);
+                  setAddCornerMode(false);
+                }
+                setMessage(
+                  next
+                    ? "Ｗ・Ｄを決めて、柱を置く所を図でクリックしてください"
+                    : "独立柱を置くのをやめました",
+                );
+              }}
+            >
+              ▣ 独立柱
+            </button>
+            {(columnMode || selectedColumn !== null) && (
+              <span className="kind-pick">
+                <span>Ｗ</span>
+                <input
+                  className="num"
+                  value={columnWidth}
+                  onChange={(e) => setColumnWidth(e.target.value)}
+                  onBlur={(e) => {
+                    const width = Number(e.target.value);
+                    const depth = Number(columnDepth);
+                    if (width > 0 && depth > 0) resizeFreeColumn(width, depth);
+                  }}
+                />
+                <span>Ｄ</span>
+                <input
+                  className="num"
+                  value={columnDepth}
+                  onChange={(e) => setColumnDepth(e.target.value)}
+                  onBlur={(e) => {
+                    const depth = Number(e.target.value);
+                    const width = Number(columnWidth);
+                    if (width > 0 && depth > 0) resizeFreeColumn(width, depth);
+                  }}
+                />
+                <span>{(shape.columns ?? []).length}本</span>
+                <button
+                  type="button"
+                  disabled={selectedColumn === null}
+                  title="選んでいる独立柱を消します"
+                  onClick={removeFreeColumn}
+                >
+                  🗑 この柱を消す
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
               disabled={shape.edges.length === 0}
               title="今の図形を左右に反転します（寸法はそのまま）"
               onClick={() => flipShape("x")}
@@ -1619,6 +1747,9 @@ export default function RoomSheetPage({
             <svg
               viewBox={view.box}
               style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+              onClick={(event) => {
+                if (columnMode) addFreeColumn(event);
+              }}
             >
               {solved.points.map((point, index) => {
                 const line = solved.edges[index];
@@ -1654,6 +1785,8 @@ export default function RoomSheetPage({
                   <g
                     key={line.id}
                     onClick={(event) => {
+                      // 独立柱を置いている間は、辺を選ばずに柱を置く
+                      if (columnMode) return;
                       if (kindPick !== null) {
                         toggleKindPick(line.id);
                         return;
@@ -1709,6 +1842,39 @@ export default function RoomSheetPage({
                   </g>
                 );
               })}
+              {solved.columns.map((column, index) => (
+                <g
+                  key={column.id}
+                  onClick={(event) => {
+                    if (columnMode) return;
+                    event.stopPropagation();
+                    setSelectedColumn(
+                      selectedColumn === column.id ? null : column.id,
+                    );
+                    setColumnWidth(formatNumber(column.width, 2));
+                    setColumnDepth(formatNumber(column.depth, 2));
+                  }}
+                >
+                  <rect
+                    x={column.x - column.width / 2}
+                    y={column.y - column.depth / 2}
+                    width={column.width}
+                    height={column.depth}
+                    className={`free-column ${
+                      selectedColumn === column.id ? "selected" : ""
+                    }`}
+                  />
+                  <text
+                    x={column.x}
+                    y={column.y - column.depth / 2 - dimFontSize * 0.3}
+                    className="dim"
+                    textAnchor="middle"
+                    fontSize={dimFontSize}
+                  >
+                    {`C${index + 1} ${formatNumber(column.width, 2)}×${formatNumber(column.depth, 2)}`}
+                  </text>
+                </g>
+              ))}
               {showCorners &&
                 solved.points.map((point, index) => (
                   <g
