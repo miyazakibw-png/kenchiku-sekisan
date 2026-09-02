@@ -196,6 +196,8 @@ export default function FrameSheetPage({
   /** 自分で引いた線だけを見る（部屋の図は薄くする） */
   const [manualOnly, setManualOnly] = useState(false);
   const [zoom, setZoom] = useState(1);
+  /** 拡大したときに図全体をつまんで動かす */
+  const [panMode, setPanMode] = useState(false);
   /** 図の表示範囲に図面画像も入れるか（切ると引いた線に合わせる） */
   const [fitTrace, setFitTrace] = useState(false);
   /** 建物レイアウトを画面いっぱいの別窓で開く */
@@ -205,6 +207,13 @@ export default function FrameSheetPage({
   const [snapText, setSnapText] = useState(() => String(savedSnapMm()));
   const [message, setMessage] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
+  /** 図ぜんたいをつまんで動かしているときの位置 */
+  const panDragRef = useRef<{
+    clientX: number;
+    clientY: number;
+    x: number;
+    y: number;
+  } | null>(null);
   /** 図面画像をつまんで動かしているときの位置 */
   const traceDragRef = useRef<{
     clientX: number;
@@ -441,11 +450,23 @@ export default function FrameSheetPage({
     box: string;
     span: number;
   } | null>(null);
-  const view = heldView ?? autoView;
+  const baseView = heldView ?? autoView;
   useEffect(() => {
     if (trace.image === "" || heldView !== null) return;
     setHeldView(autoView);
   }, [autoView, heldView, trace.image]);
+  /** 拡大したときに見ている真ん中のずれ（m） */
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const view = useMemo(() => {
+    const [left, top] = baseView.box.split(" ").map(Number);
+    const span = baseView.span / zoom;
+    const centerX = left + baseView.span / 2 + pan.x;
+    const centerY = top + baseView.span / 2 + pan.y;
+    return {
+      box: `${centerX - span / 2} ${centerY - span / 2} ${span} ${span}`,
+      span,
+    };
+  }, [baseView, pan, zoom]);
 
   /** 計算式に使える数量（軸組の記号＋建具表の記号） */
   const calcVariables = useMemo(() => {
@@ -874,6 +895,7 @@ export default function FrameSheetPage({
   const endMovedRef = useRef(false);
 
   const finishDrag = useCallback(() => {
+    panDragRef.current = null;
     traceDragRef.current = null;
     const grabbed = endRef.current;
     if (grabbed) {
@@ -920,6 +942,19 @@ export default function FrameSheetPage({
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      const movePan = panDragRef.current;
+      if (movePan) {
+        const svg = svgRef.current;
+        if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        const size = Math.min(rect.width, rect.height) || 1;
+        const scale = view.span / size;
+        setPan({
+          x: movePan.x - (event.clientX - movePan.clientX) * scale,
+          y: movePan.y - (event.clientY - movePan.clientY) * scale,
+        });
+        return;
+      }
       const moveTrace = traceDragRef.current;
       if (moveTrace) {
         const svg = svgRef.current;
@@ -990,6 +1025,7 @@ export default function FrameSheetPage({
   /** 始点クリック → 終点クリックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
+      if (panMode) return;
       if (endMovedRef.current) {
         endMovedRef.current = false;
         return;
@@ -1162,6 +1198,7 @@ export default function FrameSheetPage({
           </button>
           <button
             type="button"
+            title="図を大きくします（大きくしたら「✋ 図を動かす」で端まで見られます）"
             onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
           >
             ＋
@@ -1177,10 +1214,25 @@ export default function FrameSheetPage({
             title="表示範囲を今の中身に合わせ直します"
             onClick={() => {
               setZoom(1);
+              setPan({ x: 0, y: 0 });
+              setPanMode(false);
               setHeldView(null);
             }}
           >
             全体
+          </button>
+          <button
+            type="button"
+            className={panMode ? "on" : ""}
+            title="図をつまんで動かします（大きくしたときに端まで見られます）"
+            onClick={() => {
+              setPanMode(!panMode);
+              setMessage(
+                panMode ? "" : "図をつまんだまま動かすと見る所を変えられます",
+              );
+            }}
+          >
+            ✋ 図を動かす
           </button>
           {trace.image !== "" && (
             <button
@@ -1189,6 +1241,8 @@ export default function FrameSheetPage({
               title="図面の紙全体に合わせます（切ると引いた線に合わせて大きく出します）"
               onClick={() => {
                 setHeldView(null);
+                setPan({ x: 0, y: 0 });
+                setZoom(1);
                 setFitTrace(!fitTrace);
               }}
             >
@@ -1203,7 +1257,7 @@ export default function FrameSheetPage({
               onClick={() => {
                 setDrawStart(null);
                 // 線を引く間は表示範囲を止めて、図面が動かないようにする
-                setHeldView(drawing ? null : view);
+                setHeldView(drawing ? null : baseView);
                 setDrawing(!drawing);
                 setMessage(
                   drawing
@@ -1303,7 +1357,7 @@ export default function FrameSheetPage({
                 className={traceMode === "move" ? "on" : ""}
                 title="図面をつまんで動かします（引いた線に合わせる位置決め）"
                 onClick={() => {
-                  setHeldView(traceMode === "move" ? null : view);
+                  setHeldView(traceMode === "move" ? null : baseView);
                   setTraceMode(traceMode === "move" ? "off" : "move");
                 }}
               >
@@ -1427,7 +1481,20 @@ export default function FrameSheetPage({
           <svg
             ref={svgRef}
             viewBox={view.box}
-            style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+            style={{
+              width: "100%",
+              height: "100%",
+              cursor: panMode ? "grab" : undefined,
+            }}
+            onPointerDown={(event) => {
+              if (!panMode) return;
+              panDragRef.current = {
+                clientX: event.clientX,
+                clientY: event.clientY,
+                x: pan.x,
+                y: pan.y,
+              };
+            }}
             onPointerMove={onPointerMove}
             onPointerUp={finishDrag}
             onPointerLeave={finishDrag}
@@ -1629,7 +1696,7 @@ export default function FrameSheetPage({
                     onPointerDown={(event) => {
                       event.stopPropagation();
                       // つまんでいる間に表示範囲が変わって図面が動かないよう止める
-                      setHeldView(view);
+                      setHeldView(baseView);
                       endRef.current = {
                         lineId: line.id,
                         end,
