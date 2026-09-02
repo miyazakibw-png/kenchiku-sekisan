@@ -17,6 +17,7 @@ import {
   formatNumber,
   insertRow,
   moveRow,
+  overwriteRowsInto,
   parseMultiplier,
   parseNumber,
   removeRow,
@@ -205,19 +206,41 @@ export default function EstimatePartsPage({
   const selectionStart = Math.min(selected, selectedEnd);
   const selectionEnd = Math.max(selected, selectedEnd);
 
+  /** 行コピー（Shift+クリックで選んだ範囲、無ければカーソルの1行） */
+  const copyRows = useCallback(() => {
+    const copied = rows.slice(selectionStart, selectionEnd + 1);
+    if (copied.length === 0) return;
+    setClipboard(copied);
+    setMessage(
+      `⧉ ${copied.length} 行をコピーしました（貼り付けたい行にカーソルを置いて「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  }, [rows, selectionEnd, selectionStart]);
+
   /** 貼付はその場で保存して、計算書の中身まで複製する */
   const pasteRows = useCallback(
-    async (count: number) => {
-      const copied = clipboard.slice(0, count);
+    async (mode: "over" | "insert" | "append") => {
+      const copied = clipboard;
       if (copied.length === 0) return;
-      // 挿入はカーソルの行の上（カーソルの行は下へ下がる）
-      const next = copyRowsInto(rows, selectionStart, copied);
+      const next =
+        mode === "over"
+          ? overwriteRowsInto(rows, selectionStart, copied)
+          : copyRowsInto(
+              rows,
+              mode === "insert" ? selectionStart : selectionEnd + 1,
+              copied,
+            );
+      const where =
+        mode === "over"
+          ? "カーソルの行から上書き"
+          : mode === "insert"
+            ? "カーソルの行の上へ挿入"
+            : "カーソルの行の下へ追加";
       await saveRows(
         next,
-        `${copied.length} 行をカーソルの行の上へ挿入しました（計算書の中身も複製）`,
+        `${copied.length} 行を${where}しました（計算書の中身も複製）`,
       );
     },
-    [clipboard, rows, saveRows, selectionStart],
+    [clipboard, rows, saveRows, selectionEnd, selectionStart],
   );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
@@ -473,39 +496,34 @@ export default function EstimatePartsPage({
         </button>
         <button
           type="button"
-          onClick={() => {
-            setClipboard([rows[selected]].filter(Boolean));
-            setMessage("1 行を控えました（1行挿入貼付で挿入）");
-          }}
+          title="カーソルの行（Shift+クリックで選んだ範囲）をコピーします"
+          onClick={copyRows}
         >
-          ⧉ 1行コピー
+          ⧉ 行コピー（複数可）
         </button>
         <button
           type="button"
-          title="Shift+クリックで選んだ範囲を控えます"
-          onClick={() => {
-            const copied = rows.slice(selectionStart, selectionEnd + 1);
-            setClipboard(copied);
-            setMessage(
-              `${copied.length} 行を控えました（複数行挿入貼付で挿入）`,
-            );
-          }}
-        >
-          ⧉ 複数行コピー
-        </button>
-        <button
-          type="button"
+          title="カーソルの行から、コピーした行で上書きします"
           disabled={clipboard.length === 0}
-          onClick={() => void pasteRows(1)}
+          onClick={() => void pasteRows("over")}
         >
-          ⤵ 1行挿入貼付
+          📋 上書貼付
         </button>
         <button
           type="button"
+          title="カーソルの行の上へ、コピーした行を挿入します"
           disabled={clipboard.length === 0}
-          onClick={() => void pasteRows(clipboard.length)}
+          onClick={() => void pasteRows("insert")}
         >
-          ⤵ 複数行挿入貼付
+          📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行の下へ、コピーした行を足します"
+          disabled={clipboard.length === 0}
+          onClick={() => void pasteRows("append")}
+        >
+          📋 追加貼付
         </button>
         <button type="button" onClick={() => void openOtherProjects()}>
           🏢 他物件から

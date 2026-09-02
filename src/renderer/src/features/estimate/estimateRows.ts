@@ -211,6 +211,24 @@ export function copyRowsInto(
   return [...rows.slice(0, at), ...cloned, ...rows.slice(at)];
 }
 
+/**
+ * 他の行を上書きで貼り込む（カーソルの行から、控えた行数だけ置き換える）。
+ * 足りない分は末尾へ足す。挿入貼付と同じく新しい行として複製する。
+ */
+export function overwriteRowsInto(
+  rows: EstimateRowDraft[],
+  index: number,
+  copied: EstimateRowDraft[],
+): EstimateRowDraft[] {
+  const at = Math.min(Math.max(index, 0), rows.length);
+  const cloned = copied.map((row) => ({
+    ...row,
+    id: null,
+    copySourceId: row.id ?? row.copySourceId ?? null,
+  }));
+  return [...rows.slice(0, at), ...cloned, ...rows.slice(at + cloned.length)];
+}
+
 /** Excelからの貼り付け・コピーで扱う列（画面の列順と同じ） */
 export function buildEstimateColumns(
   formworks: MasterEntry[],

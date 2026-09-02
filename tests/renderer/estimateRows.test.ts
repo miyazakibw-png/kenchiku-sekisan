@@ -7,6 +7,7 @@ import {
   emptyRow,
   insertRow,
   moveRow,
+  overwriteRowsInto,
   parseMultiplier,
   removeRow,
   resolveInherited,
@@ -73,6 +74,19 @@ describe("行操作", () => {
     const merged = copyRowsInto(rows, 1, copied);
     expect(merged.map((r) => r.part3)).toEqual(["A", "倉庫"]);
     expect(merged[1].id).toBeNull();
+  });
+
+  it("上書貼付はカーソルの行から置き換える", () => {
+    const rows = [
+      row({ part3: "A" }),
+      row({ part3: "B" }),
+      row({ part3: "C" }),
+    ];
+    const copied = [{ ...row({ part3: "倉庫" }), id: 12 }];
+    const merged = overwriteRowsInto(rows, 1, copied);
+    expect(merged.map((r) => r.part3)).toEqual(["A", "倉庫", "C"]);
+    expect(merged[1].id).toBeNull();
+    expect(merged[1].copySourceId).toBe(12);
   });
 
   it("倍率は -99〜99 の範囲", () => {
