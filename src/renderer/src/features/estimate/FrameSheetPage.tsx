@@ -642,35 +642,71 @@ export default function FrameSheetPage({
     setMessage(got.note === "" ? "取り込みをやめました" : got.note);
   }, [pageText, putTraceImage]);
 
-  /** 縮尺合わせ：2点の間の実寸を入れて、図面を伸び縮みさせる */
+  /** 縮尺合わせの前の形（「↶ 縮尺を戻す」で元に戻せるように取っておく） */
+  const [scaleUndo, setScaleUndo] = useState<
+    { trace: FrameTrace; lines: FrameManualLine[] }[]
+  >([]);
+
+  /** 縮尺合わせ：2点の間、または選んだ線の実寸を入れて、図面と引いた線を伸び縮みさせる */
   const applyScale = useCallback(() => {
-    if (scalePoints.length < 2) {
-      setMessage("図面の上で2点をクリックしてください");
-      return;
-    }
     const meters = Number(scaleText);
     if (!Number.isFinite(meters) || meters <= 0) {
       setMessage("実寸（m）を入れてください");
       return;
     }
-    const now = Math.hypot(
-      scalePoints[1].x - scalePoints[0].x,
-      scalePoints[1].y - scalePoints[0].y,
-    );
-    if (now < 1e-6) return;
+    const chosen = manualLines.find((line) => line.id === selectedLineId);
+    const now =
+      scalePoints.length >= 2
+        ? Math.hypot(
+            scalePoints[1].x - scalePoints[0].x,
+            scalePoints[1].y - scalePoints[0].y,
+          )
+        : chosen === undefined
+          ? 0
+          : Math.hypot(chosen.x2 - chosen.x1, chosen.y2 - chosen.y1);
+    if (now < 1e-6) {
+      setMessage("図面の上で2点をクリックするか、直す線を選んでください");
+      return;
+    }
     const factor = meters / now;
+    setScaleUndo((current) => [
+      ...current.slice(-9),
+      { trace, lines: manualLines },
+    ]);
     setTrace((current) => ({
       ...current,
       metersPerPixel: current.metersPerPixel * factor,
       x: current.x * factor,
       y: current.y * factor,
     }));
-    setScalePoints([]);
-    setTraceMode("off");
-    setMessage(
-      "縮尺を合わせました（「✎ 線を引く」で図面をなぞって軸組を入れられます）",
+    // 引いた線も一緒に伸び縮みさせる（図面とずれないようにする）
+    setManualLines((current) =>
+      current.map((line) => ({
+        ...line,
+        x1: line.x1 * factor,
+        y1: line.y1 * factor,
+        x2: line.x2 * factor,
+        y2: line.y2 * factor,
+      })),
     );
-  }, [scalePoints, scaleText]);
+    setScalePoints([]);
+    setHeldView(null);
+    setTraceMode("off");
+    setMessage("縮尺を合わせました（図面も引いた線も一緒に伸び縮みしました）");
+  }, [manualLines, scalePoints, scaleText, selectedLineId, trace]);
+
+  /** 縮尺合わせを1回分もとに戻す */
+  const undoScale = useCallback(() => {
+    setScaleUndo((current) => {
+      const last = current[current.length - 1];
+      if (last === undefined) return current;
+      setTrace(last.trace);
+      setManualLines(last.lines);
+      setHeldView(null);
+      setMessage("縮尺合わせを元に戻しました");
+      return current.slice(0, -1);
+    });
+  }, []);
 
   const kindOf = useCallback(
     (kindId: string): FrameKind | undefined =>
@@ -1316,22 +1352,34 @@ export default function FrameSheetPage({
               <button
                 type="button"
                 className={traceMode === "scale" ? "on" : ""}
-                title="図面の中で長さの分かる所を2点クリックし、実寸（m）を入れると縮尺が合います"
+                title="図面の中で長さの分かる所を2点クリックするか、引いた線を選び、実寸（m）を入れると縮尺が合います"
                 onClick={() => {
                   setScalePoints([]);
                   setTraceMode(traceMode === "scale" ? "off" : "scale");
                   setMessage(
                     traceMode === "scale"
                       ? "縮尺合わせをやめました"
-                      : "長さの分かる所を2点クリックしてください",
+                      : "長さの分かる所を2点クリックするか、直したい線を選んで、実寸（m）を入れてください",
                   );
                 }}
               >
                 ⤢ 縮尺合わせ
               </button>
+              {scaleUndo.length > 0 && (
+                <button
+                  type="button"
+                  title="縮尺合わせをする前の図面と線に戻します"
+                  onClick={undoScale}
+                >
+                  ↶ 縮尺を戻す
+                </button>
+              )}
               {traceMode === "scale" && (
                 <>
-                  <label className="snap-field" title="2点の間の実寸（m）">
+                  <label
+                    className="snap-field"
+                    title="2点の間、または選んだ線の実寸（m）"
+                  >
                     実寸
                     <input
                       className="num"
