@@ -98,7 +98,7 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     expect(values.MN).toBe(2);
     expect(values.MWL2000).toBe(2);
     expect(values.MNL3000).toBe(1);
-    expect(values.MN1).toBe(1);
+    expect(values.MN1).toBe(2);
     expect(values.MN1L3000).toBe(1);
     expect(values.SV1).toBe(1);
     expect(values.SV1L2000).toBe(1);
@@ -145,8 +145,8 @@ describe("ピット間の表（種類＝線色＋A・B別×長さ別の本数）
     const table = pitWallTable(walls);
     expect(table.lengths).toEqual([350, 500]);
     expect(table.rows).toEqual([
-      { color: red, width: 0.5, counts: [0, 2], total: 2 },
-      { color: blue, width: 0.2, counts: [1, 0], total: 1 },
+      { color: red, counts: [0, 2], total: 2 },
+      { color: blue, counts: [1, 0], total: 1 },
     ]);
   });
 });

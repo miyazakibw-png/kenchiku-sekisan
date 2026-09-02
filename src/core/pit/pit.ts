@@ -1402,8 +1402,6 @@ export function pitWallTallies(walls: readonly PitWall[]): PitWallTally[] {
 /** 種類（線色）＋図の太さ（A＝500・B＝200）ごと×長さ別の本数表 */
 export interface PitWallTableRow {
   color: string;
-  /** 図に出す太さ（m）。0.5＝A・0.2＝B */
-  width: number;
   counts: number[];
   total: number;
 }
@@ -1426,39 +1424,53 @@ export function pitWallTable(walls: readonly PitWall[]): PitWallTable {
   const lengths = [
     ...new Set(walls.map((wall) => groupLengthMm(pitWallLength(wall) * 1000))),
   ].sort((a, b) => a - b);
-  const keys: { color: string; width: number }[] = [];
-  walls.forEach((wall) => {
-    if (
-      !keys.some(
-        (each) => each.color === wall.color && each.width === wall.width,
-      )
-    )
-      keys.push({ color: wall.color, width: wall.width });
-  });
-  keys.sort(
-    (a, b) =>
-      b.width - a.width ||
-      PIT_MARK_COLORS.findIndex((each) => each.color === a.color) -
-        PIT_MARK_COLORS.findIndex((each) => each.color === b.color),
+  const colors = PIT_MARK_COLORS.map((each) => each.color).filter((color) =>
+    walls.some((wall) => wall.color === color),
   );
-  const rows = keys.map((key) => {
+  walls.forEach((wall) => {
+    if (!colors.includes(wall.color)) colors.push(wall.color);
+  });
+  const rows = colors.map((color) => {
     const counts = lengths.map(
       (length) =>
         walls.filter(
           (wall) =>
-            wall.color === key.color &&
-            wall.width === key.width &&
+            wall.color === color &&
             groupLengthMm(pitWallLength(wall) * 1000) === length,
         ).length,
     );
     return {
-      color: key.color,
-      width: key.width,
+      color,
       counts,
       total: counts.reduce((sum, count) => sum + count, 0),
     };
   });
   return { lengths, rows };
+}
+
+/**
+ * ピットの形・位置を直したときに、ピット間の印を新しいピット壁へ付け直す。
+ * 印の真ん中から、もう一度「向かいのピット壁まで垂直」を引き直す。
+ */
+export function refitPitWalls(
+  rects: readonly PitRect[],
+  pits: readonly PitShape[],
+  walls: readonly PitWall[],
+): PitWall[] {
+  return walls.map((wall) => {
+    const link = pitGapLink(rects, pits, {
+      x: (wall.x1 + wall.x2) / 2,
+      y: (wall.y1 + wall.y2) / 2,
+    });
+    if (link === null) return wall;
+    return {
+      ...wall,
+      x1: link.from.x,
+      y1: link.from.y,
+      x2: link.to.x,
+      y2: link.to.y,
+    };
+  });
 }
 
 /** 人通口・スリーブの種類別×長さ別の個数表 */

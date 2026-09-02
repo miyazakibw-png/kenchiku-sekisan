@@ -1,9 +1,28 @@
 .pit-upper {
   display: grid;
   grid-template-columns: 1fr 1.35fr;
+  /* 表が増えても図や表を縮めない（入りきらない分は欄ごとにスクロール） */
+  grid-auto-rows: min-content;
   gap: 8px;
   padding: 8px;
   align-items: start;
+  /* 上段の高さを決めて、下段の計算表を必ず見えるようにする（部屋計算書と同じ） */
+  max-height: 50vh;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.pit-upper > section,
+.pit-upper > .pit-plan-area {
+  min-height: 0;
+  overflow: auto;
+}
+
+.pit-upper > section > .section-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
 }
 
 .pit-upper .pit-plan-area {
@@ -212,6 +231,7 @@
 /* 「⤡ 大きく開く」＝平面図を画面いっぱいに出し、そのまま入力できるようにする */
 .pit-upper.expanded {
   position: fixed;
+  max-height: none;
   inset: 40px 8px 8px;
   z-index: 40;
   background: #fff;
@@ -262,10 +282,15 @@
   pointer-events: none;
 }
 
+/* ピット表の下に、同じ幅で置く */
 .pit-upper .pit-walls {
   order: 3;
-  grid-column: 1 / -1;
+  grid-column: 2;
   overflow-x: auto;
+}
+
+.pit-walls table.grid.pit-wall-tally {
+  width: 100%;
 }
 
 .pit-walls .pit-wall-tables {
@@ -323,4 +348,8 @@
 .pit-upper .section-bar select.color-pick {
   width: 66px;
   font-size: 11px;
+}
+
+.pit-sheet-page .room-calc-sheet {
+  min-height: 180px;
 }

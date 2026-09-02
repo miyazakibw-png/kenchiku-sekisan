@@ -43,7 +43,7 @@ import {
   pitSymbol,
   pitVariables,
   pitWallTable,
-  pitWallSizeLabel,
+  refitPitWalls,
   pitWallVariables,
   defaultPitSleeveKinds,
   groupLengthMm,
@@ -323,6 +323,7 @@ export default function PitSheetPage({
   }, [markSaved, project.id, row.id]);
 
   const quantities = useMemo(() => pitQuantities(pits, beams), [beams, pits]);
+
   /** 表の先頭のＰＡ行に出す合計 */
   const total = useMemo(() => pitTotal(quantities), [quantities]);
 
@@ -345,6 +346,22 @@ export default function PitSheetPage({
   }, [beams, pits]);
 
   /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
+  /** ピットを直したら、ピット間の印も新しい壁へ付け直して長さを数え直す */
+  useEffect(() => {
+    setWalls((current) => {
+      const next = refitPitWalls(plan.rects, pits, current);
+      return next.some(
+        (wall, index) =>
+          wall.x1 !== current[index].x1 ||
+          wall.y1 !== current[index].y1 ||
+          wall.x2 !== current[index].x2 ||
+          wall.y2 !== current[index].y2,
+      )
+        ? next
+        : current;
+    });
+  }, [pits, plan]);
+
   const wallTable = useMemo(() => pitWallTable(walls), [walls]);
 
   /** 人通口・スリーブの種類別×長さ別の個数表 */
@@ -1147,13 +1164,13 @@ export default function PitSheetPage({
                 PIT_MARK_COLORS.findIndex((each) => each.color === row.color)
               ];
             return (
-              <tr key={`${row.color}-${row.width}`}>
+              <tr key={row.color}>
                 <td>
                   <span
                     className="kind-chip"
                     style={{ background: row.color }}
                   />
-                  {`${kind?.name ?? "線色"}＋${pitWallSizeLabel(row.width)}`}
+                  {kind?.name ?? "線色"}
                 </td>
                 {row.counts.map((count, column) => (
                   <td
@@ -2172,7 +2189,7 @@ export default function PitSheetPage({
         <section className="pit-walls">
           <div className="section-bar">
             <h3>
-              ピット間（種類＝線の色／A＝500描画・B＝200描画／長さは50mmごと）
+              ピット間（種類＝線の色／長さは50mmごと）
             </h3>
           </div>
 
