@@ -50,6 +50,8 @@ import {
   defaultPitSleeveKinds,
   groupLengthMm,
   PIT_WALL_SIZES,
+  PIT_MARK_COLORS,
+  pitGapLink,
   type PitAlign,
   type PitAlignSide,
   type PitCorner,
@@ -194,9 +196,6 @@ export default function PitSheetPage({
   const [wallWidth, setWallWidth] = useState(PIT_WALL_SIZES[0].width);
   const [wallColor, setWallColor] = useState(PIT_WALL_SIZES[0].color);
   /** ピット間を引く1点目（2回クリックで1本） */
-  const [wallStart, setWallStart] = useState<{ x: number; y: number } | null>(
-    null,
-  );
   /** これから付ける人通口・スリーブの種類 */
   const [sleeveKindId, setSleeveKindId] = useState("s1");
   /** 人通口・スリーブの種類を直す表を出しているか */
@@ -614,41 +613,44 @@ export default function PitSheetPage({
     [beams, pits, planHistory, sleeves, walls],
   );
 
-  /** ピット間を1本引く。ほぼたて・よこのときは通りをそろえる */
+  /**
+   * ピット間をクリックしたら、いちばん近いピットの壁から
+   * 向かい合うピットの壁へ垂直に印を付ける。
+   */
   const placeWall = useCallback(
-    (from: { x: number; y: number }, to: { x: number; y: number }) => {
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const end =
-        Math.abs(dy) <= 0.3 && Math.abs(dx) > Math.abs(dy)
-          ? { x: to.x, y: from.y }
-          : Math.abs(dx) <= 0.3 && Math.abs(dy) > Math.abs(dx)
-            ? { x: from.x, y: to.y }
-            : to;
-      if (Math.hypot(end.x - from.x, end.y - from.y) < 0.05) {
-        setMessage("ピット間が短すぎます（引き直してください）");
+    (at: { x: number; y: number }) => {
+      const link = pitGapLink(plan.rects, pits, at);
+      if (link === null) {
+        setMessage("ピットとピットの間（すき間）をクリックしてください");
+        return;
+      }
+      const length = Math.hypot(
+        link.to.x - link.from.x,
+        link.to.y - link.from.y,
+      );
+      if (length < 0.01) {
+        setMessage("ピットのすき間がありません（ピットの間をあけてください）");
         return;
       }
       changeWalls((current) => [
         ...current,
         {
           id: newId("wall"),
-          x1: from.x,
-          y1: from.y,
-          x2: end.x,
-          y2: end.y,
+          x1: link.from.x,
+          y1: link.from.y,
+          x2: link.to.x,
+          y2: link.to.y,
           width: wallWidth,
           color: wallColor,
         },
       ]);
       setMessage(
-        `ピット間を引きました（幅 ${Math.round(wallWidth * 1000)}mm・長さ ${formatNumber(
-          Math.hypot(end.x - from.x, end.y - from.y),
-          2,
-        )}m）`,
+        `ピット間に印を付けました（長さ ${Math.round(length * 1000)}mm → 集計は ${groupLengthMm(
+          length * 1000,
+        )}mm）`,
       );
     },
-    [changeWalls, wallColor, wallWidth],
+    [changeWalls, pits, plan.rects, wallColor, wallWidth],
   );
 
   /** 図の点にいちばん近いピット間と、その線に沿った位置（0〜1） */
@@ -990,13 +992,7 @@ export default function PitSheetPage({
               placeSleeve(at);
               return;
             }
-            if (wallStart === null) {
-              setWallStart(at);
-              setMessage("ピット間の終わりをクリックしてください");
-              return;
-            }
-            placeWall(wallStart, at);
-            setWallStart(null);
+            placeWall(at);
           }}
         >
           {plan.rects.map((rect) => (
@@ -1114,6 +1110,12 @@ export default function PitSheetPage({
               strokeLinecap="butt"
               opacity={0.7}
               className="pit-wall"
+              onClick={(event) => {
+                if (printMode || planMode !== "wall") return;
+                event.stopPropagation();
+                removeWall(wall.id);
+                setMessage("ピット間の印を消しました（Ctrl+Zで戻せます）");
+              }}
             />
           ))}
           {/* 人通口・通水管などのスリーブ */}
@@ -1231,11 +1233,10 @@ export default function PitSheetPage({
       <table className="grid pit-wall-tally">
         <thead>
           <tr>
-            <th colSpan={5}>ピット間（幅別・長さ別／長さは50mmでまとめ）</th>
+            <th colSpan={4}>ピット間（長さ別／長さは50mmでまとめ）</th>
           </tr>
           <tr>
             <th>記号</th>
-            <th className="num">幅（mm）</th>
             <th className="num">長さ（mm）</th>
             <th className="num">本数</th>
             <th className="num">合計長さ（m）</th>
@@ -1244,13 +1245,14 @@ export default function PitSheetPage({
         <tbody>
           {wallTallies.length === 0 ? (
             <tr>
-              <td colSpan={5}>
-                「＝ ピット間」で図に線を引くと、ここに長さ別で出ます
+              <td colSpan={4}>
+                「＝
+                ピット間」でピットのすき間をクリックすると、ここに長さ別で出ます
               </td>
             </tr>
           ) : (
             wallTallies.map((row, index) => (
-              <tr key={`${row.width}-${row.lengthMm}`}>
+              <tr key={row.lengthMm}>
                 <td
                   className="symbol"
                   title="クリックで計算式へ（MW＝長さ・MN＝本数）"
@@ -1258,7 +1260,6 @@ export default function PitSheetPage({
                 >
                   {`MW${index + 1}／MN${index + 1}`}
                 </td>
-                <td className="num">{Math.round(row.width * 1000)}</td>
                 <td className="num">{row.lengthMm}</td>
                 <td className="num">{row.count}</td>
                 <td className="num">{formatNumber(row.total, 2)}</td>
@@ -1274,7 +1275,6 @@ export default function PitSheetPage({
               >
                 MW
               </td>
-              <td className="num"></td>
               <td className="num"></td>
               <td className="num">{walls.length}</td>
               <td className="num">
@@ -2000,7 +2000,7 @@ export default function PitSheetPage({
                 : planMode === "column"
                   ? "壁⇄柱中：図の壁をまとめてクリックし、「✓ 柱にする」を押す"
                   : planMode === "wall"
-                    ? "ピット間中：始めと終わりの2回クリックで1本引く（ほぼたて・よこの線は通りをそろえます）"
+                    ? "ピット間中：ピットのすき間をクリックで印を付ける／印をクリックで消す"
                     : planMode === "sleeve"
                       ? "人通口・スリーブ中：ピット間の線の上をクリックで付ける／印をクリックで消す"
                       : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}
@@ -2095,12 +2095,11 @@ export default function PitSheetPage({
               onClick={() => {
                 const next = planMode === "wall" ? "beam" : "wall";
                 setPlanMode(next);
-                setWallStart(null);
                 setCorners([]);
                 setPickedEdges([]);
                 setMessage(
                   next === "wall"
-                    ? "ピット間を引きます（始めと終わりの2回クリック）"
+                    ? "ピットとピットの間（すき間）をクリックすると、向かいのピット壁まで垂直に印を付けます（印をクリックで消せます）"
                     : "ピット間の入力をやめました",
                 );
               }}
@@ -2109,8 +2108,8 @@ export default function PitSheetPage({
             </button>
             {planMode === "wall" && (
               <span className="kind-pick">
-                <label>
-                  幅
+                <label title="図に出す印の太さです（梁のＷと同じ図の表記。集計には使いません）">
+                  図の太さ
                   <select
                     value={`${wallWidth}`}
                     onChange={(e) => {
@@ -2127,41 +2126,27 @@ export default function PitSheetPage({
                         {`${Math.round(size.width * 1000)}mm`}
                       </option>
                     ))}
-                    {PIT_WALL_SIZES.every(
-                      (size) => size.width !== wallWidth,
-                    ) && (
-                      <option value={wallWidth}>
-                        {`${Math.round(wallWidth * 1000)}mm`}
-                      </option>
-                    )}
                   </select>
                 </label>
-                <label title="500・200以外の幅は、ここに数字（m）で入れます">
-                  手入力（m）
-                  <input
-                    data-half="1"
-                    className="num"
-                    key={`ww-${wallWidth}`}
-                    defaultValue={wallWidth}
-                    onBlur={(e) =>
-                      setWallWidth(parseNumber(e.target.value) ?? wallWidth)
-                    }
-                  />
-                </label>
-                <label title="この幅で引く線の色">
+                <label title="この印の色（10色から選びます）">
                   色
-                  <input
-                    type="color"
-                    className="kind-color"
+                  <select
+                    className="color-pick"
                     value={wallColor}
+                    style={{ color: wallColor, fontWeight: 700 }}
                     onChange={(e) => setWallColor(e.target.value)}
-                  />
+                  >
+                    {PIT_MARK_COLORS.map((each) => (
+                      <option
+                        key={each.color}
+                        value={each.color}
+                        style={{ color: each.color }}
+                      >
+                        {`■ ${each.name}`}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                {wallStart !== null && (
-                  <button type="button" onClick={() => setWallStart(null)}>
-                    引き直す
-                  </button>
-                )}
               </span>
             )}
             <button
@@ -2171,7 +2156,6 @@ export default function PitSheetPage({
               onClick={() => {
                 const next = planMode === "sleeve" ? "beam" : "sleeve";
                 setPlanMode(next);
-                setWallStart(null);
                 setCorners([]);
                 setPickedEdges([]);
                 setMessage(
@@ -2416,8 +2400,7 @@ export default function PitSheetPage({
                 <tr>
                   <th>No</th>
                   <th>名前</th>
-                  <th>色</th>
-                  <th className="num">長さ（mm・0はピット間の幅）</th>
+                  <th>色（10色）</th>
                 </tr>
               </thead>
               <tbody>
@@ -2441,10 +2424,10 @@ export default function PitSheetPage({
                       />
                     </td>
                     <td>
-                      <input
-                        type="color"
-                        className="kind-color"
+                      <select
+                        className="color-pick"
                         value={kind.color}
+                        style={{ color: kind.color, fontWeight: 700 }}
                         onChange={(e) =>
                           setSleeveKinds((current) =>
                             current.map((each) =>
@@ -2454,27 +2437,17 @@ export default function PitSheetPage({
                             ),
                           )
                         }
-                      />
-                    </td>
-                    <td className="num">
-                      <input
-                        data-half="1"
-                        className="num"
-                        key={`kl-${kind.id}-${kind.length}`}
-                        defaultValue={kind.length}
-                        onBlur={(e) =>
-                          setSleeveKinds((current) =>
-                            current.map((each) =>
-                              each.id === kind.id
-                                ? {
-                                    ...each,
-                                    length: parseNumber(e.target.value) ?? 0,
-                                  }
-                                : each,
-                            ),
-                          )
-                        }
-                      />
+                      >
+                        {PIT_MARK_COLORS.map((each) => (
+                          <option
+                            key={each.color}
+                            value={each.color}
+                            style={{ color: each.color }}
+                          >
+                            {`■ ${each.name}`}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                   </tr>
                 ))}
@@ -2490,8 +2463,9 @@ export default function PitSheetPage({
                 <tr>
                   <th>No</th>
                   <th>色</th>
-                  <th className="num">幅（m）</th>
+                  <th className="num">図の太さ（mm）</th>
                   <th className="num">長さ（m）</th>
+                  <th className="num">集計（mm）</th>
                   <th className="num">人通口等</th>
                   <th></th>
                 </tr>
@@ -2501,10 +2475,10 @@ export default function PitSheetPage({
                   <tr key={wall.id}>
                     <td className="num">{index + 1}</td>
                     <td>
-                      <input
-                        type="color"
-                        className="kind-color"
+                      <select
+                        className="color-pick"
                         value={wall.color}
+                        style={{ color: wall.color, fontWeight: 700 }}
                         onChange={(e) =>
                           changeWalls((current) =>
                             current.map((each) =>
@@ -2514,15 +2488,22 @@ export default function PitSheetPage({
                             ),
                           )
                         }
-                      />
+                      >
+                        {PIT_MARK_COLORS.map((each) => (
+                          <option
+                            key={each.color}
+                            value={each.color}
+                            style={{ color: each.color }}
+                          >
+                            {`■ ${each.name}`}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="num">
-                      <input
-                        data-half="1"
-                        className="num"
-                        key={`ww-${wall.id}-${wall.width}`}
-                        defaultValue={wall.width}
-                        onBlur={(e) =>
+                      <select
+                        value={`${wall.width}`}
+                        onChange={(e) =>
                           changeWalls((current) =>
                             current.map((each) =>
                               each.id === wall.id
@@ -2535,10 +2516,19 @@ export default function PitSheetPage({
                             ),
                           )
                         }
-                      />
+                      >
+                        {PIT_WALL_SIZES.map((size) => (
+                          <option key={size.width} value={size.width}>
+                            {Math.round(size.width * 1000)}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="num">
-                      {formatNumber(pitWallLength(wall), 2)}
+                      {formatNumber(pitWallLength(wall), 3)}
+                    </td>
+                    <td className="num">
+                      {groupLengthMm(pitWallLength(wall) * 1000)}
                     </td>
                     <td className="num">
                       {sleeves.filter((each) => each.wallId === wall.id).length}
@@ -2599,7 +2589,7 @@ export default function PitSheetPage({
                         className="num"
                         key={`sl-${sleeve.id}-${sleeve.length ?? ""}`}
                         defaultValue={sleeve.length ?? ""}
-                        placeholder={`${pitSleeveLength(sleeve, walls, sleeveKinds)}`}
+                        placeholder={`${pitSleeveLength(sleeve, walls)}`}
                         onBlur={(e) =>
                           changeSleeves((current) =>
                             current.map((each) =>
@@ -2615,9 +2605,7 @@ export default function PitSheetPage({
                       />
                     </td>
                     <td className="num">
-                      {groupLengthMm(
-                        pitSleeveLength(sleeve, walls, sleeveKinds),
-                      )}
+                      {groupLengthMm(pitSleeveLength(sleeve, walls))}
                     </td>
                     <td>
                       <button

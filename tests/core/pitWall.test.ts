@@ -7,7 +7,11 @@ import {
   pitWallLength,
   pitWallTallies,
   pitWallVariables,
+  pitGapLink,
+  layoutPits,
+  normalizeRects,
   type PitSleeve,
+  type PitShape,
   type PitWall,
 } from "../../src/core/pit/pit";
 
@@ -54,43 +58,32 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     expect(groupLengthMm(500)).toBe(500);
   });
 
-  it("幅別・長さ別に本数と合計長さを数える", () => {
+  it("長さ別に本数と合計長さを数える（図の太さは集計に関係しない）", () => {
     const walls = [
       wall("w1", 3.02, 0.5),
-      wall("w2", 3.0, 0.5),
+      wall("w2", 3.0, 0.2),
       wall("w3", 2.0, 0.2),
     ];
     const tallies = pitWallTallies(walls);
     expect(tallies).toEqual([
-      { width: 0.5, lengthMm: 3000, count: 2, total: 6.02 },
-      { width: 0.2, lengthMm: 2000, count: 1, total: 2 },
+      { lengthMm: 2000, count: 1, total: 2 },
+      { lengthMm: 3000, count: 2, total: 6.02 },
     ]);
   });
 
-  it("スリーブの長さは手入力・種類の長さ・ピット間の幅の順で決める", () => {
-    const walls = [wall("w1", 3, 0.5)];
-    const kinds = defaultPitSleeveKinds();
-    const withKindLength = kinds.map((kind) =>
-      kind.id === "s2" ? { ...kind, length: 400 } : kind,
-    );
-    expect(pitSleeveLength(sleeve("v1", "w1", "s1", 450), walls, kinds)).toBe(
-      450,
-    );
-    expect(
-      pitSleeveLength(sleeve("v2", "w1", "s2", null), walls, withKindLength),
-    ).toBe(400);
-    expect(pitSleeveLength(sleeve("v3", "w1", "s1", null), walls, kinds)).toBe(
-      500,
-    );
+  it("スリーブの長さは手入力が無ければピット間の長さ（mm）", () => {
+    const walls = [wall("w1", 0.42, 0.5)];
+    expect(pitSleeveLength(sleeve("v1", "w1", "s1", 450), walls)).toBe(450);
+    expect(pitSleeveLength(sleeve("v2", "w1", "s1", null), walls)).toBe(420);
   });
 
   it("種類別×長さ別の個数表を作る", () => {
-    const walls = [wall("w1", 3, 0.5), wall("w2", 3, 0.2)];
+    const walls = [wall("w1", 0.5, 0.5), wall("w2", 0.35, 0.2)];
     const kinds = defaultPitSleeveKinds();
     const sleeves = [
       sleeve("v1", "w1", "s1", null),
       sleeve("v2", "w1", "s1", 480),
-      sleeve("v3", "w2", "s2", 350),
+      sleeve("v3", "w2", "s2", null),
     ];
     const table = pitSleeveTable(sleeves, walls, kinds);
     expect(table.lengths).toEqual([350, 500]);
@@ -99,15 +92,43 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
   });
 
   it("計算式に使う記号を作る", () => {
-    const walls = [wall("w1", 3, 0.5), wall("w2", 2, 0.2)];
+    const walls = [wall("w1", 2, 0.2), wall("w2", 3, 0.5)];
     const kinds = defaultPitSleeveKinds();
     const sleeves = [sleeve("v1", "w1", "s1", null)];
     const values = pitWallVariables(walls, sleeves, kinds);
     expect(values.MW).toBe(5);
     expect(values.MN).toBe(2);
-    expect(values.MW1).toBe(3);
+    expect(values.MW1).toBe(2);
     expect(values.MN2).toBe(1);
     expect(values.SV1).toBe(1);
-    expect(values.SV1L500).toBe(1);
+    expect(values.SV1L2000).toBe(1);
+  });
+
+  it("ピット間をクリックすると、向かいのピット壁へ垂直につなぐ", () => {
+    const pits: PitShape[] = [
+      {
+        id: "p1",
+        symbol: "Ｐ1",
+        x: 4,
+        y: 3,
+        depth: 1,
+        direction: "right",
+        gap: 0,
+      },
+      {
+        id: "p2",
+        symbol: "Ｐ2",
+        x: 4,
+        y: 3,
+        depth: 1,
+        direction: "right",
+        gap: 0.4,
+      },
+    ];
+    const plan = normalizeRects(layoutPits(pits));
+    const link = pitGapLink(plan.rects, pits, { x: 4.2, y: 1.5 });
+    expect(link).not.toBeNull();
+    expect(link?.from).toEqual({ x: 4, y: 1.5 });
+    expect(link?.to).toEqual({ x: 4.4, y: 1.5 });
   });
 });

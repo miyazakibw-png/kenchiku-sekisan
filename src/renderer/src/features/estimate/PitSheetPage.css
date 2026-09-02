@@ -317,3 +317,10 @@
   cursor: pointer;
   color: #1d4ed8;
 }
+
+/* 10色から選ぶ色欄 */
+.pit-walls select.color-pick,
+.pit-upper .section-bar select.color-pick {
+  width: 66px;
+  font-size: 11px;
+}

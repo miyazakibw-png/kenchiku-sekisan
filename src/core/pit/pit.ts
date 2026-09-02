@@ -1282,7 +1282,21 @@ export function pitVariables(
   return values;
 }
 
-/** ピット間（ピットとピットの間の基礎梁・壁）。図に引いた1本 */
+/** 図の印に使う色（10色から選ぶ） */
+export const PIT_MARK_COLORS: { name: string; color: string }[] = [
+  { name: "赤", color: "#dc2626" },
+  { name: "青", color: "#2563eb" },
+  { name: "緑", color: "#16a34a" },
+  { name: "橙", color: "#d97706" },
+  { name: "紫", color: "#7c3aed" },
+  { name: "水", color: "#0891b2" },
+  { name: "桃", color: "#db2777" },
+  { name: "黄緑", color: "#65a30d" },
+  { name: "深緑", color: "#0f766e" },
+  { name: "茶", color: "#b45309" },
+];
+
+/** ピット間（ピットとピットの間）に付けた印。図に引いた1本 */
 export interface PitWall {
   id: string;
   /** 図全体の座標（m） */
@@ -1290,13 +1304,13 @@ export interface PitWall {
   y1: number;
   x2: number;
   y2: number;
-  /** 幅（m）。500と200の2種類が主だが手入力もできる */
+  /** 図に出す印の太さ（m）。梁のＷと同じ図の表記だけで、集計には使わない */
   width: number;
-  /** 図の線の色（幅ごとに分ける） */
+  /** 図の印の色 */
   color: string;
 }
 
-/** よく使うピット間の幅と色（500・200の2種類） */
+/** 図に出す印の太さ（500mm・200mmの2種類） */
 export const PIT_WALL_SIZES: { width: number; color: string }[] = [
   { width: 0.5, color: "#dc2626" },
   { width: 0.2, color: "#2563eb" },
@@ -1308,21 +1322,19 @@ export interface PitSleeveKind {
   name: string;
   /** 図の印の色 */
   color: string;
-  /** 既定の長さ（mm）。0のときは付けたピット間の幅を使う */
-  length: number;
 }
 
-const PIT_SLEEVE_KINDS: { name: string; color: string; length: number }[] = [
-  { name: "人通口600φ", color: "#dc2626", length: 0 },
-  { name: "連通管100φ", color: "#2563eb", length: 0 },
-  { name: "通水管150φ半割", color: "#16a34a", length: 0 },
-  { name: "通気管100φ", color: "#d97706", length: 0 },
-  { name: "スリーブ5", color: "#7c3aed", length: 0 },
-  { name: "スリーブ6", color: "#0891b2", length: 0 },
-  { name: "スリーブ7", color: "#db2777", length: 0 },
-  { name: "スリーブ8", color: "#65a30d", length: 0 },
-  { name: "スリーブ9", color: "#0f766e", length: 0 },
-  { name: "スリーブ10", color: "#b45309", length: 0 },
+const PIT_SLEEVE_KINDS: { name: string; color: string }[] = [
+  { name: "人通口600φ", color: "#dc2626" },
+  { name: "連通管100φ", color: "#2563eb" },
+  { name: "通水管150φ半割", color: "#16a34a" },
+  { name: "通気管100φ", color: "#d97706" },
+  { name: "スリーブ5", color: "#7c3aed" },
+  { name: "スリーブ6", color: "#0891b2" },
+  { name: "スリーブ7", color: "#db2777" },
+  { name: "スリーブ8", color: "#65a30d" },
+  { name: "スリーブ9", color: "#0f766e" },
+  { name: "スリーブ10", color: "#b45309" },
 ];
 
 export function defaultPitSleeveKinds(): PitSleeveKind[] {
@@ -1330,7 +1342,6 @@ export function defaultPitSleeveKinds(): PitSleeveKind[] {
     id: `s${index + 1}`,
     name: kind.name,
     color: kind.color,
-    length: kind.length,
   }));
 }
 
@@ -1342,7 +1353,7 @@ export interface PitSleeve {
   kindId: string;
   /** 線に沿った位置（0〜1） */
   position: number;
-  /** 長さ（mm）。空のときは種類の既定→ピット間の幅の順で決める */
+  /** 長さ（mm）。空のときは付けたピット間の長さを使う */
   length: number | null;
 }
 
@@ -1357,22 +1368,18 @@ export function groupLengthMm(mm: number, step = 50): number {
   return Math.round(mm / step) * step;
 }
 
-/** スリーブ1か所の長さ（mm）。種類の既定・ピット間の幅から決める */
+/** スリーブ1か所の長さ（mm）。手入力が無いときは付けたピット間の長さ */
 export function pitSleeveLength(
   sleeve: PitSleeve,
   walls: readonly PitWall[],
-  kinds: readonly PitSleeveKind[],
 ): number {
   if (sleeve.length !== null && sleeve.length > 0) return sleeve.length;
-  const kind = kinds.find((each) => each.id === sleeve.kindId);
-  if (kind && kind.length > 0) return kind.length;
   const wall = walls.find((each) => each.id === sleeve.wallId);
-  return wall ? Math.round(wall.width * 1000) : 0;
+  return wall ? Math.round(pitWallLength(wall) * 1000) : 0;
 }
 
-/** ピット間の長さ別集計（幅ごと・長さは50mmでまとめる） */
+/** ピット間の長さ別集計（長さは50mmでまとめる） */
 export interface PitWallTally {
-  width: number;
   /** まとめた長さ（mm） */
   lengthMm: number;
   count: number;
@@ -1381,23 +1388,15 @@ export interface PitWallTally {
 }
 
 export function pitWallTallies(walls: readonly PitWall[]): PitWallTally[] {
-  const rows = new Map<string, PitWallTally>();
+  const rows = new Map<number, PitWallTally>();
   walls.forEach((wall) => {
     const lengthMm = groupLengthMm(pitWallLength(wall) * 1000);
-    const key = `${wall.width}-${lengthMm}`;
-    const row = rows.get(key) ?? {
-      width: wall.width,
-      lengthMm,
-      count: 0,
-      total: 0,
-    };
+    const row = rows.get(lengthMm) ?? { lengthMm, count: 0, total: 0 };
     row.count += 1;
     row.total = round4(row.total + pitWallLength(wall));
-    rows.set(key, row);
+    rows.set(lengthMm, row);
   });
-  return [...rows.values()].sort(
-    (a, b) => b.width - a.width || a.lengthMm - b.lengthMm,
-  );
+  return [...rows.values()].sort((a, b) => a.lengthMm - b.lengthMm);
 }
 
 /** 人通口・スリーブの種類別×長さ別の個数表 */
@@ -1414,9 +1413,7 @@ export function pitSleeveTable(
 ): PitSleeveTable {
   const lengths = [
     ...new Set(
-      sleeves.map((sleeve) =>
-        groupLengthMm(pitSleeveLength(sleeve, walls, kinds)),
-      ),
+      sleeves.map((sleeve) => groupLengthMm(pitSleeveLength(sleeve, walls))),
     ),
   ].sort((a, b) => a - b);
   const rows = kinds.map((kind) => {
@@ -1425,7 +1422,7 @@ export function pitSleeveTable(
         sleeves.filter(
           (sleeve) =>
             sleeve.kindId === kind.id &&
-            groupLengthMm(pitSleeveLength(sleeve, walls, kinds)) === length,
+            groupLengthMm(pitSleeveLength(sleeve, walls)) === length,
         ).length,
     );
     return {
@@ -1439,7 +1436,7 @@ export function pitSleeveTable(
 
 /**
  * 計算式に使える記号。
- * ピット間：MW＝合計長さ、MW1・MN1…＝幅・長さの組ごとの長さ／本数
+ * ピット間：MW＝合計長さ、MW1・MN1…＝長さ（50mmごと）ごとの長さ／本数
  * スリーブ：SV1…＝種類ごとの本数、SV1L500…＝長さごとの本数
  */
 export function pitWallVariables(
@@ -1465,4 +1462,85 @@ export function pitWallVariables(
     });
   });
   return values;
+}
+
+/**
+ * ピット間をクリックしたときに引く印。
+ * いちばん近いピットの壁から、向かい合うピットの壁へ垂直につなぐ。
+ */
+export function pitGapLink(
+  rects: readonly PitRect[],
+  pits: readonly PitShape[],
+  at: PitPoint,
+): { from: PitPoint; to: PitPoint } | null {
+  type Wall = { pitId: string; from: PitPoint; to: PitPoint };
+  const wallsAll: Wall[] = [];
+  rects.forEach((rect) => {
+    const pit = pits.find((each) => each.id === rect.id);
+    if (!pit) return;
+    const points = pitPolygon(pit).map((point) => ({
+      x: point.x + rect.left,
+      y: point.y + rect.top,
+    }));
+    points.forEach((from, index) => {
+      const to = points[(index + 1) % points.length];
+      if (Math.hypot(to.x - from.x, to.y - from.y) > 1e-9)
+        wallsAll.push({ pitId: rect.id, from, to });
+    });
+  });
+  if (wallsAll.length === 0) return null;
+
+  let near: Wall | null = null;
+  let nearAway = Number.POSITIVE_INFINITY;
+  wallsAll.forEach((wall) => {
+    const away = distanceToSegment(at, wall.from, wall.to);
+    if (away < nearAway) {
+      nearAway = away;
+      near = wall;
+    }
+  });
+  if (near === null) return null;
+  const base: Wall = near;
+
+  const dx = base.to.x - base.from.x;
+  const dy = base.to.y - base.from.y;
+  const len2 = dx * dx + dy * dy;
+  const t = Math.min(
+    Math.max(((at.x - base.from.x) * dx + (at.y - base.from.y) * dy) / len2, 0),
+    1,
+  );
+  const foot = { x: base.from.x + dx * t, y: base.from.y + dy * t };
+  const length = Math.sqrt(len2);
+  let nx = -dy / length;
+  let ny = dx / length;
+  // クリックした側（ピットの外）へ向ける
+  if ((at.x - foot.x) * nx + (at.y - foot.y) * ny < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  let hit: PitPoint | null = null;
+  let hitAway = Number.POSITIVE_INFINITY;
+  wallsAll.forEach((wall) => {
+    if (wall.pitId === base.pitId) return;
+    const ex = wall.to.x - wall.from.x;
+    const ey = wall.to.y - wall.from.y;
+    const cross = nx * ey - ny * ex;
+    if (Math.abs(cross) < 1e-9) return;
+    const qx = wall.from.x - foot.x;
+    const qy = wall.from.y - foot.y;
+    const distance = (qx * ey - qy * ex) / cross;
+    const on = (qx * ny - qy * nx) / cross;
+    if (distance <= 1e-6 || on < -1e-9 || on > 1 + 1e-9) return;
+    if (distance < hitAway) {
+      hitAway = distance;
+      hit = { x: foot.x + nx * distance, y: foot.y + ny * distance };
+    }
+  });
+  if (hit === null) return null;
+  const to: PitPoint = hit;
+  return {
+    from: { x: round4(foot.x), y: round4(foot.y) },
+    to: { x: round4(to.x), y: round4(to.y) },
+  };
 }
