@@ -333,10 +333,10 @@ export default function RoomSheetPage({
   const [zoom, setZoom] = useState(1);
   /**
    * 角の○印を出すか（形が決まったら消して寸法を見やすくできます）。
-   * 出す／消すは覚えておき、次に開いたときも同じ状態にする。印刷では出さない。
+   * 標準は「消す」。出す／消すは覚えておき、次に開いたときも同じ状態にする。印刷では出さない。
    */
   const [showCorners, setShowCorners] = useState(
-    () => window.localStorage.getItem(CORNERS_KEY) !== "0",
+    () => window.localStorage.getItem(CORNERS_KEY) === "1",
   );
   /** 図形の戻る・進む用（1操作ごとの形を覚えておく） */
   const [shapePast, setShapePast] = useState<RoomShape[]>([]);
