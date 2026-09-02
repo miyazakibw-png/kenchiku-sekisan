@@ -156,15 +156,15 @@ describe("下段セット明細計算表", () => {
     expect(syncLines(set.details, kept)).toHaveLength(3);
   });
 
-  it("入力の無いセットは取り除くが、入力済みセットの空行は残す", () => {
+  it("空の明細行・空のセットもそのまま残す（下の余白に使う）", () => {
     const empty = calcSet(2);
     const used = calcSet(2);
     used.partName = "床";
     used.details[0] = calcDetail({ name: "ビニル床タイル" });
     const trimmed = trimEmptySets([empty, used]);
-    expect(trimmed).toHaveLength(1);
-    expect(trimmed[0].details).toHaveLength(2);
-    expect(trimmed[0].lines).toHaveLength(2);
+    expect(trimmed).toHaveLength(2);
+    expect(trimmed[1].details).toHaveLength(2);
+    expect(trimmed[1].lines).toHaveLength(2);
   });
 
   it("計算式だけ入っている明細は残す", () => {
@@ -192,8 +192,7 @@ describe("下段セット明細計算表", () => {
     const comment = commentSet("外部", "#fef9c3");
     const set = calcSet(1);
     const trimmed = trimEmptySets([comment, set]);
-    expect(trimmed).toHaveLength(1);
-    expect(trimmed[0].id).toBe(comment.id);
+    expect(trimmed.map((item) => item.id)).toEqual([comment.id, set.id]);
   });
 
   it("コメント行のすぐ下のセットをまるごと消してもコメント行は残る", () => {

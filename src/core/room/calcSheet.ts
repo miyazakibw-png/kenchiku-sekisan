@@ -301,7 +301,7 @@ export function removeSetLine(set: CalcSet, index: number): CalcSet {
   return { ...set, lines: syncLines(set.details, lines) };
 }
 
-/** 明細に何か入力されているか（入力の無い明細は保存時に取り除く） */
+/** 明細に何か入力されているか */
 export function isEmptyDetail(detail: CalcDetail): boolean {
   return (
     detail.subjectId === null &&
@@ -319,10 +319,6 @@ export function isEmptyDetail(detail: CalcDetail): boolean {
   );
 }
 
-/**
- * 入力の無い明細・セットを取り除く（保存・読み込みのときに使う）。
- * 明細1件＝計算式1行の対応を崩さないよう、末尾の空明細だけを詰める。
- */
 /**
  * セット・明細・計算式行の目印（ID）が重なっているときに付け直す。
  * コピーで同じIDのセットが増えると、記号の差し込みや計算結果が別の行にも出てしまう。
@@ -346,6 +342,10 @@ export function withUniqueIds(sets: CalcSet[]): CalcSet[] {
   }));
 }
 
+/**
+ * 保存・読み込みのときに形をそろえる（※行の切り離しと計算式行の数合わせ）。
+ * 空の明細行・空のセットは、下の余白として使うのでそのまま残す。
+ */
 export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
   const trimmed: CalcSet[] = [];
   for (const set of detachBanners(sets)) {
@@ -353,7 +353,6 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
       trimmed.push(set);
       continue;
     }
-    // 途中に足した空の明細行は残す（中身のあるセットの空行は消さない）
     const details = [...set.details];
     const lines = [...set.lines];
     while (
@@ -361,13 +360,7 @@ export function trimEmptySets(sets: CalcSet[]): CalcSet[] {
       isEmptyLine(lines[lines.length - 1])
     )
       lines.pop();
-    const empty =
-      details.every(isEmptyDetail) &&
-      lines.every(isEmptyLine) &&
-      set.partNumber === null &&
-      set.partName.trim() === "" &&
-      (set.banner?.text ?? "") === "";
-    if (!empty) trimmed.push({ ...set, details, lines });
+    trimmed.push({ ...set, details, lines });
   }
   return trimmed;
 }
