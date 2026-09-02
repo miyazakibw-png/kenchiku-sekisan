@@ -1263,7 +1263,7 @@ export default function FrameSheetPage({
             <button
               type="button"
               className={manualOnly ? "on" : ""}
-              title="自分で引いた線だけを濃く出します（部屋の図は薄くなります）"
+              title="自分で引いた線だけを出します（下敷きの図面は消え、部屋の図は薄くなります）"
               onClick={() => setManualOnly(!manualOnly)}
             >
               ☉ 引いた線だけ
@@ -1492,7 +1492,7 @@ export default function FrameSheetPage({
             onPointerLeave={finishDrag}
             onClick={onCanvasClick}
           >
-            {traceBox !== null && (
+            {traceBox !== null && !manualOnly && (
               <image
                 href={trace.image}
                 x={traceBox.x}
