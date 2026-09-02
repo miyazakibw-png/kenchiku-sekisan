@@ -2336,8 +2336,8 @@ export default function RoomCalcSheet({
                   <th className="no">番号</th>
                   <th>部位名／名称</th>
                   <th>摘要</th>
-                  <th>備考</th>
                   <th className="unit">単位</th>
+                  <th>備考</th>
                   {source === "assembly" && <th className="unit">セット</th>}
                 </tr>
               </thead>
@@ -2379,6 +2379,7 @@ export default function RoomCalcSheet({
                               {head?.descriptionLower ?? ""}
                             </div>
                           </td>
+                          <td className="unit">{head?.unit ?? ""}</td>
                           <td>
                             <div className="upper">
                               {head?.remarksUpper ?? ""}
@@ -2387,7 +2388,6 @@ export default function RoomCalcSheet({
                               {head?.remarksLower ?? ""}
                             </div>
                           </td>
-                          <td className="unit">{head?.unit ?? ""}</td>
                           <td className="unit">
                             {group.list.length === 1
                               ? `${assembly.items.length}明細`
@@ -2417,11 +2417,11 @@ export default function RoomCalcSheet({
                           <div className="upper">{detail.descriptionUpper}</div>
                           <div className="lower">{detail.descriptionLower}</div>
                         </td>
+                        <td className="unit">{detail.unit}</td>
                         <td>
                           <div className="upper">{detail.remarksUpper}</div>
                           <div className="lower">{detail.remarksLower}</div>
                         </td>
-                        <td className="unit">{detail.unit}</td>
                       </tr>
                     ))}
               </tbody>
@@ -2457,8 +2457,8 @@ export default function RoomCalcSheet({
                         <th className="no">番号</th>
                         <th>部位名／名称</th>
                         <th>摘要</th>
-                        <th>備考</th>
                         <th className="unit">単位</th>
+                        <th>備考</th>
                         <th className="unit">掛け率</th>
                       </tr>
                     </thead>
@@ -2489,11 +2489,11 @@ export default function RoomCalcSheet({
                             <div className="upper">{item.descriptionUpper}</div>
                             <div className="lower">{item.descriptionLower}</div>
                           </td>
+                          <td className="unit">{item.unit}</td>
                           <td>
                             <div className="upper">{item.remarksUpper}</div>
                             <div className="lower">{item.remarksLower}</div>
                           </td>
-                          <td className="unit">{item.unit}</td>
                           <td className="unit">{item.coefficient}</td>
                         </tr>
                       ))}
