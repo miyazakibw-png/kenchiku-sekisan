@@ -2075,6 +2075,9 @@ export default function FrameSheetPage({
                     ),
                     2,
                   )}
+                  <span className="total-symbol">
+                    {`WSL${group.symbol.slice(2)}`}
+                  </span>
                 </td>
                 <td className="num" />
                 <td />
@@ -2090,6 +2093,7 @@ export default function FrameSheetPage({
                     ),
                     2,
                   )}
+                  <span className="total-symbol">{group.symbol}</span>
                 </td>
                 <td
                   className="num"
@@ -2105,6 +2109,9 @@ export default function FrameSheetPage({
                     ),
                     2,
                   )}
+                  <span className="total-symbol">
+                    {`WSR${group.symbol.slice(2)}`}
+                  </span>
                 </td>
                 <td />
               </tr>

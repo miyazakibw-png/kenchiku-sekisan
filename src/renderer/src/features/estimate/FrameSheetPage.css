@@ -471,3 +471,11 @@
 .frame-sheet-page .rooms.lines-kind table.grid {
   min-width: 300px;
 }
+
+/* 合計行の数字の下に記号（WS◯・WSL◯・WSR◯）を小さく出す */
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total span.total-symbol {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: #1d4ed8;
+}
