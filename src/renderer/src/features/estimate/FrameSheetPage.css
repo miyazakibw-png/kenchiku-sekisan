@@ -395,17 +395,14 @@
   margin: auto;
 }
 
-/* 「線を引く」の間だけ出す小窓（種類＝線の色を選ぶ） */
-.frame-sheet-page .frame-draw-popup {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  z-index: 5;
+/* 「線を引く」の間だけ出す帯（種類＝線の色を選ぶ） */
+.frame-sheet-page .frame-draw-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  max-width: 320px;
+  flex: 0 0 auto;
+  margin-bottom: 4px;
   padding: 4px 8px;
   border: 1px solid #2563eb;
   border-radius: 6px;
@@ -414,7 +411,11 @@
   font-size: 12px;
 }
 
-.frame-sheet-page .frame-draw-popup .status {
-  flex: 1 1 100%;
+.frame-sheet-page .frame-draw-bar .status {
   color: #1e3a8a;
+}
+
+/* 自分で引いた線は下敷きの図面より目立たせる */
+.frame-sheet-page .frame-line.hand {
+  stroke-width: 5;
 }

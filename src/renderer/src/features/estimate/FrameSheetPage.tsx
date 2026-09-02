@@ -435,7 +435,13 @@ export default function FrameSheetPage({
     ],
     [fitTrace, lines, traceBox],
   );
-  const view = useMemo(() => viewBox(points), [points]);
+  const autoView = useMemo(() => viewBox(points), [points]);
+  /** 表示範囲を止めているとき（線を引く間は図面が動かないようにする） */
+  const [heldView, setHeldView] = useState<{
+    box: string;
+    span: number;
+  } | null>(null);
+  const view = heldView ?? autoView;
 
   /** 計算式に使える数量（軸組の記号＋建具表の記号） */
   const calcVariables = useMemo(() => {
@@ -557,6 +563,7 @@ export default function FrameSheetPage({
 
   /** 取り込んだ図面を置く（縮尺はいったん仮に決めて、あとで合わせる） */
   const putTraceImage = useCallback((dataUrl: string) => {
+    setHeldView(null);
     setFitTrace(true);
     setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
     setScalePoints([]);
@@ -1161,7 +1168,14 @@ export default function FrameSheetPage({
           >
             －
           </button>
-          <button type="button" onClick={() => setZoom(1)}>
+          <button
+            type="button"
+            title="表示範囲を今の中身に合わせ直します"
+            onClick={() => {
+              setZoom(1);
+              setHeldView(null);
+            }}
+          >
             全体
           </button>
           {trace.image !== "" && (
@@ -1169,7 +1183,10 @@ export default function FrameSheetPage({
               type="button"
               className={fitTrace ? "on" : ""}
               title="図面の紙全体に合わせます（切ると引いた線に合わせて大きく出します）"
-              onClick={() => setFitTrace(!fitTrace)}
+              onClick={() => {
+                setHeldView(null);
+                setFitTrace(!fitTrace);
+              }}
             >
               🖼 図面に合わせる
             </button>
@@ -1181,6 +1198,8 @@ export default function FrameSheetPage({
               title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します）"
               onClick={() => {
                 setDrawStart(null);
+                // 線を引く間は表示範囲を止めて、図面が動かないようにする
+                setHeldView(drawing ? null : view);
                 setDrawing(!drawing);
                 setMessage(
                   drawing
@@ -1279,9 +1298,10 @@ export default function FrameSheetPage({
                 type="button"
                 className={traceMode === "move" ? "on" : ""}
                 title="図面をつまんで動かします（引いた線に合わせる位置決め）"
-                onClick={() =>
-                  setTraceMode(traceMode === "move" ? "off" : "move")
-                }
+                onClick={() => {
+                  setHeldView(traceMode === "move" ? null : view);
+                  setTraceMode(traceMode === "move" ? "off" : "move");
+                }}
               >
                 ✥ 図面を動かす
               </button>
@@ -1373,31 +1393,33 @@ export default function FrameSheetPage({
             </span>
           )}
         </div>
+        {drawing && !printMode && (
+          <div className="frame-draw-bar">
+            <strong>線を引く</strong>
+            <label>
+              種類
+              <select
+                value={drawKindId}
+                style={{
+                  color: kindOf(drawKindId)?.color ?? "#334155",
+                  fontWeight: 700,
+                }}
+                onChange={(e) => setDrawKindId(e.target.value)}
+              >
+                <option value="">（種類なし）</option>
+                {kinds.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="status">
+              始めと終わりをクリックします（引いている間は図の大きさを変えません）
+            </span>
+          </div>
+        )}
         <div className="canvas">
-          {drawing && !printMode && (
-            <div className="frame-draw-popup">
-              <strong>線を引く</strong>
-              <label>
-                種類
-                <select
-                  value={drawKindId}
-                  style={{
-                    color: kindOf(drawKindId)?.color ?? "#334155",
-                    fontWeight: 700,
-                  }}
-                  onChange={(e) => setDrawKindId(e.target.value)}
-                >
-                  <option value="">（種類なし）</option>
-                  {kinds.map((kind) => (
-                    <option key={kind.id} value={kind.id}>
-                      {kind.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span className="status">始めと終わりをクリックします</span>
-            </div>
-          )}
           <svg
             ref={svgRef}
             viewBox={view.box}
@@ -1515,6 +1537,7 @@ export default function FrameSheetPage({
                   }
                   className={[
                     "frame-line",
+                    line.source === "manual" ? "hand" : "",
                     manualOnly && line.source !== "manual" ? "faint" : "",
                     picked ? "" : "skip",
                     gapLineIds.has(line.id) ? "gap" : "",
