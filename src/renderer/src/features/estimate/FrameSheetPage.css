@@ -338,6 +338,18 @@
   width: 22px;
 }
 
+/* 種類ごとの合計行（記号 WS1〜WS10・クリックで計算式に入る） */
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total td.symbol,
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total td.num {
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
 .frame-sheet-page .rooms.lines-kind table.grid select {
   max-width: 100%;
   font-size: 10px;

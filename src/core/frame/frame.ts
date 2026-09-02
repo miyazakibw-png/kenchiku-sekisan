@@ -666,6 +666,22 @@ export function frameSymbols(
       label: `${kind.name} 補強`,
       value: total.reinforcement,
     });
+    // 種類ごとの合計は WS1〜WS10（面積）・WSL◯（長さ）・WSR◯（補強）でも使える
+    symbols.push({
+      symbol: `WS${no + 1}`,
+      label: `${kind.name} 面積計`,
+      value: total.area,
+    });
+    symbols.push({
+      symbol: `WSL${no + 1}`,
+      label: `${kind.name} 長さ計`,
+      value: total.length,
+    });
+    symbols.push({
+      symbol: `WSR${no + 1}`,
+      label: `${kind.name} 補強計`,
+      value: total.reinforcement,
+    });
   });
   let index = 0;
   quantities.lines.forEach((result) => {

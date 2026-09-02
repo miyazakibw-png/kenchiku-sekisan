@@ -684,10 +684,12 @@ export default function FrameSheetPage({
       (result) => result.line.source === "manual",
     );
     const groups = kinds
-      .map((kind) => ({
+      .map((kind, no) => ({
         id: kind.id,
         name: kind.name,
         color: kind.color,
+        /** 計算式の記号（種類1＝WS1…種類10＝WS10） */
+        symbol: `WS${no + 1}`,
         results: manual.filter((result) => result.line.kindId === kind.id),
       }))
       .filter((group) => group.results.length > 0);
@@ -699,6 +701,7 @@ export default function FrameSheetPage({
         id: "",
         name: "種類なし",
         color: "#334155",
+        symbol: "",
         results: none,
       });
     return groups;
@@ -1963,6 +1966,63 @@ export default function FrameSheetPage({
               </tr>
             </thead>
             <tbody>
+              <tr className="kind-total">
+                <td className="no" />
+                <td
+                  className="symbol"
+                  title="クリックで計算式に入ります（面積計）"
+                  onClick={() => group.symbol && useSymbol(group.symbol)}
+                >
+                  {group.symbol}
+                </td>
+                <td>合計</td>
+                <td
+                  className="num"
+                  title="クリックで長さ計を計算式に入れます"
+                  onClick={() =>
+                    group.symbol && useSymbol(`WSL${group.symbol.slice(2)}`)
+                  }
+                >
+                  {formatNumber(
+                    group.results.reduce(
+                      (total, each) => total + each.line.length,
+                      0,
+                    ),
+                    2,
+                  )}
+                </td>
+                <td className="num" />
+                <td />
+                <td
+                  className="num"
+                  title="クリックで面積計を計算式に入れます"
+                  onClick={() => group.symbol && useSymbol(group.symbol)}
+                >
+                  {formatNumber(
+                    group.results.reduce(
+                      (total, each) => total + (each.area ?? 0),
+                      0,
+                    ),
+                    2,
+                  )}
+                </td>
+                <td
+                  className="num"
+                  title="クリックで補強計を計算式に入れます"
+                  onClick={() =>
+                    group.symbol && useSymbol(`WSR${group.symbol.slice(2)}`)
+                  }
+                >
+                  {formatNumber(
+                    group.results.reduce(
+                      (total, each) => total + each.reinforcement,
+                      0,
+                    ),
+                    2,
+                  )}
+                </td>
+                <td />
+              </tr>
               {group.results.map((result) => {
                 const manual = result.line;
                 return (
