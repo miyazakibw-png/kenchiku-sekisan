@@ -286,8 +286,9 @@
 .frame-sheet-page .rooms.lines-kind table.grid {
   table-layout: fixed;
   font-size: 11px;
-  /* 建具の欄に記号が並ぶ幅を残す（狭いときは横スクロールする） */
-  min-width: 460px;
+  /* 欄の幅に収めて、右端（補強・ゴミ箱）まで必ず見えるようにする */
+  width: 100%;
+  min-width: 0;
 }
 
 .frame-sheet-page .rooms.lines-kind table.grid th,
@@ -320,7 +321,7 @@
 }
 
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(3) {
-  width: 60px;
+  width: 52px;
 }
 
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(4),
@@ -429,4 +430,10 @@
 
 .frame-sheet-page > .upper.layout-popup > section:not(.drawing) {
   overflow: auto;
+}
+
+/* 表は欄の幅に収める（横に切れて右端が押し出されないようにする） */
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing) table.grid {
+  width: 100%;
+  min-width: 0;
 }
