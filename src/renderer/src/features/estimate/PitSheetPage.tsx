@@ -188,8 +188,8 @@ export default function PitSheetPage({
   const [beamHeight, setBeamHeight] = useState(0.6);
   /** 図のクリックで何をするか（梁を置く／形の角を直す） */
   const [planMode, setPlanMode] = useState<
-    "beam" | "shape" | "column" | "wall"
-  >("beam");
+    "none" | "beam" | "shape" | "column" | "wall"
+  >("none");
   /** ピット間を引くときの幅（m）と色 */
   const [wallWidth, setWallWidth] = useState(PIT_WALL_SIZES[0].width);
   const [wallColor, setWallColor] = useState(PIT_WALL_SIZES[0].color);
@@ -948,7 +948,7 @@ export default function PitSheetPage({
                 className="pit-rect"
                 onClick={(event) => {
                   if (printMode) return;
-                  if (planMode === "wall") return;
+                  if (planMode === "wall" || planMode === "none") return;
                   const box = event.currentTarget.getBoundingClientRect();
                   if (
                     planMode === "shape" ||
@@ -1252,6 +1252,57 @@ export default function PitSheetPage({
         title={`ピット計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
         upper={
           <div className="pit-print-upper">
+            {planMode === "beam" && !printMode && (
+              <div className="pit-beam-popup">
+                <strong>梁型入力</strong>
+                <label>
+                  方向
+                  <select
+                    value={beamAxis}
+                    onChange={(e) =>
+                      setBeamAxis(
+                        e.target.value === "Y"
+                          ? "Y"
+                          : e.target.value === "E"
+                            ? "E"
+                            : "X",
+                      )
+                    }
+                  >
+                    <option value="X">X方向（よこ）</option>
+                    <option value="Y">Y方向（たて）</option>
+                    <option value="E">壁沿い（斜めの壁も）</option>
+                  </select>
+                </label>
+                <label>
+                  梁W（m）
+                  <input
+                    data-half="1"
+                    className="num"
+                    defaultValue={beamWidth}
+                    onBlur={(e) =>
+                      setBeamWidth(parseNumber(e.target.value) ?? 0.3)
+                    }
+                  />
+                </label>
+                <label>
+                  梁H（m）
+                  <input
+                    data-half="1"
+                    className="num"
+                    defaultValue={beamHeight}
+                    onBlur={(e) =>
+                      setBeamHeight(parseNumber(e.target.value) ?? 0.6)
+                    }
+                  />
+                </label>
+                <span className="status">
+                  {beamAxis === "E"
+                    ? "壁の近くをクリックすると、その壁に沿う梁が付きます"
+                    : "図の中をクリックすると、その所に梁型が入ります"}
+                </span>
+              </div>
+            )}
             {drawing}
             {quantityTable}
             {walls.length > 0 && wallTables}
@@ -1836,12 +1887,14 @@ export default function PitSheetPage({
             <h3>
               平面図（
               {planMode === "beam"
-                ? "クリックで梁型を置く"
+                ? "梁型入力中：図をクリックで梁型を置く（小窓で方向・Ｗ・Ｈを決めます）"
                 : planMode === "column"
                   ? "壁⇄柱中：図の壁をまとめてクリックし、「✓ 柱にする」を押す"
                   : planMode === "wall"
                     ? "ピット間中：ピットのすき間をクリックで印を付ける／印をクリックで消す"
-                    : "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"}
+                    : planMode === "shape"
+                      ? "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"
+                      : "ボタンを押して入力に入ります（▭ 梁型入力／＝ ピット間 など）"}
               ）／全体 {pitCornerCount(pits)}角
             </h3>
             <button
@@ -1862,6 +1915,24 @@ export default function PitSheetPage({
             </button>
             <button
               type="button"
+              className={planMode === "beam" ? "on" : ""}
+              title="図をクリックして梁型を置きます（方向・梁Ｗ・梁Ｈは小窓で決めます）"
+              onClick={() => {
+                const next = planMode === "beam" ? "none" : "beam";
+                setPlanMode(next);
+                setCorners([]);
+                setPickedEdges([]);
+                setMessage(
+                  next === "beam"
+                    ? "小窓で方向・梁Ｗ・梁Ｈを決めて、図をクリックしてください"
+                    : "梁型の入力をやめました",
+                );
+              }}
+            >
+              ▭ 梁型入力
+            </button>
+            <button
+              type="button"
               className={planMode === "shape" ? "on" : ""}
               title={
                 planMode === "shape"
@@ -1869,7 +1940,7 @@ export default function PitSheetPage({
                   : "図の角を動かして台形・Ｌ型・コ型を作ります（梁は置けません）"
               }
               onClick={() => {
-                setPlanMode(planMode === "shape" ? "beam" : "shape");
+                setPlanMode(planMode === "shape" ? "none" : "shape");
                 setCorners([]);
                 setMessage(
                   planMode === "shape"
@@ -1887,7 +1958,7 @@ export default function PitSheetPage({
               className={planMode === "column" ? "on" : ""}
               title="押してから図の壁をまとめてクリックし、一括で柱（または壁）にします。柱にした分は壁面長さから外れ、柱長さに入ります"
               onClick={() => {
-                const next = planMode === "column" ? "beam" : "column";
+                const next = planMode === "column" ? "none" : "column";
                 setPlanMode(next);
                 setCorners([]);
                 setPickedEdges([]);
@@ -1931,7 +2002,7 @@ export default function PitSheetPage({
               className={planMode === "wall" ? "on" : ""}
               title="ピットとピットの間（基礎梁）に印を付けます。始めと終わりの2回クリックで1本引きます"
               onClick={() => {
-                const next = planMode === "wall" ? "beam" : "wall";
+                const next = planMode === "wall" ? "none" : "wall";
                 setPlanMode(next);
                 setCorners([]);
                 setPickedEdges([]);
@@ -2141,56 +2212,13 @@ export default function PitSheetPage({
                 </span>
               </>
             )}
-            <label>
-              向き
-              <select
-                value={beamAxis}
-                onChange={(e) =>
-                  setBeamAxis(
-                    e.target.value === "Y"
-                      ? "Y"
-                      : e.target.value === "E"
-                        ? "E"
-                        : "X",
-                  )
-                }
-              >
-                <option value="X">X方向（よこ）</option>
-                <option value="Y">Y方向（たて）</option>
-                <option value="E">
-                  壁沿い（斜めの壁も／壁の近くをクリック）
-                </option>
-              </select>
-            </label>
-            <label>
-              梁W（m）
-              <input
-                data-half="1"
-                className="num"
-                defaultValue={beamWidth}
-                onBlur={(e) => setBeamWidth(parseNumber(e.target.value) ?? 0.3)}
-              />
-            </label>
-            <label>
-              梁H（m）
-              <input
-                data-half="1"
-                className="num"
-                defaultValue={beamHeight}
-                onBlur={(e) =>
-                  setBeamHeight(parseNumber(e.target.value) ?? 0.6)
-                }
-              />
-            </label>
           </div>
           {drawing}
         </section>
 
         <section className="pit-walls">
           <div className="section-bar">
-            <h3>
-              ピット間（種類＝線の色／長さは50mmごと）
-            </h3>
+            <h3>ピット間（種類＝線の色／長さは50mmごと）</h3>
           </div>
 
           {showSleeveKinds && (
