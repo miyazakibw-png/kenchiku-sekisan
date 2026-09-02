@@ -322,6 +322,39 @@ describe("集計処理", () => {
     expect(runAggregation(db, projectId).items[0].name).toBe("長尺塩ビシート");
   });
 
+  it("集計書で直した内容は明細マスター変更履歴に残る", () => {
+    addRoom("事務室", 1, 1);
+    const before = runAggregation(db, projectId);
+
+    saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 7,
+          materialCategory: "仕上",
+          partNumber: 10,
+          partName: "床",
+          detailNumber: 1.01,
+          name: "長尺塩ビシート",
+          descriptionUpper: "",
+          descriptionLower: "t=2.5",
+          unit: "m2",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    const logs = listDetailChangeLogs(db, projectId).filter(
+      (log) => log.origin === "集計書兼工事マスター",
+    );
+    expect(logs).toHaveLength(1);
+    expect(logs[0].after?.name).toBe("長尺塩ビシート");
+    expect(logs[0].changedFields).toContain("name");
+  });
+
   it("集計書で直した内容を転記入力表へ書き戻す", () => {
     saveTransferRows(db, { projectId, rows: [transferDraft(3)] });
     const before = runAggregation(db, projectId);
@@ -471,12 +504,13 @@ describe("集計処理", () => {
       ],
     });
 
+    // マスターの行は書き換えないが、直したことは修正履歴に残す
     expect(listDetails(db, 5, projectId)[0].name).toBe("ビニル床シート");
     expect(
-      listDetailChangeLogs(db, projectId).filter(
-        (log) => log.changeKind === "edit",
-      ),
-    ).toHaveLength(0);
+      listDetailChangeLogs(db, projectId)
+        .filter((log) => log.origin === "集計書兼工事マスター")
+        .map((log) => log.after?.name),
+    ).toEqual(["タイルカーペット"]);
   });
 
   it("不要明細にした明細は内訳書へ飛ばさない（計算書はそのまま残る）", () => {

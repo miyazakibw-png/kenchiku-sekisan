@@ -8,6 +8,7 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
+  detailChangeLogs,
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
@@ -34,6 +35,7 @@ import {
   listProjectSubjects,
 } from "./projectMasterService";
 import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
+import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import { syncAssembliesFromSheets } from "./assemblyService";
 import {
@@ -654,6 +656,50 @@ export function saveAggregateEdits(
           .map((detail) => detail.sourceDetailId)
           .filter((id): id is number => id !== null),
       );
+      // 修正履歴（明細マスター変更履歴）に、直した前後を1件残す
+      const head = matched[0];
+      const before = snapshotOf({
+        detailNumber: head.detailNumber,
+        materialCategory: head.materialCategory,
+        partName: head.partName,
+        name: head.name,
+        descriptionUpper: head.descriptionUpper,
+        descriptionLower: head.descriptionLower,
+        unit: head.unit,
+        remarksUpper: head.remarksUpper,
+        remarksLower: head.remarksLower,
+        estimateDisplay: head.estimateDisplay,
+        isActive: true,
+      });
+      const after = snapshotOf({
+        detailNumber: edit.detailNumber,
+        materialCategory: edit.materialCategory,
+        partName: edit.partName,
+        name: edit.name,
+        descriptionUpper: edit.descriptionUpper,
+        descriptionLower: edit.descriptionLower,
+        unit: edit.unit,
+        remarksUpper: edit.remarksUpper,
+        remarksLower: edit.remarksLower,
+        estimateDisplay: head.estimateDisplay,
+        isActive: true,
+      });
+      const subjectId = edit.subjectId ?? head.subjectId;
+      if (changedFieldsOf(before, after).length > 0 && subjectId !== null) {
+        tx.insert(detailChangeLogs)
+          .values({
+            scope: "project",
+            projectId,
+            subjectId,
+            detailId: head.sourceDetailId,
+            changeKind: "edit",
+            origin: "集計書兼工事マスター",
+            beforeJson: JSON.stringify(before),
+            afterJson: JSON.stringify(after),
+          })
+          .run();
+      }
+
       const targets =
         applyToSameDetail && sameDetailIds.size > 0
           ? details.filter(
