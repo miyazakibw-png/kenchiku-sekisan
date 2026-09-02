@@ -52,6 +52,13 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
+    key: "miscInput",
+    label: "部位別雑・金物入力表",
+    group: "input",
+    note: "明細をタテ1列、部屋をヨコ1行に並べて拾う表（その部屋の計算書に入れたのと同じ扱いで集計）",
+    ready: true,
+  },
+  {
     key: "transferInput",
     label: "転記入力表",
     group: "input",

@@ -1,0 +1,89 @@
+/** 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行に並べる表） */
+.misc-page .misc-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 190px);
+}
+
+.misc-page table.grid.misc {
+  border-collapse: collapse;
+  width: max-content;
+}
+
+.misc-page table.grid.misc th,
+.misc-page table.grid.misc td {
+  border: 1px solid #94a3b8;
+  padding: 0;
+  background: #fff;
+}
+
+.misc-page table.grid.misc th.head-label {
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 0 6px;
+  text-align: center;
+  min-width: 8em;
+}
+
+.misc-page table.grid.misc th.col {
+  min-width: 9em;
+}
+
+.misc-page table.grid.misc th.col.on {
+  background: #dbeafe;
+}
+
+.misc-page table.grid.misc th input,
+.misc-page table.grid.misc td input {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  padding: 1px 3px;
+  background: transparent;
+}
+
+.misc-page table.grid.misc td.num input {
+  text-align: right;
+}
+
+.misc-page table.grid.misc td.num.error input {
+  background: #fee2e2;
+}
+
+.misc-page table.grid.misc tr.total-row th {
+  background: #e2e8f0;
+  text-align: right;
+  padding: 1px 3px;
+  white-space: nowrap;
+}
+
+.misc-page table.grid.misc tr.total-row th.part,
+.misc-page table.grid.misc tr.total-row th.flag,
+.misc-page table.grid.misc tr.total-row th.head-label {
+  text-align: center;
+}
+
+.misc-page table.grid.misc button.drop {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.misc-page table.grid.misc td.part,
+.misc-page table.grid.misc td.flag {
+  padding: 0 4px;
+  white-space: nowrap;
+  background: #f8fafc;
+}
+
+.misc-page table.grid.misc td.room {
+  min-width: 12em;
+}
+
+.misc-page table.grid.misc thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

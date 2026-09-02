@@ -22,6 +22,7 @@ import BasicMasterPage from "../masters/BasicMasterPage";
 import DetailChangeHistoryPage from "../details/DetailChangeHistoryPage";
 import FittingsPage from "../fittings/FittingsPage";
 import EstimatePartsPage from "../estimate/EstimatePartsPage";
+import MiscSheetPage from "../estimate/MiscSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
@@ -241,6 +242,16 @@ export default function ProjectWorkspacePage({
   if (openedMenu === "roomFinishes") {
     return (
       <EstimatePartsPage
+        project={draft}
+        options={options}
+        onBack={() => setOpenedMenu(null)}
+      />
+    );
+  }
+
+  if (openedMenu === "miscInput") {
+    return (
+      <MiscSheetPage
         project={draft}
         options={options}
         onBack={() => setOpenedMenu(null)}

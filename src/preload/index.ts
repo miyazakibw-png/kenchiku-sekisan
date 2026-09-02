@@ -30,6 +30,7 @@ import type {
   FrameRoomOption,
   FrameSheet,
   GeneralSheet,
+  MiscSheet,
   PitSheet,
   MasterOptions,
   ProjectField,
@@ -48,6 +49,7 @@ import type {
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
+  SaveMiscSheetRequest,
   SavePitSheetRequest,
   RoomSheet,
   SaveProjectRequest,
@@ -172,6 +174,11 @@ const api = {
     ipcRenderer.invoke(IPC.generalSheetGet, estimateRowId),
   saveGeneralSheet: (request: SaveGeneralSheetRequest): Promise<GeneralSheet> =>
     ipcRenderer.invoke(IPC.generalSheetSave, request),
+  /** 部位別雑・金物入力表（明細をタテ、部屋をヨコに並べて拾う表） */
+  getMiscSheet: (projectId: number): Promise<MiscSheet> =>
+    ipcRenderer.invoke(IPC.miscSheetGet, projectId),
+  saveMiscSheet: (request: SaveMiscSheetRequest): Promise<MiscSheet> =>
+    ipcRenderer.invoke(IPC.miscSheetSave, request),
   /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
   getPitSheet: (estimateRowId: number): Promise<PitSheet> =>
     ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),

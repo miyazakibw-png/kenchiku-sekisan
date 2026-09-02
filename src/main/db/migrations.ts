@@ -918,4 +918,16 @@ ALTER TABLE project_pit_sheets ADD COLUMN sleeve_kinds_json TEXT NOT NULL DEFAUL
   `
 ALTER TABLE project_pit_sheets ADD COLUMN wall_step INTEGER NOT NULL DEFAULT 50;
 `,
+  // 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行にして数量を拾う表）
+  `
+CREATE TABLE project_misc_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  columns_json TEXT NOT NULL DEFAULT '[]',
+  rows_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_misc_sheet_project ON project_misc_sheets(project_id);
+`,
 ];

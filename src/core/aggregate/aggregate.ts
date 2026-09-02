@@ -13,7 +13,7 @@ import {
 
 /** 計算書の種類。transfer は転記入力表（根拠集計には出さない） */
 export type AggregateSourceKind =
-  "room" | "frame" | "general" | "pit" | "transfer";
+  "room" | "frame" | "general" | "pit" | "misc" | "transfer";
 
 /** 合算前の1件（集計詳細データの1行） */
 export interface AggregateEntry {

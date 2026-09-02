@@ -449,6 +449,23 @@ export const projectPitSheets = sqliteTable("project_pit_sheets", {
 });
 
 /**
+ * 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行にして数量を拾う表）。
+ * 1工事に1枚。数量はその部屋の計算書に入れたのと同じ扱いで集計する。
+ */
+export const projectMiscSheets = sqliteTable("project_misc_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  /** タテに並べる明細（MiscColumnの配列） */
+  columnsJson: text("columns_json").notNull().default("[]"),
+  /** ヨコに並べる部屋と数量（MiscRowの配列） */
+  rowsJson: text("rows_json").notNull().default("[]"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
+/**
  * 転記入力表の1行（1明細）。
  * 集計書兼工事マスターへ直接計上する入力で、根拠集計（計算書の数量根拠）には含めない。
  */

@@ -16,6 +16,7 @@ import {
   projectFittings,
   projectFrameSheets,
   projectGeneralSheets,
+  projectMiscSheets,
   projectPitSheets,
   projectRoomSheets,
   projectTransferRows,
@@ -29,6 +30,11 @@ import {
   type AggregatedItem,
 } from "../../core/aggregate/aggregate";
 import { calcVariables } from "../../core/aggregate/variables";
+import {
+  entriesFromMiscSheet,
+  type MiscColumn,
+  type MiscRow,
+} from "../../core/misc/miscSheet";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
 import {
   listProjectBasicMasters,
@@ -540,8 +546,29 @@ export function collectEntries(
     );
   });
 
+  entries.push(...miscEntries(db, projectId, part2Order));
   entries.push(...transferEntries(db, projectId, part2Order));
   return entries;
+}
+
+/** 部位別雑・金物入力表（その部屋の計算書に入れたのと同じ扱いで集計する） */
+function miscEntries(
+  db: AppDatabase,
+  projectId: number,
+  part2Order: Map<string, number>,
+): AggregateEntry[] {
+  const sheet = db
+    .select()
+    .from(projectMiscSheets)
+    .where(eq(projectMiscSheets.projectId, projectId))
+    .get();
+  if (!sheet) return [];
+  const columns = parseJson<MiscColumn[]>(sheet.columnsJson, []);
+  const rows = parseJson<MiscRow[]>(sheet.rowsJson, []);
+  rows.forEach((row) => {
+    if (!part2Order.has(row.part2)) part2Order.set(row.part2, part2Order.size);
+  });
+  return entriesFromMiscSheet({ columns, rows }, part2Order);
 }
 
 /** 転記入力表の行（集計書兼工事マスターへ直接計上。根拠集計には出さない） */
