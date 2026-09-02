@@ -196,6 +196,8 @@ export default function FrameSheetPage({
   /** 自分で引いた線だけを見る（部屋の図は薄くする） */
   const [manualOnly, setManualOnly] = useState(false);
   const [zoom, setZoom] = useState(1);
+  /** 図の表示範囲に図面画像も入れるか（切ると引いた線に合わせる） */
+  const [fitTrace, setFitTrace] = useState(false);
   /** 建物レイアウトを画面いっぱいの別窓で開く */
   const [expanded, setExpanded] = useState(false);
   /** 吸着の幅（mm）。部屋ごとの寸法の食い違いをここで調整する */
@@ -421,7 +423,7 @@ export default function FrameSheetPage({
         { x: line.x1, y: line.y1 },
         { x: line.x2, y: line.y2 },
       ]),
-      ...(traceBox === null
+      ...(traceBox === null || (!fitTrace && lines.length > 0)
         ? []
         : [
             { x: traceBox.x, y: traceBox.y },
@@ -431,7 +433,7 @@ export default function FrameSheetPage({
             },
           ]),
     ],
-    [lines, traceBox],
+    [fitTrace, lines, traceBox],
   );
   const view = useMemo(() => viewBox(points), [points]);
 
@@ -555,6 +557,7 @@ export default function FrameSheetPage({
 
   /** 取り込んだ図面を置く（縮尺はいったん仮に決めて、あとで合わせる） */
   const putTraceImage = useCallback((dataUrl: string) => {
+    setFitTrace(true);
     setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
     setScalePoints([]);
     setTraceMode("scale");
@@ -1158,6 +1161,16 @@ export default function FrameSheetPage({
           <button type="button" onClick={() => setZoom(1)}>
             全体
           </button>
+          {trace.image !== "" && (
+            <button
+              type="button"
+              className={fitTrace ? "on" : ""}
+              title="図面の紙全体に合わせます（切ると引いた線に合わせて大きく出します）"
+              onClick={() => setFitTrace(!fitTrace)}
+            >
+              🖼 図面に合わせる
+            </button>
+          )}
           {mode === "layout" && (
             <button
               type="button"
