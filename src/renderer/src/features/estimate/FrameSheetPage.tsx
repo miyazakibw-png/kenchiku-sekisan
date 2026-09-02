@@ -428,6 +428,20 @@ export default function FrameSheetPage({
     };
   }, [trace, traceSize]);
 
+  /** 図面だけを大きく／小さくする（真ん中を動かさず、引いた線はそのまま） */
+  const resizeTrace = useCallback(
+    (factor: number) => {
+      if (traceBox === null) return;
+      setTrace((current) => ({
+        ...current,
+        metersPerPixel: current.metersPerPixel * factor,
+        x: current.x + (traceBox.width * (1 - factor)) / 2,
+        y: current.y + (traceBox.height * (1 - factor)) / 2,
+      }));
+    },
+    [traceBox],
+  );
+
   const points = useMemo(
     () => [
       ...lines.flatMap((line) => [
@@ -1403,6 +1417,20 @@ export default function FrameSheetPage({
                 }}
               >
                 ✥ 図面を動かす
+              </button>
+              <button
+                type="button"
+                title="図面だけを少し小さくします（引いた線はそのまま）"
+                onClick={() => resizeTrace(1 / 1.05)}
+              >
+                図面 −
+              </button>
+              <button
+                type="button"
+                title="図面だけを少し大きくします（引いた線はそのまま）"
+                onClick={() => resizeTrace(1.05)}
+              >
+                図面 ＋
               </button>
               <label
                 className="snap-field"
