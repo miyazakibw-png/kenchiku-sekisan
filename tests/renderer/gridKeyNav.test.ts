@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  caretJumpOf,
   navMoveOf,
   nextCellPosition,
 } from "@renderer/features/grid/gridKeyNav";
@@ -50,5 +51,19 @@ describe("表のキーボード移動", () => {
       col: 1,
     });
     expect(nextCellPosition("right", { row: 1, col: 1 }, [2, 2])).toBeNull();
+  });
+});
+
+describe("欄の中へ文字カーソルを入れるキー", () => {
+  it("Shift+→は後ろ・Shift+←は先頭・F2は後ろ", () => {
+    expect(caretJumpOf("ArrowRight", true)).toBe("end");
+    expect(caretJumpOf("ArrowLeft", true)).toBe("start");
+    expect(caretJumpOf("F2", false)).toBe("end");
+  });
+
+  it("Shift無しの矢印やEnterは対象外（今までどおり隣へ動く）", () => {
+    expect(caretJumpOf("ArrowRight", false)).toBeNull();
+    expect(caretJumpOf("ArrowLeft", false)).toBeNull();
+    expect(caretJumpOf("Enter", true)).toBeNull();
   });
 });

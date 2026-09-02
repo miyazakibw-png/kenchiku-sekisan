@@ -26,6 +26,21 @@ export function navMoveOf(
 }
 
 /**
+ * 青く囲まれた（全選択の）欄の中へ文字カーソルを入れるキーかどうか。
+ * Shift+→ は文字の後ろ、Shift+← は先頭、F2 は後ろに入れる。
+ */
+export function caretJumpOf(
+  key: string,
+  shiftKey: boolean,
+): "start" | "end" | null {
+  if (key === "F2") return "end";
+  if (!shiftKey) return null;
+  if (key === "ArrowRight") return "end";
+  if (key === "ArrowLeft") return "start";
+  return null;
+}
+
+/**
  * 移動先のセルを求める。
  * counts は行ごとの入力欄の数。行をまたぐときは同じ列（無ければ最後の列）に移る。
  * 表の外へ出る場合は null を返す。

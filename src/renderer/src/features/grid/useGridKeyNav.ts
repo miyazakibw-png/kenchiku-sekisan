@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { KeyboardEvent } from "react";
-import { navMoveOf, nextCellPosition } from "./gridKeyNav";
+import { caretJumpOf, navMoveOf, nextCellPosition } from "./gridKeyNav";
 
 const FIELDS =
   "input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])";
@@ -29,6 +29,17 @@ function caretRange(field: Field): { atStart: boolean; atEnd: boolean } {
   };
 }
 
+/** 文字カーソルを置ける欄か（数値欄などは置けないので選択のまま） */
+function canPlaceCaret(
+  field: Field,
+): field is HTMLInputElement | HTMLTextAreaElement {
+  if (field instanceof HTMLTextAreaElement) return true;
+  return (
+    field instanceof HTMLInputElement &&
+    ["text", "search", "url", "tel", "password"].includes(field.type)
+  );
+}
+
 /** 同じ行の中で、今の欄と横の位置が一番近い欄を選ぶ */
 function nearestByLeft(line: readonly Field[], field: Field): Field {
   const left = field.getBoundingClientRect().left;
@@ -55,6 +66,15 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
     if (!isField(field)) return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     if (field instanceof HTMLTextAreaElement && event.key === "Enter") return;
+
+    // Shift+←→・F2 は、欄の中へ文字カーソルを入れる（部分修正できるように）
+    const jump = caretJumpOf(event.key, event.shiftKey);
+    if (jump !== null && canPlaceCaret(field)) {
+      event.preventDefault();
+      const at = jump === "end" ? field.value.length : 0;
+      field.setSelectionRange(at, at);
+      return;
+    }
 
     const { atStart, atEnd } = caretRange(field);
     const move = navMoveOf(event.key, event.shiftKey, atStart, atEnd);
