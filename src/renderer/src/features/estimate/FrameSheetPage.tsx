@@ -720,10 +720,13 @@ export default function FrameSheetPage({
       if (!svg) return null;
       const rect = svg.getBoundingClientRect();
       const size = Math.min(rect.width, rect.height) || 1;
+      // 図は正方形の枠で真ん中に出るので、上下・左右の余白の分をひく
+      const padX = (rect.width - size) / 2;
+      const padY = (rect.height - size) / 2;
       const [left, top] = view.box.split(" ").map(Number);
       return {
-        x: left + ((clientX - rect.left) / size) * view.span,
-        y: top + ((clientY - rect.top) / size) * view.span,
+        x: left + ((clientX - rect.left - padX) / size) * view.span,
+        y: top + ((clientY - rect.top - padY) / size) * view.span,
       };
     },
     [view.box, view.span],
@@ -1371,6 +1374,30 @@ export default function FrameSheetPage({
           )}
         </div>
         <div className="canvas">
+          {drawing && !printMode && (
+            <div className="frame-draw-popup">
+              <strong>線を引く</strong>
+              <label>
+                種類
+                <select
+                  value={drawKindId}
+                  style={{
+                    color: kindOf(drawKindId)?.color ?? "#334155",
+                    fontWeight: 700,
+                  }}
+                  onChange={(e) => setDrawKindId(e.target.value)}
+                >
+                  <option value="">（種類なし）</option>
+                  {kinds.map((kind) => (
+                    <option key={kind.id} value={kind.id}>
+                      {kind.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="status">始めと終わりをクリックします</span>
+            </div>
+          )}
           <svg
             ref={svgRef}
             viewBox={view.box}
