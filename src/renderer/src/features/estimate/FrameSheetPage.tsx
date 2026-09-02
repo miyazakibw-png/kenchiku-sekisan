@@ -327,18 +327,24 @@ export default function FrameSheetPage({
     return () => window.removeEventListener("keydown", onKey);
   }, [manualLines, selectedLineId]);
 
-  // 線を引く途中の1点目・縮尺合わせの点は Esc で取り消す
+  // 線を引く途中の1点目・縮尺合わせの点・選んだ線は Esc で取り消す
   useEffect(() => {
-    if (drawStart === null && scalePoints.length === 0) return;
+    if (
+      drawStart === null &&
+      scalePoints.length === 0 &&
+      selectedLineId === null
+    )
+      return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       setDrawStart(null);
       setScalePoints([]);
-      setMessage("取り消しました（もう一度1点目からどうぞ）");
+      setSelectedLineId(null);
+      setMessage("取り消しました（選んだ線の丸印も外しました）");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawStart, scalePoints]);
+  }, [drawStart, scalePoints, selectedLineId]);
 
   // 別窓で開いているときは Esc で閉じられるようにする
   useEffect(() => {
@@ -1100,7 +1106,11 @@ export default function FrameSheetPage({
         return;
       }
       if (traceMode === "move") return;
-      if (mode !== "frame" && !(mode === "layout" && drawing)) return;
+      if (mode !== "frame" && !(mode === "layout" && drawing)) {
+        // 何も無い所をクリックしたら、選んだ線（両端の丸印）を外す
+        if (event.target === event.currentTarget) setSelectedLineId(null);
+        return;
+      }
       const point = toModel(event.clientX, event.clientY);
       if (!point) return;
       const snap = (value: number): number => Math.round(value * 20) / 20;
