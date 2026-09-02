@@ -40,6 +40,14 @@ function canPlaceCaret(
   );
 }
 
+/** 欄に入った直後のように、文字が全部選ばれているか */
+function isAllSelected(field: HTMLInputElement | HTMLTextAreaElement): boolean {
+  if (field.value === "") return false;
+  return (
+    field.selectionStart === 0 && field.selectionEnd === field.value.length
+  );
+}
+
 /** 同じ行の中で、今の欄と横の位置が一番近い欄を選ぶ */
 function nearestByLeft(line: readonly Field[], field: Field): Field {
   const left = field.getBoundingClientRect().left;
@@ -67,9 +75,10 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     if (field instanceof HTMLTextAreaElement && event.key === "Enter") return;
 
-    // Shift+←→・F2 は、欄の中へ文字カーソルを入れる（部分修正できるように）
+    // 欄に入った直後（文字が全部青くなっている）だけ、Shift+←→・F2 で
+    // 欄の中へ文字カーソルを入れる。中に入った後の Shift+←→ は範囲選択のまま。
     const jump = caretJumpOf(event.key, event.shiftKey);
-    if (jump !== null && canPlaceCaret(field)) {
+    if (jump !== null && canPlaceCaret(field) && isAllSelected(field)) {
       event.preventDefault();
       const at = jump === "end" ? field.value.length : 0;
       field.setSelectionRange(at, at);
