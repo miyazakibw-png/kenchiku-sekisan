@@ -1404,17 +1404,26 @@ export default function FrameSheetPage({
               >
                 ✥ 図面を動かす
               </button>
-              <button
-                type="button"
-                title="下敷きの図面を外します（引いた線は残ります）"
-                onClick={() => {
-                  setTrace(EMPTY_FRAME_TRACE);
-                  setTraceMode("off");
-                  setMessage("図面を外しました");
-                }}
+              <label
+                className="snap-field"
+                title="下敷きの図面の濃さを変えます（図面は消えません）"
               >
-                🗑 図面
-              </button>
+                図面の濃さ
+                <select
+                  value={String(trace.opacity ?? 0.75)}
+                  onChange={(e) =>
+                    setTrace((current) => ({
+                      ...current,
+                      opacity: Number(e.target.value),
+                    }))
+                  }
+                >
+                  <option value="1">濃い</option>
+                  <option value="0.75">ふつう</option>
+                  <option value="0.4">薄い</option>
+                  <option value="0.15">とても薄い</option>
+                </select>
+              </label>
             </>
           )}
           {!printMode && (
@@ -1543,14 +1552,14 @@ export default function FrameSheetPage({
             onPointerLeave={finishDrag}
             onClick={onCanvasClick}
           >
-            {traceBox !== null && !manualOnly && (
+            {traceBox !== null && (
               <image
                 href={trace.image}
                 x={traceBox.x}
                 y={traceBox.y}
                 width={traceBox.width}
                 height={traceBox.height}
-                opacity={0.75}
+                opacity={manualOnly ? 0.12 : (trace.opacity ?? 0.75)}
                 style={{
                   cursor: traceMode === "move" ? "move" : "default",
                   pointerEvents: traceMode === "move" ? "auto" : "none",

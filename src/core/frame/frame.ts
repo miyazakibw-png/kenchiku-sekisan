@@ -45,6 +45,8 @@ export interface FrameTrace {
   /** 画像の左上を置く位置（m） */
   x: number;
   y: number;
+  /** 図面の濃さ（0.05〜1。無いときは0.75） */
+  opacity?: number;
 }
 
 export const EMPTY_FRAME_TRACE: FrameTrace = {
@@ -52,6 +54,7 @@ export const EMPTY_FRAME_TRACE: FrameTrace = {
   metersPerPixel: 0,
   x: 0,
   y: 0,
+  opacity: 0.75,
 };
 
 /**
