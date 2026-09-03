@@ -621,6 +621,9 @@ export default function FrameSheetPage({
     setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
     setScalePoints([]);
     setTraceMode("scale");
+    // 縮尺合わせの間は線を引けないので、線引きは止めておく
+    setDrawing(false);
+    setDrawStart(null);
     setMessage(
       "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
     );
@@ -1337,6 +1340,11 @@ export default function FrameSheetPage({
                 // 線を引く間は表示範囲を止めて、図面が動かないようにする
                 setHeldView(drawing ? null : baseView);
                 setDrawing(!drawing);
+                // 縮尺合わせ・図面を動かすが入ったままだと線が引けないのでやめる
+                if (!drawing) {
+                  setTraceMode("off");
+                  setScalePoints([]);
+                }
                 setMessage(
                   drawing
                     ? "線引きをやめました（部屋を動かせます）"
@@ -1442,6 +1450,10 @@ export default function FrameSheetPage({
                 onClick={() => {
                   setScalePoints([]);
                   setTraceMode(traceMode === "scale" ? "off" : "scale");
+                  if (traceMode !== "scale") {
+                    setDrawing(false);
+                    setDrawStart(null);
+                  }
                   setMessage(
                     traceMode === "scale"
                       ? "縮尺合わせをやめました"
@@ -1486,6 +1498,10 @@ export default function FrameSheetPage({
                 onClick={() => {
                   setHeldView(traceMode === "move" ? null : baseView);
                   setTraceMode(traceMode === "move" ? "off" : "move");
+                  if (traceMode !== "move") {
+                    setDrawing(false);
+                    setDrawStart(null);
+                  }
                 }}
               >
                 ✥ 図面を動かす

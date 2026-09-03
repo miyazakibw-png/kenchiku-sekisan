@@ -400,7 +400,7 @@ export default function EstimatePartsPage({
       <RoomSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={rows[openedSheet].part3}
+        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
