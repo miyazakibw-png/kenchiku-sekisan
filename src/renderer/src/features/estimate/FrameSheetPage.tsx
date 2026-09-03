@@ -1370,6 +1370,43 @@ export default function FrameSheetPage({
               ↩ 1本消す
             </button>
           )}
+          {!printMode && manualLines.length > 0 && (
+            <button
+              type="button"
+              title="自分で引いた線をすべて消します（下敷きの図面は残ります）"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `引いた線（${manualLines.length}本）をすべて消します。よろしいですか`,
+                  )
+                )
+                  return;
+                setManualLines([]);
+                setDrawStart(null);
+                setSelectedLineId(null);
+                setCheckedIds([]);
+                setMessage("引いた線をすべて消しました");
+              }}
+            >
+              🗑 線を全部消す
+            </button>
+          )}
+          {!printMode && trace.image !== "" && (
+            <button
+              type="button"
+              title="下敷きの図面（元図）を外します（引いた線は残ります）"
+              onClick={() => {
+                if (!window.confirm("下敷きの図面を外します。よろしいですか"))
+                  return;
+                setTrace(EMPTY_FRAME_TRACE);
+                setTraceMode("off");
+                setScalePoints([]);
+                setMessage("下敷きの図面を外しました");
+              }}
+            >
+              🗑 図面を外す
+            </button>
+          )}
           {!printMode && (
             <>
               <button
