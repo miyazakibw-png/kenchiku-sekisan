@@ -2118,6 +2118,8 @@ export default function FrameSheetPage({
                     setMessage("引いた線を消しました");
                   }}
                   onPointerDown={(event) => {
+                    // 線を引いている間は、他の線に触れても選ばない（同じ所にも点が打てる）
+                    if (drawing && !event.ctrlKey && !event.shiftKey) return;
                     // Ctrl（Shift）を押しながらだと、まとめて色を付ける線に足す
                     if (
                       line.source === "manual" &&
@@ -2174,7 +2176,7 @@ export default function FrameSheetPage({
               </text>
             ))}
             {manualLines
-              .filter((line) => line.id === selectedLineId)
+              .filter((line) => !drawing && line.id === selectedLineId)
               .flatMap((line) =>
                 ([1, 2] as const).map((end) => (
                   <circle
