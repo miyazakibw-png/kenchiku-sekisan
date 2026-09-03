@@ -173,12 +173,8 @@ export function syncRowsFromEstimate(
       multiplier: row.multiplier,
     });
   });
-  // 手で足した行と、部位別入力表から消えた部屋の行
-  const extras = rows.filter(
-    (row) =>
-      row.estimateRowId === null ||
-      !estimateRows.some((each) => each.id === row.estimateRowId),
-  );
+  // 手で足した行（転記した部屋で部位別入力表から消えたものは、行も消す）
+  const extras = rows.filter((row) => row.estimateRowId === null);
   const byAnchor = new Map<string, MiscRow[]>();
   extras.forEach((row) => {
     const anchor = row.anchorRowId;
@@ -198,11 +194,16 @@ export function syncRowsFromEstimate(
     return result;
   };
   const result = synced.flatMap(withExtras);
-  // すぐ上の行が見つからない追加行は、いちばん下へ
+  // すぐ上の部屋が部位別入力表から消えた追加行は、消さずにいちばん下へ回す
   extras.forEach((row) => {
     if (used.has(row.id)) return;
     used.add(row.id);
-    result.push(...withExtras(row));
+    const above = result[result.length - 1];
+    // 次に転記し直したときも同じ場所に残るよう、置き場所を覚え直す
+    result.push(
+      { ...row, anchorRowId: above === undefined ? null : above.id },
+      ...withExtras(row).slice(1),
+    );
   });
   return result;
 }

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   Detail,
   MasterEntry,
@@ -142,6 +149,10 @@ export default function MiscSheetPage({
   );
   const widthRef = useRef(widths);
   widthRef.current = widths;
+  /** 見出しを画面に残すための高さ（明細の行ごとの上からの位置） */
+  const headRows = useRef<(HTMLTableRowElement | null)[]>([]);
+  const [topOffsets, setTopOffsets] = useState<number[]>([]);
+  const [totalTop, setTotalTop] = useState(0);
 
   const { markSaved } = useSaveOnLeave({ columns, rows }, () => save(true));
 
@@ -220,6 +231,36 @@ export default function MiscSheetPage({
 
   const widthOf = (id: string, defaultWidth: number): number =>
     widths[id] ?? defaultWidth;
+
+  /** 見出し（明細の行）と左の列（部位Ⅰ〜倍率）は、スクロールしても残す */
+  const leftStyle = (index: number): { left: number } => {
+    let left = 0;
+    for (let i = 0; i < index; i += 1)
+      left += widthOf(`left${i}`, LEFT_DEFAULTS[i]);
+    return { left };
+  };
+
+  /** 表の幅は列幅の合計にする（こうしないと見出しの文字で列が広がってしまう） */
+  const tableWidth =
+    LEFT_DEFAULTS.reduce(
+      (sum, value, index) => sum + widthOf(`left${index}`, value),
+      0,
+    ) + columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+
+  useLayoutEffect(() => {
+    const tops: number[] = [];
+    let top = 0;
+    headRows.current.forEach((row) => {
+      tops.push(top);
+      top += row === null ? 0 : row.getBoundingClientRect().height;
+    });
+    setTopOffsets((current) =>
+      current.length === tops.length && current.every((v, i) => v === tops[i])
+        ? current
+        : tops,
+    );
+    setTotalTop((current) => (current === top ? current : top));
+  }, [columns, rows, widths]);
 
   /** 部位別入力表の部屋を取り込む（入れてある数量はそのまま残す） */
   const loadRooms = useCallback(async (): Promise<void> => {
@@ -474,14 +515,6 @@ export default function MiscSheetPage({
         label: `${part.name}${part.note ? `　${part.note}` : ""}`,
       })),
     [options.pickupParts],
-  );
-  const aggregationPartEntries: PickEntry[] = useMemo(
-    () =>
-      options.aggregationParts.map((part) => ({
-        value: part.name,
-        label: `${part.id}　${part.name}`,
-      })),
-    [options.aggregationParts],
   );
   const unitEntries: PickEntry[] = useMemo(
     () =>
@@ -779,7 +812,7 @@ export default function MiscSheetPage({
       )}
 
       <div className="misc-table-wrap">
-        <table className="grid misc">
+        <table className="grid misc" style={{ width: tableWidth }}>
           <colgroup>
             {LEFT_LABELS.map((label, index) => (
               <col
@@ -787,7 +820,6 @@ export default function MiscSheetPage({
                 style={{ width: widthOf(`left${index}`, LEFT_DEFAULTS[index]) }}
               />
             ))}
-            <col style={{ width: widthOf("label", 110) }} />
             {columns.map((column) => (
               <col
                 key={column.id}
@@ -797,14 +829,26 @@ export default function MiscSheetPage({
           </colgroup>
           <thead>
             {HEADS.map((head, headIndex) => (
-              <tr key={String(head.key)}>
-                <th className="head-label" colSpan={LEFT_LABELS.length + 1}>
+              <tr
+                key={String(head.key)}
+                ref={(el) => {
+                  headRows.current[headIndex] = el;
+                }}
+              >
+                <th
+                  className="head-label fix corner"
+                  colSpan={LEFT_LABELS.length}
+                  style={{ left: 0, top: topOffsets[headIndex] ?? 0 }}
+                >
                   {head.label}
                 </th>
                 {columns.map((column) => (
                   <th
                     key={column.id}
-                    className={pickedColumn === column.id ? "col on" : "col"}
+                    className={
+                      pickedColumn === column.id ? "col fix on" : "col fix"
+                    }
+                    style={{ top: topOffsets[headIndex] ?? 0 }}
                     onClick={() => setPickedColumn(column.id)}
                   >
                     <span className="cellbox">
@@ -824,7 +868,11 @@ export default function MiscSheetPage({
             ))}
             <tr className="total-row">
               {LEFT_LABELS.map((label, index) => (
-                <th key={label} className="left">
+                <th
+                  key={label}
+                  className="left fix corner"
+                  style={{ ...leftStyle(index), top: totalTop }}
+                >
                   <span className="cellbox">
                     {label}
                     <span
@@ -836,9 +884,12 @@ export default function MiscSheetPage({
                   </span>
                 </th>
               ))}
-              <th className="head-label">合計</th>
               {columns.map((column) => (
-                <th key={column.id} className="num">
+                <th
+                  key={column.id}
+                  className="num fix"
+                  style={{ top: totalTop }}
+                >
                   {isEmptyColumn(column)
                     ? ""
                     : (totals.get(column.id) ?? 0).toFixed(2)}
@@ -874,33 +925,23 @@ export default function MiscSheetPage({
                     : undefined
                 }
               >
-                <td className="part">
-                  <PickInput
-                    entries={aggregationPartEntries}
-                    halfWidth
+                <td className="part fix" style={leftStyle(0)}>
+                  <input
+                    lang="ja"
                     value={row.part1}
                     onFocus={() => setPickedRow(row.id)}
-                    onCommit={(text) =>
-                      editRow(row.id, {
-                        part1: pickMaster(options.aggregationParts, text).name,
-                      })
-                    }
+                    onChange={(e) => editRow(row.id, { part1: e.target.value })}
                   />
                 </td>
-                <td className="part">
-                  <PickInput
-                    entries={aggregationPartEntries}
-                    halfWidth
+                <td className="part fix" style={leftStyle(1)}>
+                  <input
+                    lang="ja"
                     value={row.part2}
                     onFocus={() => setPickedRow(row.id)}
-                    onCommit={(text) =>
-                      editRow(row.id, {
-                        part2: pickMaster(options.aggregationParts, text).name,
-                      })
-                    }
+                    onChange={(e) => editRow(row.id, { part2: e.target.value })}
                   />
                 </td>
-                <td className="flag">
+                <td className="flag fix" style={leftStyle(2)}>
                   <input
                     type="checkbox"
                     checked={row.part2Split}
@@ -910,7 +951,7 @@ export default function MiscSheetPage({
                     }
                   />
                 </td>
-                <td className="room">
+                <td className="room fix" style={leftStyle(3)}>
                   <span className="cellbox">
                     {row.estimateRowId === null && (
                       <span className="added-mark" title="ここで足した部屋">
@@ -939,7 +980,7 @@ export default function MiscSheetPage({
                     </button>
                   </span>
                 </td>
-                <td className="multiplier">
+                <td className="multiplier fix" style={leftStyle(4)}>
                   <input
                     value={String(row.multiplier)}
                     title="倍率"
@@ -952,7 +993,6 @@ export default function MiscSheetPage({
                     }}
                   />
                 </td>
-                <td className="label" />
                 {columns.map((column) => {
                   const text = row.values[column.id] ?? "";
                   const value = cellValue(text);

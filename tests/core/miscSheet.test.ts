@@ -90,11 +90,13 @@ describe("部位別雑・金物入力表", () => {
       [office, added, hall],
       [estimateRow({ id: 2, part3: "廊下" })],
     );
-    expect(synced.map((row) => row.part3)).toEqual([
-      "廊下",
-      "事務室",
-      "倉庫（追加）",
+    // 消えた部屋（事務室）の行は消し、足した部屋は残していちばん下へ
+    expect(synced.map((row) => row.part3)).toEqual(["廊下", "倉庫（追加）"]);
+    // 次に転記し直しても、そのままいちばん下に残る
+    const again = syncRowsFromEstimate(synced, [
+      estimateRow({ id: 2, part3: "廊下" }),
     ]);
+    expect(again.map((row) => row.part3)).toEqual(["廊下", "倉庫（追加）"]);
   });
 
   it("集計詳細は1マス1件で作る（空の明細・空のマスは作らない）", () => {

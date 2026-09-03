@@ -7,7 +7,6 @@
 .misc-page table.grid.misc {
   border-collapse: collapse;
   table-layout: fixed;
-  width: max-content;
 }
 
 /* マス目は positionを付けない（付けると行の高さが二重になる）。
@@ -20,6 +19,25 @@
   position: static;
   overflow: hidden;
   height: 20px;
+}
+
+/** 見出しの行と左の列（部位Ⅰ〜倍率）は、スクロールしても残す。
+   位置を固定したマス目は罫線が消えるので、影で罫線を描く */
+.misc-page table.grid.misc th.fix,
+.misc-page table.grid.misc td.fix {
+  position: sticky;
+  z-index: 1;
+  box-shadow:
+    inset -1px 0 0 #94a3b8,
+    inset 0 -1px 0 #94a3b8;
+}
+
+.misc-page table.grid.misc thead th.fix {
+  z-index: 2;
+}
+
+.misc-page table.grid.misc thead th.fix.corner {
+  z-index: 3;
 }
 
 .misc-page table.grid.misc .cellbox {
