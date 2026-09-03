@@ -985,17 +985,29 @@ export default function RoomSheetPage({
   );
 
   /** 画面を閉じるとき、式の誤りがあれば注意して該当箇所へ飛ぶ */
-  const [warned, setWarned] = useState(false);
+  /** 既に注意した誤りの内容（同じ誤りのまま2回目を押したら閉じる） */
+  const [warnedKey, setWarnedKey] = useState("");
+  /** 誤りの欄へカーソルを飛ばす合図 */
+  const [errorJump, setErrorJump] = useState(0);
   const closePage = useCallback(() => {
-    if (calcResult.errors.length > 0 && !warned) {
+    const errorKey = calcResult.errors
+      .map((error) => `${error.lineId}:${error.message}`)
+      .join("|");
+    if (calcResult.errors.length > 0 && errorKey !== warnedKey) {
       const first = calcResult.errors[0];
       const set = lower.find((each) => each.id === first.setId);
-      const index =
-        set?.lines.findIndex((line) => line.id === first.lineId) ?? 0;
-      setCalcFocus({ setId: first.setId, area: "formulaA", index });
-      setWarned(true);
+      const found = set?.lines.findIndex((line) => line.id === first.lineId);
+      const index = found === undefined || found < 0 ? 0 : found;
+      const line = set?.lines[index];
+      const area =
+        line && line.formulaA.trim() === "" && line.formulaB.trim() !== ""
+          ? "formulaB"
+          : "formulaA";
+      setCalcFocus({ setId: first.setId, area, index });
+      setErrorJump((tick) => tick + 1);
+      setWarnedKey(errorKey);
       setMessage(
-        `計算式の誤りが${calcResult.errors.length}件あります（${first.message}）。もう一度押すと戻ります`,
+        `計算式の誤りが${calcResult.errors.length}件あります（${first.message}）。誤りの計算式へカーソルを移しました。直さずに閉じるときは、もう一度押してください`,
       );
       return;
     }
@@ -1004,7 +1016,7 @@ export default function RoomSheetPage({
       await save();
       onBack();
     })();
-  }, [calcResult.errors, lower, onBack, warned, save]);
+  }, [calcResult.errors, lower, onBack, warnedKey, save]);
 
   /** チェック表：上段の自動計算と下段の計算式合計を見比べる */
   const checkRows = useMemo(() => {
@@ -3204,6 +3216,7 @@ export default function RoomSheetPage({
         projectId={project.id}
         focus={calcFocus}
         onFocus={setCalcFocus}
+        jumpTick={errorJump}
         result={calcResult}
         onMessage={setMessage}
         windowTitle={`部屋計算書　${project.managementNo} ${roomName || "（部屋名なし）"}`}

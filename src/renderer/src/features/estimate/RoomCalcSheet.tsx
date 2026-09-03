@@ -69,6 +69,8 @@ interface Props {
   focus: CalcFocus | null;
   onFocus: (focus: CalcFocus | null) => void;
   result: CalcSheetResult;
+  /** この数が変わったら focus の計算式欄へカーソルを飛ばす（式の誤りへ移すのに使う） */
+  jumpTick?: number;
   onMessage: (message: string) => void;
   /** 上段（図・記号表）を持つ計算書か。汎用計算書は false */
   hasUpper?: boolean;
@@ -215,6 +217,7 @@ export default function RoomCalcSheet({
   focus,
   onFocus,
   result,
+  jumpTick,
   onMessage,
   hasUpper = true,
   windowTitle,
@@ -683,6 +686,18 @@ export default function RoomCalcSheet({
   useEffect(() => {
     setBannerSetId(null);
   }, [focus?.setId, focus?.area, focus?.index]);
+
+  // 式の誤りなどで外から指された計算式欄へ、実際にカーソルを移して画面も送る
+  useEffect(() => {
+    if (jumpTick === undefined || !focus || focus.area === "detail") return;
+    const input = gridRef.current?.querySelector<HTMLInputElement>(
+      `input[data-jump="${focus.setId}|${focus.area}|${focus.index}"]`,
+    );
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ block: "center", inline: "center" });
+  }, [jumpTick, focus]);
 
   /** マスター呼出の書込先。呼出画面を触ってカーソルが外れても最後の明細行を覚えておく */
   const keptTarget = useRef<{ setId: string; index: number } | null>(null);
@@ -2009,6 +2024,7 @@ export default function RoomCalcSheet({
                             <input
                               data-row={gridRow}
                               data-col={13}
+                              data-jump={`${set.id}|formulaA|${rowIndex}`}
                               value={line.formulaA}
                               onFocus={() =>
                                 onFocus({
@@ -2032,6 +2048,7 @@ export default function RoomCalcSheet({
                             <input
                               data-row={gridRow}
                               data-col={14}
+                              data-jump={`${set.id}|formulaB|${rowIndex}`}
                               value={line.formulaB}
                               title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
                               onFocus={() =>

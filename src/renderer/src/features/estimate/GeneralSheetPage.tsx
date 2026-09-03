@@ -50,7 +50,10 @@ export default function GeneralSheetPage({
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [message, setMessage] = useState("");
-  const [warned, setWarned] = useState(false);
+  /** 既に注意した誤りの内容（同じ誤りのまま2回目を押したら閉じる） */
+  const [warnedKey, setWarnedKey] = useState("");
+  /** 誤りの欄へカーソルを飛ばす合図 */
+  const [errorJump, setErrorJump] = useState(0);
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave({ lower, note }, () => save());
@@ -107,15 +110,24 @@ export default function GeneralSheetPage({
   }, [lower, markSaved, note, printMode, sheet]);
 
   const closePage = useCallback(() => {
-    if (calcResult.errors.length > 0 && !warned) {
+    const errorKey = calcResult.errors
+      .map((error) => `${error.lineId}:${error.message}`)
+      .join("|");
+    if (calcResult.errors.length > 0 && errorKey !== warnedKey) {
       const first = calcResult.errors[0];
       const set = lower.find((each) => each.id === first.setId);
-      const index =
-        set?.lines.findIndex((line) => line.id === first.lineId) ?? 0;
-      setCalcFocus({ setId: first.setId, area: "formulaA", index });
-      setWarned(true);
+      const found = set?.lines.findIndex((line) => line.id === first.lineId);
+      const index = found === undefined || found < 0 ? 0 : found;
+      const line = set?.lines[index];
+      const area =
+        line && line.formulaA.trim() === "" && line.formulaB.trim() !== ""
+          ? "formulaB"
+          : "formulaA";
+      setCalcFocus({ setId: first.setId, area, index });
+      setErrorJump((tick) => tick + 1);
+      setWarnedKey(errorKey);
       setMessage(
-        `計算式の誤りが${calcResult.errors.length}件あります（${first.message}）。もう一度押すと戻ります`,
+        `計算式の誤りが${calcResult.errors.length}件あります（${first.message}）。誤りの計算式へカーソルを移しました。直さずに閉じるときは、もう一度押してください`,
       );
       return;
     }
@@ -124,7 +136,7 @@ export default function GeneralSheetPage({
       await save();
       onBack();
     })();
-  }, [calcResult.errors, lower, onBack, warned, save]);
+  }, [calcResult.errors, lower, onBack, warnedKey, save]);
 
   if (printMode)
     return (
@@ -169,6 +181,7 @@ export default function GeneralSheetPage({
         projectId={project.id}
         focus={calcFocus}
         onFocus={setCalcFocus}
+        jumpTick={errorJump}
         result={calcResult}
         onMessage={setMessage}
         hasUpper={false}
