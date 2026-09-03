@@ -758,9 +758,55 @@ export function saveAggregateEdits(
           .run();
       });
 
+      // 部位別雑・金物入力表の明細（タテ1列）
+      const miscColumnIds = new Set(
+        targets
+          .filter((target) => target.sourceKind === "misc")
+          .map((target) => target.traceId.split(":")[2]),
+      );
+      if (miscColumnIds.size > 0) {
+        const miscSheet = tx
+          .select()
+          .from(projectMiscSheets)
+          .where(eq(projectMiscSheets.projectId, projectId))
+          .get();
+        if (miscSheet) {
+          const columns = parseJson<MiscColumn[]>(miscSheet.columnsJson, []);
+          let miscChanged = false;
+          const nextColumns = columns.map((column) => {
+            if (!miscColumnIds.has(column.id)) return column;
+            miscChanged = true;
+            return {
+              ...column,
+              subjectId: edit.subjectId,
+              materialCategory: edit.materialCategory,
+              partNumber: edit.partNumber,
+              partName: edit.partName,
+              detailNumber: edit.detailNumber,
+              name: edit.name,
+              descriptionUpper: edit.descriptionUpper,
+              descriptionLower: edit.descriptionLower,
+              unit: edit.unit,
+              remarksUpper: edit.remarksUpper,
+              remarksLower: edit.remarksLower,
+            };
+          });
+          if (miscChanged) {
+            tx.update(projectMiscSheets)
+              .set({
+                columnsJson: JSON.stringify(nextColumns),
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(projectMiscSheets.id, miscSheet.id))
+              .run();
+          }
+        }
+      }
+
       // 計算書（部屋別・軸組・汎用）の下段
       const sheetTargets = new Map<string, string[]>();
       targets.forEach((target) => {
+        if (target.sourceKind === "misc") return;
         if (target.estimateRowId === null) return;
         const key = `${target.sourceKind}:${target.estimateRowId}`;
         const list = sheetTargets.get(key) ?? [];
