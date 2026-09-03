@@ -79,6 +79,17 @@
   text-align: center;
 }
 
+/** ここで足した部屋（転記し直しても残る行） */
+.misc-page table.grid.misc tr.added td {
+  background: #eff6ff;
+}
+
+.misc-page table.grid.misc .added-mark {
+  color: #1d4ed8;
+  font-weight: bold;
+  padding: 0 1px;
+}
+
 .misc-page table.grid.misc tr.on td {
   background: #fffbeb;
 }

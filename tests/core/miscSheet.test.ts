@@ -64,6 +64,39 @@ describe("部位別雑・金物入力表", () => {
     expect(synced[1].multiplier).toBe(2);
   });
 
+  it("ここで足した部屋は転記し直しても消えず、すぐ上の部屋の下に残る", () => {
+    const office = miscRow({ estimateRowId: 1, part3: "事務室" });
+    const added = miscRow({ part3: "倉庫（追加）", anchorRowId: office.id });
+    const hall = miscRow({ estimateRowId: 2, part3: "廊下" });
+    const synced = syncRowsFromEstimate(
+      [office, added, hall],
+      [
+        estimateRow({ id: 1, part3: "事務室" }),
+        estimateRow({ id: 2, part3: "廊下" }),
+      ],
+    );
+    expect(synced.map((row) => row.part3)).toEqual([
+      "事務室",
+      "倉庫（追加）",
+      "廊下",
+    ]);
+  });
+
+  it("すぐ上の部屋が部位別入力表から消えたら、足した部屋はいちばん下へ回す", () => {
+    const office = miscRow({ estimateRowId: 1, part3: "事務室" });
+    const added = miscRow({ part3: "倉庫（追加）", anchorRowId: office.id });
+    const hall = miscRow({ estimateRowId: 2, part3: "廊下" });
+    const synced = syncRowsFromEstimate(
+      [office, added, hall],
+      [estimateRow({ id: 2, part3: "廊下" })],
+    );
+    expect(synced.map((row) => row.part3)).toEqual([
+      "廊下",
+      "事務室",
+      "倉庫（追加）",
+    ]);
+  });
+
   it("集計詳細は1マス1件で作る（空の明細・空のマスは作らない）", () => {
     const column = miscColumn({
       name: "消火器",

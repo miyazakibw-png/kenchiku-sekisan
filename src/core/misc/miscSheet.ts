@@ -36,6 +36,8 @@ export interface MiscRow {
   id: string;
   /** 部位別入力表の行ID（転記した行。手で足した行は null） */
   estimateRowId: number | null;
+  /** 手で足した行の置き場所（すぐ上の行のid）。転記し直してもここに残す */
+  anchorRowId: string | null;
   part1: string;
   part2: string;
   part2Split: boolean;
@@ -81,6 +83,7 @@ export function miscRow(patch: Partial<MiscRow> = {}): MiscRow {
   return {
     id: newId("mr"),
     estimateRowId: null,
+    anchorRowId: null,
     part1: "",
     part2: "",
     part2Split: false,
@@ -137,6 +140,8 @@ export interface MiscEstimateRow {
  * 部位別入力表の行を取り込む。
  * すでに入っている行は数量を残したまま部位だけそろえ、
  * 新しい部屋は下へ足す（部位別入力表の並びに合わせる）。
+ * 手で足した行（追加行）は消さず、すぐ上の行の下に付いたまま残す。
+ * 上の行が部位別入力表から消えたときは、いちばん下へ回す。
  */
 export function syncRowsFromEstimate(
   rows: MiscRow[],
@@ -168,13 +173,38 @@ export function syncRowsFromEstimate(
       multiplier: row.multiplier,
     });
   });
-  // 部位別入力表から消えた部屋の行と、手で足した行はそのまま後ろへ残す
-  const kept = rows.filter(
+  // 手で足した行と、部位別入力表から消えた部屋の行
+  const extras = rows.filter(
     (row) =>
       row.estimateRowId === null ||
       !estimateRows.some((each) => each.id === row.estimateRowId),
   );
-  return [...synced, ...kept];
+  const byAnchor = new Map<string, MiscRow[]>();
+  extras.forEach((row) => {
+    const anchor = row.anchorRowId;
+    if (anchor === null || anchor === undefined) return;
+    const list = byAnchor.get(anchor);
+    if (list === undefined) byAnchor.set(anchor, [row]);
+    else list.push(row);
+  });
+  const used = new Set<string>();
+  const withExtras = (row: MiscRow): MiscRow[] => {
+    const result = [row];
+    (byAnchor.get(row.id) ?? []).forEach((extra) => {
+      if (used.has(extra.id)) return;
+      used.add(extra.id);
+      result.push(...withExtras(extra));
+    });
+    return result;
+  };
+  const result = synced.flatMap(withExtras);
+  // すぐ上の行が見つからない追加行は、いちばん下へ
+  extras.forEach((row) => {
+    if (used.has(row.id)) return;
+    used.add(row.id);
+    result.push(...withExtras(row));
+  });
+  return result;
 }
 
 /** 集計詳細データ（合算前）を作る。1つの数量欄＝1件 */

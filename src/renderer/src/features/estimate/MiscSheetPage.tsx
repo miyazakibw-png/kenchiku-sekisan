@@ -261,19 +261,27 @@ export default function MiscSheetPage({
     [],
   );
 
-  /** 行を足す（カーソルの行の下／いちばん下） */
+  /**
+   * 行を足す（カーソルの行の上／いちばん下）。
+   * 足した行はすぐ上の行を覚えておき、転記し直しても同じ場所に残す。
+   */
   const addRow = useCallback(
     (insert: boolean): void => {
-      const created = miscRow();
-      setRows((current) => {
-        const at = current.findIndex((row) => row.id === pickedRow);
-        if (!insert || at < 0) return [...current, created];
-        return [...current.slice(0, at), created, ...current.slice(at)];
+      const at = rows.findIndex((row) => row.id === pickedRow);
+      const place = !insert || at < 0 ? rows.length : at;
+      const above = place > 0 ? rows[place - 1] : null;
+      const created = miscRow({
+        anchorRowId: above === null ? null : above.id,
       });
+      setRows([...rows.slice(0, place), created, ...rows.slice(place)]);
       setPickedRow(created.id);
-      setMessage(insert ? "行を挿入しました" : "行を足しました");
+      setMessage(
+        insert
+          ? "行を挿入しました（転記し直しても残ります）"
+          : "行を足しました（転記し直しても残ります）",
+      );
     },
-    [pickedRow],
+    [pickedRow, rows],
   );
 
   /** 明細（列）を足す（カーソルの列の左／いちばん右） */
@@ -854,7 +862,17 @@ export default function MiscSheetPage({
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className={pickedRow === row.id ? "on" : undefined}
+                className={[
+                  row.estimateRowId === null ? "added" : "",
+                  pickedRow === row.id ? "on" : "",
+                ]
+                  .filter((each) => each !== "")
+                  .join(" ")}
+                title={
+                  row.estimateRowId === null
+                    ? "ここで足した部屋（転記し直しても残ります）"
+                    : undefined
+                }
               >
                 <td className="part">
                   <PickInput
@@ -894,6 +912,11 @@ export default function MiscSheetPage({
                 </td>
                 <td className="room">
                   <span className="cellbox">
+                    {row.estimateRowId === null && (
+                      <span className="added-mark" title="ここで足した部屋">
+                        ＋
+                      </span>
+                    )}
                     <input
                       lang="ja"
                       value={row.part3}
