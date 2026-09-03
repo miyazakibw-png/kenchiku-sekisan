@@ -77,7 +77,7 @@ export default function EstimatePartsPage({
     [options.formworkCategories],
   );
   const inherited = useMemo(() => resolveInherited(rows), [rows]);
-  /** 同じ部屋名（部位Ⅱ＋部位Ⅲ）が重なっている行 */
+  /** 同じ部屋名（部位Ⅰ＋部位Ⅱ＋部位Ⅲ）が重なっている行 */
   const duplicated = useMemo(() => duplicateRoomFlags(rows), [rows]);
   /** チェック列（1部位＝名称＋数量の2列）。各行の計算書から拾う */
   const [checks, setChecks] = useState<EstimateRowCheck[]>([]);
@@ -765,7 +765,7 @@ export default function EstimatePartsPage({
                       {duplicated[index] && (
                         <span
                           className="duplicate-mark"
-                          title="同じ部位Ⅱ＋部位Ⅲの行が他にもあります。集計は2部屋分になりますが、数量根拠では見分けられません"
+                          title="同じ部位Ⅰ＋部位Ⅱ＋部位Ⅲの行が他にもあります。集計は2部屋分になりますが、数量根拠では見分けられません"
                         >
                           ⚠
                         </span>

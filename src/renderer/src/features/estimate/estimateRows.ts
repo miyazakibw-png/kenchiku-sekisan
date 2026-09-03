@@ -68,27 +68,28 @@ export function subtotalSums(
 }
 
 /**
- * 部位Ⅱ＋部位Ⅲが同じ部屋の行に印を付ける（重複＝true）。
+ * 部位Ⅰ＋部位Ⅱ＋部位Ⅲが同じ部屋の行に印を付ける（重複＝true）。
+ * 部位Ⅰ・部位Ⅱが空欄の行は、上の行の内容を引き継いだものとして見る。
  * 同じ部屋名が複数あると、集計書の数量根拠や軸組の「置ける部屋」で見分けられないため。
  */
 export function duplicateRoomFlags(
   rows: readonly EstimateRowDraft[],
 ): boolean[] {
-  const keyOf = (row: EstimateRowDraft): string | null => {
+  const inherited = { part1: "", part2: "" };
+  const keys = rows.map((row): string | null => {
+    if (row.part1.trim() !== "") inherited.part1 = row.part1.trim();
+    if (row.part2.trim() !== "") inherited.part2 = row.part2.trim();
     if (row.rowType !== "room") return null;
-    const key = `${row.part2.trim()}\u0000${row.part3.trim()}`;
-    return key === "\u0000" ? null : key;
-  };
+    const part3 = row.part3.trim();
+    if (part3 === "") return null;
+    return `${inherited.part1}\u0000${inherited.part2}\u0000${part3}`;
+  });
   const counts = new Map<string, number>();
-  rows.forEach((row) => {
-    const key = keyOf(row);
+  keys.forEach((key) => {
     if (key === null) return;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   });
-  return rows.map((row) => {
-    const key = keyOf(row);
-    return key !== null && (counts.get(key) ?? 0) > 1;
-  });
+  return keys.map((key) => key !== null && (counts.get(key) ?? 0) > 1);
 }
 
 /** 天井高さ・倍率の表示（未入力は空欄） */

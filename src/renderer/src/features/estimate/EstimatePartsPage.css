@@ -181,7 +181,7 @@ table.estimate tr.subtotal .subtotal-label {
   line-height: 1.6;
 }
 
-/* 同じ部屋名（部位Ⅱ＋部位Ⅲ）が重なっている行の印 */
+/* 同じ部屋名（部位Ⅰ＋部位Ⅱ＋部位Ⅲ）が重なっている行の印 */
 .duplicate-room {
   background: #fff7ed;
 }

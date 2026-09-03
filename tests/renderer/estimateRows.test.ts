@@ -175,19 +175,38 @@ describe("Excelからの貼り付け", () => {
 });
 
 describe("duplicateRoomFlags", () => {
-  it("部位Ⅱ＋部位Ⅲが同じ部屋の行に印を付ける", () => {
-    const row = (part2: string, part3: string): EstimateRowDraft => ({
-      ...emptyRow(),
-      part2,
-      part3,
-    });
+  const partRow = (
+    part1: string,
+    part2: string,
+    part3: string,
+  ): EstimateRowDraft => ({ ...emptyRow(), part1, part2, part3 });
+
+  it("部位Ⅰ＋部位Ⅱ＋部位Ⅲが同じ部屋の行に印を付ける", () => {
     const rows = [
-      row("1F", "事務所"),
-      row("1F", "事務所"),
-      row("2F", "事務所"),
+      partRow("内部", "1F", "事務所"),
+      partRow("内部", "1F", "事務所"),
+      partRow("内部", "2F", "事務所"),
+      partRow("外部", "1F", "事務所"),
       subtotalRow(),
-      row("", ""),
+      partRow("", "", ""),
     ];
-    expect(duplicateRoomFlags(rows)).toEqual([true, true, false, false, false]);
+    expect(duplicateRoomFlags(rows)).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it("部位Ⅰ・部位Ⅱが空欄の行は上の行を引き継いで見る", () => {
+    const rows = [
+      partRow("内部", "1F", "事務所"),
+      partRow("", "", "事務所"),
+      partRow("", "2F", "事務所"),
+      partRow("", "", "事務所"),
+    ];
+    expect(duplicateRoomFlags(rows)).toEqual([true, true, true, true]);
   });
 });
