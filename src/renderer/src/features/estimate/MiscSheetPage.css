@@ -6,6 +6,7 @@
 
 .misc-page table.grid.misc {
   border-collapse: collapse;
+  table-layout: fixed;
   width: max-content;
 }
 
@@ -14,24 +15,33 @@
   border: 1px solid #94a3b8;
   padding: 0;
   background: #fff;
+  position: relative;
+  overflow: hidden;
 }
 
+/** 見出しは濃い文字（薄い背景に白文字は使わない） */
 .misc-page table.grid.misc th.head-label {
-  background: #1e3a5f;
-  color: #fff;
+  background: #dbeafe;
+  color: #0f172a;
   font-size: 12px;
   white-space: nowrap;
   padding: 0 6px;
   text-align: center;
-  min-width: 8em;
 }
 
-.misc-page table.grid.misc th.col {
-  min-width: 9em;
+.misc-page table.grid.misc th.corner {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: normal;
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 8px;
+  vertical-align: top;
+  white-space: normal;
 }
 
 .misc-page table.grid.misc th.col.on {
-  background: #dbeafe;
+  background: #fde68a;
 }
 
 .misc-page table.grid.misc th input,
@@ -43,7 +53,8 @@
   background: transparent;
 }
 
-.misc-page table.grid.misc td.num input {
+.misc-page table.grid.misc td.num input,
+.misc-page table.grid.misc td.multiplier input {
   text-align: right;
 }
 
@@ -51,17 +62,22 @@
   background: #fee2e2;
 }
 
+/** 合計の行は薄い黄色 */
 .misc-page table.grid.misc tr.total-row th {
-  background: #e2e8f0;
+  background: #fef9c3;
+  color: #0f172a;
   text-align: right;
   padding: 1px 3px;
   white-space: nowrap;
 }
 
-.misc-page table.grid.misc tr.total-row th.part,
-.misc-page table.grid.misc tr.total-row th.flag,
+.misc-page table.grid.misc tr.total-row th.left,
 .misc-page table.grid.misc tr.total-row th.head-label {
   text-align: center;
+}
+
+.misc-page table.grid.misc tr.on td {
+  background: #fffbeb;
 }
 
 .misc-page table.grid.misc button.drop {
@@ -71,19 +87,25 @@
   padding: 0 2px;
 }
 
-.misc-page table.grid.misc td.part,
-.misc-page table.grid.misc td.flag {
-  padding: 0 4px;
-  white-space: nowrap;
-  background: #f8fafc;
-}
-
 .misc-page table.grid.misc td.room {
-  min-width: 12em;
+  display: flex;
 }
 
-.misc-page table.grid.misc thead th {
-  position: sticky;
+.misc-page table.grid.misc td.flag {
+  text-align: center;
+}
+
+/** 列幅を変えるつまみ（見出しの右端） */
+.misc-page table.grid.misc .resizer {
+  position: absolute;
   top: 0;
-  z-index: 1;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.misc-page table.grid.misc .resizer:hover {
+  background: #60a5fa;
 }
