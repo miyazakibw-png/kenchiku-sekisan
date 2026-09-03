@@ -84,7 +84,8 @@ const LEFT_LABELS = [
 ];
 const LEFT_DEFAULTS = [90, 90, 80, 150, 56];
 const COLUMN_DEFAULT = 130;
-const MIN_WIDTH = 40;
+/** 列幅は文字が見えなくなるほど細くできる */
+const MIN_WIDTH = 8;
 
 /** 列幅（左の4列＋明細の列ごと）をこのパソコンに覚えておく */
 function readWidths(key: string): Record<string, number> {
@@ -413,15 +414,26 @@ export default function MiscSheetPage({
       };
       setColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
-        if (callInsert || at < 0) {
+        // 挿入呼出は左へ、上書き呼出は空の列へ。
+        // すでに入っている列にいるときは、その右へ新しい明細を作る
+        if (at < 0) {
           const created = miscColumn(patch);
           setPickedColumn(created.id);
-          if (at < 0) return [...current, created];
+          return [...current, created];
+        }
+        if (callInsert) {
+          const created = miscColumn(patch);
+          setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        return current.map((column, index) =>
-          index === at ? { ...column, ...patch } : column,
-        );
+        if (isEmptyColumn(current[at])) {
+          return current.map((column, index) =>
+            index === at ? { ...column, ...patch } : column,
+          );
+        }
+        const created = miscColumn(patch);
+        setPickedColumn(created.id);
+        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
       });
       setMessage(`${detail.name} を呼び出しました`);
     },
@@ -778,32 +790,26 @@ export default function MiscSheetPage({
           <thead>
             {HEADS.map((head, headIndex) => (
               <tr key={String(head.key)}>
-                {headIndex === 0 && (
-                  <th
-                    className="corner"
-                    colSpan={LEFT_LABELS.length}
-                    rowSpan={HEADS.length}
-                  >
-                    明細はタテ1列に入れます（科目・部位ID・名称IDは一覧から選べます）。
-                    見出しの右端をドラッグすると列幅を変えられます。
-                  </th>
-                )}
-                <th className="head-label">{head.label}</th>
+                <th className="head-label" colSpan={LEFT_LABELS.length + 1}>
+                  {head.label}
+                </th>
                 {columns.map((column) => (
                   <th
                     key={column.id}
                     className={pickedColumn === column.id ? "col on" : "col"}
                     onClick={() => setPickedColumn(column.id)}
                   >
-                    {headCell(column, head.kind, head.key)}
-                    {headIndex === 0 && (
-                      <span
-                        className="resizer"
-                        onMouseDown={(e) =>
-                          startResize(column.id, COLUMN_DEFAULT, e)
-                        }
-                      />
-                    )}
+                    <span className="cellbox">
+                      {headCell(column, head.kind, head.key)}
+                      {headIndex === 0 && (
+                        <span
+                          className="resizer"
+                          onMouseDown={(e) =>
+                            startResize(column.id, COLUMN_DEFAULT, e)
+                          }
+                        />
+                      )}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -811,13 +817,15 @@ export default function MiscSheetPage({
             <tr className="total-row">
               {LEFT_LABELS.map((label, index) => (
                 <th key={label} className="left">
-                  {label}
-                  <span
-                    className="resizer"
-                    onMouseDown={(e) =>
-                      startResize(`left${index}`, LEFT_DEFAULTS[index], e)
-                    }
-                  />
+                  <span className="cellbox">
+                    {label}
+                    <span
+                      className="resizer"
+                      onMouseDown={(e) =>
+                        startResize(`left${index}`, LEFT_DEFAULTS[index], e)
+                      }
+                    />
+                  </span>
                 </th>
               ))}
               <th className="head-label">合計</th>
@@ -885,24 +893,28 @@ export default function MiscSheetPage({
                   />
                 </td>
                 <td className="room">
-                  <input
-                    lang="ja"
-                    value={row.part3}
-                    onFocus={() => setPickedRow(row.id)}
-                    onChange={(e) => editRow(row.id, { part3: e.target.value })}
-                  />
-                  <button
-                    type="button"
-                    className="drop"
-                    title="この行を消します"
-                    onClick={() =>
-                      setRows((current) =>
-                        current.filter((each) => each.id !== row.id),
-                      )
-                    }
-                  >
-                    🗑
-                  </button>
+                  <span className="cellbox">
+                    <input
+                      lang="ja"
+                      value={row.part3}
+                      onFocus={() => setPickedRow(row.id)}
+                      onChange={(e) =>
+                        editRow(row.id, { part3: e.target.value })
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="drop"
+                      title="この行を消します"
+                      onClick={() =>
+                        setRows((current) =>
+                          current.filter((each) => each.id !== row.id),
+                        )
+                      }
+                    >
+                      🗑
+                    </button>
+                  </span>
                 </td>
                 <td className="multiplier">
                   <input
