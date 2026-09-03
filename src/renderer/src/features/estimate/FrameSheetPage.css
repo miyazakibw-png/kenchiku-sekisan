@@ -446,13 +446,13 @@
 
 .frame-sheet-page > .upper.layout-popup > section.drawing {
   flex: 0 0 auto;
-  width: 46%;
+  width: 66%;
   height: 100%;
 }
 
 .frame-sheet-page > .upper.layout-popup > section:not(.drawing) {
   flex: 0 0 auto;
-  width: 26%;
+  width: 32%;
   max-height: 100%;
   overflow: auto;
 }
