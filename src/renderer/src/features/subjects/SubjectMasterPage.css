@@ -1,0 +1,88 @@
+.subject-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.subject-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.subject-page .toolbar h2 {
+  margin: 0 8px 0 0;
+  font-size: 15px;
+}
+
+.subject-page .hint,
+.subject-page .status {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.subject-page .status {
+  margin-left: auto;
+  color: #1f3864;
+}
+
+.subject-list {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+.subject-list th,
+.subject-list td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+.subject-list th {
+  background: #eef1f6;
+  color: #1f2937;
+}
+
+.subject-list td.no {
+  width: 6ch;
+  text-align: right;
+  font-family: "Consolas", "Menlo", monospace;
+}
+
+.subject-list th.name,
+.subject-list td:nth-child(2) input {
+  min-width: 24ch;
+}
+
+.subject-list th.note,
+.subject-list td:nth-child(3) input {
+  min-width: 20ch;
+}
+
+.subject-list .flag {
+  text-align: center;
+  width: 12ch;
+}
+
+.subject-list .order {
+  width: 12ch;
+}
+
+.subject-list .spare {
+  width: 12ch;
+}
+
+.subject-list input[type="text"],
+.subject-list input:not([type]) {
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.subject-list tr.selected {
+  background: #e8f0fe;
+}

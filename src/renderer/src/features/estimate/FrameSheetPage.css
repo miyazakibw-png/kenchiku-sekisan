@@ -1,0 +1,481 @@
+/* 軸組計算書は部屋計算書と同じ見た目にする（RoomSheetPage.css を土台に足すだけ） */
+.frame-sheet-page > .upper {
+  grid-template-columns: minmax(240px, 1.1fr) minmax(200px, 0.8fr) minmax(
+      240px,
+      1fr
+    );
+}
+
+/* 表の中身で列が広がらないようにする（列幅は指定どおりに保つ） */
+.frame-sheet-page > .upper > section {
+  min-width: 0;
+}
+
+.frame-sheet-page > .upper > section.rooms {
+  overflow-x: auto;
+}
+
+.frame-sheet-page .drawing {
+  grid-row: span 2;
+}
+
+.frame-sheet-page .canvas {
+  min-height: 220px;
+  max-height: 300px;
+}
+
+/* レイアウトのときは図を大きく出す（今までの1.5倍） */
+.frame-sheet-page > .upper.layout-mode .canvas {
+  min-height: 330px;
+  max-height: 450px;
+  aspect-ratio: auto;
+  width: 100%;
+}
+
+/* 建物レイアウトを画面いっぱいの別窓で開く（レイアウトのときに出す） */
+.frame-sheet-page > .upper.layout-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  /* 右は「置ける部屋」を今の幅のまま上下いっぱい、残りの左側を全部図にする */
+  grid-template-columns: 42% 16% 21% 21%;
+  /* 軸組種類の表が増えたときは下の段に折り返す */
+  grid-auto-rows: minmax(0, 1fr);
+  max-height: none;
+  height: 100%;
+  background: #fff;
+  padding: 8px;
+  overflow: hidden;
+}
+
+/* レイアウトのときは図と「引いた線」の表だけを出す（残りは軸組・確認で見る） */
+.frame-sheet-page > .upper.layout-mode {
+  grid-template-columns: 54% 23% 23%;
+  /* 図を大きく見せるので上段を高くする（今までの1.5倍） */
+  max-height: 50vh;
+}
+
+/* 別窓では「置ける部屋」も並ぶので4列にする */
+.frame-sheet-page > .upper.layout-mode.layout-popup {
+  grid-template-columns: 42% 16% 21% 21%;
+  max-height: none;
+}
+
+/* 「引いた線だけ」のときは表を広く見せる */
+.frame-sheet-page > .upper.layout-mode.layout-popup.lines-only {
+  grid-template-columns: 54% 23% 23%;
+}
+
+/* 別窓では図と置ける部屋だけを出す */
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing):not(.rooms) {
+  display: none;
+}
+
+.frame-sheet-page > .upper.layout-popup > section {
+  grid-row: span 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 図は別窓の高さいっぱいまで使う */
+.frame-sheet-page > .upper.layout-popup .canvas {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  aspect-ratio: auto;
+  width: 100%;
+}
+
+/* 同じ壁のはずなのに少しずれている線・その件数 */
+.frame-sheet-page .frame-line.gap {
+  stroke: #dc2626;
+  stroke-dasharray: 3 3;
+}
+
+/* 吸着の幅（mm）の欄 */
+.frame-sheet-page .snap-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.frame-sheet-page .snap-field input {
+  width: 52px;
+  text-align: right;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+/* 「引いた線だけ」のとき、部屋の図と部屋の壁は薄くする */
+.frame-sheet-page .frame-room.faint,
+.frame-sheet-page .frame-line.faint {
+  opacity: 0.15;
+}
+
+/* 引いた線の番号（面積表と同じ番号） */
+.frame-sheet-page .manual-no {
+  fill: #dc2626;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* 引いた線の表は右の欄いっぱいに広げる */
+.frame-sheet-page .rooms table.grid {
+  width: 100%;
+  table-layout: auto;
+}
+
+.frame-sheet-page .rooms table.grid input.num {
+  width: 100%;
+  min-width: 48px;
+}
+
+.frame-sheet-page .rooms table.grid caption {
+  text-align: left;
+  font-size: 12px;
+  color: #475569;
+  padding: 2px 0;
+}
+
+/* 選んだ線の端のつまみ（ドラッグで伸び縮み） */
+.frame-sheet-page .line-handle {
+  fill: #fff;
+  stroke: #dc2626;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
+/* 部屋名を押すとその部屋の計算書へ飛ぶ */
+.frame-sheet-page .rooms button.room-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 同じ位置に重ねて引いてしまった線 */
+.frame-sheet-page .frame-line.doubled {
+  stroke: #7c3aed;
+  stroke-width: 7;
+}
+
+.frame-sheet-page .doubled-mark {
+  margin-left: 2px;
+  padding: 0 2px;
+  font-size: 10px;
+  color: #fff;
+  background: #7c3aed;
+  border-radius: 3px;
+}
+
+.frame-sheet-page .fitting-cell {
+  min-width: 170px;
+}
+
+.frame-sheet-page .fitting-cell select {
+  font-size: 11px;
+}
+
+.frame-sheet-page .fitting-cell button.chip {
+  margin-right: 2px;
+  padding: 0 4px;
+  font-size: 11px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+
+.frame-sheet-page .gap-note {
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.frame-sheet-page .frame-line {
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+/* 拾わない線（外周・共有された側・拾わない指定） */
+.frame-sheet-page .frame-line.skip {
+  stroke-dasharray: 7 4;
+}
+
+.frame-sheet-page .frame-line.selected {
+  stroke-width: 6;
+}
+
+/* 重なっている壁の目印 */
+.frame-sheet-page .frame-line.shared-mark {
+  stroke: #ea580c;
+  stroke-width: 8;
+  stroke-opacity: 0.25;
+  pointer-events: none;
+}
+
+.frame-sheet-page .draw-start {
+  fill: #2563eb;
+}
+
+.frame-sheet-page .shared-note {
+  margin-left: auto;
+  color: #b45309;
+  font-weight: 400;
+}
+
+.frame-sheet-page tr.skip td {
+  color: #94a3b8;
+}
+
+.frame-sheet-page th.pick,
+.frame-sheet-page td.pick {
+  width: 34px;
+  text-align: center;
+}
+
+.frame-sheet-page td.pick input {
+  width: auto;
+}
+
+.frame-sheet-page .frame-lines,
+.frame-sheet-page .frame-fittings,
+.frame-sheet-page .check {
+  grid-column: span 2;
+}
+
+.frame-sheet-page .toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.frame-sheet-page .frame-room {
+  fill-opacity: 0.08;
+  stroke: none;
+  cursor: move;
+}
+
+.frame-sheet-page .frame-room.selected {
+  fill-opacity: 0.16;
+}
+
+.frame-sheet-page .frame-room-name {
+  fill: #334155;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* 軸組種類ごとの寸法表（たて・よこをまとめて色別に出す） */
+.frame-sheet-page .rooms.lines-kind table.grid {
+  table-layout: fixed;
+  font-size: 11px;
+  /* 欄の幅に収めて、右端（補強・ゴミ箱）まで必ず見えるようにする */
+  width: 100%;
+  min-width: 0;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th,
+.frame-sheet-page .rooms.lines-kind table.grid td {
+  padding: 0 2px;
+  line-height: 1.4;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid input {
+  height: 18px;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid input.num {
+  min-width: 0;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid col {
+  width: auto;
+}
+
+/* 1:選ぶ 2:番号 3:種類 4:長さ 5:高さ 6:建具 7:面積 8:補強 9:操作 */
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(1) {
+  width: 20px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(2) {
+  width: 32px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(3) {
+  width: 52px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(4),
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(5) {
+  width: 36px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(7),
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(8) {
+  width: 38px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid th:nth-child(9) {
+  width: 22px;
+}
+
+/* 種類ごとの合計行（記号 WS1〜WS10・クリックで計算式に入る） */
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total td.symbol,
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total td.num {
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid select {
+  max-width: 100%;
+  font-size: 10px;
+}
+
+/* 建具は「＋建具」と記号5つくらいが並ぶ幅にする */
+.frame-sheet-page .rooms.lines-kind .fitting-cell {
+  min-width: 0;
+  white-space: normal;
+}
+
+.frame-sheet-page .rooms.lines-kind .fitting-cell button.chip {
+  padding: 0 3px;
+  font-size: 10px;
+}
+
+.frame-sheet-page .rooms.lines-kind .fitting-cell select {
+  max-width: 54px;
+  font-size: 10px;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid button {
+  padding: 0 2px;
+}
+
+/* 軸組種類の色の印（見出しに出す四角） */
+.frame-sheet-page .kind-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border: 1px solid #94a3b8;
+  vertical-align: middle;
+}
+
+.frame-sheet-page .frame-kinds input.kind-color {
+  width: 34px;
+  height: 18px;
+  padding: 0;
+}
+
+/* まとめて種類を付けるために選んだ線 */
+.frame-sheet-page .frame-line.checked {
+  stroke-dasharray: 0.12 0.08;
+  stroke-width: 0.09;
+}
+
+/* 図を大きくしたときに左・上まで動かせるようにする（真ん中寄せは余白で行う） */
+.frame-sheet-page .canvas {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.frame-sheet-page .canvas > svg {
+  flex: 0 0 auto;
+  margin: auto;
+}
+
+/* 「線を引く」の間だけ出す帯（種類＝線の色を選ぶ） */
+.frame-sheet-page .frame-draw-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 20%);
+  font-size: 12px;
+}
+
+.frame-sheet-page .frame-draw-bar .status {
+  color: #1e3a8a;
+}
+
+/* 自分で引いた線は下敷きの図面より目立たせる */
+.frame-sheet-page .frame-line.hand {
+  stroke-width: 5;
+}
+
+/* 別窓では図を左に上下いっぱいで置き、表は右側に上から続けて並べる
+   （種類の表が増えても図の大きさは変わりません。多いときは右へスクロール） */
+.frame-sheet-page > .upper.layout-popup {
+  display: flex;
+  flex-flow: column wrap;
+  align-content: flex-start;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.frame-sheet-page > .upper.layout-popup > section.drawing {
+  flex: 0 0 auto;
+  width: 66%;
+  height: 100%;
+}
+
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing) {
+  flex: 0 0 auto;
+  width: 32%;
+  max-height: 100%;
+  overflow: auto;
+}
+
+/* 表は欄の幅に収める（横に切れて右端が押し出されないようにする） */
+.frame-sheet-page > .upper.layout-popup > section:not(.drawing) table.grid {
+  width: 100%;
+  min-width: 0;
+}
+
+/* せまいときでも右端（🗑）まで見られるようにする */
+.frame-sheet-page > .upper > section.rooms.lines-kind {
+  overflow: auto;
+}
+
+.frame-sheet-page .rooms.lines-kind table.grid {
+  min-width: 300px;
+}
+
+/* 合計行の数字の下に記号（WS◯・WSL◯・WSR◯）を小さく出す */
+.frame-sheet-page .rooms.lines-kind table.grid tr.kind-total span.total-symbol {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: #1d4ed8;
+}

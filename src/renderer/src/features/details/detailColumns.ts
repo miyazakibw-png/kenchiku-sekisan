@@ -1,0 +1,182 @@
+import type { MaterialCategory, Unit } from "@shared/types";
+import {
+  formatDetailNumber,
+  isValidDetailNumberInput,
+  parseDetailNumber,
+} from "@shared/detailNumber";
+import { resolveMasterName } from "@shared/masters";
+import { resolveUnitName } from "@shared/units";
+import {
+  sortDetails,
+  type SortableDetail,
+} from "../../../../core/sort/detailSortKey";
+import type { GridColumn } from "../grid/gridClipboard";
+import type { DraftRow } from "./rowOperations";
+
+/** 画面の見た目の列（上段／下段の組）。Excelが1明細＝上下2行のときの対応表 */
+export const DETAIL_SCREEN_COLUMNS = [
+  { label: "部位／明細番号", upper: true, lower: true },
+  { label: "材種区分", upper: true, lower: false },
+  { label: "部位名／名称", upper: true, lower: true },
+  { label: "摘要", upper: true, lower: true },
+  { label: "単位", upper: false, lower: true },
+  { label: "備考", upper: true, lower: true },
+  { label: "積算用表示", upper: true, lower: false },
+] as const;
+
+/**
+ * Excelとの範囲コピー／貼り付けで用いる論理列。
+ * 画面の左からの並び（各列は上段→下段の順）で並べ、
+ * 1明細（上下2段）を1行として扱う。
+ * 部位・部位名は表示専用なので、貼り付けても値は入れない。
+ */
+export function buildDetailColumns(
+  materialCategories: MaterialCategory[],
+  units: Unit[],
+): GridColumn<DraftRow>[] {
+  return [
+    {
+      key: "part",
+      label: "部位（表示専用）",
+      get: () => "",
+      set: (row) => ({ row }),
+    },
+    {
+      key: "detailNumber",
+      label: "明細番号",
+      get: (row) => row.detailNumberInput,
+      set: (row, value) => {
+        if (value === "")
+          return { row: { ...row, detailNumberInput: "", detailNumber: null } };
+        if (!isValidDetailNumberInput(value)) {
+          return { row, error: "明細番号は小数点以下2桁までの数値です" };
+        }
+        const parsed = parseDetailNumber(value);
+        return {
+          row: {
+            ...row,
+            detailNumber: parsed,
+            detailNumberInput: formatDetailNumber(parsed),
+          },
+        };
+      },
+    },
+    {
+      key: "materialCategory",
+      label: "材種区分",
+      get: (row) => row.materialCategory,
+      // 数量チェック用の区分。マスタ番号で入力補助するが、マスタに無い文字も取り込む
+      set: (row, value) => {
+        const resolved = resolveMasterName(materialCategories, value);
+        if (
+          resolved !== value ||
+          value === "" ||
+          materialCategories.some((c) => c.name === value)
+        ) {
+          return { row: { ...row, materialCategory: resolved } };
+        }
+        return {
+          row: { ...row, materialCategory: value },
+          warning: "材種区分マスタに存在しません（取り込みます）",
+        };
+      },
+    },
+    {
+      key: "partName",
+      label: "部位名（上段・表示専用）",
+      get: (row) => row.partName,
+      set: (row) => ({ row }),
+    },
+    {
+      key: "name",
+      label: "名称（下段）",
+      get: (row) => row.name,
+      set: (row, value) => ({ row: { ...row, name: value } }),
+    },
+    {
+      key: "descriptionUpper",
+      label: "摘要（上段）",
+      get: (row) => row.descriptionUpper,
+      set: (row, value) => ({ row: { ...row, descriptionUpper: value } }),
+    },
+    {
+      key: "descriptionLower",
+      label: "摘要（下段）",
+      get: (row) => row.descriptionLower,
+      set: (row, value) => ({ row: { ...row, descriptionLower: value } }),
+    },
+    {
+      key: "unit",
+      label: "単位",
+      get: (row) => row.unit,
+      set: (row, value) => {
+        const resolved = resolveUnitName(units, value);
+        if (resolved !== value) return { row: { ...row, unit: resolved } };
+        if (value !== "" && !units.some((u) => u.name === value)) {
+          return {
+            row: { ...row, unit: value },
+            warning: "単位マスタに存在しません（取り込みます）",
+          };
+        }
+        return { row: { ...row, unit: value } };
+      },
+    },
+    {
+      key: "remarksUpper",
+      label: "備考（上段）",
+      get: (row) => row.remarksUpper,
+      set: (row, value) => ({ row: { ...row, remarksUpper: value } }),
+    },
+    {
+      key: "remarksLower",
+      label: "備考（下段）",
+      get: (row) => row.remarksLower,
+      set: (row, value) => ({ row: { ...row, remarksLower: value } }),
+    },
+    {
+      key: "estimateDisplay",
+      label: "積算用表示",
+      get: (row) => row.estimateDisplay,
+      set: (row, value) => ({ row: { ...row, estimateDisplay: value } }),
+    },
+  ];
+}
+
+/** 明細番号の昇順（未設定は末尾）。同値は元の並びを維持する */
+/** 共通ソートキー用に画面の行を変換する（明細マスターは単一科目・部位Ⅰ/Ⅱ未使用） */
+function toSortable(
+  row: DraftRow,
+  units: Unit[],
+  materialCategories: MaterialCategory[],
+): SortableDetail {
+  return {
+    subjectOrder: null,
+    part1: "",
+    part2SortOrder: null,
+    part2Name: "",
+    partNumber: null,
+    detailNumber: row.detailNumber,
+    partName: row.partName,
+    name: row.name,
+    unitOrder: units.find((u) => u.name === row.unit)?.id ?? null,
+    descriptionLower: row.descriptionLower,
+    descriptionUpper: row.descriptionUpper,
+    remarksLower: row.remarksLower,
+    remarksUpper: row.remarksUpper,
+    materialCategoryOrder:
+      materialCategories.find((c) => c.name === row.materialCategory)
+        ?.displayOrder ?? null,
+  };
+}
+
+/**
+ * 明細行を昇順に並べ替える。
+ * 並び順ルールは共通モジュール（core/sort/detailSortKey）に集約している。
+ */
+export function sortDetailRows(
+  rows: DraftRow[],
+  units: Unit[] = [],
+  materialCategories: MaterialCategory[] = [],
+): DraftRow[] {
+  return sortDetails(rows, (row) => toSortable(row, units, materialCategories));
+}

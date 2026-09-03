@@ -1,0 +1,60 @@
+.room-calc-print-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.room-calc-print-page > .toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  flex-wrap: wrap;
+  background: #fff;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.room-calc-print-page > .toolbar h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.room-calc-print-page > .toolbar .project {
+  font-size: 12px;
+  color: #475569;
+}
+
+.room-calc-print-page > .sheets {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* 何枚も続けて並べるので、1枚ずつではなく全部を続けてめくれるようにする */
+.room-calc-print-page > .sheets > .calc-print-sheet {
+  height: auto;
+  overflow: visible;
+  margin-bottom: 12px;
+}
+
+@media print {
+  .room-calc-print-page {
+    display: block;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .room-calc-print-page > .toolbar {
+    display: none;
+  }
+
+  .room-calc-print-page > .sheets {
+    overflow: visible;
+    padding: 0;
+  }
+}

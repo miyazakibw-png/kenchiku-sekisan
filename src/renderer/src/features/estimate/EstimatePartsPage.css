@@ -1,0 +1,193 @@
+.estimate-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.estimate-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.estimate-page .left-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.estimate-page .left-actions .three {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 4px;
+}
+
+.estimate-page .toolbar h2 {
+  margin: 0 4px;
+  font-size: 15px;
+}
+
+.estimate-page .project {
+  font-size: 12px;
+  color: #1f3864;
+  margin-right: 8px;
+}
+
+.estimate-page .status {
+  margin-left: auto;
+  font-size: 11px;
+  color: #1f3864;
+}
+
+.estimate-page .check-setting,
+.estimate-page .other-projects {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: #eef1f6;
+  font-size: 12px;
+}
+
+.estimate-page .check-setting .note {
+  color: #6b7280;
+}
+
+table.estimate {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+table.estimate th,
+table.estimate td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+table.estimate th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+}
+
+table.estimate th.check {
+  background: #2e75b6;
+}
+
+table.estimate td.check {
+  background: #fffbe6;
+  min-width: 10ch;
+  padding: 2px 4px;
+}
+
+table.estimate td.check.number {
+  text-align: right;
+  min-width: 7ch;
+}
+
+table.estimate td.no,
+table.estimate th.no {
+  width: 8ch;
+  text-align: right;
+  color: #6b7280;
+}
+
+/* 先頭列：行番号のとなりに行の入れ替え（↑↓） */
+table.estimate td.no .no-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+table.estimate td.no .row-move {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+table.estimate td.no .row-move button {
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 1.1;
+  min-width: 14px;
+}
+
+table.estimate th.part,
+table.estimate th.room {
+  min-width: 12ch;
+}
+
+table.estimate th.flag,
+table.estimate td.flag {
+  width: 8ch;
+  text-align: center;
+}
+
+table.estimate th.formwork {
+  min-width: 9ch;
+}
+
+table.estimate .num {
+  width: 8ch;
+  text-align: right;
+}
+
+table.estimate input.num {
+  text-align: right;
+}
+
+table.estimate th.note {
+  min-width: 18ch;
+}
+
+table.estimate input,
+table.estimate select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+}
+
+table.estimate input::placeholder {
+  color: #adb5bd;
+}
+
+table.estimate tr.selected {
+  background: #e8f0fe;
+}
+
+table.estimate tr.subtotal {
+  background: #fce4d6;
+  font-weight: bold;
+}
+
+table.estimate tr.subtotal .subtotal-label {
+  padding: 0 4px;
+}
+
+.estimate-page .hint {
+  margin: 0 8px 16px;
+  font-size: 11px;
+  color: #6b7280;
+  max-width: 1000px;
+  line-height: 1.6;
+}
+
+/* 同じ部屋名（部位Ⅰ＋部位Ⅱ＋部位Ⅲ）が重なっている行の印 */
+.duplicate-room {
+  background: #fff7ed;
+}
+
+.duplicate-mark {
+  color: #c2410c;
+  margin-right: 2px;
+  cursor: help;
+}

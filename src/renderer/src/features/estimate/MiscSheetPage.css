@@ -1,0 +1,143 @@
+/** 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行に並べる表） */
+.misc-page .misc-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 190px);
+}
+
+.misc-page table.grid.misc {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* マス目は positionを付けない（付けると行の高さが二重になる）。
+   列幅のつまみは中の span.cellbox に入れる */
+.misc-page table.grid.misc th,
+.misc-page table.grid.misc td {
+  border: 1px solid #94a3b8;
+  padding: 0;
+  background: #fff;
+  position: static;
+  overflow: hidden;
+  height: 20px;
+}
+
+/** 見出しの行と左の列（部位Ⅰ〜倍率）は、スクロールしても残す。
+   位置を固定したマス目は罫線が消えるので、影で罫線を描く */
+.misc-page table.grid.misc th.fix,
+.misc-page table.grid.misc td.fix {
+  position: sticky;
+  z-index: 1;
+  box-shadow:
+    inset -1px 0 0 #94a3b8,
+    inset 0 -1px 0 #94a3b8;
+}
+
+.misc-page table.grid.misc thead th.fix {
+  z-index: 2;
+}
+
+.misc-page table.grid.misc thead th.fix.corner {
+  z-index: 3;
+}
+
+.misc-page table.grid.misc .cellbox {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+/** 見出しは濃い文字（薄い背景に白文字は使わない） */
+.misc-page table.grid.misc th.head-label {
+  background: #dbeafe;
+  color: #0f172a;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.misc-page table.grid.misc th.col.on {
+  background: #fde68a;
+}
+
+.misc-page table.grid.misc th input,
+.misc-page table.grid.misc td input {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  padding: 1px 3px;
+  background: transparent;
+}
+
+.misc-page table.grid.misc td.num input,
+.misc-page table.grid.misc td.multiplier input {
+  text-align: right;
+}
+
+.misc-page table.grid.misc td.num.error input {
+  background: #fee2e2;
+}
+
+/** 合計の行は薄い黄色 */
+.misc-page table.grid.misc tr.total-row th {
+  background: #fef9c3;
+  color: #0f172a;
+  text-align: right;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.misc-page table.grid.misc tr.total-row th .cellbox {
+  padding: 1px 3px;
+  box-sizing: border-box;
+}
+
+.misc-page table.grid.misc tr.total-row th.left,
+.misc-page table.grid.misc tr.total-row th.head-label {
+  text-align: center;
+}
+
+/** ここで足した部屋（転記し直しても残る行） */
+.misc-page table.grid.misc tr.added td {
+  background: #eff6ff;
+}
+
+.misc-page table.grid.misc .added-mark {
+  color: #1d4ed8;
+  font-weight: bold;
+  padding: 0 1px;
+}
+
+.misc-page table.grid.misc tr.on td {
+  background: #fffbeb;
+}
+
+.misc-page table.grid.misc button.drop {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.misc-page table.grid.misc td.room .cellbox {
+  display: flex;
+}
+
+.misc-page table.grid.misc td.flag {
+  text-align: center;
+}
+
+/** 列幅を変えるつまみ（見出しの右端） */
+.misc-page table.grid.misc .resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 20px;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.misc-page table.grid.misc .resizer:hover {
+  background: #60a5fa;
+}

@@ -1,16 +1,40 @@
 appId: jp.billswork.sekisan
 productName: 建築積算システム
+copyright: 有限会社ビルズワーク
 directories:
   buildResources: build
   output: dist
 files:
   - out/**
   - package.json
+  # 開発パソコン用（Linux）のバイナリは同梱しない
+  - '!node_modules/better-sqlite3/bin/**'
+  # Windows以外のIME切替部品（koffi）は同梱しない
+  - '!node_modules/koffi/build/koffi/!(win32_x64)/**'
+  - '!node_modules/koffi/src/**'
 asarUnpack:
   - node_modules/better-sqlite3/**
+  - node_modules/koffi/**
+# Windows用のbetter-sqlite3は scripts/prepare-win-native.mjs で用意するため、ここでは作り直さない
+npmRebuild: false
 win:
   target:
     - nsis
+  # ネット接続なしで動かすため署名は行わない
+  signAndEditExecutable: true
 nsis:
+  # 「セットアップ.exe」をダブルクリック → 次へ → 完了
+  artifactName: 建築積算システム_セットアップ_${version}.exe
   oneClick: false
+  perMachine: false
+  allowElevation: true
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 建築積算システム
+  runAfterFinish: true
+  # 上書きインストール（アップデート）でも積算データは残す
+  deleteAppDataOnUninstall: false
+  installerLanguages:
+    - ja_JP
+  language: '1041'

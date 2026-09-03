@@ -1,0 +1,388 @@
+.pit-upper {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  /* 表が増えても図や表を縮めない（入りきらない分は欄ごとにスクロール） */
+  grid-auto-rows: min-content;
+  gap: 8px;
+  padding: 8px;
+  align-items: start;
+  /* 上段の高さを決めて、下段の計算表を必ず見えるようにする（部屋計算書と同じ） */
+  max-height: 50vh;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.pit-upper > section,
+.pit-upper > .pit-plan-area {
+  min-height: 0;
+  overflow: auto;
+}
+
+.pit-upper > section > .section-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.pit-upper .pit-plan-area {
+  order: 1;
+}
+
+.pit-upper .pit-list {
+  order: 2;
+  overflow-x: auto;
+}
+
+.pit-list table.grid {
+  font-size: 11px;
+}
+
+.pit-list table.grid th,
+.pit-list table.grid td {
+  padding: 1px 3px;
+  white-space: nowrap;
+}
+
+.pit-list select {
+  font-size: 11px;
+  padding: 0;
+}
+
+.pit-upper .section-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pit-upper .section-bar h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.pit-upper input.num {
+  width: 72px;
+  text-align: right;
+}
+
+.pit-list input.num {
+  width: 46px;
+  font-size: 11px;
+}
+
+.pit-drawing {
+  border: 1px solid #ccc;
+  background: #fff;
+  min-height: 220px;
+}
+
+.pit-drawing .empty {
+  margin: 0;
+  padding: 24px;
+  color: #666;
+  text-align: center;
+}
+
+.pit-plan {
+  width: 100%;
+  height: 320px;
+}
+
+.pit-plan .pit-rect {
+  fill: #f5f8ff;
+  stroke: #333;
+  stroke-width: 0.05;
+  cursor: crosshair;
+}
+
+.pit-plan .pit-label,
+.pit-plan .pit-size {
+  text-anchor: middle;
+  fill: #222;
+  pointer-events: none;
+}
+
+.pit-plan .pit-label {
+  font-size: 0.5px;
+}
+
+.pit-plan .pit-size {
+  font-size: 0.3px;
+  fill: #555;
+}
+
+.pit-plan .pit-beam {
+  fill: #e8a76e;
+  fill-opacity: 0.85;
+  stroke: #8c4300;
+  stroke-width: 0.03;
+}
+
+/* 壁（辺）に沿う梁。斜めの壁にも付く */
+.pit-plan .pit-beam-line {
+  stroke: #e8a76e;
+  stroke-opacity: 0.9;
+}
+
+/* 柱にした壁（辺） */
+.pit-plan .pit-edge-column {
+  stroke: #c81e1e;
+  stroke-width: 0.14;
+  pointer-events: none;
+}
+
+/* 壁⇄柱 で選んでいる壁（辺） */
+.pit-plan .pit-edge-picked {
+  stroke: #ea580c;
+  stroke-width: 0.16;
+  pointer-events: none;
+}
+
+.pit-print-upper {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* 紙の上では図の幅を決めておく（表がつぶしてしまうと図が出ない） */
+.pit-print-upper .pit-drawing {
+  flex: 0 0 760px;
+  width: 760px;
+  height: 380px;
+  min-height: 0;
+}
+
+.pit-print-upper .pit-drawing .pit-plan {
+  width: 100%;
+  height: 100%;
+}
+
+.pit-print-upper table.pit-quantities {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pit-quantities tr.pit-total td {
+  background: #eef3fb;
+  font-weight: 600;
+}
+
+.pit-list td.symbol {
+  cursor: pointer;
+  color: #0b5cab;
+  text-decoration: underline;
+}
+
+.pit-list td.corners {
+  white-space: nowrap;
+}
+
+.pit-list td.corners label {
+  display: inline-block;
+  margin-right: 2px;
+  font-size: 11px;
+}
+
+.pit-list td.corners input {
+  margin: 0 1px 0 0;
+  vertical-align: middle;
+}
+
+.pit-plan .pit-corner {
+  fill: #fff;
+  stroke: #0b5cab;
+  stroke-width: 0.03;
+  cursor: pointer;
+}
+
+.pit-plan .pit-corner.on {
+  fill: #f0a03c;
+  stroke: #b45f06;
+}
+
+.pit-plan-area .section-bar button.on {
+  background: #dce9f7;
+  border: 1px solid #1e3a8a;
+  /* 背景が薄い青なので、文字は黒でしっかり見えるようにする */
+  color: #111;
+  font-weight: bold;
+}
+
+/* 表の先頭の合計行（ＰＡ） */
+.pit-list .grid tbody tr.pit-total td {
+  background: #eef3fb;
+  font-weight: 600;
+}
+
+/* 壁⇄柱 の操作（選んだ本数と確定ボタン） */
+.pit-sheet-page .kind-pick,
+.pit-plan-tools .kind-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid #ea580c;
+  border-radius: 4px;
+  background: #fff7ed;
+}
+
+/* 「⤡ 大きく開く」＝平面図を画面いっぱいに出し、そのまま入力できるようにする */
+.pit-upper.expanded {
+  position: fixed;
+  max-height: none;
+  inset: 40px 8px 8px;
+  z-index: 40;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+/* 大きく開いている間は表を隠して、図だけを大きく出す */
+.pit-upper.expanded > .pit-list,
+.pit-upper.expanded > .pit-walls {
+  display: none;
+}
+
+.pit-upper.expanded > .pit-plan-area {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.pit-upper.expanded .pit-drawing {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pit-upper.expanded .pit-plan {
+  width: 100%;
+  height: 100%;
+}
+
+/* ピット間（基礎梁）と人通口・スリーブ */
+.pit-plan .pit-wall {
+  cursor: crosshair;
+}
+
+.pit-plan .pit-sleeve {
+  stroke: #fff;
+  stroke-width: 0.03;
+  cursor: pointer;
+}
+
+.pit-plan .pit-sleeve-label {
+  font-size: 0.22px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* ピット表の下に、同じ幅で置く */
+.pit-upper .pit-walls {
+  order: 3;
+  grid-column: 2;
+  overflow-x: auto;
+}
+
+.pit-walls table.grid.pit-wall-tally {
+  width: 100%;
+}
+
+.pit-walls .pit-wall-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pit-walls table.grid {
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.pit-walls table.grid th,
+.pit-walls table.grid td {
+  padding: 1px 4px;
+  white-space: nowrap;
+}
+
+.pit-walls table.grid input.num {
+  width: 56px;
+  font-size: 11px;
+}
+
+.pit-walls table.grid select {
+  font-size: 11px;
+  padding: 0;
+}
+
+.pit-walls input.kind-color,
+.pit-upper .section-bar input.kind-color {
+  width: 34px;
+  height: 18px;
+  padding: 0;
+}
+
+/* 種類の色の印 */
+.pit-walls .kind-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border: 1px solid #94a3b8;
+  vertical-align: middle;
+}
+
+.pit-walls td.symbol {
+  cursor: pointer;
+  color: #1d4ed8;
+}
+
+/* 10色から選ぶ色欄 */
+.pit-walls select.color-pick,
+.pit-upper .section-bar select.color-pick {
+  width: 66px;
+  font-size: 11px;
+}
+
+.pit-sheet-page .room-calc-sheet {
+  min-height: 180px;
+}
+
+/* 梁型入力中に出す小窓（方向・梁Ｗ・梁Ｈ） */
+.pit-upper .pit-plan-area {
+  position: relative;
+}
+
+.pit-beam-popup {
+  position: absolute;
+  top: 30px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 8px;
+  border: 1px solid #ea580c;
+  border-radius: 6px;
+  background: #fff7ed;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 20%);
+  font-size: 12px;
+}
+
+.pit-beam-popup input.num {
+  width: 56px;
+}
+
+.pit-beam-popup .status {
+  flex: 1 1 100%;
+  color: #7c2d12;
+}

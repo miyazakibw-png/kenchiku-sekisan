@@ -1,0 +1,180 @@
+.fittings-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.fittings-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.fittings-page .toolbar h2 {
+  margin: 0 4px;
+  font-size: 15px;
+}
+
+.fittings-page .project {
+  font-size: 12px;
+  color: #1f3864;
+  margin-right: 8px;
+}
+
+.fittings-page .status {
+  margin-left: auto;
+  font-size: 11px;
+  color: #1f3864;
+}
+
+.fittings-page .series-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  background: #eef1f6;
+  font-size: 12px;
+}
+
+.fittings-page .series-form input {
+  width: 8ch;
+}
+
+.fittings-page .series-form input.num {
+  width: 5ch;
+}
+
+table.fittings {
+  border-collapse: collapse;
+  margin: 8px;
+  width: auto;
+}
+
+table.fittings th,
+table.fittings td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+table.fittings th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+}
+
+table.fittings td.no,
+table.fittings th.no {
+  width: 4ch;
+  text-align: right;
+  color: #6b7280;
+}
+
+table.fittings th.symbol,
+table.fittings td:nth-child(2) input {
+  width: 12ch;
+}
+
+table.fittings .num {
+  width: 7ch;
+  text-align: right;
+}
+
+table.fittings input.num {
+  text-align: right;
+}
+
+table.fittings td.calc {
+  background: #fffbe6;
+  font-family: "Consolas", "Menlo", monospace;
+}
+
+table.fittings th.formula,
+table.fittings td:nth-child(9) input,
+table.fittings td:nth-child(10) input {
+  min-width: 22ch;
+}
+
+table.fittings th.note,
+table.fittings td:nth-child(11) input {
+  min-width: 20ch;
+}
+
+table.fittings input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+}
+
+table.fittings input.duplicate {
+  color: #c00000;
+  font-weight: bold;
+}
+
+table.fittings tr.selected {
+  background: #e8f0fe;
+}
+
+table.fittings tr.from-estimate td.no {
+  background: #f3e8ff;
+}
+
+.fittings-page .hint {
+  margin: 0 8px 16px;
+  font-size: 11px;
+  color: #6b7280;
+  max-width: 900px;
+  line-height: 1.6;
+}
+
+.fittings-page .part-values {
+  margin: 8px;
+  border: 1px solid #c9ced6;
+  background: #f8fafc;
+  max-width: 620px;
+}
+
+.fittings-page .part-values .section-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  background: #e2e8f0;
+  color: #111827;
+  font-size: 12px;
+}
+
+.fittings-page table.part-values {
+  border-collapse: collapse;
+  margin: 6px;
+  width: auto;
+}
+
+.fittings-page table.part-values th,
+.fittings-page table.part-values td {
+  border: 1px solid #c9ced6;
+  padding: 1px 6px;
+  font-size: 12px;
+  background: #fff;
+  color: #1f2937;
+}
+
+.fittings-page table.part-values th {
+  background: #e2e8f0;
+  color: #111827;
+  font-weight: normal;
+}
+
+.fittings-page table.part-values th.part,
+.fittings-page table.part-values td:first-child {
+  min-width: 12ch;
+}
+
+.fittings-page table.part-values td.symbol {
+  font-family: "Consolas", "Menlo", monospace;
+  color: #1f3864;
+}

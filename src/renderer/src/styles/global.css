@@ -4,7 +4,7 @@
   --hover: #e8ebf0;
   --selected: #e3f0ff;
   --accent: #1f6feb;
-  font-family: 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+  font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   font-size: 14px;
   color: #1f2328;
 }
@@ -23,7 +23,67 @@ body,
 .app {
   display: grid;
   grid-template-columns: 180px 1fr;
+  grid-template-rows: auto 1fr;
   height: 100%;
+}
+
+/* 物件専用ウィンドウは基準マスターのメニューを出さない */
+.app.project-window {
+  grid-template-columns: 1fr;
+}
+
+/* 明細入力ウィンドウ（独立した画面）は明細入力だけを出す */
+.app.calc-window {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.app.calc-window .app-main {
+  overflow: hidden;
+}
+
+.calc-window-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.calc-window-page > .message {
+  margin: 4px 8px 0;
+  color: #b91c1c;
+}
+
+.calc-window-page > .room-calc-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 最上部：左端にソフト名、中央に開いている工事名称のみ */
+.app-bar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 180px 1fr auto 220px;
+  align-items: center;
+  background: #111827;
+  color: #e5e7eb;
+  border-bottom: 1px solid #374151;
+}
+
+.app-bar-title {
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.app-bar-project {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-nav {
@@ -32,13 +92,6 @@ body,
   display: flex;
   flex-direction: column;
   padding-bottom: 12px;
-}
-
-.app-title {
-  padding: 14px 12px;
-  font-weight: 700;
-  font-size: 14px;
-  border-bottom: 1px solid #374151;
 }
 
 .nav-item {
@@ -73,4 +126,283 @@ body,
 .placeholder {
   padding: 32px;
   color: #666;
+}
+
+/* 文字が入らなくなったときに入力先を戻すボタン */
+.app-bar .refocus {
+  background: #374151;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 最上部右端の 印刷／PDF／エクセル */
+.print-bar {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+
+.print-bar button {
+  background: #374151;
+  color: #e5e7eb;
+  border: 1px solid #4b5563;
+  border-radius: 3px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.print-bar .print-paper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.print-bar .print-paper select {
+  font: inherit;
+  font-size: 12px;
+}
+
+.print-bar button:hover:enabled {
+  background: #4b5563;
+}
+
+.print-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 操作ボタンの行と表の見出し行は、画面を下げても上に残す */
+.app-main .toolbar,
+.app-main .grid-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #fff;
+}
+
+/* 表の見出しは全画面で濃紺地＋白文字に統一する */
+.app-main thead th,
+.app-main thead td {
+  position: sticky;
+  z-index: 4;
+  background: #1f4e79;
+  color: #fff;
+}
+
+/* 画面のタイトルも見出しと同じ濃紺 */
+.app-main .toolbar h2,
+.app-main .grid-toolbar h2 {
+  color: #1f4e79;
+}
+
+/* 印刷・PDFは選んだ用紙1枚に全幅が収まるよう縮小する（1画面が長いときは複数枚） */
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@page a4yoko {
+  size: A4 landscape;
+  margin: 8mm;
+}
+
+@page a3yoko {
+  size: A3 landscape;
+  margin: 8mm;
+}
+
+body.print-a4-landscape .app {
+  page: a4yoko;
+}
+
+body.print-a3-landscape .app {
+  page: a3yoko;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .app-bar,
+  .app-nav,
+  .print-bar,
+  .toolbar {
+    display: none !important;
+  }
+
+  /* 操作用のボタンは紙に出さない */
+  .app-main button {
+    display: none !important;
+  }
+
+  /* 建具記号は数量の根拠なので紙にも出す（付け外しの操作欄だけ消す） */
+  .app-main .fitting-cell button.chip {
+    display: inline-block !important;
+    border: none;
+    background: none;
+    padding: 0 4px 0 0;
+    color: #000;
+  }
+
+  .app-main .fitting-cell select {
+    display: none !important;
+  }
+
+  .app-main {
+    overflow: visible !important;
+    transform: scale(var(--print-scale, 1));
+    transform-origin: top left;
+    width: calc(100% / var(--print-scale, 1));
+  }
+
+  .app-main * {
+    overflow: visible !important;
+  }
+
+  input,
+  select,
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  tr,
+  td,
+  th {
+    page-break-inside: avoid;
+  }
+
+  /* 工事概要の印刷書式はA4縦の大きさで作ってあるので縮めない */
+  .app-main:has(.summary-sheet-page) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  .summary-sheet {
+    margin: 0 auto !important;
+    /* 用紙の余白（8mm）を引いたA4縦1枚に必ず収める */
+    height: 275mm;
+    page-break-inside: avoid;
+    page-break-after: avoid;
+  }
+
+  /* 積算操作画面は工事概要の書式（A4縦1枚）だけ紙に出す */
+  .workspace-page .field-picker,
+  .workspace-page .workspace-menu,
+  .workspace-page .workspace-header {
+    display: none !important;
+  }
+
+  .app-main:has(.summary-sheet-print) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  /* 部屋別計算書の印刷書式はA3横の大きさで作ってあるので縮めない */
+  .app-main:has(.calc-print-sheet) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  /* 集計書の印刷書式はA4横の大きさで作ってあるので縮めない */
+  .app-main:has(.aggregate-print-page) {
+    transform: none !important;
+    width: 100% !important;
+  }
+
+  /* 計算書・集計書の紙は1枚ずつ切る（各欄のはみ出しは隠したまま） */
+  .calc-print-page,
+  .calc-print-page *,
+  .aggregate-print-sheet,
+  .aggregate-print-sheet * {
+    overflow: hidden !important;
+  }
+
+  .summary-sheet-print {
+    display: block;
+  }
+}
+
+/* 表形式画面の共通列幅つまみ（見出しの右端をドラッグ）。
+   見出しは position: sticky なので、つまみはそのまま右端に置ける */
+.table-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.table-col-resize:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* 画面の中に出す「はい／いいえ」の確認 */
+.ask-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ask-box {
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  min-width: 320px;
+  max-width: 640px;
+  padding: 16px;
+}
+
+.ask-message {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.ask-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.ask-buttons button {
+  min-width: 88px;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ask-buttons .ask-ok {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
 }
