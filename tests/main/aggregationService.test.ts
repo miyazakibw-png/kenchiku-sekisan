@@ -21,6 +21,15 @@ import {
   setDetailUnused,
 } from "../../src/main/services/aggregationService";
 import { transferBreakdown } from "../../src/main/services/breakdownService";
+import {
+  getMiscSheet,
+  saveMiscSheet,
+} from "../../src/main/services/miscSheetService";
+import {
+  miscColumn,
+  miscRow,
+  type MiscColumn,
+} from "../../src/core/misc/miscSheet";
 import { listTransferRows } from "../../src/main/services/transferRowService";
 import {
   listDetailChangeLogs,
@@ -383,6 +392,60 @@ describe("集計処理", () => {
     const rows = listTransferRows(db, projectId);
     expect(rows[0].name).toBe("タイルカーペット");
     expect(rows[0].descriptionLower).toBe("t=6.5");
+  });
+
+  it("集計書で直した内容を部位別雑・金物入力表へ書き戻す", () => {
+    const sheet = getMiscSheet(db, projectId);
+    const column = miscColumn({
+      subjectId: 5,
+      materialCategory: "仕上",
+      partNumber: 40,
+      partName: "雑",
+      detailNumber: 35.0,
+      name: "点字鋲",
+      unit: "個",
+    });
+    const row = miscRow({ part1: "建築", part2: "1階", part3: "廊下" });
+    saveMiscSheet(db, {
+      id: sheet.id,
+      columnsJson: JSON.stringify([column]),
+      rowsJson: JSON.stringify([{ ...row, values: { [column.id]: "4" } }]),
+      note: "",
+    });
+    const before = runAggregation(db, projectId);
+
+    saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: before.items[0].masterKey,
+          subjectId: 5,
+          materialCategory: "仕上",
+          partNumber: 41,
+          partName: "金物",
+          detailNumber: 36.0,
+          name: "点字鋲 ステンレス",
+          descriptionUpper: "",
+          descriptionLower: "",
+          unit: "個",
+          remarksUpper: "",
+          remarksLower: "",
+        },
+      ],
+    });
+
+    const saved = JSON.parse(
+      getMiscSheet(db, projectId).columnsJson,
+    ) as MiscColumn[];
+    expect(saved[0].partNumber).toBe(41);
+    expect(saved[0].partName).toBe("金物");
+    expect(saved[0].detailNumber).toBe(36.0);
+    expect(saved[0].name).toBe("点字鋲 ステンレス");
+    // かけ直しても直した内容のまま（表に入っている）
+    const again = runAggregation(db, projectId);
+    expect(again.items[0].partNumber).toBe(41);
+    expect(again.items[0].quantity).toBe(4);
   });
 
   it("同じ明細マスターから拾った行は、まとめて直せる", () => {

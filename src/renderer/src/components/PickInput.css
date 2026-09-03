@@ -1,7 +1,7 @@
 /* ID欄の候補一覧：マスターの並びのまま全件出し、下までスクロールできる */
 .pick-list {
   position: fixed;
-  z-index: 60;
+  z-index: 2000;
   margin: 0;
   padding: 2px;
   list-style: none;

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./PickInput.css";
 
 /** 候補一覧に出す1行（value＝欄に入る文字、label＝一覧に見せる文字） */
@@ -128,33 +129,37 @@ export function PickInput({
           onCommit(text);
         }}
       />
-      {box && shown.length > 0 && (
-        <ul
-          className="pick-list"
-          style={{
-            left: box.left,
-            top: box.top,
-            width: box.width,
-            maxHeight: box.height,
-          }}
-        >
-          {shown.map((entry, index) => (
-            <li key={`${entry.value}-${index}`}>
-              <button
-                type="button"
-                // クリックで欄から離れる前に選べるよう mousedown で決める
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  commit(entry.value);
-                }}
-              >
-                <span className="key">{entry.value}</span>
-                <span className="label">{entry.label}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {box &&
+        shown.length > 0 &&
+        // 表の固定した列・行の上に出すため、画面（body）の一番上へ置く
+        createPortal(
+          <ul
+            className="pick-list"
+            style={{
+              left: box.left,
+              top: box.top,
+              width: box.width,
+              maxHeight: box.height,
+            }}
+          >
+            {shown.map((entry, index) => (
+              <li key={`${entry.value}-${index}`}>
+                <button
+                  type="button"
+                  // クリックで欄から離れる前に選べるよう mousedown で決める
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    commit(entry.value);
+                  }}
+                >
+                  <span className="key">{entry.value}</span>
+                  <span className="label">{entry.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </>
   );
 }
