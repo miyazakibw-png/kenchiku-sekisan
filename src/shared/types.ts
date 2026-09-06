@@ -806,12 +806,18 @@ export interface SaveBreakdownRowsRequest {
 }
 
 /** 掃き出しの種類 */
-export type BreakdownExportKind = "bcs" | "excelAll" | "excelBySubject";
+export type BreakdownExportKind =
+  | "bcs"
+  | "excelAll"
+  | "excelBySubject"
+  | "excelCompare";
 
 export interface BreakdownExportRequest {
   projectId: number;
   versionId: number;
   kind: BreakdownExportKind;
+  /** excelCompare のときだけ使う。比べる元の回 */
+  compareVersionId?: number;
 }
 
 /** 画面の表1つ分（エクセル掃き出し用） */

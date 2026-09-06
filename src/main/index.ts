@@ -474,11 +474,23 @@ function registerIpcHandlers(): void {
       const db = getDatabase();
       const view = getBreakdown(db, request.projectId, request.versionId);
       const project = getProject(db, request.projectId);
+      // 比較の掃き出しでは、比べる元の回（右側）も一緒に出す
+      const other =
+        request.compareVersionId === undefined
+          ? null
+          : getBreakdown(db, request.projectId, request.compareVersionId);
       const { content, defaultName } = buildExport(
         request.kind,
         view.rows,
         view.settings,
         project.name,
+        other === null
+          ? undefined
+          : {
+              rows: other.rows,
+              leftTitle: `${view.version?.round ?? "-"}回目（新しい方）`,
+              rightTitle: `${other.version?.round ?? "-"}回目`,
+            },
       );
       const window = BrowserWindow.fromWebContents(event.sender);
       const result = window

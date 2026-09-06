@@ -170,6 +170,25 @@
   padding: 0;
 }
 
+/* 比較画面でもその場で文字を直せるようにする（欄の見た目は表のまま） */
+.breakdown-page table.compare td input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.breakdown-page table.compare td.qty input,
+.breakdown-page table.compare td.unit input {
+  text-align: right;
+}
+
+.breakdown-page table.compare td input:focus {
+  outline: 1px solid #4a90d9;
+}
+
 /* 違うところだけ色を付ける（行を合わせ直すと色が消える） */
 .breakdown-page table.compare td.changed {
   background: #ffe08a;

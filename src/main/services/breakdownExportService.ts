@@ -10,6 +10,7 @@ import {
   splitBySubject,
   toSpreadsheetWorkbook,
 } from "../../core/breakdown/spreadsheet";
+import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
 import type { BreakdownRow } from "../../core/breakdown/breakdown";
 import type {
   BreakdownExportKind,
@@ -44,14 +45,34 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
   };
 }
 
+/** 比較の掃き出しに必要な、比べる元（右側）の中身 */
+export interface CompareExportInput {
+  rows: BreakdownRowRecord[];
+  leftTitle: string;
+  rightTitle: string;
+}
+
 /** 掃き出しの中身を作る（拡張子つきの既定ファイル名も返す） */
 export function buildExport(
   kind: BreakdownExportKind,
   rows: BreakdownRowRecord[],
   settings: BreakdownSettingsRecord,
   projectName: string,
+  compare?: CompareExportInput,
 ): { content: Buffer; defaultName: string } {
   const coreRows = rows.map(toCoreRow);
+  if (kind === "excelCompare") {
+    return {
+      content: toCompareWorkbook({
+        left: coreRows,
+        right: (compare?.rows ?? []).map(toCoreRow),
+        layout: settings.layout,
+        leftTitle: compare?.leftTitle ?? "新しい内訳書",
+        rightTitle: compare?.rightTitle ?? "前の内訳書",
+      }),
+      defaultName: `${projectName}_内訳書_比較.xlsx`,
+    };
+  }
   if (kind === "bcs") {
     const csv = toBcsCsv(coreRows, {
       projectName,

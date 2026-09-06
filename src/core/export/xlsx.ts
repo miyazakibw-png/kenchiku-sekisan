@@ -17,10 +17,17 @@ export type XlsxCellKind = "text" | "number" | "header" | "wrap";
  */
 export type XlsxBorder = "one" | "upper" | "lower";
 
+/**
+ * 色の印。plain：ふつう、diff：前回と違うところ（背景は黄色・文字は赤）
+ */
+export type XlsxMark = "plain" | "diff";
+
 export interface XlsxCell {
   value: string | number | null;
   kind: XlsxCellKind;
   border: XlsxBorder;
+  /** 省くと plain（色を付けない） */
+  mark?: XlsxMark;
 }
 
 export interface XlsxSheet {
@@ -32,6 +39,7 @@ export interface XlsxSheet {
 
 const KINDS: XlsxCellKind[] = ["text", "number", "header", "wrap"];
 const BORDERS: XlsxBorder[] = ["one", "upper", "lower"];
+const MARKS: XlsxMark[] = ["plain", "diff"];
 
 function escapeXml(value: string): string {
   return (
@@ -78,8 +86,11 @@ export function xlsxSheetName(
  * 0番はエクセルが「書式なし」として扱い罫線を描かないので、先頭に空の書式を1つ置いてずらす。
  */
 function styleIndex(cell: XlsxCell): number {
+  const mark = MARKS.indexOf(cell.mark ?? "plain");
   return (
-    1 + KINDS.indexOf(cell.kind) * BORDERS.length + BORDERS.indexOf(cell.border)
+    1 +
+    (mark * KINDS.length + KINDS.indexOf(cell.kind)) * BORDERS.length +
+    BORDERS.indexOf(cell.border)
   );
 }
 
@@ -107,26 +118,29 @@ function stylesXml(): string {
   const borders = `<border><left/><right/><top/><bottom/><diagonal/></border>${BORDERS.map(borderXml).join("")}`;
   // 0番は罫線なしの既定書式（エクセルが 0番を書式なしとして扱うため、実際には使わない）
   const plain = `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`;
-  const xfs = KINDS.flatMap((kind) =>
-    BORDERS.map((border) => {
-      const fontId = kind === "header" ? 1 : 0;
-      const fillId = kind === "header" ? 2 : 0;
-      const numFmtId = kind === "number" ? 176 : 0;
-      const alignment =
-        kind === "number"
-          ? '<alignment vertical="center" horizontal="right"/>'
-          : kind === "wrap"
-            ? '<alignment vertical="center" wrapText="1"/>'
-            : '<alignment vertical="center"/>';
-      return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
-    }),
+  const xfs = MARKS.flatMap((mark) =>
+    KINDS.flatMap((kind) =>
+      BORDERS.map((border) => {
+        // 違うところは文字を赤（太字）・背景を黄色にする
+        const fontId = mark === "diff" ? 3 : kind === "header" ? 1 : 0;
+        const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
+        const numFmtId = kind === "number" ? 176 : 0;
+        const alignment =
+          kind === "number"
+            ? '<alignment vertical="center" horizontal="right"/>'
+            : kind === "wrap"
+              ? '<alignment vertical="center" wrapText="1"/>'
+              : '<alignment vertical="center"/>';
+        return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
+      }),
+    ),
   ).join("");
-  const count = KINDS.length * BORDERS.length + 1;
+  const count = MARKS.length * KINDS.length * BORDERS.length + 1;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="1"><numFmt numFmtId="176" formatCode="#,##0.00"/></numFmts>
-<fonts count="2"><font><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font></fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill></fills>
+<fonts count="4"><font><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="${BORDERS.length + 1}">${borders}</borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
 <cellXfs count="${count}">${plain}${xfs}</cellXfs>
