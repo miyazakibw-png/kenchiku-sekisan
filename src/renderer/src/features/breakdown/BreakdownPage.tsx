@@ -12,10 +12,7 @@ import {
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
 } from "../../../../core/breakdown/breakdown";
-import type {
-  BreakdownDiff,
-  BreakdownField,
-} from "../../../../core/breakdown/compare";
+import type { BreakdownField } from "../../../../core/breakdown/compare";
 import { compareBreakdown, moveRow } from "../../../../core/breakdown/compare";
 import "../estimate/EstimatePartsPage.css";
 import "../aggregate/AggregatePage.css";
@@ -131,7 +128,7 @@ function blankRow(): BreakdownRowRecord {
  * 提出の回ごとに版を残し、前回との比較ができる。
  */
 export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-breakdown-compare-v3");
+  const tableRef = useTableResize("table-widths-breakdown-compare-v4");
   const tableRef1 = useTableResize("table-widths-breakdown-v1");
   const [view, setView] = useState<BreakdownView>({
     version: null,
@@ -148,7 +145,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const [rightRows, setRightRows] = useState<BreakdownRowRecord[]>([]);
   const [compareTarget, setCompareTarget] = useState<number | null>(null);
   /** 比較画面でコピーした明細（左右どちらへでも貼れる） */
-  const [copied, setCopied] = useState<BreakdownRowRecord | null>(null);
+  const [copied, setCopied] = useState<BreakdownRowRecord[] | null>(null);
   /** 比較画面で行を直したら少し待って自動で保存する（開けた空行も残す） */
   const [compareDirty, setCompareDirty] = useState(0);
   /** 比較画面の行操作を戻る／進むできるようにする */
@@ -404,13 +401,27 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       return next;
     });
 
-  /** その行を消す（もう片方の側はそのまま） */
-  const removeRow = (side: "left" | "right", index: number) =>
-    editCompare(side, (rows) => rows.filter((_row, at) => at !== index));
+  /** その明細を消す（上下2行1明細のときは2行。もう片方の側はそのまま） */
+  const removeRow = (side: "left" | "right", index: number, span: number) =>
+    editCompare(side, (rows) =>
+      rows.filter((_row, at) => at < index || at >= index + span),
+    );
 
-  /** 行を1つ動かす */
-  const moveRows = (side: "left" | "right", index: number, step: number) =>
-    editCompare(side, (rows) => moveRow(rows, index, step));
+  /** 明細を1つ動かす（上下2行1明細のときは2行1組で） */
+  const moveRows = (
+    side: "left" | "right",
+    index: number,
+    step: number,
+    span: number,
+  ) =>
+    editCompare(side, (rows) => {
+      if (span === 1) return moveRow(rows, index, step);
+      const next = [...rows];
+      const moved = next.splice(index, span);
+      const to = Math.max(0, Math.min(next.length, index + step * span));
+      next.splice(to, 0, ...moved);
+      return next;
+    });
 
   /** その行の中身を書き換える（文字入力・貼り付け） */
   const updateRow = (
@@ -422,69 +433,80 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       rows.map((row, at) => (at === index ? { ...row, ...patch } : row)),
     );
 
-  /** コピーした明細をこの行へ貼り付ける（並びは変えない） */
-  const pasteRow = (side: "left" | "right", index: number) => {
+  /** コピーした明細をここへ貼り付ける（この明細と入れ替える） */
+  const pasteRow = (side: "left" | "right", index: number, span: number) => {
     if (copied === null) return;
     const source = copied;
-    editCompare(side, (rows) =>
-      rows.map((row, at) =>
-        at === index ? { ...source, id: row.id, displayOrder: at } : row,
-      ),
-    );
+    editCompare(side, (rows) => {
+      const next = [...rows];
+      next.splice(index, span, ...source.map((row) => ({ ...row, id: null })));
+      return next;
+    });
   };
 
-  /** 行の操作ボタン（1行に1組） */
-  const opsCell = (side: "left" | "right", index: number): JSX.Element => (
-    <td className="ops">
-      <button
-        type="button"
-        title="ここに空きを1行入れる"
-        onClick={() => insertBlank(side, index)}
-      >
-        ＋
-      </button>
-      <button
-        type="button"
-        title="この行を消す"
-        onClick={() => removeRow(side, index)}
-      >
-        －
-      </button>
-      <button
-        type="button"
-        title="1つ上へ"
-        onClick={() => moveRows(side, index, -1)}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        title="1つ下へ"
-        onClick={() => moveRows(side, index, 1)}
-      >
-        ↓
-      </button>
-      <button
-        type="button"
-        title="この行をコピーする"
-        onClick={() => {
-          const rows = side === "left" ? leftRows : rightRows;
-          const row = rows[index];
-          if (row) setCopied({ ...row });
-        }}
-      >
-        ⧉
-      </button>
-      <button
-        type="button"
-        title="コピーした行をここへ貼り付ける"
-        disabled={copied === null}
-        onClick={() => pasteRow(side, index)}
-      >
-        📋
-      </button>
-    </td>
-  );
+  /** 行の操作ボタン（上下2行1明細のときは上の行に1組だけ） */
+  const opsCell = (
+    side: "left" | "right",
+    index: number,
+    pair: string,
+  ): JSX.Element => {
+    if (pair === "detail-lower") return <td className={`ops ${pair}`} />;
+    const span = pair === "detail-upper" ? 2 : 1;
+    return (
+      <td className={`ops ${pair}`}>
+        <div className="ops-grid">
+          <button
+            type="button"
+            title="ここに空きを1行入れる"
+            onClick={() => insertBlank(side, index)}
+          >
+            ＋
+          </button>
+          <button
+            type="button"
+            title="この明細を消す"
+            onClick={() => removeRow(side, index, span)}
+          >
+            －
+          </button>
+          <button
+            type="button"
+            title="この明細をコピーする"
+            onClick={() => {
+              const rows = side === "left" ? leftRows : rightRows;
+              const picked = rows.slice(index, index + span);
+              if (picked.length > 0)
+                setCopied(picked.map((row) => ({ ...row })));
+            }}
+          >
+            ⧉
+          </button>
+          <button
+            type="button"
+            title="1つ上へ"
+            onClick={() => moveRows(side, index, -1, span)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            title="1つ下へ"
+            onClick={() => moveRows(side, index, 1, span)}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            title="コピーした明細をここへ貼り付ける"
+            disabled={copied === null}
+            onClick={() => pasteRow(side, index, span)}
+          >
+            📋
+          </button>
+        </div>
+      </td>
+    );
+  };
 
   /** 比較画面の明細セル。左（新しい回）だけ違うところに色を付ける */
   const compareCells = (
@@ -493,11 +515,13 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     row: BreakdownRowRecord | null,
     changed: BreakdownField[],
     onlySide: boolean,
+    pair: string,
   ): JSX.Element[] => {
     const mark = (field: BreakdownField): string => {
-      if (side === "right") return "";
-      if (onlySide) return "only";
-      return changed.includes(field) ? "changed" : "";
+      const cls = pair === "" ? "" : ` ${pair}`;
+      if (side === "right") return cls.trim();
+      if (onlySide) return `only${cls}`;
+      return changed.includes(field) ? `changed${cls}` : cls.trim();
     };
     if (row === null) {
       return ["n", "d", "q", "u", "p", "a", "r"].map((key) => (
@@ -534,12 +558,12 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         <td key="n" className={mark("name")}>
           {twoStageText ? subjectLines(headingText(row)) : headingText(row)}
         </td>,
-        <td key="d" />,
-        <td key="q" className="qty" />,
-        <td key="u" className="unit" />,
-        <td key="p" className="qty" />,
-        <td key="a" className="qty" />,
-        <td key="r" />,
+        <td key="d" className={pair} />,
+        <td key="q" className={`qty ${pair}`} />,
+        <td key="u" className={`unit ${pair}`} />,
+        <td key="p" className={`qty ${pair}`} />,
+        <td key="a" className={`qty ${pair}`} />,
+        <td key="r" className={pair} />,
       ];
     }
     return [
@@ -577,10 +601,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           onCommit={(value) => set({ unit: value })}
         />
       </td>,
-      <td key="p" className="qty">
+      <td key="p" className={`qty ${pair}`}>
         {row.unitPrice ?? ""}
       </td>,
-      <td key="a" className="qty">
+      <td key="a" className={`qty ${pair}`}>
         {row.amount ?? ""}
       </td>,
       textCell(
@@ -932,35 +956,41 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </thead>
             <tbody>
               {diffs.map((diff) => {
-                const pair = comparePairClass(
-                  diffs,
-                  diff.index,
-                  settings.layout,
-                );
+                // 左右それぞれの並びで「上下2行1明細」を見分ける（片側だけ行を足しても崩れない）
+                const leftPair =
+                  diff.left === null
+                    ? ""
+                    : pairClass(leftRows, diff.index, settings.layout);
+                const rightPair =
+                  diff.right === null
+                    ? ""
+                    : pairClass(rightRows, diff.index, settings.layout);
                 return (
                   <tr
                     key={diff.index}
                     className={
                       settings.layout === BREAKDOWN_LAYOUT.twoLine
                         ? "two-line"
-                        : pair
+                        : ""
                     }
                   >
-                    {opsCell("left", diff.index)}
+                    {opsCell("left", diff.index, leftPair)}
                     {compareCells(
                       "left",
                       diff.index,
                       diff.left,
                       diff.changed,
                       diff.onlyLeft,
+                      leftPair,
                     )}
-                    {opsCell("right", diff.index)}
+                    {opsCell("right", diff.index, rightPair)}
                     {compareCells(
                       "right",
                       diff.index,
                       diff.right,
                       diff.changed,
                       diff.onlyRight,
+                      rightPair,
                     )}
                   </tr>
                 );
@@ -1129,7 +1159,7 @@ const COMPARE_COLUMNS: {
   className: string;
   width: number;
 }[] = [
-  { label: "操作", className: "ops", width: 70 },
+  { label: "操作", className: "ops", width: 78 },
   { label: "名称", className: "", width: 170 },
   { label: "摘要", className: "", width: 150 },
   { label: "数量", className: "qty", width: 60 },
@@ -1153,21 +1183,6 @@ function pairClass(
   if (row.rowKind === "note" && rows[index + 1]?.rowKind === "detail")
     return "detail-upper";
   if (row.rowKind === "detail" && rows[index - 1]?.rowKind === "note")
-    return "detail-lower";
-  return "";
-}
-
-/** 比較画面でも書式④の1明細（上段・下段）の間に罫線を出さない */
-function comparePairClass(
-  diffs: BreakdownDiff<BreakdownRowRecord>[],
-  index: number,
-  layout: number,
-): string {
-  if (!twoRowPairs(layout)) return "";
-  const kind = diffs[index]?.left?.rowKind;
-  if (kind === "note" && diffs[index + 1]?.left?.rowKind === "detail")
-    return "detail-upper";
-  if (kind === "detail" && diffs[index - 1]?.left?.rowKind === "note")
     return "detail-lower";
   return "";
 }

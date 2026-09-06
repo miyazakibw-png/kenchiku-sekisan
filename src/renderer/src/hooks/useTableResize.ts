@@ -137,8 +137,12 @@ export function useTableResize(
     let total = 0;
     cols.forEach((col, index) => {
       const stored = widthsRef.current[index];
+      // 見出しに幅を書いてある表（比較表など）は、その幅を初期値として使う
+      const declared = Number.parseFloat(cells[index]?.style.width ?? "");
       if (stored !== undefined) {
         col.style.width = `${Math.max(MIN_WIDTH, stored)}px`;
+      } else if (Number.isFinite(declared)) {
+        col.style.width = `${Math.max(MIN_WIDTH, declared)}px`;
       } else if (col.style.width === "") {
         col.style.width = `${Math.max(MIN_WIDTH, measured[index] ?? MIN_WIDTH)}px`;
       }

@@ -4,7 +4,7 @@
  * 違うところは左（新しい回）だけ、背景を黄色・文字を赤にする。
  */
 
-import type { XlsxCell, XlsxSheet } from "../export/xlsx";
+import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
 import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 import { compareBreakdown, type BreakdownField } from "./compare";
@@ -49,12 +49,32 @@ function textOf(
   return { value: join(upper, lower), wrap: false };
 }
 
+/**
+ * 上下2行1明細の書式で、この行が明細の上の行か下の行かを見る。
+ * 上下の間に罫線を引かないことで、画面と同じ「2段1行」に見せる。
+ */
+function rowBorder(
+  rows: readonly BreakdownRow[],
+  index: number,
+  layout: number,
+): XlsxBorder {
+  if (!twoRowPairs(layout)) return "one";
+  const row = rows[index];
+  if (row === undefined) return "one";
+  if (row.rowKind === "note" && rows[index + 1]?.rowKind === "detail")
+    return "upper";
+  if (row.rowKind === "detail" && rows[index - 1]?.rowKind === "note")
+    return "lower";
+  return "one";
+}
+
 /** 片側1行分（7列）を作る。色を付けるのは changed が渡されたときだけ */
 function sideCells(
   row: BreakdownRow | null,
   layout: number,
   changed: readonly BreakdownField[] | null,
   onlySide: boolean,
+  border: XlsxBorder,
 ): XlsxCell[] {
   const mark = (field: BreakdownField): "plain" | "diff" => {
     if (changed === null) return "plain";
@@ -65,7 +85,7 @@ function sideCells(
     return HEADER.map(() => ({
       value: "",
       kind: "text" as const,
-      border: "one" as const,
+      border,
       mark: changed === null ? ("plain" as const) : ("diff" as const),
     }));
   }
@@ -85,7 +105,7 @@ function sideCells(
   ): XlsxCell => ({
     value: part.value,
     kind: heading ? "header" : part.wrap ? "wrap" : "text",
-    border: "one",
+    border,
     mark: heading ? "plain" : mark(field),
   });
   const number = (
@@ -94,7 +114,7 @@ function sideCells(
   ): XlsxCell => ({
     value,
     kind: value === null ? "text" : "number",
-    border: "one",
+    border,
     mark: field === null ? "plain" : mark(field),
   });
   return [
@@ -104,7 +124,7 @@ function sideCells(
     {
       value: row.unit,
       kind: "text",
-      border: "one",
+      border,
       mark: mark("unit"),
     },
     number(row.unitPrice, null),
@@ -164,9 +184,21 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
   diffs.forEach((diff) => {
     rows.push([
       // 左（新しい回）だけ色を付ける
-      ...sideCells(diff.left, input.layout, diff.changed, diff.onlyLeft),
+      ...sideCells(
+        diff.left,
+        input.layout,
+        diff.changed,
+        diff.onlyLeft,
+        rowBorder(input.left, diff.index, input.layout),
+      ),
       gapCell(),
-      ...sideCells(diff.right, input.layout, null, false),
+      ...sideCells(
+        diff.right,
+        input.layout,
+        null,
+        false,
+        rowBorder(input.right, diff.index, input.layout),
+      ),
     ]);
   });
   return {
