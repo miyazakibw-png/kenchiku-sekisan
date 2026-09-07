@@ -33,6 +33,20 @@
   text-align: right;
 }
 
+/** 操作欄（＋－）は番号欄にはみ出さないように小さくする */
+.furniture-page .furniture-table td.ops-col {
+  text-align: center;
+  overflow: hidden;
+}
+
+.furniture-page .furniture-table td.ops-col button {
+  width: 20px;
+  padding: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 /** 右側の明細欄。左の入力欄から自動で作る（手で直した欄は色を変える） */
 .furniture-page .furniture-table td.detail {
   background: #f3f7fb;
@@ -127,18 +141,19 @@
   table-layout: fixed;
 }
 
+/** 見出しの中身（th 自体を position 指定すると Chrome で行の高さが崩れるため、この箱を基準にする） */
 .furniture-page .furniture-table .cellbox {
   position: relative;
   display: block;
 }
 
-/** 見出しの右端をドラッグして列幅を変える */
+/** 見出しの右端をドラッグして列幅を変える（当たり判定は th 側で右端 8px を見ている） */
 .furniture-page .furniture-table .resizer {
   position: absolute;
-  top: -2px;
+  top: 0;
+  bottom: 0;
   right: -4px;
-  width: 9px;
-  height: 18px;
+  width: 8px;
   cursor: col-resize;
   user-select: none;
 }

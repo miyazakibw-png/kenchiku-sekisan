@@ -126,11 +126,12 @@ export function copyMiscSheetData(data: MiscSheetData): MiscSheetData {
   };
 }
 
-/** 明細（列）が空か（何も入れていない列は集計しない） */
+/** 明細（列）が空か（何も入れていない列は集計しない。部位IDだけでも入っていれば拾う） */
 export function isEmptyColumn(column: MiscColumn): boolean {
   return (
     column.name.trim() === "" &&
     column.partName.trim() === "" &&
+    column.partNumber === null &&
     column.detailNumber === null
   );
 }

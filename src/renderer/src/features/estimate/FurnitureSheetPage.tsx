@@ -128,6 +128,8 @@ const COLUMN_HEADS: {
 
 /** 列幅は文字が見えなくなるほど細くできる */
 const MIN_WIDTH = 8;
+/** 列幅を変えるつまみの幅（見出しの右端からの距離） */
+const RESIZE_GRIP = 8;
 const OPS_WIDTH = 46;
 const NO_WIDTH = 34;
 const INPUT_DEFAULT = 80;
@@ -149,6 +151,22 @@ function readWidths(key: string): Record<string, number> {
     return result;
   } catch {
     return {};
+  }
+}
+
+/** 非表示にした列（次に開いたときも同じにする） */
+const HIDDEN_KEY = "furniture-hidden";
+
+function readHidden(): string[] {
+  const saved = window.localStorage.getItem(HIDDEN_KEY);
+  if (saved === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
   }
 }
 
@@ -257,7 +275,7 @@ export default function FurnitureSheetPage({
   const [settings, setSettings] = useState<FurnitureSettings>(
     furnitureSettings(),
   );
-  const [hidden, setHidden] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>(readHidden);
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState(0);
@@ -341,6 +359,9 @@ export default function FurnitureSheetPage({
   useEffect(() => {
     window.localStorage.setItem(widthKey, JSON.stringify(widths));
   }, [widthKey, widths]);
+  useEffect(() => {
+    window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
+  }, [hidden]);
 
   /** 右端をドラッグして列幅を変える */
   const startResize = useCallback(
@@ -364,6 +385,17 @@ export default function FurnitureSheetPage({
     [],
   );
 
+  /** 見出しの右端近く（つまみ）を押したときだけ列幅の変更を始める */
+  const resizeAtEdge = useCallback(
+    (id: string, defaultWidth: number, event: React.MouseEvent): void => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (rect.right - event.clientX <= RESIZE_GRIP) {
+        startResize(id, defaultWidth, event);
+      }
+    },
+    [startResize],
+  );
+
   const widthOf = (id: string, defaultWidth: number): number =>
     widths[id] ?? defaultWidth;
 
@@ -378,7 +410,7 @@ export default function FurnitureSheetPage({
     () =>
       options.subjects.map((subject) => ({
         value: String(subject.id),
-        label: `${subject.id} ${subject.name}`,
+        label: subject.name,
       })),
     [options.subjects],
   );
@@ -386,7 +418,7 @@ export default function FurnitureSheetPage({
     () =>
       options.pickupParts.map((part) => ({
         value: String(part.id),
-        label: `${part.id} ${part.name}`,
+        label: `${part.name}${part.note ? `　${part.note}` : ""}`,
       })),
     [options.pickupParts],
   );
@@ -918,28 +950,28 @@ export default function FurnitureSheetPage({
                   key={column.key}
                   rowSpan={headRowCount}
                   className={column.forDetail ? "no-print" : ""}
+                  onMouseDown={(event) =>
+                    resizeAtEdge(column.key, INPUT_DEFAULT, event)
+                  }
                 >
                   <span className="cellbox">
                     {column.label}
-                    <span
-                      className="resizer"
-                      onMouseDown={(event) =>
-                        startResize(column.key, INPUT_DEFAULT, event)
-                      }
-                    />
+                    <span className="resizer" />
                   </span>
                 </th>
               ))}
               {detailCells.map((cell) => (
-                <th key={cell.id} rowSpan={headRowCount} className="side">
+                <th
+                  key={cell.id}
+                  rowSpan={headRowCount}
+                  className="side"
+                  onMouseDown={(event) =>
+                    resizeAtEdge(cell.id, DETAIL_DEFAULT, event)
+                  }
+                >
                   <span className="cellbox">
                     {cell.label}
-                    <span
-                      className="resizer"
-                      onMouseDown={(event) =>
-                        startResize(cell.id, DETAIL_DEFAULT, event)
-                      }
-                    />
+                    <span className="resizer" />
                   </span>
                 </th>
               ))}
@@ -949,15 +981,13 @@ export default function FurnitureSheetPage({
                   key={column.id}
                   className={pickedColumn === column.id ? "vcol on" : "vcol"}
                   onClick={() => setPickedColumn(column.id)}
+                  onMouseDown={(event) =>
+                    resizeAtEdge(column.id, COLUMN_DEFAULT, event)
+                  }
                 >
                   <span className="cellbox">
                     {headCell(column, COLUMN_HEADS[0])}
-                    <span
-                      className="resizer"
-                      onMouseDown={(event) =>
-                        startResize(column.id, COLUMN_DEFAULT, event)
-                      }
-                    />
+                    <span className="resizer" />
                   </span>
                 </th>
               ))}
@@ -982,7 +1012,8 @@ export default function FurnitureSheetPage({
               <th className="vlabel">合計</th>
               {columns.map((column) => (
                   <th key={column.id} className="vcol num">
-                    {isEmptyFurnitureColumn(column)
+                    {isEmptyFurnitureColumn(column) &&
+                    !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
                       ? ""
                       : furnitureColumnTotal(rows, column.id).toFixed(2)}
                     <button

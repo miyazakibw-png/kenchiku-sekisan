@@ -108,6 +108,7 @@ describe("部位別雑・金物入力表", () => {
     });
     const empty = miscColumn();
     expect(isEmptyColumn(empty)).toBe(true);
+    expect(isEmptyColumn(miscColumn({ partNumber: 111 }))).toBe(false);
     const rows = [
       miscRow({
         estimateRowId: 1,
