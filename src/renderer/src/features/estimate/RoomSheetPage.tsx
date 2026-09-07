@@ -19,6 +19,7 @@ import {
   EMPTY_TRACE,
   parseTrace,
   parseUnderlay,
+  traceFromUnderlay,
   type RoomTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
@@ -1499,7 +1500,10 @@ export default function RoomSheetPage({
             type="button"
             className={showTrace ? "on" : ""}
             title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け、なぞって部屋形状にします"
-            onClick={() => setShowTrace(true)}
+            onClick={() => {
+              setTrace(traceFromUnderlay(trace, underlay));
+              setShowTrace(true);
+            }}
           >
             🖼 図面をなぞる
           </button>

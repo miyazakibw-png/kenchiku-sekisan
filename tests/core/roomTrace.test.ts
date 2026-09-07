@@ -9,6 +9,9 @@ import {
   parseTrace,
   parseUnderlay,
   parseTracedShapes,
+  rectFromCorners,
+  traceFromUnderlay,
+  EMPTY_TRACE,
   scaleUnderlay,
   EMPTY_UNDERLAY,
 } from "../../src/core/room/trace";
@@ -187,5 +190,73 @@ describe("parseTracedShapes（なぞり済みの形）", () => {
     expect(parseTracedShapes(JSON.stringify({ image: "" }))).toEqual([]);
     expect(parseTracedShapes("")).toEqual([]);
     expect(parseTracedShapes("{bad")).toEqual([]);
+  });
+});
+
+describe("rectFromCorners（□なぞり：対角の2点から四角）", () => {
+  it("どちらの向きに2点を取っても、左上から時計回りの4点になる", () => {
+    const expected = [
+      { x: 10, y: 20 },
+      { x: 50, y: 20 },
+      { x: 50, y: 60 },
+      { x: 10, y: 60 },
+    ];
+    expect(rectFromCorners({ x: 10, y: 20 }, { x: 50, y: 60 })).toEqual(expected);
+    expect(rectFromCorners({ x: 50, y: 60 }, { x: 10, y: 20 })).toEqual(expected);
+    expect(rectFromCorners({ x: 50, y: 20 }, { x: 10, y: 60 })).toEqual(expected);
+  });
+
+  it("同じ横位置・縦位置なら四角にならないので null", () => {
+    expect(rectFromCorners({ x: 10, y: 20 }, { x: 10, y: 60 })).toBeNull();
+    expect(rectFromCorners({ x: 10, y: 20 }, { x: 50, y: 20 })).toBeNull();
+  });
+
+  it("四角の4点は部屋形状（E/S/W/N）にもピットの形にもそのまま使える", () => {
+    const rect = rectFromCorners({ x: 0, y: 0 }, { x: 400, y: 300 });
+    expect(rect).not.toBeNull();
+    const meters = toMeters(rect ?? [], 0.01);
+    expect(traceArea(meters)).toBeCloseTo(12);
+    expect(pointsToShape(meters).edges.map((edge) => edge.direction)).toEqual([
+      "E",
+      "S",
+      "W",
+      "N",
+    ]);
+  });
+});
+
+describe("traceFromUnderlay（図形欄に貼った図面をなぞり画面でそのまま使う）", () => {
+  const underlay = {
+    image: "data:image/png;base64,AAA",
+    metersPerPixel: 0.01,
+    x: 1,
+    y: 2,
+    opacity: 0.5,
+  };
+
+  it("なぞり用の図面が無ければ下敷きの図面を使い、縮尺合わせ済みならその縮尺も引き継ぐ", () => {
+    const got = traceFromUnderlay(EMPTY_TRACE, { ...underlay, scaled: true });
+    expect(got.image).toBe(underlay.image);
+    expect(got.metersPerPixel).toBe(0.01);
+    expect(got.points).toEqual([]);
+  });
+
+  it("貼っただけ（縮尺合わせ前）の下敷きは図面だけ引き継ぎ、縮尺は未設定にする", () => {
+    const got = traceFromUnderlay(EMPTY_TRACE, underlay);
+    expect(got.image).toBe(underlay.image);
+    expect(got.metersPerPixel).toBe(0);
+  });
+
+  it("なぞり用の図面がすでにあればそのまま。下敷きも無ければ何もしない", () => {
+    const own = { ...EMPTY_TRACE, image: "data:mine", metersPerPixel: 0.02 };
+    expect(traceFromUnderlay(own, { ...underlay, scaled: true })).toBe(own);
+    expect(traceFromUnderlay(EMPTY_TRACE, EMPTY_UNDERLAY)).toBe(EMPTY_TRACE);
+  });
+
+  it("縮尺合わせ（scaleUnderlay）をすると済みの印が付き、保存→読込でも残る", () => {
+    const scaled = scaleUnderlay(underlay, { x: 0, y: 0 }, { x: 1, y: 0 }, 2);
+    expect(scaled?.scaled).toBe(true);
+    expect(parseUnderlay(JSON.stringify({ underlay: scaled })).scaled).toBe(true);
+    expect(parseUnderlay(JSON.stringify({ underlay })).scaled).toBeUndefined();
   });
 });

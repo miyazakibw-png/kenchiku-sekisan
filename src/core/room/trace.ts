@@ -106,6 +106,8 @@ export interface TraceUnderlay {
   y: number;
   /** 図面の濃さ（0.05〜1） */
   opacity: number;
+  /** 縮尺合わせを済ませたか（貼っただけの仮の縮尺と区別する） */
+  scaled?: boolean;
 }
 
 export const EMPTY_UNDERLAY: TraceUnderlay = {
@@ -131,6 +133,7 @@ export function parseUnderlay(json: string): TraceUnderlay {
       x: number(raw.x, 0),
       y: number(raw.y, 0),
       opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
+      ...(raw.scaled === true ? { scaled: true } : {}),
     };
   } catch {
     return { ...EMPTY_UNDERLAY };
@@ -155,6 +158,7 @@ export function scaleUnderlay(
     metersPerPixel: underlay.metersPerPixel * factor,
     x: from.x + (underlay.x - from.x) * factor,
     y: from.y + (underlay.y - from.y) * factor,
+    scaled: true,
   };
 }
 
@@ -190,6 +194,43 @@ export function snapToAxis(previous: Point, point: Point, ratio = 0.25): Point {
   if (along <= across * ratio) return { x: point.x, y: previous.y };
   if (across <= along * ratio) return { x: previous.x, y: point.y };
   return point;
+}
+
+/**
+ * なぞり画面を開くときの図面。なぞり用の図面がまだ無く、図形欄に下敷きの図面が貼ってあれば
+ * それ（縮尺合わせが済んでいればその縮尺も）をそのまま使う。貼り直しは不要になる。
+ */
+export function traceFromUnderlay(
+  trace: RoomTrace,
+  underlay: TraceUnderlay,
+): RoomTrace {
+  if (trace.image !== "" || underlay.image === "") return trace;
+  return {
+    ...EMPTY_TRACE,
+    image: underlay.image,
+    metersPerPixel:
+      underlay.scaled === true && underlay.metersPerPixel > 0
+        ? underlay.metersPerPixel
+        : 0,
+  };
+}
+
+/**
+ * 向かい合う2つの角（1点目と3点目）から四角の4点を作る（□なぞり）。
+ * 左上から時計回り（右上→右下→左下）の順で返す。2点が同じ横位置・縦位置なら null（四角にならない）。
+ */
+export function rectFromCorners(first: Point, third: Point): Point[] | null {
+  const left = Math.min(first.x, third.x);
+  const right = Math.max(first.x, third.x);
+  const top = Math.min(first.y, third.y);
+  const bottom = Math.max(first.y, third.y);
+  if (right - left === 0 || bottom - top === 0) return null;
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
 }
 
 /**

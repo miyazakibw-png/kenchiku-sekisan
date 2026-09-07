@@ -6,6 +6,7 @@ import {
   longestEdgePixels,
   metersPerPixel,
   pointsToShape,
+  rectFromCorners,
   snapToAxis,
   toMeters,
   traceArea,
@@ -29,6 +30,8 @@ interface Props {
   done?: { label: string; points: Point[] }[];
   /** このなぞりが何になるか（例：「新しいピット P2 を作る」）。見出しに強調して出す */
   subject?: string;
+  /** 開いたときに「□なぞり（対角の2点）」を入れておく（ピットのように四角が基本のもの） */
+  rectFirst?: boolean;
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -58,6 +61,7 @@ export default function RoomTracePanel({
   targetName = "部屋",
   done = [],
   subject,
+  rectFirst = false,
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
   const [mode, setMode] = useState<"scale" | "trace">(
@@ -69,13 +73,17 @@ export default function RoomTracePanel({
   );
   const [points, setPoints] = useState<Point[]>(trace.points);
   const [snap, setSnap] = useState(true);
+  /** □なぞり：向かい合う角（1点目と3点目）の2クリックで四角にする */
+  const [rectMode, setRectMode] = useState(rectFirst);
   const [zoom, setZoom] = useState(1);
   const [pageText, setPageText] = useState("1");
   const [edgeText, setEdgeText] = useState("3.640");
   const [warn, setWarn] = useState(false);
   const [message, setMessage] = useState(
     trace.image !== "" && trace.metersPerPixel > 0
-      ? `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」（縮尺は前のものを使います）`
+      ? rectFirst
+        ? `□なぞり：${targetName}の角をクリックし、次に向かい合う角（3点目）をクリックすると四角になります（縮尺は前のものを使います）`
+        : `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」（縮尺は前のものを使います）`
       : "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
   );
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -216,6 +224,23 @@ export default function RoomTracePanel({
       );
       return;
     }
+    if (rectMode) {
+      if (points.length !== 1) {
+        setPoints([point]);
+        setMessage("向かい合う角（3点目）をクリックすると四角になります");
+        return;
+      }
+      const rect = rectFromCorners(points[0], point);
+      if (rect === null) {
+        setMessage("同じ横位置・縦位置では四角になりません。斜め向かいの角をクリックしてください");
+        return;
+      }
+      setPoints(rect);
+      setMessage(
+        "四角にしました。「✓ この形にする」で確定（もう一度クリックすると描き直し）",
+      );
+      return;
+    }
     const previous = points[points.length - 1];
     const placed = snap && previous ? snapToAxis(previous, point) : point;
     setPoints([...points, placed]);
@@ -241,7 +266,9 @@ export default function RoomTracePanel({
     });
     setMode("trace");
     setMessage(
-      `${targetName}の角を順にクリックしてなぞってください（直角に合わせます）。最後に「この形にする」`,
+      rectMode
+        ? `□なぞり：${targetName}の角をクリックし、次に向かい合う角（3点目）をクリックすると四角になります`
+        : `${targetName}の角を順にクリックしてなぞってください（直角に合わせます）。最後に「この形にする」`,
     );
   };
 
@@ -308,7 +335,9 @@ export default function RoomTracePanel({
             setMessage(
               perPixel === 0
                 ? `縮尺がまだです。${targetName}の角をなぞったあと、下の「一番長い辺の実寸」に長さ（m）を入れて「✓ この形にする」を押してください`
-                : `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」`,
+                : rectMode
+                  ? `□なぞり：${targetName}の角をクリックし、次に向かい合う角（3点目）をクリックすると四角になります`
+                  : `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」`,
             );
           }}
         >
@@ -400,17 +429,40 @@ export default function RoomTracePanel({
           </>
         ) : (
           <>
-            <label className="snap">
+            <label
+              className="snap"
+              title="向かい合う角（1点目と3点目）を2回クリックするだけで四角にします（ピットのような四角のもの向け）"
+            >
               <input
                 type="checkbox"
-                checked={snap}
-                onChange={(event) => setSnap(event.target.checked)}
+                checked={rectMode}
+                onChange={(event) => {
+                  setRectMode(event.target.checked);
+                  if (event.target.checked && points.length > 1) keep([]);
+                  setMessage(
+                    event.target.checked
+                      ? "□なぞり：四角の角をクリックし、次に向かい合う角（3点目）をクリックしてください"
+                      : `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」`,
+                  );
+                }}
               />
-              直角に合わせる
+              □なぞり（対角の2点）
             </label>
+            {rectMode ? null : (
+              <label className="snap">
+                <input
+                  type="checkbox"
+                  checked={snap}
+                  onChange={(event) => setSnap(event.target.checked)}
+                />
+                直角に合わせる
+              </label>
+            )}
             <button
               type="button"
-              onClick={() => keep(points.slice(0, -1))}
+              onClick={() =>
+                keep(rectMode && points.length === 4 ? [points[0]] : points.slice(0, -1))
+              }
               disabled={points.length === 0}
             >
               ↶ 1点戻す

@@ -71,6 +71,7 @@ import {
   parseUnderlay,
   type RoomTrace,
   type TracedShape,
+  traceFromUnderlay,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
@@ -2124,7 +2125,10 @@ export default function PitSheetPage({
               type="button"
               className={showTrace ? "on" : ""}
               title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け（PDF・画像ファイルも可）、なぞってピットの形にします。「選」を1つだけ付けているとそのピットの形を直し、付けていないときは新しいピットを足します"
-              onClick={() => setShowTrace(true)}
+              onClick={() => {
+                setTrace(traceFromUnderlay(trace, underlay));
+                setShowTrace(true);
+              }}
             >
               🖼 図面をなぞる（
               {tracePick ? `${tracePick.symbol}を直す` : "新しいピット"}）
@@ -2407,6 +2411,7 @@ export default function PitSheetPage({
             setTrace(next);
           }}
           targetName="ピット"
+          rectFirst
           subject={
             tracePick
               ? `${tracePick.symbol} の形を直す（「選」を外すと新しいピットになります）`

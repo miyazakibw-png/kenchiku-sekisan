@@ -132,6 +132,7 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
         x: 0,
         y: 0,
         opacity: 0.75,
+        scaled: false,
       });
       setScalePoints([]);
       setMode("scale");
