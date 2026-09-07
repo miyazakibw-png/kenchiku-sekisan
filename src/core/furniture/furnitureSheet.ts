@@ -235,6 +235,29 @@ export function copyFurnitureRows(rows: FurnitureRow[]): FurnitureRow[] {
   }));
 }
 
+export type FurniturePasteMode = "over" | "insert" | "append";
+
+/**
+ * コピーした行を貼り付ける（行のidは付け直す）。
+ * over：at の行から順に上書き（足りない分は末尾へ足す）
+ * insert：at の行の上へ挿入
+ * append：最終行の下へ追加
+ */
+export function pasteFurnitureRows(
+  rows: FurnitureRow[],
+  at: number,
+  copied: FurnitureRow[],
+  mode: FurniturePasteMode,
+): FurnitureRow[] {
+  const pasted = copyFurnitureRows(copied);
+  if (pasted.length === 0) return rows;
+  const next = [...rows];
+  if (mode === "append") return [...next, ...pasted];
+  const start = Math.max(0, Math.min(at, next.length));
+  next.splice(start, mode === "over" ? pasted.length : 0, ...pasted);
+  return next;
+}
+
 /**
  * タテ方向の明細ごと写す（列のidも付け直し、数量の結び付きを写し先へ移す）。
  */
@@ -455,6 +478,21 @@ export function buildDetail(
     }
   });
   return result;
+}
+
+/**
+ * 手で直した明細欄を自動作成に戻す（keys を省くと行の全部の欄）。
+ * 戻した欄は次の applyFurnitureDetails で入力欄と記号表から作り直される。
+ */
+export function revertFurnitureDetail(
+  row: FurnitureRow,
+  keys?: string[],
+): FurnitureRow {
+  const edited =
+    keys === undefined
+      ? []
+      : row.detail.edited.filter((key) => !keys.includes(key));
+  return { ...row, detail: { ...row.detail, edited } };
 }
 
 /** 入力欄から明細欄を作り直す */

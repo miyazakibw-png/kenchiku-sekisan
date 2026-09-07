@@ -8,7 +8,9 @@ import {
   furnitureColumnTotal,
   furnitureRow,
   furnitureSettings,
+  pasteFurnitureRows,
   resolveFurnitureRows,
+  revertFurnitureDetail,
   rowQuantity,
   symbolText,
 } from "../../src/core/furniture/furnitureSheet";
@@ -110,6 +112,25 @@ describe("明細欄の自動作成", () => {
     };
     const applied = applyFurnitureDetails(rows, settings);
     expect(applied[1].detail.name).toBe("下足入（特注）");
+    expect(applied[1].detail.partName).toBe("Aﾀｲﾌﾟ(2F)玄関");
+  });
+
+  it("手で直した欄は1欄だけ・行ごとに自動作成（記号からの変換）に戻せる", () => {
+    const rows = sample();
+    rows[1].detail = {
+      ...rows[1].detail,
+      name: "下足入（特注）",
+      partName: "玄関ホール",
+      edited: ["name", "partName"],
+    };
+    rows[1] = revertFurnitureDetail(rows[1], ["name"]);
+    expect(rows[1].detail.edited).toEqual(["partName"]);
+    let applied = applyFurnitureDetails(rows, settings);
+    expect(applied[1].detail.name).toBe("下足入");
+    expect(applied[1].detail.partName).toBe("玄関ホール");
+    rows[1] = revertFurnitureDetail(rows[1]);
+    expect(rows[1].detail.edited).toEqual([]);
+    applied = applyFurnitureDetails(rows, settings);
     expect(applied[1].detail.partName).toBe("Aﾀｲﾌﾟ(2F)玄関");
   });
 });
@@ -233,5 +254,76 @@ describe("タテ方向の明細（列）", () => {
     expect(vertical[1].quantity).toBe(6);
     expect(vertical[0].name).toBe("カウンター取付");
     expect(vertical[0].sourceKind).toBe("furniture");
+  });
+});
+
+describe("家具計算書の行コピー・貼り付け", () => {
+  const copied = () => {
+    const rows = sample();
+    return [
+      {
+        ...rows[1],
+        detail: { ...rows[1].detail, name: "手直し", edited: ["name"] },
+        values: { c1: "2*2" },
+      },
+      rows[2],
+    ];
+  };
+
+  it("上書貼付：カーソルの行から順に置き換え、足りない分は末尾へ足す", () => {
+    const rows = sample();
+    const over = pasteFurnitureRows(rows, 2, copied(), "over");
+    expect(over).toHaveLength(4);
+    expect(over.slice(0, 2).map((row) => row.id)).toEqual(["r1", "r2"]);
+    expect(over[2].nameSymbol).toBe("G");
+    expect(over[3].nameSymbol).toBe("IS");
+    const head = pasteFurnitureRows(rows, 0, copied(), "over");
+    expect(head).toHaveLength(3);
+    expect(head.map((row) => row.nameSymbol)).toEqual(["G", "IS", "IS"]);
+    expect(head[2].id).toBe("r3");
+  });
+
+  it("挿入貼付：カーソルの行の上へ入る", () => {
+    const rows = sample();
+    const inserted = pasteFurnitureRows(rows, 1, copied(), "insert");
+    expect(inserted).toHaveLength(5);
+    expect(inserted[0].id).toBe("r1");
+    expect(inserted[1].nameSymbol).toBe("G");
+    expect(inserted[2].nameSymbol).toBe("IS");
+    expect(inserted[3].id).toBe("r2");
+    expect(inserted[4].id).toBe("r3");
+  });
+
+  it("追加貼付：カーソル位置に関係なく最終行の下へ", () => {
+    const rows = sample();
+    const appended = pasteFurnitureRows(rows, 0, copied(), "append");
+    expect(appended.map((row) => row.id).slice(0, 3)).toEqual([
+      "r1",
+      "r2",
+      "r3",
+    ]);
+    expect(appended[3].nameSymbol).toBe("G");
+    expect(appended[4].nameSymbol).toBe("IS");
+  });
+
+  it("貼った行は別のidになり、手直しの明細とタテの数量も写す（元とは別々に直せる）", () => {
+    const rows = sample();
+    const source = copied();
+    const appended = pasteFurnitureRows(rows, 0, source, "append");
+    const ids = new Set(appended.map((row) => row.id));
+    expect(ids.size).toBe(appended.length);
+    expect(appended[3].id).not.toBe("r2");
+    expect(appended[3].detail.name).toBe("手直し");
+    expect(appended[3].detail.edited).toEqual(["name"]);
+    expect(appended[3].values).toEqual({ c1: "2*2" });
+    expect(appended[3].detail.edited).not.toBe(source[0].detail.edited);
+    expect(appended[3].values).not.toBe(source[0].values);
+    const twice = pasteFurnitureRows(appended, 0, source, "append");
+    expect(new Set(twice.map((row) => row.id)).size).toBe(twice.length);
+  });
+
+  it("何もコピーしていなければそのまま", () => {
+    const rows = sample();
+    expect(pasteFurnitureRows(rows, 1, [], "insert")).toBe(rows);
   });
 });

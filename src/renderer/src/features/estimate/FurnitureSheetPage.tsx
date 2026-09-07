@@ -23,9 +23,12 @@ import {
   furnitureRow,
   furnitureSettings,
   isEmptyFurnitureColumn,
+  pasteFurnitureRows,
   resolveFurnitureRows,
+  revertFurnitureDetail,
   rowQuantity,
   type FurnitureColumn,
+  type FurniturePasteMode,
   type FurnitureDetail,
   type FurnitureRow,
   type FurnitureSettings,
@@ -341,6 +344,10 @@ export default function FurnitureSheetPage({
   const callDrag = useDragWindow();
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState(0);
+  /** 複数行コピーの範囲の終わり（Shift+クリックで選んだ行） */
+  const [pickedEnd, setPickedEnd] = useState(0);
+  /** 行コピーで控えた行（この計算書の中だけ） */
+  const [clipboard, setClipboard] = useState<FurnitureRow[]>([]);
   const [pickedColumn, setPickedColumn] = useState<string | null>(null);
   /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
@@ -612,16 +619,40 @@ export default function FurnitureSheetPage({
     );
   };
 
+  /** 手で直した明細欄（赤字）を自動作成に戻す。key を省くと行の全部の欄 */
+  const revertDetail = (index: number, key?: string): void => {
+    setRows(
+      rows.map((row, at) =>
+        at === index
+          ? revertFurnitureDetail(row, key === undefined ? undefined : [key])
+          : row,
+      ),
+    );
+  };
+
+  const pickRow = (index: number, shift: boolean): void => {
+    if (shift) {
+      setPickedEnd(index);
+      return;
+    }
+    setPicked(index);
+    setPickedEnd(index);
+  };
+
+  const selectionStart = Math.min(picked, pickedEnd);
+  const selectionEnd = Math.max(picked, pickedEnd);
+
   const addRow = (at: number): void => {
     const next = [...rows];
     next.splice(at, 0, furnitureRow());
     setRows(next);
-    setPicked(at);
+    pickRow(at, false);
   };
 
   const removeRow = (at: number): void => {
     if (rows.length <= 1) return;
     setRows(rows.filter((_row, index) => index !== at));
+    pickRow(Math.min(at, rows.length - 2), false);
   };
 
   const moveRow = (at: number, step: number): void => {
@@ -631,7 +662,57 @@ export default function FurnitureSheetPage({
     const moved = next.splice(at, 1)[0];
     next.splice(to, 0, moved);
     setRows(next);
-    setPicked(to);
+    pickRow(to, false);
+  };
+
+  /** 行コピー（Shift+クリックで選んだ範囲、無ければカーソルの1行。手で直した明細・タテの数量も一緒に） */
+  const copyRows = (): void => {
+    const copied = rows.slice(selectionStart, selectionEnd + 1);
+    if (copied.length === 0) return;
+    setClipboard(copied);
+    setMessage(
+      `⧉ ${copied.length} 行をコピーしました（貼り付けたい行にカーソルを置いて「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  };
+
+  /** 選んでいる行（Shift+クリックの範囲）の赤字の明細欄をまとめて自動作成に戻す */
+  const revertSelectedDetails = (): void => {
+    const count = rows
+      .slice(selectionStart, selectionEnd + 1)
+      .filter((row) => row.detail.edited.length > 0).length;
+    if (count === 0) {
+      setMessage("選んでいる行に手で直した明細欄（赤字）はありません");
+      return;
+    }
+    if (
+      !window.confirm(
+        `${count} 行の手で直した明細欄（赤字）をすべて自動作成（入力欄・記号からの変換）に戻します。よろしいですか？`,
+      )
+    )
+      return;
+    setRows(
+      rows.map((row, at) =>
+        at >= selectionStart && at <= selectionEnd
+          ? revertFurnitureDetail(row)
+          : row,
+      ),
+    );
+    setMessage(`${count} 行の明細欄を自動作成に戻しました`);
+  };
+
+  const pasteRows = (mode: FurniturePasteMode): void => {
+    if (clipboard.length === 0) return;
+    const at = mode === "append" ? rows.length : selectionStart;
+    setRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
+    setPicked(at);
+    setPickedEnd(at + clipboard.length - 1);
+    const where =
+      mode === "over"
+        ? "カーソルの行から上書き"
+        : mode === "insert"
+          ? "カーソルの行の上へ挿入"
+          : "最終行の下へ追加";
+    setMessage(`${clipboard.length} 行を${where}しました（保存で確定）`);
   };
 
   const editColumn = (id: string, patch: Partial<FurnitureColumn>): void =>
@@ -928,6 +1009,44 @@ export default function FurnitureSheetPage({
         </button>
         <button type="button" onClick={() => moveRow(picked, 1)}>
           ↓
+        </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックで選んだ範囲）をコピーします"
+          onClick={copyRows}
+        >
+          ⧉ 行コピー（複数可）
+        </button>
+        <button
+          type="button"
+          title="カーソルの行から、コピーした行で上書きします"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行の上へ、コピーした行を挿入します"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("insert")}
+        >
+          📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("append")}
+        >
+          📋 追加貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックの範囲）で手で直した明細欄（赤字）をすべて自動作成に戻します。1欄だけならその欄を右クリック"
+          onClick={revertSelectedDetails}
+        >
+          ↩ 明細を自動に戻す
         </button>
         <button
           type="button"
@@ -1366,8 +1485,26 @@ export default function FurnitureSheetPage({
               return (
                 <tr
                   key={row.id}
-                  className={quantity === null ? "title-row" : ""}
-                  onMouseDown={() => setPicked(index)}
+                  className={
+                    [
+                      quantity === null ? "title-row" : "",
+                      index >= selectionStart && index <= selectionEnd
+                        ? "selected"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  onMouseDown={(event) => {
+                    if (
+                      event.shiftKey &&
+                      event.target instanceof Element &&
+                      event.target.closest("input, select, textarea") === null
+                    ) {
+                      event.preventDefault();
+                    }
+                    pickRow(index, event.shiftKey);
+                  }}
                 >
                   <td className="ops-col">
                     <button type="button" onClick={() => addRow(index + 1)}>
@@ -1592,7 +1729,20 @@ export default function FurnitureSheetPage({
                         <input
                           lang="ja"
                           value={detailText(row.detail, cell.key)}
-                          title="ここを直しても左の入力欄には返しません"
+                          title={
+                            row.detail.edited.includes(String(cell.key))
+                              ? "手で直した欄です。右クリックで自動作成（入力欄・記号からの変換）に戻します"
+                              : "ここを直しても左の入力欄には返しません"
+                          }
+                          onContextMenu={(event) => {
+                            if (!row.detail.edited.includes(String(cell.key)))
+                              return;
+                            event.preventDefault();
+                            revertDetail(index, String(cell.key));
+                            setMessage(
+                              `${index + 1} 行目の「${cell.label}」を自動作成に戻しました（保存で確定）`,
+                            );
+                          }}
                           onChange={(event) => {
                             const text = event.target.value;
                             if (

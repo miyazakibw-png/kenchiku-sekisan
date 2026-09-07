@@ -60,6 +60,12 @@
   background: #fffbe6;
 }
 
+/** 行コピーで選んだ行（カーソルの行・Shift+クリックの範囲） */
+.furniture-page .furniture-table tbody tr.selected td.num,
+.furniture-page .furniture-table tbody tr.selected td.ops-col {
+  background: #cfe0ff;
+}
+
 /** 設定は呼び出し窓（画面の上に浮かべる別窓）。開いたまま表を入力でき、見出しのドラッグで動かせる */
 .furniture-page .furniture-settings {
   position: fixed;
