@@ -46,11 +46,37 @@
   background: #fffbe6;
 }
 
+/** 設定は呼び出し窓（画面の上に開く別窓）にして、入力欄をふさがない */
+.furniture-page .furniture-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 3000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 12px;
+}
+
 .furniture-page .furniture-settings {
-  border: 1px solid #999;
+  border: 1px solid #666;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   padding: 8px;
-  margin: 8px 0;
   background: #fafafa;
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+}
+
+.furniture-page .furniture-settings .settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.furniture-page .furniture-settings .settings-bar button {
+  margin-left: auto;
 }
 
 .furniture-page .furniture-settings table {
@@ -61,14 +87,106 @@
   padding: 2px 4px;
 }
 
+/** 記号表は左右2列に並べて、入力の行がたくさん見えるようにする */
+.furniture-page .furniture-settings .symbol-tables {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+.furniture-page .furniture-settings .symbol-table input {
+  font-size: 12px;
+  width: 110px;
+}
+
+.furniture-page .furniture-settings .symbol-table input.duplicated {
+  background: #ffe6e6;
+  color: #c0392b;
+}
+
+.furniture-page .furniture-settings .symbol-table td {
+  padding: 0 2px;
+}
+
 .furniture-page .furniture-columns label {
   margin-right: 10px;
   font-size: 12px;
 }
 
+.furniture-page .furniture-columns .detail-toggle {
+  font-weight: bold;
+}
+
+.furniture-page .furniture-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 190px);
+}
+
+.furniture-page .furniture-table {
+  table-layout: fixed;
+}
+
+.furniture-page .furniture-table .cellbox {
+  position: relative;
+  display: block;
+}
+
+/** 見出しの右端をドラッグして列幅を変える */
+.furniture-page .furniture-table .resizer {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 9px;
+  height: 18px;
+  cursor: col-resize;
+  user-select: none;
+}
+
+/** タテ方向の明細（列） */
+.furniture-page .furniture-table th.vcol {
+  background: #2e6da4;
+  padding: 0;
+}
+
+.furniture-page .furniture-table th.vcol.on {
+  background: #17456f;
+}
+
+.furniture-page .furniture-table th.vcol input {
+  color: #fff;
+}
+
+.furniture-page .furniture-table th.vcol input::placeholder {
+  color: #cfe0f0;
+}
+
+.furniture-page .furniture-table tr.vcol-total th {
+  background: #dceaf7;
+  color: #000;
+  text-align: right;
+}
+
+.furniture-page .furniture-table tr.vcol-total .drop {
+  float: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.furniture-page .furniture-table td.vcell {
+  background: #eef6ff;
+}
+
+.furniture-page .furniture-table td.vcell.error input {
+  background: #ffe6e6;
+}
+
 @media print {
   .furniture-page .toolbar,
+  .furniture-page .furniture-modal,
   .furniture-page .furniture-settings,
+  .furniture-page .hint,
   .furniture-page .furniture-columns,
   .furniture-page .ops-col,
   .furniture-page .no-print {

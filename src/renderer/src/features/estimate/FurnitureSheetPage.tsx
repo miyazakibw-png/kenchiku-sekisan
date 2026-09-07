@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  Detail,
   FurnitureSheet,
   MasterEntry,
   MasterOptions,
@@ -7,15 +8,20 @@ import type {
 } from "@shared/types";
 import {
   applyFurnitureDetails,
+  furnitureColumn,
+  furnitureColumnTotal,
   furnitureRow,
   furnitureSettings,
+  isEmptyFurnitureColumn,
   resolveFurnitureRows,
   rowQuantity,
+  type FurnitureColumn,
   type FurnitureDetail,
   type FurnitureRow,
   type FurnitureSettings,
   type FurnitureSymbol,
 } from "../../../../core/furniture/furnitureSheet";
+import { cellValue } from "../../../../core/misc/miscSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import "./EstimatePartsPage.css";
@@ -68,7 +74,7 @@ const INPUT_COLUMNS: { key: string; label: string; forDetail: boolean }[] = [
   { key: "remarksLower", label: "備考(下段)", forDetail: false },
 ];
 
-/** 右側の明細欄の列 */
+/** 右側の明細欄の列（数量は「明細:単位」の前に出す） */
 const DETAIL_COLUMNS: { key: keyof FurnitureDetail; label: string }[] = [
   { key: "subjectId", label: "科目" },
   { key: "partNumber", label: "部位ID" },
@@ -83,11 +89,84 @@ const DETAIL_COLUMNS: { key: keyof FurnitureDetail; label: string }[] = [
   { key: "remarksUpper", label: "備考(上段)" },
 ];
 
-function detailText(detail: FurnitureDetail, key: keyof FurnitureDetail): string {
+/** 明細側に並べる列（数量＋明細欄）。まとめて出す・消すができる */
+type DetailCell =
+  | { kind: "quantity"; id: string; label: string }
+  | { kind: "detail"; id: string; label: string; key: keyof FurnitureDetail };
+
+const DETAIL_CELLS: DetailCell[] = DETAIL_COLUMNS.flatMap((column) => {
+  const cell: DetailCell = {
+    kind: "detail",
+    id: `d:${String(column.key)}`,
+    label: `明細:${column.label}`,
+    key: column.key,
+  };
+  return column.key === "unit"
+    ? [{ kind: "quantity", id: "d:quantity", label: "明細:数量" }, cell]
+    : [cell];
+});
+
+/** タテ方向の明細（列）の見出し。上から順に1行ずつ出す */
+type HeadKind = "subject" | "pickupPart" | "detailNumber" | "unit" | "text";
+
+const COLUMN_HEADS: {
+  key: keyof FurnitureColumn;
+  label: string;
+  kind: HeadKind;
+}[] = [
+  { key: "subjectId", label: "科目", kind: "subject" },
+  { key: "partNumber", label: "部位ID", kind: "pickupPart" },
+  { key: "detailNumber", label: "名称ID", kind: "detailNumber" },
+  { key: "partName", label: "部位", kind: "text" },
+  { key: "name", label: "名称", kind: "text" },
+  { key: "descriptionUpper", label: "摘要(上段)", kind: "text" },
+  { key: "descriptionLower", label: "摘要(下段)", kind: "text" },
+  { key: "unit", label: "単位", kind: "unit" },
+  { key: "remarksUpper", label: "備考(上段)", kind: "text" },
+  { key: "remarksLower", label: "備考(下段)", kind: "text" },
+];
+
+/** 列幅は文字が見えなくなるほど細くできる */
+const MIN_WIDTH = 8;
+const OPS_WIDTH = 46;
+const NO_WIDTH = 34;
+const INPUT_DEFAULT = 80;
+const DETAIL_DEFAULT = 100;
+const COLUMN_DEFAULT = 90;
+
+function readWidths(key: string): Record<string, number> {
+  const saved = window.localStorage.getItem(key);
+  if (saved === null) return {};
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (parsed === null || typeof parsed !== "object") return {};
+    const result: Record<string, number> = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([id, value]) => {
+      if (typeof value === "number" && value >= MIN_WIDTH) result[id] = value;
+    });
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function detailText(
+  detail: FurnitureDetail,
+  key: keyof FurnitureDetail,
+): string {
   const value = detail[key];
   if (value === null) return "";
   if (typeof value === "number") return String(value);
   return typeof value === "string" ? value : "";
+}
+
+function columnText(
+  column: FurnitureColumn,
+  key: keyof FurnitureColumn,
+): string {
+  const value = column[key];
+  if (value === null) return "";
+  return typeof value === "string" ? value : String(value);
 }
 
 /** 記号と表示文字の対応表（＋部位・名称） */
@@ -101,8 +180,25 @@ function SymbolTable({
   onChange: (next: FurnitureSymbol[]) => void;
 }): JSX.Element {
   const rows = [...symbols, { symbol: "", text: "" }];
+  /** 同じ記号は使えない（この計算書は記号→文字で置き換えるため） */
+  const duplicated = new Set(
+    symbols
+      .map((item) => item.symbol.trim())
+      .filter(
+        (symbol, index, all) =>
+          symbol !== "" && all.indexOf(symbol) !== index,
+      ),
+  );
+  const change = (index: number, patch: Partial<FurnitureSymbol>): void => {
+    const next = [...symbols];
+    if (index === symbols.length) next.push({ symbol: "", text: "", ...patch });
+    else next[index] = { ...next[index], ...patch };
+    onChange(
+      next.filter((item) => item.symbol !== "" || item.text !== ""),
+    );
+  };
   return (
-    <div>
+    <div className="symbol-table">
       <b>{title}</b>
       <table>
         <tbody>
@@ -110,15 +206,18 @@ function SymbolTable({
             <tr key={`${title}${index}`}>
               <td>
                 <input
+                  className={
+                    duplicated.has(row.symbol.trim()) ? "duplicated" : ""
+                  }
+                  title={
+                    duplicated.has(row.symbol.trim())
+                      ? "同じ記号が2つ以上あります"
+                      : "記号（英数字）"
+                  }
                   value={row.symbol}
-                  onChange={(event) => {
-                    const next = [...symbols];
-                    if (index === symbols.length)
-                      next.push({ symbol: event.target.value, text: "" });
-                    else
-                      next[index] = { ...next[index], symbol: event.target.value };
-                    onChange(next.filter((item) => item.symbol !== "" || item.text !== ""));
-                  }}
+                  onChange={(event) =>
+                    change(index, { symbol: event.target.value })
+                  }
                 />
               </td>
               <td>→</td>
@@ -126,13 +225,9 @@ function SymbolTable({
                 <input
                   lang="ja"
                   value={row.text}
-                  onChange={(event) => {
-                    const next = [...symbols];
-                    if (index === symbols.length)
-                      next.push({ symbol: "", text: event.target.value });
-                    else next[index] = { ...next[index], text: event.target.value };
-                    onChange(next.filter((item) => item.symbol !== "" || item.text !== ""));
-                  }}
+                  onChange={(event) =>
+                    change(index, { text: event.target.value })
+                  }
                 />
               </td>
             </tr>
@@ -145,7 +240,8 @@ function SymbolTable({
 
 /**
  * 家具計算書（システム収納などの拾い）。
- * 左の入力欄から右の明細欄を自動で作り、右は手で直せる（直した欄は左へ返さない）。
+ * 左の入力欄から右の明細欄（ヨコ1行＝1明細）を自動で作り、右は手で直せる。
+ * さらにその右に、部位別雑・金物入力表と同じタテ方向の明細（列）を拾える。
  */
 export default function FurnitureSheetPage({
   project,
@@ -155,6 +251,7 @@ export default function FurnitureSheetPage({
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FurnitureSheet | null>(null);
   const [rows, setRows] = useState<FurnitureRow[]>([]);
+  const [columns, setColumns] = useState<FurnitureColumn[]>([]);
   const [settings, setSettings] = useState<FurnitureSettings>(
     furnitureSettings(),
   );
@@ -162,8 +259,17 @@ export default function FurnitureSheetPage({
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState(0);
+  const [pickedColumn, setPickedColumn] = useState<string | null>(null);
+  const widthKey = `furniture-widths:${project.id}`;
+  const [widths, setWidths] = useState<Record<string, number>>(() =>
+    readWidths(`furniture-widths:${project.id}`),
+  );
+  const widthRef = useRef(widths);
+  widthRef.current = widths;
 
-  const { markSaved } = useSaveOnLeave({ rows, settings }, () => save(true));
+  const { markSaved } = useSaveOnLeave({ rows, columns, settings }, () =>
+    save(true),
+  );
 
   const save = useCallback(
     async (quiet = false): Promise<void> => {
@@ -177,15 +283,16 @@ export default function FurnitureSheetPage({
         multiplier: sheet.multiplier,
         kind: sheet.kind,
         rowsJson: JSON.stringify(rows),
+        columnsJson: JSON.stringify(columns),
         settingsJson: JSON.stringify(settings),
         note: sheet.note,
       });
       setSheet(saved);
-      markSaved({ rows, settings });
+      markSaved({ rows, columns, settings });
       if (!quiet)
         setMessage("保存しました（建具表へ転記し、集計実行で集計書に入ります）");
     },
-    [markSaved, rows, settings, sheet],
+    [columns, markSaved, rows, settings, sheet],
   );
 
   useEffect(() => {
@@ -193,16 +300,61 @@ export default function FurnitureSheetPage({
       const loaded = await window.sekisan.getFurnitureSheet(sheetId);
       const loadedRows = parseJson<FurnitureRow[]>(loaded.rowsJson, []);
       const nextRows = loadedRows.length > 0 ? loadedRows : [furnitureRow()];
-      const nextSettings = {
-        ...furnitureSettings(),
-        ...parseJson<FurnitureSettings>(loaded.settingsJson, furnitureSettings()),
+      const nextColumns = parseJson<FurnitureColumn[]>(loaded.columnsJson, []);
+      const saved = parseJson<Partial<FurnitureSettings>>(
+        loaded.settingsJson,
+        {},
+      );
+      // 古い保存（記号表が無い・空）でも初めの並びが出るようにする
+      const base = furnitureSettings();
+      const nextSettings: FurnitureSettings = {
+        ...base,
+        ...saved,
+        partSymbols:
+          saved.partSymbols === undefined ? base.partSymbols : saved.partSymbols,
+        nameSymbols:
+          saved.nameSymbols === undefined ? base.nameSymbols : saved.nameSymbols,
       };
       setSheet(loaded);
       setRows(nextRows);
+      setColumns(nextColumns);
       setSettings(nextSettings);
-      markSaved({ rows: nextRows, settings: nextSettings });
+      markSaved({
+        rows: nextRows,
+        columns: nextColumns,
+        settings: nextSettings,
+      });
     })();
   }, [markSaved, sheetId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(widthKey, JSON.stringify(widths));
+  }, [widthKey, widths]);
+
+  /** 右端をドラッグして列幅を変える */
+  const startResize = useCallback(
+    (id: string, defaultWidth: number, event: React.MouseEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth = widthRef.current[id] ?? defaultWidth;
+      const move = (e: MouseEvent): void =>
+        setWidths({
+          ...widthRef.current,
+          [id]: Math.max(MIN_WIDTH, startWidth + e.clientX - startX),
+        });
+      const up = (): void => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    },
+    [],
+  );
+
+  const widthOf = (id: string, defaultWidth: number): number =>
+    widths[id] ?? defaultWidth;
 
   /** 右の明細欄は左の入力欄から作る（手で直した欄はそのまま残る） */
   const view = useMemo(
@@ -278,9 +430,131 @@ export default function FurnitureSheetPage({
     setPicked(to);
   };
 
+  const editColumn = (id: string, patch: Partial<FurnitureColumn>): void =>
+    setColumns(
+      columns.map((column) =>
+        column.id === id ? { ...column, ...patch } : column,
+      ),
+    );
+
+  /** タテ方向の明細（列）を足す */
+  const addColumn = (): void => {
+    const created = furnitureColumn();
+    setColumns([...columns, created]);
+    setPickedColumn(created.id);
+    setMessage("タテの明細を足しました");
+  };
+
+  const removeColumn = (id: string): void => {
+    setColumns(columns.filter((column) => column.id !== id));
+    if (pickedColumn === id) setPickedColumn(null);
+  };
+
+  const moveColumn = (step: number): void => {
+    const at = columns.findIndex((column) => column.id === pickedColumn);
+    const to = at + step;
+    if (at < 0 || to < 0 || to >= columns.length) return;
+    const next = [...columns];
+    const [moved] = next.splice(at, 1);
+    next.splice(to, 0, moved);
+    setColumns(next);
+  };
+
+  /** タテの明細のマス（行×列）に数量（計算式も可）を入れる */
+  const editCell = (rowId: string, columnId: string, text: string): void =>
+    setRows(
+      rows.map((row) =>
+        row.id === rowId
+          ? { ...row, values: { ...(row.values ?? {}), [columnId]: text } }
+          : row,
+      ),
+    );
+
+  /** 名称ID（明細番号）を入れたら、その明細をマスターから呼び出して列に入れる */
+  const applyDetailNumber = useCallback(
+    async (column: FurnitureColumn, text: string): Promise<void> => {
+      const value = text.trim();
+      if (value === "") {
+        setColumns((current) =>
+          current.map((each) =>
+            each.id === column.id ? { ...each, detailNumber: null } : each,
+          ),
+        );
+        return;
+      }
+      const number = Number.parseFloat(value);
+      if (Number.isNaN(number)) {
+        setMessage("名称ID（明細番号）は数字で入れてください");
+        return;
+      }
+      const targets =
+        column.subjectId === null
+          ? options.subjects.map((subject) => subject.id)
+          : [column.subjectId];
+      let found: Detail | undefined;
+      for (const subjectKey of targets) {
+        for (const scope of [project.id, null]) {
+          const list = await window.sekisan.listDetails(subjectKey, scope);
+          const hits = list.filter(
+            (item) =>
+              item.detailNumber !== null &&
+              Math.abs(item.detailNumber - number) < 0.005,
+          );
+          if (hits.length === 0) continue;
+          const part = column.partName.trim();
+          found =
+            (part === ""
+              ? undefined
+              : hits.find((item) => item.partName.trim() === part)) ?? hits[0];
+          break;
+        }
+        if (found) break;
+      }
+      const detail = found;
+      if (detail === undefined) {
+        setColumns((current) =>
+          current.map((each) =>
+            each.id === column.id ? { ...each, detailNumber: number } : each,
+          ),
+        );
+        setMessage(`名称ID ${value} の明細が見つかりません`);
+        return;
+      }
+      const keepPart = column.partNumber !== null || column.partName !== "";
+      setColumns((current) =>
+        current.map((each) =>
+          each.id === column.id
+            ? {
+                ...each,
+                sourceDetailId: detail.id,
+                subjectId: detail.subjectId,
+                detailNumber: detail.detailNumber,
+                materialCategory:
+                  detail.materialCategory || each.materialCategory,
+                partNumber: keepPart
+                  ? each.partNumber
+                  : (options.pickupParts.find(
+                      (part) => part.name === detail.partName,
+                    )?.id ?? null),
+                partName: keepPart ? each.partName : detail.partName,
+                name: detail.name,
+                descriptionUpper: detail.descriptionUpper,
+                descriptionLower: detail.descriptionLower,
+                unit: detail.unit || each.unit,
+                remarksUpper: detail.remarksUpper,
+                remarksLower: detail.remarksLower,
+              }
+            : each,
+        ),
+      );
+      setMessage(`${detail.name} を呼び出しました`);
+    },
+    [options.pickupParts, options.subjects, project.id],
+  );
+
   const visible = (key: string): boolean => !hidden.includes(key);
 
-  const toggleColumn = (key: string): void => {
+  const toggleColumnView = (key: string): void => {
     setHidden(
       hidden.includes(key)
         ? hidden.filter((item) => item !== key)
@@ -292,7 +566,116 @@ export default function FurnitureSheetPage({
     setSettings({ ...settings, ...patch });
   };
 
-  if (!sheet) return <div className="estimate-page furniture-page">読み込み中…</div>;
+  const inputColumns = INPUT_COLUMNS.filter((column) => visible(column.key));
+  const detailCells = visible("detail") ? DETAIL_CELLS : [];
+  const headRowCount = columns.length > 0 ? COLUMN_HEADS.length + 1 : 1;
+
+  const tableWidth =
+    OPS_WIDTH +
+    NO_WIDTH +
+    inputColumns.reduce(
+      (sum, column) => sum + widthOf(column.key, INPUT_DEFAULT),
+      0,
+    ) +
+    detailCells.reduce((sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT), 0) +
+    columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+
+  /** タテの明細（列）の1マス分の入力欄 */
+  const headCell = (
+    column: FurnitureColumn,
+    head: (typeof COLUMN_HEADS)[number],
+  ): JSX.Element => {
+    if (head.kind === "subject") {
+      return (
+        <PickInput
+          entries={subjectEntries}
+          halfWidth
+          value={column.subjectId === null ? "" : String(column.subjectId)}
+          title="科目"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) => {
+            const id = Number.parseInt(text.trim(), 10);
+            editColumn(column.id, { subjectId: Number.isNaN(id) ? null : id });
+          }}
+        />
+      );
+    }
+    if (head.kind === "pickupPart") {
+      return (
+        <PickInput
+          entries={pickupPartEntries}
+          halfWidth
+          value={column.partNumber === null ? "" : String(column.partNumber)}
+          title="部位ID"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) => {
+            const found = pickMaster(options.pickupParts, text);
+            editColumn(column.id, {
+              partNumber: found.id,
+              partName: found.id === null ? column.partName : found.name,
+            });
+          }}
+        />
+      );
+    }
+    if (head.kind === "detailNumber") {
+      return (
+        <input
+          value={column.detailNumber?.toFixed(2) ?? ""}
+          placeholder={head.label}
+          title="名称IDを入れるとマスターの明細を呼び出します"
+          onFocus={() => setPickedColumn(column.id)}
+          onBlur={(event) => {
+            if (
+              event.target.value.trim() ===
+              (column.detailNumber?.toFixed(2) ?? "")
+            )
+              return;
+            void applyDetailNumber(column, event.target.value);
+          }}
+          onChange={(event) => {
+            const number = Number.parseFloat(event.target.value);
+            editColumn(column.id, {
+              detailNumber: Number.isNaN(number) ? null : number,
+            });
+          }}
+        />
+      );
+    }
+    if (head.kind === "unit") {
+      return (
+        <PickInput
+          entries={unitEntries}
+          halfWidth
+          value={column.unit}
+          title="単位"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) =>
+            editColumn(column.id, {
+              unit: pickMaster(options.units, text).name,
+            })
+          }
+        />
+      );
+    }
+    return (
+      <input
+        lang="ja"
+        value={columnText(column, head.key)}
+        placeholder={head.label}
+        title={head.label}
+        onFocus={() => setPickedColumn(column.id)}
+        onChange={(event) =>
+          editColumn(column.id, {
+            [head.key]: event.target.value,
+          } as Partial<FurnitureColumn>)
+        }
+      />
+    );
+  };
+
+  if (!sheet)
+    return <div className="estimate-page furniture-page">読み込み中…</div>;
 
   return (
     <div className="estimate-page furniture-page">
@@ -321,7 +704,32 @@ export default function FurnitureSheetPage({
         <button type="button" onClick={() => moveRow(picked, 1)}>
           ↓
         </button>
-        <button type="button" onClick={() => setShowSettings(!showSettings)}>
+        <button
+          type="button"
+          title="右側にタテ方向の明細（部位別雑・金物入力表と同じ形）を足します"
+          onClick={addColumn}
+        >
+          ➕ タテ明細
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテの明細を左へ動かします"
+          onClick={() => moveColumn(-1)}
+        >
+          ← 明細
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテの明細を右へ動かします"
+          onClick={() => moveColumn(1)}
+        >
+          明細 →
+        </button>
+        <button
+          type="button"
+          className={showSettings ? "on" : ""}
+          onClick={() => setShowSettings(!showSettings)}
+        >
           ⚙ 設定
         </button>
         <button type="button" onClick={() => window.print()}>
@@ -340,370 +748,532 @@ export default function FurnitureSheetPage({
             <input
               type="checkbox"
               checked={visible(column.key)}
-              onChange={() => toggleColumn(column.key)}
+              onChange={() => toggleColumnView(column.key)}
             />
             {column.label}
           </label>
         ))}
+        <label className="detail-toggle">
+          <input
+            type="checkbox"
+            checked={visible("detail")}
+            onChange={() => toggleColumnView("detail")}
+          />
+          明細（数量〜備考(上段)）
+        </label>
+        <button
+          type="button"
+          className="width-reset"
+          title="変えた列幅をもとに戻します"
+          onClick={() => setWidths({})}
+        >
+          列幅を戻す
+        </button>
       </div>
 
       {showSettings && (
-        <div className="furniture-settings">
-          <table>
-            <tbody>
-              <tr>
-                <td>部位の前後付加文字</td>
-                <td>
-                  <input
-                    lang="ja"
-                    value={settings.partPrefix}
-                    onChange={(event) =>
-                      changeSettings({ partPrefix: event.target.value })
-                    }
-                  />
-                  ＋部位＋
-                  <input
-                    lang="ja"
-                    value={settings.partSuffix}
-                    onChange={(event) =>
-                      changeSettings({ partSuffix: event.target.value })
-                    }
-                  />
-                </td>
-                <td>+部位の前後付加文字</td>
-                <td>
-                  <input
-                    lang="ja"
-                    value={settings.addPrefix}
-                    onChange={(event) =>
-                      changeSettings({ addPrefix: event.target.value })
-                    }
-                  />
-                  ＋部位＋
-                  <input
-                    lang="ja"
-                    value={settings.addSuffix}
-                    onChange={(event) =>
-                      changeSettings({ addSuffix: event.target.value })
-                    }
-                  />
-                </td>
-              </tr>
-              <tr>
-                <td>W・H・Dの表示文字</td>
-                <td colSpan={3}>
-                  <input
-                    value={settings.widthLabel}
-                    onChange={(event) =>
-                      changeSettings({ widthLabel: event.target.value })
-                    }
-                  />
-                  <input
-                    value={settings.heightLabel}
-                    onChange={(event) =>
-                      changeSettings({ heightLabel: event.target.value })
-                    }
-                  />
-                  <input
-                    value={settings.depthLabel}
-                    onChange={(event) =>
-                      changeSettings({ depthLabel: event.target.value })
-                    }
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <SymbolTable
-            title="+部位の記号"
-            symbols={settings.partSymbols}
-            onChange={(partSymbols) => changeSettings({ partSymbols })}
-          />
-          <SymbolTable
-            title="名称の記号"
-            symbols={settings.nameSymbols}
-            onChange={(nameSymbols) => changeSettings({ nameSymbols })}
-          />
+        <div
+          className="furniture-modal"
+          onMouseDown={() => setShowSettings(false)}
+        >
+          <div
+            className="furniture-settings"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="settings-bar">
+              <b>家具計算書の設定</b>
+              <span>（この工事の家具計算書に覚えておきます）</span>
+              <button type="button" onClick={() => setShowSettings(false)}>
+                ✕ 閉じる
+              </button>
+            </div>
+            <table>
+              <tbody>
+                <tr>
+                  <td>部位の前後付加文字</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.partPrefix}
+                      onChange={(event) =>
+                        changeSettings({ partPrefix: event.target.value })
+                      }
+                    />
+                    ＋部位＋
+                    <input
+                      lang="ja"
+                      value={settings.partSuffix}
+                      onChange={(event) =>
+                        changeSettings({ partSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                  <td>+部位の前後付加文字</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.addPrefix}
+                      onChange={(event) =>
+                        changeSettings({ addPrefix: event.target.value })
+                      }
+                    />
+                    ＋部位＋
+                    <input
+                      lang="ja"
+                      value={settings.addSuffix}
+                      onChange={(event) =>
+                        changeSettings({ addSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                </tr>
+                <tr>
+                  <td>W・H・Dの表示文字</td>
+                  <td colSpan={3}>
+                    <input
+                      value={settings.widthLabel}
+                      onChange={(event) =>
+                        changeSettings({ widthLabel: event.target.value })
+                      }
+                    />
+                    <input
+                      value={settings.heightLabel}
+                      onChange={(event) =>
+                        changeSettings({ heightLabel: event.target.value })
+                      }
+                    />
+                    <input
+                      value={settings.depthLabel}
+                      onChange={(event) =>
+                        changeSettings({ depthLabel: event.target.value })
+                      }
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div className="symbol-tables">
+              <SymbolTable
+                title="+部位の記号"
+                symbols={settings.partSymbols}
+                onChange={(partSymbols) => changeSettings({ partSymbols })}
+              />
+              <SymbolTable
+                title="名称の記号"
+                symbols={settings.nameSymbols}
+                onChange={(nameSymbols) => changeSettings({ nameSymbols })}
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      <table className="furniture-table">
-        <thead>
-          <tr>
-            <th className="ops-col">操作</th>
-            <th>番号</th>
-            {INPUT_COLUMNS.filter((column) => visible(column.key)).map(
-              (column) => (
+      <div className="furniture-table-wrap">
+        <table className="furniture-table" style={{ width: tableWidth }}>
+          <colgroup>
+            <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            <col style={{ width: NO_WIDTH }} />
+            {inputColumns.map((column) => (
+              <col
+                key={column.key}
+                style={{ width: widthOf(column.key, INPUT_DEFAULT) }}
+              />
+            ))}
+            {detailCells.map((cell) => (
+              <col
+                key={cell.id}
+                style={{ width: widthOf(cell.id, DETAIL_DEFAULT) }}
+              />
+            ))}
+            {columns.map((column) => (
+              <col
+                key={column.id}
+                style={{ width: widthOf(column.id, COLUMN_DEFAULT) }}
+              />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="ops-col" rowSpan={headRowCount}>
+                操作
+              </th>
+              <th rowSpan={headRowCount}>番号</th>
+              {inputColumns.map((column) => (
                 <th
                   key={column.key}
+                  rowSpan={headRowCount}
                   className={column.forDetail ? "no-print" : ""}
                 >
-                  {column.label}
+                  <span className="cellbox">
+                    {column.label}
+                    <span
+                      className="resizer"
+                      onMouseDown={(event) =>
+                        startResize(column.key, INPUT_DEFAULT, event)
+                      }
+                    />
+                  </span>
                 </th>
-              ),
+              ))}
+              {detailCells.map((cell) => (
+                <th key={cell.id} rowSpan={headRowCount} className="side">
+                  <span className="cellbox">
+                    {cell.label}
+                    <span
+                      className="resizer"
+                      onMouseDown={(event) =>
+                        startResize(cell.id, DETAIL_DEFAULT, event)
+                      }
+                    />
+                  </span>
+                </th>
+              ))}
+              {columns.map((column) => (
+                <th
+                  key={column.id}
+                  className={pickedColumn === column.id ? "vcol on" : "vcol"}
+                  onClick={() => setPickedColumn(column.id)}
+                >
+                  <span className="cellbox">
+                    {headCell(column, COLUMN_HEADS[0])}
+                    <span
+                      className="resizer"
+                      onMouseDown={(event) =>
+                        startResize(column.id, COLUMN_DEFAULT, event)
+                      }
+                    />
+                  </span>
+                </th>
+              ))}
+            </tr>
+            {columns.length > 0 &&
+              COLUMN_HEADS.slice(1).map((head) => (
+                <tr key={String(head.key)}>
+                  {columns.map((column) => (
+                    <th
+                      key={column.id}
+                      className={
+                        pickedColumn === column.id ? "vcol on" : "vcol"
+                      }
+                      onClick={() => setPickedColumn(column.id)}
+                    >
+                      {headCell(column, head)}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            {columns.length > 0 && (
+              <tr className="vcol-total">
+                {columns.map((column) => (
+                  <th key={column.id} className="vcol num">
+                    {isEmptyFurnitureColumn(column)
+                      ? ""
+                      : furnitureColumnTotal(rows, column.id).toFixed(2)}
+                    <button
+                      type="button"
+                      className="drop"
+                      title="このタテの明細（列）を消します"
+                      onClick={() => removeColumn(column.id)}
+                    >
+                      🗑
+                    </button>
+                  </th>
+                ))}
+              </tr>
             )}
-            <th className="side">数量</th>
-            {DETAIL_COLUMNS.map((column) => (
-              <th key={String(column.key)} className="side">
-                明細:{column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {view.map((row, index) => {
-            const quantity = rowQuantity(row, resolved[index]);
-            return (
-              <tr
-                key={row.id}
-                className={quantity === null ? "title-row" : ""}
-                onMouseDown={() => setPicked(index)}
-              >
-                <td className="ops-col">
-                  <button type="button" onClick={() => addRow(index + 1)}>
-                    ＋
-                  </button>
-                  <button type="button" onClick={() => removeRow(index)}>
-                    －
-                  </button>
-                </td>
-                <td className="num">{index + 1}</td>
-                {visible("subjectId") && (
-                  <td className="no-print">
-                    <PickInput
-                      entries={subjectEntries}
-                      halfWidth
-                      value={
-                        rows[index].subjectId === null
-                          ? ""
-                          : String(rows[index].subjectId)
-                      }
-                      placeholder={
-                        resolved[index].subjectId === null
-                          ? ""
-                          : String(resolved[index].subjectId)
-                      }
-                      onCommit={(text) => {
-                        const id = Number.parseInt(text.trim(), 10);
-                        editRow(index, {
-                          subjectId: Number.isNaN(id) ? null : id,
-                        });
-                      }}
-                    />
+          </thead>
+          <tbody>
+            {view.map((row, index) => {
+              const quantity = rowQuantity(row, resolved[index]);
+              return (
+                <tr
+                  key={row.id}
+                  className={quantity === null ? "title-row" : ""}
+                  onMouseDown={() => setPicked(index)}
+                >
+                  <td className="ops-col">
+                    <button type="button" onClick={() => addRow(index + 1)}>
+                      ＋
+                    </button>
+                    <button type="button" onClick={() => removeRow(index)}>
+                      －
+                    </button>
                   </td>
-                )}
-                {visible("partNumber") && (
-                  <td className="no-print">
-                    <PickInput
-                      entries={pickupPartEntries}
-                      halfWidth
-                      value={
-                        rows[index].partNumber === null
-                          ? ""
-                          : String(rows[index].partNumber)
-                      }
-                      placeholder={
-                        resolved[index].partNumber === null
-                          ? ""
-                          : String(resolved[index].partNumber)
-                      }
-                      onCommit={(text) => {
-                        const picked = pickMaster(options.pickupParts, text);
-                        editRow(index, { partNumber: picked.id });
-                      }}
-                    />
-                  </td>
-                )}
-                {visible("detailNumber") && (
-                  <td className="num no-print">
-                    <input
-                      value={
-                        rows[index].detailNumber === null
-                          ? ""
-                          : String(rows[index].detailNumber)
-                      }
-                      placeholder={
-                        resolved[index].detailNumber === null
-                          ? ""
-                          : resolved[index].detailNumber.toFixed(2)
-                      }
-                      title="空欄のときは上の行に0.01を足します"
-                      onChange={(event) => {
-                        const value = Number(event.target.value);
-                        editRow(index, {
-                          detailNumber:
-                            event.target.value.trim() === "" ||
-                            Number.isNaN(value)
-                              ? null
-                              : value,
-                        });
-                      }}
-                    />
-                  </td>
-                )}
-                {visible("part") && (
-                  <td>
-                    <input
-                      value={rows[index].part}
-                      placeholder={resolved[index].part}
-                      onChange={(event) =>
-                        editRow(index, { part: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("partAdd") && (
-                  <td>
-                    <input
-                      value={rows[index].partAdd}
-                      onChange={(event) =>
-                        editRow(index, { partAdd: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("partSymbol") && (
-                  <td>
-                    <input
-                      value={rows[index].partSymbol}
-                      title="設定の記号表で文字に変わります"
-                      onChange={(event) =>
-                        editRow(index, { partSymbol: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("nameSymbol") && (
-                  <td>
-                    <input
-                      lang="ja"
-                      value={rows[index].nameSymbol}
-                      title="設定の記号表で文字に変わります（表に無い文字はそのまま出ます）"
-                      onChange={(event) =>
-                        editRow(index, { nameSymbol: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("width") && (
-                  <td className="num">
-                    <input
-                      value={rows[index].width}
-                      onChange={(event) =>
-                        editRow(index, { width: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("height") && (
-                  <td className="num">
-                    <input
-                      value={rows[index].height}
-                      onChange={(event) =>
-                        editRow(index, { height: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("depth") && (
-                  <td className="num">
-                    <input
-                      value={rows[index].depth}
-                      onChange={(event) =>
-                        editRow(index, { depth: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("quantity") && (
-                  <td className="num">
-                    <input
-                      value={rows[index].quantity}
-                      placeholder={resolved[index].quantity}
-                      title="0はタイトル行になり、集計しません"
-                      onChange={(event) =>
-                        editRow(index, { quantity: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("unit") && (
-                  <td>
-                    <PickInput
-                      entries={unitEntries}
-                      value={rows[index].unit}
-                      onCommit={(text) =>
-                        editRow(index, {
-                          unit: pickMaster(options.units, text).name,
-                        })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("descriptionUpper") && (
-                  <td>
-                    <input
-                      lang="ja"
-                      value={rows[index].descriptionUpper}
-                      onChange={(event) =>
-                        editRow(index, { descriptionUpper: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                {visible("remarksLower") && (
-                  <td>
-                    <input
-                      lang="ja"
-                      value={rows[index].remarksLower}
-                      onChange={(event) =>
-                        editRow(index, { remarksLower: event.target.value })
-                      }
-                    />
-                  </td>
-                )}
-                <td className="num detail">
-                  {quantity === null ? "" : quantity}
-                </td>
-                {DETAIL_COLUMNS.map((column) => (
-                  <td
-                    key={String(column.key)}
-                    className={`detail${
-                      row.detail.edited.includes(String(column.key))
-                        ? " edited"
-                        : ""
-                    }`}
-                  >
-                    <input
-                      lang="ja"
-                      value={detailText(row.detail, column.key)}
-                      title="ここを直しても左の入力欄には返しません"
-                      onChange={(event) => {
-                        const text = event.target.value;
-                        if (
-                          column.key === "subjectId" ||
-                          column.key === "partNumber" ||
-                          column.key === "detailNumber"
-                        ) {
-                          const value = Number(text);
-                          editDetail(index, {
-                            [column.key]:
-                              text.trim() === "" || Number.isNaN(value)
+                  <td className="num">{index + 1}</td>
+                  {visible("subjectId") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={subjectEntries}
+                        halfWidth
+                        value={
+                          rows[index].subjectId === null
+                            ? ""
+                            : String(rows[index].subjectId)
+                        }
+                        placeholder={
+                          resolved[index].subjectId === null
+                            ? ""
+                            : String(resolved[index].subjectId)
+                        }
+                        onCommit={(text) => {
+                          const id = Number.parseInt(text.trim(), 10);
+                          editRow(index, {
+                            subjectId: Number.isNaN(id) ? null : id,
+                          });
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("partNumber") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={pickupPartEntries}
+                        halfWidth
+                        value={
+                          rows[index].partNumber === null
+                            ? ""
+                            : String(rows[index].partNumber)
+                        }
+                        placeholder={
+                          resolved[index].partNumber === null
+                            ? ""
+                            : String(resolved[index].partNumber)
+                        }
+                        onCommit={(text) => {
+                          const found = pickMaster(options.pickupParts, text);
+                          editRow(index, { partNumber: found.id });
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("detailNumber") && (
+                    <td className="num no-print">
+                      <input
+                        value={
+                          rows[index].detailNumber === null
+                            ? ""
+                            : String(rows[index].detailNumber)
+                        }
+                        placeholder={
+                          resolved[index].detailNumber === null
+                            ? ""
+                            : resolved[index].detailNumber.toFixed(2)
+                        }
+                        title="空欄のときは上の行に0.01を足します"
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          editRow(index, {
+                            detailNumber:
+                              event.target.value.trim() === "" ||
+                              Number.isNaN(value)
                                 ? null
                                 : value,
                           });
-                          return;
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("part") && (
+                    <td>
+                      <input
+                        value={rows[index].part}
+                        placeholder={resolved[index].part}
+                        onChange={(event) =>
+                          editRow(index, { part: event.target.value })
                         }
-                        editDetail(index, { [column.key]: text });
-                      }}
-                    />
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      />
+                    </td>
+                  )}
+                  {visible("partAdd") && (
+                    <td>
+                      <input
+                        value={rows[index].partAdd}
+                        onChange={(event) =>
+                          editRow(index, { partAdd: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("partSymbol") && (
+                    <td>
+                      <input
+                        value={rows[index].partSymbol}
+                        title="設定の記号表で文字に変わります"
+                        onChange={(event) =>
+                          editRow(index, { partSymbol: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("nameSymbol") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].nameSymbol}
+                        title="設定の記号表で文字に変わります（表に無い文字はそのまま出ます）"
+                        onChange={(event) =>
+                          editRow(index, { nameSymbol: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("width") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width}
+                        onChange={(event) =>
+                          editRow(index, { width: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("height") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].height}
+                        onChange={(event) =>
+                          editRow(index, { height: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("depth") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].depth}
+                        onChange={(event) =>
+                          editRow(index, { depth: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("quantity") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].quantity}
+                        placeholder={resolved[index].quantity}
+                        title="0はタイトル行になり、集計しません"
+                        onChange={(event) =>
+                          editRow(index, { quantity: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("unit") && (
+                    <td>
+                      <PickInput
+                        entries={unitEntries}
+                        value={rows[index].unit}
+                        placeholder={resolved[index].unit}
+                        onCommit={(text) =>
+                          editRow(index, {
+                            unit: pickMaster(options.units, text).name,
+                          })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("descriptionUpper") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].descriptionUpper}
+                        onChange={(event) =>
+                          editRow(index, {
+                            descriptionUpper: event.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("remarksLower") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].remarksLower}
+                        onChange={(event) =>
+                          editRow(index, { remarksLower: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {detailCells.map((cell) =>
+                    cell.kind === "quantity" ? (
+                      <td key={cell.id} className="num detail">
+                        {quantity === null ? "" : quantity}
+                      </td>
+                    ) : (
+                      <td
+                        key={cell.id}
+                        className={`detail${
+                          row.detail.edited.includes(String(cell.key))
+                            ? " edited"
+                            : ""
+                        }`}
+                      >
+                        <input
+                          lang="ja"
+                          value={detailText(row.detail, cell.key)}
+                          title="ここを直しても左の入力欄には返しません"
+                          onChange={(event) => {
+                            const text = event.target.value;
+                            if (
+                              cell.key === "subjectId" ||
+                              cell.key === "partNumber" ||
+                              cell.key === "detailNumber"
+                            ) {
+                              const value = Number(text);
+                              editDetail(index, {
+                                [cell.key]:
+                                  text.trim() === "" || Number.isNaN(value)
+                                    ? null
+                                    : value,
+                              });
+                              return;
+                            }
+                            editDetail(index, { [cell.key]: text });
+                          }}
+                        />
+                      </td>
+                    ),
+                  )}
+                  {columns.map((column) => {
+                    const text = rows[index].values?.[column.id] ?? "";
+                    const value = cellValue(text);
+                    return (
+                      <td
+                        key={column.id}
+                        className={
+                          text !== "" && value === null
+                            ? "num vcell error"
+                            : "num vcell"
+                        }
+                        title={
+                          value === null ? "" : `計算結果 ${value.toFixed(2)}`
+                        }
+                      >
+                        <input
+                          value={text}
+                          onFocus={() => setPickedColumn(column.id)}
+                          onChange={(event) =>
+                            editCell(row.id, column.id, event.target.value)
+                          }
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="hint">
+        ヨコの1行＝家具1件の明細（左の入力から自動で作ります）。
+        ［➕ タテ明細］で足した右側のタテの列は、部位別雑・金物入力表と同じように
+        家具に付く関連明細をタテに拾います（どちらも集計に入ります）。
+      </p>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   fittingsFromFurniture,
+  furnitureColumn,
+  furnitureColumnTotal,
   furnitureRow,
   furnitureSettings,
   resolveFurnitureRows,
@@ -61,6 +63,14 @@ describe("家具計算書の引き継ぎ", () => {
     expect(resolved[1].detailNumber).toBe(100.01);
     expect(resolved[2].detailNumber).toBe(100.02);
     expect(resolved[2].part).toBe("A");
+  });
+
+  it("単位も未入力なら上の行と同じ（明細側にもその単位が出る）", () => {
+    const rows = sample();
+    rows[2].unit = "";
+    const resolved = resolveFurnitureRows(rows);
+    expect(resolved[2].unit).toBe("ヶ所");
+    expect(applyFurnitureDetails(rows, settings)[2].detail.unit).toBe("ヶ所");
   });
 });
 
@@ -124,6 +134,13 @@ describe("集計と建具転記", () => {
     expect(entries[0].part3).toBe("システム収納");
   });
 
+  it("名称の記号は明細側で設定の文字に変わる（表に無い文字はそのまま）", () => {
+    const view = applyFurnitureDetails(sample(), settings);
+    expect(view[1].detail.name).toBe("下足入");
+    expect(view[2].detail.name).toBe("インフィル収納");
+    expect(view[0].detail.name).toBe("＜Ａタイプ＞");
+  });
+
   it("建具記号は入力した英数字をつなげ、寸法はm換算する", () => {
     const fittings = fittingsFromFurniture({ rows: sample(), settings });
     expect(fittings).toHaveLength(2);
@@ -133,5 +150,54 @@ describe("集計と建具転記", () => {
       height: 1.1,
     });
     expect(fittings[1].symbol).toBe("AGEIS");
+  });
+});
+
+describe("タテ方向の明細（列）", () => {
+  const column = furnitureColumn({
+    id: "c1",
+    subjectId: 42,
+    partNumber: 300,
+    detailNumber: 12.5,
+    partName: "家具",
+    name: "カウンター取付",
+    unit: "ヶ所",
+  });
+
+  function rowsWithValues(): ReturnType<typeof furnitureRow>[] {
+    const rows = sample();
+    rows[1].values = { c1: "2" };
+    rows[2].values = { c1: "1+2" };
+    return rows;
+  }
+
+  it("列の合計は各行の数量（計算式も可）を足したもの", () => {
+    expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(5);
+  });
+
+  it("ヨコの自動明細とは別のtraceIdで集計する", () => {
+    const entries = entriesFromFurnitureSheet(
+      {
+        sheetId: 3,
+        part1: "建築",
+        part2: "2階",
+        part2Split: true,
+        part3: "システム収納",
+        multiplier: 2,
+      },
+      { rows: rowsWithValues(), settings, columns: [column] },
+      new Map(),
+    );
+    const vertical = entries.filter((entry) =>
+      entry.traceId.startsWith("furniturecol:"),
+    );
+    expect(vertical.map((entry) => entry.traceId)).toEqual([
+      "furniturecol:3:r2:c1",
+      "furniturecol:3:r3:c1",
+    ]);
+    expect(vertical[0].quantity).toBe(4);
+    expect(vertical[1].quantity).toBe(6);
+    expect(vertical[0].name).toBe("カウンター取付");
+    expect(vertical[0].sourceKind).toBe("furniture");
   });
 });

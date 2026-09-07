@@ -40,6 +40,7 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   furnitureSettings,
+  type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
@@ -615,7 +616,11 @@ function furnitureEntries(
         part3: sheet.name,
         multiplier: sheet.multiplier,
       },
-      { rows, settings },
+      {
+        rows,
+        settings,
+        columns: parseJson<FurnitureColumn[]>(sheet.columnsJson, []),
+      },
       part2Order,
     );
   });
@@ -856,10 +861,16 @@ export function saveAggregateEdits(
       // 家具・設備入力表の明細（右側の明細欄。左の入力欄には返さない）
       const furnitureRowIds = new Set(
         targets
-          .filter((target) => target.sourceKind === "furniture")
+          .filter((target) => target.traceId.startsWith("furniture:"))
           .map((target) => target.traceId.split(":")[2]),
       );
-      if (furnitureRowIds.size > 0) {
+      // タテ方向の明細（列）は列ごとに直す
+      const furnitureColumnIds = new Set(
+        targets
+          .filter((target) => target.traceId.startsWith("furniturecol:"))
+          .map((target) => target.traceId.split(":")[3]),
+      );
+      if (furnitureRowIds.size > 0 || furnitureColumnIds.size > 0) {
         const furnitureSheets = tx
           .select()
           .from(projectFurnitureSheets)
@@ -910,10 +921,34 @@ export function saveAggregateEdits(
               },
             };
           });
-          if (furnitureChanged) {
+          const furnitureColumns = parseJson<FurnitureColumn[]>(
+            furnitureSheet.columnsJson,
+            [],
+          );
+          let columnChanged = false;
+          const nextFurnitureColumns = furnitureColumns.map((column) => {
+            if (!furnitureColumnIds.has(column.id)) return column;
+            columnChanged = true;
+            return {
+              ...column,
+              subjectId: edit.subjectId,
+              materialCategory: edit.materialCategory,
+              partNumber: edit.partNumber,
+              partName: edit.partName,
+              detailNumber: edit.detailNumber,
+              name: edit.name,
+              descriptionUpper: edit.descriptionUpper,
+              descriptionLower: edit.descriptionLower,
+              unit: edit.unit,
+              remarksUpper: edit.remarksUpper,
+              remarksLower: edit.remarksLower,
+            };
+          });
+          if (furnitureChanged || columnChanged) {
             tx.update(projectFurnitureSheets)
               .set({
                 rowsJson: JSON.stringify(nextRows),
+                columnsJson: JSON.stringify(nextFurnitureColumns),
                 updatedAt: new Date().toISOString(),
               })
               .where(eq(projectFurnitureSheets.id, furnitureSheet.id))

@@ -240,8 +240,13 @@ export function aggregateItems(
     item.quantity = displayedValue(item.quantity + entry.quantity);
     item.part2Order = Math.min(item.part2Order, entry.part2Order);
     item.traceIds.push(entry.traceId);
-    // 転記入力表の分は根拠集計には出さない
-    if (entry.sourceKind !== "transfer" && entry.quantity !== 0) {
+    // 転記入力表の分は根拠集計には出さない。
+    // 家具・設備入力表の分は部屋で分けないので、根拠の部屋名も出さない
+    if (
+      entry.sourceKind !== "transfer" &&
+      entry.sourceKind !== "furniture" &&
+      entry.quantity !== 0
+    ) {
       const roomName = traceRoomName(entry);
       const room = item.rooms.find((current) => current.roomName === roomName);
       if (room) room.quantity = displayedValue(room.quantity + entry.quantity);

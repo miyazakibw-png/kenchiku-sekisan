@@ -6,7 +6,27 @@
 
 import { evaluateFormula } from "../formula/evaluate";
 import { displayedValue } from "../room/calcSheet";
+import {
+  cellValue,
+  isEmptyColumn,
+  miscColumn,
+  type MiscColumn,
+} from "../misc/miscSheet";
 import type { AggregateEntry } from "../aggregate/aggregate";
+
+/**
+ * タテ方向の明細（部位別雑・金物入力表と同じ形）。
+ * ヨコ1行＝家具1件の自動明細とは別に、家具に付く関連明細をタテに拾う。
+ */
+export type FurnitureColumn = MiscColumn;
+
+export function furnitureColumn(
+  patch: Partial<FurnitureColumn> = {},
+): FurnitureColumn {
+  return miscColumn(patch);
+}
+
+export { isEmptyColumn as isEmptyFurnitureColumn };
 
 /** 記号と表示文字の対応（+部位・名称の呼び出し用） */
 export interface FurnitureSymbol {
@@ -79,11 +99,15 @@ export interface FurnitureRow {
   descriptionUpper: string;
   remarksLower: string;
   detail: FurnitureDetail;
+  /** タテ方向の明細（列）ごとの数量。計算式でも入れられる */
+  values: Record<string, string>;
 }
 
 export interface FurnitureSheetData {
   rows: FurnitureRow[];
   settings: FurnitureSettings;
+  /** タテ方向の明細（列） */
+  columns?: FurnitureColumn[];
 }
 
 let sequence = 0;
@@ -183,6 +207,7 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     descriptionUpper: "",
     remarksLower: "",
     detail: furnitureDetail(),
+    values: {},
     ...patch,
   };
 }
@@ -193,7 +218,47 @@ export function copyFurnitureRows(rows: FurnitureRow[]): FurnitureRow[] {
     ...row,
     id: newId("fr"),
     detail: { ...row.detail, edited: [...row.detail.edited] },
+    values: { ...(row.values ?? {}) },
   }));
+}
+
+/**
+ * タテ方向の明細ごと写す（列のidも付け直し、数量の結び付きを写し先へ移す）。
+ */
+export function copyFurnitureSheetRows(
+  rows: FurnitureRow[],
+  columns: FurnitureColumn[],
+): { rows: FurnitureRow[]; columns: FurnitureColumn[] } {
+  const nextColumns = columns.map((column) => ({
+    ...column,
+    id: miscColumn().id,
+  }));
+  const columnIds = new Map(
+    columns.map((column, index) => [column.id, nextColumns[index].id] as const),
+  );
+  return {
+    columns: nextColumns,
+    rows: copyFurnitureRows(rows).map((row) => ({
+      ...row,
+      values: Object.fromEntries(
+        Object.entries(row.values ?? {}).flatMap(([columnId, value]) => {
+          const moved = columnIds.get(columnId);
+          return moved === undefined ? [] : [[moved, value] as const];
+        }),
+      ),
+    })),
+  };
+}
+
+/** タテ方向の明細（列）1本の合計 */
+export function furnitureColumnTotal(
+  rows: FurnitureRow[],
+  columnId: string,
+): number {
+  return rows.reduce((sum, row) => {
+    const value = cellValue(row.values?.[columnId] ?? "");
+    return value === null ? sum : displayedValue(sum + value);
+  }, 0);
 }
 
 /** 記号を表示文字に置き換える（対応表に無いときは入れた文字のまま） */
@@ -224,12 +289,13 @@ export interface FurnitureResolved {
   detailNumber: number | null;
   part: string;
   quantity: string;
+  unit: string;
   formula: string;
 }
 
 /**
  * 上の行からの引き継ぎ。
- * 科目・部位ID・部位・数量・計算式は未入力なら上の行と同じ、
+ * 科目・部位ID・部位・数量・単位・計算式は未入力なら上の行と同じ、
  * 名称IDは未入力なら上の行＋0.01。
  */
 export function resolveFurnitureRows(
@@ -241,6 +307,7 @@ export function resolveFurnitureRows(
     detailNumber: null,
     part: "",
     quantity: "",
+    unit: "",
     formula: "",
   };
   return rows.map((row) => {
@@ -251,6 +318,7 @@ export function resolveFurnitureRows(
       carried.detailNumber = Math.round((carried.detailNumber + 0.01) * 100) / 100;
     if (row.part.trim() !== "") carried.part = row.part;
     if (row.quantity.trim() !== "") carried.quantity = row.quantity;
+    if (row.unit.trim() !== "") carried.unit = row.unit;
     if (row.detail.formula.trim() !== "") carried.formula = row.detail.formula;
     return { ...carried };
   });
@@ -303,7 +371,7 @@ export function buildDetail(
     name: symbolText(settings.nameSymbols, row.nameSymbol),
     descriptionUpper: row.descriptionUpper,
     descriptionLower: sizeText(row, settings),
-    unit: row.unit,
+    unit: resolved.unit,
     remarksUpper: "",
     remarksLower: row.remarksLower,
   };
@@ -454,6 +522,44 @@ export function entriesFromFurnitureSheet(
       setTotal: value,
       quantity: displayedValue(value * multiplier),
       sourceDetailId: row.detail.sourceDetailId,
+    });
+  });
+  // タテ方向の明細（部位別雑・金物入力表と同じ形。ヨコの自動明細とは別に拾う）
+  rows.forEach((row) => {
+    (data.columns ?? []).forEach((column) => {
+      if (isEmptyColumn(column)) return;
+      const value = cellValue(row.values?.[column.id] ?? "");
+      if (value === null) return;
+      entries.push({
+        traceId: `furniturecol:${place.sheetId}:${row.id}:${column.id}`,
+        sourceKind: "furniture",
+        estimateRowId: null,
+        transferRowId: null,
+        part1: place.part1,
+        part2: place.part2Split ? place.part2 : "",
+        part2Raw: place.part2,
+        part2Split: place.part2Split,
+        part2Order: part2Order.get(place.part2) ?? 0,
+        part3: place.part3,
+        formwork: "",
+        multiplier,
+        subjectId: column.subjectId,
+        materialCategory: column.materialCategory,
+        partNumber: column.partNumber,
+        partName: column.partName,
+        detailNumber: column.detailNumber,
+        name: column.name,
+        descriptionUpper: column.descriptionUpper,
+        descriptionLower: column.descriptionLower,
+        unit: column.unit,
+        remarksUpper: column.remarksUpper,
+        remarksLower: column.remarksLower,
+        estimateDisplay: "",
+        coefficient: 1,
+        setTotal: value,
+        quantity: displayedValue(value * multiplier),
+        sourceDetailId: column.sourceDetailId,
+      });
     });
   });
   return entries;

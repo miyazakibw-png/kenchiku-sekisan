@@ -497,6 +497,8 @@ export const projectFurnitureSheets = sqliteTable(
     displayOrder: integer("display_order").notNull().default(0),
     /** 入力欄と明細欄（FurnitureRowの配列） */
     rowsJson: text("rows_json").notNull().default("[]"),
+    /** タテ方向の明細（FurnitureColumnの配列） */
+    columnsJson: text("columns_json").notNull().default("[]"),
     /** 付け加える文字・記号の対応表（FurnitureSettings） */
     settingsJson: text("settings_json").notNull().default("{}"),
     note: text("note").notNull().default(""),

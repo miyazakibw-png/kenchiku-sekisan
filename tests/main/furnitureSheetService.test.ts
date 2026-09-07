@@ -68,6 +68,7 @@ function saveRows(db: AppDatabase, sheetId: number): void {
     multiplier: 1,
     kind: "furniture",
     rowsJson: rowsJson(),
+    columnsJson: "[]",
     settingsJson: JSON.stringify(furnitureSettings()),
     note: "",
   });

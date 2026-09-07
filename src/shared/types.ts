@@ -399,6 +399,8 @@ export interface FurnitureSheet {
   displayOrder: number;
   /** 入力欄と明細欄（FurnitureRowの配列）のJSON */
   rowsJson: string;
+  /** タテ方向の明細（FurnitureColumnの配列）のJSON */
+  columnsJson: string;
   /** 設定（FurnitureSettings）のJSON */
   settingsJson: string;
   note: string;

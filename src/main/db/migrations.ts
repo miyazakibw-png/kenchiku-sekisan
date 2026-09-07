@@ -958,4 +958,8 @@ CREATE INDEX ix_furniture_sheet_project ON project_furniture_sheets(project_id, 
 ALTER TABLE project_fittings ADD COLUMN from_furniture INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE project_fittings ADD COLUMN furniture_key TEXT NOT NULL DEFAULT '';
 `,
+  // 家具計算書のタテ方向の明細（部位別雑・金物入力表と同じ形で、家具に付く関連明細を拾う）
+  `
+ALTER TABLE project_furniture_sheets ADD COLUMN columns_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];

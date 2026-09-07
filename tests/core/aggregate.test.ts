@@ -176,6 +176,26 @@ describe("集計処理", () => {
     expect(items[0].rooms).toEqual([{ roomName: "1階：事務室", quantity: 10 }]);
   });
 
+  it("家具計算書の分は集計書に計上するが根拠の部屋名は出さない", () => {
+    const room = entriesFromCalcSheet(
+      context(),
+      [set("s1", 1)],
+      result("s1", 10),
+    );
+    const furniture: AggregateEntry = {
+      ...room[0],
+      traceId: "furniture:3:r2",
+      sourceKind: "furniture",
+      estimateRowId: null,
+      quantity: 4,
+      setTotal: 4,
+    };
+    const items = aggregateItems([...room, furniture]);
+    expect(items[0].quantity).toBe(14);
+    expect(items[0].rooms).toEqual([{ roomName: "1階：事務室", quantity: 10 }]);
+    expect(items[0].traceIds).toContain("furniture:3:r2");
+  });
+
   it("並びは科目ID→部位Ⅰ→部位Ⅱの入力順→部位ID→明細ID", () => {
     const later = entriesFromCalcSheet(
       context({ part2: "2階", part2Order: 1 }),

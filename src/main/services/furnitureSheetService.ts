@@ -2,9 +2,10 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectFittings, projectFurnitureSheets } from "../db/schema";
 import {
-  copyFurnitureRows,
+  copyFurnitureSheetRows,
   fittingsFromFurniture,
   furnitureSettings,
+  type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
@@ -31,6 +32,7 @@ function toSheet(
     kind: row.kind,
     displayOrder: row.displayOrder,
     rowsJson: row.rowsJson,
+    columnsJson: row.columnsJson,
     settingsJson: row.settingsJson,
     note: row.note,
   };
@@ -125,8 +127,9 @@ export function pasteFurnitureSheets(
   const copied = sourceIds.flatMap((sourceId) => {
     const source = rows.find((row) => row.id === sourceId);
     if (source === undefined) return [];
-    const data = copyFurnitureRows(
+    const data = copyFurnitureSheetRows(
       parseJson<FurnitureRow[]>(source.rowsJson, []),
+      parseJson<FurnitureColumn[]>(source.columnsJson, []),
     );
     return [
       db
@@ -140,7 +143,8 @@ export function pasteFurnitureSheets(
           multiplier: source.multiplier,
           kind: source.kind,
           displayOrder: rows.length,
-          rowsJson: JSON.stringify(data),
+          rowsJson: JSON.stringify(data.rows),
+          columnsJson: JSON.stringify(data.columns),
           settingsJson: source.settingsJson,
           note: source.note,
         })
@@ -251,6 +255,7 @@ export function saveFurnitureSheet(
       multiplier: request.multiplier,
       kind: request.kind,
       rowsJson: request.rowsJson,
+      columnsJson: request.columnsJson,
       settingsJson: request.settingsJson,
       note: request.note,
       updatedAt: new Date().toISOString(),
