@@ -296,7 +296,19 @@ describe("システムキッチン（W1・W2・W3）", () => {
     expect(hasTripleWidth("shelf")).toBe(true);
     expect(transfersToFittings("shelf")).toBe(false);
     expect(hasTripleWidth("furniture")).toBe(false);
-    expect(hasTripleWidth("other")).toBe(false);
+    expect(hasTripleWidth("other")).toBe(true);
+    expect(transfersToFittings("other")).toBe(false);
+    const other = furnitureSettingsFor("other");
+    expect(other.nameSymbols).toEqual([{ symbol: "S", text: "設備" }]);
+    expect(other).not.toEqual(furnitureSettingsFor("kitchen"));
+    expect(other).not.toEqual(furnitureSettingsFor("shelf"));
+    expect(
+      applyFurnitureDetails(
+        [furnitureRow({ nameSymbol: "S", width: "900", width2: "600" })],
+        other,
+        "other",
+      )[0].detail,
+    ).toMatchObject({ name: "設備", descriptionLower: "W900+600(L型)" });
   });
 
   it("棚は作りはキッチンと同じで、初めの記号表は棚用（基準は別）", () => {
@@ -433,7 +445,7 @@ describe("システムキッチン（W1・W2・W3）", () => {
       depthLabel: "*D",
     });
     expect(furnitureSettingsFor("furniture")).toEqual(furnitureSettings());
-    expect(furnitureSettingsFor("other")).toEqual(furnitureSettings());
+    expect(furnitureSettingsFor("other")).not.toEqual(furnitureSettings());
   });
 
   it("W1だけ→家具と同じ、W2あり・W3なし→(L型)、W3あり→(コ型)を摘要下段に付ける", () => {

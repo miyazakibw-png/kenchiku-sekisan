@@ -174,21 +174,16 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
   { key: "washstand", label: "洗面化粧台" },
   { key: "shelf", label: "棚" },
   { key: "hanger", label: "ハンガーパイプ" },
-  { key: "other", label: "その他の設備" },
+  { key: "other", label: "その他" },
 ];
 
 export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** システムキッチン・洗面化粧台・棚・ハンガーパイプはW欄がW1・W2・W3の3つ */
+/** 家具（システム収納）以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return (
-    kind === "kitchen" ||
-    kind === "washstand" ||
-    kind === "shelf" ||
-    kind === "hanger"
-  );
+  return kind !== "furniture";
 }
 
 /** ハンガーパイプはDの欄の代わりに形状（番号）を入れる */
@@ -253,6 +248,11 @@ export const defaultHangerNameSymbols: FurnitureSymbol[] = [
   { symbol: "H", text: "ハンガーパイプ" },
 ];
 
+/** その他の名称の記号の初めの並び */
+export const defaultOtherNameSymbols: FurnitureSymbol[] = [
+  { symbol: "S", text: "設備" },
+];
+
 export function furnitureSettings(
   patch: Partial<FurnitureSettings> = {},
 ): FurnitureSettings {
@@ -295,6 +295,12 @@ export function furnitureSettingsFor(
     return furnitureSettings({
       partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
       nameSymbols: defaultShelfNameSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
+  if (kind === "other")
+    return furnitureSettings({
+      partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultOtherNameSymbols.map((item) => ({ ...item })),
       ...patch,
     });
   if (kind === "hanger")
