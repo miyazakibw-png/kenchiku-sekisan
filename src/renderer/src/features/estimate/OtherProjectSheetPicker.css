@@ -1,0 +1,128 @@
+/** 他の物件から表を写す窓 */
+.other-project-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+}
+
+.other-project-box {
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  width: min(920px, 92vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.other-project-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 14px;
+}
+
+.other-project-head button {
+  font-size: 12px;
+}
+
+.other-project-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.other-project-sub input {
+  margin-left: auto;
+  width: 260px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.other-project-sub .picked {
+  font-weight: bold;
+}
+
+.other-project-sub button.primary {
+  margin-left: auto;
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.other-project-sub button.primary:disabled {
+  background: #cbd5e1;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.other-project-box table.grid.other-project-list {
+  border-collapse: collapse;
+  margin: 8px;
+  width: calc(100% - 16px);
+  overflow: auto;
+}
+
+.other-project-box table.grid.other-project-list th,
+.other-project-box table.grid.other-project-list td {
+  border: 1px solid #94a3b8;
+  padding: 2px 6px;
+  font-size: 12px;
+  height: 24px;
+  text-align: left;
+}
+
+.other-project-box table.grid.other-project-list th {
+  background: #dbeafe;
+  color: #0f172a;
+  position: sticky;
+  top: 0;
+}
+
+.other-project-box table.grid.other-project-list .no {
+  width: 90px;
+  white-space: nowrap;
+}
+
+.other-project-box table.grid.other-project-list .date {
+  width: 100px;
+  white-space: nowrap;
+}
+
+.other-project-box table.grid.other-project-list .check {
+  width: 32px;
+  text-align: center;
+}
+
+.other-project-box table.grid.other-project-list tr.pick {
+  cursor: pointer;
+}
+
+.other-project-box table.grid.other-project-list tr.pick:hover {
+  background: #f1f5f9;
+}
+
+.other-project-box table.grid.other-project-list tr.pick.selected {
+  background: #e8f0fe;
+}
+
+.other-project-box table.grid.other-project-list .empty {
+  text-align: center;
+  color: #6b7280;
+}
+
+.other-project-box .other-project-scroll {
+  overflow: auto;
+}

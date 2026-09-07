@@ -18,6 +18,7 @@ import {
   getFurnitureSheet,
   listFurnitureSheets,
   pasteFurnitureSheets,
+  copyFurnitureSheetsFromProject,
   saveFurnitureBaseSettings,
   saveFurnitureSheet,
   saveFurnitureSheetList,
@@ -98,6 +99,75 @@ describe("家具・設備入力表", () => {
 
     deleteFurnitureSheet(db, pasted[1].id);
     expect(listFurnitureSheets(db, projectId)).toHaveLength(1);
+  });
+
+  it("他の物件の表を写すと、入力・タテ明細・設定・種類・倍率ごと末尾に入る", () => {
+    const other = createProject(db, "元の物件").id;
+    const source = createFurnitureSheet(db, other, "キッチン", "kitchen");
+    const settings = furnitureSettings({
+      partSuffix: "型",
+      nameSymbols: [{ symbol: "IS", text: "インフィル収納" }],
+    });
+    saveFurnitureSheet(db, {
+      id: source.id,
+      name: "キッチン",
+      part1: "建築",
+      part2: "1階",
+      part2Split: 1,
+      multiplier: 3,
+      kind: "kitchen",
+      rowsJson: JSON.stringify([
+        furnitureRow({
+          id: "r1",
+          nameSymbol: "IS",
+          width: "1200",
+          height: "1100",
+          quantity: "2",
+          unit: "ヶ所",
+          values: { c1: "W*H" },
+        }),
+      ]),
+      columnsJson: JSON.stringify([{ id: "c1", subjectId: 42, name: "合板" }]),
+      settingsJson: JSON.stringify(settings),
+      note: "元のメモ",
+    });
+    const own = createFurnitureSheet(db, projectId, "家具計算書1");
+
+    const result = copyFurnitureSheetsFromProject(db, projectId, [
+      source.id,
+      own.id,
+      9999,
+    ]);
+    expect(result.map((sheet) => sheet.name)).toEqual([
+      "家具計算書1",
+      "キッチン",
+    ]);
+    const copied = result[1];
+    expect(copied.kind).toBe("kitchen");
+    expect(copied.part1).toBe("建築");
+    expect(copied.part2).toBe("1階");
+    expect(copied.part2Split).toBe(1);
+    expect(copied.multiplier).toBe(3);
+    expect(copied.note).toBe("元のメモ");
+    expect(copied.rowCount).toBe(1);
+
+    const sheet = getFurnitureSheet(db, copied.id);
+    expect(JSON.parse(sheet.settingsJson)).toEqual(settings);
+    const rows = JSON.parse(sheet.rowsJson) as ReturnType<
+      typeof furnitureRow
+    >[];
+    const columns = JSON.parse(sheet.columnsJson) as {
+      id: string;
+      name: string;
+    }[];
+    expect(rows[0].id).not.toBe("r1");
+    expect(rows[0].nameSymbol).toBe("IS");
+    expect(columns[0].id).not.toBe("c1");
+    expect(columns[0].name).toBe("合板");
+    expect(rows[0].values[columns[0].id]).toBe("W*H");
+
+    expect(listFurnitureSheets(db, other)).toHaveLength(1);
+    expect(copyFurnitureSheetsFromProject(db, projectId, [])).toHaveLength(2);
   });
 
   it("種類ごとの基準設定：新しい表は基準から始まり、既存の表と別の種類は変わらない", () => {
@@ -194,7 +264,9 @@ describe("家具・設備入力表", () => {
     });
 
     deleteFurnitureSheet(db, sheet.id);
-    expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual(["W1"]);
+    expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual([
+      "W1",
+    ]);
   });
 
   it("転記した建具から元の家具計算書をたどれる", () => {

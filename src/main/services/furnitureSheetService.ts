@@ -39,7 +39,10 @@ export function getFurnitureBaseSettings(
     .get();
   const fallback = furnitureSettings();
   if (row === undefined) return fallback;
-  return { ...fallback, ...parseJson<Partial<FurnitureSettings>>(row.valueJson, {}) };
+  return {
+    ...fallback,
+    ...parseJson<Partial<FurnitureSettings>>(row.valueJson, {}),
+  };
 }
 
 /** 種類ごとの基準設定として保存する（以後どの物件でも新しい表はここから始まる） */
@@ -162,33 +165,79 @@ export function pasteFurnitureSheets(
   insertAt: number,
 ): FurnitureSheetSummary[] {
   const rows = sheetRows(db, projectId);
-  const copied = sourceIds.flatMap((sourceId) => {
+  const sources = sourceIds.flatMap((sourceId) => {
     const source = rows.find((row) => row.id === sourceId);
-    if (source === undefined) return [];
+    return source === undefined ? [] : [source];
+  });
+  return insertFurnitureCopies(
+    db,
+    projectId,
+    sources,
+    insertAt,
+    (name) => `${name} の写し`,
+  );
+}
+
+/**
+ * 他の物件の表をこの物件の一覧の末尾に写す（名前・設定・入力・タテ明細ごと。建具表への転記は保存したとき）。
+ */
+export function copyFurnitureSheetsFromProject(
+  db: AppDatabase,
+  projectId: number,
+  sourceIds: number[],
+): FurnitureSheetSummary[] {
+  if (sourceIds.length === 0) return listFurnitureSheets(db, projectId);
+  const found = db
+    .select()
+    .from(projectFurnitureSheets)
+    .where(inArray(projectFurnitureSheets.id, sourceIds))
+    .all();
+  const sources = sourceIds.flatMap((sourceId) => {
+    const source = found.find((row) => row.id === sourceId);
+    return source === undefined || source.projectId === projectId
+      ? []
+      : [source];
+  });
+  return insertFurnitureCopies(
+    db,
+    projectId,
+    sources,
+    Number.MAX_SAFE_INTEGER,
+    (name) => name,
+  );
+}
+
+function insertFurnitureCopies(
+  db: AppDatabase,
+  projectId: number,
+  sources: (typeof projectFurnitureSheets.$inferSelect)[],
+  insertAt: number,
+  rename: (name: string) => string,
+): FurnitureSheetSummary[] {
+  const rows = sheetRows(db, projectId);
+  const copied = sources.map((source) => {
     const data = copyFurnitureSheetRows(
       parseJson<FurnitureRow[]>(source.rowsJson, []),
       parseJson<FurnitureColumn[]>(source.columnsJson, []),
     );
-    return [
-      db
-        .insert(projectFurnitureSheets)
-        .values({
-          projectId,
-          name: `${source.name} の写し`,
-          part1: source.part1,
-          part2: source.part2,
-          part2Split: source.part2Split,
-          multiplier: source.multiplier,
-          kind: source.kind,
-          displayOrder: rows.length,
-          rowsJson: JSON.stringify(data.rows),
-          columnsJson: JSON.stringify(data.columns),
-          settingsJson: source.settingsJson,
-          note: source.note,
-        })
-        .returning()
-        .get(),
-    ];
+    return db
+      .insert(projectFurnitureSheets)
+      .values({
+        projectId,
+        name: rename(source.name),
+        part1: source.part1,
+        part2: source.part2,
+        part2Split: source.part2Split,
+        multiplier: source.multiplier,
+        kind: source.kind,
+        displayOrder: rows.length,
+        rowsJson: JSON.stringify(data.rows),
+        columnsJson: JSON.stringify(data.columns),
+        settingsJson: source.settingsJson,
+        note: source.note,
+      })
+      .returning()
+      .get();
   });
   const at = Math.min(Math.max(insertAt, 0), rows.length);
   const ordered = [...rows.slice(0, at), ...copied, ...rows.slice(at)];
@@ -213,9 +262,7 @@ export function deleteFurnitureSheet(db: AppDatabase, sheetId: number): void {
       (row) => row.id,
     );
     if (ids.length > 0) {
-      db.delete(projectFittings)
-        .where(inArray(projectFittings.id, ids))
-        .run();
+      db.delete(projectFittings).where(inArray(projectFittings.id, ids)).run();
     }
   }
   db.delete(projectFurnitureSheets)
@@ -369,7 +416,9 @@ export function transferFurnitureFittings(
     .filter((row) => !keys.has(row.furnitureKey))
     .map((row) => row.id);
   if (removed.length > 0) {
-    db.delete(projectFittings).where(inArray(projectFittings.id, removed)).run();
+    db.delete(projectFittings)
+      .where(inArray(projectFittings.id, removed))
+      .run();
   }
 
   wanted.forEach((item, index) => {

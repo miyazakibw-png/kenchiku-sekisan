@@ -4,8 +4,12 @@ import type {
   FurnitureSheetSummary,
   ProjectSummary,
 } from "@shared/types";
-import { FURNITURE_KINDS as KINDS } from "../../../../core/furniture/furnitureSheet";
+import {
+  FURNITURE_KINDS as KINDS,
+  furnitureKindLabel,
+} from "../../../../core/furniture/furnitureSheet";
 import { ask } from "../common/askDialog";
+import OtherProjectSheetPicker from "./OtherProjectSheetPicker";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
@@ -30,11 +34,24 @@ export default function FurnitureSheetListPage({
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<number[]>([]);
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
+  /** 他の物件から表を写す窓 */
+  const [pickingOther, setPickingOther] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     setSheets(await window.sekisan.listFurnitureSheets(project.id));
     setEstimateRows(await window.sekisan.listEstimateRows(project.id));
   }, [project.id]);
+
+  /** 他の物件の表をこの物件の末尾に写す */
+  const copyFromOther = async (sheetIds: number[]): Promise<void> => {
+    setSheets(
+      await window.sekisan.copyFurnitureSheetsFromProject(project.id, sheetIds),
+    );
+    setPickingOther(false);
+    setMessage(
+      `他の物件から ${sheetIds.length} 枚を写しました（いちばん下。建具表への転記は計算書を開いて保存したとき）`,
+    );
+  };
 
   const distinct = (values: string[]): string[] =>
     [...new Set(values.map((value) => value.trim()))].filter(
@@ -117,7 +134,9 @@ export default function FurnitureSheetListPage({
     patch: Partial<FurnitureSheetSummary>,
   ): void => {
     setSheets(
-      sheets.map((sheet, at) => (at === index ? { ...sheet, ...patch } : sheet)),
+      sheets.map((sheet, at) =>
+        at === index ? { ...sheet, ...patch } : sheet,
+      ),
     );
   };
 
@@ -155,11 +174,45 @@ export default function FurnitureSheetListPage({
         >
           📋 追加貼付
         </button>
+        <button
+          type="button"
+          title="他の物件の一覧から表を選んで、中の入力・設定ごとこの物件に写します"
+          onClick={() => setPickingOther(true)}
+        >
+          🏢 他の物件から表コピー
+        </button>
         <button type="button" onClick={() => void save(sheets)}>
           💾 保存
         </button>
         <span className="status">{message}</span>
       </div>
+
+      {pickingOther && (
+        <OtherProjectSheetPicker
+          title="他の物件から表コピー（家具・設備入力表）"
+          currentProjectId={project.id}
+          listSheets={async (projectId) =>
+            (await window.sekisan.listFurnitureSheets(projectId)).map(
+              (sheet) => ({
+                id: sheet.id,
+                name: sheet.name,
+                detail: [
+                  furnitureKindLabel(sheet.kind),
+                  [sheet.part1, sheet.part2]
+                    .filter((text) => text.trim() !== "")
+                    .join(" "),
+                  `${sheet.rowCount}行`,
+                ]
+                  .filter((text) => text !== "")
+                  .join("・"),
+                note: sheet.note,
+              }),
+            )
+          }
+          onCopy={copyFromOther}
+          onClose={() => setPickingOther(false)}
+        />
+      )}
 
       <table className="grid misc-list">
         <thead>

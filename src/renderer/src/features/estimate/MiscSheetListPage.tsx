@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MiscSheetSummary, ProjectSummary } from "@shared/types";
 import { ask } from "../common/askDialog";
+import OtherProjectSheetPicker from "./OtherProjectSheetPicker";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
@@ -26,10 +27,23 @@ export default function MiscSheetListPage({
   const [selectedEnd, setSelectedEnd] = useState(0);
   /** コピーした表（貼り付けで中身ごと写す） */
   const [clipboard, setClipboard] = useState<number[]>([]);
+  /** 他の物件から表を写す窓 */
+  const [pickingOther, setPickingOther] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     setSheets(await window.sekisan.listMiscSheets(project.id));
   }, [project.id]);
+
+  /** 他の物件の表をこの物件の末尾に写す */
+  const copyFromOther = async (sheetIds: number[]): Promise<void> => {
+    setSheets(
+      await window.sekisan.copyMiscSheetsFromProject(project.id, sheetIds),
+    );
+    setPickingOther(false);
+    setMessage(
+      `他の物件から ${sheetIds.length} 枚を写しました（いちばん下。部屋の行は手で足した行として入ります）`,
+    );
+  };
 
   useEffect(() => {
     void load();
@@ -89,9 +103,7 @@ export default function MiscSheetListPage({
   const paste = async (mode: "insert" | "append"): Promise<void> => {
     if (clipboard.length === 0) return;
     const at = mode === "insert" ? selectionStart : sheets.length;
-    setSheets(
-      await window.sekisan.pasteMiscSheets(project.id, clipboard, at),
-    );
+    setSheets(await window.sekisan.pasteMiscSheets(project.id, clipboard, at));
     setMessage(`${clipboard.length} 枚を貼り付けました（中の入力も写します）`);
   };
 
@@ -139,11 +151,35 @@ export default function MiscSheetListPage({
         >
           📋 追加貼付
         </button>
+        <button
+          type="button"
+          title="他の物件の一覧から表を選んで、中の明細・数量ごとこの物件に写します"
+          onClick={() => setPickingOther(true)}
+        >
+          🏢 他の物件から表コピー
+        </button>
         <button type="button" onClick={() => void save(sheets)}>
           💾 保存
         </button>
         <span className="status">{message}</span>
       </div>
+
+      {pickingOther && (
+        <OtherProjectSheetPicker
+          title="他の物件から表コピー（部位別雑・金物入力表）"
+          currentProjectId={project.id}
+          listSheets={async (projectId) =>
+            (await window.sekisan.listMiscSheets(projectId)).map((sheet) => ({
+              id: sheet.id,
+              name: sheet.name,
+              detail: `明細 ${sheet.columnCount}・部屋 ${sheet.rowCount}`,
+              note: sheet.note,
+            }))
+          }
+          onCopy={copyFromOther}
+          onClose={() => setPickingOther(false)}
+        />
+      )}
 
       <table className="grid misc-list">
         <thead>

@@ -204,6 +204,11 @@ const api = {
     insertAt: number,
   ): Promise<MiscSheetSummary[]> =>
     ipcRenderer.invoke(IPC.miscSheetPaste, projectId, sourceIds, insertAt),
+  copyMiscSheetsFromProject: (
+    projectId: number,
+    sourceIds: number[],
+  ): Promise<MiscSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.miscSheetCopyFromProject, projectId, sourceIds),
   saveMiscSheetList: (
     projectId: number,
     sheets: MiscSheetSummary[],
@@ -230,6 +235,15 @@ const api = {
     insertAt: number,
   ): Promise<FurnitureSheetSummary[]> =>
     ipcRenderer.invoke(IPC.furnitureSheetPaste, projectId, sourceIds, insertAt),
+  copyFurnitureSheetsFromProject: (
+    projectId: number,
+    sourceIds: number[],
+  ): Promise<FurnitureSheetSummary[]> =>
+    ipcRenderer.invoke(
+      IPC.furnitureSheetCopyFromProject,
+      projectId,
+      sourceIds,
+    ),
   saveFurnitureSheetList: (
     projectId: number,
     sheets: FurnitureSheetSummary[],

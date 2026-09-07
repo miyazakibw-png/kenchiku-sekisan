@@ -111,6 +111,7 @@ import {
   getMiscSheet,
   listMiscSheets,
   pasteMiscSheets,
+  copyMiscSheetsFromProject,
   saveMiscSheet,
   saveMiscSheetList,
 } from "./services/miscSheetService";
@@ -121,6 +122,7 @@ import {
   getFurnitureSheet,
   listFurnitureSheets,
   pasteFurnitureSheets,
+  copyFurnitureSheetsFromProject,
   saveFurnitureBaseSettings,
   saveFurnitureSheet,
   saveFurnitureSheetList,
@@ -424,6 +426,11 @@ function registerIpcHandlers(): void {
       pasteMiscSheets(getDatabase(), projectId, sourceIds, insertAt),
   );
   ipcMain.handle(
+    IPC.miscSheetCopyFromProject,
+    (_event, projectId: number, sourceIds: number[]) =>
+      copyMiscSheetsFromProject(getDatabase(), projectId, sourceIds),
+  );
+  ipcMain.handle(
     IPC.miscSheetListSave,
     (_event, projectId: number, sheets: MiscSheetSummary[]) =>
       saveMiscSheetList(getDatabase(), projectId, sheets),
@@ -449,6 +456,11 @@ function registerIpcHandlers(): void {
     IPC.furnitureSheetPaste,
     (_event, projectId: number, sourceIds: number[], insertAt: number) =>
       pasteFurnitureSheets(getDatabase(), projectId, sourceIds, insertAt),
+  );
+  ipcMain.handle(
+    IPC.furnitureSheetCopyFromProject,
+    (_event, projectId: number, sourceIds: number[]) =>
+      copyFurnitureSheetsFromProject(getDatabase(), projectId, sourceIds),
   );
   ipcMain.handle(
     IPC.furnitureSheetListSave,

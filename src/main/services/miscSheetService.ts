@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectMiscSheets } from "../db/schema";
 import {
@@ -120,27 +120,90 @@ export function pasteMiscSheets(
   insertAt: number,
 ): MiscSheetSummary[] {
   const rows = sheetRows(db, projectId);
-  const copied = sourceIds.flatMap((sourceId) => {
+  const sources = sourceIds.flatMap((sourceId) => {
     const source = rows.find((row) => row.id === sourceId);
-    if (source === undefined) return [];
-    const data = copyMiscSheetData({
-      columns: parseJson<MiscColumn[]>(source.columnsJson, []),
-      rows: parseJson<MiscRow[]>(source.rowsJson, []),
-    });
-    return [
-      db
-        .insert(projectMiscSheets)
-        .values({
-          projectId,
-          name: `${source.name} の写し`,
-          displayOrder: rows.length,
-          columnsJson: JSON.stringify(data.columns),
-          rowsJson: JSON.stringify(data.rows),
-          note: source.note,
-        })
-        .returning()
-        .get(),
-    ];
+    return source === undefined ? [] : [source];
+  });
+  return insertMiscCopies(
+    db,
+    projectId,
+    sources,
+    insertAt,
+    (name) => `${name} の写し`,
+    (data) => data,
+  );
+}
+
+/**
+ * 他の物件の表をこの物件の一覧の末尾に写す（名前はそのまま）。
+ * 部位別入力表から転記されていた行はこの物件の部屋とは結び付かないので、
+ * 数量を残したまま手で足した行（順につなぐ）にして持ち込む。
+ */
+export function copyMiscSheetsFromProject(
+  db: AppDatabase,
+  projectId: number,
+  sourceIds: number[],
+): MiscSheetSummary[] {
+  if (sourceIds.length === 0) return listMiscSheets(db, projectId);
+  const found = db
+    .select()
+    .from(projectMiscSheets)
+    .where(inArray(projectMiscSheets.id, sourceIds))
+    .all();
+  const sources = sourceIds.flatMap((sourceId) => {
+    const source = found.find((row) => row.id === sourceId);
+    return source === undefined || source.projectId === projectId
+      ? []
+      : [source];
+  });
+  return insertMiscCopies(
+    db,
+    projectId,
+    sources,
+    Number.MAX_SAFE_INTEGER,
+    (name) => name,
+    (data) => ({
+      columns: data.columns,
+      rows: data.rows.map((row, index) => ({
+        ...row,
+        estimateRowId: null,
+        anchorRowId: index === 0 ? null : data.rows[index - 1].id,
+      })),
+    }),
+  );
+}
+
+function insertMiscCopies(
+  db: AppDatabase,
+  projectId: number,
+  sources: (typeof projectMiscSheets.$inferSelect)[],
+  insertAt: number,
+  rename: (name: string) => string,
+  adjust: (data: { columns: MiscColumn[]; rows: MiscRow[] }) => {
+    columns: MiscColumn[];
+    rows: MiscRow[];
+  },
+): MiscSheetSummary[] {
+  const rows = sheetRows(db, projectId);
+  const copied = sources.map((source) => {
+    const data = adjust(
+      copyMiscSheetData({
+        columns: parseJson<MiscColumn[]>(source.columnsJson, []),
+        rows: parseJson<MiscRow[]>(source.rowsJson, []),
+      }),
+    );
+    return db
+      .insert(projectMiscSheets)
+      .values({
+        projectId,
+        name: rename(source.name),
+        displayOrder: rows.length,
+        columnsJson: JSON.stringify(data.columns),
+        rowsJson: JSON.stringify(data.rows),
+        note: source.note,
+      })
+      .returning()
+      .get();
   });
   const at = Math.min(Math.max(insertAt, 0), rows.length);
   const ordered = [...rows.slice(0, at), ...copied, ...rows.slice(at)];
@@ -180,7 +243,8 @@ export function getMiscSheet(db: AppDatabase, sheetId: number): MiscSheet {
     .from(projectMiscSheets)
     .where(eq(projectMiscSheets.id, sheetId))
     .get();
-  if (existing === undefined) throw new Error("部位別雑・金物入力表が有りません");
+  if (existing === undefined)
+    throw new Error("部位別雑・金物入力表が有りません");
   return toSheet(existing);
 }
 
