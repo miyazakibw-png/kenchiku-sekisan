@@ -139,7 +139,7 @@ const INPUT_COLUMNS: InputColumn[] = [
   { key: "remarksLower", label: "備考(下段)", forDetail: false },
 ];
 
-/** 計算書の種類ごとの入力欄の列（システムキッチンはW1・W2・W3） */
+/** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台はW1・W2・W3） */
 function inputColumnsFor(kind: string): InputColumn[] {
   if (!hasTripleWidth(kind)) return INPUT_COLUMNS;
   return INPUT_COLUMNS.flatMap((column) =>

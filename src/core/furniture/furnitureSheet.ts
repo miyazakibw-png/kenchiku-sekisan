@@ -47,12 +47,12 @@ export interface FurnitureSettings {
   widthLabel: string;
   heightLabel: string;
   depthLabel: string;
-  /** システムキッチン用：W2・W3の前に付ける文字（例：+） */
+  /** システムキッチン・洗面化粧台用：W2・W3の前に付ける文字（例：+） */
   width2Label: string;
   width3Label: string;
-  /** システムキッチン用：W2あり・W3無しのときWの後ろに付ける文字（例：(L型)） */
+  /** システムキッチン・洗面化粧台用：W2あり・W3無しのときWの後ろに付ける文字（例：(L型)） */
   lShapeLabel: string;
-  /** システムキッチン用：W3ありのときWの後ろに付ける文字（例：(コ型)） */
+  /** システムキッチン・洗面化粧台用：W3ありのときWの後ろに付ける文字（例：(コ型)） */
   uShapeLabel: string;
   /** +部位（記号入力）の対応表 */
   partSymbols: FurnitureSymbol[];
@@ -99,7 +99,7 @@ export interface FurnitureRow {
   nameSymbol: string;
   /** W・H・D（mm） */
   width: string;
-  /** システムキッチンのW2・W3（mm。古い保存には無い） */
+  /** システムキッチン・洗面化粧台のW2・W3（mm。古い保存には無い） */
   width2?: string;
   width3?: string;
   height: string;
@@ -173,9 +173,9 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** システムキッチンはW欄がW1・W2・W3の3つ */
+/** システムキッチン・洗面化粧台はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind === "kitchen";
+  return kind === "kitchen" || kind === "washstand";
 }
 
 /** 建具表へ転記するのは家具（システム収納）の表だけ */
@@ -194,6 +194,17 @@ export const defaultKitchenNameSymbols: FurnitureSymbol[] = [
   { symbol: "S", text: "システムキッチン" },
   { symbol: "M", text: "ミニキッチン" },
   { symbol: "K", text: "キッチンセット" },
+];
+
+/** 洗面化粧台の部位（部屋名）の記号の初めの並び */
+export const defaultWashstandPartSymbols: FurnitureSymbol[] = [
+  { symbol: "S", text: "洗面脱衣室" },
+  { symbol: "T", text: "トイレ" },
+];
+
+/** 洗面化粧台の名称の記号の初めの並び */
+export const defaultWashstandNameSymbols: FurnitureSymbol[] = [
+  { symbol: "S", text: "洗面化粧台" },
 ];
 
 export function furnitureSettings(
@@ -226,6 +237,12 @@ export function furnitureSettingsFor(
     return furnitureSettings({
       partSymbols: defaultKitchenPartSymbols.map((item) => ({ ...item })),
       nameSymbols: defaultKitchenNameSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
+  if (kind === "washstand")
+    return furnitureSettings({
+      partSymbols: defaultWashstandPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultWashstandNameSymbols.map((item) => ({ ...item })),
       ...patch,
     });
   return furnitureSettings(patch);

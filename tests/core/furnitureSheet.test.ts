@@ -288,10 +288,42 @@ describe("システムキッチン（W1・W2・W3）", () => {
     });
   }
 
-  it("システムキッチンだけW欄が3つ", () => {
+  it("システムキッチンと洗面化粧台はW欄が3つ", () => {
     expect(hasTripleWidth("kitchen")).toBe(true);
+    expect(hasTripleWidth("washstand")).toBe(true);
     expect(hasTripleWidth("furniture")).toBe(false);
-    expect(hasTripleWidth("washstand")).toBe(false);
+    expect(hasTripleWidth("other")).toBe(false);
+  });
+
+  it("洗面化粧台は作りはキッチンと同じで、初めの記号表は洗面用（基準は別）", () => {
+    const washstand = furnitureSettingsFor("washstand");
+    expect(washstand.partSymbols).toEqual([
+      { symbol: "S", text: "洗面脱衣室" },
+      { symbol: "T", text: "トイレ" },
+    ]);
+    expect(washstand.nameSymbols).toEqual([{ symbol: "S", text: "洗面化粧台" }]);
+    expect(washstand).toMatchObject({
+      width2Label: "+",
+      width3Label: "+",
+      lShapeLabel: "(L型)",
+      uShapeLabel: "(コ型)",
+    });
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          partSymbol: "S",
+          nameSymbol: "S",
+          width: "900",
+          width2: "600",
+          height: "1900",
+          depth: "500",
+        }),
+      ],
+      washstand,
+    );
+    expect(rows[0].detail.partName).toBe("洗面脱衣室");
+    expect(rows[0].detail.name).toBe("洗面化粧台");
+    expect(rows[0].detail.descriptionLower).toBe("W900+600(L型)*H1900*D500");
   });
 
   it("初めの設定は種類ごと（キッチンは記号表がキッチン用・W2/W3の文字は+・(L型)・(コ型)）", () => {

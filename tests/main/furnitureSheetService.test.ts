@@ -214,6 +214,9 @@ describe("家具・設備入力表", () => {
       symbol: "S",
       text: "システムキッチン",
     });
+    const washstand = createFurnitureSheet(db, projectId, "洗面", "washstand");
+    expect(settingsOf(washstand.id)).toEqual(furnitureSettingsFor("washstand"));
+    expect(settingsOf(washstand.id)).not.toEqual(settingsOf(kitchen.id));
 
     // 表コピーは元の表の設定を写す
     const pasted = pasteFurnitureSheets(db, projectId, [first.id], 9);
