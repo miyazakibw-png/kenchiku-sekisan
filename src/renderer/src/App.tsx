@@ -64,8 +64,8 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     document.title = projectName
-      ? `建築積算システム　${projectName}`
-      : "建築積算システム";
+      ? `建築積算システム ${__APP_VERSION__}　${projectName}`
+      : `建築積算システム ${__APP_VERSION__}`;
   }, [projectName]);
 
   if (calcParentId !== null)
