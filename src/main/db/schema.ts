@@ -291,6 +291,10 @@ export const projectFittings = sqliteTable("project_fittings", {
   note: text("note").notNull().default(""),
   /** 1: 建具表に無いものを積算入力から登録した行 */
   fromEstimate: integer("from_estimate").notNull().default(0),
+  /** 1: 家具計算書から自動転記した行（並べ替えの対象にせず、建具の後ろに入力順で並べる） */
+  fromFurniture: integer("from_furniture").notNull().default(0),
+  /** 家具計算書の行の目印（表id:行id）。転記し直すときに突き合わせる */
+  furnitureKey: text("furniture_key").notNull().default(""),
   displayOrder: integer("display_order").notNull().default(0),
 });
 
@@ -469,6 +473,36 @@ export const projectMiscSheets = sqliteTable("project_misc_sheets", {
   note: text("note").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
 });
+
+/**
+ * 家具・設備入力表（家具計算書）。
+ * 1工事に何枚でも作れる（一覧から開く）。左の入力欄から右の明細欄を自動で作り、
+ * 数量はその部位Ⅰ〜Ⅲの計算書に入れたのと同じ扱いで集計する。
+ */
+export const projectFurnitureSheets = sqliteTable(
+  "project_furniture_sheets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** 一覧に出す表の名前（部位Ⅲ） */
+    name: text("name").notNull().default("家具計算書"),
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part2Split: integer("part2_split").notNull().default(0),
+    multiplier: real("multiplier").notNull().default(1),
+    /** 計算書の種類（今は家具計算書＝furniture） */
+    kind: text("kind").notNull().default("furniture"),
+    displayOrder: integer("display_order").notNull().default(0),
+    /** 入力欄と明細欄（FurnitureRowの配列） */
+    rowsJson: text("rows_json").notNull().default("[]"),
+    /** 付け加える文字・記号の対応表（FurnitureSettings） */
+    settingsJson: text("settings_json").notNull().default("{}"),
+    note: text("note").notNull().default(""),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+);
 
 /**
  * 転記入力表の1行（1明細）。

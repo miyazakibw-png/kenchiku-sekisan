@@ -17,6 +17,7 @@ import {
   projectFrameSheets,
   projectGeneralSheets,
   projectMiscSheets,
+  projectFurnitureSheets,
   projectPitSheets,
   projectRoomSheets,
   projectTransferRows,
@@ -35,6 +36,13 @@ import {
   type MiscColumn,
   type MiscRow,
 } from "../../core/misc/miscSheet";
+import {
+  applyFurnitureDetails,
+  entriesFromFurnitureSheet,
+  furnitureSettings,
+  type FurnitureRow,
+  type FurnitureSettings,
+} from "../../core/furniture/furnitureSheet";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
 import {
   listProjectBasicMasters,
@@ -547,6 +555,7 @@ export function collectEntries(
   });
 
   entries.push(...miscEntries(db, projectId, part2Order));
+  entries.push(...furnitureEntries(db, projectId, part2Order));
   entries.push(...transferEntries(db, projectId, part2Order));
   return entries;
 }
@@ -571,6 +580,44 @@ function miscEntries(
         part2Order.set(row.part2, part2Order.size);
     });
     return entriesFromMiscSheet({ columns, rows }, part2Order);
+  });
+}
+
+/** 家具・設備入力表（家具計算書）。部位Ⅰ〜Ⅲの計算書に入れたのと同じ扱いで集計する */
+function furnitureEntries(
+  db: AppDatabase,
+  projectId: number,
+  part2Order: Map<string, number>,
+): AggregateEntry[] {
+  const sheets = db
+    .select()
+    .from(projectFurnitureSheets)
+    .where(eq(projectFurnitureSheets.projectId, projectId))
+    .orderBy(
+      asc(projectFurnitureSheets.displayOrder),
+      asc(projectFurnitureSheets.id),
+    )
+    .all();
+  return sheets.flatMap((sheet) => {
+    if (!part2Order.has(sheet.part2))
+      part2Order.set(sheet.part2, part2Order.size);
+    const rows = parseJson<FurnitureRow[]>(sheet.rowsJson, []);
+    const settings = {
+      ...furnitureSettings(),
+      ...parseJson<FurnitureSettings>(sheet.settingsJson, furnitureSettings()),
+    };
+    return entriesFromFurnitureSheet(
+      {
+        sheetId: sheet.id,
+        part1: sheet.part1,
+        part2: sheet.part2,
+        part2Split: sheet.part2Split === 1,
+        part3: sheet.name,
+        multiplier: sheet.multiplier,
+      },
+      { rows, settings },
+      part2Order,
+    );
   });
 }
 
@@ -806,10 +853,80 @@ export function saveAggregateEdits(
         });
       }
 
+      // 家具・設備入力表の明細（右側の明細欄。左の入力欄には返さない）
+      const furnitureRowIds = new Set(
+        targets
+          .filter((target) => target.sourceKind === "furniture")
+          .map((target) => target.traceId.split(":")[2]),
+      );
+      if (furnitureRowIds.size > 0) {
+        const furnitureSheets = tx
+          .select()
+          .from(projectFurnitureSheets)
+          .where(eq(projectFurnitureSheets.projectId, projectId))
+          .all();
+        furnitureSheets.forEach((furnitureSheet) => {
+          const settings = {
+            ...furnitureSettings(),
+            ...parseJson<FurnitureSettings>(
+              furnitureSheet.settingsJson,
+              furnitureSettings(),
+            ),
+          };
+          const rows = applyFurnitureDetails(
+            parseJson<FurnitureRow[]>(furnitureSheet.rowsJson, []),
+            settings,
+          );
+          let furnitureChanged = false;
+          const nextRows = rows.map((row) => {
+            if (!furnitureRowIds.has(row.id)) return row;
+            furnitureChanged = true;
+            const changed: Record<string, string> = {
+              partName: edit.partName,
+              name: edit.name,
+              descriptionUpper: edit.descriptionUpper,
+              descriptionLower: edit.descriptionLower,
+              unit: edit.unit,
+              remarksUpper: edit.remarksUpper,
+              remarksLower: edit.remarksLower,
+            };
+            const edited = [...row.detail.edited];
+            Object.entries(changed).forEach(([key, value]) => {
+              const before: unknown = (
+                row.detail as unknown as Record<string, unknown>
+              )[key];
+              if (before !== value && !edited.includes(key)) edited.push(key);
+            });
+            return {
+              ...row,
+              detail: {
+                ...row.detail,
+                ...changed,
+                subjectId: edit.subjectId,
+                materialCategory: edit.materialCategory,
+                partNumber: edit.partNumber,
+                detailNumber: edit.detailNumber,
+                edited,
+              },
+            };
+          });
+          if (furnitureChanged) {
+            tx.update(projectFurnitureSheets)
+              .set({
+                rowsJson: JSON.stringify(nextRows),
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(projectFurnitureSheets.id, furnitureSheet.id))
+              .run();
+          }
+        });
+      }
+
       // 計算書（部屋別・軸組・汎用）の下段
       const sheetTargets = new Map<string, string[]>();
       targets.forEach((target) => {
         if (target.sourceKind === "misc") return;
+        if (target.sourceKind === "furniture") return;
         if (target.estimateRowId === null) return;
         const key = `${target.sourceKind}:${target.estimateRowId}`;
         const list = sheetTargets.get(key) ?? [];

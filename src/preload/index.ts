@@ -32,6 +32,8 @@ import type {
   GeneralSheet,
   MiscSheet,
   MiscSheetSummary,
+  FurnitureSheet,
+  FurnitureSheetSummary,
   PitSheet,
   MasterOptions,
   ProjectField,
@@ -51,6 +53,7 @@ import type {
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
   SaveMiscSheetRequest,
+  SaveFurnitureSheetRequest,
   SavePitSheetRequest,
   RoomSheet,
   SaveProjectRequest,
@@ -200,6 +203,34 @@ const api = {
     ipcRenderer.invoke(IPC.miscSheetGet, sheetId),
   saveMiscSheet: (request: SaveMiscSheetRequest): Promise<MiscSheet> =>
     ipcRenderer.invoke(IPC.miscSheetSave, request),
+  /** 家具・設備入力表（家具計算書） */
+  listFurnitureSheets: (projectId: number): Promise<FurnitureSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.furnitureSheetList, projectId),
+  createFurnitureSheet: (
+    projectId: number,
+    name: string,
+    kind: string,
+  ): Promise<FurnitureSheetSummary> =>
+    ipcRenderer.invoke(IPC.furnitureSheetCreate, projectId, name, kind),
+  deleteFurnitureSheet: (sheetId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.furnitureSheetDelete, sheetId),
+  pasteFurnitureSheets: (
+    projectId: number,
+    sourceIds: number[],
+    insertAt: number,
+  ): Promise<FurnitureSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.furnitureSheetPaste, projectId, sourceIds, insertAt),
+  saveFurnitureSheetList: (
+    projectId: number,
+    sheets: FurnitureSheetSummary[],
+  ): Promise<FurnitureSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.furnitureSheetListSave, projectId, sheets),
+  getFurnitureSheet: (sheetId: number): Promise<FurnitureSheet> =>
+    ipcRenderer.invoke(IPC.furnitureSheetGet, sheetId),
+  saveFurnitureSheet: (
+    request: SaveFurnitureSheetRequest,
+  ): Promise<FurnitureSheet> =>
+    ipcRenderer.invoke(IPC.furnitureSheetSave, request),
   /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
   getPitSheet: (estimateRowId: number): Promise<PitSheet> =>
     ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),

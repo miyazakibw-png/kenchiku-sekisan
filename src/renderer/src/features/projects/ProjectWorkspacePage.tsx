@@ -24,6 +24,8 @@ import FittingsPage from "../fittings/FittingsPage";
 import EstimatePartsPage from "../estimate/EstimatePartsPage";
 import MiscSheetListPage from "../estimate/MiscSheetListPage";
 import MiscSheetPage from "../estimate/MiscSheetPage";
+import FurnitureSheetListPage from "../estimate/FurnitureSheetListPage";
+import FurnitureSheetPage from "../estimate/FurnitureSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
@@ -74,6 +76,8 @@ export default function ProjectWorkspacePage({
   const [openedMenu, setOpenedMenu] = useState<string | null>(null);
   /** 部位別雑・金物入力表の管理表で選んで開いている表 */
   const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
+  /** 家具・設備入力表の一覧で選んで開いている表 */
+  const [furnitureSheetId, setFurnitureSheetId] = useState<number | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
 
   useEffect(() => setOptions(initialOptions), [initialOptions]);
@@ -268,6 +272,26 @@ export default function ProjectWorkspacePage({
         options={options}
         sheetId={miscSheetId}
         onBack={() => setMiscSheetId(null)}
+      />
+    );
+  }
+
+  if (openedMenu === "furnitureInput") {
+    if (furnitureSheetId === null) {
+      return (
+        <FurnitureSheetListPage
+          project={draft}
+          onOpen={(sheetId) => setFurnitureSheetId(sheetId)}
+          onBack={() => setOpenedMenu(null)}
+        />
+      );
+    }
+    return (
+      <FurnitureSheetPage
+        project={draft}
+        options={options}
+        sheetId={furnitureSheetId}
+        onBack={() => setFurnitureSheetId(null)}
       />
     );
   }

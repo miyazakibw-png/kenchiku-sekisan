@@ -937,4 +937,25 @@ ALTER TABLE project_misc_sheets ADD COLUMN name TEXT NOT NULL DEFAULT '部位別
 ALTER TABLE project_misc_sheets ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX ix_misc_sheet_project ON project_misc_sheets(project_id, display_order);
 `,
+  // 家具・設備入力表（家具計算書）と、家具から建具表へ自動転記した行の目印
+  `
+CREATE TABLE project_furniture_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '家具計算書',
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  multiplier REAL NOT NULL DEFAULT 1,
+  kind TEXT NOT NULL DEFAULT 'furniture',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  rows_json TEXT NOT NULL DEFAULT '[]',
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX ix_furniture_sheet_project ON project_furniture_sheets(project_id, display_order);
+ALTER TABLE project_fittings ADD COLUMN from_furniture INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_fittings ADD COLUMN furniture_key TEXT NOT NULL DEFAULT '';
+`,
 ];

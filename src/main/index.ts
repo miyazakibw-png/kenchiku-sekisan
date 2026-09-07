@@ -113,6 +113,15 @@ import {
   saveMiscSheet,
   saveMiscSheetList,
 } from "./services/miscSheetService";
+import {
+  createFurnitureSheet,
+  deleteFurnitureSheet,
+  getFurnitureSheet,
+  listFurnitureSheets,
+  pasteFurnitureSheets,
+  saveFurnitureSheet,
+  saveFurnitureSheetList,
+} from "./services/furnitureSheetService";
 import { getPitSheet, savePitSheet } from "./services/pitSheetService";
 import {
   listTransferRows,
@@ -159,6 +168,7 @@ import type {
   BreakdownSettingsRecord,
   SaveBreakdownRowsRequest,
   MiscSheetSummary,
+  FurnitureSheetSummary,
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
@@ -167,6 +177,7 @@ import type {
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
   SaveMiscSheetRequest,
+  SaveFurnitureSheetRequest,
   SavePitSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -416,6 +427,35 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.miscSheetSave, (_event, request: SaveMiscSheetRequest) =>
     saveMiscSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.furnitureSheetList, (_event, projectId: number) =>
+    listFurnitureSheets(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.furnitureSheetCreate,
+    (_event, projectId: number, name: string, kind: string) =>
+      createFurnitureSheet(getDatabase(), projectId, name, kind),
+  );
+  ipcMain.handle(IPC.furnitureSheetDelete, (_event, sheetId: number) => {
+    deleteFurnitureSheet(getDatabase(), sheetId);
+  });
+  ipcMain.handle(
+    IPC.furnitureSheetPaste,
+    (_event, projectId: number, sourceIds: number[], insertAt: number) =>
+      pasteFurnitureSheets(getDatabase(), projectId, sourceIds, insertAt),
+  );
+  ipcMain.handle(
+    IPC.furnitureSheetListSave,
+    (_event, projectId: number, sheets: FurnitureSheetSummary[]) =>
+      saveFurnitureSheetList(getDatabase(), projectId, sheets),
+  );
+  ipcMain.handle(IPC.furnitureSheetGet, (_event, sheetId: number) =>
+    getFurnitureSheet(getDatabase(), sheetId),
+  );
+  ipcMain.handle(
+    IPC.furnitureSheetSave,
+    (_event, request: SaveFurnitureSheetRequest) =>
+      saveFurnitureSheet(getDatabase(), request),
   );
   ipcMain.handle(IPC.pitSheetGet, (_event, estimateRowId: number) =>
     getPitSheet(getDatabase(), estimateRowId),

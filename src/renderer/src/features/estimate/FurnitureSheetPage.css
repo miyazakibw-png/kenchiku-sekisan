@@ -1,0 +1,84 @@
+.furniture-page .furniture-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.furniture-page .furniture-table th,
+.furniture-page .furniture-table td {
+  border: 1px solid #999;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.furniture-page .furniture-table th {
+  background: #1f4e79;
+  color: #fff;
+  padding: 2px 4px;
+  font-weight: normal;
+}
+
+.furniture-page .furniture-table th.side {
+  background: #2e6da4;
+}
+
+.furniture-page .furniture-table input {
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  padding: 1px 2px;
+  background: transparent;
+}
+
+.furniture-page .furniture-table td.num input {
+  text-align: right;
+}
+
+/** 右側の明細欄。左の入力欄から自動で作る（手で直した欄は色を変える） */
+.furniture-page .furniture-table td.detail {
+  background: #f3f7fb;
+}
+
+.furniture-page .furniture-table td.detail.edited input {
+  color: #c0392b;
+}
+
+.furniture-page .furniture-table tr.title-row td {
+  background: #fffbe6;
+}
+
+.furniture-page .furniture-settings {
+  border: 1px solid #999;
+  padding: 8px;
+  margin: 8px 0;
+  background: #fafafa;
+}
+
+.furniture-page .furniture-settings table {
+  border-collapse: collapse;
+}
+
+.furniture-page .furniture-settings td {
+  padding: 2px 4px;
+}
+
+.furniture-page .furniture-columns label {
+  margin-right: 10px;
+  font-size: 12px;
+}
+
+@media print {
+  .furniture-page .toolbar,
+  .furniture-page .furniture-settings,
+  .furniture-page .furniture-columns,
+  .furniture-page .ops-col,
+  .furniture-page .no-print {
+    display: none !important;
+  }
+
+  .furniture-page .furniture-table th,
+  .furniture-page .furniture-table td {
+    background: #fff !important;
+    color: #000 !important;
+    position: static !important;
+  }
+}

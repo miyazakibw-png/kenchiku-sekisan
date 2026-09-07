@@ -59,6 +59,13 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
+    key: "furnitureInput",
+    label: "家具・設備入力表",
+    group: "input",
+    note: "システム収納などの家具計算書（入力欄から明細欄を自動で作り、建具表へも転記）",
+    ready: true,
+  },
+  {
     key: "transferInput",
     label: "転記入力表",
     group: "input",

@@ -40,6 +40,7 @@ export function listFittings(db: AppDatabase, projectId: number): Fitting[] {
     .from(projectFittings)
     .where(eq(projectFittings.projectId, projectId))
     .orderBy(
+      asc(projectFittings.fromFurniture),
       asc(projectFittings.fromEstimate),
       asc(projectFittings.displayOrder),
       asc(projectFittings.id),
@@ -88,6 +89,8 @@ export function saveFittings(
         baseboardFormula: row.baseboardFormula,
         note: row.note,
         fromEstimate: row.fromEstimate,
+        fromFurniture: row.fromFurniture ?? 0,
+        furnitureKey: row.furnitureKey ?? "",
         displayOrder: index,
       };
       if (row.id === null) {

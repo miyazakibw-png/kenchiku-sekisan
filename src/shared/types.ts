@@ -63,14 +63,20 @@ export interface Fitting {
   note: string;
   /** 1: 建具表に無いものを積算入力から登録した行 */
   fromEstimate: number;
+  /** 1: 家具計算書から自動転記した行（並べ替えの対象にしない） */
+  fromFurniture: number;
+  /** 家具計算書の行の目印（表id:行id） */
+  furnitureKey: string;
   displayOrder: number;
 }
 
 export type FittingDraft = Omit<
   Fitting,
-  "id" | "projectId" | "displayOrder"
+  "id" | "projectId" | "displayOrder" | "fromFurniture" | "furnitureKey"
 > & {
   id: number | null;
+  fromFurniture?: number;
+  furnitureKey?: string;
 };
 
 export interface SaveFittingsRequest {
@@ -374,6 +380,47 @@ export interface MiscSheetSummary {
   /** タテに並べた明細の数 */
   columnCount: number;
   /** ヨコに並べた部屋の数 */
+  rowCount: number;
+  updatedAt: string;
+}
+
+/** 家具・設備入力表（家具計算書）。1工事に何枚でも */
+export interface FurnitureSheet {
+  id: number;
+  projectId: number;
+  /** 一覧に出す表の名前（部位Ⅲ） */
+  name: string;
+  part1: string;
+  part2: string;
+  part2Split: number;
+  multiplier: number;
+  /** 計算書の種類（今は furniture のみ） */
+  kind: string;
+  displayOrder: number;
+  /** 入力欄と明細欄（FurnitureRowの配列）のJSON */
+  rowsJson: string;
+  /** 設定（FurnitureSettings）のJSON */
+  settingsJson: string;
+  note: string;
+}
+
+export type SaveFurnitureSheetRequest = Omit<
+  FurnitureSheet,
+  "projectId" | "displayOrder"
+>;
+
+/** 家具・設備入力表（一覧）に出す1行 */
+export interface FurnitureSheetSummary {
+  id: number;
+  name: string;
+  part1: string;
+  part2: string;
+  part2Split: number;
+  multiplier: number;
+  kind: string;
+  note: string;
+  displayOrder: number;
+  /** 入力した行数 */
   rowCount: number;
   updatedAt: string;
 }

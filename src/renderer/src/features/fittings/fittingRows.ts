@@ -30,6 +30,8 @@ export function emptyRow(): FittingDraft {
     baseboardFormula: "",
     note: "",
     fromEstimate: 0,
+    fromFurniture: 0,
+    furnitureKey: "",
   };
 }
 
@@ -102,13 +104,18 @@ export function updateRow(
 /**
  * 建具記号の昇順に並べ替える。
  * 積算入力から登録された行は建具表入力の後ろへまとめる。
+ * 家具計算書から転記した行は並べ替えず、入力順のままいちばん後ろに置く。
  */
 export function sortBySymbol(rows: FittingDraft[]): FittingDraft[] {
-  return [...rows].sort((a, b) => {
-    if (a.fromEstimate !== b.fromEstimate)
-      return a.fromEstimate - b.fromEstimate;
-    return compareSymbols(a.symbol, b.symbol);
-  });
+  const furniture = rows.filter((row) => row.fromFurniture === 1);
+  const sorted = rows
+    .filter((row) => row.fromFurniture !== 1)
+    .sort((a, b) => {
+      if (a.fromEstimate !== b.fromEstimate)
+        return a.fromEstimate - b.fromEstimate;
+      return compareSymbols(a.symbol, b.symbol);
+    });
+  return [...sorted, ...furniture];
 }
 
 /** 自動計算列。貼り付け位置を画面と合わせるために列は持つが、値は取り込まない */
