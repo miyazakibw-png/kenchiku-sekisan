@@ -241,11 +241,17 @@ function readWidths(key: string): Record<string, number> {
   }
 }
 
-/** 非表示にした列（次に開いたときも同じにする） */
+/** 非表示にした列。計算書（表）ごとに覚え、初めて開く表は最後に使った並びから始める */
 const HIDDEN_KEY = "furniture-hidden";
 
-function readHidden(): string[] {
-  const saved = window.localStorage.getItem(HIDDEN_KEY);
+function hiddenKeyOf(sheetId: number): string {
+  return `${HIDDEN_KEY}:${sheetId}`;
+}
+
+function readHidden(sheetId: number): string[] {
+  const saved =
+    window.localStorage.getItem(hiddenKeyOf(sheetId)) ??
+    window.localStorage.getItem(HIDDEN_KEY);
   if (saved === null) return [];
   try {
     const parsed: unknown = JSON.parse(saved);
@@ -362,7 +368,7 @@ export default function FurnitureSheetPage({
   const [settings, setSettings] = useState<FurnitureSettings>(
     furnitureSettings(),
   );
-  const [hidden, setHidden] = useState<string[]>(readHidden);
+  const [hidden, setHidden] = useState<string[]>(() => readHidden(sheetId));
   const [showSettings, setShowSettings] = useState(false);
   const settingsDrag = useDragWindow();
   const callDrag = useDragWindow();
@@ -450,6 +456,7 @@ export default function FurnitureSheetPage({
       setRows(nextRows);
       setColumns(nextColumns);
       setSettings(nextSettings);
+      setHidden(readHidden(sheetId));
       markSaved({
         rows: nextRows,
         columns: nextColumns,
@@ -462,8 +469,10 @@ export default function FurnitureSheetPage({
     window.localStorage.setItem(widthKey, JSON.stringify(widths));
   }, [widthKey, widths]);
   useEffect(() => {
-    window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(hidden));
-  }, [hidden]);
+    const json = JSON.stringify(hidden);
+    window.localStorage.setItem(hiddenKeyOf(sheetId), json);
+    window.localStorage.setItem(HIDDEN_KEY, json);
+  }, [hidden, sheetId]);
 
   /** 右端をドラッグして列幅を変える */
   const startResize = useCallback(
