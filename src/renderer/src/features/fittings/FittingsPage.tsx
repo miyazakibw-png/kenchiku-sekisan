@@ -654,6 +654,15 @@ export default function FittingsPage({
                     const source =
                       row.id === null ? undefined : sources.get(row.id);
                     if (source === undefined) return null;
+                    if (source.kind === "none")
+                      return (
+                        <span
+                          className="source-none"
+                          title="計算書から登録された建具ですが、今はどの計算書にもこの記号がありません（計算書側で記号を変えた・消した後に残ったもの）。使わないなら［行削除］で消せます"
+                        >
+                          計算書なし（記号が変更・削除済み）
+                        </span>
+                      );
                     const label =
                       source.kind === "room"
                         ? `部屋計算書：${source.name}`

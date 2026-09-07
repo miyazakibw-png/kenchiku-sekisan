@@ -130,11 +130,21 @@ export function listFittingSources(
   );
 
   const sources: FittingSource[] = [];
+  const none = (fittingId: number): FittingSource => ({
+    fittingId,
+    kind: "none",
+    estimateRowId: null,
+    furnitureSheetId: null,
+    name: "",
+  });
   for (const fitting of fittings) {
     if (fitting.fromFurniture === 1) {
       const sheetId = Number(fitting.furnitureKey.split(":")[0]);
       const name = sheets.get(sheetId);
-      if (name === undefined) continue;
+      if (name === undefined) {
+        sources.push(none(fitting.id));
+        continue;
+      }
       sources.push({
         fittingId: fitting.id,
         kind: "furniture",
@@ -151,7 +161,10 @@ export function listFittingSources(
         ? undefined
         : roomById.get(fitting.sourceEstimateRowId)) ??
       rooms.find((each) => each.symbols.has(symbol));
-    if (room === undefined) continue;
+    if (room === undefined) {
+      sources.push(none(fitting.id));
+      continue;
+    }
     sources.push({
       fittingId: fitting.id,
       kind: "room",

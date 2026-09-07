@@ -209,8 +209,18 @@ describe("タテ方向の明細（列）", () => {
     return rows;
   }
 
-  it("列の合計は各行の数量（計算式も可）を足したもの", () => {
-    expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(5);
+  it("列の合計は各行の値（計算式も可）×その行の数量を足したもの", () => {
+    // rows[1]: 2 × 数量1, rows[2]: (1+2) × 数量5
+    expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(17);
+  });
+
+  it("数量が未入力の行は上の行の数量を使い、どこにも無ければ1とする", () => {
+    const rows = rowsWithValues();
+    rows[2].quantity = "";
+    expect(furnitureColumnTotal(rows, "c1")).toBe(5);
+    rows[0].quantity = "";
+    rows[1].quantity = "";
+    expect(furnitureColumnTotal(rows, "c1")).toBe(5);
   });
 
   it("計算式では行のW・H・D（mm→m）が使える（全角・小文字も）", () => {
@@ -223,11 +233,11 @@ describe("タテ方向の明細（列）", () => {
     expect(furnitureCellValue(furnitureRow(), "W*H")).toBe(0);
   });
 
-  it("列の合計・集計でもW・H・Dが使える", () => {
+  it("列の合計・集計でもW・H・Dが使える（数量を掛ける）", () => {
     const rows = sample();
-    rows[1].values = { c1: "W" };
-    rows[2].values = { c1: "H" };
-    expect(furnitureColumnTotal(rows, "c1")).toBe(3.37);
+    rows[1].values = { c1: "W" }; // 1.2 × 1
+    rows[2].values = { c1: "H" }; // 2.17 × 5
+    expect(furnitureColumnTotal(rows, "c1")).toBe(12.05);
   });
 
   it("ヨコの自動明細とは別のtraceIdで集計する", () => {
@@ -250,8 +260,11 @@ describe("タテ方向の明細（列）", () => {
       "furniturecol:3:r2:c1",
       "furniturecol:3:r3:c1",
     ]);
+    // 値 × 行の数量 × 表の倍率
+    expect(vertical[0].setTotal).toBe(2);
     expect(vertical[0].quantity).toBe(4);
-    expect(vertical[1].quantity).toBe(6);
+    expect(vertical[1].setTotal).toBe(15);
+    expect(vertical[1].quantity).toBe(30);
     expect(vertical[0].name).toBe("カウンター取付");
     expect(vertical[0].sourceKind).toBe("furniture");
   });

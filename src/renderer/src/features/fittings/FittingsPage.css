@@ -145,6 +145,12 @@ table.fittings td.source button.link:hover {
   background: #f3e8ff;
 }
 
+table.fittings td.source .source-none {
+  padding: 0 4px;
+  font-size: 12px;
+  color: #9a3412;
+}
+
 .fittings-page .hint {
   margin: 0 8px 16px;
   font-size: 11px;

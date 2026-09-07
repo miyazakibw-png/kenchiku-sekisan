@@ -90,7 +90,8 @@ export type FittingDraft = Omit<
 /** 建具表の行がどの計算書から追加されたか（部屋計算書・家具計算書） */
 export interface FittingSource {
   fittingId: number;
-  kind: "room" | "furniture";
+  /** none：計算書から登録されたが、今はどの計算書にもその記号が無い（記号を変えた・消した後） */
+  kind: "room" | "furniture" | "none";
   /** 部屋計算書のとき：部位別入力表の行id */
   estimateRowId: number | null;
   /** 家具計算書のとき：表id */

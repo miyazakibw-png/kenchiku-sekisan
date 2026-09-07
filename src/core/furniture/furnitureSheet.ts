@@ -309,13 +309,32 @@ export function furnitureCellValue(
   return computed === null ? null : displayedValue(computed);
 }
 
-/** タテ方向の明細（列）1本の合計 */
+/**
+ * タテ方向の明細のマス1つ分の計上数量＝マスの値 × その行の数量（家具の個数。未入力は上の行と同じ、無ければ1）。
+ */
+export function furnitureCellQuantity(
+  row: FurnitureRow,
+  resolved: FurnitureResolved,
+  text: string,
+): number | null {
+  const value = furnitureCellValue(row, text);
+  if (value === null) return null;
+  const count = numberOf(resolved.quantity) ?? 1;
+  return displayedValue(value * count);
+}
+
+/** タテ方向の明細（列）1本の合計（各行の値 × 数量を足したもの） */
 export function furnitureColumnTotal(
   rows: FurnitureRow[],
   columnId: string,
 ): number {
-  return rows.reduce((sum, row) => {
-    const value = furnitureCellValue(row, row.values?.[columnId] ?? "");
+  const resolved = resolveFurnitureRows(rows);
+  return rows.reduce((sum, row, index) => {
+    const value = furnitureCellQuantity(
+      row,
+      resolved[index],
+      row.values?.[columnId] ?? "",
+    );
     return value === null ? sum : displayedValue(sum + value);
   }, 0);
 }
@@ -604,10 +623,14 @@ export function entriesFromFurnitureSheet(
     });
   });
   // タテ方向の明細（部位別雑・金物入力表と同じ形。ヨコの自動明細とは別に拾う）
-  rows.forEach((row) => {
+  rows.forEach((row, index) => {
     (data.columns ?? []).forEach((column) => {
       if (isEmptyColumn(column)) return;
-      const value = furnitureCellValue(row, row.values?.[column.id] ?? "");
+      const value = furnitureCellQuantity(
+        row,
+        resolved[index],
+        row.values?.[column.id] ?? "",
+      );
       if (value === null) return;
       entries.push({
         traceId: `furniturecol:${place.sheetId}:${row.id}:${column.id}`,

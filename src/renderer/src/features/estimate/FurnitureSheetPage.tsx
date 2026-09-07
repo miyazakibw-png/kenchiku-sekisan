@@ -16,6 +16,7 @@ import type {
 } from "@shared/types";
 import {
   applyFurnitureDetails,
+  furnitureCellQuantity,
   furnitureCellValue,
   furnitureColumn,
   furnitureColumnTotal,
@@ -1770,6 +1771,11 @@ export default function FurnitureSheetPage({
                   {columns.map((column) => {
                     const text = rows[index].values?.[column.id] ?? "";
                     const value = furnitureCellValue(row, text);
+                    const counted = furnitureCellQuantity(
+                      row,
+                      resolved[index],
+                      text,
+                    );
                     return (
                       <td
                         key={column.id}
@@ -1779,7 +1785,9 @@ export default function FurnitureSheetPage({
                             : "num vcell"
                         }
                         title={
-                          value === null ? "" : `計算結果 ${value.toFixed(2)}`
+                          value === null || counted === null
+                            ? ""
+                            : `計算結果 ${value.toFixed(2)} × 数量${resolved[index].quantity.trim() === "" ? "1" : resolved[index].quantity.trim()} = ${counted.toFixed(2)}`
                         }
                       >
                         <input

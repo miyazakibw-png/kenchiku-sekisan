@@ -240,6 +240,13 @@ describe("部屋計算書（上段）", () => {
       height: 2.1,
       sillHeight: null,
     });
+    // 計算書から登録されたが、今はどの計算書にも無い記号（記号を直した後に残ったもの）
+    registerRoomFitting(db, project.id, {
+      symbol: "aw8",
+      width: 3.29,
+      height: 0.71,
+      sillHeight: 2.25,
+    });
     // 手で入れた建具は出所なし
     saveFittings(db, {
       projectId: project.id,
@@ -264,7 +271,12 @@ describe("部屋計算書（上段）", () => {
     });
 
     const fittings = listFittings(db, project.id);
-    expect(fittings.map((row) => row.symbol)).toEqual(["WD1", "AW1", "SD9"]);
+    expect(fittings.map((row) => row.symbol)).toEqual([
+      "WD1",
+      "AW1",
+      "SD9",
+      "aw8",
+    ]);
     expect(fittings[1].sourceEstimateRowId).toBe(hall.id);
     expect(fittings[2].sourceEstimateRowId).toBeNull();
 
@@ -283,6 +295,13 @@ describe("部屋計算書（上段）", () => {
         estimateRowId: living.id,
         furnitureSheetId: null,
         name: "内部 居間",
+      },
+      {
+        fittingId: fittings[3].id,
+        kind: "none",
+        estimateRowId: null,
+        furnitureSheetId: null,
+        name: "",
       },
     ]);
   });
