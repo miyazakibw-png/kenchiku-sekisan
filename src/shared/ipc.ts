@@ -32,6 +32,7 @@ export const IPC = {
   miscSheetList: "miscSheet:list",
   miscSheetCreate: "miscSheet:create",
   miscSheetDelete: "miscSheet:delete",
+  miscSheetPaste: "miscSheet:paste",
   miscSheetListSave: "miscSheet:listSave",
   miscSheetGet: "miscSheet:get",
   miscSheetSave: "miscSheet:save",

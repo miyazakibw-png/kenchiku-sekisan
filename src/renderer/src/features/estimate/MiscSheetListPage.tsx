@@ -20,6 +20,11 @@ export default function MiscSheetListPage({
 }: Props): JSX.Element {
   const [sheets, setSheets] = useState<MiscSheetSummary[]>([]);
   const [message, setMessage] = useState("");
+  /** カーソルの行（貼り付け先）と、Shift+クリックで選んだ端 */
+  const [selected, setSelected] = useState(0);
+  const [selectedEnd, setSelectedEnd] = useState(0);
+  /** コピーした表（貼り付けで中身ごと写す） */
+  const [clipboard, setClipboard] = useState<number[]>([]);
 
   const load = useCallback(async (): Promise<void> => {
     setSheets(await window.sekisan.listMiscSheets(project.id));
@@ -64,6 +69,31 @@ export default function MiscSheetListPage({
     await save(next);
   };
 
+  const selectionStart = Math.min(selected, selectedEnd);
+  const selectionEnd = Math.max(selected, selectedEnd);
+
+  /** カーソルの行（Shift+クリックで選んだ範囲）をコピーする */
+  const copy = (): void => {
+    const copied = sheets
+      .slice(selectionStart, selectionEnd + 1)
+      .map((sheet) => sheet.id);
+    if (copied.length === 0) return;
+    setClipboard(copied);
+    setMessage(
+      `⧉ ${copied.length} 枚をコピーしました（貼り付けたい行にカーソルを置いて「挿入貼付」「追加貼付」）`,
+    );
+  };
+
+  /** 写した表を入れる（挿入＝カーソルの行の上、追加＝最後尾） */
+  const paste = async (mode: "insert" | "append"): Promise<void> => {
+    if (clipboard.length === 0) return;
+    const at = mode === "insert" ? selectionStart : sheets.length;
+    setSheets(
+      await window.sekisan.pasteMiscSheets(project.id, clipboard, at),
+    );
+    setMessage(`${clipboard.length} 枚を貼り付けました（中の入力も写します）`);
+  };
+
   const change = (index: number, patch: Partial<MiscSheetSummary>): void => {
     setSheets(
       sheets.map((sheet, at) =>
@@ -85,6 +115,29 @@ export default function MiscSheetListPage({
         <button type="button" onClick={() => void add()}>
           ➕ 表を足す
         </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックで選んだ範囲）の表を、中の入力ごとコピーします"
+          onClick={copy}
+        >
+          ⧉ 表コピー（複数可）
+        </button>
+        <button
+          type="button"
+          title="カーソルの行の上へ、コピーした表を入れます"
+          disabled={clipboard.length === 0}
+          onClick={() => void paste("insert")}
+        >
+          📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="いちばん下へ、コピーした表を足します"
+          disabled={clipboard.length === 0}
+          onClick={() => void paste("append")}
+        >
+          📋 追加貼付
+        </button>
         <button type="button" onClick={() => void save(sheets)}>
           💾 保存
         </button>
@@ -104,10 +157,26 @@ export default function MiscSheetListPage({
         </thead>
         <tbody>
           {sheets.map((sheet, index) => (
-            <tr key={sheet.id}>
+            <tr
+              key={sheet.id}
+              className={
+                index >= selectionStart && index <= selectionEnd
+                  ? "selected"
+                  : ""
+              }
+              onMouseDown={(event) => {
+                if (event.shiftKey) {
+                  setSelectedEnd(index);
+                  return;
+                }
+                setSelected(index);
+                setSelectedEnd(index);
+              }}
+            >
               <td className="no">{index + 1}</td>
               <td className="name">
                 <input
+                  lang="ja"
                   value={sheet.name}
                   onChange={(event) =>
                     change(index, { name: event.target.value })
@@ -119,6 +188,7 @@ export default function MiscSheetListPage({
               <td className="count">{sheet.rowCount}</td>
               <td className="note">
                 <input
+                  lang="ja"
                   value={sheet.note}
                   onChange={(event) =>
                     change(index, { note: event.target.value })

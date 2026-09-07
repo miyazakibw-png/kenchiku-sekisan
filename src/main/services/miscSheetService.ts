@@ -1,6 +1,11 @@
 import { asc, eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectMiscSheets } from "../db/schema";
+import {
+  copyMiscSheetData,
+  type MiscColumn,
+  type MiscRow,
+} from "../../core/misc/miscSheet";
 import type {
   MiscSheet,
   MiscSheetSummary,
@@ -20,6 +25,14 @@ function toSheet(row: typeof projectMiscSheets.$inferSelect): MiscSheet {
     rowsJson: row.rowsJson,
     note: row.note,
   };
+}
+
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 /** JSONの配列の数（壊れていたら0） */
@@ -94,6 +107,50 @@ export function createMiscSheet(
     .returning()
     .get();
   return toSummary(created);
+}
+
+/**
+ * 写した表を貼り付ける（中の明細・部屋・数量ごと写す）。
+ * insertAt は貼り付け先の行（管理表の並びの何番目の上に入れるか。最後尾は行数）。
+ */
+export function pasteMiscSheets(
+  db: AppDatabase,
+  projectId: number,
+  sourceIds: number[],
+  insertAt: number,
+): MiscSheetSummary[] {
+  const rows = sheetRows(db, projectId);
+  const copied = sourceIds.flatMap((sourceId) => {
+    const source = rows.find((row) => row.id === sourceId);
+    if (source === undefined) return [];
+    const data = copyMiscSheetData({
+      columns: parseJson<MiscColumn[]>(source.columnsJson, []),
+      rows: parseJson<MiscRow[]>(source.rowsJson, []),
+    });
+    return [
+      db
+        .insert(projectMiscSheets)
+        .values({
+          projectId,
+          name: `${source.name} の写し`,
+          displayOrder: rows.length,
+          columnsJson: JSON.stringify(data.columns),
+          rowsJson: JSON.stringify(data.rows),
+          note: source.note,
+        })
+        .returning()
+        .get(),
+    ];
+  });
+  const at = Math.min(Math.max(insertAt, 0), rows.length);
+  const ordered = [...rows.slice(0, at), ...copied, ...rows.slice(at)];
+  ordered.forEach((row, index) => {
+    db.update(projectMiscSheets)
+      .set({ displayOrder: index })
+      .where(eq(projectMiscSheets.id, row.id))
+      .run();
+  });
+  return listMiscSheets(db, projectId);
 }
 
 /** 管理表の1枚を消す */

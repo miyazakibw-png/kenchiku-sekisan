@@ -11,9 +11,16 @@ import {
   deleteMiscSheet,
   getMiscSheet,
   listMiscSheets,
+  pasteMiscSheets,
   saveMiscSheet,
   saveMiscSheetList,
 } from "../../src/main/services/miscSheetService";
+import {
+  miscColumn,
+  miscRow,
+  type MiscColumn,
+  type MiscRow,
+} from "../../src/core/misc/miscSheet";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -57,6 +64,30 @@ describe("部位別雑・金物入力表の管理表", () => {
     ]);
     expect(sheets[0].columnCount).toBe(1);
     expect(getMiscSheet(db, second.id).columnsJson).toBe("[]");
+  });
+
+  it("表をコピーして貼り付けると中の入力ごと写り、明細のidは新しくなる", () => {
+    const first = listMiscSheets(db, projectId)[0];
+    const column = miscColumn({ name: "消火器" });
+    const row = miscRow({ part3: "廊下", values: { [column.id]: "4" } });
+    saveMiscSheet(db, {
+      id: first.id,
+      name: first.name,
+      columnsJson: JSON.stringify([column]),
+      rowsJson: JSON.stringify([row]),
+      note: "",
+    });
+
+    const pasted = pasteMiscSheets(db, projectId, [first.id], 0);
+    expect(pasted).toHaveLength(2);
+    expect(pasted[0].name).toBe("部位別雑・金物入力表 の写し");
+
+    const copy = getMiscSheet(db, pasted[0].id);
+    const columns = JSON.parse(copy.columnsJson) as MiscColumn[];
+    const rows = JSON.parse(copy.rowsJson) as MiscRow[];
+    expect(columns[0].name).toBe("消火器");
+    expect(columns[0].id).not.toBe(column.id);
+    expect(rows[0].values[columns[0].id]).toBe("4");
   });
 
   it("名前と並び順を保存でき、消した表だけ消える", () => {

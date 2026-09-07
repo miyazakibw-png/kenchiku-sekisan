@@ -185,6 +185,12 @@ const api = {
     ipcRenderer.invoke(IPC.miscSheetCreate, projectId, name),
   deleteMiscSheet: (sheetId: number): Promise<void> =>
     ipcRenderer.invoke(IPC.miscSheetDelete, sheetId),
+  pasteMiscSheets: (
+    projectId: number,
+    sourceIds: number[],
+    insertAt: number,
+  ): Promise<MiscSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.miscSheetPaste, projectId, sourceIds, insertAt),
   saveMiscSheetList: (
     projectId: number,
     sheets: MiscSheetSummary[],

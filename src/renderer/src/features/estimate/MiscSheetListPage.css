@@ -38,6 +38,10 @@
   margin-right: 4px;
 }
 
+.misc-list-page table.grid.misc-list tr.selected {
+  background: #e8f0fe;
+}
+
 .misc-list-page table.grid.misc-list input {
   width: 100%;
   border: none;

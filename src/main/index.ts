@@ -109,6 +109,7 @@ import {
   deleteMiscSheet,
   getMiscSheet,
   listMiscSheets,
+  pasteMiscSheets,
   saveMiscSheet,
   saveMiscSheetList,
 } from "./services/miscSheetService";
@@ -400,6 +401,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.miscSheetDelete, (_event, sheetId: number) => {
     deleteMiscSheet(getDatabase(), sheetId);
   });
+  ipcMain.handle(
+    IPC.miscSheetPaste,
+    (_event, projectId: number, sourceIds: number[], insertAt: number) =>
+      pasteMiscSheets(getDatabase(), projectId, sourceIds, insertAt),
+  );
   ipcMain.handle(
     IPC.miscSheetListSave,
     (_event, projectId: number, sheets: MiscSheetSummary[]) =>

@@ -95,6 +95,37 @@ export function miscRow(patch: Partial<MiscRow> = {}): MiscRow {
   };
 }
 
+/**
+ * 表を丸ごと写す（管理表のコピー・貼り付け用）。
+ * 明細・部屋のidは新しく付け直す（集計や明細の直しが写し元と混ざらないようにする）。
+ */
+export function copyMiscSheetData(data: MiscSheetData): MiscSheetData {
+  const columnIds = new Map(
+    data.columns.map((column) => [column.id, newId("mc")]),
+  );
+  const rowIds = new Map(data.rows.map((row) => [row.id, newId("mr")]));
+  return {
+    columns: data.columns.map((column) => ({
+      ...column,
+      id: columnIds.get(column.id) ?? newId("mc"),
+    })),
+    rows: data.rows.map((row) => ({
+      ...row,
+      id: rowIds.get(row.id) ?? newId("mr"),
+      anchorRowId:
+        row.anchorRowId === null
+          ? null
+          : (rowIds.get(row.anchorRowId) ?? null),
+      values: Object.fromEntries(
+        Object.entries(row.values).flatMap(([columnId, value]) => {
+          const moved = columnIds.get(columnId);
+          return moved === undefined ? [] : [[moved, value] as const];
+        }),
+      ),
+    })),
+  };
+}
+
 /** 明細（列）が空か（何も入れていない列は集計しない） */
 export function isEmptyColumn(column: MiscColumn): boolean {
   return (
