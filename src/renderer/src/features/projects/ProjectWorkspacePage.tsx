@@ -22,6 +22,7 @@ import BasicMasterPage from "../masters/BasicMasterPage";
 import DetailChangeHistoryPage from "../details/DetailChangeHistoryPage";
 import FittingsPage from "../fittings/FittingsPage";
 import EstimatePartsPage from "../estimate/EstimatePartsPage";
+import MiscSheetListPage from "../estimate/MiscSheetListPage";
 import MiscSheetPage from "../estimate/MiscSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
@@ -71,6 +72,8 @@ export default function ProjectWorkspacePage({
   const [showSheet, setShowSheet] = useState(false);
   const [message, setMessage] = useState("");
   const [openedMenu, setOpenedMenu] = useState<string | null>(null);
+  /** 部位別雑・金物入力表の管理表で選んで開いている表 */
+  const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
 
   useEffect(() => setOptions(initialOptions), [initialOptions]);
@@ -250,11 +253,21 @@ export default function ProjectWorkspacePage({
   }
 
   if (openedMenu === "miscInput") {
+    if (miscSheetId === null) {
+      return (
+        <MiscSheetListPage
+          project={draft}
+          onOpen={(sheetId) => setMiscSheetId(sheetId)}
+          onBack={() => setOpenedMenu(null)}
+        />
+      );
+    }
     return (
       <MiscSheetPage
         project={draft}
         options={options}
-        onBack={() => setOpenedMenu(null)}
+        sheetId={miscSheetId}
+        onBack={() => setMiscSheetId(null)}
       />
     );
   }

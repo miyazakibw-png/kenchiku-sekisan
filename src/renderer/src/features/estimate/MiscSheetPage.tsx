@@ -32,6 +32,8 @@ import "./MiscSheetPage.css";
 interface Props {
   project: ProjectSummary;
   options: MasterOptions;
+  /** 管理表で選んだ表 */
+  sheetId: number;
   onBack: () => void;
 }
 
@@ -125,6 +127,7 @@ function textOf(column: MiscColumn, key: keyof MiscColumn): string {
 export default function MiscSheetPage({
   project,
   options,
+  sheetId,
   onBack,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<MiscSheet | null>(null);
@@ -161,6 +164,7 @@ export default function MiscSheetPage({
       if (!sheet) return;
       const saved = await window.sekisan.saveMiscSheet({
         id: sheet.id,
+        name: sheet.name,
         columnsJson: JSON.stringify(columns),
         rowsJson: JSON.stringify(rows),
         note: sheet.note,
@@ -174,7 +178,7 @@ export default function MiscSheetPage({
 
   useEffect(() => {
     void (async () => {
-      const loaded = await window.sekisan.getMiscSheet(project.id);
+      const loaded = await window.sekisan.getMiscSheet(sheetId);
       const nextColumns = parseJson<MiscColumn[]>(loaded.columnsJson, []);
       const nextRows = parseJson<MiscRow[]>(loaded.rowsJson, []);
       const columnsOrOne =
@@ -184,7 +188,7 @@ export default function MiscSheetPage({
       setRows(nextRows);
       markSaved({ columns: columnsOrOne, rows: nextRows });
     })();
-  }, [markSaved, project.id]);
+  }, [markSaved, sheetId]);
 
   useEffect(() => {
     window.localStorage.setItem(widthKey, JSON.stringify(widths));
@@ -639,9 +643,9 @@ export default function MiscSheetPage({
             })();
           }}
         >
-          ← 工事管理画面へ
+          ← 一覧へ
         </button>
-        <h2>部位別雑・金物入力表</h2>
+        <h2>{sheet === null ? "部位別雑・金物入力表" : sheet.name}</h2>
         <span className="project">
           {project.managementNo} {project.name}
         </span>

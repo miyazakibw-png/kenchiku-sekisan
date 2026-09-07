@@ -104,7 +104,14 @@ import {
   getGeneralSheet,
   saveGeneralSheet,
 } from "./services/generalSheetService";
-import { getMiscSheet, saveMiscSheet } from "./services/miscSheetService";
+import {
+  createMiscSheet,
+  deleteMiscSheet,
+  getMiscSheet,
+  listMiscSheets,
+  saveMiscSheet,
+  saveMiscSheetList,
+} from "./services/miscSheetService";
 import { getPitSheet, savePitSheet } from "./services/pitSheetService";
 import {
   listTransferRows,
@@ -150,6 +157,7 @@ import type {
   BreakdownExportResult,
   BreakdownSettingsRecord,
   SaveBreakdownRowsRequest,
+  MiscSheetSummary,
   ProjectField,
   SaveAssemblyRequest,
   SaveDetailsRequest,
@@ -381,8 +389,24 @@ function registerIpcHandlers(): void {
     (_event, request: SaveGeneralSheetRequest) =>
       saveGeneralSheet(getDatabase(), request),
   );
-  ipcMain.handle(IPC.miscSheetGet, (_event, projectId: number) =>
-    getMiscSheet(getDatabase(), projectId),
+  ipcMain.handle(IPC.miscSheetList, (_event, projectId: number) =>
+    listMiscSheets(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.miscSheetCreate,
+    (_event, projectId: number, name: string) =>
+      createMiscSheet(getDatabase(), projectId, name),
+  );
+  ipcMain.handle(IPC.miscSheetDelete, (_event, sheetId: number) => {
+    deleteMiscSheet(getDatabase(), sheetId);
+  });
+  ipcMain.handle(
+    IPC.miscSheetListSave,
+    (_event, projectId: number, sheets: MiscSheetSummary[]) =>
+      saveMiscSheetList(getDatabase(), projectId, sheets),
+  );
+  ipcMain.handle(IPC.miscSheetGet, (_event, sheetId: number) =>
+    getMiscSheet(getDatabase(), sheetId),
   );
   ipcMain.handle(IPC.miscSheetSave, (_event, request: SaveMiscSheetRequest) =>
     saveMiscSheet(getDatabase(), request),

@@ -1,0 +1,80 @@
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { AppDatabase } from "../../src/main/db";
+import { migrations } from "../../src/main/db/migrations";
+import * as schema from "../../src/main/db/schema";
+import { seedInitialData } from "../../src/main/db/seed";
+import { createProject } from "../../src/main/services/projectService";
+import {
+  createMiscSheet,
+  deleteMiscSheet,
+  getMiscSheet,
+  listMiscSheets,
+  saveMiscSheet,
+  saveMiscSheetList,
+} from "../../src/main/services/miscSheetService";
+
+function createDb(): AppDatabase {
+  const sqlite = new Database(":memory:");
+  sqlite.pragma("foreign_keys = ON");
+  migrations.forEach((sql) => sqlite.exec(sql));
+  const db = drizzle(sqlite, { schema }) as AppDatabase;
+  seedInitialData(db);
+  return db;
+}
+
+describe("部位別雑・金物入力表の管理表", () => {
+  let db: AppDatabase;
+  let projectId: number;
+
+  beforeEach(() => {
+    db = createDb();
+    projectId = createProject(db, "雑・金物テスト").id;
+  });
+
+  it("はじめは1枚（前からある入力がそのまま1行目に出る）", () => {
+    const sheets = listMiscSheets(db, projectId);
+    expect(sheets).toHaveLength(1);
+    expect(sheets[0].name).toBe("部位別雑・金物入力表");
+  });
+
+  it("何枚でも作れて、それぞれ別の入力を持つ", () => {
+    const first = listMiscSheets(db, projectId)[0];
+    saveMiscSheet(db, {
+      id: first.id,
+      name: first.name,
+      columnsJson: JSON.stringify([{ id: "mc1" }]),
+      rowsJson: "[]",
+      note: "",
+    });
+    const second = createMiscSheet(db, projectId, "2階 雑");
+
+    const sheets = listMiscSheets(db, projectId);
+    expect(sheets.map((sheet) => sheet.name)).toEqual([
+      "部位別雑・金物入力表",
+      "2階 雑",
+    ]);
+    expect(sheets[0].columnCount).toBe(1);
+    expect(getMiscSheet(db, second.id).columnsJson).toBe("[]");
+  });
+
+  it("名前と並び順を保存でき、消した表だけ消える", () => {
+    const first = listMiscSheets(db, projectId)[0];
+    const second = createMiscSheet(db, projectId, "2枚目");
+
+    const swapped = saveMiscSheetList(db, projectId, [
+      { ...second, name: "先に見る表" },
+      first,
+    ]);
+    expect(swapped.map((sheet) => sheet.name)).toEqual([
+      "先に見る表",
+      "部位別雑・金物入力表",
+    ]);
+
+    deleteMiscSheet(db, second.id);
+    const rest = listMiscSheets(db, projectId);
+    expect(rest).toHaveLength(1);
+    expect(rest[0].id).toBe(first.id);
+  });
+});

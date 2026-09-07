@@ -930,4 +930,11 @@ CREATE TABLE project_misc_sheets (
 );
 CREATE UNIQUE INDEX uq_misc_sheet_project ON project_misc_sheets(project_id);
 `,
+  // 部位別雑・金物入力表を1工事に何枚でも作れるようにする（管理表から開く）
+  `
+DROP INDEX IF EXISTS uq_misc_sheet_project;
+ALTER TABLE project_misc_sheets ADD COLUMN name TEXT NOT NULL DEFAULT '部位別雑・金物入力表';
+ALTER TABLE project_misc_sheets ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX ix_misc_sheet_project ON project_misc_sheets(project_id, display_order);
+`,
 ];

@@ -450,13 +450,18 @@ export const projectPitSheets = sqliteTable("project_pit_sheets", {
 
 /**
  * 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行にして数量を拾う表）。
- * 1工事に1枚。数量はその部屋の計算書に入れたのと同じ扱いで集計する。
+ * 1工事に何枚でも作れる（管理表から開く）。
+ * 数量はその部屋の計算書に入れたのと同じ扱いで集計する。
  */
 export const projectMiscSheets = sqliteTable("project_misc_sheets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   projectId: integer("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
+  /** 管理表に出す表の名前 */
+  name: text("name").notNull().default("部位別雑・金物入力表"),
+  /** 管理表の並び順 */
+  displayOrder: integer("display_order").notNull().default(0),
   /** タテに並べる明細（MiscColumnの配列） */
   columnsJson: text("columns_json").notNull().default("[]"),
   /** ヨコに並べる部屋と数量（MiscRowの配列） */

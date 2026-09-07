@@ -31,6 +31,7 @@ import type {
   FrameSheet,
   GeneralSheet,
   MiscSheet,
+  MiscSheetSummary,
   PitSheet,
   MasterOptions,
   ProjectField,
@@ -175,8 +176,22 @@ const api = {
   saveGeneralSheet: (request: SaveGeneralSheetRequest): Promise<GeneralSheet> =>
     ipcRenderer.invoke(IPC.generalSheetSave, request),
   /** 部位別雑・金物入力表（明細をタテ、部屋をヨコに並べて拾う表） */
-  getMiscSheet: (projectId: number): Promise<MiscSheet> =>
-    ipcRenderer.invoke(IPC.miscSheetGet, projectId),
+  listMiscSheets: (projectId: number): Promise<MiscSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.miscSheetList, projectId),
+  createMiscSheet: (
+    projectId: number,
+    name: string,
+  ): Promise<MiscSheetSummary> =>
+    ipcRenderer.invoke(IPC.miscSheetCreate, projectId, name),
+  deleteMiscSheet: (sheetId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.miscSheetDelete, sheetId),
+  saveMiscSheetList: (
+    projectId: number,
+    sheets: MiscSheetSummary[],
+  ): Promise<MiscSheetSummary[]> =>
+    ipcRenderer.invoke(IPC.miscSheetListSave, projectId, sheets),
+  getMiscSheet: (sheetId: number): Promise<MiscSheet> =>
+    ipcRenderer.invoke(IPC.miscSheetGet, sheetId),
   saveMiscSheet: (request: SaveMiscSheetRequest): Promise<MiscSheet> =>
     ipcRenderer.invoke(IPC.miscSheetSave, request),
   /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */

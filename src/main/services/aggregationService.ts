@@ -557,18 +557,21 @@ function miscEntries(
   projectId: number,
   part2Order: Map<string, number>,
 ): AggregateEntry[] {
-  const sheet = db
+  const sheets = db
     .select()
     .from(projectMiscSheets)
     .where(eq(projectMiscSheets.projectId, projectId))
-    .get();
-  if (!sheet) return [];
-  const columns = parseJson<MiscColumn[]>(sheet.columnsJson, []);
-  const rows = parseJson<MiscRow[]>(sheet.rowsJson, []);
-  rows.forEach((row) => {
-    if (!part2Order.has(row.part2)) part2Order.set(row.part2, part2Order.size);
+    .orderBy(asc(projectMiscSheets.displayOrder), asc(projectMiscSheets.id))
+    .all();
+  return sheets.flatMap((sheet) => {
+    const columns = parseJson<MiscColumn[]>(sheet.columnsJson, []);
+    const rows = parseJson<MiscRow[]>(sheet.rowsJson, []);
+    rows.forEach((row) => {
+      if (!part2Order.has(row.part2))
+        part2Order.set(row.part2, part2Order.size);
+    });
+    return entriesFromMiscSheet({ columns, rows }, part2Order);
   });
-  return entriesFromMiscSheet({ columns, rows }, part2Order);
 }
 
 /** 転記入力表の行（集計書兼工事マスターへ直接計上。根拠集計には出さない） */
@@ -765,12 +768,12 @@ export function saveAggregateEdits(
           .map((target) => target.traceId.split(":")[2]),
       );
       if (miscColumnIds.size > 0) {
-        const miscSheet = tx
+        const miscSheets = tx
           .select()
           .from(projectMiscSheets)
           .where(eq(projectMiscSheets.projectId, projectId))
-          .get();
-        if (miscSheet) {
+          .all();
+        miscSheets.forEach((miscSheet) => {
           const columns = parseJson<MiscColumn[]>(miscSheet.columnsJson, []);
           let miscChanged = false;
           const nextColumns = columns.map((column) => {
@@ -800,7 +803,7 @@ export function saveAggregateEdits(
               .where(eq(projectMiscSheets.id, miscSheet.id))
               .run();
           }
-        }
+        });
       }
 
       // 計算書（部屋別・軸組・汎用）の下段

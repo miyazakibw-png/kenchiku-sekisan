@@ -345,10 +345,14 @@ export type SaveGeneralSheetRequest = Omit<
   "projectId" | "estimateRowId"
 >;
 
-/** 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行にして数量を拾う表。1工事に1枚） */
+/** 部位別雑・金物入力表（明細をタテ1列、部屋をヨコ1行にして数量を拾う表。1工事に何枚でも） */
 export interface MiscSheet {
   id: number;
   projectId: number;
+  /** 管理表に出す表の名前 */
+  name: string;
+  /** 管理表の並び順 */
+  displayOrder: number;
   /** タテに並べる明細（MiscColumnの配列）のJSON */
   columnsJson: string;
   /** ヨコに並べる部屋と数量（MiscRowの配列）のJSON */
@@ -356,7 +360,23 @@ export interface MiscSheet {
   note: string;
 }
 
-export type SaveMiscSheetRequest = Omit<MiscSheet, "projectId">;
+export type SaveMiscSheetRequest = Omit<
+  MiscSheet,
+  "projectId" | "displayOrder"
+>;
+
+/** 部位別雑・金物入力表の管理表に出す1行 */
+export interface MiscSheetSummary {
+  id: number;
+  name: string;
+  note: string;
+  displayOrder: number;
+  /** タテに並べた明細の数 */
+  columnCount: number;
+  /** ヨコに並べた部屋の数 */
+  rowCount: number;
+  updatedAt: string;
+}
 
 /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
 export interface PitSheet {

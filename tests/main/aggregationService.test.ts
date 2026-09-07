@@ -23,6 +23,7 @@ import {
 import { transferBreakdown } from "../../src/main/services/breakdownService";
 import {
   getMiscSheet,
+  listMiscSheets,
   saveMiscSheet,
 } from "../../src/main/services/miscSheetService";
 import {
@@ -395,7 +396,7 @@ describe("集計処理", () => {
   });
 
   it("集計書で直した内容を部位別雑・金物入力表へ書き戻す", () => {
-    const sheet = getMiscSheet(db, projectId);
+    const sheet = getMiscSheet(db, listMiscSheets(db, projectId)[0].id);
     const column = miscColumn({
       subjectId: 5,
       materialCategory: "仕上",
@@ -408,6 +409,7 @@ describe("集計処理", () => {
     const row = miscRow({ part1: "建築", part2: "1階", part3: "廊下" });
     saveMiscSheet(db, {
       id: sheet.id,
+      name: sheet.name,
       columnsJson: JSON.stringify([column]),
       rowsJson: JSON.stringify([{ ...row, values: { [column.id]: "4" } }]),
       note: "",
@@ -436,7 +438,7 @@ describe("集計処理", () => {
     });
 
     const saved = JSON.parse(
-      getMiscSheet(db, projectId).columnsJson,
+      getMiscSheet(db, sheet.id).columnsJson,
     ) as MiscColumn[];
     expect(saved[0].partNumber).toBe(41);
     expect(saved[0].partName).toBe("金物");

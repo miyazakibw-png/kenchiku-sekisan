@@ -1,0 +1,46 @@
+/** 部位別雑・金物入力表の管理表（何枚でも作れる表の一覧） */
+.misc-list-page table.grid.misc-list {
+  border-collapse: collapse;
+  margin: 8px;
+  width: calc(100% - 16px);
+}
+
+.misc-list-page table.grid.misc-list th,
+.misc-list-page table.grid.misc-list td {
+  border: 1px solid #94a3b8;
+  padding: 2px 4px;
+  font-size: 12px;
+  height: 24px;
+}
+
+.misc-list-page table.grid.misc-list th {
+  background: #dbeafe;
+  color: #0f172a;
+}
+
+.misc-list-page table.grid.misc-list .no {
+  width: 40px;
+  text-align: center;
+}
+
+.misc-list-page table.grid.misc-list .count {
+  width: 60px;
+  text-align: right;
+}
+
+.misc-list-page table.grid.misc-list .ops {
+  width: 220px;
+  white-space: nowrap;
+}
+
+.misc-list-page table.grid.misc-list .ops button {
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.misc-list-page table.grid.misc-list input {
+  width: 100%;
+  border: none;
+  font-size: 12px;
+  background: transparent;
+}
