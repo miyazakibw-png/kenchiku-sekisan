@@ -577,6 +577,8 @@ describe("ユニットバス（型番・床面積FA）", () => {
   it("型番→床面積：換算表にあれば表の式、無い4桁は上2桁・下2桁を/10して+0.1", () => {
     expect(floorFormulaOfModel("1418", bath)).toBe("1.5*1.9");
     expect(floorFormulaOfModel("１４１８", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("UB1418", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("UB-1616 S", bath)).toBe("1.7*1.7");
     expect(floorFormulaOfModel("1616", bath)).toBe("1.7*1.7");
     expect(floorFormulaOfModel("1620", bath)).toBe("1.7*2.1");
     expect(floorFormulaOfModel("0812", bath)).toBe("0.9*1.3");

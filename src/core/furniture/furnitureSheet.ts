@@ -608,21 +608,26 @@ export function shapeText(
   );
 }
 
-/** 型番→床面積の計算式（換算表にあればその式。無くて4桁の数字なら上2桁・下2桁を/10して+0.1。例：1418→1.5*1.9） */
+/** 型番→床面積の計算式（型番の中の4桁の数字で換算表を探し、無ければ上2桁・下2桁を/10して+0.1。例：UB1418→1.5*1.9） */
 export function floorFormulaOfModel(
   model: string,
   settings: FurnitureSettings,
 ): string {
   const key = toHalfWidth(model).trim();
   if (key === "") return "";
-  const found = (settings.floorAreaTable ?? defaultFloorAreaTable).find(
-    (item) => toHalfWidth(item.symbol).trim() === key,
-  );
-  if (found) return found.text.trim();
-  if (!/^\d{4}$/.test(key)) return "";
-  const side = (digits: string): string =>
-    (Number(digits) / 10 + 0.1).toFixed(1);
-  return `${side(key.slice(0, 2))}*${side(key.slice(2))}`;
+  const table = settings.floorAreaTable ?? defaultFloorAreaTable;
+  const lookup = (text: string): string | null => {
+    const found = table.find((item) => toHalfWidth(item.symbol).trim() === text);
+    return found ? found.text.trim() : null;
+  };
+  const exact = lookup(key);
+  if (exact !== null) return exact;
+  const digits = /\d{4}/.exec(key)?.[0];
+  if (digits === undefined) return "";
+  const byDigits = lookup(digits);
+  if (byDigits !== null) return byDigits;
+  const side = (text: string): string => (Number(text) / 10 + 0.1).toFixed(1);
+  return `${side(digits.slice(0, 2))}*${side(digits.slice(2))}`;
 }
 
 /** 1行の床面積の計算式（手入力があればそれ、無ければ型番から） */
