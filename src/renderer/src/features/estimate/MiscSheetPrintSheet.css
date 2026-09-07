@@ -41,16 +41,8 @@
   text-align: right;
 }
 
-.misc-print-sheet table.misc-print .part1,
-.misc-print-sheet table.misc-print .part2 {
-  width: 90px;
-}
-
-.misc-print-sheet table.misc-print .part3 {
-  width: 150px;
-}
-
-.misc-print-sheet table.misc-print .multiplier {
-  width: 56px;
-  text-align: right;
+/* 左の1欄（科目〜合計の見出し／部位Ⅰ・Ⅱ・Ⅲ×倍率）。明細の欄を広く使う */
+.misc-print-sheet table.misc-print th.head,
+.misc-print-sheet table.misc-print .room {
+  width: 210px;
 }

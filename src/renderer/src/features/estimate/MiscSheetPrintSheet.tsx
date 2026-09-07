@@ -10,7 +10,7 @@ import {
 import "./MiscSheetPrintSheet.css";
 
 /** A3横1枚に入る明細（タテ列）の数と部屋（ヨコ行）の数 */
-const COLUMNS_PER_PAGE = 10;
+const COLUMNS_PER_PAGE = 12;
 const ROWS_PER_PAGE = 33;
 
 /** 明細の見出し（上から順に1行ずつ） */
@@ -30,6 +30,16 @@ function textOf(column: MiscColumn, key: keyof MiscColumn): string {
   const value = column[key];
   if (value === null) return "";
   return typeof value === "string" ? value : String(value);
+}
+
+/** 部屋の見出し。紙を広く使うため 部位Ⅰ/部位Ⅱ/部位Ⅲ ×倍率 を 1欄にまとめる */
+function roomLabel(row: MiscRow): string {
+  const part3 = row.estimateRowId === null ? `＋${row.part3}` : row.part3;
+  const parts = [row.part1, row.part2, part3].filter(
+    (part) => part.trim() !== "",
+  );
+  const name = parts.join("/");
+  return row.multiplier === 1 ? name : `${name} ×${row.multiplier}`;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -129,18 +139,14 @@ export default function MiscSheetPrintSheet({
           <table className="misc-print">
             <thead>
               <tr>
-                <th className="head" colSpan={4}>
-                  科目
-                </th>
+                <th className="head">科目</th>
                 {page.columns.map((column) => (
                   <th key={column.id}>{subjectName(column.subjectId)}</th>
                 ))}
               </tr>
               {HEADS.map((head) => (
                 <tr key={head.key}>
-                  <th className="head" colSpan={4}>
-                    {head.label}
-                  </th>
+                  <th className="head">{head.label}</th>
                   {page.columns.map((column) => (
                     <th key={column.id} className="value">
                       {textOf(column, head.key)}
@@ -149,9 +155,7 @@ export default function MiscSheetPrintSheet({
                 </tr>
               ))}
               <tr className="total">
-                <th className="head" colSpan={4}>
-                  合計
-                </th>
+                <th className="head">合計</th>
                 {page.columns.map((column) => (
                   <th key={column.id} className="num">
                     {(totals.get(column.id) ?? 0).toFixed(2)}
@@ -159,10 +163,7 @@ export default function MiscSheetPrintSheet({
                 ))}
               </tr>
               <tr className="room-head">
-                <th className="part1">部位Ⅰ</th>
-                <th className="part2">部位Ⅱ</th>
-                <th className="part3">部位Ⅲ（部屋名）</th>
-                <th className="multiplier">倍率</th>
+                <th className="room">部位Ⅰ/部位Ⅱ/部位Ⅲ（部屋名）　×倍率</th>
                 {page.columns.map((column) => (
                   <th key={column.id} />
                 ))}
@@ -171,12 +172,7 @@ export default function MiscSheetPrintSheet({
             <tbody>
               {page.rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="part1">{row.part1}</td>
-                  <td className="part2">{row.part2}</td>
-                  <td className="part3">
-                    {row.estimateRowId === null ? `＋${row.part3}` : row.part3}
-                  </td>
-                  <td className="multiplier">{row.multiplier}</td>
+                  <td className="room">{roomLabel(row)}</td>
                   {page.columns.map((column) => {
                     const value = cellValue(row.values[column.id] ?? "");
                     return (
@@ -191,7 +187,7 @@ export default function MiscSheetPrintSheet({
                 length: Math.max(0, ROWS_PER_PAGE - page.rows.length),
               }).map((_unused, blank) => (
                 <tr className="blank" key={`blank-${blank}`}>
-                  {Array.from({ length: 4 + page.columns.length }).map(
+                  {Array.from({ length: 1 + page.columns.length }).map(
                     (_cell, cell) => (
                       <td key={cell} />
                     ),

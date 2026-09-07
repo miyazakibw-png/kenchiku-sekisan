@@ -408,10 +408,9 @@
   stroke-dasharray: 8 5;
 }
 
-/* 柱は太い赤線 */
+/* 柱は壁と同じ太さの赤線 */
 .room-sheet-page .edge.column {
   stroke: #b91c1c;
-  stroke-width: 6;
 }
 
 /* 部屋の中の独立柱 */
