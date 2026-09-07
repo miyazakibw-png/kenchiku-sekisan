@@ -14,7 +14,6 @@ import {
   DEFAULT_FITTING_PART_VALUES,
   FITTING_VALUE_LABELS,
   fittingKindForPart,
-  fittingSuffix,
   type FittingPartValue,
   type FittingValueKind,
 } from "../../../../core/fittings/partValue";
@@ -479,9 +478,7 @@ export default function FittingsPage({
                         ))}
                       </select>
                     </td>
-                    <td className="symbol">
-                      &lt;記号{fittingSuffix(kind)}&gt;
-                    </td>
+                    <td className="symbol">&lt;記号&gt;</td>
                   </tr>
                 );
               })}

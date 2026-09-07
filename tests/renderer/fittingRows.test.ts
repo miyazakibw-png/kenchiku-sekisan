@@ -47,7 +47,7 @@ describe("建具表の行操作", () => {
 describe("Excelからの貼り付け", () => {
   it("画面と同じ列順で取り込み、自動計算列は取り込まない", () => {
     const clipboard = [
-      "AW1\t1.50\t1.76\t0.90\t2.64\t\t3.00\t\t\t南面",
+      "AW1\t1.50\t1.76\t0.90\t2.64\t\t3.00\t\t\t\t南面",
       "SD1\t0.90\t2.00",
     ].join("\n");
     const preview = buildPastePreview(
