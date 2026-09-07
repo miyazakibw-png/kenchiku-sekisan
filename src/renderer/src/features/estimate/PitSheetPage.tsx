@@ -241,7 +241,11 @@ export default function PitSheetPage({
 
   const plan = useMemo(() => {
     const rects = layoutPits(pits);
-    const placed = normalizeRects(rects);
+    // 図面をなぞったピットがあれば図面の位置のまま（下敷きと重なる）、無ければ左上を0に
+    const placed = normalizeRects(
+      rects,
+      pits.some((pit) => pit.traceX !== undefined),
+    );
     const outlines: Record<string, string> = {};
     placed.rects.forEach((rect) => {
       const pit = pits.find((each) => each.id === rect.id);
@@ -394,10 +398,15 @@ export default function PitSheetPage({
   const view = useMemo(
     () =>
       unionBox(
-        { x: -1, y: -1, width: plan.width + 2, height: plan.height + 2 },
+        {
+          x: plan.left - 1,
+          y: plan.top - 1,
+          width: plan.width + 2,
+          height: plan.height + 2,
+        },
         underlayBox,
       ),
-    [plan.height, plan.width, underlayBox],
+    [plan.height, plan.left, plan.top, plan.width, underlayBox],
   );
 
   /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
@@ -2421,13 +2430,25 @@ export default function PitSheetPage({
             const pit = pits.find((each) => each.id === shape.id);
             return pit ? [{ label: pit.symbol, points: shape.points }] : [];
           })}
-          onApply={(_shape, meters, pixels) => {
+          onApply={(_shape, meters, pixels, perPixel) => {
             applyTrace(meters, pixels);
-            setShowTrace(false);
+            // 図形欄の下敷きをなぞりに使った図面・縮尺にそろえて左上=0に置くと、
+            // 図面の位置（traceX/Y）に置いたピットが元の図面に重なる
+            if (underlay.image === "" || underlay.image === trace.image)
+              setUnderlay({
+                image: trace.image,
+                metersPerPixel: perPixel,
+                x: 0,
+                y: 0,
+                opacity: underlay.image === "" ? 0.75 : underlay.opacity,
+                scaled: true,
+              });
+            // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする
+            if (picked.length === 1) setPicked([]);
             setMessage(
               picked.length === 1
-                ? "なぞった形をそのピットに入れました（寸法は表・「○ 形を直す」で直せます）"
-                : "なぞった形で新しいピットを作りました。続けて［図面をなぞる］で次をなぞると図面どおりの位置に置きます",
+                ? "なぞった形をそのピットに入れました（寸法は表・「○ 形を直す」で直せます）。続けてなぞると新しいピットになります"
+                : "なぞった形で新しいピットを作りました。そのまま次をなぞると図面どおりの位置に置きます（終わるときは［✕ 閉じる］）",
             );
           }}
           onClose={() => setShowTrace(false)}

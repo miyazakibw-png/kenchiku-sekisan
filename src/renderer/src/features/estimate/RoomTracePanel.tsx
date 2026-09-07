@@ -20,9 +20,15 @@ interface Props {
   onChange: (trace: RoomTrace) => void;
   /**
    * なぞった形を使う。meters は実寸（m）の点の並び（ピットの形にも使う）、
-   * pixels はなぞったままの画素座標（なぞり済みの形として残すため）
+   * pixels はなぞったままの画素座標（なぞり済みの形として残すため）、
+   * perPixel は使った縮尺（1画素あたりの m。下敷きの図面を同じ縮尺にそろえるため）
    */
-  onApply: (shape: RoomShape, meters: Point[], pixels: Point[]) => void;
+  onApply: (
+    shape: RoomShape,
+    meters: Point[],
+    pixels: Point[],
+    perPixel: number,
+  ) => void;
   onClose: () => void;
   /** 見出しの名前（部屋・ピットなど） */
   targetName?: string;
@@ -301,7 +307,14 @@ export default function RoomTracePanel({
     const shape = pointsToShape(meters);
     setWarn(false);
     onChange({ ...trace, metersPerPixel: value, scalePoints, points });
-    onApply(shape, meters, points);
+    onApply(shape, meters, points, value);
+    // 画面が開いたままなら、続けて次をなぞれるように点を白紙にする
+    setPoints([]);
+    setMessage(
+      rectMode
+        ? "形にしました。続けて次の角→向かい合う角をクリックすると次のピットになります（終わるときは［✕ 閉じる］）"
+        : "形にしました。続けて次の角を順にクリックできます（終わるときは［✕ 閉じる］）",
+    );
   };
 
   const area =

@@ -1009,8 +1009,18 @@ describe("placeTracedPit（図面をなぞったピットの置き方）", () =>
     expect(p2.offsetY).toBe(1.5);
 
     const rects = layoutPits([p1, p2]);
-    expect(rects[1].left - rects[0].left).toBe(6);
-    expect(rects[1].top - rects[0].top).toBe(1.5);
+    // 1個目は図面の中の位置に置く（下敷きの図面を左上=0に置くと重なる）
+    expect(rects[0].left).toBe(10);
+    expect(rects[0].top).toBe(20);
+    expect(rects[1].left).toBe(16);
+    expect(rects[1].top).toBe(21.5);
+    // なぞっていない1個目は今までどおり 0,0
+    expect(layoutPits([mk("m", "P1")])[0]).toMatchObject({ left: 0, top: 0 });
+    // 図に置くときも位置を保つ（keepPlace）。大きさは図の左上から
+    const kept = normalizeRects(rects, true);
+    expect(kept.rects[0]).toMatchObject({ left: 10, top: 20 });
+    expect(kept).toMatchObject({ left: 10, top: 20, width: 10, height: 4.5 });
+    expect(normalizeRects(rects)).toMatchObject({ left: 0, top: 0, width: 10 });
 
     // 3個目も1個目を基準にするので、P2を消しても位置が変わらない
     const p3 = placeTracedPit([p1, p2], setPitPoints(mk("p3", "P3"), square), {

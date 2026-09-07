@@ -864,7 +864,11 @@ function pitNumber(index: number): string {
   return String(index + 1);
 }
 
-/** ピットを順番に並べる。1個目を基準に、2個目からは向きとすき間で置く */
+/**
+ * ピットを順番に並べる。1個目を基準に、2個目からは向きとすき間で置く。
+ * 1個目が図面をなぞって作ったものなら、図面の中の位置（traceX/Y）にそのまま置く
+ * （下敷きの図面を同じ縦尺で左上=0に置けば、描いたピットと図面が重なる）。
+ */
 export function layoutPits(pits: readonly PitShape[]): PitRect[] {
   const rects: PitRect[] = [];
   pits.forEach((pit, index) => {
@@ -872,8 +876,8 @@ export function layoutPits(pits: readonly PitShape[]): PitRect[] {
       rects.push({
         id: pit.id,
         symbol: pit.symbol,
-        left: pit.shiftX ?? 0,
-        top: pit.shiftY ?? 0,
+        left: (pit.traceX ?? 0) + (pit.shiftX ?? 0),
+        top: (pit.traceY ?? 0) + (pit.shiftY ?? 0),
         x: pit.x,
         y: pit.y,
       });
@@ -1034,24 +1038,40 @@ export function keepPitPlacesByShift(
   return kept;
 }
 
-/** 図全体の大きさ（左上を0にそろえた並び） */
-export function normalizeRects(rects: readonly PitRect[]): {
+/**
+ * 図全体の大きさと並び。ふつうは左上を0にそろえる。
+ * keepPlace のとき（図面をなぞって図面の位置に置いたピットがあるとき）は動かさず、
+ * left/top に図の左上を返す（下敷きの図面と重なるように）。
+ */
+export function normalizeRects(
+  rects: readonly PitRect[],
+  keepPlace = false,
+): {
   rects: PitRect[];
+  left: number;
+  top: number;
   width: number;
   height: number;
 } {
-  if (rects.length === 0) return { rects: [], width: 0, height: 0 };
+  if (rects.length === 0)
+    return { rects: [], left: 0, top: 0, width: 0, height: 0 };
   const minLeft = Math.min(...rects.map((rect) => rect.left));
   const minTop = Math.min(...rects.map((rect) => rect.top));
-  const moved = rects.map((rect) => ({
-    ...rect,
-    left: rect.left - minLeft,
-    top: rect.top - minTop,
-  }));
+  const moved = keepPlace
+    ? [...rects]
+    : rects.map((rect) => ({
+        ...rect,
+        left: rect.left - minLeft,
+        top: rect.top - minTop,
+      }));
+  const left = keepPlace ? minLeft : 0;
+  const top = keepPlace ? minTop : 0;
   return {
     rects: moved,
-    width: Math.max(...moved.map((rect) => rect.left + rect.x)),
-    height: Math.max(...moved.map((rect) => rect.top + rect.y)),
+    left,
+    top,
+    width: Math.max(...moved.map((rect) => rect.left + rect.x)) - left,
+    height: Math.max(...moved.map((rect) => rect.top + rect.y)) - top,
   };
 }
 
