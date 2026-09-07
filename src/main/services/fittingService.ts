@@ -205,7 +205,7 @@ export function saveFittings(
     rows.forEach((row, index) => {
       const values = {
         projectId,
-        symbol: row.symbol,
+        symbol: row.symbol.trim(),
         name: row.name,
         width: row.width,
         height: row.height,

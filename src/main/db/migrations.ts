@@ -966,4 +966,8 @@ ALTER TABLE project_furniture_sheets ADD COLUMN columns_json TEXT NOT NULL DEFAU
   `
 ALTER TABLE project_fittings ADD COLUMN source_estimate_row_id INTEGER;
 `,
+  // 建具記号の前後の空白（全角も）を取る（手入力で空白が入ると表示がずれ、計算式の<記号>と一致しない）
+  `
+UPDATE project_fittings SET symbol = trim(symbol, ' 　	') WHERE symbol <> trim(symbol, ' 　	');
+`,
 ];

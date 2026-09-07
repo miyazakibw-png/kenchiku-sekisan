@@ -564,6 +564,11 @@ export default function FittingsPage({
                         updateRow(rows, index, { symbol: e.target.value }),
                       )
                     }
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      if (trimmed !== e.target.value)
+                        setRows(updateRow(rows, index, { symbol: trimmed }));
+                    }}
                   />
                 </td>
                 <td>
