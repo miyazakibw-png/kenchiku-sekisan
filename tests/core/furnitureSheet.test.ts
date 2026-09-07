@@ -14,6 +14,7 @@ import {
   resolveFurnitureRows,
   revertFurnitureDetail,
   rowQuantity,
+  transfersToFittings,
   symbolText,
 } from "../../src/core/furniture/furnitureSheet";
 
@@ -288,11 +289,43 @@ describe("システムキッチン（W1・W2・W3）", () => {
     });
   }
 
-  it("システムキッチンと洗面化粧台はW欄が3つ", () => {
+  it("システムキッチン・洗面化粧台・棚はW欄が3つ", () => {
     expect(hasTripleWidth("kitchen")).toBe(true);
     expect(hasTripleWidth("washstand")).toBe(true);
+    expect(hasTripleWidth("shelf")).toBe(true);
+    expect(transfersToFittings("shelf")).toBe(false);
     expect(hasTripleWidth("furniture")).toBe(false);
     expect(hasTripleWidth("other")).toBe(false);
+  });
+
+  it("棚は作りはキッチンと同じで、初めの記号表は棚用（基準は別）", () => {
+    const shelf = furnitureSettingsFor("shelf");
+    expect(shelf.nameSymbols).toEqual([
+      { symbol: "T", text: "棚" },
+      { symbol: "K", text: "可動棚" },
+      { symbol: "H", text: "枕棚" },
+    ]);
+    expect(shelf).not.toEqual(furnitureSettingsFor("kitchen"));
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          partSymbol: "K",
+          nameSymbol: "K",
+          width: "1200",
+          width2: "600",
+          width3: "600",
+          height: "300",
+          depth: "450",
+        }),
+      ],
+      shelf,
+    );
+    expect(rows[0].detail.partName).toBe("キッチン");
+    expect(rows[0].detail.name).toBe("可動棚");
+    expect(rows[0].detail.descriptionLower).toBe(
+      "W1200+600+600(コ型)*H300*D450",
+    );
+    expect(furnitureCellValue(rows[0], "W")).toBe(2.4);
   });
 
   it("洗面化粧台は作りはキッチンと同じで、初めの記号表は洗面用（基準は別）", () => {

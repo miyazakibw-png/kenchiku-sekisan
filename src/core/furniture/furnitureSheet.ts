@@ -166,6 +166,7 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
   { key: "furniture", label: "家具（システム収納）" },
   { key: "kitchen", label: "システムキッチン" },
   { key: "washstand", label: "洗面化粧台" },
+  { key: "shelf", label: "棚" },
   { key: "other", label: "その他の設備" },
 ];
 
@@ -173,9 +174,9 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** システムキッチン・洗面化粧台はW欄がW1・W2・W3の3つ */
+/** システムキッチン・洗面化粧台・棚はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind === "kitchen" || kind === "washstand";
+  return kind === "kitchen" || kind === "washstand" || kind === "shelf";
 }
 
 /** 建具表へ転記するのは家具（システム収納）の表だけ */
@@ -205,6 +206,20 @@ export const defaultWashstandPartSymbols: FurnitureSymbol[] = [
 /** 洗面化粧台の名称の記号の初めの並び */
 export const defaultWashstandNameSymbols: FurnitureSymbol[] = [
   { symbol: "S", text: "洗面化粧台" },
+];
+
+/** 棚の部位（部屋名）の記号の初めの並び */
+export const defaultShelfPartSymbols: FurnitureSymbol[] = [
+  { symbol: "K", text: "キッチン" },
+  { symbol: "S", text: "洗面脱衣室" },
+  { symbol: "T", text: "トイレ" },
+];
+
+/** 棚の名称の記号の初めの並び */
+export const defaultShelfNameSymbols: FurnitureSymbol[] = [
+  { symbol: "T", text: "棚" },
+  { symbol: "K", text: "可動棚" },
+  { symbol: "H", text: "枕棚" },
 ];
 
 export function furnitureSettings(
@@ -243,6 +258,12 @@ export function furnitureSettingsFor(
     return furnitureSettings({
       partSymbols: defaultWashstandPartSymbols.map((item) => ({ ...item })),
       nameSymbols: defaultWashstandNameSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
+  if (kind === "shelf")
+    return furnitureSettings({
+      partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultShelfNameSymbols.map((item) => ({ ...item })),
       ...patch,
     });
   return furnitureSettings(patch);
