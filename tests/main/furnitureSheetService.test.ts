@@ -26,6 +26,7 @@ import {
 import {
   furnitureRow,
   furnitureSettings,
+  furnitureSettingsFor,
 } from "../../src/core/furniture/furnitureSheet";
 
 function createDb(): AppDatabase {
@@ -199,9 +200,16 @@ describe("家具・設備入力表", () => {
     expect(settingsOf(second.id)).toEqual(base);
     expect(settingsOf(third.id)).toEqual(base);
 
-    // 別の種類は初めの設定のまま
+    // 別の種類は初めの設定のまま（キッチンはキッチン用の記号表）
+    expect(getFurnitureBaseSettings(db, "kitchen")).toEqual(
+      furnitureSettingsFor("kitchen"),
+    );
     const kitchen = createFurnitureSheet(db, projectId, "キッチン", "kitchen");
-    expect(settingsOf(kitchen.id)).toEqual(furnitureSettings());
+    expect(settingsOf(kitchen.id)).toEqual(furnitureSettingsFor("kitchen"));
+    expect(settingsOf(kitchen.id).nameSymbols[0]).toEqual({
+      symbol: "S",
+      text: "システムキッチン",
+    });
 
     // 表コピーは元の表の設定を写す
     const pasted = pasteFurnitureSheets(db, projectId, [first.id], 9);

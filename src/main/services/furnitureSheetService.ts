@@ -9,6 +9,7 @@ import {
   copyFurnitureSheetRows,
   fittingsFromFurniture,
   furnitureSettings,
+  furnitureSettingsFor,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
@@ -37,7 +38,7 @@ export function getFurnitureBaseSettings(
     .from(appSettings)
     .where(eq(appSettings.key, baseSettingsKey(kind)))
     .get();
-  const fallback = furnitureSettings();
+  const fallback = furnitureSettingsFor(kind);
   if (row === undefined) return fallback;
   return {
     ...fallback,

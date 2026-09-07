@@ -23,6 +23,8 @@ import {
   furnitureKindLabel,
   furnitureRow,
   furnitureSettings,
+  furnitureSettingsFor,
+  hasTripleWidth,
   isEmptyFurnitureColumn,
   pasteFurnitureRows,
   resolveFurnitureRows,
@@ -114,7 +116,13 @@ function useDragWindow(): {
 }
 
 /** 入力欄の列（表示・非表示を切り替えられる） */
-const INPUT_COLUMNS: { key: string; label: string; forDetail: boolean }[] = [
+interface InputColumn {
+  key: string;
+  label: string;
+  forDetail: boolean;
+}
+
+const INPUT_COLUMNS: InputColumn[] = [
   { key: "subjectId", label: "科目", forDetail: true },
   { key: "partNumber", label: "部位ID", forDetail: true },
   { key: "detailNumber", label: "名称ID", forDetail: true },
@@ -130,6 +138,20 @@ const INPUT_COLUMNS: { key: string; label: string; forDetail: boolean }[] = [
   { key: "descriptionUpper", label: "摘要(上段)", forDetail: false },
   { key: "remarksLower", label: "備考(下段)", forDetail: false },
 ];
+
+/** 計算書の種類ごとの入力欄の列（システムキッチンはW1・W2・W3） */
+function inputColumnsFor(kind: string): InputColumn[] {
+  if (!hasTripleWidth(kind)) return INPUT_COLUMNS;
+  return INPUT_COLUMNS.flatMap((column) =>
+    column.key === "width"
+      ? [
+          { ...column, label: "W1" },
+          { key: "width2", label: "W2", forDetail: false },
+          { key: "width3", label: "W3", forDetail: false },
+        ]
+      : [column],
+  );
+}
 
 /** 右側の明細欄の列（数量は「明細:単位」の前に出す） */
 const DETAIL_COLUMNS: { key: keyof FurnitureDetail; label: string }[] = [
@@ -411,7 +433,7 @@ export default function FurnitureSheetPage({
         {},
       );
       // 古い保存（記号表が無い・空）でも初めの並びが出るようにする
-      const base = furnitureSettings();
+      const base = furnitureSettingsFor(loaded.kind);
       const nextSettings: FurnitureSettings = {
         ...base,
         ...saved,
@@ -878,7 +900,11 @@ export default function FurnitureSheetPage({
     setSettings({ ...settings, ...patch });
   };
 
-  const inputColumns = INPUT_COLUMNS.filter((column) => visible(column.key));
+  const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
+  const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
+  const inputColumns = allInputColumns.filter((column) =>
+    visible(column.key),
+  );
   const detailCells = visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
@@ -1097,7 +1123,7 @@ export default function FurnitureSheetPage({
 
       <div className="furniture-columns">
         表示する列：
-        {INPUT_COLUMNS.map((column) => (
+        {allInputColumns.map((column) => (
           <label key={column.key}>
             <input
               type="checkbox"
@@ -1328,22 +1354,66 @@ export default function FurnitureSheetPage({
                   </td>
                 </tr>
                 <tr>
-                  <td>W・H・Dの表示文字</td>
-                  <td colSpan={3}>
+                  <td>
+                    {tripleWidth
+                      ? "W1・W2・W3・H・Dの表示文字"
+                      : "W・H・Dの表示文字"}
+                  </td>
+                  <td colSpan={3} className="size-labels">
                     <input
                       value={settings.widthLabel}
+                      title="Wの前に付ける文字"
                       onChange={(event) =>
                         changeSettings({ widthLabel: event.target.value })
                       }
                     />
+                    {tripleWidth && (
+                      <>
+                        <span>＋W1＋</span>
+                        <input
+                          value={settings.width2Label}
+                          title="W2の前に付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ width2Label: event.target.value })
+                          }
+                        />
+                        <span>W2</span>
+                        <input
+                          value={settings.width3Label}
+                          title="W3の前に付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ width3Label: event.target.value })
+                          }
+                        />
+                        <span>W3</span>
+                        <input
+                          value={settings.lShapeLabel}
+                          title="W2に入力がありW3に入力が無いときWの後ろに付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ lShapeLabel: event.target.value })
+                          }
+                        />
+                        <span className="hint">←W2あり・W3なし</span>
+                        <input
+                          value={settings.uShapeLabel}
+                          title="W3に入力があるときWの後ろに付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ uShapeLabel: event.target.value })
+                          }
+                        />
+                        <span className="hint">←W3あり</span>
+                      </>
+                    )}
                     <input
                       value={settings.heightLabel}
+                      title="Hの前に付ける文字"
                       onChange={(event) =>
                         changeSettings({ heightLabel: event.target.value })
                       }
                     />
                     <input
                       value={settings.depthLabel}
+                      title="Dの前に付ける文字"
                       onChange={(event) =>
                         changeSettings({ depthLabel: event.target.value })
                       }
@@ -1640,6 +1710,27 @@ export default function FurnitureSheetPage({
                         value={rows[index].width}
                         onChange={(event) =>
                           editRow(index, { width: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {tripleWidth && visible("width2") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width2 ?? ""}
+                        title="W2に入力があるとW3が無ければ(L型)、W3もあれば(コ型)を摘要に付けます"
+                        onChange={(event) =>
+                          editRow(index, { width2: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {tripleWidth && visible("width3") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width3 ?? ""}
+                        onChange={(event) =>
+                          editRow(index, { width3: event.target.value })
                         }
                       />
                     </td>

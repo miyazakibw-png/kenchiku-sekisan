@@ -47,6 +47,13 @@ export interface FurnitureSettings {
   widthLabel: string;
   heightLabel: string;
   depthLabel: string;
+  /** システムキッチン用：W2・W3の前に付ける文字（例：+） */
+  width2Label: string;
+  width3Label: string;
+  /** システムキッチン用：W2あり・W3無しのときWの後ろに付ける文字（例：(L型)） */
+  lShapeLabel: string;
+  /** システムキッチン用：W3ありのときWの後ろに付ける文字（例：(コ型)） */
+  uShapeLabel: string;
   /** +部位（記号入力）の対応表 */
   partSymbols: FurnitureSymbol[];
   /** 名称（記号入力）の対応表 */
@@ -92,6 +99,9 @@ export interface FurnitureRow {
   nameSymbol: string;
   /** W・H・D（mm） */
   width: string;
+  /** システムキッチンのW2・W3（mm。古い保存には無い） */
+  width2?: string;
+  width3?: string;
   height: string;
   depth: string;
   /** 数量 */
@@ -163,6 +173,24 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
+/** システムキッチンはW欄がW1・W2・W3の3つ */
+export function hasTripleWidth(kind: string): boolean {
+  return kind === "kitchen";
+}
+
+/** システムキッチンの部位（部屋名）の記号の初めの並び */
+export const defaultKitchenPartSymbols: FurnitureSymbol[] = [
+  { symbol: "K", text: "キッチン" },
+  { symbol: "LDK", text: "LDK" },
+];
+
+/** システムキッチンの名称の記号の初めの並び */
+export const defaultKitchenNameSymbols: FurnitureSymbol[] = [
+  { symbol: "S", text: "システムキッチン" },
+  { symbol: "M", text: "ミニキッチン" },
+  { symbol: "K", text: "キッチンセット" },
+];
+
 export function furnitureSettings(
   patch: Partial<FurnitureSettings> = {},
 ): FurnitureSettings {
@@ -174,10 +202,28 @@ export function furnitureSettings(
     widthLabel: "W",
     heightLabel: "*H",
     depthLabel: "*D",
+    width2Label: "+",
+    width3Label: "+",
+    lShapeLabel: "(L型)",
+    uShapeLabel: "(コ型)",
     partSymbols: defaultPartSymbols.map((item) => ({ ...item })),
     nameSymbols: defaultNameSymbols.map((item) => ({ ...item })),
     ...patch,
   };
+}
+
+/** 計算書の種類ごとの初めの設定（基準が無いときに使う） */
+export function furnitureSettingsFor(
+  kind: string,
+  patch: Partial<FurnitureSettings> = {},
+): FurnitureSettings {
+  if (kind === "kitchen")
+    return furnitureSettings({
+      partSymbols: defaultKitchenPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultKitchenNameSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
+  return furnitureSettings(patch);
 }
 
 export function furnitureDetail(
@@ -213,6 +259,8 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     partSymbol: "",
     nameSymbol: "",
     width: "",
+    width2: "",
+    width3: "",
     height: "",
     depth: "",
     quantity: "",
@@ -413,8 +461,22 @@ export function sizeText(
   settings: FurnitureSettings,
 ): string {
   const parts: string[] = [];
-  if (row.width.trim() !== "")
-    parts.push(`${settings.widthLabel}${row.width.trim()}`);
+  const width1 = row.width.trim();
+  const width2 = (row.width2 ?? "").trim();
+  const width3 = (row.width3 ?? "").trim();
+  if (width1 !== "" || width2 !== "" || width3 !== "") {
+    const shape =
+      width3 !== ""
+        ? settings.uShapeLabel
+        : width2 !== ""
+          ? settings.lShapeLabel
+          : "";
+    parts.push(
+      `${settings.widthLabel}${width1}${
+        width2 === "" ? "" : `${settings.width2Label}${width2}`
+      }${width3 === "" ? "" : `${settings.width3Label}${width3}`}${shape}`,
+    );
+  }
   if (row.height.trim() !== "")
     parts.push(`${settings.heightLabel}${row.height.trim()}`);
   if (row.depth.trim() !== "")
@@ -526,13 +588,31 @@ export function applyFurnitureDetails(
   }));
 }
 
-/** 計算式に使えるW・H・D（mに換算する） */
+/** W1・W2・W3を合わせた幅（mm。どこにも無ければnull） */
+export function totalWidth(row: FurnitureRow): number | null {
+  const widths = [row.width, row.width2 ?? "", row.width3 ?? ""]
+    .map((text) => numberOf(text))
+    .filter((value): value is number => value !== null);
+  if (widths.length === 0) return null;
+  return widths.reduce((sum, value) => sum + value, 0);
+}
+
+/**
+ * 計算式に使えるW・H・D（mに換算する）。
+ * WはW1・W2・W3の合計で、W1・W2・W3もそれぞれ使える。
+ */
 export function sizeVariables(row: FurnitureRow): Record<string, number> {
-  const width = numberOf(row.width);
+  const width = totalWidth(row);
+  const width1 = numberOf(row.width);
+  const width2 = numberOf(row.width2 ?? "");
+  const width3 = numberOf(row.width3 ?? "");
   const height = numberOf(row.height);
   const depth = numberOf(row.depth);
   return {
     W: width === null ? 0 : width / 1000,
+    W1: width1 === null ? 0 : width1 / 1000,
+    W2: width2 === null ? 0 : width2 / 1000,
+    W3: width3 === null ? 0 : width3 / 1000,
     H: height === null ? 0 : height / 1000,
     D: depth === null ? 0 : depth / 1000,
   };
@@ -707,7 +787,7 @@ export function fittingsFromFurniture(
   rows.forEach((row, index) => {
     const symbol = fittingSymbolOf(row, resolved[index]);
     if (symbol === "") return;
-    const width = numberOf(row.width);
+    const width = totalWidth(row);
     const height = numberOf(row.height);
     if (width === null && height === null) return;
     result.push({

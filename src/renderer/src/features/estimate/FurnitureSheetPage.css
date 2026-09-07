@@ -114,6 +114,20 @@
   padding: 2px 4px;
 }
 
+.furniture-page .furniture-settings .size-labels input {
+  width: 56px;
+  margin-right: 2px;
+}
+
+.furniture-page .furniture-settings .size-labels span {
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.furniture-page .furniture-settings .size-labels .hint {
+  color: #a00;
+}
+
 /** 記号表は左右2列に並べて、入力の行がたくさん見えるようにする */
 .furniture-page .furniture-settings .symbol-tables {
   display: flex;
