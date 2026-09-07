@@ -1,0 +1,26 @@
+/* 図の下敷きにする図面（ピット計算書・部屋計算書で共通） */
+svg.underlay-scale {
+  cursor: crosshair;
+}
+
+svg.underlay-move {
+  cursor: grab;
+}
+
+svg.underlay-move:active {
+  cursor: grabbing;
+}
+
+svg .underlay-scale-points line {
+  stroke: #dc2626;
+}
+
+svg .underlay-scale-points circle {
+  fill: #dc2626;
+  fill-opacity: 0.8;
+}
+
+.underlay-tools input[type="range"] {
+  width: 70px;
+  vertical-align: middle;
+}

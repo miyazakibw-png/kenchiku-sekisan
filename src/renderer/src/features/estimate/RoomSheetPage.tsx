@@ -18,9 +18,17 @@ import type {
 import {
   EMPTY_TRACE,
   parseTrace,
+  parseUnderlay,
   type RoomTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
+import {
+  UnderlayImage,
+  UnderlayScaleMarks,
+  UnderlayTools,
+  useUnderlay,
+  type UnderlayBox,
+} from "./useUnderlay";
 import {
   closeShape,
   closeShapeAtEdge,
@@ -242,10 +250,18 @@ const PROMPT_TITLE: Record<"rect" | "cut" | "notch" | "split", string> = {
 /** 角の○印を出すかを覚えておく場所（次に開いたときも同じ状態にする） */
 const CORNERS_KEY = "roomSheet.showCorners";
 
-function viewBox(solved: SolvedShape): { box: string; span: number } {
-  if (solved.points.length === 0) return { box: "0 0 100 100", span: 100 };
+function viewBox(
+  solved: SolvedShape,
+  underlay: UnderlayBox | null,
+): { box: string; span: number } {
+  if (solved.points.length === 0 && underlay === null)
+    return { box: "0 0 100 100", span: 100 };
   const xs = solved.points.map((point) => point.x);
   const ys = solved.points.map((point) => point.y);
+  if (underlay !== null) {
+    xs.push(underlay.x, underlay.x + underlay.width);
+    ys.push(underlay.y, underlay.y + underlay.height);
+  }
   const width = Math.max(...xs) - Math.min(...xs);
   const height = Math.max(...ys) - Math.min(...ys);
   const size = Math.max(width, height, 0.001);
@@ -362,9 +378,27 @@ export default function RoomSheetPage({
   const [canvasSize, setCanvasSize] = useState(200);
   const [message, setMessage] = useState("");
 
+  const solved = useMemo(() => solveShape(shape), [shape]);
+  const extents = useMemo(() => shapeExtents(solved), [solved]);
+  /** 図の下敷きにする図面（部屋の形と見比べるために置く。traceJson に一緒に保存する） */
+  const underlayTool = useUnderlay({
+    setMessage,
+    planSize: extents === null ? 0 : Math.max(extents.x, extents.y),
+  });
+  const { underlay, setUnderlay } = underlayTool;
+
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
-    { shape, roomFittings, ceiling, codeMoves, lower, ceilingHeight, trace },
+    {
+      shape,
+      roomFittings,
+      ceiling,
+      codeMoves,
+      lower,
+      ceilingHeight,
+      trace,
+      underlay,
+    },
     () => save(),
   );
 
@@ -388,8 +422,10 @@ export default function RoomSheetPage({
       setCodeMoves(parseCeilingCodes(loaded.ceilingCodesJson));
       setLower(parseLower(loaded.lowerJson));
       setTrace(parseTrace(loaded.traceJson));
+      setUnderlay(parseUnderlay(loaded.traceJson));
       markSaved({
         trace: parseTrace(loaded.traceJson),
+        underlay: parseUnderlay(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
@@ -434,9 +470,10 @@ export default function RoomSheetPage({
     [onCeilingHeightChange],
   );
 
-  const solved = useMemo(() => solveShape(shape), [shape]);
-  const extents = useMemo(() => shapeExtents(solved), [solved]);
-  const view = useMemo(() => viewBox(solved), [solved]);
+  const view = useMemo(
+    () => viewBox(solved, underlayTool.box),
+    [solved, underlayTool.box],
+  );
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -676,7 +713,7 @@ export default function RoomSheetPage({
       ceilingJson: JSON.stringify(ceiling),
       ceilingCodesJson: JSON.stringify(codeMoves),
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify(trace),
+      traceJson: JSON.stringify({ ...trace, underlay }),
       ceilingHeight,
       note: sheet.note,
     });
@@ -693,6 +730,7 @@ export default function RoomSheetPage({
     shape,
     sheet,
     trace,
+    underlay,
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
@@ -1465,6 +1503,7 @@ export default function RoomSheetPage({
           >
             🖼 図面をなぞる
           </button>
+          <UnderlayTools u={underlayTool} />
           <button
             type="button"
             className={expanded ? "on" : ""}
@@ -1770,11 +1809,17 @@ export default function RoomSheetPage({
           <div className="canvas" ref={canvasRef}>
             <svg
               viewBox={view.box}
+              className={underlayTool.svgClass}
               style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
               onClick={(event) => {
+                if (!printMode && underlayTool.onSvgClick(event)) return;
                 if (columnMode) addFreeColumn(event);
               }}
+              onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
+              onPointerMove={underlayTool.onPointerMove}
+              onPointerUp={underlayTool.onPointerUp}
             >
+              <UnderlayImage u={underlayTool} />
               {solved.points.map((point, index) => {
                 const line = solved.edges[index];
                 const next = solved.points[(index + 1) % solved.points.length];
@@ -1995,6 +2040,9 @@ export default function RoomSheetPage({
                     );
                   }),
                 )}
+              {!printMode && (
+                <UnderlayScaleMarks u={underlayTool} span={view.span} />
+              )}
             </svg>
             {solved.points.length === 0 && (
               <p className="empty">
