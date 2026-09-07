@@ -76,6 +76,31 @@ describe("比較のエクセル掃き出し", () => {
     expect(line[8]?.mark).toBe("plain");
   });
 
+  it("2段2行の書式では見出しも1明細分（2行）にして左右をそろえる", () => {
+    const pair = (name: string, quantity: number): BreakdownRow[] => [
+      row({ rowKind: "note", nameLower: "基礎", quantity: null, unit: "" }),
+      row({ rowKind: "detail", nameLower: name, quantity }),
+    ];
+    const sheet = toCompareSheet({
+      // 左だけ工種科目の見出しが増えている
+      left: [row({ rowKind: "subject" }), ...pair("普通コンクリート", 12)],
+      right: [...pair("普通コンクリート", 10), ...pair("型枠", 5)],
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+    // 見出し・明細ともに2行ずつ＝かたまりの数×2
+    expect(sheet.rows.length).toBe(2 + 2 * 2);
+    // 見出しは下の行に出し、右の明細と高さがそろう
+    expect(sheet.rows[2]?.[0]?.value).toBe("");
+    expect(sheet.rows[3]?.[0]?.value).toBe("コンクリート工事");
+    expect(sheet.rows[3]?.[8]?.value).toBe("普通コンクリート");
+    // 2つ目のかたまりは左右とも明細で、数量の違いに色が付く
+    expect(sheet.rows[5]?.[0]?.value).toBe("普通コンクリート");
+    expect(sheet.rows[5]?.[2]?.mark).toBe("diff");
+    expect(sheet.rows[5]?.[10]?.mark).toBe("plain");
+  });
+
   it("画面で開けた空行もそのまま出す", () => {
     const sheet = toCompareSheet({
       left: [row({}), row({ rowKind: "blank", nameLower: "", quantity: null })],

@@ -116,20 +116,6 @@
   border-top: none;
 }
 
-/*
- * 比較画面は左右で行の並びがずれるので、上下2行1明細の見せ方はセル単位で決める。
- * こうすると比較しない画面と同じ「2段1行」に見える。
- */
-.breakdown-page table.compare td.detail-upper {
-  border-bottom: none;
-  height: 15px;
-}
-
-.breakdown-page table.compare td.detail-lower {
-  border-top: none;
-  height: 15px;
-}
-
 .breakdown-page table.compare td.qty {
   text-align: right;
   white-space: nowrap;
@@ -167,8 +153,13 @@
   width: max-content;
 }
 
+/*
+ * 比較画面は1明細（見出し・空行も）を1行にして、どの行も同じ高さにする。
+ * こうすると比較しない画面と同じ「2段1行」に見え、左右もずれない。
+ */
 .breakdown-page table.compare td {
   overflow-wrap: anywhere;
+  vertical-align: top;
 }
 
 .breakdown-page table.compare th,

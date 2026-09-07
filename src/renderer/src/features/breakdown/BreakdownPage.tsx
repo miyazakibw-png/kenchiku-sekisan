@@ -14,6 +14,12 @@ import {
 } from "../../../../core/breakdown/breakdown";
 import type { BreakdownField } from "../../../../core/breakdown/compare";
 import { compareBreakdown, moveRow } from "../../../../core/breakdown/compare";
+import {
+  blockValue,
+  headingTextOf,
+  toCompareBlocks,
+  type CompareBlock,
+} from "../../../../core/breakdown/compareBlocks";
 import "../estimate/EstimatePartsPage.css";
 import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
@@ -388,9 +394,22 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [compareDirty]);
 
+  /** 前回と比べている最中か（このときエクセルは比較の形で掃き出す） */
+  const comparing = panel === "compare" && compareTarget !== null;
+
+  // 1明細＝1かたまり（書式④は上下2行で1つ）にしてから左右を突き合わせる
+  const leftBlocks = useMemo(
+    () => toCompareBlocks(leftRows, settings.layout),
+    [leftRows, settings.layout],
+  );
+  const rightBlocks = useMemo(
+    () => toCompareBlocks(rightRows, settings.layout),
+    [rightRows, settings.layout],
+  );
   const diffs = useMemo(
-    () => compareBreakdown(leftRows, rightRows),
-    [leftRows, rightRows],
+    () =>
+      compareBreakdown(leftBlocks.map(blockValue), rightBlocks.map(blockValue)),
+    [leftBlocks, rightBlocks],
   );
 
   /** 空行を1行入れる（押した行の上） */
@@ -407,21 +426,26 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       rows.filter((_row, at) => at < index || at >= index + span),
     );
 
-  /** 明細を1つ動かす（上下2行1明細のときは2行1組で） */
+  /** 明細を1つ動かす（上下2行1明細のときは2行1組で、隣の明細をまたいで動かす） */
   const moveRows = (
     side: "left" | "right",
-    index: number,
     step: number,
-    span: number,
-  ) =>
+    block: CompareBlock<BreakdownRowRecord>,
+  ) => {
+    const blocks = side === "left" ? leftBlocks : rightBlocks;
+    const at = blocks.findIndex((one) => one.start === block.start);
+    const neighbor = blocks[at + step];
+    if (at < 0 || neighbor === undefined) return;
     editCompare(side, (rows) => {
-      if (span === 1) return moveRow(rows, index, step);
       const next = [...rows];
-      const moved = next.splice(index, span);
-      const to = Math.max(0, Math.min(next.length, index + step * span));
+      const moved = next.splice(block.start, block.span);
+      // 上へ＝隣の明細の頭、下へ＝隣の明細の後ろ（自分の分だけ前へ詰まっている）
+      const to =
+        step < 0 ? neighbor.start : neighbor.start + neighbor.span - block.span;
       next.splice(to, 0, ...moved);
       return next;
     });
+  };
 
   /** その行の中身を書き換える（文字入力・貼り付け） */
   const updateRow = (
@@ -444,16 +468,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     });
   };
 
-  /** 行の操作ボタン（上下2行1明細のときは上の行に1組だけ） */
+  /** 行の操作ボタン（1明細＝1かたまりに1組だけ） */
   const opsCell = (
     side: "left" | "right",
-    index: number,
-    pair: string,
+    block: CompareBlock<BreakdownRowRecord> | null,
   ): JSX.Element => {
-    if (pair === "detail-lower") return <td className={`ops ${pair}`} />;
-    const span = pair === "detail-upper" ? 2 : 1;
+    if (block === null) return <td className="ops" />;
+    const index = block.start;
+    const span = block.span;
     return (
-      <td className={`ops ${pair}`}>
+      <td className="ops">
         <div className="ops-grid">
           <button
             type="button"
@@ -484,14 +508,14 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           <button
             type="button"
             title="1つ上へ"
-            onClick={() => moveRows(side, index, -1, span)}
+            onClick={() => moveRows(side, -1, block)}
           >
             ↑
           </button>
           <button
             type="button"
             title="1つ下へ"
-            onClick={() => moveRows(side, index, 1, span)}
+            onClick={() => moveRows(side, 1, block)}
           >
             ↓
           </button>
@@ -508,112 +532,158 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     );
   };
 
-  /** 比較画面の明細セル。左（新しい回）だけ違うところに色を付ける */
+  /**
+   * 比較画面の明細セル（1明細＝1かたまり）。左（新しい回）だけ違うところに色を付ける。
+   * 書式④（2段2行）では上の行（note）が上段・下の行（detail）が下段になる。
+   */
   const compareCells = (
     side: "left" | "right",
-    index: number,
-    row: BreakdownRowRecord | null,
+    block: CompareBlock<BreakdownRowRecord> | null,
     changed: BreakdownField[],
     onlySide: boolean,
-    pair: string,
   ): JSX.Element[] => {
     const mark = (field: BreakdownField): string => {
-      const cls = pair === "" ? "" : ` ${pair}`;
-      if (side === "right") return cls.trim();
-      if (onlySide) return `only${cls}`;
-      return changed.includes(field) ? `changed${cls}` : cls.trim();
+      if (side === "right") return "";
+      if (onlySide) return "only";
+      return changed.includes(field) ? "changed" : "";
     };
-    if (row === null) {
+    if (block === null) {
       return ["n", "d", "q", "u", "p", "a", "r"].map((key) => (
         <td key={key} className={side === "left" ? "only" : ""} />
       ));
     }
-    const set = (patch: Partial<BreakdownRowRecord>): void =>
-      updateRow(side, index, patch);
-    const heading = row.rowKind === "subject" || row.rowKind === "title";
-    const twoStageText = settings.layout === BREAKDOWN_LAYOUT.twoLine;
+    const upperIndex = block.start;
+    const lowerIndex = block.start + block.span - 1;
+    const pairRow = block.span === 2;
+    const twoStageText = twoStage(settings.layout);
+    const lower = block.lower;
+    /** 上段の文字（2段2行では上の行の下段欄に入っている） */
+    const upperText = (field: "name" | "description" | "remarks"): string => {
+      if (block.upper === null)
+        return field === "name"
+          ? lower.nameUpper
+          : field === "description"
+            ? lower.descriptionUpper
+            : lower.remarksUpper;
+      return field === "name"
+        ? block.upper.nameLower
+        : field === "description"
+          ? block.upper.descriptionLower
+          : block.upper.remarksLower;
+    };
+    const setUpper = (
+      field: "name" | "description" | "remarks",
+      value: string,
+    ): void => {
+      if (pairRow) {
+        updateRow(
+          side,
+          upperIndex,
+          field === "name"
+            ? { nameLower: value }
+            : field === "description"
+              ? { descriptionLower: value }
+              : { remarksLower: value },
+        );
+        return;
+      }
+      updateRow(
+        side,
+        upperIndex,
+        field === "name"
+          ? { nameUpper: value }
+          : field === "description"
+            ? { descriptionUpper: value }
+            : { remarksUpper: value },
+      );
+    };
+    const setLower = (patch: Partial<BreakdownRowRecord>): void =>
+      updateRow(side, lowerIndex, patch);
     /** 上段・下段の文字欄。2段の書式では上下2つ、そうでなければ下段だけ */
     const textCell = (
       key: string,
       field: BreakdownField,
-      upper: string,
-      lower: string,
-      onUpper: (value: string) => void,
+      part: "name" | "description" | "remarks",
+      lowerValue: string,
       onLower: (value: string) => void,
     ): JSX.Element => (
       <td key={key} className={mark(field)}>
         {twoStageText && (
           <div className="upper">
-            <TextInput value={upper} onCommit={onUpper} />
+            <TextInput
+              value={upperText(part)}
+              onCommit={(value) => setUpper(part, value)}
+            />
           </div>
         )}
         <div className={twoStageText ? "lower" : ""}>
-          <TextInput value={lower} onCommit={onLower} />
+          <TextInput value={lowerValue} onCommit={onLower} />
         </div>
       </td>
     );
-    if (heading) {
-      // 工種科目・タイトルの見出しは文字だけ出す（並べ替えは集計書側で行う）
+    if (block.heading) {
+      // 工種科目・タイトルの見出しは文字だけ出す（高さは1明細分そろえる）
       return [
         <td key="n" className={mark("name")}>
-          {twoStageText ? subjectLines(headingText(row)) : headingText(row)}
+          {twoStageText
+            ? subjectLines(headingTextOf(lower))
+            : headingTextOf(lower)}
         </td>,
-        <td key="d" className={pair} />,
-        <td key="q" className={`qty ${pair}`} />,
-        <td key="u" className={`unit ${pair}`} />,
-        <td key="p" className={`qty ${pair}`} />,
-        <td key="a" className={`qty ${pair}`} />,
-        <td key="r" className={pair} />,
+        <td key="d" />,
+        <td key="q" className="qty" />,
+        <td key="u" className="unit" />,
+        <td key="p" className="qty" />,
+        <td key="a" className="qty" />,
+        <td key="r" />,
       ];
     }
+    const numberCell = (key: string, value: number | null): JSX.Element => (
+      <td key={key} className="qty">
+        {twoStageText && <div className="upper" />}
+        <div className={twoStageText ? "lower" : ""}>{value ?? ""}</div>
+      </td>
+    );
     return [
-      textCell(
-        "n",
-        "name",
-        row.nameUpper,
-        row.nameLower,
-        (value) => set({ nameUpper: value }),
-        (value) => set({ nameLower: value }),
+      textCell("n", "name", "name", lower.nameLower, (value) =>
+        setLower({ nameLower: value }),
       ),
       textCell(
         "d",
         "description",
-        row.descriptionUpper,
-        row.descriptionLower,
-        (value) => set({ descriptionUpper: value }),
-        (value) => set({ descriptionLower: value }),
+        "description",
+        lower.descriptionLower,
+        (value) => setLower({ descriptionLower: value }),
       ),
       <td key="q" className={`qty ${mark("quantity")}`}>
-        <TextInput
-          value={row.quantity === null ? "" : String(row.quantity)}
-          onCommit={(value) => {
-            const parsed = Number.parseFloat(value);
-            set({
-              quantity:
-                value.trim() === "" || !Number.isFinite(parsed) ? null : parsed,
-            });
-          }}
-        />
+        {twoStageText && <div className="upper" />}
+        <div className={twoStageText ? "lower" : ""}>
+          <TextInput
+            value={lower.quantity === null ? "" : String(lower.quantity)}
+            onCommit={(value) => {
+              const parsed = Number.parseFloat(value);
+              setLower({
+                quantity:
+                  value.trim() === "" || !Number.isFinite(parsed)
+                    ? null
+                    : parsed,
+              });
+            }}
+          />
+        </div>
       </td>,
       <td key="u" className={`unit ${mark("unit")}`}>
-        <TextInput
-          value={row.unit}
-          onCommit={(value) => set({ unit: value })}
-        />
+        {twoStageText && <div className="upper" />}
+        <div className={twoStageText ? "lower" : ""}>
+          <TextInput
+            value={lower.unit}
+            onCommit={(value) => setLower({ unit: value })}
+          />
+        </div>
       </td>,
-      <td key="p" className={`qty ${pair}`}>
-        {row.unitPrice ?? ""}
-      </td>,
-      <td key="a" className={`qty ${pair}`}>
-        {row.amount ?? ""}
-      </td>,
-      textCell(
-        "r",
-        "remarks",
-        row.remarksUpper,
-        row.remarksLower,
-        (value) => set({ remarksUpper: value }),
-        (value) => set({ remarksLower: value }),
+      numberCell("p", lower.unitPrice),
+      numberCell("a", lower.amount),
+      textCell("r", "remarks", "remarks", lower.remarksLower, (value) =>
+        setLower({ remarksLower: value }),
       ),
     ];
   };
@@ -661,8 +731,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         <button type="button" onClick={() => void exportFile("bcs")}>
           BCS.CSV
         </button>
-        <button type="button" onClick={() => void exportFile("excelAll")}>
-          Excel（1シート）
+        <button
+          type="button"
+          onClick={() =>
+            void exportFile(comparing ? "excelCompare" : "excelAll")
+          }
+          title={
+            comparing
+              ? "比べた形のまま（左：新しい回／右：比べる元）で掃き出します"
+              : undefined
+          }
+        >
+          {comparing ? "Excel（比較）" : "Excel（1シート）"}
         </button>
         <button type="button" onClick={() => void exportFile("excelBySubject")}>
           Excel（科目別）
@@ -956,42 +1036,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </thead>
             <tbody>
               {diffs.map((diff) => {
-                // 左右それぞれの並びで「上下2行1明細」を見分ける（片側だけ行を足しても崩れない）
-                const leftPair =
-                  diff.left === null
-                    ? ""
-                    : pairClass(leftRows, diff.index, settings.layout);
-                const rightPair =
-                  diff.right === null
-                    ? ""
-                    : pairClass(rightRows, diff.index, settings.layout);
+                // 左右それぞれ1明細（かたまり）ずつ並べる。行の高さは全部そろう
+                const left = leftBlocks[diff.index] ?? null;
+                const right = rightBlocks[diff.index] ?? null;
                 return (
                   <tr
                     key={diff.index}
-                    className={
-                      settings.layout === BREAKDOWN_LAYOUT.twoLine
-                        ? "two-line"
-                        : ""
-                    }
+                    className={twoStage(settings.layout) ? "two-line" : ""}
                   >
-                    {opsCell("left", diff.index, leftPair)}
-                    {compareCells(
-                      "left",
-                      diff.index,
-                      diff.left,
-                      diff.changed,
-                      diff.onlyLeft,
-                      leftPair,
-                    )}
-                    {opsCell("right", diff.index, rightPair)}
-                    {compareCells(
-                      "right",
-                      diff.index,
-                      diff.right,
-                      diff.changed,
-                      diff.onlyRight,
-                      rightPair,
-                    )}
+                    {opsCell("left", left)}
+                    {compareCells("left", left, diff.changed, diff.onlyLeft)}
+                    {opsCell("right", right)}
+                    {compareCells("right", right, diff.changed, diff.onlyRight)}
                   </tr>
                 );
               })}

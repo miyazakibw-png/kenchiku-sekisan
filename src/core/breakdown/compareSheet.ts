@@ -8,6 +8,13 @@ import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
 import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 import { compareBreakdown, type BreakdownField } from "./compare";
+import {
+  blockValue,
+  headingTextOf,
+  toCompareBlocks,
+  twoRowPairs,
+  type CompareBlock,
+} from "./compareBlocks";
 
 /** 左右それぞれの列（印の列は付けない） */
 const HEADER = ["名称", "摘要", "数量", "単位", "単価", "金額", "備考"];
@@ -15,23 +22,12 @@ const WIDTHS = [40, 30, 12, 8, 12, 14, 20];
 /** 左右の表の間のあき */
 const GAP_WIDTH = 4;
 
-function headingText(row: BreakdownRow): string {
-  return row.rowKind === "subject" ? row.subjectName : row.nameLower;
-}
-
 function join(upper: string, lower: string): string {
   return [upper, lower].filter((text) => text !== "").join(" ");
 }
 
 function newline(upper: string, lower: string): string {
   return [upper, lower].filter((text) => text !== "").join("\n");
-}
-
-/** 1明細を上下2行1組で出す書式か（画面の表示と合わせる） */
-function twoRowPairs(layout: number): boolean {
-  return (
-    layout === BREAKDOWN_LAYOUT.twoRow || layout === BREAKDOWN_LAYOUT.excel
-  );
 }
 
 function textOf(
@@ -50,86 +46,136 @@ function textOf(
 }
 
 /**
- * 上下2行1明細の書式で、この行が明細の上の行か下の行かを見る。
- * 上下の間に罫線を引かないことで、画面と同じ「2段1行」に見せる。
+ * 片側の1明細（かたまり）を作る。
+ * 書式④（2段2行）では上下2行、それ以外は1行を返す。
+ * 見出し・空きのかたまりも同じ行数にして、左右がずれないようにする。
+ * 色を付けるのは changed が渡されたときだけ。
  */
-function rowBorder(
-  rows: readonly BreakdownRow[],
-  index: number,
-  layout: number,
-): XlsxBorder {
-  if (!twoRowPairs(layout)) return "one";
-  const row = rows[index];
-  if (row === undefined) return "one";
-  if (row.rowKind === "note" && rows[index + 1]?.rowKind === "detail")
-    return "upper";
-  if (row.rowKind === "detail" && rows[index - 1]?.rowKind === "note")
-    return "lower";
-  return "one";
-}
-
-/** 片側1行分（7列）を作る。色を付けるのは changed が渡されたときだけ */
-function sideCells(
-  row: BreakdownRow | null,
+function sideLines(
+  block: CompareBlock<BreakdownRow> | null,
   layout: number,
   changed: readonly BreakdownField[] | null,
   onlySide: boolean,
-  border: XlsxBorder,
-): XlsxCell[] {
+): XlsxCell[][] {
   const mark = (field: BreakdownField): "plain" | "diff" => {
     if (changed === null) return "plain";
     if (onlySide) return "diff";
     return changed.includes(field) ? "diff" : "plain";
   };
-  if (row === null) {
-    return HEADER.map(() => ({
-      value: "",
-      kind: "text" as const,
+  const heading = block !== null && block.heading;
+  const line = (
+    border: XlsxBorder,
+    name: { value: string; wrap: boolean },
+    description: { value: string; wrap: boolean },
+    quantity: number | null,
+    unit: string,
+    unitPrice: number | null,
+    amount: number | null,
+    remarks: { value: string; wrap: boolean },
+  ): XlsxCell[] => {
+    const text = (
+      part: { value: string; wrap: boolean },
+      field: BreakdownField,
+    ): XlsxCell => ({
+      value: part.value,
+      kind: heading ? "header" : part.wrap ? "wrap" : "text",
       border,
-      mark: changed === null ? ("plain" as const) : ("diff" as const),
-    }));
+      mark: heading ? "plain" : mark(field),
+    });
+    const number = (
+      value: number | null,
+      field: BreakdownField | null,
+    ): XlsxCell => ({
+      value,
+      kind: value === null ? "text" : "number",
+      border,
+      mark: field === null ? "plain" : mark(field),
+    });
+    return [
+      text(name, "name"),
+      text(description, "description"),
+      number(quantity, "quantity"),
+      { value: unit, kind: "text", border, mark: mark("unit") },
+      number(unitPrice, null),
+      number(amount, null),
+      text(remarks, "remarks"),
+    ];
+  };
+  const blank = (border: XlsxBorder): XlsxCell[] =>
+    line(
+      border,
+      { value: "", wrap: false },
+      { value: "", wrap: false },
+      null,
+      "",
+      null,
+      null,
+      { value: "", wrap: false },
+    );
+
+  if (twoRowPairs(layout)) {
+    if (block === null) return [blank("upper"), blank("lower")];
+    const upper = block.upper;
+    const lower = block.lower;
+    const upperLine =
+      upper === null
+        ? blank("upper")
+        : line(
+            "upper",
+            { value: upper.nameLower, wrap: false },
+            { value: upper.descriptionLower, wrap: false },
+            null,
+            "",
+            null,
+            null,
+            { value: upper.remarksLower, wrap: false },
+          );
+    const lowerLine = line(
+      "lower",
+      {
+        value: block.heading ? headingTextOf(lower) : lower.nameLower,
+        wrap: false,
+      },
+      {
+        value: block.heading ? "" : lower.descriptionLower,
+        wrap: false,
+      },
+      block.heading ? null : lower.quantity,
+      block.heading ? "" : lower.unit,
+      block.heading ? null : lower.unitPrice,
+      block.heading ? null : lower.amount,
+      { value: block.heading ? "" : lower.remarksLower, wrap: false },
+    );
+    return [upperLine, lowerLine];
   }
-  const heading = row.rowKind === "subject" || row.rowKind === "title";
-  const name = heading
-    ? { value: headingText(row), wrap: false }
-    : textOf(layout, row.nameUpper, row.nameLower);
-  const description = heading
-    ? { value: "", wrap: false }
-    : textOf(layout, row.descriptionUpper, row.descriptionLower);
-  const remarks = heading
-    ? { value: "", wrap: false }
-    : textOf(layout, row.remarksUpper, row.remarksLower);
-  const text = (
-    part: { value: string; wrap: boolean },
-    field: BreakdownField,
-  ): XlsxCell => ({
-    value: part.value,
-    kind: heading ? "header" : part.wrap ? "wrap" : "text",
-    border,
-    mark: heading ? "plain" : mark(field),
-  });
-  const number = (
-    value: number | null,
-    field: BreakdownField | null,
-  ): XlsxCell => ({
-    value,
-    kind: value === null ? "text" : "number",
-    border,
-    mark: field === null ? "plain" : mark(field),
-  });
+
+  if (block === null) return [blank("one")];
+  const row = block.lower;
+  if (block.heading) {
+    return [
+      line(
+        "one",
+        { value: headingTextOf(row), wrap: false },
+        { value: "", wrap: false },
+        null,
+        "",
+        null,
+        null,
+        { value: "", wrap: false },
+      ),
+    ];
+  }
   return [
-    text(name, "name"),
-    text(description, "description"),
-    number(row.quantity, "quantity"),
-    {
-      value: row.unit,
-      kind: "text",
-      border,
-      mark: mark("unit"),
-    },
-    number(row.unitPrice, null),
-    number(row.amount, null),
-    text(remarks, "remarks"),
+    line(
+      "one",
+      textOf(layout, row.nameUpper, row.nameLower),
+      textOf(layout, row.descriptionUpper, row.descriptionLower),
+      row.quantity,
+      row.unit,
+      row.unitPrice,
+      row.amount,
+      textOf(layout, row.remarksUpper, row.remarksLower),
+    ),
   ];
 }
 
@@ -173,33 +219,38 @@ export interface CompareSheetInput {
 
 /** 比較のシート（1枚）を作る */
 export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
+  const leftBlocks = toCompareBlocks(input.left, input.layout);
+  const rightBlocks = toCompareBlocks(input.right, input.layout);
   const diffs = compareBreakdown(
-    input.left as BreakdownRow[],
-    input.right as BreakdownRow[],
+    leftBlocks.map(blockValue),
+    rightBlocks.map(blockValue),
   );
   const rows: XlsxCell[][] = [
     headerRow(input.leftTitle, input.rightTitle),
     titleRow(),
   ];
-  diffs.forEach((diff) => {
-    rows.push([
-      // 左（新しい回）だけ色を付ける
-      ...sideCells(
-        diff.left,
-        input.layout,
-        diff.changed,
-        diff.onlyLeft,
-        rowBorder(input.left, diff.index, input.layout),
-      ),
-      gapCell(),
-      ...sideCells(
-        diff.right,
-        input.layout,
-        null,
-        false,
-        rowBorder(input.right, diff.index, input.layout),
-      ),
-    ]);
+  diffs.forEach((diff, index) => {
+    // 左（新しい回）だけ色を付ける
+    const left = sideLines(
+      leftBlocks[index] ?? null,
+      input.layout,
+      diff.changed,
+      diff.onlyLeft,
+    );
+    const right = sideLines(
+      rightBlocks[index] ?? null,
+      input.layout,
+      null,
+      false,
+    );
+    const count = Math.max(left.length, right.length);
+    for (let line = 0; line < count; line += 1) {
+      rows.push([
+        ...(left[line] ?? sideLines(null, input.layout, null, false)[line]),
+        gapCell(),
+        ...(right[line] ?? sideLines(null, input.layout, null, false)[line]),
+      ]);
+    }
   });
   return {
     name: "比較",
