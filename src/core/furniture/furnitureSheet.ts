@@ -58,6 +58,8 @@ export interface FurnitureSettings {
   partSymbols: FurnitureSymbol[];
   /** 名称（記号入力）の対応表 */
   nameSymbols: FurnitureSymbol[];
+  /** ハンガーパイプ用：形状（番号入力）の対応表（計上設定。例：1→(L型)。古い保存には無い） */
+  shapeSymbols?: FurnitureSymbol[];
 }
 
 /** 右の明細欄（自動で作り、手で直せる） */
@@ -104,6 +106,8 @@ export interface FurnitureRow {
   width3?: string;
   height: string;
   depth: string;
+  /** ハンガーパイプの形状（番号。設定の形状の記号で文字に変える。古い保存には無い） */
+  shape?: string;
   /** 数量 */
   quantity: string;
   unit: string;
@@ -167,6 +171,7 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
   { key: "kitchen", label: "システムキッチン" },
   { key: "washstand", label: "洗面化粧台" },
   { key: "shelf", label: "棚" },
+  { key: "hanger", label: "ハンガーパイプ" },
   { key: "other", label: "その他の設備" },
 ];
 
@@ -174,9 +179,19 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** システムキッチン・洗面化粧台・棚はW欄がW1・W2・W3の3つ */
+/** システムキッチン・洗面化粧台・棚・ハンガーパイプはW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind === "kitchen" || kind === "washstand" || kind === "shelf";
+  return (
+    kind === "kitchen" ||
+    kind === "washstand" ||
+    kind === "shelf" ||
+    kind === "hanger"
+  );
+}
+
+/** ハンガーパイプはDの欄の代わりに形状（番号）を入れる */
+export function hasShape(kind: string): boolean {
+  return kind === "hanger";
 }
 
 /** 建具表へ転記するのは家具（システム収納）の表だけ */
@@ -220,6 +235,20 @@ export const defaultShelfNameSymbols: FurnitureSymbol[] = [
   { symbol: "T", text: "棚" },
   { symbol: "K", text: "可動棚" },
   { symbol: "H", text: "枕棚" },
+];
+
+/** ハンガーパイプの形状の記号の初めの並び（計上設定） */
+export const defaultHangerShapeSymbols: FurnitureSymbol[] = [
+  { symbol: "1", text: "(L型)" },
+  { symbol: "2", text: "(十型)" },
+  { symbol: "3", text: "(キ型)" },
+  { symbol: "4", text: "(T型)" },
+  { symbol: "5", text: "(TT型)" },
+];
+
+/** ハンガーパイプの名称の記号の初めの並び */
+export const defaultHangerNameSymbols: FurnitureSymbol[] = [
+  { symbol: "H", text: "ハンガーパイプ" },
 ];
 
 export function furnitureSettings(
@@ -266,6 +295,13 @@ export function furnitureSettingsFor(
       nameSymbols: defaultShelfNameSymbols.map((item) => ({ ...item })),
       ...patch,
     });
+  if (kind === "hanger")
+    return furnitureSettings({
+      partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultHangerNameSymbols.map((item) => ({ ...item })),
+      shapeSymbols: defaultHangerShapeSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
   return furnitureSettings(patch);
 }
 
@@ -306,6 +342,7 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     width3: "",
     height: "",
     depth: "",
+    shape: "",
     quantity: "",
     unit: "",
     descriptionUpper: "",
@@ -498,7 +535,16 @@ export function resolveFurnitureRows(
   });
 }
 
-/** W・H・Dを摘要下段の文字にする（例：W1200*H1100*D400） */
+/** 形状（番号入力）を設定の文字にする（ハンガーパイプ。表に無い番号はそのまま） */
+export function shapeText(
+  row: FurnitureRow,
+  settings: FurnitureSettings,
+): string {
+  return symbolText(settings.shapeSymbols ?? [], row.shape ?? "");
+}
+
+/** W・H・Dを摘要下段の文字にする（例：W1200*H1100*D400）。
+ * 形状（ハンガーパイプ）があるときはW2/W3の(L型)(コ型)は付けず、末尾に形状の文字を付ける */
 export function sizeText(
   row: FurnitureRow,
   settings: FurnitureSettings,
@@ -507,13 +553,16 @@ export function sizeText(
   const width1 = row.width.trim();
   const width2 = (row.width2 ?? "").trim();
   const width3 = (row.width3 ?? "").trim();
+  const shapeLabel = shapeText(row, settings);
   if (width1 !== "" || width2 !== "" || width3 !== "") {
     const shape =
-      width3 !== ""
-        ? settings.uShapeLabel
-        : width2 !== ""
-          ? settings.lShapeLabel
-          : "";
+      shapeLabel !== ""
+        ? ""
+        : width3 !== ""
+          ? settings.uShapeLabel
+          : width2 !== ""
+            ? settings.lShapeLabel
+            : "";
     parts.push(
       `${settings.widthLabel}${width1}${
         width2 === "" ? "" : `${settings.width2Label}${width2}`
@@ -524,6 +573,7 @@ export function sizeText(
     parts.push(`${settings.heightLabel}${row.height.trim()}`);
   if (row.depth.trim() !== "")
     parts.push(`${settings.depthLabel}${row.depth.trim()}`);
+  if (shapeLabel !== "") parts.push(shapeLabel);
   return parts.join("");
 }
 

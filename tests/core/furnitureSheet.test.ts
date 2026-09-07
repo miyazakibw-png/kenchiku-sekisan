@@ -9,6 +9,7 @@ import {
   furnitureRow,
   furnitureSettings,
   furnitureSettingsFor,
+  hasShape,
   hasTripleWidth,
   pasteFurnitureRows,
   resolveFurnitureRows,
@@ -326,6 +327,50 @@ describe("システムキッチン（W1・W2・W3）", () => {
       "W1200+600+600(コ型)*H300*D450",
     );
     expect(furnitureCellValue(rows[0], "W")).toBe(2.4);
+  });
+
+  it("ハンガーパイプは棚と同じ作りで、Dの代わりに形状（番号→計上設定の文字）", () => {
+    expect(hasTripleWidth("hanger")).toBe(true);
+    expect(hasShape("hanger")).toBe(true);
+    expect(hasShape("shelf")).toBe(false);
+    expect(transfersToFittings("hanger")).toBe(false);
+    const hanger = furnitureSettingsFor("hanger");
+    expect(hanger.shapeSymbols).toEqual([
+      { symbol: "1", text: "(L型)" },
+      { symbol: "2", text: "(十型)" },
+      { symbol: "3", text: "(キ型)" },
+      { symbol: "4", text: "(T型)" },
+      { symbol: "5", text: "(TT型)" },
+    ]);
+    expect(hanger).not.toEqual(furnitureSettingsFor("shelf"));
+    expect(furnitureSettingsFor("shelf").shapeSymbols).toBeUndefined();
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          nameSymbol: "H",
+          width: "1200",
+          width2: "600",
+          height: "1800",
+          shape: "１",
+        }),
+        furnitureRow({ width: "900", height: "1800", shape: "5" }),
+        furnitureRow({ width: "900", width2: "600", shape: "9" }),
+        furnitureRow({ width: "900", width2: "600" }),
+      ],
+      hanger,
+    );
+    expect(rows[0].detail.name).toBe("ハンガーパイプ");
+    expect(rows[0].detail.descriptionLower).toBe("W1200+600*H1800(L型)");
+    expect(furnitureCellValue(rows[0], "W")).toBe(1.8);
+    expect(rows[1].detail.descriptionLower).toBe("W900*H1800(TT型)");
+    expect(rows[2].detail.descriptionLower).toBe("W900+6009");
+    expect(rows[3].detail.descriptionLower).toBe("W900+600(L型)");
+    expect(
+      applyFurnitureDetails(
+        [furnitureRow({ width: "1200", depth: "450", shape: "1" })],
+        furnitureSettingsFor("shelf"),
+      )[0].detail.descriptionLower,
+    ).toBe("W1200*D4501");
   });
 
   it("洗面化粧台は作りはキッチンと同じで、初めの記号表は洗面用（基準は別）", () => {

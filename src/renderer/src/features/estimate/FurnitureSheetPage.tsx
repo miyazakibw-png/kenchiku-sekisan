@@ -25,6 +25,7 @@ import {
   furnitureSettings,
   furnitureSettingsFor,
   hasTripleWidth,
+  hasShape,
   isEmptyFurnitureColumn,
   pasteFurnitureRows,
   resolveFurnitureRows,
@@ -139,18 +140,21 @@ const INPUT_COLUMNS: InputColumn[] = [
   { key: "remarksLower", label: "備考(下段)", forDetail: false },
 ];
 
-/** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台はW1・W2・W3） */
+/** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台・棚・ハンガーパイプはW1・W2・W3。
+ * ハンガーパイプはDの代わりに形状） */
 function inputColumnsFor(kind: string): InputColumn[] {
   if (!hasTripleWidth(kind)) return INPUT_COLUMNS;
-  return INPUT_COLUMNS.flatMap((column) =>
-    column.key === "width"
-      ? [
-          { ...column, label: "W1" },
-          { key: "width2", label: "W2", forDetail: false },
-          { key: "width3", label: "W3", forDetail: false },
-        ]
-      : [column],
-  );
+  return INPUT_COLUMNS.flatMap((column) => {
+    if (column.key === "width")
+      return [
+        { ...column, label: "W1" },
+        { key: "width2", label: "W2", forDetail: false },
+        { key: "width3", label: "W3", forDetail: false },
+      ];
+    if (column.key === "depth" && hasShape(kind))
+      return [{ key: "shape", label: "形状", forDetail: false }];
+    return [column];
+  });
 }
 
 /** 右側の明細欄の列（数量は「明細:単位」の前に出す） */
@@ -920,6 +924,10 @@ export default function FurnitureSheetPage({
 
   const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
   const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
+  const withShape = hasShape(sheet?.kind ?? "furniture");
+  const shapeHint = (settings.shapeSymbols ?? [])
+    .map((item) => `${item.symbol}→${item.text}`)
+    .join("　");
   const inputColumns = allInputColumns.filter((column) =>
     visible(column.key),
   );
@@ -1372,9 +1380,11 @@ export default function FurnitureSheetPage({
                 </tr>
                 <tr>
                   <td>
-                    {tripleWidth
-                      ? "W1・W2・W3・H・Dの表示文字"
-                      : "W・H・Dの表示文字"}
+                    {withShape
+                      ? "W1・W2・W3・Hの表示文字（形状は末尾に付く）"
+                      : tripleWidth
+                        ? "W1・W2・W3・H・Dの表示文字"
+                        : "W・H・Dの表示文字"}
                   </td>
                   <td colSpan={3} className="size-labels">
                     <input
@@ -1450,6 +1460,13 @@ export default function FurnitureSheetPage({
                 symbols={settings.nameSymbols}
                 onChange={(nameSymbols) => changeSettings({ nameSymbols })}
               />
+              {withShape && (
+                <SymbolTable
+                  title="形状の記号（計上設定）"
+                  symbols={settings.shapeSymbols ?? []}
+                  onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
+                />
+              )}
             </div>
         </div>
       )}
@@ -1768,12 +1785,23 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("depth") && (
+                  {!withShape && visible("depth") && (
                     <td className="num">
                       <input
                         value={rows[index].depth}
                         onChange={(event) =>
                           editRow(index, { depth: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withShape && visible("shape") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].shape ?? ""}
+                        title={shapeHint}
+                        onChange={(event) =>
+                          editRow(index, { shape: event.target.value })
                         }
                       />
                     </td>
