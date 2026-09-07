@@ -7,6 +7,9 @@ import {
   toMeters,
   traceArea,
   parseTrace,
+  parseUnderlay,
+  scaleUnderlay,
+  EMPTY_UNDERLAY,
 } from "../../src/core/room/trace";
 import { solveShape } from "../../src/core/room/shape";
 
@@ -94,5 +97,68 @@ describe("図面をなぞる", () => {
       scaleLength: 0,
       points: [],
     });
+  });
+});
+
+describe("下敷きの図面（ピット計算書の traceJson に一緒に保存）", () => {
+  it("underlay が無い・壊れている JSON は空の下敷きにする", () => {
+    expect(parseUnderlay("")).toEqual(EMPTY_UNDERLAY);
+    expect(parseUnderlay("{}")).toEqual(EMPTY_UNDERLAY);
+    expect(parseUnderlay(JSON.stringify({ underlay: "x" }))).toEqual(
+      EMPTY_UNDERLAY,
+    );
+  });
+
+  it("trace と一緒に入っている underlay を読み、不正な値は初期値に戻す", () => {
+    const json = JSON.stringify({
+      image: "",
+      metersPerPixel: 0,
+      scalePoints: [],
+      scaleLength: 0,
+      points: [],
+      underlay: {
+        image: "data:image/png;base64,AAAA",
+        metersPerPixel: 0.02,
+        x: 1.5,
+        y: "bad",
+        opacity: 5,
+      },
+    });
+    expect(parseUnderlay(json)).toEqual({
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.02,
+      x: 1.5,
+      y: 0,
+      opacity: 1,
+    });
+    // 部屋のなぞりの読み込みは underlay があっても影響を受けない
+    expect(parseTrace(json).points).toEqual([]);
+  });
+
+  it("縮尺合わせは1点目を動かさずに画像を伸び縮みさせる", () => {
+    const underlay = {
+      ...EMPTY_UNDERLAY,
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+    };
+    // 図の上で 2m に見えている長さが実は 4m → 2倍
+    const scaled = scaleUnderlay(underlay, { x: 3, y: 2 }, { x: 5, y: 2 }, 4);
+    expect(scaled).not.toBeNull();
+    expect(scaled?.metersPerPixel).toBeCloseTo(0.02);
+    // 1点目 (3,2) から見た画像の左上 (-2,0) が2倍になる → (3-4, 2+0)
+    expect(scaled?.x).toBeCloseTo(-1);
+    expect(scaled?.y).toBeCloseTo(2);
+  });
+
+  it("2点が同じ・実寸が0以下のときは合わせない", () => {
+    const underlay = { ...EMPTY_UNDERLAY, metersPerPixel: 0.01 };
+    expect(
+      scaleUnderlay(underlay, { x: 1, y: 1 }, { x: 1, y: 1 }, 3),
+    ).toBeNull();
+    expect(
+      scaleUnderlay(underlay, { x: 0, y: 0 }, { x: 1, y: 0 }, 0),
+    ).toBeNull();
   });
 });

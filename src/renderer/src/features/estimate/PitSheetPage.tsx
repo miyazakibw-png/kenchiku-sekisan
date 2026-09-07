@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EstimateRowDraft,
   Fitting,
@@ -65,10 +65,16 @@ import {
 } from "../../../../core/pit/pit";
 import {
   EMPTY_TRACE,
+  EMPTY_UNDERLAY,
   parseTrace,
+  parseUnderlay,
+  scaleUnderlay,
   type RoomTrace,
+  type TraceUnderlay,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
+import { pdfPageImage } from "./pdfPage";
+import { ask } from "../common/askDialog";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import CalcPrintSheet from "../print/CalcPrintSheet";
@@ -219,13 +225,50 @@ export default function PitSheetPage({
   const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
   /** 図面をなぞる画面を出しているか */
   const [showTrace, setShowTrace] = useState(false);
+  /** 図（平面図）の下敷きにする図面（ピットを図面に合わせて作るために置く） */
+  const [underlay, setUnderlay] = useState<TraceUnderlay>(EMPTY_UNDERLAY);
+  /** 下敷きの画像の大きさ（画素） */
+  const [underlaySize, setUnderlaySize] = useState({
+    width: 1000,
+    height: 700,
+  });
+  /** 下敷きの使い方：off＝ふつう／scale＝縮尺合わせ／move＝図面を動かす */
+  const [underlayMode, setUnderlayMode] = useState<"off" | "scale" | "move">(
+    "off",
+  );
+  /** 縮尺合わせで押した2点（図の座標m） */
+  const [scalePoints, setScalePoints] = useState<{ x: number; y: number }[]>(
+    [],
+  );
+  const [scaleText, setScaleText] = useState("3.640");
+  const [pageText, setPageText] = useState("1");
+  /** 縮尺合わせの前の下敷き（「ℶ 縮尺を戻す」用） */
+  const [scaleUndo, setScaleUndo] = useState<TraceUnderlay[]>([]);
+  /** 下敷きをつまんで動かしている間の始めの位置 */
+  const underlayDragRef = useRef<{
+    clientX: number;
+    clientY: number;
+    x: number;
+    y: number;
+  } | null>(null);
   /** 図（平面図）を画面いっぱいに開いているか */
   const [expanded, setExpanded] = useState(false);
   /** ピット間の表で長さをまとめる単位（mm） */
   const [wallStep, setWallStep] = useState<number>(PIT_LENGTH_STEPS[0]);
 
   const { markSaved } = useSaveOnLeave(
-    { pits, beams, walls, sleeves, sleeveKinds, wallStep, lower, note, trace },
+    {
+      pits,
+      beams,
+      walls,
+      sleeves,
+      sleeveKinds,
+      wallStep,
+      lower,
+      note,
+      trace,
+      underlay,
+    },
     () => save(),
   );
 
@@ -314,6 +357,7 @@ export default function PitSheetPage({
       setLower(sets);
       setNote(loaded.note);
       setTrace(parseTrace(loaded.traceJson));
+      setUnderlay(parseUnderlay(loaded.traceJson));
       markSaved({
         pits: loadedPits,
         beams: loadedBeams,
@@ -324,6 +368,7 @@ export default function PitSheetPage({
         lower: sets,
         note: loaded.note,
         trace: parseTrace(loaded.traceJson),
+        underlay: parseUnderlay(loaded.traceJson),
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
@@ -352,6 +397,168 @@ export default function PitSheetPage({
       beams: beamLines(pits, placed.rects, beams),
     };
   }, [beams, pits]);
+
+  useEffect(() => {
+    if (underlay.image === "") return;
+    const image = new Image();
+    image.onload = () =>
+      setUnderlaySize({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    image.src = underlay.image;
+  }, [underlay.image]);
+
+  /** 下敷きの図面を置く大きさ（m） */
+  const underlayBox = useMemo(() => {
+    if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
+    return {
+      x: underlay.x,
+      y: underlay.y,
+      width: underlaySize.width * underlay.metersPerPixel,
+      height: underlaySize.height * underlay.metersPerPixel,
+    };
+  }, [underlay, underlaySize]);
+
+  /** 図の表示範囲（ピット全体＋下敷きの図面が入る大きさ） */
+  const view = useMemo(() => {
+    let left = -1;
+    let top = -1;
+    let right = plan.width + 1;
+    let bottom = plan.height + 1;
+    if (underlayBox !== null) {
+      left = Math.min(left, underlayBox.x - 0.5);
+      top = Math.min(top, underlayBox.y - 0.5);
+      right = Math.max(right, underlayBox.x + underlayBox.width + 0.5);
+      bottom = Math.max(bottom, underlayBox.y + underlayBox.height + 0.5);
+    }
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }, [plan.height, plan.width, underlayBox]);
+
+  /** 取り込んだ図面を下敷きに置く（縮尺はいったん仮に決めて、あとで合わせる） */
+  const putUnderlayImage = useCallback(
+    (dataUrl: string) => {
+      setUnderlay({
+        image: dataUrl,
+        metersPerPixel: Math.max(plan.width, plan.height, 10) / 1000,
+        x: 0,
+        y: 0,
+        opacity: 0.75,
+      });
+      setScalePoints([]);
+      setUnderlayMode("scale");
+      setMessage(
+        "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れて［合わせる］を押してください",
+      );
+    },
+    [plan.height, plan.width],
+  );
+
+  /** クリップボードの画像（Shift+Windows+S の切り取り）を下敷きにする */
+  const pasteUnderlayImage = useCallback(async () => {
+    const fromApp = await window.sekisan.readClipboardImage();
+    if (fromApp.image !== "") {
+      putUnderlayImage(fromApp.image);
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((entry) => entry.startsWith("image/"));
+        if (type === undefined) continue;
+        const blob = await item.getType(type);
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("画像を読めませんでした"));
+          reader.readAsDataURL(blob);
+        });
+        putUnderlayImage(dataUrl);
+        return;
+      }
+    } catch {
+      // クリップボードを読めないときは知らせるだけにする
+    }
+    setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
+  }, [putUnderlayImage]);
+
+  /** PDF・画像のファイルを選んで下敷きにする */
+  const openUnderlayFile = useCallback(async () => {
+    const page = Number(pageText);
+    setMessage("ファイルを読んでいます…");
+    const got = await window.sekisan.openDrawingFile(page > 0 ? page : 1);
+    if (got.pdf !== "") {
+      const made = await pdfPageImage(got.pdf, page > 0 ? page : 1);
+      if (made.image === "") {
+        setMessage("PDFを画像にできませんでした");
+        return;
+      }
+      putUnderlayImage(made.image);
+      return;
+    }
+    if (got.image !== "") {
+      putUnderlayImage(got.image);
+      return;
+    }
+    setMessage(got.note === "" ? "取り込みをやめました" : got.note);
+  }, [pageText, putUnderlayImage]);
+
+  /** 縮尺合わせ：図の上で押した2点の実寸（m）を入れて下敷きを伸び縮みさせる */
+  const applyUnderlayScale = useCallback(() => {
+    const meters = Number(scaleText);
+    if (!Number.isFinite(meters) || meters <= 0) {
+      setMessage("実寸（m）を入れてください");
+      return;
+    }
+    if (scalePoints.length < 2) {
+      setMessage("図面の上で長さの分かる所を2点クリックしてください");
+      return;
+    }
+    const scaled = scaleUnderlay(
+      underlay,
+      scalePoints[0],
+      scalePoints[1],
+      meters,
+    );
+    if (scaled === null) {
+      setMessage("2点が近すぎます。離れた2点をクリックしてください");
+      return;
+    }
+    setScaleUndo((current) => [...current.slice(-9), underlay]);
+    setUnderlay(scaled);
+    setScalePoints([]);
+    setUnderlayMode("off");
+    setMessage("縮尺を合わせました（ピットはそのままです）");
+  }, [scalePoints, scaleText, underlay]);
+
+  /** 縮尺合わせを1回分もとに戻す */
+  const undoUnderlayScale = useCallback(() => {
+    setScaleUndo((current) => {
+      const last = current[current.length - 1];
+      if (last === undefined) return current;
+      setUnderlay(last);
+      setMessage("縮尺合わせを元に戻しました");
+      return current.slice(0, -1);
+    });
+  }, []);
+
+  /** 画面の座標を図の座標（m）にする */
+  const toPlanPoint = useCallback(
+    (
+      svg: SVGSVGElement,
+      clientX: number,
+      clientY: number,
+    ): { x: number; y: number } => {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return { x: 0, y: 0 };
+      const origin = svg.createSVGPoint();
+      origin.x = clientX;
+      origin.y = clientY;
+      const point = origin.matrixTransform(matrix.inverse());
+      return { x: point.x, y: point.y };
+    },
+    [],
+  );
 
   /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
   /** ピットを直したら、ピット間の印も新しい壁へ付け直して長さを数え直す */
@@ -418,6 +625,7 @@ export default function PitSheetPage({
       lower: trimmed,
       note,
       trace,
+      underlay,
     });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
@@ -428,7 +636,7 @@ export default function PitSheetPage({
       sleeveKindsJson: JSON.stringify(sleeveKinds),
       wallStep,
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify(trace),
+      traceJson: JSON.stringify({ ...trace, underlay }),
       note,
     });
     setSheet(saved);
@@ -444,6 +652,7 @@ export default function PitSheetPage({
     sleeveKinds,
     sleeves,
     trace,
+    underlay,
     wallStep,
     walls,
   ]);
@@ -942,36 +1151,87 @@ export default function PitSheetPage({
 
   const drawing = (
     <div className="pit-drawing">
-      {plan.rects.length === 0 ? (
+      {plan.rects.length === 0 && underlayBox === null ? (
         <p className="empty">
           「＋ ピット追加」でＰ1から順に四角を作ります（1個目が基準）
         </p>
       ) : (
         <svg
-          viewBox={`${-1} ${-1} ${plan.width + 2} ${plan.height + 2}`}
-          className="pit-plan"
+          viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+          className={
+            underlayMode === "off"
+              ? "pit-plan"
+              : `pit-plan underlay-${underlayMode}`
+          }
           onClick={(event) => {
             if (printMode) return;
+            if (underlayMode === "scale") {
+              const at = toPlanPoint(
+                event.currentTarget,
+                event.clientX,
+                event.clientY,
+              );
+              setScalePoints((current) =>
+                current.length >= 2 ? [at] : [...current, at],
+              );
+              return;
+            }
+            if (underlayMode === "move") return;
             if (planMode !== "wall") return;
-            const area = event.currentTarget.getBoundingClientRect();
-            const at = {
-              x:
-                -1 +
-                ((event.clientX - area.left) / area.width) * (plan.width + 2),
-              y:
-                -1 +
-                ((event.clientY - area.top) / area.height) * (plan.height + 2),
+            placeWall(
+              toPlanPoint(event.currentTarget, event.clientX, event.clientY),
+            );
+          }}
+          onPointerDown={(event) => {
+            if (printMode || underlayMode !== "move") return;
+            underlayDragRef.current = {
+              clientX: event.clientX,
+              clientY: event.clientY,
+              x: underlay.x,
+              y: underlay.y,
             };
-            placeWall(at);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const start = underlayDragRef.current;
+            if (start === null) return;
+            const svg = event.currentTarget;
+            const from = toPlanPoint(svg, start.clientX, start.clientY);
+            const to = toPlanPoint(svg, event.clientX, event.clientY);
+            setUnderlay((current) => ({
+              ...current,
+              x: start.x + (to.x - from.x),
+              y: start.y + (to.y - from.y),
+            }));
+          }}
+          onPointerUp={(event) => {
+            if (underlayDragRef.current === null) return;
+            underlayDragRef.current = null;
+            event.currentTarget.releasePointerCapture(event.pointerId);
           }}
         >
+          {underlayBox !== null && (
+            <image
+              href={underlay.image}
+              x={underlayBox.x}
+              y={underlayBox.y}
+              width={underlayBox.width}
+              height={underlayBox.height}
+              preserveAspectRatio="none"
+              opacity={underlay.opacity}
+              className="pit-underlay"
+              style={{
+                pointerEvents: underlayMode === "off" ? "none" : "auto",
+              }}
+            />
+          )}
           {plan.rects.map((rect) => (
             <g key={rect.id}>
               <polygon
                 points={plan.outlines[rect.id] ?? ""}
                 className="pit-rect"
                 onClick={(event) => {
-                  if (printMode) return;
+                  if (printMode || underlayMode !== "off") return;
                   if (planMode === "wall" || planMode === "none") return;
                   const box = event.currentTarget.getBoundingClientRect();
                   if (
@@ -981,17 +1241,9 @@ export default function PitSheetPage({
                   ) {
                     const svg = event.currentTarget.ownerSVGElement;
                     if (!svg) return;
-                    const area = svg.getBoundingClientRect();
-                    const px =
-                      -1 +
-                      ((event.clientX - area.left) / area.width) *
-                        (plan.width + 2) -
-                      rect.left;
-                    const py =
-                      -1 +
-                      ((event.clientY - area.top) / area.height) *
-                        (plan.height + 2) -
-                      rect.top;
+                    const at = toPlanPoint(svg, event.clientX, event.clientY);
+                    const px = at.x - rect.left;
+                    const py = at.y - rect.top;
                     if (planMode === "shape") addCorner(rect.id, px, py);
                     else if (planMode === "column")
                       toggleEdge(rect.id, { x: px, y: py });
@@ -1155,6 +1407,27 @@ export default function PitSheetPage({
                 />
               ));
             })}
+          {!printMode && underlayMode === "scale" && scalePoints.length > 0 && (
+            <g className="pit-scale-points">
+              {scalePoints.length >= 2 && (
+                <line
+                  x1={scalePoints[0].x}
+                  y1={scalePoints[0].y}
+                  x2={scalePoints[1].x}
+                  y2={scalePoints[1].y}
+                  strokeWidth={Math.max(view.width, view.height) / 300}
+                />
+              )}
+              {scalePoints.map((point, index) => (
+                <circle
+                  key={index}
+                  cx={point.x}
+                  cy={point.y}
+                  r={Math.max(view.width, view.height) / 120}
+                />
+              ))}
+            </g>
+          )}
         </svg>
       )}
     </div>
@@ -2047,6 +2320,136 @@ export default function PitSheetPage({
             >
               🖼 図面をなぞる
             </button>
+            <span className="kind-pick pit-underlay-tools">
+              <button
+                type="button"
+                title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（ピットの位置・大きさを図面と見比べながら作れます）"
+                onClick={() => void pasteUnderlayImage()}
+              >
+                📋 図面を貼る
+              </button>
+              <button
+                type="button"
+                title="PDF・画像のファイルを選んで、図の下敷きに貼ります"
+                onClick={() => void openUnderlayFile()}
+              >
+                📄 図面ファイル
+              </button>
+              <label className="snap-field" title="PDFの何ページ目を使うか">
+                頁
+                <input
+                  className="num"
+                  value={pageText}
+                  onChange={(e) => setPageText(e.target.value)}
+                />
+              </label>
+              {underlay.image !== "" && (
+                <>
+                  <button
+                    type="button"
+                    className={underlayMode === "scale" ? "on" : ""}
+                    title="図面の中で長さの分かる所を2点クリックし、実寸（m）を入れて［合わせる］を押すと縮尺が合います"
+                    onClick={() => {
+                      setScalePoints([]);
+                      setUnderlayMode(
+                        underlayMode === "scale" ? "off" : "scale",
+                      );
+                      setMessage(
+                        underlayMode === "scale"
+                          ? "縮尺合わせをやめました"
+                          : "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れて［合わせる］を押してください",
+                      );
+                    }}
+                  >
+                    ⤢ 縮尺合わせ
+                  </button>
+                  {underlayMode === "scale" && (
+                    <>
+                      <label
+                        className="snap-field"
+                        title="クリックした2点の間の実寸（m）"
+                      >
+                        実寸(m)
+                        <input
+                          className="num"
+                          value={scaleText}
+                          onChange={(e) => setScaleText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") applyUnderlayScale();
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={scalePoints.length < 2}
+                        title="2点の間の長さを実寸に合わせて、図面を伸び縮みさせます"
+                        onClick={applyUnderlayScale}
+                      >
+                        ✓ 合わせる（{scalePoints.length}/2点）
+                      </button>
+                    </>
+                  )}
+                  {scaleUndo.length > 0 && (
+                    <button
+                      type="button"
+                      title="直前の縮尺合わせを元に戻します"
+                      onClick={undoUnderlayScale}
+                    >
+                      ↶ 縮尺を戻す
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={underlayMode === "move" ? "on" : ""}
+                    title="図面をつまんで動かし、ピットと位置を合わせます（ピットは動きません）"
+                    onClick={() => {
+                      setScalePoints([]);
+                      setUnderlayMode(underlayMode === "move" ? "off" : "move");
+                      setMessage(
+                        underlayMode === "move"
+                          ? "図面を動かすのをやめました"
+                          : "図面をつまんで動かしてください（終わったらもう一度［図面を動かす］）",
+                      );
+                    }}
+                  >
+                    ✋ 図面を動かす
+                  </button>
+                  <label className="snap-field" title="図面の濃さ">
+                    濃さ
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={1}
+                      step={0.05}
+                      value={underlay.opacity}
+                      onChange={(e) =>
+                        setUnderlay((current) => ({
+                          ...current,
+                          opacity: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    title="下敷きの図面を外します（ピット・梁・ピット間はそのまま残ります）"
+                    onClick={async () => {
+                      if (
+                        !(await ask("下敷きの図面を外します。よろしいですか"))
+                      )
+                        return;
+                      setUnderlay(EMPTY_UNDERLAY);
+                      setUnderlayMode("off");
+                      setScalePoints([]);
+                      setScaleUndo([]);
+                      setMessage("下敷きの図面を外しました");
+                    }}
+                  >
+                    🗑 図面を外す
+                  </button>
+                </>
+              )}
+            </span>
             <button
               type="button"
               className={expanded ? "on" : ""}

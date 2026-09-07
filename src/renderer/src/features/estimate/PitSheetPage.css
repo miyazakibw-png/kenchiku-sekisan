@@ -386,3 +386,31 @@
   flex: 1 1 100%;
   color: #7c2d12;
 }
+
+/* 下敷きの図面（縮尺合わせ・動かす） */
+.pit-plan.underlay-scale {
+  cursor: crosshair;
+}
+
+.pit-plan.underlay-move {
+  cursor: grab;
+}
+
+.pit-plan.underlay-move:active {
+  cursor: grabbing;
+}
+
+.pit-plan .pit-scale-points line {
+  stroke: #dc2626;
+  stroke-dasharray: 0.2 0.1;
+}
+
+.pit-plan .pit-scale-points circle {
+  fill: #dc2626;
+  fill-opacity: 0.8;
+}
+
+.pit-underlay-tools input[type="range"] {
+  width: 70px;
+  vertical-align: middle;
+}

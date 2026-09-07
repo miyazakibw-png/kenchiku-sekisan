@@ -53,6 +53,69 @@ export function parseTrace(json: string): RoomTrace {
   }
 }
 
+/** 図の下敷きに置く図面画像（図の座標mで置き、位置・縮尺を合わせる） */
+export interface TraceUnderlay {
+  /** 画像（データURL）。無いときは空文字 */
+  image: string;
+  /** 画像1画素あたりの実寸（m） */
+  metersPerPixel: number;
+  /** 画像の左上を置く位置（m） */
+  x: number;
+  y: number;
+  /** 図面の濃さ（0.05〜1） */
+  opacity: number;
+}
+
+export const EMPTY_UNDERLAY: TraceUnderlay = {
+  image: "",
+  metersPerPixel: 0,
+  x: 0,
+  y: 0,
+  opacity: 0.75,
+};
+
+/** 保存した trace の JSON に一緒に入れた下敷き（underlay）を読む */
+export function parseUnderlay(json: string): TraceUnderlay {
+  try {
+    const parsed = JSON.parse(json) as { underlay?: Partial<TraceUnderlay> };
+    const raw = parsed.underlay;
+    if (raw === undefined || raw === null || typeof raw !== "object")
+      return { ...EMPTY_UNDERLAY };
+    const number = (value: unknown, fallback: number): number =>
+      typeof value === "number" && Number.isFinite(value) ? value : fallback;
+    return {
+      image: typeof raw.image === "string" ? raw.image : "",
+      metersPerPixel: number(raw.metersPerPixel, 0),
+      x: number(raw.x, 0),
+      y: number(raw.y, 0),
+      opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
+    };
+  } catch {
+    return { ...EMPTY_UNDERLAY };
+  }
+}
+
+/**
+ * 下敷きの縮尺合わせ：図の上で押した2点の間の実寸（m）から縮尺を直す。
+ * 1点目の位置が動かないように、画像の置き場所も一緒に伸び縮みさせる。
+ */
+export function scaleUnderlay(
+  underlay: TraceUnderlay,
+  from: Point,
+  to: Point,
+  realLength: number,
+): TraceUnderlay | null {
+  const now = Math.hypot(to.x - from.x, to.y - from.y);
+  if (now < 1e-6 || !(realLength > 0)) return null;
+  const factor = realLength / now;
+  return {
+    ...underlay,
+    metersPerPixel: underlay.metersPerPixel * factor,
+    x: from.x + (underlay.x - from.x) * factor,
+    y: from.y + (underlay.y - from.y) * factor,
+  };
+}
+
 /** 2点と実寸から縮尺（1画素あたりのメートル）を出す */
 export function metersPerPixel(
   from: Point,
