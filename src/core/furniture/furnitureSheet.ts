@@ -60,6 +60,13 @@ export interface FurnitureSettings {
   nameSymbols: FurnitureSymbol[];
   /** ハンガーパイプ用：形状（番号入力）の対応表（計上設定。例：1→(L型)。古い保存には無い） */
   shapeSymbols?: FurnitureSymbol[];
+  /** ユニットバス用：加工手間(梁欠き)・(窓)の前後に付ける文字（古い保存には無い） */
+  beamPrefix?: string;
+  beamSuffix?: string;
+  windowPrefix?: string;
+  windowSuffix?: string;
+  /** ユニットバス用：型番→床面積の計算式の換算表（symbol＝型番・text＝計算式。例：1418→1.5*1.9） */
+  floorAreaTable?: FurnitureSymbol[];
 }
 
 /** 右の明細欄（自動で作り、手で直せる） */
@@ -77,6 +84,8 @@ export interface FurnitureDetail {
   remarksLower: string;
   /** 数量の計算式（W・H・Dが使える。mに換算して計算する） */
   formula: string;
+  /** ユニットバスの床面積の計算式（型番から自動、手入力があればそれ。計算式のFAになる。古い保存には無い） */
+  floorFormula?: string;
   sourceDetailId: number | null;
   /** 手で直した欄（自動作成で上書きしない） */
   edited: string[];
@@ -108,6 +117,13 @@ export interface FurnitureRow {
   depth: string;
   /** ハンガーパイプの形状（番号。設定の形状の記号で文字に変える。古い保存には無い） */
   shape?: string;
+  /** ユニットバスの型番（手入力。4桁の数字なら床面積の計算に使う。古い保存には無い） */
+  model?: string;
+  /** ユニットバスの加工手間(梁欠き)・(窓)（摘要上段に並べる。古い保存には無い） */
+  beam?: string;
+  window?: string;
+  /** ユニットバスの床面積の計算式（手入力。空なら型番から自動。古い保存には無い） */
+  floorFormula?: string;
   /** 数量 */
   quantity: string;
   unit: string;
@@ -174,6 +190,7 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
   { key: "washstand", label: "洗面化粧台" },
   { key: "shelf", label: "棚" },
   { key: "hanger", label: "ハンガーパイプ" },
+  { key: "bath", label: "ユニットバス" },
   { key: "other", label: "その他" },
 ];
 
@@ -181,9 +198,14 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** 家具（システム収納）以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
+/** 家具（システム収納）・ユニットバス以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind !== "furniture";
+  return kind !== "furniture" && kind !== "bath";
+}
+
+/** ユニットバスはW・Dの代わりに型番、摘要上段は加工手間(梁欠き)・(窓)の2欄、床面積計算（FA）を持つ */
+export function hasModel(kind: string): boolean {
+  return kind === "bath";
 }
 
 /** ハンガーパイプはDの欄の代わりに形状（番号）を入れる */
@@ -248,6 +270,21 @@ export const defaultHangerNameSymbols: FurnitureSymbol[] = [
   { symbol: "H", text: "ハンガーパイプ" },
 ];
 
+/** ユニットバスの部位の記号の初めの並び */
+export const defaultBathPartSymbols: FurnitureSymbol[] = [
+  { symbol: "B", text: "浴室" },
+];
+
+/** ユニットバスの名称の記号の初めの並び */
+export const defaultBathNameSymbols: FurnitureSymbol[] = [
+  { symbol: "UB", text: "ユニットバス" },
+];
+
+/** ユニットバスの型番→床面積の計算式の初めの並び（表に無い型番は上2桁・下2桁を/10して+0.1） */
+export const defaultFloorAreaTable: FurnitureSymbol[] = [
+  { symbol: "1418", text: "1.5*1.9" },
+];
+
 /** その他の名称の記号の初めの並び */
 export const defaultOtherNameSymbols: FurnitureSymbol[] = [
   { symbol: "S", text: "設備" },
@@ -303,6 +340,17 @@ export function furnitureSettingsFor(
       nameSymbols: defaultOtherNameSymbols.map((item) => ({ ...item })),
       ...patch,
     });
+  if (kind === "bath")
+    return furnitureSettings({
+      partSymbols: defaultBathPartSymbols.map((item) => ({ ...item })),
+      nameSymbols: defaultBathNameSymbols.map((item) => ({ ...item })),
+      beamPrefix: "",
+      beamSuffix: "",
+      windowPrefix: "(",
+      windowSuffix: ")",
+      floorAreaTable: defaultFloorAreaTable.map((item) => ({ ...item })),
+      ...patch,
+    });
   if (kind === "hanger")
     return furnitureSettings({
       partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
@@ -351,6 +399,10 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     height: "",
     depth: "",
     shape: "",
+    model: "",
+    beam: "",
+    window: "",
+    floorFormula: "",
     quantity: "",
     unit: "",
     descriptionUpper: "",
@@ -422,9 +474,10 @@ export function copyFurnitureSheetRows(
   };
 }
 
-/** 計算式の中のＷ・Ｈ・Ｄ（全角・小文字も）を変数名の W・H・D にそろえる */
+/** 計算式の中のＷ・Ｈ・Ｄ・ＦＡ（全角・小文字も）を変数名の W・H・D・FA にそろえる */
 export function sizeFormula(text: string): string {
   return text
+    .replace(/[FfＦｆ][AaＡａ]/g, "FA")
     .replace(/[Ｗｗw]/g, "W")
     .replace(/[Ｈｈh]/g, "H")
     .replace(/[Ｄｄd]/g, "D");
@@ -440,7 +493,8 @@ export function furnitureCellValue(
 ): number | null {
   const trimmed = text.trim();
   if (trimmed === "") return null;
-  if (!/[ＷｗwＨｈhＤｄdWHD]/.test(trimmed)) return cellValue(trimmed);
+  if (!/[ＷｗwＨｈhＤｄdWHD]|[FfＦｆ][AaＡａ]/.test(trimmed))
+    return cellValue(trimmed);
   const computed = evaluateFormula(sizeFormula(trimmed), sizeVariables(row));
   return computed === null ? null : displayedValue(computed);
 }
@@ -554,13 +608,68 @@ export function shapeText(
   );
 }
 
-/** W・H・Dを摘要下段の文字にする（例：W1200*H1100*D400）。
+/** 型番→床面積の計算式（換算表にあればその式。無くて4桁の数字なら上2桁・下2桁を/10して+0.1。例：1418→1.5*1.9） */
+export function floorFormulaOfModel(
+  model: string,
+  settings: FurnitureSettings,
+): string {
+  const key = toHalfWidth(model).trim();
+  if (key === "") return "";
+  const found = (settings.floorAreaTable ?? defaultFloorAreaTable).find(
+    (item) => toHalfWidth(item.symbol).trim() === key,
+  );
+  if (found) return found.text.trim();
+  if (!/^\d{4}$/.test(key)) return "";
+  const side = (digits: string): string =>
+    (Number(digits) / 10 + 0.1).toFixed(1);
+  return `${side(key.slice(0, 2))}*${side(key.slice(2))}`;
+}
+
+/** 1行の床面積の計算式（手入力があればそれ、無ければ型番から） */
+export function floorFormulaOf(
+  row: FurnitureRow,
+  settings: FurnitureSettings,
+): string {
+  const manual = (row.floorFormula ?? "").trim();
+  if (manual !== "") return manual;
+  return floorFormulaOfModel(row.model ?? "", settings);
+}
+
+/** 床面積（m²。式が無い・計算できないときはnull） */
+export function floorAreaOf(formula: string): number | null {
+  const trimmed = formula.trim();
+  if (trimmed === "") return null;
+  const value = evaluateFormula(trimmed);
+  return value === null ? null : displayedValue(value);
+}
+
+/** ユニットバスの摘要上段（加工手間(梁欠き)・(窓)に設定の前後文字を付けて並べる） */
+export function bathUpperText(
+  row: FurnitureRow,
+  settings: FurnitureSettings,
+): string {
+  const parts: string[] = [];
+  const beam = (row.beam ?? "").trim();
+  if (beam !== "")
+    parts.push(
+      `${settings.beamPrefix ?? ""}${beam}${settings.beamSuffix ?? ""}`,
+    );
+  const win = (row.window ?? "").trim();
+  if (win !== "")
+    parts.push(
+      `${settings.windowPrefix ?? ""}${win}${settings.windowSuffix ?? ""}`,
+    );
+  return parts.join("");
+}
+
+/** W・H・Dを摘要下段の文字にする（例：W1200*H1100*D400）。ユニットバスは型番をそのまま出す。
  * ハンガーパイプはDを出さず、W2/W3の(L型)(コ型)も付けず、末尾に形状の文字を付ける */
 export function sizeText(
   row: FurnitureRow,
   settings: FurnitureSettings,
   kind = "furniture",
 ): string {
+  if (hasModel(kind)) return (row.model ?? "").trim();
   const withShape = hasShape(kind);
   const parts: string[] = [];
   const width1 = row.width.trim();
@@ -620,8 +729,11 @@ export function buildDetail(
     detailNumber: resolved.detailNumber,
     partName: partText(row, resolved, settings),
     name: symbolText(settings.nameSymbols, row.nameSymbol),
-    descriptionUpper: row.descriptionUpper,
+    descriptionUpper: hasModel(kind)
+      ? bathUpperText(row, settings)
+      : row.descriptionUpper,
     descriptionLower: sizeText(row, settings, kind),
+    floorFormula: hasModel(kind) ? floorFormulaOf(row, settings) : undefined,
     unit: resolved.unit,
     remarksUpper: "",
     remarksLower: row.remarksLower,
@@ -715,7 +827,9 @@ export function sizeVariables(row: FurnitureRow): Record<string, number> {
   const width3 = numberOf(row.width3 ?? "");
   const height = numberOf(row.height);
   const depth = numberOf(row.depth);
+  const floorArea = floorAreaOf(row.detail.floorFormula ?? "");
   return {
+    FA: floorArea === null ? 0 : floorArea,
     W: width === null ? 0 : width / 1000,
     W1: width1 === null ? 0 : width1 / 1000,
     W2: width2 === null ? 0 : width2 / 1000,

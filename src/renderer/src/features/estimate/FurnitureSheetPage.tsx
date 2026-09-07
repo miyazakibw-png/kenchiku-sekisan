@@ -25,7 +25,9 @@ import {
   furnitureSettings,
   furnitureSettingsFor,
   hasTripleWidth,
+  hasModel,
   hasShape,
+  floorAreaOf,
   isEmptyFurnitureColumn,
   pasteFurnitureRows,
   resolveFurnitureRows,
@@ -143,6 +145,23 @@ const INPUT_COLUMNS: InputColumn[] = [
 /** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台・棚・ハンガーパイプはW1・W2・W3。
  * ハンガーパイプはDの代わりに形状） */
 function inputColumnsFor(kind: string): InputColumn[] {
+  if (hasModel(kind))
+    return INPUT_COLUMNS.flatMap((column) => {
+      if (column.key === "width")
+        return [{ key: "model", label: "型番", forDetail: false }];
+      if (column.key === "depth") return [];
+      if (column.key === "descriptionUpper")
+        return [
+          { key: "beam", label: "加工手間(梁欠き)", forDetail: false },
+          { key: "window", label: "(窓)", forDetail: false },
+        ];
+      if (column.key === "remarksLower")
+        return [
+          column,
+          { key: "floorFormula", label: "床面積計算", forDetail: false },
+        ];
+      return [column];
+    });
   if (!hasTripleWidth(kind)) return INPUT_COLUMNS;
   return INPUT_COLUMNS.flatMap((column) => {
     if (column.key === "width")
@@ -925,6 +944,7 @@ export default function FurnitureSheetPage({
   const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
   const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
   const withShape = hasShape(sheet?.kind ?? "furniture");
+  const withModel = hasModel(sheet?.kind ?? "furniture");
   const shapeHint = (settings.shapeSymbols ?? [])
     .map((item) => `${item.symbol}→${item.text}`)
     .join("　");
@@ -1378,6 +1398,47 @@ export default function FurnitureSheetPage({
                     />
                   </td>
                 </tr>
+                {withModel && (
+                  <tr>
+                    <td>加工手間(梁欠き)の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.beamPrefix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ beamPrefix: event.target.value })
+                        }
+                      />
+                      ＋梁欠き＋
+                      <input
+                        lang="ja"
+                        value={settings.beamSuffix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ beamSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                    <td>(窓)の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.windowPrefix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ windowPrefix: event.target.value })
+                        }
+                      />
+                      ＋窓＋
+                      <input
+                        lang="ja"
+                        value={settings.windowSuffix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ windowSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                  </tr>
+                )}
+                {!withModel && (
                 <tr>
                   <td>
                     {withShape
@@ -1457,6 +1518,7 @@ export default function FurnitureSheetPage({
                     )}
                   </td>
                 </tr>
+                )}
               </tbody>
             </table>
             <div className="symbol-tables">
@@ -1475,6 +1537,15 @@ export default function FurnitureSheetPage({
                   title="形状の記号（計上設定）"
                   symbols={settings.shapeSymbols ?? []}
                   onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
+                />
+              )}
+              {withModel && (
+                <SymbolTable
+                  title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
+                  symbols={settings.floorAreaTable ?? []}
+                  onChange={(floorAreaTable) =>
+                    changeSettings({ floorAreaTable })
+                  }
                 />
               )}
             </div>
@@ -1586,7 +1657,7 @@ export default function FurnitureSheetPage({
                       {isEmptyFurnitureColumn(column) &&
                       !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
                         ? ""
-                        : furnitureColumnTotal(rows, column.id).toFixed(2)}
+                        : furnitureColumnTotal(view, column.id).toFixed(2)}
                       <button
                         type="button"
                         className="drop"
@@ -1754,12 +1825,23 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("width") && (
+                  {!withModel && visible("width") && (
                     <td className="num">
                       <input
                         value={rows[index].width}
                         onChange={(event) =>
                           editRow(index, { width: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("model") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].model ?? ""}
+                        title="そのまま明細:摘要(下段)に出ます。4桁の数字は床面積計算に使います"
+                        onChange={(event) =>
+                          editRow(index, { model: event.target.value })
                         }
                       />
                     </td>
@@ -1795,7 +1877,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withShape && visible("depth") && (
+                  {!withShape && !withModel && visible("depth") && (
                     <td className="num">
                       <input
                         value={rows[index].depth}
@@ -1842,7 +1924,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("descriptionUpper") && (
+                  {!withModel && visible("descriptionUpper") && (
                     <td>
                       <input
                         lang="ja"
@@ -1855,6 +1937,30 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
+                  {withModel && visible("beam") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].beam ?? ""}
+                        title="設定の前後文字を付けて明細:摘要(上段)に出ます"
+                        onChange={(event) =>
+                          editRow(index, { beam: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("window") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].window ?? ""}
+                        title="設定の前後文字を付けて明細:摘要(上段)に出ます"
+                        onChange={(event) =>
+                          editRow(index, { window: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
                   {visible("remarksLower") && (
                     <td>
                       <input
@@ -1862,6 +1968,22 @@ export default function FurnitureSheetPage({
                         value={rows[index].remarksLower}
                         onChange={(event) =>
                           editRow(index, { remarksLower: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("floorFormula") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].floorFormula ?? ""}
+                        placeholder={row.detail.floorFormula ?? ""}
+                        title={`床面積 FA＝${
+                          floorAreaOf(row.detail.floorFormula ?? "")?.toFixed(
+                            2,
+                          ) ?? "—"
+                        }（型番の換算表から。手で式を入れると優先）`}
+                        onChange={(event) =>
+                          editRow(index, { floorFormula: event.target.value })
                         }
                       />
                     </td>
@@ -1945,9 +2067,11 @@ export default function FurnitureSheetPage({
                         <input
                           value={text}
                           title={
-                            tripleWidth
-                              ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
-                              : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                            withModel
+                              ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
+                              : tripleWidth
+                                ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
+                                : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
                           }
                           onFocus={() => setPickedColumn(column.id)}
                           onChange={(event) =>

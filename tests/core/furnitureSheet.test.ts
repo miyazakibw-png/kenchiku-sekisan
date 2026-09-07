@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyFurnitureDetails,
+  bathUpperText,
   entriesFromFurnitureSheet,
+  floorAreaOf,
+  floorFormulaOfModel,
   fittingsFromFurniture,
   furnitureCellValue,
   furnitureColumn,
@@ -9,6 +12,7 @@ import {
   furnitureRow,
   furnitureSettings,
   furnitureSettingsFor,
+  hasModel,
   hasShape,
   hasTripleWidth,
   pasteFurnitureRows,
@@ -526,6 +530,121 @@ describe("システムキッチン（W1・W2・W3）", () => {
     const pasted = pasteFurnitureRows(rows, 0, rows, "append");
     expect(pasted[1]).toMatchObject({ width: "2550", width2: "1800", width3: "900" });
     expect(pasted[1].id).not.toBe(rows[0].id);
+  });
+});
+
+describe("ユニットバス（型番・床面積FA）", () => {
+  const bath = furnitureSettingsFor("bath");
+
+  function bathRow(patch: Parameters<typeof furnitureRow>[0]) {
+    return furnitureRow({
+      part: "1",
+      partSymbol: "B",
+      nameSymbol: "UB",
+      quantity: "1",
+      unit: "ヶ所",
+      ...patch,
+    });
+  }
+
+  it("ユニットバスはW欄3つでも形状でもなく型番。建具へは転記しない", () => {
+    expect(hasModel("bath")).toBe(true);
+    expect(hasTripleWidth("bath")).toBe(false);
+    expect(hasShape("bath")).toBe(false);
+    expect(transfersToFittings("bath")).toBe(false);
+    expect(hasModel("kitchen")).toBe(false);
+    expect(bath.floorAreaTable).toEqual([{ symbol: "1418", text: "1.5*1.9" }]);
+    expect(bath.windowPrefix).toBe("(");
+    expect(bath.windowSuffix).toBe(")");
+  });
+
+  it("型番はそのまま摘要下段、梁欠き・窓は前後文字を付けて摘要上段に並ぶ", () => {
+    const settings = { ...bath, beamPrefix: "梁欠き", beamSuffix: "ヶ所" };
+    const [row] = applyFurnitureDetails(
+      [bathRow({ model: "1418", beam: "2", window: "W600*H800", depth: "650" })],
+      settings,
+      "bath",
+    );
+    expect(row.detail.descriptionLower).toBe("1418");
+    expect(row.detail.descriptionUpper).toBe("梁欠き2ヶ所(W600*H800)");
+    expect(row.detail.name).toBe("ユニットバス");
+    expect(row.detail.partName).toContain("浴室");
+    expect(row.detail.floorFormula).toBe("1.5*1.9");
+    expect(bathUpperText(bathRow({ window: "1" }), bath)).toBe("(1)");
+    expect(bathUpperText(bathRow({}), bath)).toBe("");
+  });
+
+  it("型番→床面積：換算表にあれば表の式、無い4桁は上2桁・下2桁を/10して+0.1", () => {
+    expect(floorFormulaOfModel("1418", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("１４１８", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("1616", bath)).toBe("1.7*1.7");
+    expect(floorFormulaOfModel("1620", bath)).toBe("1.7*2.1");
+    expect(floorFormulaOfModel("0812", bath)).toBe("0.9*1.3");
+    expect(floorFormulaOfModel("ABC", bath)).toBe("");
+    expect(floorFormulaOfModel("", bath)).toBe("");
+    expect(floorAreaOf("1.5*1.9")).toBe(2.85);
+    expect(floorAreaOf("")).toBeNull();
+  });
+
+  it("床面積計算の手入力があればそれを使う", () => {
+    const [auto, manual] = applyFurnitureDetails(
+      [bathRow({ model: "1616" }), bathRow({ model: "1616", floorFormula: "1.6*1.6" })],
+      bath,
+      "bath",
+    );
+    expect(auto.detail.floorFormula).toBe("1.7*1.7");
+    expect(manual.detail.floorFormula).toBe("1.6*1.6");
+  });
+
+  it("タテ明細・数量の計算式でFA（床面積m²）が使える（全角・小文字も）", () => {
+    const [row] = applyFurnitureDetails(
+      [bathRow({ model: "1418", quantity: "2" })],
+      bath,
+      "bath",
+    );
+    expect(furnitureCellValue(row, "FA")).toBe(2.85);
+    expect(furnitureCellValue(row, "fa*2")).toBe(5.7);
+    expect(furnitureCellValue(row, "ＦＡ")).toBe(2.85);
+    const [resolved] = resolveFurnitureRows([
+      { ...row, detail: { ...row.detail, formula: "FA" } },
+    ]);
+    expect(rowQuantity({ ...row, detail: { ...row.detail, formula: "FA" } }, resolved)).toBe(2.85);
+    expect(furnitureColumnTotal(
+      [{ ...row, values: { c1: "FA" } }],
+      "c1",
+    )).toBe(5.7);
+  });
+
+  it("家具・キッチンではFAは0（床面積が無い）", () => {
+    const [row] = applyFurnitureDetails(
+      [furnitureRow({ width: "1000", height: "1000" })],
+      furnitureSettings(),
+    );
+    expect(furnitureCellValue(row, "FA")).toBe(0);
+    expect(row.detail.floorFormula).toBeUndefined();
+  });
+
+  it("集計にもFAと摘要上段・下段が入る", () => {
+    const rows = applyFurnitureDetails(
+      [bathRow({ model: "1418", beam: "1", values: { c1: "FA" } })],
+      bath,
+      "bath",
+    );
+    const entries = entriesFromFurnitureSheet(
+      { sheetId: 1, part1: "A", part2: "", part2Split: false, part3: "UB", multiplier: 1 },
+      {
+        rows,
+        settings: bath,
+        kind: "bath",
+        columns: [furnitureColumn({ id: "c1", name: "床防水", unit: "m2" })],
+      },
+      new Map(),
+    );
+    const column = entries.find((entry) => entry.name === "床防水");
+    expect(column?.quantity).toBe(2.85);
+    const main = entries.find((entry) => entry.name === "ユニットバス");
+    expect(main?.descriptionLower).toBe("1418");
+    expect(main?.descriptionUpper).toBe("1");
   });
 });
 
