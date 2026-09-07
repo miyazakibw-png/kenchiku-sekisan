@@ -21,6 +21,7 @@ import {
   pitEdges,
   setPitColumns,
   setPitPoints,
+  placeTracedPit,
   setPitCorner,
   setPitKind,
   beamLines,
@@ -66,8 +67,10 @@ import {
 import {
   EMPTY_TRACE,
   parseTrace,
+  parseTracedShapes,
   parseUnderlay,
   type RoomTrace,
+  type TracedShape,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
@@ -226,6 +229,8 @@ export default function PitSheetPage({
   const [picked, setPicked] = useState<string[]>([]);
   /** 図面画像となぞった点・縮尺（数量根拠として保存する） */
   const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
+  /** この図面でなぞってピットにした形（ピットごと・画素座標）。次をなぞるときの目印と数量根拠 */
+  const [traced, setTraced] = useState<TracedShape[]>([]);
   /** 図面をなぞる画面を出しているか */
   const [showTrace, setShowTrace] = useState(false);
   /** 図（平面図）を画面いっぱいに開いているか */
@@ -268,6 +273,7 @@ export default function PitSheetPage({
       lower,
       note,
       trace,
+      traced,
       underlay,
     },
     () => save(),
@@ -358,6 +364,7 @@ export default function PitSheetPage({
       setLower(sets);
       setNote(loaded.note);
       setTrace(parseTrace(loaded.traceJson));
+      setTraced(parseTracedShapes(loaded.traceJson));
       setUnderlay(parseUnderlay(loaded.traceJson));
       markSaved({
         pits: loadedPits,
@@ -369,6 +376,7 @@ export default function PitSheetPage({
         lower: sets,
         note: loaded.note,
         trace: parseTrace(loaded.traceJson),
+        traced: parseTracedShapes(loaded.traceJson),
         underlay: parseUnderlay(loaded.traceJson),
       });
       setFittings(await window.sekisan.listFittings(project.id));
@@ -467,7 +475,7 @@ export default function PitSheetPage({
       sleeveKindsJson: JSON.stringify(sleeveKinds),
       wallStep,
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify({ ...trace, underlay }),
+      traceJson: JSON.stringify({ ...trace, traced, underlay }),
       note,
     });
     setSheet(saved);
@@ -483,6 +491,7 @@ export default function PitSheetPage({
     sleeveKinds,
     sleeves,
     trace,
+    traced,
     underlay,
     wallStep,
     walls,
@@ -538,17 +547,44 @@ export default function PitSheetPage({
    * なぞった図（実寸mの点）をピットの形にする。
    * 「選」にチェックが1つだけあるときはそのピットの形を直し、無いときは新しいピットを足す。
    */
+  /** 「選」が1つだけのとき、なぞりで形を直すピット */
+  const tracePick = useMemo(
+    () =>
+      picked.length === 1
+        ? (pits.find((pit) => pit.id === picked[0]) ?? null)
+        : null,
+    [picked, pits],
+  );
+
   const applyTrace = useCallback(
-    (points: { x: number; y: number }[]) => {
+    (
+      points: { x: number; y: number }[],
+      pixels: { x: number; y: number }[],
+    ) => {
       const target = picked.length === 1 ? picked[0] : null;
+      const origin = {
+        x: Math.min(...points.map((point) => point.x)),
+        y: Math.min(...points.map((point) => point.y)),
+      };
+      const id =
+        target !== null && pits.some((pit) => pit.id === target)
+          ? target
+          : newId("pit");
       changePits((current) => {
-        if (target !== null && current.some((pit) => pit.id === target))
-          return current.map((pit) =>
-            pit.id === target ? setPitPoints(pit, points) : pit,
+        const index = current.findIndex((pit) => pit.id === id);
+        if (index >= 0)
+          return current.map((pit, at) =>
+            at === index
+              ? placeTracedPit(
+                  current.slice(0, index),
+                  setPitPoints(pit, points),
+                  origin,
+                )
+              : pit,
           );
         const last = current[current.length - 1];
         const made: PitShape = {
-          id: newId("pit"),
+          id,
           symbol: pitSymbol(current.length),
           x: 4,
           y: 4,
@@ -556,10 +592,19 @@ export default function PitSheetPage({
           direction: "right",
           gap: last?.gap ?? DEFAULT_PIT_GAP,
         };
-        return renumber([...current, setPitPoints(made, points)]);
+        return renumber([
+          ...current,
+          placeTracedPit(current, setPitPoints(made, points), origin),
+        ]);
       });
+      setTraced((current) => [
+        ...current.filter((shape) => shape.id !== id),
+        { id, points: pixels },
+      ]);
+      // 次のピットは白紙からなぞる（図面と縮尺はそのまま）
+      setTrace((current) => ({ ...current, points: [] }));
     },
-    [changePits, picked],
+    [changePits, picked, pits],
   );
 
   /** Ｌ型・コ型で欠いた所へ、ぴったり収まる四角のピットを足す */
@@ -2081,7 +2126,8 @@ export default function PitSheetPage({
               title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け（PDF・画像ファイルも可）、なぞってピットの形にします。「選」を1つだけ付けているとそのピットの形を直し、付けていないときは新しいピットを足します"
               onClick={() => setShowTrace(true)}
             >
-              🖼 図面をなぞる
+              🖼 図面をなぞる（
+              {tracePick ? `${tracePick.symbol}を直す` : "新しいピット"}）
             </button>
             <UnderlayTools u={underlayTool} />
             <button
@@ -2345,15 +2391,38 @@ export default function PitSheetPage({
       {showTrace && !printMode && (
         <RoomTracePanel
           trace={trace}
-          onChange={setTrace}
+          onChange={(next) => {
+            if (next.image !== trace.image) {
+              // 図面が替わったら、前の図面でなぞった形・位置は目印にならないので消す
+              setTraced([]);
+              if (pits.some((pit) => pit.traceX !== undefined))
+                setPits(
+                  pits.map((pit) => ({
+                    ...pit,
+                    traceX: undefined,
+                    traceY: undefined,
+                  })),
+                );
+            }
+            setTrace(next);
+          }}
           targetName="ピット"
-          onApply={(_shape, meters) => {
-            applyTrace(meters);
+          subject={
+            tracePick
+              ? `${tracePick.symbol} の形を直す（「選」を外すと新しいピットになります）`
+              : `新しいピット ${pitSymbol(pits.length)} を作る（「選」を1つ付けるとそのピットを直します）`
+          }
+          done={traced.flatMap((shape) => {
+            const pit = pits.find((each) => each.id === shape.id);
+            return pit ? [{ label: pit.symbol, points: shape.points }] : [];
+          })}
+          onApply={(_shape, meters, pixels) => {
+            applyTrace(meters, pixels);
             setShowTrace(false);
             setMessage(
               picked.length === 1
                 ? "なぞった形をそのピットに入れました（寸法は表・「○ 形を直す」で直せます）"
-                : "なぞった形で新しいピットを作りました（寸法は表・「○ 形を直す」で直せます）",
+                : "なぞった形で新しいピットを作りました。続けて［図面をなぞる］で次をなぞると図面どおりの位置に置きます",
             );
           }}
           onClose={() => setShowTrace(false)}

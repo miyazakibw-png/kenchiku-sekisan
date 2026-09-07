@@ -39,6 +39,10 @@ export interface PitShape {
   shiftX?: number;
   /** 角を動かして外枠が変わっても図の位置を保つためのずれ（縦） */
   shiftY?: number;
+  /** 図面をなぞって作ったとき、図面の中でのこのピットの左上の位置（m・よこ） */
+  traceX?: number;
+  /** 図面をなぞって作ったとき、図面の中でのこのピットの左上の位置（m・たて） */
+  traceY?: number;
   /** 柱にした壁（辺）の番号（角i→角i+1）。入っていない辺は壁 */
   columns?: number[];
   /** 形の種類（四角・Ｌ型・コ型）。角を動かすと自由な形になる */
@@ -308,6 +312,42 @@ export function setPitPoints(
     cutAt: undefined,
     cutX: undefined,
     cutY: undefined,
+  };
+}
+
+/**
+ * なぞって作った（直した）ピットを、同じ図面でなぞった基準ピットからの位置に置く。
+ * origin はなぞった形の左上（図面の中の位置・m）。
+ * 前に置かれたピットのうち、図面の位置を持つ最初のものを基準に「自由」で置く。
+ * 基準になるピットが無いときは置き方を変えない（1個目や、なぞっていないピットの隣）。
+ */
+export function placeTracedPit(
+  before: readonly PitShape[],
+  pit: PitShape,
+  origin: PitPoint,
+): PitShape {
+  const placed: PitShape = {
+    ...pit,
+    traceX: round4(origin.x),
+    traceY: round4(origin.y),
+  };
+  const base = before.find(
+    (each) =>
+      each.id !== pit.id &&
+      each.traceX !== undefined &&
+      each.traceY !== undefined,
+  );
+  if (!base || base.traceX === undefined || base.traceY === undefined)
+    return placed;
+  return {
+    ...placed,
+    direction: "free",
+    baseId: base.id,
+    offsetX: round4(origin.x - base.traceX),
+    offsetY: round4(origin.y - base.traceY),
+    align: undefined,
+    shiftX: undefined,
+    shiftY: undefined,
   };
 }
 

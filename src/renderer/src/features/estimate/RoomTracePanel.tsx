@@ -17,11 +17,18 @@ import "./RoomTracePanel.css";
 interface Props {
   trace: RoomTrace;
   onChange: (trace: RoomTrace) => void;
-  /** なぞった形を使う（meters は実寸（m）の点の並び。ピットの形にも使う） */
-  onApply: (shape: RoomShape, meters: Point[]) => void;
+  /**
+   * なぞった形を使う。meters は実寸（m）の点の並び（ピットの形にも使う）、
+   * pixels はなぞったままの画素座標（なぞり済みの形として残すため）
+   */
+  onApply: (shape: RoomShape, meters: Point[], pixels: Point[]) => void;
   onClose: () => void;
   /** 見出しの名前（部屋・ピットなど） */
   targetName?: string;
+  /** この図面ですでに形にしたなぞり（画素座標）。薄い色で見せて、次をなぞるときの目印にする */
+  done?: { label: string; points: Point[] }[];
+  /** このなぞりが何になるか（例：「新しいピット P2 を作る」）。見出しに強調して出す */
+  subject?: string;
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -49,9 +56,13 @@ export default function RoomTracePanel({
   onApply,
   onClose,
   targetName = "部屋",
+  done = [],
+  subject,
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
-  const [mode, setMode] = useState<"scale" | "trace">("scale");
+  const [mode, setMode] = useState<"scale" | "trace">(
+    trace.image !== "" && trace.metersPerPixel > 0 ? "trace" : "scale",
+  );
   const [scalePoints, setScalePoints] = useState<Point[]>(trace.scalePoints);
   const [scaleText, setScaleText] = useState(
     trace.scaleLength > 0 ? String(trace.scaleLength) : "3.640",
@@ -63,7 +74,9 @@ export default function RoomTracePanel({
   const [edgeText, setEdgeText] = useState("3.640");
   const [warn, setWarn] = useState(false);
   const [message, setMessage] = useState(
-    "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
+    trace.image !== "" && trace.metersPerPixel > 0
+      ? `${targetName}の角を順にクリックしてなぞってください。最後に「✓ この形にする」（縮尺は前のものを使います）`
+      : "Shift+Windows+S で図面を切り取り、この画面で Ctrl+V を押すと貼り付きます",
   );
   const boxRef = useRef<HTMLDivElement | null>(null);
 
@@ -261,7 +274,7 @@ export default function RoomTracePanel({
     const shape = pointsToShape(meters);
     setWarn(false);
     onChange({ ...trace, metersPerPixel: value, scalePoints, points });
-    onApply(shape, meters);
+    onApply(shape, meters, points);
   };
 
   const area =
@@ -276,6 +289,9 @@ export default function RoomTracePanel({
     <div className="room-trace-panel">
       <div className="section-bar">
         <span>図面をなぞる</span>
+        {subject !== undefined && (
+          <strong className="trace-subject">{subject}</strong>
+        )}
         <button
           type="button"
           className={mode === "scale" ? "on" : ""}
@@ -459,6 +475,31 @@ export default function RoomTracePanel({
             onClick={click}
           >
             <image href={trace.image} width={size.width} height={size.height} />
+            {done.map((shape, index) =>
+              shape.points.length < 3 ? null : (
+                <g key={`d${index}`} className="done-shape">
+                  <polygon
+                    points={shape.points
+                      .map((point) => `${point.x},${point.y}`)
+                      .join(" ")}
+                    strokeWidth={dotSize / 2}
+                  />
+                  <text
+                    x={
+                      shape.points.reduce((sum, point) => sum + point.x, 0) /
+                      shape.points.length
+                    }
+                    y={
+                      shape.points.reduce((sum, point) => sum + point.y, 0) /
+                      shape.points.length
+                    }
+                    fontSize={dotSize * 3}
+                  >
+                    {shape.label}
+                  </text>
+                </g>
+              ),
+            )}
             {scalePoints.length === 2 ? (
               <line
                 className="scale-line"

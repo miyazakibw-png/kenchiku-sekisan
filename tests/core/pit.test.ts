@@ -27,6 +27,7 @@ import {
   pitQuantities,
   setPitColumns,
   setPitPoints,
+  placeTracedPit,
   pitTotal,
   pitPartVariables,
   pitSymbol,
@@ -962,5 +963,91 @@ describe("なぞった図をピットの形にする", () => {
         { x: 1, y: 0 },
       ]),
     ).toBe(base);
+  });
+});
+
+describe("placeTracedPit（図面をなぞったピットの置き方）", () => {
+  const mk = (id: string, symbol: string): PitShape => ({
+    id,
+    symbol,
+    x: 4,
+    y: 3,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  });
+  const square = [
+    { x: 0, y: 0 },
+    { x: 4, y: 0 },
+    { x: 4, y: 3 },
+    { x: 0, y: 3 },
+  ];
+
+  it("1個目は図面の中の位置だけ覚え、置き方は変えない", () => {
+    const p1 = placeTracedPit([], setPitPoints(mk("p1", "P1"), square), {
+      x: 10.5,
+      y: 20.25,
+    });
+    expect(p1.traceX).toBe(10.5);
+    expect(p1.traceY).toBe(20.25);
+    expect(p1.direction).toBe("right");
+    expect(p1.baseId).toBeUndefined();
+  });
+
+  it("2個目以降は、なぞった1個目からの図面上の相対位置に「自由」で置く", () => {
+    const p1 = placeTracedPit([], setPitPoints(mk("p1", "P1"), square), {
+      x: 10,
+      y: 20,
+    });
+    const p2 = placeTracedPit([p1], setPitPoints(mk("p2", "P2"), square), {
+      x: 16,
+      y: 21.5,
+    });
+    expect(p2.direction).toBe("free");
+    expect(p2.baseId).toBe(p1.id);
+    expect(p2.offsetX).toBe(6);
+    expect(p2.offsetY).toBe(1.5);
+
+    const rects = layoutPits([p1, p2]);
+    expect(rects[1].left - rects[0].left).toBe(6);
+    expect(rects[1].top - rects[0].top).toBe(1.5);
+
+    // 3個目も1個目を基準にするので、P2を消しても位置が変わらない
+    const p3 = placeTracedPit([p1, p2], setPitPoints(mk("p3", "P3"), square), {
+      x: 10,
+      y: 26,
+    });
+    expect(p3.baseId).toBe(p1.id);
+    expect(p3.offsetX).toBe(0);
+    expect(p3.offsetY).toBe(6);
+  });
+
+  it("なぞっていないピットしか無ければ、置き方は変えない（右に並ぶ）", () => {
+    const manual = mk("p1", "P1");
+    const p2 = placeTracedPit([manual], setPitPoints(mk("p2", "P2"), square), {
+      x: 16,
+      y: 21.5,
+    });
+    expect(p2.direction).toBe("right");
+    expect(p2.baseId).toBeUndefined();
+    expect(p2.traceX).toBe(16);
+  });
+
+  it("なぞり直すときは自分より前のピットだけを基準に探す", () => {
+    const p1 = placeTracedPit([], setPitPoints(mk("p1", "P1"), square), {
+      x: 10,
+      y: 20,
+    });
+    const p2 = placeTracedPit([p1], setPitPoints(mk("p2", "P2"), square), {
+      x: 16,
+      y: 20,
+    });
+    const redone = placeTracedPit([], setPitPoints(p1, square), {
+      x: 11,
+      y: 20,
+    });
+    expect(redone.baseId).toBeUndefined();
+    expect(redone.traceX).toBe(11);
+    expect(p2.baseId).toBe(p1.id);
   });
 });

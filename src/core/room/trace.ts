@@ -53,6 +53,48 @@ export function parseTrace(json: string): RoomTrace {
   }
 }
 
+/**
+ * 同じ図面からなぞって形にした1つ分（ピット計算書で複数のピットをなぞるときに使う）。
+ * id は作った形（ピット）の id、points はなぞった点（画素座標）。数量根拠として残す
+ */
+export interface TracedShape {
+  id: string;
+  points: Point[];
+}
+
+function isPoint(value: unknown): value is Point {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<Point>;
+  return (
+    typeof candidate.x === "number" &&
+    Number.isFinite(candidate.x) &&
+    typeof candidate.y === "number" &&
+    Number.isFinite(candidate.y)
+  );
+}
+
+/** 保存した trace の JSON に一緒に入れた、なぞり済みの形（traced）を読む */
+export function parseTracedShapes(json: string): TracedShape[] {
+  try {
+    const parsed = JSON.parse(json) as { traced?: unknown };
+    if (!Array.isArray(parsed.traced)) return [];
+    const shapes: TracedShape[] = [];
+    parsed.traced.forEach((raw: unknown) => {
+      if (typeof raw !== "object" || raw === null) return;
+      const candidate = raw as { id?: unknown; points?: unknown };
+      if (typeof candidate.id !== "string" || !Array.isArray(candidate.points))
+        return;
+      shapes.push({
+        id: candidate.id,
+        points: candidate.points.filter(isPoint),
+      });
+    });
+    return shapes;
+  } catch {
+    return [];
+  }
+}
+
 /** 図の下敷きに置く図面画像（図の座標mで置き、位置・縮尺を合わせる） */
 export interface TraceUnderlay {
   /** 画像（データURL）。無いときは空文字 */

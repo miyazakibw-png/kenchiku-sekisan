@@ -8,6 +8,7 @@ import {
   traceArea,
   parseTrace,
   parseUnderlay,
+  parseTracedShapes,
   scaleUnderlay,
   EMPTY_UNDERLAY,
 } from "../../src/core/room/trace";
@@ -160,5 +161,31 @@ describe("下敷きの図面（ピット計算書の traceJson に一緒に保�
     expect(
       scaleUnderlay(underlay, { x: 0, y: 0 }, { x: 1, y: 0 }, 0),
     ).toBeNull();
+  });
+});
+
+describe("parseTracedShapes（なぞり済みの形）", () => {
+  it("traceJson の traced を読み、壊れた点は捨てる", () => {
+    const json = JSON.stringify({
+      image: "",
+      metersPerPixel: 0.01,
+      scalePoints: [],
+      scaleLength: 0,
+      points: [],
+      traced: [
+        { id: "pit-1", points: [{ x: 1, y: 2 }, { x: "a", y: 3 }, null] },
+        { id: 5, points: [] },
+        "junk",
+      ],
+    });
+    expect(parseTracedShapes(json)).toEqual([
+      { id: "pit-1", points: [{ x: 1, y: 2 }] },
+    ]);
+  });
+
+  it("traced が無い・JSONでない・空なら空配列", () => {
+    expect(parseTracedShapes(JSON.stringify({ image: "" }))).toEqual([]);
+    expect(parseTracedShapes("")).toEqual([]);
+    expect(parseTracedShapes("{bad")).toEqual([]);
   });
 });

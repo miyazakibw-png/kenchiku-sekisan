@@ -91,6 +91,20 @@
   fill: #2563eb;
 }
 
+.room-trace-panel .done-shape polygon {
+  fill: rgba(22, 163, 74, 0.12);
+  stroke: #16a34a;
+  stroke-dasharray: 6 4;
+}
+
+.room-trace-panel .done-shape text {
+  fill: #15803d;
+  font-weight: bold;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
 .room-trace-panel .trace-message {
   flex: 0 0 auto;
   margin: 0;
@@ -114,4 +128,12 @@
   width: 60px;
   margin: 0 4px;
   text-align: right;
+}
+
+.room-trace-panel .trace-subject {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
 }
