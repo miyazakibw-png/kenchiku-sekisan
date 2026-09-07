@@ -143,6 +143,20 @@
   user-select: none;
 }
 
+/** タテ方向の明細（列）：見出しの名前を出す列 */
+.furniture-page .furniture-table th.vlabel {
+  background: #dceaf7;
+  color: #000;
+  text-align: right;
+  font-weight: normal;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.furniture-page .furniture-table td.vlabel {
+  background: #f3f3f3;
+}
+
 /** タテ方向の明細（列） */
 .furniture-page .furniture-table th.vcol {
   background: #2e6da4;

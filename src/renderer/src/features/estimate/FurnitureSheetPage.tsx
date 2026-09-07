@@ -133,6 +133,8 @@ const NO_WIDTH = 34;
 const INPUT_DEFAULT = 80;
 const DETAIL_DEFAULT = 100;
 const COLUMN_DEFAULT = 90;
+/** タテの明細の見出し（科目・部位ID…）を出す列 */
+const LABEL_WIDTH = 72;
 
 function readWidths(key: string): Record<string, number> {
   const saved = window.localStorage.getItem(key);
@@ -300,7 +302,12 @@ export default function FurnitureSheetPage({
       const loaded = await window.sekisan.getFurnitureSheet(sheetId);
       const loadedRows = parseJson<FurnitureRow[]>(loaded.rowsJson, []);
       const nextRows = loadedRows.length > 0 ? loadedRows : [furnitureRow()];
-      const nextColumns = parseJson<FurnitureColumn[]>(loaded.columnsJson, []);
+      const loadedColumns = parseJson<FurnitureColumn[]>(
+        loaded.columnsJson,
+        [],
+      );
+      const nextColumns =
+        loadedColumns.length > 0 ? loadedColumns : [furnitureColumn()];
       const saved = parseJson<Partial<FurnitureSettings>>(
         loaded.settingsJson,
         {},
@@ -311,9 +318,13 @@ export default function FurnitureSheetPage({
         ...base,
         ...saved,
         partSymbols:
-          saved.partSymbols === undefined ? base.partSymbols : saved.partSymbols,
+          saved.partSymbols === undefined || saved.partSymbols.length === 0
+            ? base.partSymbols
+            : saved.partSymbols,
         nameSymbols:
-          saved.nameSymbols === undefined ? base.nameSymbols : saved.nameSymbols,
+          saved.nameSymbols === undefined || saved.nameSymbols.length === 0
+            ? base.nameSymbols
+            : saved.nameSymbols,
       };
       setSheet(loaded);
       setRows(nextRows);
@@ -445,8 +456,10 @@ export default function FurnitureSheetPage({
     setMessage("タテの明細を足しました");
   };
 
+  /** タテの明細は少なくとも1列は残す（入力欄が見えるように） */
   const removeColumn = (id: string): void => {
-    setColumns(columns.filter((column) => column.id !== id));
+    const rest = columns.filter((column) => column.id !== id);
+    setColumns(rest.length > 0 ? rest : [furnitureColumn()]);
     if (pickedColumn === id) setPickedColumn(null);
   };
 
@@ -568,7 +581,7 @@ export default function FurnitureSheetPage({
 
   const inputColumns = INPUT_COLUMNS.filter((column) => visible(column.key));
   const detailCells = visible("detail") ? DETAIL_CELLS : [];
-  const headRowCount = columns.length > 0 ? COLUMN_HEADS.length + 1 : 1;
+  const headRowCount = COLUMN_HEADS.length + 1;
 
   const tableWidth =
     OPS_WIDTH +
@@ -578,6 +591,7 @@ export default function FurnitureSheetPage({
       0,
     ) +
     detailCells.reduce((sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT), 0) +
+    LABEL_WIDTH +
     columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
 
   /** タテの明細（列）の1マス分の入力欄 */
@@ -885,6 +899,7 @@ export default function FurnitureSheetPage({
                 style={{ width: widthOf(cell.id, DETAIL_DEFAULT) }}
               />
             ))}
+            <col className="vlabel-col" style={{ width: LABEL_WIDTH }} />
             {columns.map((column) => (
               <col
                 key={column.id}
@@ -928,6 +943,7 @@ export default function FurnitureSheetPage({
                   </span>
                 </th>
               ))}
+              <th className="vlabel">{COLUMN_HEADS[0].label}</th>
               {columns.map((column) => (
                 <th
                   key={column.id}
@@ -946,9 +962,9 @@ export default function FurnitureSheetPage({
                 </th>
               ))}
             </tr>
-            {columns.length > 0 &&
-              COLUMN_HEADS.slice(1).map((head) => (
+            {COLUMN_HEADS.slice(1).map((head) => (
                 <tr key={String(head.key)}>
+                  <th className="vlabel">{head.label}</th>
                   {columns.map((column) => (
                     <th
                       key={column.id}
@@ -962,9 +978,9 @@ export default function FurnitureSheetPage({
                   ))}
                 </tr>
               ))}
-            {columns.length > 0 && (
-              <tr className="vcol-total">
-                {columns.map((column) => (
+            <tr className="vcol-total">
+              <th className="vlabel">合計</th>
+              {columns.map((column) => (
                   <th key={column.id} className="vcol num">
                     {isEmptyFurnitureColumn(column)
                       ? ""
@@ -980,7 +996,6 @@ export default function FurnitureSheetPage({
                   </th>
                 ))}
               </tr>
-            )}
           </thead>
           <tbody>
             {view.map((row, index) => {
@@ -1237,6 +1252,7 @@ export default function FurnitureSheetPage({
                       </td>
                     ),
                   )}
+                  <td className="vlabel" />
                   {columns.map((column) => {
                     const text = rows[index].values?.[column.id] ?? "";
                     const value = cellValue(text);
@@ -1271,8 +1287,8 @@ export default function FurnitureSheetPage({
 
       <p className="hint">
         ヨコの1行＝家具1件の明細（左の入力から自動で作ります）。
-        ［➕ タテ明細］で足した右側のタテの列は、部位別雑・金物入力表と同じように
-        家具に付く関連明細をタテに拾います（どちらも集計に入ります）。
+        右端のタテの列（科目〜備考の見出し）は、部位別雑・金物入力表と同じように
+        家具に付く関連明細をタテに拾います（［➕ タテ明細］で列を足します。どちらも集計に入ります）。
       </p>
     </div>
   );
