@@ -216,6 +216,17 @@
   background: transparent;
 }
 
+/** タテ明細の列幅つまみ：入力欄の上に重ねて右端8pxを必ずつかめるようにし、触ると線が出る */
+.furniture-page .furniture-table th.vcol .grip {
+  right: 0;
+  width: 8px;
+  z-index: 2;
+}
+
+.furniture-page .furniture-table th.vcol .grip:hover {
+  border-right: 3px solid #2563eb;
+}
+
 .furniture-page .furniture-table tr.vcol-total th {
   background: #dceaf7;
   color: #000;

@@ -510,6 +510,15 @@ export default function FurnitureSheetPage({
   const widthOf = (id: string, defaultWidth: number): number =>
     widths[id] ?? defaultWidth;
 
+  /** タテ明細の見出しは入力欄で埋まるので、右端に入力欄より上に来るつまみを置く */
+  const columnGrip = (columnId: string): JSX.Element => (
+    <span
+      className="resizer grip"
+      title="ドラッグで列幅を変えます"
+      onMouseDown={(event) => startResize(columnId, COLUMN_DEFAULT, event)}
+    />
+  );
+
   /** 右の明細欄は左の入力欄から作る（手で直した欄はそのまま残る） */
   const view = useMemo(
     () => applyFurnitureDetails(rows, settings),
@@ -1518,7 +1527,7 @@ export default function FurnitureSheetPage({
                 >
                   <span className="cellbox">
                     {headCell(column, COLUMN_HEADS[0])}
-                    <span className="resizer" />
+                    {columnGrip(column.id)}
                   </span>
                 </th>
               ))}
@@ -1534,7 +1543,10 @@ export default function FurnitureSheetPage({
                       }
                       onClick={() => setPickedColumn(column.id)}
                     >
-                      {headCell(column, head)}
+                      <span className="cellbox">
+                        {headCell(column, head)}
+                        {columnGrip(column.id)}
+                      </span>
                     </th>
                   ))}
                 </tr>
@@ -1543,18 +1555,21 @@ export default function FurnitureSheetPage({
               <th className="vlabel">合計</th>
               {columns.map((column) => (
                   <th key={column.id} className="vcol num">
-                    {isEmptyFurnitureColumn(column) &&
-                    !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
-                      ? ""
-                      : furnitureColumnTotal(rows, column.id).toFixed(2)}
-                    <button
-                      type="button"
-                      className="drop"
-                      title="このタテの明細（列）を消します"
-                      onClick={() => removeColumn(column.id)}
-                    >
-                      🗑
-                    </button>
+                    <span className="cellbox">
+                      {isEmptyFurnitureColumn(column) &&
+                      !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
+                        ? ""
+                        : furnitureColumnTotal(rows, column.id).toFixed(2)}
+                      <button
+                        type="button"
+                        className="drop"
+                        title="このタテの明細（列）を消します"
+                        onClick={() => removeColumn(column.id)}
+                      >
+                        🗑
+                      </button>
+                      {columnGrip(column.id)}
+                    </span>
                   </th>
                 ))}
               </tr>
