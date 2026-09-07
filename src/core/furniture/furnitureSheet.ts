@@ -93,6 +93,39 @@ function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${sequence.toString(36)}`;
 }
 
+/** 部位（部屋名）の記号の初めの並び */
+export const defaultPartSymbols: FurnitureSymbol[] = [
+  { symbol: "G", text: "玄関" },
+  { symbol: "R", text: "廊下" },
+  { symbol: "S", text: "洗面脱衣室" },
+  { symbol: "T", text: "トイレ" },
+  { symbol: "LD", text: "LD" },
+  { symbol: "Y", text: "洋間" },
+  { symbol: "Y1", text: "洋間1" },
+  { symbol: "Y2", text: "洋間2" },
+  { symbol: "Y3", text: "洋間3" },
+  { symbol: "Y4", text: "洋間4" },
+  { symbol: "N", text: "納戸" },
+  { symbol: "SR", text: "サービスルーム" },
+  { symbol: "SR1", text: "サービスルーム1" },
+  { symbol: "SR2", text: "サービスルーム2" },
+];
+
+/** 名称の記号の初めの並び */
+export const defaultNameSymbols: FurnitureSymbol[] = [
+  { symbol: "M", text: "物入" },
+  { symbol: "M1", text: "物入1" },
+  { symbol: "M2", text: "物入2" },
+  { symbol: "CL+M", text: "クローゼット+物入" },
+  { symbol: "CL", text: "クローゼット" },
+  { symbol: "CL1", text: "クローゼット1" },
+  { symbol: "CL2", text: "クローゼット2" },
+  { symbol: "R", text: "リネン庫" },
+  { symbol: "P", text: "パントリー" },
+  { symbol: "T", text: "吊戸棚" },
+  { symbol: "G", text: "下足入" },
+];
+
 export function furnitureSettings(
   patch: Partial<FurnitureSettings> = {},
 ): FurnitureSettings {
@@ -104,8 +137,8 @@ export function furnitureSettings(
     widthLabel: "W",
     heightLabel: "*H",
     depthLabel: "*D",
-    partSymbols: [],
-    nameSymbols: [],
+    partSymbols: defaultPartSymbols.map((item) => ({ ...item })),
+    nameSymbols: defaultNameSymbols.map((item) => ({ ...item })),
     ...patch,
   };
 }
