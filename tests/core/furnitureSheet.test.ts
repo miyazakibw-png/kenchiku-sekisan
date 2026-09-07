@@ -10,6 +10,7 @@ import {
   furnitureSettings,
   resolveFurnitureRows,
   rowQuantity,
+  symbolText,
 } from "../../src/core/furniture/furnitureSheet";
 
 const settings = furnitureSettings({
@@ -83,6 +84,21 @@ describe("明細欄の自動作成", () => {
     expect(rows[1].detail.descriptionLower).toBe("W1200*H1100*D400");
     expect(rows[1].detail.unit).toBe("ヶ所");
     expect(rows[1].detail.remarksLower).toBe("設計標準ﾁｪｯｸﾘｽﾄ");
+  });
+
+  it("記号は全角・小文字・空白の違いがあっても文字に変わる（表に無いものはそのまま）", () => {
+    const symbols = settings.nameSymbols;
+    expect(symbolText(symbols, "Ｇ")).toBe("下足入");
+    expect(symbolText(symbols, "g")).toBe("下足入");
+    expect(symbolText(symbols, " IS ")).toBe("インフィル収納");
+    expect(symbolText(symbols, "ＩＳ")).toBe("インフィル収納");
+    expect(symbolText(symbols, "CL")).toBe("CL");
+    expect(symbolText(symbols, "")).toBe("");
+    const rows = sample();
+    rows[2].nameSymbol = "ｉｓ";
+    expect(applyFurnitureDetails(rows, settings)[2].detail.name).toBe(
+      "インフィル収納",
+    );
   });
 
   it("手で直した欄は自動作成で上書きしない", () => {

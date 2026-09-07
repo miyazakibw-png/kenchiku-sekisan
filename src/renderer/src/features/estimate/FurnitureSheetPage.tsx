@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import type {
   Detail,
   FurnitureSheet,
@@ -55,6 +63,48 @@ function pickMaster(
   const byName = entries.find((entry) => entry.name === value);
   if (byName) return { id: byName.id, name: byName.name };
   return { id: null, name: value };
+}
+
+/** 呼び出し窓（設定・マスター呼出）を見出しのドラッグで動かす */
+function useDragWindow(): {
+  style: CSSProperties | undefined;
+  onMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+} {
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const onMouseDown = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("button, input, select, textarea, label") !== null
+    ) {
+      return;
+    }
+    const box = event.currentTarget.parentElement;
+    if (!box) return;
+    event.preventDefault();
+    const rect = box.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const move = (moveEvent: MouseEvent): void =>
+      setPosition({
+        x: Math.max(0, moveEvent.clientX - offsetX),
+        y: Math.max(0, moveEvent.clientY - offsetY),
+      });
+    const up = (): void => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  return {
+    style:
+      position === null
+        ? undefined
+        : { left: position.x, top: position.y, right: "auto" },
+    onMouseDown,
+  };
 }
 
 /** 入力欄の列（表示・非表示を切り替えられる） */
@@ -286,6 +336,8 @@ export default function FurnitureSheetPage({
   );
   const [hidden, setHidden] = useState<string[]>(readHidden);
   const [showSettings, setShowSettings] = useState(false);
+  const settingsDrag = useDragWindow();
+  const callDrag = useDragWindow();
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState(0);
   const [pickedColumn, setPickedColumn] = useState<string | null>(null);
@@ -930,9 +982,13 @@ export default function FurnitureSheetPage({
 
       {callOpen && (
         <div className="room-calc-sheet no-print">
-          <div className="call-window">
-            <div className="section-bar">
-              <span>マスター呼出（タテ明細）</span>
+          <div className="call-window" style={callDrag.style}>
+            <div
+              className="section-bar drag"
+              onMouseDown={callDrag.onMouseDown}
+              title="この見出しをドラッグすると呼出画面を動かせます"
+            >
+              <span>マスター呼出（タテ明細・見出しをドラッグで移動）</span>
               {(Object.keys(SOURCE_LABEL) as CallSource[]).map((key) => (
                 <button
                   key={key}
@@ -1054,17 +1110,14 @@ export default function FurnitureSheetPage({
       )}
 
       {showSettings && (
-        <div
-          className="furniture-modal"
-          onMouseDown={() => setShowSettings(false)}
-        >
+        <div className="furniture-settings no-print" style={settingsDrag.style}>
           <div
-            className="furniture-settings"
-            onMouseDown={(event) => event.stopPropagation()}
+            className="settings-bar drag"
+            onMouseDown={settingsDrag.onMouseDown}
+            title="この見出しをドラッグすると設定の窓を動かせます"
           >
-            <div className="settings-bar">
-              <b>家具計算書の設定</b>
-              <span>（この工事の家具計算書に覚えておきます）</span>
+            <b>家具計算書の設定</b>
+            <span>（見出しをドラッグで移動。開いたまま入力できます）</span>
               <button type="button" onClick={() => setShowSettings(false)}>
                 ✕ 閉じる
               </button>
@@ -1146,7 +1199,6 @@ export default function FurnitureSheetPage({
                 onChange={(nameSymbols) => changeSettings({ nameSymbols })}
               />
             </div>
-          </div>
         </div>
       )}
 

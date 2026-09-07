@@ -6,6 +6,7 @@
 
 import { evaluateFormula } from "../formula/evaluate";
 import { displayedValue } from "../room/calcSheet";
+import { toHalfWidth } from "../text/halfWidth";
 import {
   cellValue,
   isEmptyColumn,
@@ -284,11 +285,16 @@ export function furnitureColumnTotal(
   }, 0);
 }
 
+/** 記号の照合用（全角・半角・大文字・小文字・空白の違いは同じ記号とみなす） */
+function symbolKey(text: string): string {
+  return toHalfWidth(text).replace(/\s+/g, "").toUpperCase();
+}
+
 /** 記号を表示文字に置き換える（対応表に無いときは入れた文字のまま） */
 export function symbolText(symbols: FurnitureSymbol[], text: string): string {
-  const value = text.trim();
+  const value = symbolKey(text);
   if (value === "") return "";
-  const found = symbols.find((item) => item.symbol.trim() === value);
+  const found = symbols.find((item) => symbolKey(item.symbol) === value);
   return found ? found.text : text;
 }
 

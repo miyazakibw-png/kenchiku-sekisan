@@ -60,24 +60,18 @@
   background: #fffbe6;
 }
 
-/** 設定は呼び出し窓（画面の上に開く別窓）にして、入力欄をふさがない */
-.furniture-page .furniture-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: 3000;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 40px 12px;
-}
-
+/** 設定は呼び出し窓（画面の上に浮かべる別窓）。開いたまま表を入力でき、見出しのドラッグで動かせる */
 .furniture-page .furniture-settings {
+  position: fixed;
+  right: 24px;
+  top: 90px;
+  z-index: 3000;
   border: 1px solid #666;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   padding: 8px;
   background: #fafafa;
-  max-height: calc(100vh - 80px);
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 100px);
   overflow: auto;
 }
 
@@ -87,6 +81,8 @@
   gap: 8px;
   margin-bottom: 6px;
   font-size: 12px;
+  cursor: move;
+  user-select: none;
 }
 
 .furniture-page .furniture-settings .settings-bar button {
@@ -213,7 +209,6 @@
 
 @media print {
   .furniture-page .toolbar,
-  .furniture-page .furniture-modal,
   .furniture-page .furniture-settings,
   .furniture-page .hint,
   .furniture-page .furniture-columns,
