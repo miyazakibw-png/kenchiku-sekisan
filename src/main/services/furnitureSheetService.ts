@@ -10,6 +10,7 @@ import {
   fittingsFromFurniture,
   furnitureSettings,
   furnitureSettingsFor,
+  transfersToFittings,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
@@ -391,10 +392,12 @@ export function transferFurnitureFittings(
     sheet.settingsJson,
     furnitureSettings(),
   );
-  const wanted = fittingsFromFurniture({
-    rows,
-    settings: { ...furnitureSettings(), ...settings },
-  });
+  const wanted = transfersToFittings(sheet.kind)
+    ? fittingsFromFurniture({
+        rows,
+        settings: { ...furnitureSettings(), ...settings },
+      })
+    : [];
 
   const existing = furnitureFittings(db, projectId, sheetId);
 

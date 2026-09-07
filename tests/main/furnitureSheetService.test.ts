@@ -65,7 +65,11 @@ function rowsJson(): string {
   ]);
 }
 
-function saveRows(db: AppDatabase, sheetId: number): void {
+function saveRows(
+  db: AppDatabase,
+  sheetId: number,
+  kind = "furniture",
+): void {
   saveFurnitureSheet(db, {
     id: sheetId,
     name: "家具計算書1",
@@ -73,7 +77,7 @@ function saveRows(db: AppDatabase, sheetId: number): void {
     part2: "2階",
     part2Split: 0,
     multiplier: 1,
-    kind: "furniture",
+    kind,
     rowsJson: rowsJson(),
     columnsJson: "[]",
     settingsJson: JSON.stringify(furnitureSettings()),
@@ -275,6 +279,27 @@ describe("家具・設備入力表", () => {
     expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual([
       "W1",
     ]);
+  });
+
+  it("家具（システム収納）以外の表は建具表へ転記しない（種類を変えると転記済みの分は消える）", () => {
+    const kitchen = createFurnitureSheet(db, projectId, "キッチン", "kitchen");
+    saveRows(db, kitchen.id, "kitchen");
+    expect(listFittings(db, projectId)).toEqual([]);
+
+    const washstand = createFurnitureSheet(db, projectId, "洗面", "washstand");
+    saveRows(db, washstand.id, "washstand");
+    const other = createFurnitureSheet(db, projectId, "設備", "other");
+    saveRows(db, other.id, "other");
+    expect(listFittings(db, projectId)).toEqual([]);
+
+    const furniture = createFurnitureSheet(db, projectId, "家具");
+    saveRows(db, furniture.id);
+    expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual([
+      "A2G",
+      "AIS",
+    ]);
+    saveRows(db, furniture.id, "kitchen");
+    expect(listFittings(db, projectId)).toEqual([]);
   });
 
   it("転記した建具から元の家具計算書をたどれる", () => {

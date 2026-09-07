@@ -1883,7 +1883,11 @@ export default function FurnitureSheetPage({
                       >
                         <input
                           value={text}
-                          title="数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                          title={
+                            tripleWidth
+                              ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
+                              : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                          }
                           onFocus={() => setPickedColumn(column.id)}
                           onChange={(event) =>
                             editCell(row.id, column.id, event.target.value)

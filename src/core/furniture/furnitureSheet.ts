@@ -178,6 +178,11 @@ export function hasTripleWidth(kind: string): boolean {
   return kind === "kitchen";
 }
 
+/** 建具表へ転記するのは家具（システム収納）の表だけ */
+export function transfersToFittings(kind: string): boolean {
+  return kind === "furniture";
+}
+
 /** システムキッチンの部位（部屋名）の記号の初めの並び */
 export const defaultKitchenPartSymbols: FurnitureSymbol[] = [
   { symbol: "K", text: "キッチン" },
