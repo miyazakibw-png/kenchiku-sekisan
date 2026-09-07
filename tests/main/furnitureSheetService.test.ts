@@ -261,6 +261,7 @@ describe("家具・設備入力表", () => {
           sillHeightFormula: "",
           areaFormula: "",
           baseboardFormula: "",
+          reinforcementFormula: "",
           note: "",
           fromEstimate: 0,
         },

@@ -14,6 +14,8 @@ export interface FittingInput {
   areaFormula: string;
   /** 巾木長さ（自動計算修正用）。入力すると W の代わりにこの結果を巾木減とする */
   baseboardFormula: string;
+  /** 軸組横補強（自動計算修正用）。入力すると自動計算の代わりにこの結果を軸組横補強とする */
+  reinforcementFormula: string;
 }
 
 export interface FittingComputed {
@@ -23,6 +25,7 @@ export interface FittingComputed {
   reinforcement: number | null;
   areaFormulaError: boolean;
   baseboardFormulaError: boolean;
+  reinforcementFormulaError: boolean;
 }
 
 /** 積算で使う寸法は小数2桁で扱う */
@@ -42,7 +45,7 @@ function variables(row: FittingInput): Record<string, number> {
  * 建具表の派生値を求める。
  * - 面積：W*H（面積計算に式があればその結果）
  * - 巾木減：腰高が無いときの W（巾木長さに式があればその結果）
- * - 軸組横補強：巾木減がWと異なる=W*2-巾木減+腰高*2／それ以外は腰高あり=W*2・腰高なし=W
+ * - 軸組横補強：巾木減がWと異なる=W*2-巾木減+腰高*2／それ以外は腰高あり=W*2・腰高なし=W（軸組横補強に式があればその結果）
  */
 export function computeFitting(row: FittingInput): FittingComputed {
   const vars = variables(row);
@@ -68,14 +71,23 @@ export function computeFitting(row: FittingInput): FittingComputed {
   const baseboardDeduction =
     baseByFormula !== null ? round2(baseByFormula) : hasSill ? null : row.width;
 
+  const reinforcementByFormula = row.reinforcementFormula.trim()
+    ? evaluateFormula(row.reinforcementFormula, vars)
+    : null;
+  const reinforcementFormulaError =
+    row.reinforcementFormula.trim() !== "" && reinforcementByFormula === null;
   const reinforcement =
-    row.width === null
-      ? null
-      : baseboardDeduction !== null && baseboardDeduction !== row.width
-        ? round2(row.width * 2 - baseboardDeduction + (row.sillHeight ?? 0) * 2)
-        : hasSill
-          ? round2(row.width * 2)
-          : round2(row.width);
+    reinforcementByFormula !== null
+      ? round2(reinforcementByFormula)
+      : row.width === null
+        ? null
+        : baseboardDeduction !== null && baseboardDeduction !== row.width
+          ? round2(
+              row.width * 2 - baseboardDeduction + (row.sillHeight ?? 0) * 2,
+            )
+          : hasSill
+            ? round2(row.width * 2)
+            : round2(row.width);
 
   return {
     area,
@@ -83,6 +95,7 @@ export function computeFitting(row: FittingInput): FittingComputed {
     reinforcement,
     areaFormulaError,
     baseboardFormulaError,
+    reinforcementFormulaError,
   };
 }
 

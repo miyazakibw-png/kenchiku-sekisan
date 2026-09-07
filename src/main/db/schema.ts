@@ -288,6 +288,8 @@ export const projectFittings = sqliteTable("project_fittings", {
   areaFormula: text("area_formula").notNull().default(""),
   /** 巾木長さ（自動計算修正用）の計算式 */
   baseboardFormula: text("baseboard_formula").notNull().default(""),
+  /** 軸組横補強（自動計算修正用）の計算式 */
+  reinforcementFormula: text("reinforcement_formula").notNull().default(""),
   note: text("note").notNull().default(""),
   /** 1: 建具表に無いものを積算入力から登録した行 */
   fromEstimate: integer("from_estimate").notNull().default(0),

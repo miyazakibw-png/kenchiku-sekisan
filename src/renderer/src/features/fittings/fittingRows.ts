@@ -28,6 +28,7 @@ export function emptyRow(): FittingDraft {
     sillHeightFormula: "",
     areaFormula: "",
     baseboardFormula: "",
+    reinforcementFormula: "",
     note: "",
     fromEstimate: 0,
     fromFurniture: 0,
@@ -210,6 +211,14 @@ export function buildFittingColumns(): GridColumn<FittingDraft>[] {
       get: (row) => row.baseboardFormula,
       set: (row, value) => ({
         row: { ...row, baseboardFormula: value.trim() },
+      }),
+    },
+    {
+      key: "reinforcementFormula",
+      label: "軸組横補強（自動計算修正用）",
+      get: (row) => row.reinforcementFormula,
+      set: (row, value) => ({
+        row: { ...row, reinforcementFormula: value.trim() },
       }),
     },
     {

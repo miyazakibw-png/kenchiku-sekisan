@@ -970,4 +970,8 @@ ALTER TABLE project_fittings ADD COLUMN source_estimate_row_id INTEGER;
   `
 UPDATE project_fittings SET symbol = trim(symbol, ' 　	') WHERE symbol <> trim(symbol, ' 　	');
 `,
+  // 建具表：軸組横補強（自動計算修正用）の計算式
+  `
+ALTER TABLE project_fittings ADD COLUMN reinforcement_formula TEXT NOT NULL DEFAULT '';
+`,
 ];

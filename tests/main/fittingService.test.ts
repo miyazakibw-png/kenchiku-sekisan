@@ -34,6 +34,7 @@ function draft(patch: Partial<FittingDraft>): FittingDraft {
     sillHeightFormula: "",
     areaFormula: "",
     baseboardFormula: "",
+    reinforcementFormula: "",
     note: "",
     fromEstimate: 0,
     ...patch,

@@ -60,6 +60,8 @@ export interface Fitting {
   sillHeightFormula: string;
   areaFormula: string;
   baseboardFormula: string;
+  /** 軸組横補強（自動計算修正用）の計算式 */
+  reinforcementFormula: string;
   note: string;
   /** 1: 建具表に無いものを積算入力から登録した行 */
   fromEstimate: number;

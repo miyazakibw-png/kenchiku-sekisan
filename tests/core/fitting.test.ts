@@ -16,6 +16,7 @@ function row(patch: Partial<FittingInput>): FittingInput {
     sillHeight: null,
     areaFormula: "",
     baseboardFormula: "",
+    reinforcementFormula: "",
     ...patch,
   };
 }
@@ -107,6 +108,28 @@ describe("建具表の自動計算", () => {
     );
     expect(calc.baseboardDeduction).toBe(1.5);
     expect(calc.reinforcement).toBe(1.8 * 2 - 1.5);
+  });
+
+  it("軸組横補強（自動計算修正用）に式があればその結果（W・H・腰高が使える）", () => {
+    const calc = computeFitting(
+      row({
+        width: 1.8,
+        height: 2,
+        sillHeight: 0.9,
+        reinforcementFormula: "W*2+腰高",
+      }),
+    );
+    expect(calc.reinforcement).toBe(4.5);
+    expect(calc.reinforcementFormulaError).toBe(false);
+    expect(calc.baseboardDeduction).toBeNull();
+  });
+
+  it("軸組横補強の式が読めないときは印を付け、自動計算に戻す", () => {
+    const calc = computeFitting(
+      row({ width: 1.8, height: 2, reinforcementFormula: "W*" }),
+    );
+    expect(calc.reinforcementFormulaError).toBe(true);
+    expect(calc.reinforcement).toBe(1.8);
   });
 });
 

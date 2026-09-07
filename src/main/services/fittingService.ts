@@ -215,6 +215,7 @@ export function saveFittings(
         sillHeightFormula: row.sillHeightFormula,
         areaFormula: row.areaFormula,
         baseboardFormula: row.baseboardFormula,
+        reinforcementFormula: row.reinforcementFormula ?? "",
         note: row.note,
         fromEstimate: row.fromEstimate,
         fromFurniture: row.fromFurniture ?? 0,

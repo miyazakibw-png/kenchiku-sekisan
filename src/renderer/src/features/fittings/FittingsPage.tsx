@@ -508,6 +508,7 @@ export default function FittingsPage({
             <th className="num calc">軸組横補強</th>
             <th className="formula">面積計算（自動計算修正用）</th>
             <th className="formula">巾木長さ（自動計算修正用）</th>
+            <th className="formula">軸組横補強（自動計算修正用）</th>
             <th className="note">その他（備考）</th>
             <th className="source">計算書</th>
           </tr>
@@ -647,6 +648,26 @@ export default function FittingsPage({
                 </td>
                 <td>
                   <input
+                    className={
+                      calc.reinforcementFormulaError ? "duplicate" : undefined
+                    }
+                    title={
+                      calc.reinforcementFormulaError
+                        ? "計算式を確認してください"
+                        : undefined
+                    }
+                    value={row.reinforcementFormula}
+                    onChange={(e) =>
+                      setRows(
+                        updateRow(rows, index, {
+                          reinforcementFormula: e.target.value,
+                        }),
+                      )
+                    }
+                  />
+                </td>
+                <td>
+                  <input
                     lang="ja"
                     value={row.note}
                     onChange={(e) =>
@@ -693,7 +714,7 @@ export default function FittingsPage({
         面積・巾木減・軸組横補強は自動計算です（薄黄色）。腰高がある建具は巾木を差し引きません。軸組横補強は、
         巾木減がWと異なる場合
         W×2−巾木減＋腰高×2、それ以外は腰高ありでW×2・腰高なしでW
-        となります。積算入力の計算式では
+        となります（自動計算修正用の欄に式を入れるとその結果になります。W・H・腰高が使えます）。積算入力の計算式では
         <code>&lt;AW-1&gt;</code> のように山カッコを付けて建具と判別します。
       </p>
     </div>
