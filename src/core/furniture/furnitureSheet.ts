@@ -151,6 +151,18 @@ export const defaultNameSymbols: FurnitureSymbol[] = [
   { symbol: "G", text: "下足入" },
 ];
 
+/** 計算書（表）の種類。設定の基準（全物件共通）はこの種類ごとに持つ */
+export const FURNITURE_KINDS: { key: string; label: string }[] = [
+  { key: "furniture", label: "家具（システム収納）" },
+  { key: "kitchen", label: "システムキッチン" },
+  { key: "washstand", label: "洗面化粧台" },
+  { key: "other", label: "その他の設備" },
+];
+
+export function furnitureKindLabel(kind: string): string {
+  return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
+}
+
 export function furnitureSettings(
   patch: Partial<FurnitureSettings> = {},
 ): FurnitureSettings {

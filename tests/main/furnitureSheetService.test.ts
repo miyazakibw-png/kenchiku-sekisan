@@ -13,9 +13,13 @@ import {
 import {
   createFurnitureSheet,
   deleteFurnitureSheet,
+  getFurnitureBaseSettings,
+  getFurnitureSheet,
   listFurnitureSheets,
   pasteFurnitureSheets,
+  saveFurnitureBaseSettings,
   saveFurnitureSheet,
+  saveFurnitureSheetList,
 } from "../../src/main/services/furnitureSheetService";
 import {
   furnitureRow,
@@ -93,6 +97,66 @@ describe("家具・設備入力表", () => {
 
     deleteFurnitureSheet(db, pasted[1].id);
     expect(listFurnitureSheets(db, projectId)).toHaveLength(1);
+  });
+
+  it("種類ごとの基準設定：新しい表は基準から始まり、既存の表と別の種類は変わらない", () => {
+    const settingsOf = (sheetId: number) =>
+      JSON.parse(getFurnitureSheet(db, sheetId).settingsJson) as ReturnType<
+        typeof furnitureSettings
+      >;
+    expect(getFurnitureBaseSettings(db, "furniture")).toEqual(
+      furnitureSettings(),
+    );
+
+    const first = createFurnitureSheet(db, projectId, "家具計算書1");
+    expect(settingsOf(first.id).partSuffix).toBe("ﾀｲﾌﾟ");
+
+    const base = furnitureSettings({
+      partSuffix: "型",
+      nameSymbols: [{ symbol: "IS", text: "インフィル収納" }],
+    });
+    expect(saveFurnitureBaseSettings(db, "furniture", base)).toEqual(base);
+    expect(saveFurnitureBaseSettings(db, "furniture", base)).toEqual(base);
+
+    // 既存の表はそのまま
+    expect(settingsOf(first.id).partSuffix).toBe("ﾀｲﾌﾟ");
+
+    // 同じ種類の新しい表（別の物件でも）は基準から始まる
+    const second = createFurnitureSheet(db, projectId, "家具計算書2");
+    const other = createProject(db, "別の物件").id;
+    const third = createFurnitureSheet(db, other, "家具計算書");
+    expect(settingsOf(second.id)).toEqual(base);
+    expect(settingsOf(third.id)).toEqual(base);
+
+    // 別の種類は初めの設定のまま
+    const kitchen = createFurnitureSheet(db, projectId, "キッチン", "kitchen");
+    expect(settingsOf(kitchen.id)).toEqual(furnitureSettings());
+
+    // 表コピーは元の表の設定を写す
+    const pasted = pasteFurnitureSheets(db, projectId, [first.id], 9);
+    expect(settingsOf(pasted[pasted.length - 1].id).partSuffix).toBe("ﾀｲﾌﾟ");
+
+    // 一覧で種類を変えた空の表（設定が元の種類の基準のまま）は新しい種類の基準に切り替わる
+    const kitchenBase = furnitureSettings({ partSuffix: "KT" });
+    saveFurnitureBaseSettings(db, "kitchen", kitchenBase);
+    const list = listFurnitureSheets(db, projectId);
+    saveFurnitureSheetList(
+      db,
+      projectId,
+      list.map((s) => (s.id === second.id ? { ...s, kind: "kitchen" } : s)),
+    );
+    expect(settingsOf(second.id)).toEqual(kitchenBase);
+
+    // 行が入っている表は種類を変えても設定はそのまま
+    saveRows(db, first.id);
+    saveFurnitureSheetList(
+      db,
+      projectId,
+      listFurnitureSheets(db, projectId).map((s) =>
+        s.id === first.id ? { ...s, kind: "kitchen" } : s,
+      ),
+    );
+    expect(settingsOf(first.id).partSuffix).toBe("ﾀｲﾌﾟ");
   });
 
   it("建具表へ入力順で転記し、建具の後ろに並べる", () => {

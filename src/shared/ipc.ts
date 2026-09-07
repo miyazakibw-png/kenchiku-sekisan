@@ -43,6 +43,8 @@ export const IPC = {
   furnitureSheetListSave: "furnitureSheet:listSave",
   furnitureSheetGet: "furnitureSheet:get",
   furnitureSheetSave: "furnitureSheet:save",
+  furnitureBaseSettingsGet: "furnitureSheet:baseSettingsGet",
+  furnitureBaseSettingsSave: "furnitureSheet:baseSettingsSave",
   pitSheetGet: "pitSheet:get",
   pitSheetSave: "pitSheet:save",
   transferRowsList: "transferRows:list",

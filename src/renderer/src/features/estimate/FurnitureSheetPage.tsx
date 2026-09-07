@@ -19,6 +19,7 @@ import {
   furnitureCellValue,
   furnitureColumn,
   furnitureColumnTotal,
+  furnitureKindLabel,
   furnitureRow,
   furnitureSettings,
   isEmptyFurnitureColumn,
@@ -767,6 +768,29 @@ export default function FurnitureSheetPage({
     );
   };
 
+  /** この表の設定をこの種類の基準（全物件共通）にする。他の既存の表は変えない */
+  const saveAsBase = async (): Promise<void> => {
+    if (!sheet) return;
+    await window.sekisan.saveFurnitureBaseSettings(sheet.kind, settings);
+    setMessage(
+      `「${furnitureKindLabel(sheet.kind)}」の基準として保存しました（どの物件でもこの種類の新しい表はこの設定から始まります）`,
+    );
+  };
+
+  /** この種類の基準をこの表に写す（表の保存で確定） */
+  const loadBase = async (): Promise<void> => {
+    if (!sheet) return;
+    if (
+      !window.confirm(
+        `この表の設定を「${furnitureKindLabel(sheet.kind)}」の基準に置き換えます。よろしいですか？`,
+      )
+    )
+      return;
+    const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
+    setSettings(base);
+    setMessage("基準の設定を読み込みました（保存するとこの表に確定します）");
+  };
+
   const changeSettings = (patch: Partial<FurnitureSettings>): void => {
     setSettings({ ...settings, ...patch });
   };
@@ -1117,11 +1141,31 @@ export default function FurnitureSheetPage({
             title="この見出しをドラッグすると設定の窓を動かせます"
           >
             <b>家具計算書の設定</b>
-            <span>（見出しをドラッグで移動。開いたまま入力できます）</span>
-              <button type="button" onClick={() => setShowSettings(false)}>
-                ✕ 閉じる
-              </button>
-            </div>
+            <span>（この表だけの設定。見出しをドラッグで移動）</span>
+            <button type="button" onClick={() => setShowSettings(false)}>
+              ✕ 閉じる
+            </button>
+          </div>
+          <div className="settings-base">
+            <span>
+              基準（全物件共通・種類「
+              {sheet ? furnitureKindLabel(sheet.kind) : ""}」）：
+            </span>
+            <button
+              type="button"
+              onClick={() => void saveAsBase()}
+              title="この表の設定をこの種類の基準にします。以後どの物件でもこの種類の新しい表はこの設定から始まります（既存の表は変わりません）"
+            >
+              基準として保存
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadBase()}
+              title="この種類の基準の設定をこの表に写します"
+            >
+              基準を読込
+            </button>
+          </div>
             <table>
               <tbody>
                 <tr>

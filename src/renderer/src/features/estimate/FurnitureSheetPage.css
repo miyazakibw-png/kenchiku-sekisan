@@ -89,6 +89,17 @@
   margin-left: auto;
 }
 
+.furniture-page .furniture-settings .settings-base {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #eef3fa;
+  border: 1px solid #b8c6dc;
+}
+
 .furniture-page .furniture-settings table {
   border-collapse: collapse;
 }

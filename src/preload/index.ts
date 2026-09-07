@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC } from "../shared/ipc";
 import type { FittingPartValue } from "../core/fittings/partValue";
+import type { FurnitureSettings } from "../core/furniture/furnitureSheet";
 import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import type {
   AggregateRun,
@@ -231,6 +232,13 @@ const api = {
     request: SaveFurnitureSheetRequest,
   ): Promise<FurnitureSheet> =>
     ipcRenderer.invoke(IPC.furnitureSheetSave, request),
+  getFurnitureBaseSettings: (kind: string): Promise<FurnitureSettings> =>
+    ipcRenderer.invoke(IPC.furnitureBaseSettingsGet, kind),
+  saveFurnitureBaseSettings: (
+    kind: string,
+    settings: FurnitureSettings,
+  ): Promise<FurnitureSettings> =>
+    ipcRenderer.invoke(IPC.furnitureBaseSettingsSave, kind, settings),
   /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
   getPitSheet: (estimateRowId: number): Promise<PitSheet> =>
     ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),

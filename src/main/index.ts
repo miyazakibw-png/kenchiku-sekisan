@@ -116,9 +116,11 @@ import {
 import {
   createFurnitureSheet,
   deleteFurnitureSheet,
+  getFurnitureBaseSettings,
   getFurnitureSheet,
   listFurnitureSheets,
   pasteFurnitureSheets,
+  saveFurnitureBaseSettings,
   saveFurnitureSheet,
   saveFurnitureSheetList,
 } from "./services/furnitureSheetService";
@@ -152,6 +154,7 @@ import {
 import { buildExport, writeExport } from "./services/breakdownExportService";
 import { toScreenWorkbook } from "../core/export/screenSheet";
 import type { FittingPartValue } from "../core/fittings/partValue";
+import type { FurnitureSettings } from "../core/furniture/furnitureSheet";
 import type { CalcWindowInput, CalcWindowState } from "../shared/calcWindow";
 import { IPC } from "../shared/ipc";
 import { setImeMode } from "./ime";
@@ -456,6 +459,14 @@ function registerIpcHandlers(): void {
     IPC.furnitureSheetSave,
     (_event, request: SaveFurnitureSheetRequest) =>
       saveFurnitureSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.furnitureBaseSettingsGet, (_event, kind: string) =>
+    getFurnitureBaseSettings(getDatabase(), kind),
+  );
+  ipcMain.handle(
+    IPC.furnitureBaseSettingsSave,
+    (_event, kind: string, settings: FurnitureSettings) =>
+      saveFurnitureBaseSettings(getDatabase(), kind, settings),
   );
   ipcMain.handle(IPC.pitSheetGet, (_event, estimateRowId: number) =>
     getPitSheet(getDatabase(), estimateRowId),

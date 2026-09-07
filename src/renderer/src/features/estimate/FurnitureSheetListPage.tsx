@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FurnitureSheetSummary, ProjectSummary } from "@shared/types";
+import { FURNITURE_KINDS as KINDS } from "../../../../core/furniture/furnitureSheet";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
@@ -8,14 +9,6 @@ interface Props {
   onOpen: (sheetId: number) => void;
   onBack: () => void;
 }
-
-/** 表の種類（今は家具計算書。システムキッチン・洗面化粧台などを足せる） */
-const KINDS: { key: string; label: string }[] = [
-  { key: "furniture", label: "家具（システム収納）" },
-  { key: "kitchen", label: "システムキッチン" },
-  { key: "washstand", label: "洗面化粧台" },
-  { key: "other", label: "その他の設備" },
-];
 
 /**
  * 家具・設備入力表の管理表。

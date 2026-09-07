@@ -1,6 +1,10 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
-import { projectFittings, projectFurnitureSheets } from "../db/schema";
+import {
+  appSettings,
+  projectFittings,
+  projectFurnitureSheets,
+} from "../db/schema";
 import {
   copyFurnitureSheetRows,
   fittingsFromFurniture,
@@ -17,6 +21,40 @@ import type {
 
 /** 一覧に足す表の名前 */
 const DEFAULT_NAME = "家具計算書";
+
+/** 計算書の種類ごとの基準設定（全物件共通）を app_settings に置くキー */
+function baseSettingsKey(kind: string): string {
+  return `furnitureSettings:${kind}`;
+}
+
+/** 種類ごとの基準設定（無ければ初めの設定） */
+export function getFurnitureBaseSettings(
+  db: AppDatabase,
+  kind: string,
+): FurnitureSettings {
+  const row = db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, baseSettingsKey(kind)))
+    .get();
+  const fallback = furnitureSettings();
+  if (row === undefined) return fallback;
+  return { ...fallback, ...parseJson<Partial<FurnitureSettings>>(row.valueJson, {}) };
+}
+
+/** 種類ごとの基準設定として保存する（以後どの物件でも新しい表はここから始まる） */
+export function saveFurnitureBaseSettings(
+  db: AppDatabase,
+  kind: string,
+  settings: FurnitureSettings,
+): FurnitureSettings {
+  const json = JSON.stringify(settings);
+  db.insert(appSettings)
+    .values({ key: baseSettingsKey(kind), valueJson: json })
+    .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: json } })
+    .run();
+  return getFurnitureBaseSettings(db, kind);
+}
 
 function toSheet(
   row: typeof projectFurnitureSheets.$inferSelect,
@@ -109,7 +147,7 @@ export function createFurnitureSheet(
       name: name.trim() === "" ? DEFAULT_NAME : name,
       kind,
       displayOrder: order + 1,
-      settingsJson: JSON.stringify(furnitureSettings()),
+      settingsJson: JSON.stringify(getFurnitureBaseSettings(db, kind)),
     })
     .returning()
     .get();
@@ -210,7 +248,18 @@ export function saveFurnitureSheetList(
   projectId: number,
   sheets: FurnitureSheetSummary[],
 ): FurnitureSheetSummary[] {
+  const current = new Map(
+    sheetRows(db, projectId).map((row) => [row.id, row] as const),
+  );
   sheets.forEach((sheet, index) => {
+    const before = current.get(sheet.id);
+    // 種類を変えた表が、まだ何も入れず設定も元の種類の基準のままなら、新しい種類の基準に切り替える
+    const untouched =
+      before !== undefined &&
+      before.kind !== sheet.kind &&
+      countOf(before.rowsJson) === 0 &&
+      before.settingsJson ===
+        JSON.stringify(getFurnitureBaseSettings(db, before.kind));
     db.update(projectFurnitureSheets)
       .set({
         name: sheet.name,
@@ -221,6 +270,13 @@ export function saveFurnitureSheetList(
         kind: sheet.kind,
         note: sheet.note,
         displayOrder: index,
+        ...(untouched
+          ? {
+              settingsJson: JSON.stringify(
+                getFurnitureBaseSettings(db, sheet.kind),
+              ),
+            }
+          : {}),
       })
       .where(eq(projectFurnitureSheets.id, sheet.id))
       .run();
