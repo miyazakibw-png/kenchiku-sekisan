@@ -3,6 +3,7 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   fittingsFromFurniture,
+  furnitureCellValue,
   furnitureColumn,
   furnitureColumnTotal,
   furnitureRow,
@@ -173,6 +174,23 @@ describe("タテ方向の明細（列）", () => {
 
   it("列の合計は各行の数量（計算式も可）を足したもの", () => {
     expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(5);
+  });
+
+  it("計算式では行のW・H・D（mm→m）が使える（全角・小文字も）", () => {
+    const row = sample()[1]; // W1200 H1100 D400
+    expect(furnitureCellValue(row, "W*H")).toBe(1.32);
+    expect(furnitureCellValue(row, "Ｗ＊Ｈ")).toBe(1.32);
+    expect(furnitureCellValue(row, "(w+d)*2")).toBe(3.2);
+    expect(furnitureCellValue(row, "2*3")).toBe(6);
+    expect(furnitureCellValue(row, "")).toBeNull();
+    expect(furnitureCellValue(furnitureRow(), "W*H")).toBe(0);
+  });
+
+  it("列の合計・集計でもW・H・Dが使える", () => {
+    const rows = sample();
+    rows[1].values = { c1: "W" };
+    rows[2].values = { c1: "H" };
+    expect(furnitureColumnTotal(rows, "c1")).toBe(3.37);
   });
 
   it("ヨコの自動明細とは別のtraceIdで集計する", () => {

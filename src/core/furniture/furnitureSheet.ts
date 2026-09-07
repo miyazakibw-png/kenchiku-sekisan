@@ -250,13 +250,36 @@ export function copyFurnitureSheetRows(
   };
 }
 
+/** 計算式の中のＷ・Ｈ・Ｄ（全角・小文字も）を変数名の W・H・D にそろえる */
+export function sizeFormula(text: string): string {
+  return text
+    .replace(/[Ｗｗw]/g, "W")
+    .replace(/[Ｈｈh]/g, "H")
+    .replace(/[Ｄｄd]/g, "D");
+}
+
+/**
+ * タテ方向の明細のマス1つ分の値。
+ * 数字そのままでも計算式でもよく、計算式では行のW・H・D（mmをmに直したもの）が使える。
+ */
+export function furnitureCellValue(
+  row: FurnitureRow,
+  text: string,
+): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  if (!/[ＷｗwＨｈhＤｄdWHD]/.test(trimmed)) return cellValue(trimmed);
+  const computed = evaluateFormula(sizeFormula(trimmed), sizeVariables(row));
+  return computed === null ? null : displayedValue(computed);
+}
+
 /** タテ方向の明細（列）1本の合計 */
 export function furnitureColumnTotal(
   rows: FurnitureRow[],
   columnId: string,
 ): number {
   return rows.reduce((sum, row) => {
-    const value = cellValue(row.values?.[columnId] ?? "");
+    const value = furnitureCellValue(row, row.values?.[columnId] ?? "");
     return value === null ? sum : displayedValue(sum + value);
   }, 0);
 }
@@ -451,7 +474,7 @@ export function rowQuantity(
 ): number | null {
   const formula = resolved.formula.trim();
   if (formula !== "") {
-    const value = evaluateFormula(formula, sizeVariables(row));
+    const value = evaluateFormula(sizeFormula(formula), sizeVariables(row));
     if (value === null) return null;
     return displayedValue(value) === 0 ? null : displayedValue(value);
   }
@@ -528,7 +551,7 @@ export function entriesFromFurnitureSheet(
   rows.forEach((row) => {
     (data.columns ?? []).forEach((column) => {
       if (isEmptyColumn(column)) return;
-      const value = cellValue(row.values?.[column.id] ?? "");
+      const value = furnitureCellValue(row, row.values?.[column.id] ?? "");
       if (value === null) return;
       entries.push({
         traceId: `furniturecol:${place.sheetId}:${row.id}:${column.id}`,

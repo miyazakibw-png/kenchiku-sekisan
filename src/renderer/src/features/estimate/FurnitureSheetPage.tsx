@@ -8,6 +8,7 @@ import type {
 } from "@shared/types";
 import {
   applyFurnitureDetails,
+  furnitureCellValue,
   furnitureColumn,
   furnitureColumnTotal,
   furnitureRow,
@@ -21,9 +22,9 @@ import {
   type FurnitureSettings,
   type FurnitureSymbol,
 } from "../../../../core/furniture/furnitureSheet";
-import { cellValue } from "../../../../core/misc/miscSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import "./RoomCalcSheet.css";
 import "./EstimatePartsPage.css";
 import "./FurnitureSheetPage.css";
 
@@ -105,6 +106,14 @@ const DETAIL_CELLS: DetailCell[] = DETAIL_COLUMNS.flatMap((column) => {
     ? [{ kind: "quantity", id: "d:quantity", label: "明細:数量" }, cell]
     : [cell];
 });
+
+/** マスター呼出の元（基準マスター／この工事でできた明細） */
+type CallSource = "basic" | "project";
+
+const SOURCE_LABEL: Record<CallSource, string> = {
+  basic: "基準マスター（明細）",
+  project: "工事マスター（明細）",
+};
 
 /** タテ方向の明細（列）の見出し。上から順に1行ずつ出す */
 type HeadKind = "subject" | "pickupPart" | "detailNumber" | "unit" | "text";
@@ -280,6 +289,15 @@ export default function FurnitureSheetPage({
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState(0);
   const [pickedColumn, setPickedColumn] = useState<string | null>(null);
+  /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
+  const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** マスター呼出画面（部位別雑・金物入力表と同じ作り） */
+  const [callOpen, setCallOpen] = useState(false);
+  const [callSource, setCallSource] = useState<CallSource>("basic");
+  const [callInsert, setCallInsert] = useState(false);
+  const [callSubjectId, setCallSubjectId] = useState<number | null>(null);
+  const [callSubjectNumber, setCallSubjectNumber] = useState("");
+  const [callDetails, setCallDetails] = useState<Detail[]>([]);
   const widthKey = `furniture-widths:${project.id}`;
   const [widths, setWidths] = useState<Record<string, number>>(() =>
     readWidths(`furniture-widths:${project.id}`),
@@ -425,6 +443,96 @@ export default function FurnitureSheetPage({
   const unitEntries = useMemo<PickEntry[]>(
     () => options.units.map((unit) => ({ value: unit.name, label: unit.name })),
     [options.units],
+  );
+  const numberEntries = useMemo<PickEntry[]>(
+    () =>
+      numberOptions.map((item) => ({
+        value: item.detailNumber?.toFixed(2) ?? "",
+        label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
+      })),
+    [numberOptions],
+  );
+
+  /** 名称ID欄に入ったとき、その科目の明細を候補として読み込む（工事→基準の順） */
+  const loadNumberOptions = useCallback(
+    async (subjectId: number | null): Promise<void> => {
+      if (subjectId === null) {
+        setNumberOptions([]);
+        return;
+      }
+      const forProject = await window.sekisan.listDetails(subjectId, project.id);
+      const basic = await window.sekisan.listDetails(subjectId, null);
+      const numbers = new Set(forProject.map((row) => row.detailNumber));
+      setNumberOptions([
+        ...forProject,
+        ...basic.filter((row) => !numbers.has(row.detailNumber)),
+      ]);
+    },
+    [project.id],
+  );
+
+  // 呼出画面に出す明細（基準マスター＝全明細／工事マスター＝この工事でできた明細）
+  useEffect(() => {
+    if (!callOpen || callSubjectId === null) {
+      setCallDetails([]);
+      return;
+    }
+    void (async () =>
+      setCallDetails(
+        callSource === "project"
+          ? await window.sekisan.listProjectDetailsInUse(
+              callSubjectId,
+              project.id,
+            )
+          : await window.sekisan.listDetails(callSubjectId, project.id),
+      ))();
+  }, [callOpen, callSource, callSubjectId, project.id]);
+
+  /** 呼出画面からタテ明細（列）に入れる（上書き呼出＝選んでいる列／挿入呼出＝その左に足す） */
+  const callDetail = useCallback(
+    (detail: Detail): void => {
+      const patch: Partial<FurnitureColumn> = {
+        subjectId: detail.subjectId,
+        materialCategory: detail.materialCategory,
+        partNumber:
+          detail.partNumber ??
+          options.pickupParts.find((part) => part.name === detail.partName)
+            ?.id ??
+          null,
+        detailNumber: detail.detailNumber,
+        partName: detail.partName,
+        name: detail.name,
+        descriptionUpper: detail.descriptionUpper,
+        descriptionLower: detail.descriptionLower,
+        unit: detail.unit,
+        remarksUpper: detail.remarksUpper,
+        remarksLower: detail.remarksLower,
+        sourceDetailId: detail.id,
+      };
+      setColumns((current) => {
+        const at = current.findIndex((column) => column.id === pickedColumn);
+        if (at < 0) {
+          const created = furnitureColumn(patch);
+          setPickedColumn(created.id);
+          return [...current, created];
+        }
+        if (callInsert) {
+          const created = furnitureColumn(patch);
+          setPickedColumn(created.id);
+          return [...current.slice(0, at), created, ...current.slice(at)];
+        }
+        if (isEmptyFurnitureColumn(current[at])) {
+          return current.map((column, index) =>
+            index === at ? { ...column, ...patch } : column,
+          );
+        }
+        const created = furnitureColumn(patch);
+        setPickedColumn(created.id);
+        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+      });
+      setMessage(`${detail.name} を呼び出しました`);
+    },
+    [callInsert, options.pickupParts, pickedColumn],
   );
 
   const editRow = (index: number, patch: Partial<FurnitureRow>): void => {
@@ -666,24 +774,19 @@ export default function FurnitureSheetPage({
     }
     if (head.kind === "detailNumber") {
       return (
-        <input
+        <PickInput
+          entries={numberEntries}
+          halfWidth
+          commitOnBlur
           value={column.detailNumber?.toFixed(2) ?? ""}
-          placeholder={head.label}
-          title="名称IDを入れるとマスターの明細を呼び出します"
-          onFocus={() => setPickedColumn(column.id)}
-          onBlur={(event) => {
-            if (
-              event.target.value.trim() ===
-              (column.detailNumber?.toFixed(2) ?? "")
-            )
-              return;
-            void applyDetailNumber(column, event.target.value);
+          title="名称ID（明細番号）を入れるとマスターの明細を呼び出します（科目を入れると一覧から選べます）"
+          onFocus={() => {
+            setPickedColumn(column.id);
+            void loadNumberOptions(column.subjectId);
           }}
-          onChange={(event) => {
-            const number = Number.parseFloat(event.target.value);
-            editColumn(column.id, {
-              detailNumber: Number.isNaN(number) ? null : number,
-            });
+          onCommit={(text) => {
+            if (text.trim() === (column.detailNumber?.toFixed(2) ?? "")) return;
+            void applyDetailNumber(column, text);
           }}
         />
       );
@@ -773,6 +876,14 @@ export default function FurnitureSheetPage({
         </button>
         <button
           type="button"
+          className={callOpen ? "on" : ""}
+          title="タテの明細にマスターの明細を呼び出します"
+          onClick={() => setCallOpen(!callOpen)}
+        >
+          📂 マスター呼出
+        </button>
+        <button
+          type="button"
           className={showSettings ? "on" : ""}
           onClick={() => setShowSettings(!showSettings)}
         >
@@ -816,6 +927,131 @@ export default function FurnitureSheetPage({
           列幅を戻す
         </button>
       </div>
+
+      {callOpen && (
+        <div className="room-calc-sheet no-print">
+          <div className="call-window">
+            <div className="section-bar">
+              <span>マスター呼出（タテ明細）</span>
+              {(Object.keys(SOURCE_LABEL) as CallSource[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={callSource === key ? "on" : ""}
+                  onClick={() => setCallSource(key)}
+                >
+                  {SOURCE_LABEL[key]}
+                </button>
+              ))}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!callInsert}
+                  onChange={() => setCallInsert(false)}
+                />
+                上書き呼出
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={callInsert}
+                  onChange={() => setCallInsert(true)}
+                />
+                挿入呼出
+              </label>
+              <span className="call-target">
+                書込先：
+                {pickedColumn === null ||
+                !columns.some((column) => column.id === pickedColumn)
+                  ? "（新しいタテ明細）"
+                  : `タテ明細 ${columns.findIndex((column) => column.id === pickedColumn) + 1}列目`}
+              </span>
+              <button type="button" onClick={() => setCallOpen(false)}>
+                ✕ 閉じる
+              </button>
+            </div>
+            <div className="call-subject">
+              <span>工種科目</span>
+              <input
+                className="num"
+                value={callSubjectNumber}
+                title="工種科目の番号を入れると、その科目の明細を出します"
+                onChange={(e) => {
+                  const text = e.target.value.trim();
+                  setCallSubjectNumber(e.target.value);
+                  const found = options.subjects.find(
+                    (subject) => String(subject.id) === text,
+                  );
+                  setCallSubjectId(found?.id ?? null);
+                }}
+              />
+              <select
+                value={callSubjectId === null ? "" : String(callSubjectId)}
+                onChange={(e) => {
+                  const id = Number.parseInt(e.target.value, 10);
+                  setCallSubjectId(Number.isNaN(id) ? null : id);
+                  setCallSubjectNumber(Number.isNaN(id) ? "" : String(id));
+                }}
+              >
+                <option value="">（工種科目を選ぶ）</option>
+                {options.subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.id}：{subject.name}
+                  </option>
+                ))}
+              </select>
+              <span className="count">{callDetails.length}件</span>
+            </div>
+            <div className="call-scroll">
+              <table className="call-table">
+                <thead>
+                  <tr>
+                    <th className="no">部位ID</th>
+                    <th className="no">番号</th>
+                    <th>部位名／名称</th>
+                    <th>摘要</th>
+                    <th className="unit">単位</th>
+                    <th>備考</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {callDetails.map((detail, index) => (
+                    <tr
+                      key={`${detail.id}-${index}`}
+                      tabIndex={0}
+                      onDoubleClick={() => callDetail(detail)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") callDetail(detail);
+                      }}
+                    >
+                      <td className="no">{detail.partNumber ?? ""}</td>
+                      <td className="no">
+                        {detail.detailNumber?.toFixed(2) ?? ""}
+                      </td>
+                      <td>
+                        <div className="upper">{detail.partName}</div>
+                        <div className="lower">{detail.name}</div>
+                      </td>
+                      <td>
+                        <div className="upper">{detail.descriptionUpper}</div>
+                        <div className="lower">{detail.descriptionLower}</div>
+                      </td>
+                      <td className="unit">{detail.unit}</td>
+                      <td>
+                        <div className="upper">{detail.remarksUpper}</div>
+                        <div className="lower">{detail.remarksLower}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="note">
+              選んでダブルクリック（またはEnter）でタテの明細に呼び出します。呼出画面は閉じないので続けて呼び出せます。
+            </p>
+          </div>
+        </div>
+      )}
 
       {showSettings && (
         <div
@@ -1286,7 +1522,7 @@ export default function FurnitureSheetPage({
                   <td className="vlabel" />
                   {columns.map((column) => {
                     const text = rows[index].values?.[column.id] ?? "";
-                    const value = cellValue(text);
+                    const value = furnitureCellValue(row, text);
                     return (
                       <td
                         key={column.id}
@@ -1301,6 +1537,7 @@ export default function FurnitureSheetPage({
                       >
                         <input
                           value={text}
+                          title="数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
                           onFocus={() => setPickedColumn(column.id)}
                           onChange={(event) =>
                             editCell(row.id, column.id, event.target.value)
