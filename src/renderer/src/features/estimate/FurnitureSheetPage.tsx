@@ -1005,7 +1005,6 @@ export default function FurnitureSheetPage({
       <input
         lang="ja"
         value={columnText(column, head.key)}
-        placeholder={head.label}
         title={head.label}
         onFocus={() => setPickedColumn(column.id)}
         onChange={(event) =>

@@ -199,22 +199,21 @@
   background: #f3f3f3;
 }
 
-/** タテ方向の明細（列） */
+/** タテ方向の明細（列）：部位別雑・金物入力表と同じ見た目（欄は白・文字は黒） */
 .furniture-page .furniture-table th.vcol {
-  background: #2e6da4;
+  background: #fff;
+  color: #0f172a;
+  font-weight: normal;
   padding: 0;
 }
 
 .furniture-page .furniture-table th.vcol.on {
-  background: #17456f;
+  background: #fde68a;
 }
 
 .furniture-page .furniture-table th.vcol input {
-  color: #fff;
-}
-
-.furniture-page .furniture-table th.vcol input::placeholder {
-  color: #cfe0f0;
+  color: #0f172a;
+  background: transparent;
 }
 
 .furniture-page .furniture-table tr.vcol-total th {
@@ -231,7 +230,7 @@
 }
 
 .furniture-page .furniture-table td.vcell {
-  background: #eef6ff;
+  background: #fff;
 }
 
 .furniture-page .furniture-table td.vcell.error input {
