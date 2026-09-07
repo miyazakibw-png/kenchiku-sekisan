@@ -295,6 +295,8 @@ export const projectFittings = sqliteTable("project_fittings", {
   fromFurniture: integer("from_furniture").notNull().default(0),
   /** 家具計算書の行の目印（表id:行id）。転記し直すときに突き合わせる */
   furnitureKey: text("furniture_key").notNull().default(""),
+  /** 積算入力から登録した行の、元の計算書（部位別入力表の行）。無いときは記号を使っている計算書から探す */
+  sourceEstimateRowId: integer("source_estimate_row_id"),
   displayOrder: integer("display_order").notNull().default(0),
 });
 

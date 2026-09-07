@@ -116,6 +116,7 @@ export function registerRoomFitting(
     sillHeight: number | null;
   },
   overwrite = false,
+  estimateRowId: number | null = null,
 ): Fitting[] {
   const symbol = fitting.symbol.trim();
   if (symbol === "") throw new Error("建具記号を入力してください");
@@ -144,6 +145,7 @@ export function registerRoomFitting(
         height: fitting.height,
         sillHeight: fitting.sillHeight,
         fromEstimate: 1,
+        sourceEstimateRowId: estimateRowId,
         displayOrder: (last?.displayOrder ?? -1) + 1,
       })
       .run();

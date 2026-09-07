@@ -8,6 +8,7 @@ import type { AppDatabase } from "../../src/main/db";
 import { createProject } from "../../src/main/services/projectService";
 import {
   listFittings,
+  listFittingSources,
   saveFittings,
 } from "../../src/main/services/fittingService";
 import {
@@ -194,5 +195,21 @@ describe("家具・設備入力表", () => {
 
     deleteFurnitureSheet(db, sheet.id);
     expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual(["W1"]);
+  });
+
+  it("転記した建具から元の家具計算書をたどれる", () => {
+    const sheet = createFurnitureSheet(db, projectId, "家具計算書1");
+    saveRows(db, sheet.id);
+
+    const fittings = listFittings(db, projectId);
+    expect(listFittingSources(db, projectId)).toEqual(
+      fittings.map((row) => ({
+        fittingId: row.id,
+        kind: "furniture",
+        estimateRowId: null,
+        furnitureSheetId: sheet.id,
+        name: "家具計算書1",
+      })),
+    );
   });
 });

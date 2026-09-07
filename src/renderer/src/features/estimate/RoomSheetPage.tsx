@@ -837,6 +837,7 @@ export default function RoomSheetPage({
           sillHeight: sill ?? master?.sillHeight ?? null,
         },
         sized,
+        row.id,
       ),
     );
     addRoomFitting(symbol, textToNumber(newFitting.count) ?? 1);
@@ -846,7 +847,7 @@ export default function RoomSheetPage({
         ? `${symbol} をこの部屋へ足しました`
         : `${symbol} を建具表へ登録してこの部屋へ足しました`,
     );
-  }, [addRoomFitting, fittings, newFitting, project.id]);
+  }, [addRoomFitting, fittings, newFitting, project.id, row.id]);
 
   /** この部屋の建具の表で、寸法（W・H・腰高）を直接打ち替えて建具表へ反映する */
   const writeFittingSize = useCallback(
@@ -878,10 +879,11 @@ export default function RoomSheetPage({
                 : patch.sill,
           },
           true,
+          row.id,
         ),
       );
     },
-    [fittings, project.id],
+    [fittings, project.id, row.id],
   );
 
   /** 記号は計算式にそのまま入力できる。クリックでコピーする */

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MiscSheetSummary, ProjectSummary } from "@shared/types";
+import { ask } from "../common/askDialog";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
@@ -50,7 +51,7 @@ export default function MiscSheetListPage({
   };
 
   const remove = async (sheet: MiscSheetSummary): Promise<void> => {
-    const ok = window.confirm(
+    const ok = await ask(
       `「${sheet.name}」を消します。中の入力も消えます。よろしいですか。`,
     );
     if (!ok) return;

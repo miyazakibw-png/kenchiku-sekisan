@@ -78,6 +78,10 @@ export default function ProjectWorkspacePage({
   const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
   /** 家具・設備入力表の一覧で選んで開いている表 */
   const [furnitureSheetId, setFurnitureSheetId] = useState<number | null>(null);
+  /** 建具表の「計算書」から飛んできたときに開く部屋計算書（部位別入力表の行id） */
+  const [jumpEstimateRowId, setJumpEstimateRowId] = useState<number | null>(
+    null,
+  );
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
 
   useEffect(() => setOptions(initialOptions), [initialOptions]);
@@ -243,7 +247,20 @@ export default function ProjectWorkspacePage({
   }
 
   if (openedMenu === "fittings") {
-    return <FittingsPage project={draft} onBack={() => setOpenedMenu(null)} />;
+    return (
+      <FittingsPage
+        project={draft}
+        onBack={() => setOpenedMenu(null)}
+        onOpenRoomSheet={(estimateRowId) => {
+          setJumpEstimateRowId(estimateRowId);
+          setOpenedMenu("roomFinishes");
+        }}
+        onOpenFurnitureSheet={(sheetId) => {
+          setFurnitureSheetId(sheetId);
+          setOpenedMenu("furnitureInput");
+        }}
+      />
+    );
   }
 
   if (openedMenu === "roomFinishes") {
@@ -251,7 +268,11 @@ export default function ProjectWorkspacePage({
       <EstimatePartsPage
         project={draft}
         options={options}
-        onBack={() => setOpenedMenu(null)}
+        initialEstimateRowId={jumpEstimateRowId}
+        onBack={() => {
+          setJumpEstimateRowId(null);
+          setOpenedMenu(null);
+        }}
       />
     );
   }

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FittingDraft, MasterEntry, ProjectSummary } from "@shared/types";
+import type {
+  FittingDraft,
+  FittingSource,
+  MasterEntry,
+  ProjectSummary,
+} from "@shared/types";
 import {
   computeFitting,
   duplicateSymbolIndexes,
@@ -36,6 +41,10 @@ import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 interface Props {
   project: ProjectSummary;
   onBack: () => void;
+  /** 計算書から追加された建具の「計算書」を押したとき、その部屋計算書を開く */
+  onOpenRoomSheet?: (estimateRowId: number) => void;
+  /** 家具計算書から転記された建具の「計算書」を押したとき、その家具計算書を開く */
+  onOpenFurnitureSheet?: (sheetId: number) => void;
 }
 
 interface SeriesForm {
@@ -54,9 +63,18 @@ const EMPTY_SERIES: SeriesForm = {
   suffixTo: "",
 };
 
-export default function FittingsPage({ project, onBack }: Props): JSX.Element {
+export default function FittingsPage({
+  project,
+  onBack,
+  onOpenRoomSheet,
+  onOpenFurnitureSheet,
+}: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-fittings-v1");
   const [rows, setRows] = useState<FittingDraft[]>([]);
+  /** 計算書から追加された建具の出所（建具id→計算書） */
+  const [sources, setSources] = useState<Map<number, FittingSource>>(
+    new Map(),
+  );
   const [selected, setSelected] = useState(0);
   /** Shift+クリックで広げた選択の終わりの行 */
   const [selectedEnd, setSelectedEnd] = useState(0);
@@ -78,6 +96,14 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
     const next = toDrafts(await window.sekisan.listFittings(project.id));
     setRows(next);
     markSaved(next);
+    setSources(
+      new Map(
+        (await window.sekisan.listFittingSources(project.id)).map((source) => [
+          source.fittingId,
+          source,
+        ]),
+      ),
+    );
   }, [markSaved, project.id]);
 
   useEffect(() => {
@@ -129,6 +155,18 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
       if (!quiet) setMessage("保存しました");
     },
     [markSaved, project.id, rows],
+  );
+
+  /** 「計算書」を押したら、直した分を保存してからその計算書へ移る */
+  const openSource = useCallback(
+    async (source: FittingSource) => {
+      await save(true);
+      if (source.kind === "room" && source.estimateRowId !== null)
+        onOpenRoomSheet?.(source.estimateRowId);
+      if (source.kind === "furniture" && source.furnitureSheetId !== null)
+        onOpenFurnitureSheet?.(source.furnitureSheetId);
+    },
+    [onOpenFurnitureSheet, onOpenRoomSheet, save],
   );
 
   const duplicates = useMemo(
@@ -471,6 +509,7 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
             <th className="formula">面積計算（自動計算修正用）</th>
             <th className="formula">巾木長さ（自動計算修正用）</th>
             <th className="note">その他（備考）</th>
+            <th className="source">計算書</th>
           </tr>
         </thead>
         <tbody>
@@ -485,7 +524,9 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                     index <= Math.max(selected, selectedEnd)
                       ? "selected"
                       : "",
-                    row.fromEstimate === 1 ? "from-estimate" : "",
+                    row.fromEstimate === 1 || row.fromFurniture === 1
+                      ? "from-estimate"
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" ") || undefined
@@ -607,6 +648,27 @@ export default function FittingsPage({ project, onBack }: Props): JSX.Element {
                       setRows(updateRow(rows, index, { note: e.target.value }))
                     }
                   />
+                </td>
+                <td className="source">
+                  {(() => {
+                    const source =
+                      row.id === null ? undefined : sources.get(row.id);
+                    if (source === undefined) return null;
+                    const label =
+                      source.kind === "room"
+                        ? `部屋計算書：${source.name}`
+                        : `家具計算書：${source.name}`;
+                    return (
+                      <button
+                        type="button"
+                        className="link"
+                        title={`${label} を開く`}
+                        onClick={() => void openSource(source)}
+                      >
+                        📐 {label}
+                      </button>
+                    );
+                  })()}
                 </td>
               </tr>
             );

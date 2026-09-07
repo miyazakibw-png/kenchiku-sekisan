@@ -70,6 +70,7 @@ export const IPC = {
   deductionLimitSave: "settings:deductionLimitSave",
   fittingsList: "fittings:list",
   fittingsSave: "fittings:save",
+  fittingSourcesList: "fittings:sourcesList",
   fittingPartValuesGet: "settings:fittingPartValuesGet",
   fittingPartValuesSave: "settings:fittingPartValuesSave",
   projectLedger: "project:ledger",

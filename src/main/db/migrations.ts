@@ -962,4 +962,8 @@ ALTER TABLE project_fittings ADD COLUMN furniture_key TEXT NOT NULL DEFAULT '';
   `
 ALTER TABLE project_furniture_sheets ADD COLUMN columns_json TEXT NOT NULL DEFAULT '[]';
 `,
+  // 建具表：積算入力から登録した行の元の計算書（部位別入力表の行）
+  `
+ALTER TABLE project_fittings ADD COLUMN source_estimate_row_id INTEGER;
+`,
 ];

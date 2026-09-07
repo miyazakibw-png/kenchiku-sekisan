@@ -27,6 +27,7 @@ import type {
   ImeMode,
   FinishAssembly,
   Fitting,
+  FittingSource,
   FormworkTransferView,
   FrameRoomOption,
   FrameSheet,
@@ -164,8 +165,16 @@ const api = {
     },
     /** 計算書で直接入れた寸法を建具表へ反映させるとき */
     overwrite?: boolean,
+    /** 登録元の計算書（部位別入力表の行id）。建具表から元の計算書へ戻れるようにする */
+    estimateRowId?: number | null,
   ): Promise<Fitting[]> =>
-    ipcRenderer.invoke(IPC.roomFittingRegister, projectId, fitting, overwrite),
+    ipcRenderer.invoke(
+      IPC.roomFittingRegister,
+      projectId,
+      fitting,
+      overwrite,
+      estimateRowId,
+    ),
   /** 軸組計算書の上段。まだ無ければ部位別入力表の行から作られる */
   getFrameSheet: (estimateRowId: number): Promise<FrameSheet> =>
     ipcRenderer.invoke(IPC.frameSheetGet, estimateRowId),
@@ -318,6 +327,9 @@ const api = {
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsSave, request),
+  /** 計算書から追加された建具の出所（部屋計算書・家具計算書） */
+  listFittingSources: (projectId: number): Promise<FittingSource[]> =>
+    ipcRenderer.invoke(IPC.fittingSourcesList, projectId),
   /** 建具記号を計算式へ入れるときに、部位ごとにどの数値を採るか */
   getFittingPartValues: (): Promise<FittingPartValue[]> =>
     ipcRenderer.invoke(IPC.fittingPartValuesGet),

@@ -63,6 +63,7 @@ import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import "./FrameSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { ask } from "../common/askDialog";
 
 interface Props {
   project: ProjectSummary;
@@ -1685,11 +1686,11 @@ export default function FrameSheetPage({
             <button
               type="button"
               title="自分で引いた線をすべて消します（下敷きの図面は残ります）"
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  !window.confirm(
+                  !(await ask(
                     `引いた線（${manualLines.length}本）をすべて消します。よろしいですか`,
-                  )
+                  ))
                 )
                   return;
                 setManualLines([]);
@@ -1706,8 +1707,8 @@ export default function FrameSheetPage({
             <button
               type="button"
               title="下敷きの図面（元図）を外します（引いた線は残ります）"
-              onClick={() => {
-                if (!window.confirm("下敷きの図面を外します。よろしいですか"))
+              onClick={async () => {
+                if (!(await ask("下敷きの図面を外します。よろしいですか")))
                   return;
                 setTrace(EMPTY_FRAME_TRACE);
                 setTraceMode("off");

@@ -22,6 +22,7 @@ import {
 } from "../../src/main/services/roomSheetService";
 import {
   listFittings,
+  listFittingSources,
   saveFittings,
 } from "../../src/main/services/fittingService";
 import type { EstimateRowDraft } from "../../src/shared/types";
@@ -204,6 +205,86 @@ describe("部屋計算書（上段）", () => {
     expect(rows[0].width).toBe(1.6);
     expect(rows[0].height).toBe(2.2);
     expect(rows[0].sillHeight).toBe(0.8);
+  });
+
+  it("計算書から登録した建具は元の部屋計算書をたどれる（登録元が無ければ記号を使う部屋）", () => {
+    const project = createProject(db, "建具の出所");
+    const [hall, living] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [roomRow("玄関ホール", 2.4), roomRow("居間", 2.4)],
+    });
+    const livingSheet = getRoomSheet(db, living.id);
+    saveRoomSheet(db, {
+      id: livingSheet.id,
+      shapeJson:
+        '{"edges":[{"id":"a","direction":"E","length":4,"kind":"wall"}]}',
+      fittingsJson: '[{"id":"f1","symbol":"SD9","multiplier":1,"edgeId":"a"}]',
+      ceilingJson: "[]",
+      lowerJson: "[]",
+      ceilingHeight: 2.4,
+      note: "",
+    });
+
+    // 登録元の行を渡して登録（玄関ホール）
+    registerRoomFitting(
+      db,
+      project.id,
+      { symbol: "AW1", width: 1.8, height: 2, sillHeight: null },
+      false,
+      hall.id,
+    );
+    // 古い登録（登録元の行が無い）→記号を使っている居間を探す
+    registerRoomFitting(db, project.id, {
+      symbol: "SD9",
+      width: 0.9,
+      height: 2.1,
+      sillHeight: null,
+    });
+    // 手で入れた建具は出所なし
+    saveFittings(db, {
+      projectId: project.id,
+      rows: [
+        ...listFittings(db, project.id),
+        {
+          id: null,
+          symbol: "WD1",
+          name: "",
+          width: 0.8,
+          height: 2,
+          sillHeight: null,
+          widthFormula: "",
+          heightFormula: "",
+          sillHeightFormula: "",
+          areaFormula: "",
+          baseboardFormula: "",
+          note: "",
+          fromEstimate: 0,
+        },
+      ],
+    });
+
+    const fittings = listFittings(db, project.id);
+    expect(fittings.map((row) => row.symbol)).toEqual(["WD1", "AW1", "SD9"]);
+    expect(fittings[1].sourceEstimateRowId).toBe(hall.id);
+    expect(fittings[2].sourceEstimateRowId).toBeNull();
+
+    const sources = listFittingSources(db, project.id);
+    expect(sources).toEqual([
+      {
+        fittingId: fittings[1].id,
+        kind: "room",
+        estimateRowId: hall.id,
+        furnitureSheetId: null,
+        name: "内部 玄関ホール",
+      },
+      {
+        fittingId: fittings[2].id,
+        kind: "room",
+        estimateRowId: living.id,
+        furnitureSheetId: null,
+        name: "内部 居間",
+      },
+    ]);
   });
 
   it("取り合いの欠除は設定として保存する（既定0.5m2）", () => {

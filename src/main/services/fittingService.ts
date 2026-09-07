@@ -1,7 +1,18 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
-import { appSettings, projectFittings } from "../db/schema";
-import type { Fitting, SaveFittingsRequest } from "../../shared/types";
+import {
+  appSettings,
+  projectEstimateRows,
+  projectFittings,
+  projectFurnitureSheets,
+  projectRoomSheets,
+} from "../db/schema";
+import type {
+  Fitting,
+  FittingSource,
+  SaveFittingsRequest,
+} from "../../shared/types";
+import type { RoomFitting } from "../../core/room/shape";
 import {
   DEFAULT_FITTING_PART_VALUES,
   parseFittingPartValues,
@@ -46,6 +57,110 @@ export function listFittings(db: AppDatabase, projectId: number): Fitting[] {
       asc(projectFittings.id),
     )
     .all();
+}
+
+function parseRoomFittings(json: string): RoomFitting[] {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as RoomFitting[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 計算書から追加された建具の出所。
+ * 部屋計算書から登録した行は登録元の行（無ければその記号を使っている最初の部屋）、
+ * 家具計算書から転記した行はその表を返す。
+ */
+export function listFittingSources(
+  db: AppDatabase,
+  projectId: number,
+): FittingSource[] {
+  const fittings = db
+    .select({
+      id: projectFittings.id,
+      symbol: projectFittings.symbol,
+      fromEstimate: projectFittings.fromEstimate,
+      fromFurniture: projectFittings.fromFurniture,
+      furnitureKey: projectFittings.furnitureKey,
+      sourceEstimateRowId: projectFittings.sourceEstimateRowId,
+    })
+    .from(projectFittings)
+    .where(eq(projectFittings.projectId, projectId))
+    .all();
+  if (fittings.every((row) => row.fromEstimate !== 1 && row.fromFurniture !== 1))
+    return [];
+
+  const rooms = db
+    .select({
+      estimateRowId: projectEstimateRows.id,
+      fittingsJson: projectRoomSheets.fittingsJson,
+      part2: projectEstimateRows.part2,
+      part3: projectEstimateRows.part3,
+    })
+    .from(projectEstimateRows)
+    .leftJoin(
+      projectRoomSheets,
+      eq(projectRoomSheets.estimateRowId, projectEstimateRows.id),
+    )
+    .where(eq(projectEstimateRows.projectId, projectId))
+    .orderBy(asc(projectEstimateRows.displayOrder), asc(projectEstimateRows.id))
+    .all()
+    .map((row) => ({
+      estimateRowId: row.estimateRowId,
+      name: `${row.part2} ${row.part3}`.trim(),
+      symbols: new Set(
+        parseRoomFittings(row.fittingsJson ?? "[]").map((fitting) =>
+          fitting.symbol.trim(),
+        ),
+      ),
+    }));
+  const roomById = new Map(rooms.map((room) => [room.estimateRowId, room]));
+  const sheets = new Map(
+    db
+      .select({
+        id: projectFurnitureSheets.id,
+        name: projectFurnitureSheets.name,
+      })
+      .from(projectFurnitureSheets)
+      .where(eq(projectFurnitureSheets.projectId, projectId))
+      .all()
+      .map((sheet) => [sheet.id, sheet.name]),
+  );
+
+  const sources: FittingSource[] = [];
+  for (const fitting of fittings) {
+    if (fitting.fromFurniture === 1) {
+      const sheetId = Number(fitting.furnitureKey.split(":")[0]);
+      const name = sheets.get(sheetId);
+      if (name === undefined) continue;
+      sources.push({
+        fittingId: fitting.id,
+        kind: "furniture",
+        estimateRowId: null,
+        furnitureSheetId: sheetId,
+        name,
+      });
+      continue;
+    }
+    if (fitting.fromEstimate !== 1) continue;
+    const symbol = fitting.symbol.trim();
+    const room =
+      (fitting.sourceEstimateRowId === null
+        ? undefined
+        : roomById.get(fitting.sourceEstimateRowId)) ??
+      rooms.find((each) => each.symbols.has(symbol));
+    if (room === undefined) continue;
+    sources.push({
+      fittingId: fitting.id,
+      kind: "room",
+      estimateRowId: room.estimateRowId,
+      furnitureSheetId: null,
+      name: room.name,
+    });
+  }
+  return sources;
 }
 
 /**

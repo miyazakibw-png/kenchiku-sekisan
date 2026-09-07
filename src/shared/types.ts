@@ -67,17 +67,37 @@ export interface Fitting {
   fromFurniture: number;
   /** 家具計算書の行の目印（表id:行id） */
   furnitureKey: string;
+  /** 積算入力から登録した行の元の計算書（部位別入力表の行id） */
+  sourceEstimateRowId: number | null;
   displayOrder: number;
 }
 
 export type FittingDraft = Omit<
   Fitting,
-  "id" | "projectId" | "displayOrder" | "fromFurniture" | "furnitureKey"
+  | "id"
+  | "projectId"
+  | "displayOrder"
+  | "fromFurniture"
+  | "furnitureKey"
+  | "sourceEstimateRowId"
 > & {
   id: number | null;
   fromFurniture?: number;
   furnitureKey?: string;
+  sourceEstimateRowId?: number | null;
 };
+
+/** 建具表の行がどの計算書から追加されたか（部屋計算書・家具計算書） */
+export interface FittingSource {
+  fittingId: number;
+  kind: "room" | "furniture";
+  /** 部屋計算書のとき：部位別入力表の行id */
+  estimateRowId: number | null;
+  /** 家具計算書のとき：表id */
+  furnitureSheetId: number | null;
+  /** 画面に出す名前（部屋名・表の名前） */
+  name: string;
+}
 
 export interface SaveFittingsRequest {
   projectId: number;

@@ -80,6 +80,7 @@ import {
 import {
   getFittingPartValues,
   listFittings,
+  listFittingSources,
   saveFittingPartValues,
   saveFittings,
 } from "./services/fittingService";
@@ -379,12 +380,14 @@ function registerIpcHandlers(): void {
         sillHeight: number | null;
       },
       overwrite?: boolean,
+      estimateRowId?: number | null,
     ) =>
       registerRoomFitting(
         getDatabase(),
         projectId,
         fitting,
         overwrite ?? false,
+        estimateRowId ?? null,
       ),
   );
   ipcMain.handle(IPC.frameSheetGet, (_event, estimateRowId: number) =>
@@ -592,6 +595,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
     saveFittings(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.fittingSourcesList, (_event, projectId: number) =>
+    listFittingSources(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.fittingPartValuesGet, () =>
     getFittingPartValues(getDatabase()),

@@ -36,6 +36,7 @@ import {
 } from "../../../../core/furniture/furnitureSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { ask } from "../common/askDialog";
 import "./RoomCalcSheet.css";
 import "./EstimatePartsPage.css";
 import "./FurnitureSheetPage.css";
@@ -676,7 +677,7 @@ export default function FurnitureSheetPage({
   };
 
   /** 選んでいる行（Shift+クリックの範囲）の赤字の明細欄をまとめて自動作成に戻す */
-  const revertSelectedDetails = (): void => {
+  const revertSelectedDetails = async (): Promise<void> => {
     const count = rows
       .slice(selectionStart, selectionEnd + 1)
       .filter((row) => row.detail.edited.length > 0).length;
@@ -685,9 +686,9 @@ export default function FurnitureSheetPage({
       return;
     }
     if (
-      !window.confirm(
+      !(await ask(
         `${count} 行の手で直した明細欄（赤字）をすべて自動作成（入力欄・記号からの変換）に戻します。よろしいですか？`,
-      )
+      ))
     )
       return;
     setRows(
@@ -862,9 +863,9 @@ export default function FurnitureSheetPage({
   const loadBase = async (): Promise<void> => {
     if (!sheet) return;
     if (
-      !window.confirm(
+      !(await ask(
         `この表の設定を「${furnitureKindLabel(sheet.kind)}」の基準に置き換えます。よろしいですか？`,
-      )
+      ))
     )
       return;
     const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
@@ -1044,7 +1045,7 @@ export default function FurnitureSheetPage({
         <button
           type="button"
           title="カーソルの行（Shift+クリックの範囲）で手で直した明細欄（赤字）をすべて自動作成に戻します。1欄だけならその欄を右クリック"
-          onClick={revertSelectedDetails}
+          onClick={() => void revertSelectedDetails()}
         >
           ↩ 明細を自動に戻す
         </button>

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { FurnitureSheetSummary, ProjectSummary } from "@shared/types";
+import type {
+  EstimateRow,
+  FurnitureSheetSummary,
+  ProjectSummary,
+} from "@shared/types";
 import { FURNITURE_KINDS as KINDS } from "../../../../core/furniture/furnitureSheet";
+import { ask } from "../common/askDialog";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
@@ -24,10 +29,26 @@ export default function FurnitureSheetListPage({
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<number[]>([]);
+  const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
 
   const load = useCallback(async (): Promise<void> => {
     setSheets(await window.sekisan.listFurnitureSheets(project.id));
+    setEstimateRows(await window.sekisan.listEstimateRows(project.id));
   }, [project.id]);
+
+  const distinct = (values: string[]): string[] =>
+    [...new Set(values.map((value) => value.trim()))].filter(
+      (value) => value !== "",
+    );
+  const part1Options = distinct(estimateRows.map((row) => row.part1));
+  const part2Options = (part1: string): string[] =>
+    distinct(
+      estimateRows
+        .filter(
+          (row) => part1.trim() === "" || row.part1.trim() === part1.trim(),
+        )
+        .map((row) => row.part2),
+    );
 
   useEffect(() => {
     void load();
@@ -50,7 +71,7 @@ export default function FurnitureSheetListPage({
   };
 
   const remove = async (sheet: FurnitureSheetSummary): Promise<void> => {
-    const ok = window.confirm(
+    const ok = await ask(
       `「${sheet.name}」を消します。中の入力と建具表へ転記した分も消えます。よろしいですか。`,
     );
     if (!ok) return;
@@ -202,6 +223,8 @@ export default function FurnitureSheetListPage({
               <td className="name">
                 <input
                   lang="ja"
+                  list="furniture-part1-options"
+                  title="部位別入力表で入力済みの部位Ⅰから選べます（手で書いても可）"
                   value={sheet.part1}
                   onChange={(event) =>
                     change(index, { part1: event.target.value })
@@ -212,12 +235,19 @@ export default function FurnitureSheetListPage({
               <td className="name">
                 <input
                   lang="ja"
+                  list={`furniture-part2-options-${sheet.id}`}
+                  title="部位別入力表で入力済みの部位Ⅱから選べます（部位Ⅰを入れるとその部位Ⅰの分だけ）"
                   value={sheet.part2}
                   onChange={(event) =>
                     change(index, { part2: event.target.value })
                   }
                   onBlur={() => void save(sheets)}
                 />
+                <datalist id={`furniture-part2-options-${sheet.id}`}>
+                  {part2Options(sheet.part1).map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </td>
               <td className="count">
                 <input
@@ -275,6 +305,11 @@ export default function FurnitureSheetListPage({
           ))}
         </tbody>
       </table>
+      <datalist id="furniture-part1-options">
+        {part1Options.map((value) => (
+          <option key={value} value={value} />
+        ))}
+      </datalist>
     </div>
   );
 }

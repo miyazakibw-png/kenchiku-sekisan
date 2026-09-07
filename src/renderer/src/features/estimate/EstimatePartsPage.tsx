@@ -40,6 +40,8 @@ interface Props {
   project: ProjectSummary;
   options: MasterOptions;
   onBack: () => void;
+  /** 開いたときにすぐこの行（部位別入力表の行id）の計算書を出す（建具表の「計算書」から飛んできたとき） */
+  initialEstimateRowId?: number | null;
 }
 
 /** 計算書から拾った数量を表示するチェック列（既定は仕上） */
@@ -49,6 +51,7 @@ export default function EstimatePartsPage({
   project,
   options,
   onBack,
+  initialEstimateRowId = null,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-estimate-parts-v1");
   /** 計算書を開く前の画面の位置（戻ったときに同じ所を出す） */
@@ -128,6 +131,18 @@ export default function EstimatePartsPage({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  /** 建具表から飛んできたときは、行を読んだあとに一度だけその計算書を開く */
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (jumpedRef.current || initialEstimateRowId === null) return;
+    const at = rows.findIndex((row) => row.id === initialEstimateRowId);
+    if (at < 0) return;
+    jumpedRef.current = true;
+    setSelected(at);
+    setSelectedEnd(at);
+    setOpenedSheet(at);
+  }, [initialEstimateRowId, rows]);
 
   useEffect(() => {
     void (async () => {

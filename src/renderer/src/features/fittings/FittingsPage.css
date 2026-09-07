@@ -123,6 +123,28 @@ table.fittings tr.from-estimate td.no {
   background: #f3e8ff;
 }
 
+table.fittings th.source {
+  min-width: 18ch;
+}
+
+table.fittings td.source {
+  white-space: nowrap;
+}
+
+table.fittings td.source button.link {
+  border: none;
+  background: transparent;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #6d28d9;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+table.fittings td.source button.link:hover {
+  background: #f3e8ff;
+}
+
 .fittings-page .hint {
   margin: 0 8px 16px;
   font-size: 11px;
