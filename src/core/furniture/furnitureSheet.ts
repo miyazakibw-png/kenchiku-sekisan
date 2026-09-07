@@ -121,6 +121,8 @@ export interface FurnitureRow {
 export interface FurnitureSheetData {
   rows: FurnitureRow[];
   settings: FurnitureSettings;
+  /** 計算書の種類（無ければ家具） */
+  kind?: string;
   /** タテ方向の明細（列） */
   columns?: FurnitureColumn[];
 }
@@ -535,34 +537,38 @@ export function resolveFurnitureRows(
   });
 }
 
-/** 形状（番号入力）を設定の文字にする（ハンガーパイプ。表に無い番号はそのまま） */
+/** 形状（番号入力）を設定の文字にする（ハンガーパイプ。表に無い番号はそのまま。設定に表が無ければ初めの並び） */
 export function shapeText(
   row: FurnitureRow,
   settings: FurnitureSettings,
 ): string {
-  return symbolText(settings.shapeSymbols ?? [], row.shape ?? "");
+  return symbolText(
+    settings.shapeSymbols ?? defaultHangerShapeSymbols,
+    row.shape ?? "",
+  );
 }
 
 /** W・H・Dを摘要下段の文字にする（例：W1200*H1100*D400）。
- * 形状（ハンガーパイプ）があるときはW2/W3の(L型)(コ型)は付けず、末尾に形状の文字を付ける */
+ * ハンガーパイプはDを出さず、W2/W3の(L型)(コ型)も付けず、末尾に形状の文字を付ける */
 export function sizeText(
   row: FurnitureRow,
   settings: FurnitureSettings,
+  kind = "furniture",
 ): string {
+  const withShape = hasShape(kind);
   const parts: string[] = [];
   const width1 = row.width.trim();
   const width2 = (row.width2 ?? "").trim();
   const width3 = (row.width3 ?? "").trim();
-  const shapeLabel = shapeText(row, settings);
+  const shapeLabel = withShape ? shapeText(row, settings) : "";
   if (width1 !== "" || width2 !== "" || width3 !== "") {
-    const shape =
-      shapeLabel !== ""
-        ? ""
-        : width3 !== ""
-          ? settings.uShapeLabel
-          : width2 !== ""
-            ? settings.lShapeLabel
-            : "";
+    const shape = withShape
+      ? ""
+      : width3 !== ""
+        ? settings.uShapeLabel
+        : width2 !== ""
+          ? settings.lShapeLabel
+          : "";
     parts.push(
       `${settings.widthLabel}${width1}${
         width2 === "" ? "" : `${settings.width2Label}${width2}`
@@ -571,7 +577,7 @@ export function sizeText(
   }
   if (row.height.trim() !== "")
     parts.push(`${settings.heightLabel}${row.height.trim()}`);
-  if (row.depth.trim() !== "")
+  if (!withShape && row.depth.trim() !== "")
     parts.push(`${settings.depthLabel}${row.depth.trim()}`);
   if (shapeLabel !== "") parts.push(shapeLabel);
   return parts.join("");
@@ -599,6 +605,7 @@ export function buildDetail(
   row: FurnitureRow,
   resolved: FurnitureResolved,
   settings: FurnitureSettings,
+  kind = "furniture",
 ): FurnitureDetail {
   const auto: FurnitureDetail = {
     ...row.detail,
@@ -608,7 +615,7 @@ export function buildDetail(
     partName: partText(row, resolved, settings),
     name: symbolText(settings.nameSymbols, row.nameSymbol),
     descriptionUpper: row.descriptionUpper,
-    descriptionLower: sizeText(row, settings),
+    descriptionLower: sizeText(row, settings, kind),
     unit: resolved.unit,
     remarksUpper: "",
     remarksLower: row.remarksLower,
@@ -673,11 +680,12 @@ export function revertFurnitureDetail(
 export function applyFurnitureDetails(
   rows: FurnitureRow[],
   settings: FurnitureSettings,
+  kind = "furniture",
 ): FurnitureRow[] {
   const resolved = resolveFurnitureRows(rows);
   return rows.map((row, index) => ({
     ...row,
-    detail: buildDetail(row, resolved[index], settings),
+    detail: buildDetail(row, resolved[index], settings, kind),
   }));
 }
 
@@ -756,7 +764,7 @@ export function entriesFromFurnitureSheet(
   data: FurnitureSheetData,
   part2Order: Map<string, number>,
 ): AggregateEntry[] {
-  const rows = applyFurnitureDetails(data.rows, data.settings);
+  const rows = applyFurnitureDetails(data.rows, data.settings, data.kind);
   const resolved = resolveFurnitureRows(rows);
   const multiplier = place.multiplier === 0 ? 1 : place.multiplier;
   const entries: AggregateEntry[] = [];

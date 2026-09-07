@@ -525,8 +525,8 @@ export default function FurnitureSheetPage({
 
   /** 右の明細欄は左の入力欄から作る（手で直した欄はそのまま残る） */
   const view = useMemo(
-    () => applyFurnitureDetails(rows, settings),
-    [rows, settings],
+    () => applyFurnitureDetails(rows, settings, sheet?.kind ?? "furniture"),
+    [rows, settings, sheet?.kind],
   );
   const resolved = useMemo(() => resolveFurnitureRows(view), [view]);
 
@@ -1413,22 +1413,30 @@ export default function FurnitureSheetPage({
                           }
                         />
                         <span>W3</span>
-                        <input
-                          value={settings.lShapeLabel}
-                          title="W2に入力がありW3に入力が無いときWの後ろに付ける文字"
-                          onChange={(event) =>
-                            changeSettings({ lShapeLabel: event.target.value })
-                          }
-                        />
-                        <span className="hint">←W2あり・W3なし</span>
-                        <input
-                          value={settings.uShapeLabel}
-                          title="W3に入力があるときWの後ろに付ける文字"
-                          onChange={(event) =>
-                            changeSettings({ uShapeLabel: event.target.value })
-                          }
-                        />
-                        <span className="hint">←W3あり</span>
+                        {!withShape && (
+                          <>
+                            <input
+                              value={settings.lShapeLabel}
+                              title="W2に入力がありW3に入力が無いときWの後ろに付ける文字"
+                              onChange={(event) =>
+                                changeSettings({
+                                  lShapeLabel: event.target.value,
+                                })
+                              }
+                            />
+                            <span className="hint">←W2あり・W3なし</span>
+                            <input
+                              value={settings.uShapeLabel}
+                              title="W3に入力があるときWの後ろに付ける文字"
+                              onChange={(event) =>
+                                changeSettings({
+                                  uShapeLabel: event.target.value,
+                                })
+                              }
+                            />
+                            <span className="hint">←W3あり</span>
+                          </>
+                        )}
                       </>
                     )}
                     <input
@@ -1438,13 +1446,15 @@ export default function FurnitureSheetPage({
                         changeSettings({ heightLabel: event.target.value })
                       }
                     />
-                    <input
-                      value={settings.depthLabel}
-                      title="Dの前に付ける文字"
-                      onChange={(event) =>
-                        changeSettings({ depthLabel: event.target.value })
-                      }
-                    />
+                    {!withShape && (
+                      <input
+                        value={settings.depthLabel}
+                        title="Dの前に付ける文字"
+                        onChange={(event) =>
+                          changeSettings({ depthLabel: event.target.value })
+                        }
+                      />
+                    )}
                   </td>
                 </tr>
               </tbody>

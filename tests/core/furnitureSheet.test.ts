@@ -351,26 +351,31 @@ describe("システムキッチン（W1・W2・W3）", () => {
           width: "1200",
           width2: "600",
           height: "1800",
+          depth: "450",
           shape: "１",
         }),
         furnitureRow({ width: "900", height: "1800", shape: "5" }),
         furnitureRow({ width: "900", width2: "600", shape: "9" }),
-        furnitureRow({ width: "900", width2: "600" }),
+        furnitureRow({ width: "900", width2: "600", width3: "800" }),
       ],
       hanger,
+      "hanger",
     );
     expect(rows[0].detail.name).toBe("ハンガーパイプ");
     expect(rows[0].detail.descriptionLower).toBe("W1200+600*H1800(L型)");
     expect(furnitureCellValue(rows[0], "W")).toBe(1.8);
     expect(rows[1].detail.descriptionLower).toBe("W900*H1800(TT型)");
     expect(rows[2].detail.descriptionLower).toBe("W900+6009");
-    expect(rows[3].detail.descriptionLower).toBe("W900+600(L型)");
+    expect(rows[3].detail.descriptionLower).toBe("W900+600+800");
+    const shelfRow = furnitureRow({ width: "1200", depth: "450", shape: "1" });
     expect(
-      applyFurnitureDetails(
-        [furnitureRow({ width: "1200", depth: "450", shape: "1" })],
-        furnitureSettingsFor("shelf"),
-      )[0].detail.descriptionLower,
-    ).toBe("W1200*D4501");
+      applyFurnitureDetails([shelfRow], furnitureSettingsFor("shelf"), "shelf")[0]
+        .detail.descriptionLower,
+    ).toBe("W1200*D450");
+    expect(
+      applyFurnitureDetails([shelfRow], furnitureSettingsFor("shelf"), "hanger")[0]
+        .detail.descriptionLower,
+    ).toBe("W1200(L型)");
   });
 
   it("洗面化粧台は作りはキッチンと同じで、初めの記号表は洗面用（基準は別）", () => {

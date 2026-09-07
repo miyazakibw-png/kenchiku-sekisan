@@ -619,6 +619,7 @@ function furnitureEntries(
       {
         rows,
         settings,
+        kind: sheet.kind,
         columns: parseJson<FurnitureColumn[]>(sheet.columnsJson, []),
       },
       part2Order,
@@ -887,6 +888,7 @@ export function saveAggregateEdits(
           const rows = applyFurnitureDetails(
             parseJson<FurnitureRow[]>(furnitureSheet.rowsJson, []),
             settings,
+            furnitureSheet.kind,
           );
           let furnitureChanged = false;
           const nextRows = rows.map((row) => {
