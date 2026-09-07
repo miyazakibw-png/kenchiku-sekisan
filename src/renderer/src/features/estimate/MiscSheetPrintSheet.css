@@ -1,0 +1,56 @@
+/* 部位別雑・金物入力表の印刷書式。紙の大きさは計算書と同じA3横 */
+.misc-print-sheet .calc-print-page {
+  padding: 0;
+}
+
+.misc-print-sheet table.misc-print {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.misc-print-sheet table.misc-print th,
+.misc-print-sheet table.misc-print td {
+  position: static;
+  border: 1px solid #000;
+  padding: 0 3px;
+  height: 22px;
+  overflow: hidden;
+  white-space: nowrap;
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+  font-weight: normal;
+  text-align: left;
+}
+
+.misc-print-sheet table.misc-print th.head,
+.misc-print-sheet table.misc-print tr.room-head th {
+  background: #e5e7eb;
+  font-weight: 600;
+  text-align: center;
+}
+
+.misc-print-sheet table.misc-print tr.total th {
+  background: #fef9c3;
+  font-weight: 600;
+}
+
+.misc-print-sheet table.misc-print .num {
+  text-align: right;
+}
+
+.misc-print-sheet table.misc-print .part1,
+.misc-print-sheet table.misc-print .part2 {
+  width: 90px;
+}
+
+.misc-print-sheet table.misc-print .part3 {
+  width: 150px;
+}
+
+.misc-print-sheet table.misc-print .multiplier {
+  width: 56px;
+  text-align: right;
+}

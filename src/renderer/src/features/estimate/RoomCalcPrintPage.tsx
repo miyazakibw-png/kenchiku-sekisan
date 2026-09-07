@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import type { EstimateRowDraft, ProjectSummary } from "@shared/types";
+import type {
+  EstimateRowDraft,
+  MasterOptions,
+  ProjectSummary,
+} from "@shared/types";
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
 import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import EstimateCoverSheet from "./EstimateCoverSheet";
+import MiscSheetPrintSheet from "./MiscSheetPrintSheet";
 import "./RoomCalcPrintPage.css";
 
 interface Props {
@@ -13,6 +18,9 @@ interface Props {
   rows: EstimateRowDraft[];
   /** 表紙に出す部位別入力表の全行（一括印刷のときだけ渡す） */
   coverRows?: EstimateRowDraft[] | null;
+  /** いっしょに印刷する部位別雑・金物入力表（計算書のうしろに続けて出す） */
+  miscSheetIds?: number[];
+  options?: MasterOptions | null;
   onBack: () => void;
 }
 
@@ -25,6 +33,8 @@ export default function RoomCalcPrintPage({
   project,
   rows,
   coverRows = null,
+  miscSheetIds = [],
+  options = null,
   onBack,
 }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
@@ -63,7 +73,8 @@ export default function RoomCalcPrintPage({
         </button>
         <h2>計算書 印刷</h2>
         <span className="project">
-          {project.managementNo} {project.name}（{rows.length} 件・A3横）
+          {project.managementNo} {project.name}（
+          {rows.length + miscSheetIds.length} 件・A3横）
         </span>
         <button
           type="button"
@@ -142,6 +153,14 @@ export default function RoomCalcPrintPage({
             />
           );
         })}
+        {miscSheetIds.map((sheetId) => (
+          <MiscSheetPrintSheet
+            key={`misc-${sheetId}`}
+            project={project}
+            sheetId={sheetId}
+            options={options}
+          />
+        ))}
       </div>
     </div>
   );

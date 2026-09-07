@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   EstimateRowDraft,
   MasterOptions,
+  MiscSheetSummary,
   ProjectSummary,
 } from "@shared/types";
 import { formatNumber, resolveInherited, toDrafts } from "./estimateRows";
@@ -33,11 +34,16 @@ export default function CalcPrintLauncher({
   const [picked, setPicked] = useState<number[]>([]);
   const [printRows, setPrintRows] = useState<EstimateRowDraft[] | null>(null);
   const [message, setMessage] = useState("");
+  /** 部位別雑・金物入力表（一覧）と、印刷に選んだ表 */
+  const [miscSheets, setMiscSheets] = useState<MiscSheetSummary[]>([]);
+  const [pickedMisc, setPickedMisc] = useState<number[]>([]);
+  const [printMisc, setPrintMisc] = useState<number[] | null>(null);
 
   useEffect(() => {
     void (async () => {
       setRows(toDrafts(await window.sekisan.listEstimateRows(project.id)));
       setOptions(await window.sekisan.getMasterOptions(project.id));
+      setMiscSheets(await window.sekisan.listMiscSheets(project.id));
     })();
   }, [project.id]);
 
@@ -58,29 +64,43 @@ export default function CalcPrintLauncher({
     );
   }, []);
 
+  const toggleMisc = useCallback((id: number): void => {
+    setPickedMisc((current) =>
+      current.includes(id)
+        ? current.filter((each) => each !== id)
+        : [...current, id],
+    );
+  }, []);
+
   const printPicked = useCallback((): void => {
     const target = sheetRows.filter(
       (row) => row.id !== null && picked.includes(row.id),
     );
-    if (target.length === 0) {
+    if (target.length === 0 && pickedMisc.length === 0) {
       setMessage("印刷する計算書にチェックを付けてください");
       return;
     }
     setPrintRows(target);
-  }, [picked, sheetRows]);
+    setPrintMisc(pickedMisc);
+  }, [picked, pickedMisc, sheetRows]);
 
   if (printRows !== null)
     return (
       <RoomCalcPrintPage
         project={project}
         rows={printRows}
-        onBack={() => setPrintRows(null)}
+        miscSheetIds={printMisc ?? []}
+        options={options}
+        onBack={() => {
+          setPrintRows(null);
+          setPrintMisc(null);
+        }}
       />
     );
 
   if (mode === "all") {
     if (rows.length === 0) return <div className="estimate-page" />;
-    if (sheetRows.length === 0)
+    if (sheetRows.length === 0 && miscSheets.length === 0)
       return (
         <div className="estimate-page">
           <div className="toolbar">
@@ -97,6 +117,8 @@ export default function CalcPrintLauncher({
         project={project}
         rows={sheetRows}
         coverRows={rows}
+        miscSheetIds={miscSheets.map((sheet) => sheet.id)}
+        options={options}
         onBack={onBack}
       />
     );
@@ -114,21 +136,28 @@ export default function CalcPrintLauncher({
         </span>
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
             setPicked(
               sheetRows
                 .map((row) => row.id)
                 .filter((id): id is number => id !== null),
-            )
-          }
+            );
+            setPickedMisc(miscSheets.map((sheet) => sheet.id));
+          }}
         >
           ☑ 全部選ぶ
         </button>
-        <button type="button" onClick={() => setPicked([])}>
+        <button
+          type="button"
+          onClick={() => {
+            setPicked([]);
+            setPickedMisc([]);
+          }}
+        >
           ☐ 全部外す
         </button>
         <button type="button" onClick={printPicked}>
-          🖨 選んだ計算書を印刷（{picked.length}件）
+          🖨 選んだ計算書を印刷（{picked.length + pickedMisc.length}件）
         </button>
         <span className="status">{message}</span>
       </div>
@@ -186,6 +215,24 @@ export default function CalcPrintLauncher({
               </tr>
             );
           })}
+          {miscSheets.map((sheet, index) => (
+            <tr key={`misc-${sheet.id}`}>
+              <td className="pick">
+                <input
+                  type="checkbox"
+                  checked={pickedMisc.includes(sheet.id)}
+                  onChange={() => toggleMisc(sheet.id)}
+                />
+              </td>
+              <td className="no">{rows.length + index + 1}</td>
+              <td />
+              <td />
+              <td>{sheet.name}</td>
+              <td className="num" />
+              <td>部位別雑・金物入力表</td>
+              <td>{sheet.note}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
