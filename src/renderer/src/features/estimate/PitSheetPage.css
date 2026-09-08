@@ -410,3 +410,27 @@
   flex: 1 1 100%;
   color: #7c2d12;
 }
+
+/* ピット間を1本ずつ消す表。行にマウスを置くと図の線が濃くなる */
+.pit-walls table.grid.pit-wall-list {
+  width: auto;
+  font-size: 12px;
+}
+
+.pit-walls table.grid.pit-wall-list tr.hover td {
+  background: #fef9c3;
+}
+
+.pit-walls table.grid.pit-wall-list button {
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.pit-plan g.pit-wall.hover line {
+  filter: drop-shadow(0 0 0.08px #000);
+}
+
+.pit-walls .pit-wall-tables > table.grid.pit-wall-tally {
+  width: auto;
+  flex: 1 1 320px;
+}

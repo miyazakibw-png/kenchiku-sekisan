@@ -44,6 +44,8 @@ import {
   pitSymbol,
   pitVariables,
   PIT_LENGTH_STEPS,
+  pitWallLength,
+  pitWallSizeLabel,
   pitWallTable,
   refitPitWalls,
   pitWallVariables,
@@ -245,6 +247,8 @@ export default function PitSheetPage({
   const [expanded, setExpanded] = useState(false);
   /** ピット間の表で長さをまとめる単位（mm） */
   const [wallStep, setWallStep] = useState<number>(PIT_LENGTH_STEPS[0]);
+  /** マウスを置いているピット間（図と表で同じ本を濃く出す） */
+  const [hoverWallId, setHoverWallId] = useState<string | null>(null);
 
   const plan = useMemo(() => {
     const rects = layoutPits(pits);
@@ -360,7 +364,7 @@ export default function PitSheetPage({
   const changePits = useCallback(
     (update: (current: PitShape[]) => PitShape[]) => {
       planHistory.push(planNow);
-      setPits(update(pits));
+      setPits(update(planNow.pits));
     },
     [planHistory, planNow],
   );
@@ -369,7 +373,7 @@ export default function PitSheetPage({
   const changeBeams = useCallback(
     (update: (current: PitBeam[]) => PitBeam[]) => {
       planHistory.push(planNow);
-      setBeams(update(beams));
+      setBeams(update(planNow.beams));
     },
     [planHistory, planNow],
   );
@@ -381,10 +385,10 @@ export default function PitSheetPage({
   const changeShapes = useCallback(
     (ids: readonly string[], update: (pit: PitShape) => PitShape) => {
       planHistory.push(planNow);
-      const next = pits.map((pit) =>
+      const next = planNow.pits.map((pit) =>
         ids.includes(pit.id) ? update(pit) : pit,
       );
-      setPits(keepPitPlacesByShift(pits, next));
+      setPits(keepPitPlacesByShift(planNow.pits, next));
     },
     [planHistory, planNow],
   );
@@ -736,8 +740,8 @@ export default function PitSheetPage({
   const removePit = useCallback(
     (id: string) => {
       planHistory.push(planNow);
-      setPits(renumber(pits.filter((pit) => pit.id !== id)));
-      setBeams(beams.filter((beam) => beam.pitId !== id));
+      setPits(renumber(planNow.pits.filter((pit) => pit.id !== id)));
+      setBeams(planNow.beams.filter((beam) => beam.pitId !== id));
     },
     [planHistory, planNow],
   );
@@ -812,7 +816,7 @@ export default function PitSheetPage({
   const changeWalls = useCallback(
     (update: (current: PitWall[]) => PitWall[]) => {
       planHistory.push(planNow);
-      setWalls(update(walls));
+      setWalls(update(planNow.walls));
     },
     [planHistory, planNow],
   );
@@ -862,8 +866,8 @@ export default function PitSheetPage({
   const removeWall = useCallback(
     (id: string) => {
       planHistory.push(planNow);
-      setWalls(walls.filter((wall) => wall.id !== id));
-      setSleeves(sleeves.filter((sleeve) => sleeve.wallId !== id));
+      setWalls(planNow.walls.filter((wall) => wall.id !== id));
+      setSleeves(planNow.sleeves.filter((sleeve) => sleeve.wallId !== id));
     },
     [planHistory, planNow],
   );
@@ -1238,26 +1242,44 @@ export default function PitSheetPage({
               ];
             });
           })}
-          {/* ピット間（基礎梁）。幅ごとに色を分けて出す */}
+          {/* ピット間（基礎梁）。幅ごとに色を分けて出す。下の太い透明線はクリックしやすくするため */}
           {walls.map((wall) => (
-            <line
+            <g
               key={wall.id}
-              x1={wall.x1}
-              y1={wall.y1}
-              x2={wall.x2}
-              y2={wall.y2}
-              stroke={wall.color}
-              strokeWidth={wall.width}
-              strokeLinecap="butt"
-              opacity={0.7}
-              className="pit-wall"
+              className={`pit-wall${hoverWallId === wall.id ? " hover" : ""}`}
+              onMouseEnter={() => setHoverWallId(wall.id)}
+              onMouseLeave={() =>
+                setHoverWallId((current) =>
+                  current === wall.id ? null : current,
+                )
+              }
               onClick={(event) => {
                 if (printMode || planMode !== "wall") return;
                 event.stopPropagation();
                 removeWall(wall.id);
-                setMessage("ピット間の印を消しました（Ctrl+Zで戻せます）");
+                setMessage("ピット間の印を消しました（［↶ 戻る］で戻せます）");
               }}
-            />
+            >
+              <line
+                x1={wall.x1}
+                y1={wall.y1}
+                x2={wall.x2}
+                y2={wall.y2}
+                stroke="transparent"
+                strokeWidth={Math.max(wall.width, 0.5)}
+                strokeLinecap="butt"
+              />
+              <line
+                x1={wall.x1}
+                y1={wall.y1}
+                x2={wall.x2}
+                y2={wall.y2}
+                stroke={wall.color}
+                strokeWidth={wall.width}
+                strokeLinecap="butt"
+                opacity={hoverWallId === wall.id ? 1 : 0.7}
+              />
+            </g>
           ))}
           {plan.rects.map((rect) => {
             const pit = pits.find((each) => each.id === rect.id);
@@ -1396,6 +1418,67 @@ export default function PitSheetPage({
             );
           })
         )}
+      </tbody>
+    </table>
+  );
+
+  /** ピット間を１本ずつ（表の行にマウスを置くと図の線が濃くなり、［消す］でその1本だけ消す） */
+  const wallList = (
+    <table className="grid pit-wall-list">
+      <thead>
+        <tr>
+          <th>No</th>
+          <th>種類（線色）</th>
+          <th>太さ</th>
+          <th className="num">長さ(m)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {walls.map((wall, index) => {
+          const kind =
+            sleeveKinds[
+              PIT_MARK_COLORS.findIndex((each) => each.color === wall.color)
+            ];
+          return (
+            <tr
+              key={wall.id}
+              className={hoverWallId === wall.id ? "hover" : ""}
+              onMouseEnter={() => setHoverWallId(wall.id)}
+              onMouseLeave={() =>
+                setHoverWallId((current) =>
+                  current === wall.id ? null : current,
+                )
+              }
+            >
+              <td className="num">{index + 1}</td>
+              <td>
+                <span
+                  className="kind-chip"
+                  style={{ background: wall.color }}
+                />
+                {kind?.name ?? "線色"}
+              </td>
+              <td>{pitWallSizeLabel(wall.width)}</td>
+              <td className="num">{formatNumber(pitWallLength(wall), 2)}</td>
+              <td>
+                <button
+                  type="button"
+                  title="この1本だけ消します（［↶ 戻る］で戻せます）"
+                  onClick={() => {
+                    removeWall(wall.id);
+                    setHoverWallId(null);
+                    setMessage(
+                      `ピット間 No.${index + 1} を消しました（［↶ 戻る］で戻せます）`,
+                    );
+                  }}
+                >
+                  消す
+                </button>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -2491,7 +2574,10 @@ export default function PitSheetPage({
             </label>
           </div>
 
-          {wallTables}
+          <div className="pit-wall-tables">
+            {wallTables}
+            {walls.length > 0 && wallList}
+          </div>
         </section>
       </div>
 
