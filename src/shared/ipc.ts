@@ -70,6 +70,8 @@ export const IPC = {
   breakdownExport: "breakdown:export",
   deductionLimitGet: "settings:deductionLimitGet",
   deductionLimitSave: "settings:deductionLimitSave",
+  roomLowerTemplateGet: "settings:roomLowerTemplateGet",
+  roomLowerTemplateSave: "settings:roomLowerTemplateSave",
   fittingsList: "fittings:list",
   fittingsSave: "fittings:save",
   fittingSourcesList: "fittings:sourcesList",

@@ -91,9 +91,11 @@ import {
 } from "./services/estimateRowService";
 import {
   getDeductionLimit,
+  getRoomLowerTemplate,
   getRoomSheet,
   registerRoomFitting,
   saveDeductionLimit,
+  saveRoomLowerTemplate,
   saveRoomSheet,
 } from "./services/roomSheetService";
 import {
@@ -601,6 +603,12 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
     saveDeductionLimit(getDatabase(), limit),
+  );
+  ipcMain.handle(IPC.roomLowerTemplateGet, () =>
+    getRoomLowerTemplate(getDatabase()),
+  );
+  ipcMain.handle(IPC.roomLowerTemplateSave, (_event, json: string) =>
+    saveRoomLowerTemplate(getDatabase(), json),
   );
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
     listFittings(getDatabase(), projectId),

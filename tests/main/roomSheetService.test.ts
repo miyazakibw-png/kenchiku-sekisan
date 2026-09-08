@@ -11,15 +11,24 @@ import {
 } from "../../src/main/services/projectService";
 import {
   listEstimateRows,
+  listFilledCalcSheets,
   saveEstimateRows,
 } from "../../src/main/services/estimateRowService";
 import {
   getDeductionLimit,
+  getRoomLowerTemplate,
   getRoomSheet,
   registerRoomFitting,
   saveDeductionLimit,
+  saveRoomLowerTemplate,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
+import {
+  commentSet,
+  calcSet,
+  isCommentSet,
+  type CalcSet,
+} from "../../src/core/room/calcSheet";
 import {
   listFittings,
   listFittingSources,
@@ -306,6 +315,76 @@ describe("部屋計算書（上段）", () => {
         name: "",
       },
     ]);
+  });
+
+  it("新しい計算書の下段は初期状態（見出し行＋部位）で始まり、中身のある計算書とは見なさない", () => {
+    const project = createProject(db, "初期状態テスト");
+    const [row] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [roomRow("事務室", 2.6)],
+    });
+    expect(getRoomLowerTemplate(db)).toBeNull();
+
+    const sets = JSON.parse(getRoomSheet(db, row.id).lowerJson) as CalcSet[];
+    const parts = sets.filter((set) => !isCommentSet(set));
+    expect(parts.map((set) => set.partName)).toEqual([
+      "床",
+      "巾木",
+      "壁",
+      "柱型",
+      "梁型",
+      "天井",
+      "その他",
+      "その他",
+    ]);
+    expect(sets.filter(isCommentSet)).toHaveLength(8);
+    // 見出し行は部位のセットの直前に並ぶ
+    expect(isCommentSet(sets[0])).toBe(true);
+    expect(sets[1].partName).toBe("床");
+    expect(sets[1].details).toHaveLength(1);
+    expect(sets[1].details[0].name).toBe("");
+    expect(sets[1].lines[0].formulaA).toBe("");
+    // ID は全部別
+    const ids = sets.flatMap((set) => [
+      set.id,
+      ...set.details.map((d) => d.id),
+      ...set.lines.map((l) => l.id),
+    ]);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // 初期状態のままは「中身のある計算書」には数えない（種類を変えるときの確認が出ない）
+    expect(listFilledCalcSheets(db, project.id)[row.id]).toBeUndefined();
+  });
+
+  it("初期状態を保存すると、次に作る計算書からその並びになる（今ある計算書は変わらない）", () => {
+    const project = createProject(db, "初期状態保存テスト");
+    const [before, after] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [roomRow("先に開く部屋", 2.6), roomRow("後で開く部屋", 2.6)],
+    });
+    const beforeSheet = getRoomSheet(db, before.id);
+
+    const wall = calcSet(1);
+    wall.partName = "壁";
+    saveRoomLowerTemplate(
+      db,
+      JSON.stringify([commentSet("仕上", "#dbeafe"), wall]),
+    );
+
+    const sets = JSON.parse(getRoomSheet(db, after.id).lowerJson) as CalcSet[];
+    expect(sets).toHaveLength(2);
+    expect(sets[0].banner).toEqual({ text: "仕上", color: "#dbeafe" });
+    expect(sets[1].partName).toBe("壁");
+    expect(sets[1].id).not.toBe(wall.id);
+    expect(getRoomSheet(db, before.id).lowerJson).toBe(beforeSheet.lowerJson);
+
+    // 空の初期状態も保存できる（何も入っていない下段で始まる）
+    saveRoomLowerTemplate(db, "[]");
+    const [third] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [roomRow("空で始める部屋", 2.6)],
+    }).filter((r) => r.part3 === "空で始める部屋");
+    expect(getRoomSheet(db, third.id).lowerJson).toBe("[]");
   });
 
   it("取り合いの欠除は設定として保存する（既定0.5m2）", () => {

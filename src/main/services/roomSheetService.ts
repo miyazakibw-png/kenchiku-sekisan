@@ -12,7 +12,13 @@ import type {
   SaveRoomSheetRequest,
 } from "../../shared/types";
 import { DEFAULT_DEDUCTION_LIMIT } from "../../core/room/shape";
+import {
+  lowerFromTemplate,
+  parseLowerTemplate,
+} from "../../core/room/lowerTemplate";
 import { listFittings } from "./fittingService";
+
+const LOWER_TEMPLATE_KEY = "roomLowerTemplate";
 
 const EMPTY_SHAPE = '{"edges":[]}';
 
@@ -58,6 +64,10 @@ export function getRoomSheet(
       projectId: estimateRow.projectId,
       estimateRowId,
       shapeJson: EMPTY_SHAPE,
+      // 新しい計算書の下段は全物件共通の初期状態（見出し行＋部位）で始める
+      lowerJson: JSON.stringify(
+        lowerFromTemplate(parseLowerTemplate(getRoomLowerTemplate(db))),
+      ),
       ceilingHeight: estimateRow.ceilingHeight,
     })
     .returning()
@@ -171,6 +181,27 @@ export function getDeductionLimit(db: AppDatabase): number {
     .get();
   const value = row ? Number(row.valueJson) : Number.NaN;
   return Number.isFinite(value) ? value : DEFAULT_DEDUCTION_LIMIT;
+}
+
+/** 部屋別計算書の下段の初期状態（JSON。未保存なら null） */
+export function getRoomLowerTemplate(db: AppDatabase): string | null {
+  const row = db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, LOWER_TEMPLATE_KEY))
+    .get();
+  return row ? row.valueJson : null;
+}
+
+export function saveRoomLowerTemplate(db: AppDatabase, json: string): string {
+  db.insert(appSettings)
+    .values({ key: LOWER_TEMPLATE_KEY, valueJson: json })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: { valueJson: json },
+    })
+    .run();
+  return json;
 }
 
 export function saveDeductionLimit(db: AppDatabase, limit: number): number {

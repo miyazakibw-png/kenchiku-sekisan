@@ -12,6 +12,8 @@ import type {
   EstimateRow,
   SaveEstimateRowsRequest,
 } from "../../shared/types";
+import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
+import { hasLowerContent } from "../../core/room/lowerTemplate";
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
@@ -94,6 +96,17 @@ export function saveEstimateRows(
   return listEstimateRows(db, projectId);
 }
 
+/** 部屋計算書の下段に中身があるか（初期状態の見出し行＋部位だけなら空と見る） */
+function hasRoomLowerContent(lowerJson: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(lowerJson);
+    if (!Array.isArray(parsed)) return false;
+    return hasLowerContent(normalizeSets(parsed as CalcSet[]));
+  } catch {
+    return false;
+  }
+}
+
 /** 空の計算書（初期値だけ）かどうかを見る。配列は要素数、部屋形状は辺の数で判断する */
 function hasContent(...jsons: string[]): boolean {
   return jsons.some((json) => {
@@ -133,12 +146,8 @@ export function listFilledCalcSheets(
     .all()
     .forEach((sheet) => {
       if (
-        hasContent(
-          sheet.shapeJson,
-          sheet.lowerJson,
-          sheet.ceilingJson,
-          sheet.fittingsJson,
-        )
+        hasContent(sheet.shapeJson, sheet.ceilingJson, sheet.fittingsJson) ||
+        hasRoomLowerContent(sheet.lowerJson)
       ) {
         add(sheet.estimateRowId, "room");
       }

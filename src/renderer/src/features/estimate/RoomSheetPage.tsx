@@ -81,6 +81,7 @@ import {
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
+import { parseLowerTemplate } from "../../../../core/room/lowerTemplate";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import { evaluateFormula } from "../../../../core/formula/evaluate";
@@ -328,6 +329,17 @@ export default function RoomSheetPage({
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [showCheck, setShowCheck] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
+  /** 下段の初期状態（見出し行＋部位の並び。全物件共通）の保存・読み出し */
+  const lowerTemplate = useMemo(
+    () => ({
+      save: async (sets: CalcSet[]): Promise<void> => {
+        await window.sekisan.saveRoomLowerTemplate(JSON.stringify(sets));
+      },
+      load: async (): Promise<CalcSet[]> =>
+        parseLowerTemplate(await window.sekisan.getRoomLowerTemplate()),
+    }),
+    [],
+  );
   /** 建具記号を計算式へ入れるときの、部位ごとの採用値 */
   const [partValues, setPartValues] = useState<FittingPartValue[]>(
     DEFAULT_FITTING_PART_VALUES,
@@ -3274,6 +3286,7 @@ export default function RoomSheetPage({
         result={calcResult}
         onMessage={setMessage}
         windowTitle={`部屋計算書　${project.managementNo} ${roomName || "（部屋名なし）"}`}
+        template={lowerTemplate}
       />
 
       {showTrace && !printMode && (

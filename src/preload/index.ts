@@ -337,6 +337,11 @@ const api = {
     ipcRenderer.invoke(IPC.deductionLimitGet),
   saveDeductionLimit: (limit: number): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitSave, limit),
+  /** 部屋別計算書の下段の初期状態（CalcSet[] のJSON。未保存なら null） */
+  getRoomLowerTemplate: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.roomLowerTemplateGet),
+  saveRoomLowerTemplate: (json: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.roomLowerTemplateSave, json),
   listFittings: (projectId: number): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>
