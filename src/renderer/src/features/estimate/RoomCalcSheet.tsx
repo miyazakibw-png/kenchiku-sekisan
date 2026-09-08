@@ -37,7 +37,7 @@ import {
   type CalcSheetResult,
 } from "../../../../core/room/calcSheet";
 import {
-  isLowerBlank,
+  hasLowerContent,
   lowerFromTemplate,
   lowerTemplateFrom,
 } from "../../../../core/room/lowerTemplate";
@@ -1666,7 +1666,7 @@ export default function RoomCalcSheet({
           <>
             <button
               type="button"
-              title="初期状態（見出し行＋部位の並び。全物件共通）をこの計算書に入れます。下段が空なら置き換え、中身があればいちばん下に足します（ↆ 戻るで戻せます）"
+              title="初期状態（見出し行＋部位の並び。全物件共通）をこの計算書に入れます。明細・計算式がまだ何も入っていなければ置き換え、入っていればいちばん下に足します（ↆ 戻るで戻せます）"
               onClick={() =>
                 void (async () => {
                   const loaded = lowerFromTemplate(await template.load());
@@ -1674,7 +1674,7 @@ export default function RoomCalcSheet({
                     onMessage("初期状態は空です（見出し行と部位を入れて「初期状態として保存」してください）");
                     return;
                   }
-                  if (isLowerBlank(sets)) {
+                  if (!hasLowerContent(sets)) {
                     commit(loaded);
                     onMessage("下段を初期状態にしました（ↆ 戻るで戻せます）");
                   } else {

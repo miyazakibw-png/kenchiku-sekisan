@@ -90,19 +90,6 @@ export function hasLowerContent(sets: readonly CalcSet[]): boolean {
   );
 }
 
-/** 下段が空（見出しも部位も無い）か。空なら初期状態をそのまま入れてよい */
-export function isLowerBlank(sets: readonly CalcSet[]): boolean {
-  return (
-    !hasLowerContent(sets) &&
-    sets.every(
-      (set) =>
-        set.banner == null &&
-        set.partName.trim() === "" &&
-        set.partNumber === null,
-    )
-  );
-}
-
 /** 保存してある初期状態を読む（壊れていれば初めの初期状態） */
 export function parseLowerTemplate(json: string | null | undefined): CalcSet[] {
   if (json == null || json === "") return defaultLowerTemplate();

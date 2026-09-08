@@ -7,7 +7,6 @@ import {
 import {
   defaultLowerTemplate,
   hasLowerContent,
-  isLowerBlank,
   lowerFromTemplate,
   lowerTemplateFrom,
   parseLowerTemplate,
@@ -89,9 +88,8 @@ describe("部屋別計算書 下段の初期状態", () => {
   it("初期状態のままの下段は空扱い（中身なし）、明細や式を入れると中身あり", () => {
     const sets = lowerFromTemplate(defaultLowerTemplate());
     expect(hasLowerContent(sets)).toBe(false);
-    expect(isLowerBlank(sets)).toBe(false); // 部位は入っているので置き換えはしない
-    expect(isLowerBlank([])).toBe(true);
-    expect(isLowerBlank([calcSet(1)])).toBe(true);
+    expect(hasLowerContent([])).toBe(false);
+    expect(hasLowerContent([calcSet(1)])).toBe(false);
 
     const typed = lowerFromTemplate(defaultLowerTemplate());
     typed[1].lines[0].formulaA = "3.6*2.7";
