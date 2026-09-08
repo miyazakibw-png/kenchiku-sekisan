@@ -1108,8 +1108,22 @@ function insideSpans(
 }
 
 /**
- * 梁の区間。壁から壁までを、梁成Hの高い直交する梁で分けて1本ずつにする。
- * 消した本（removed）は外す。
+ * 直交する other が beam を途中で止める（通しになる）か。
+ * 梁成の高い方が通し。同じ梁成なら先に描いた（並びが前の）梁が通し。
+ */
+export function beamCuts(
+  other: PitBeam,
+  beam: PitBeam,
+  beams: readonly PitBeam[],
+): boolean {
+  if (other.height !== beam.height) return other.height > beam.height;
+  const at = (each: PitBeam) => beams.findIndex((b) => b.id === each.id);
+  return at(other) < at(beam);
+}
+
+/**
+ * 梁の区間。壁から壁までを、通しになる直交する梁（梁成の高い梁・同じ梁成なら先に描いた梁）で
+ * 分けて1本ずつにする。消した本（removed）は外す。
  */
 export function beamSegments(
   pit: PitShape,
@@ -1131,7 +1145,7 @@ export function beamSegments(
         other.pitId === beam.pitId &&
         other.id !== beam.id &&
         other.axis !== beam.axis &&
-        other.height > beam.height,
+        beamCuts(other, beam, beams),
     )
     .map((other) => {
       const center = Math.min(Math.max(other.position, 0), 1) * span;

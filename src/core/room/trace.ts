@@ -216,6 +216,33 @@ export function traceFromUnderlay(
 }
 
 /**
+ * なぞりに使った図面・縮尺に、図形欄の下敷きをそろえる。
+ * なぞった形は図面の位置（左上0・その縮尺）で置くので、下敷きが違う図面や縮尺のままだと元図とずれる。
+ * そろえる必要が無ければ null。
+ */
+export function underlayForTrace(
+  trace: RoomTrace,
+  underlay: TraceUnderlay,
+): TraceUnderlay | null {
+  if (trace.image === "" || trace.metersPerPixel <= 0) return null;
+  const same =
+    underlay.image === trace.image &&
+    underlay.metersPerPixel === trace.metersPerPixel &&
+    underlay.x === 0 &&
+    underlay.y === 0 &&
+    underlay.scaled === true;
+  if (same) return null;
+  return {
+    image: trace.image,
+    metersPerPixel: trace.metersPerPixel,
+    x: 0,
+    y: 0,
+    opacity: underlay.image === "" ? EMPTY_UNDERLAY.opacity : underlay.opacity,
+    scaled: true,
+  };
+}
+
+/**
  * 向かい合う2つの角（1点目と3点目）から四角の4点を作る（□なぞり）。
  * 左上から時計回り（右上→右下→左下）の順で返す。2点が同じ横位置・縦位置なら null（四角にならない）。
  */

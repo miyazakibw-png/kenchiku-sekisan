@@ -831,6 +831,60 @@ describe("斜めの壁で梁を切る", () => {
       { index: 1, from: 4, to: 6 },
     ]);
   });
+
+  it("同じ梁成なら先に描いた梁が通しで、後の梁がそこで分かれる", () => {
+    const box = pit("c", { x: 6, y: 4 });
+    const yBeam: PitBeam = {
+      id: "y",
+      pitId: "c",
+      axis: "Y",
+      width: 0.4,
+      height: 0.6,
+      position: 0.5,
+    };
+    const xBeam: PitBeam = {
+      id: "x",
+      pitId: "c",
+      axis: "X",
+      width: 0.3,
+      height: 0.6,
+      position: 0.5,
+    };
+    const list = [yBeam, xBeam];
+    expect(beamSegments(box, yBeam, list)).toEqual([
+      { index: 0, from: 0, to: 4 },
+    ]);
+    expect(beamSegments(box, xBeam, list)).toEqual([
+      { index: 0, from: 0, to: 2.8 },
+      { index: 1, from: 3.2, to: 6 },
+    ]);
+    expect(
+      beamSegments(box, { ...xBeam, removed: [1] }, list),
+    ).toEqual([{ index: 0, from: 0, to: 2.8 }]);
+  });
+
+  it("梁成が高い梁は、後に描いても通しになる", () => {
+    const box = pit("d", { x: 6, y: 4 });
+    const low: PitBeam = {
+      id: "x",
+      pitId: "d",
+      axis: "X",
+      width: 0.3,
+      height: 0.5,
+      position: 0.5,
+    };
+    const high: PitBeam = {
+      id: "y",
+      pitId: "d",
+      axis: "Y",
+      width: 0.4,
+      height: 0.6,
+      position: 0.5,
+    };
+    const list = [low, high];
+    expect(beamSegments(box, high, list)).toHaveLength(1);
+    expect(beamSegments(box, low, list)).toHaveLength(2);
+  });
 });
 
 describe("四角をまとめてそろえる", () => {

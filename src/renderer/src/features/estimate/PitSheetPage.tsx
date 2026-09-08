@@ -72,6 +72,7 @@ import {
   type RoomTrace,
   type TracedShape,
   traceFromUnderlay,
+  underlayForTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
@@ -368,9 +369,18 @@ export default function PitSheetPage({
       setWallStep(loaded.wallStep);
       setLower(sets);
       setNote(loaded.note);
-      setTrace(parseTrace(loaded.traceJson));
+      const loadedTrace = parseTrace(loaded.traceJson);
+      const loadedUnderlay = parseUnderlay(loaded.traceJson);
+      const synced = loadedPits.some((pit) => pit.traceX !== undefined)
+        ? underlayForTrace(loadedTrace, loadedUnderlay)
+        : null;
+      setTrace(loadedTrace);
       setTraced(parseTracedShapes(loaded.traceJson));
-      setUnderlay(parseUnderlay(loaded.traceJson));
+      setUnderlay(synced ?? loadedUnderlay);
+      if (synced)
+        setMessage(
+          "図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いたピットが元の図面に重なります。保存すると残ります）",
+        );
       markSaved({
         pits: loadedPits,
         beams: loadedBeams,
@@ -380,9 +390,9 @@ export default function PitSheetPage({
         wallStep: loaded.wallStep,
         lower: sets,
         note: loaded.note,
-        trace: parseTrace(loaded.traceJson),
+        trace: loadedTrace,
         traced: parseTracedShapes(loaded.traceJson),
-        underlay: parseUnderlay(loaded.traceJson),
+        underlay: loadedUnderlay,
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
@@ -2432,17 +2442,11 @@ export default function PitSheetPage({
           })}
           onApply={(_shape, meters, pixels, perPixel) => {
             applyTrace(meters, pixels);
-            // 図形欄の下敷きをなぞりに使った図面・縮尺にそろえて左上=0に置くと、
-            // 図面の位置（traceX/Y）に置いたピットが元の図面に重なる
-            if (underlay.image === "" || underlay.image === trace.image)
-              setUnderlay({
-                image: trace.image,
-                metersPerPixel: perPixel,
-                x: 0,
-                y: 0,
-                opacity: underlay.image === "" ? 0.75 : underlay.opacity,
-                scaled: true,
-              });
+            const synced = underlayForTrace(
+              { ...trace, metersPerPixel: perPixel },
+              underlay,
+            );
+            if (synced) setUnderlay(synced);
             // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする
             if (picked.length === 1) setPicked([]);
             setMessage(

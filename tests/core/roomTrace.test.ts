@@ -11,6 +11,7 @@ import {
   parseTracedShapes,
   rectFromCorners,
   traceFromUnderlay,
+  underlayForTrace,
   EMPTY_TRACE,
   scaleUnderlay,
   EMPTY_UNDERLAY,
@@ -258,5 +259,50 @@ describe("traceFromUnderlay（図形欄に貼った図面をなぞり画面で�
     expect(scaled?.scaled).toBe(true);
     expect(parseUnderlay(JSON.stringify({ underlay: scaled })).scaled).toBe(true);
     expect(parseUnderlay(JSON.stringify({ underlay })).scaled).toBeUndefined();
+  });
+});
+
+describe("underlayForTrace（下敷きをなぞりに使った図面・縮尺にそろえる）", () => {
+  const trace = { ...EMPTY_TRACE, image: "data:plan", metersPerPixel: 0.02 };
+
+  it("古い縮尺のままの下敷きは、なぞりの図面・縮尺・左上0にそろえて濃さは残す", () => {
+    const got = underlayForTrace(trace, {
+      image: "data:plan",
+      metersPerPixel: 0.05,
+      x: 3,
+      y: 4,
+      opacity: 0.4,
+      scaled: false,
+    });
+    expect(got).toEqual({
+      image: "data:plan",
+      metersPerPixel: 0.02,
+      x: 0,
+      y: 0,
+      opacity: 0.4,
+      scaled: true,
+    });
+  });
+
+  it("下敷きが無ければなぞりの図面を下敷きにする（濃さは既定）", () => {
+    expect(underlayForTrace(trace, EMPTY_UNDERLAY)?.opacity).toBe(
+      EMPTY_UNDERLAY.opacity,
+    );
+  });
+
+  it("すでにそろっていれば null。なぞりの図面・縮尺が無いときも null", () => {
+    const same = {
+      image: "data:plan",
+      metersPerPixel: 0.02,
+      x: 0,
+      y: 0,
+      opacity: 0.75,
+      scaled: true,
+    };
+    expect(underlayForTrace(trace, same)).toBeNull();
+    expect(underlayForTrace(EMPTY_TRACE, same)).toBeNull();
+    expect(
+      underlayForTrace({ ...trace, metersPerPixel: 0 }, EMPTY_UNDERLAY),
+    ).toBeNull();
   });
 });
