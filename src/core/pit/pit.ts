@@ -351,6 +351,52 @@ export function placeTracedPit(
   };
 }
 
+/** 下敷きの図面の置き方（図の座標での左上と、1画素あたりのm） */
+export interface UnderlayPlace {
+  x: number;
+  y: number;
+  metersPerPixel: number;
+}
+
+/**
+ * 下敷きの図面の縮尺・位置が変わったとき、その図面をなぞって作ったピット（traceX/Y を持つもの）を
+ * 図面に付いていかせる。寸法・角・基準からの位置・ずれは縮尺の比で伸び縮みし、
+ * 図面の中の位置は新しい置き方に写す。なぞっていないピットと、縮尺が無いときは変えない。
+ */
+export function followUnderlay(
+  pits: readonly PitShape[],
+  before: UnderlayPlace,
+  after: UnderlayPlace,
+): PitShape[] {
+  if (before.metersPerPixel <= 0 || after.metersPerPixel <= 0) return [...pits];
+  const k = after.metersPerPixel / before.metersPerPixel;
+  const scale = (value: number | undefined) =>
+    value === undefined ? undefined : round4(value * k);
+  return pits.map((pit) => {
+    if (pit.traceX === undefined || pit.traceY === undefined) return pit;
+    return {
+      ...pit,
+      x: round4(pit.x * k),
+      y: round4(pit.y * k),
+      points: pit.points?.map((point) => ({
+        x: round4(point.x * k),
+        y: round4(point.y * k),
+      })),
+      offsetX: scale(pit.offsetX),
+      offsetY: scale(pit.offsetY),
+      shiftX: scale(pit.shiftX),
+      shiftY: scale(pit.shiftY),
+      cutW: scale(pit.cutW),
+      cutD: scale(pit.cutD),
+      cutAt: scale(pit.cutAt),
+      cutX: scale(pit.cutX),
+      cutY: scale(pit.cutY),
+      traceX: round4(after.x + (pit.traceX - before.x) * k),
+      traceY: round4(after.y + (pit.traceY - before.y) * k),
+    };
+  });
+}
+
 /** 選んだ角を上下左右へ動かす（右・下がプラス） */
 export function movePitCorner(
   pit: PitShape,

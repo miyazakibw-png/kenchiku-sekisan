@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EstimateRowDraft,
   Fitting,
@@ -52,6 +52,7 @@ import {
   PIT_WALL_SIZES,
   PIT_MARK_COLORS,
   pitGapLink,
+  followUnderlay,
   type PitAlign,
   type PitAlignSide,
   type PitCorner,
@@ -71,6 +72,8 @@ import {
   parseUnderlay,
   type RoomTrace,
   type TracedShape,
+  type TraceUnderlay,
+  traceAfterUnderlay,
   traceFromUnderlay,
   underlayForTrace,
 } from "../../../../core/room/trace";
@@ -91,12 +94,15 @@ import "./PitSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 
-/** 図（ピット・梁）の戻る／やり直しで持つ中身 */
+/** 図（ピット・梁・下敷きの図面）の戻る／やり直しで持つ中身 */
 interface PlanSnapshot {
   pits: PitShape[];
   beams: PitBeam[];
   walls: PitWall[];
   sleeves: PitSleeve[];
+  underlay: TraceUnderlay;
+  trace: RoomTrace;
+  traced: TracedShape[];
 }
 
 /** セットの部位名（左端の部位。空なら明細の部位名で見る） */
@@ -262,11 +268,76 @@ export default function PitSheetPage({
     };
   }, [beams, pits]);
 
+  /** 図（ピット・梁・下敷き）の戻る／やり直し */
+  const planHistory = useUndoRedo<PlanSnapshot>();
+
+  /** 図面を動かし始めたときのピット（動かしている間はこれを元に置き直す） */
+  const dragPitsRef = useRef<PitShape[]>([]);
+
+  /**
+   * 下敷きを置き替える（貼る・縮尺合わせ・縮尺を戻す・外す）。
+   * 戻る用の履歴に積んでから、なぞったピットを図面と一緒に伸び縮み・移動させ、
+   * なぞりに使う図面・縮尺もそろえる（次に開いたときに元へ戻らないように）。
+   */
+  const commitUnderlay = useCallback(
+    (before: TraceUnderlay, after: TraceUnderlay) => {
+      planHistory.push({
+        pits,
+        beams,
+        walls,
+        sleeves,
+        underlay: before,
+        trace,
+        traced,
+      });
+      if (before.image !== "" && before.image === after.image)
+        setPits(followUnderlay(pits, before, after));
+      const nextTrace = traceAfterUnderlay(trace, after);
+      if (nextTrace !== trace) {
+        setTrace(nextTrace);
+        if (nextTrace.image !== trace.image) setTraced([]);
+      }
+    },
+    [beams, pits, planHistory, sleeves, trace, traced, walls],
+  );
+
+  const dragUnderlayStart = useCallback(
+    (before: TraceUnderlay) => {
+      dragPitsRef.current = pits;
+      planHistory.push({
+        pits,
+        beams,
+        walls,
+        sleeves,
+        underlay: before,
+        trace,
+        traced,
+      });
+    },
+    [beams, pits, planHistory, sleeves, trace, traced, walls],
+  );
+
+  const dragUnderlay = useCallback(
+    (from: TraceUnderlay, to: TraceUnderlay) => {
+      setPits(followUnderlay(dragPitsRef.current, from, to));
+    },
+    [],
+  );
+
   const underlayTool = useUnderlay({
     setMessage,
     planSize: Math.max(plan.width, plan.height),
+    commit: commitUnderlay,
+    dragStart: dragUnderlayStart,
+    drag: dragUnderlay,
   });
   const { underlay, setUnderlay, box: underlayBox } = underlayTool;
+
+  /** 図のいまの状態（戻る／やり直しの履歴に積む形） */
+  const planNow = useMemo<PlanSnapshot>(
+    () => ({ pits, beams, walls, sleeves, underlay, trace, traced }),
+    [beams, pits, sleeves, trace, traced, underlay, walls],
+  );
 
   const { markSaved } = useSaveOnLeave(
     {
@@ -285,25 +356,22 @@ export default function PitSheetPage({
     () => save(),
   );
 
-  /** 図（ピット・梁）の戻る／やり直し */
-  const planHistory = useUndoRedo<PlanSnapshot>();
-
   /** ピットを直す（直す前を図の履歴に積む） */
   const changePits = useCallback(
     (update: (current: PitShape[]) => PitShape[]) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       setPits(update(pits));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
   );
 
   /** 梁を直す（直す前を図の履歴に積む） */
   const changeBeams = useCallback(
     (update: (current: PitBeam[]) => PitBeam[]) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       setBeams(update(beams));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
   );
 
   /**
@@ -312,36 +380,42 @@ export default function PitSheetPage({
    */
   const changeShapes = useCallback(
     (ids: readonly string[], update: (pit: PitShape) => PitShape) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       const next = pits.map((pit) =>
         ids.includes(pit.id) ? update(pit) : pit,
       );
       setPits(keepPitPlacesByShift(pits, next));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
+  );
+
+  const restorePlan = useCallback(
+    (snapshot: PlanSnapshot) => {
+      setPits(snapshot.pits);
+      setBeams(snapshot.beams);
+      setWalls(snapshot.walls);
+      setSleeves(snapshot.sleeves);
+      setUnderlay(snapshot.underlay);
+      setTrace(snapshot.trace);
+      setTraced(snapshot.traced);
+      setCorners([]);
+    },
+    [setUnderlay],
   );
 
   const undoPlan = useCallback(() => {
-    const previous = planHistory.undo({ pits, beams, walls, sleeves });
+    const previous = planHistory.undo(planNow);
     if (!previous) return;
-    setPits(previous.pits);
-    setBeams(previous.beams);
-    setWalls(previous.walls);
-    setSleeves(previous.sleeves);
-    setCorners([]);
+    restorePlan(previous);
     setMessage("図を1つ前に戻しました");
-  }, [beams, pits, planHistory, sleeves, walls]);
+  }, [planHistory, planNow, restorePlan]);
 
   const redoPlan = useCallback(() => {
-    const next = planHistory.redo({ pits, beams, walls, sleeves });
+    const next = planHistory.redo(planNow);
     if (!next) return;
-    setPits(next.pits);
-    setBeams(next.beams);
-    setWalls(next.walls);
-    setSleeves(next.sleeves);
-    setCorners([]);
+    restorePlan(next);
     setMessage("図を1つ進めました");
-  }, [beams, pits, planHistory, sleeves, walls]);
+  }, [planHistory, planNow, restorePlan]);
 
   useEffect(() => {
     if (row.id === null) return;
@@ -580,11 +654,13 @@ export default function PitSheetPage({
     (
       points: { x: number; y: number }[],
       pixels: { x: number; y: number }[],
+      /** 下敷きの図面の左上が図の中で置かれている場所（動かした分。なぞった形もその分だけずらして置く） */
+      shift: { x: number; y: number },
     ) => {
       const target = picked.length === 1 ? picked[0] : null;
       const origin = {
-        x: Math.min(...points.map((point) => point.x)),
-        y: Math.min(...points.map((point) => point.y)),
+        x: Math.min(...points.map((point) => point.x)) + shift.x,
+        y: Math.min(...points.map((point) => point.y)) + shift.y,
       };
       const id =
         target !== null && pits.some((pit) => pit.id === target)
@@ -659,11 +735,11 @@ export default function PitSheetPage({
 
   const removePit = useCallback(
     (id: string) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       setPits(renumber(pits.filter((pit) => pit.id !== id)));
       setBeams(beams.filter((beam) => beam.pitId !== id));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
   );
 
   const editPit = useCallback(
@@ -735,10 +811,10 @@ export default function PitSheetPage({
   /** ピット間（基礎梁）を直す（直す前を図の履歴に積む） */
   const changeWalls = useCallback(
     (update: (current: PitWall[]) => PitWall[]) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       setWalls(update(walls));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
   );
 
   /**
@@ -785,11 +861,11 @@ export default function PitSheetPage({
   /** ピット間を消す（付いている人通口・スリーブも消す） */
   const removeWall = useCallback(
     (id: string) => {
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       setWalls(walls.filter((wall) => wall.id !== id));
       setSleeves(sleeves.filter((sleeve) => sleeve.wallId !== id));
     },
-    [beams, pits, planHistory, sleeves, walls],
+    [planHistory, planNow],
   );
 
   /** 選んだ角（複数可）を上下左右へまとめて動かす（右・下がプラス） */
@@ -1027,7 +1103,7 @@ export default function PitSheetPage({
         setMessage("そろえるピットを「選」で2つ以上選んでください");
         return;
       }
-      planHistory.push({ pits, beams, walls, sleeves });
+      planHistory.push(planNow);
       const next = alignPits(pits, picked, side);
       setPits(keepPitPlaces(pits, next, picked));
       const label =
@@ -1042,7 +1118,7 @@ export default function PitSheetPage({
         `選んだ ${picked.length} つのピットを、はじめのＰの${label}にそろえました`,
       );
     },
-    [beams, picked, pits, planHistory],
+    [picked, pits, planHistory, planNow],
   );
 
   const drawing = (
@@ -2343,6 +2419,57 @@ export default function PitSheetPage({
               </span>
             </div>
           )}
+          {showSleeveKinds && !printMode && (
+            <div className="pit-beam-popup pit-sleeve-kinds-popup">
+              <strong>色の種類名（10色）</strong>
+              <span className="status">
+                名前を打ち替えると、ピット間の「種類（線色）」に出ます
+              </span>
+              <table className="grid pit-sleeve-kinds">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>名前</th>
+                    <th>線の色</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sleeveKinds.map((kind, index) => (
+                    <tr key={kind.id}>
+                      <td className="num">{index + 1}</td>
+                      <td>
+                        <input
+                          lang="ja"
+                          value={kind.name}
+                          onChange={(e) =>
+                            setSleeveKinds((current) =>
+                              current.map((each) =>
+                                each.id === kind.id
+                                  ? { ...each, name: e.target.value }
+                                  : each,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <span
+                          className="kind-chip"
+                          style={{ background: kind.color }}
+                        />
+                        {PIT_MARK_COLORS.find(
+                          (each) => each.color === kind.color,
+                        )?.name ?? ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button type="button" onClick={() => setShowSleeveKinds(false)}>
+                ✕ 閉じる
+              </button>
+            </div>
+          )}
           {drawing}
         </section>
 
@@ -2363,49 +2490,6 @@ export default function PitSheetPage({
               </select>
             </label>
           </div>
-
-          {showSleeveKinds && (
-            <table className="grid pit-sleeve-kinds">
-              <thead>
-                <tr>
-                  <th>No</th>
-                  <th>名前</th>
-                  <th>線の色</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sleeveKinds.map((kind, index) => (
-                  <tr key={kind.id}>
-                    <td className="num">{index + 1}</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        key={`kn-${kind.id}`}
-                        defaultValue={kind.name}
-                        onBlur={(e) =>
-                          setSleeveKinds((current) =>
-                            current.map((each) =>
-                              each.id === kind.id
-                                ? { ...each, name: e.target.value }
-                                : each,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td>
-                      <span
-                        className="kind-chip"
-                        style={{ background: kind.color }}
-                      />
-                      {PIT_MARK_COLORS.find((each) => each.color === kind.color)
-                        ?.name ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
 
           {wallTables}
         </section>
@@ -2441,11 +2525,12 @@ export default function PitSheetPage({
             return pit ? [{ label: pit.symbol, points: shape.points }] : [];
           })}
           onApply={(_shape, meters, pixels, perPixel) => {
-            applyTrace(meters, pixels);
             const synced = underlayForTrace(
               { ...trace, metersPerPixel: perPixel },
               underlay,
             );
+            const placed = synced ?? underlay;
+            applyTrace(meters, pixels, { x: placed.x, y: placed.y });
             if (synced) setUnderlay(synced);
             // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする
             if (picked.length === 1) setPicked([]);

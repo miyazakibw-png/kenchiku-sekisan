@@ -217,8 +217,9 @@ export function traceFromUnderlay(
 
 /**
  * なぞりに使った図面・縮尺に、図形欄の下敷きをそろえる。
- * なぞった形は図面の位置（左上0・その縮尺）で置くので、下敷きが違う図面や縮尺のままだと元図とずれる。
- * そろえる必要が無ければ null。
+ * なぞった形は図面の位置（その縮尺）で置くので、下敷きが違う図面や縮尺のままだと元図とずれる。
+ * 同じ図面・同じ縮尺なら置き場所（動かした分）はそのままにして null。
+ * 違うときは左上0に置き直す（なぞった位置は左上0の図面の中の位置なので）。
  */
 export function underlayForTrace(
   trace: RoomTrace,
@@ -228,8 +229,6 @@ export function underlayForTrace(
   const same =
     underlay.image === trace.image &&
     underlay.metersPerPixel === trace.metersPerPixel &&
-    underlay.x === 0 &&
-    underlay.y === 0 &&
     underlay.scaled === true;
   if (same) return null;
   return {
@@ -240,6 +239,27 @@ export function underlayForTrace(
     opacity: underlay.image === "" ? EMPTY_UNDERLAY.opacity : underlay.opacity,
     scaled: true,
   };
+}
+
+/**
+ * 図形欄の下敷きを置き替えた（貼る・縮尺合わせ・外す）あとの、なぞりに使う図面・縮尺。
+ * 同じ図面の縮尺合わせなら縮尺だけを追いかけ、別の図面を貼ったらその図面から始め、外したら白紙にする。
+ * こうしておくと、次に開いたときの下敷きの同期（underlayForTrace）が下敷きを元へ戻さない。
+ */
+export function traceAfterUnderlay(
+  trace: RoomTrace,
+  after: TraceUnderlay,
+): RoomTrace {
+  if (after.image === "") return trace.image === "" ? trace : { ...EMPTY_TRACE };
+  const perPixel =
+    after.scaled === true && after.metersPerPixel > 0
+      ? after.metersPerPixel
+      : 0;
+  if (after.image === trace.image) {
+    if (perPixel <= 0 || perPixel === trace.metersPerPixel) return trace;
+    return { ...trace, metersPerPixel: perPixel };
+  }
+  return { ...EMPTY_TRACE, image: after.image, metersPerPixel: perPixel };
 }
 
 /**

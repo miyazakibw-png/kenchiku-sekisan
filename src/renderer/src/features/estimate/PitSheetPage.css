@@ -334,8 +334,27 @@
   padding: 0;
 }
 
+/* 色の種類名（10色）を直す窓。「大きく開く」中も図の上に出る */
+.pit-sleeve-kinds-popup {
+  max-width: 360px;
+  max-height: calc(100% - 40px);
+  overflow: auto;
+  background: #fff;
+}
+
+.pit-sleeve-kinds-popup table.grid {
+  flex: 1 1 100%;
+  font-size: 12px;
+}
+
+.pit-sleeve-kinds-popup table.grid input {
+  width: 160px;
+  font-size: 12px;
+}
+
 /* 種類の色の印 */
-.pit-walls .kind-chip {
+.pit-walls .kind-chip,
+.pit-sleeve-kinds-popup .kind-chip {
   display: inline-block;
   width: 10px;
   height: 10px;

@@ -12,6 +12,7 @@ import {
   rectFromCorners,
   traceFromUnderlay,
   underlayForTrace,
+  traceAfterUnderlay,
   EMPTY_TRACE,
   scaleUnderlay,
   EMPTY_UNDERLAY,
@@ -304,5 +305,71 @@ describe("underlayForTrace（下敷きをなぞりに使った図面・縮尺に
     expect(
       underlayForTrace({ ...trace, metersPerPixel: 0 }, EMPTY_UNDERLAY),
     ).toBeNull();
+  });
+});
+
+describe("underlayForTrace（図面を動かした下敷きは戻さない）", () => {
+  const trace = { ...EMPTY_TRACE, image: "data:plan", metersPerPixel: 0.02 };
+
+  it("同じ図面・同じ縮尺で縮尺合わせ済みなら、左上が0でなくても null（動かした位置を保つ）", () => {
+    expect(
+      underlayForTrace(trace, {
+        image: "data:plan",
+        metersPerPixel: 0.02,
+        x: -3,
+        y: 2,
+        opacity: 0.5,
+        scaled: true,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("traceAfterUnderlay（下敷きを置き替えたら、なぞりに使う図面・縮尺もそろえる）", () => {
+  const trace = {
+    ...EMPTY_TRACE,
+    image: "data:plan",
+    metersPerPixel: 0.02,
+    points: [{ x: 1, y: 1 }],
+  };
+
+  it("同じ図面の縮尺合わせなら縮尺だけ変える（なぞり中の点は残す）", () => {
+    const got = traceAfterUnderlay(trace, {
+      image: "data:plan",
+      metersPerPixel: 0.05,
+      x: 0,
+      y: 0,
+      opacity: 0.75,
+      scaled: true,
+    });
+    expect(got.metersPerPixel).toBe(0.05);
+    expect(got.points).toEqual(trace.points);
+  });
+
+  it("同じ図面で縮尺が同じ・縮尺合わせ前なら何も変えない（同じものを返す）", () => {
+    const same = { image: "data:plan", x: 0, y: 0, opacity: 0.75 };
+    expect(
+      traceAfterUnderlay(trace, { ...same, metersPerPixel: 0.02, scaled: true }),
+    ).toBe(trace);
+    expect(
+      traceAfterUnderlay(trace, { ...same, metersPerPixel: 0.09, scaled: false }),
+    ).toBe(trace);
+  });
+
+  it("別の図面を貼ったら、その図面で白紙から（縮尺合わせ前は縮尺0）", () => {
+    const got = traceAfterUnderlay(trace, {
+      image: "data:other",
+      metersPerPixel: 0.01,
+      x: 0,
+      y: 0,
+      opacity: 0.75,
+      scaled: false,
+    });
+    expect(got).toEqual({ ...EMPTY_TRACE, image: "data:other" });
+  });
+
+  it("下敷きを外したら、なぞりの図面も外す。元から無ければそのまま", () => {
+    expect(traceAfterUnderlay(trace, EMPTY_UNDERLAY)).toEqual(EMPTY_TRACE);
+    expect(traceAfterUnderlay(EMPTY_TRACE, EMPTY_UNDERLAY)).toBe(EMPTY_TRACE);
   });
 });

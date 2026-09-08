@@ -58,6 +58,15 @@ interface Options {
   setMessage: (text: string) => void;
   /** 貼った直後の仮の縮尺を決めるための、図のいまの大きさ（m）。0なら10mとみなす */
   planSize: number;
+  /**
+   * 下敷きを置き替える操作（貼る・縮尺合わせ・縮尺を戻す・外す）の直前に呼ぶ。
+   * 計算書側で戻る用の履歴に積み、図形を図面に付いていかせるときに渡す（下敷き自体はこのフックが置き替える）
+   */
+  commit?: (before: TraceUnderlay, after: TraceUnderlay) => void;
+  /** 図面を動かし始めた（戻る用に動かす前を覚える） */
+  dragStart?: (before: TraceUnderlay) => void;
+  /** 図面を動かしている途中（from＝動かし始めの下敷き、to＝いまの下敷き）。図形を一緒に動かすときに渡す */
+  drag?: (from: TraceUnderlay, to: TraceUnderlay) => void;
 }
 
 export interface Underlay {
@@ -88,7 +97,13 @@ export interface Underlay {
   svgClass: string;
 }
 
-export function useUnderlay({ setMessage, planSize }: Options): Underlay {
+export function useUnderlay({
+  setMessage,
+  planSize,
+  commit,
+  dragStart,
+  drag,
+}: Options): Underlay {
   const [underlay, setUnderlay] = useState<TraceUnderlay>(EMPTY_UNDERLAY);
   const [size, setSize] = useState({ width: 1000, height: 700 });
   const [mode, setMode] = useState<UnderlayMode>("off");
@@ -99,9 +114,16 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
   const dragRef = useRef<{
     clientX: number;
     clientY: number;
-    x: number;
-    y: number;
+    from: TraceUnderlay;
   } | null>(null);
+
+  const replace = useCallback(
+    (before: TraceUnderlay, after: TraceUnderlay) => {
+      if (commit) commit(before, after);
+      setUnderlay(after);
+    },
+    [commit],
+  );
 
   useEffect(() => {
     if (underlay.image === "") return;
@@ -126,7 +148,7 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
 
   const putImage = useCallback(
     (dataUrl: string) => {
-      setUnderlay({
+      replace(underlay, {
         image: dataUrl,
         metersPerPixel: Math.max(planSize, 10) / 1000,
         x: 0,
@@ -138,7 +160,7 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
       setMode("scale");
       setMessage(SCALE_HINT);
     },
-    [planSize, setMessage],
+    [planSize, replace, setMessage, underlay],
   );
 
   const pasteImage = useCallback(async () => {
@@ -209,19 +231,23 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
       return;
     }
     setScaleUndo((current) => [...current.slice(-9), underlay]);
-    setUnderlay(scaled);
+    replace(underlay, scaled);
     setScalePoints([]);
     setMode("off");
-    setMessage("縮尺を合わせました（図形はそのままです）");
-  }, [scalePoints, scaleText, setMessage, underlay]);
+    setMessage(
+      commit
+        ? "縮尺を合わせました（なぞったピットも図面に合わせて伸び縮みしています。［↶ 戻る］で元に戻せます）"
+        : "縮尺を合わせました（図形はそのままです）",
+    );
+  }, [commit, replace, scalePoints, scaleText, setMessage, underlay]);
 
   const undoScale = useCallback(() => {
     const last = scaleUndo[scaleUndo.length - 1];
     if (last === undefined) return;
-    setUnderlay(last);
+    replace(underlay, last);
     setScaleUndo(scaleUndo.slice(0, -1));
     setMessage("縮尺合わせを元に戻しました");
-  }, [scaleUndo, setMessage]);
+  }, [replace, scaleUndo, setMessage, underlay]);
 
   const toggleScale = useCallback(() => {
     setScalePoints([]);
@@ -243,12 +269,12 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
 
   const remove = useCallback(async () => {
     if (!(await ask("下敷きの図面を外します。よろしいですか"))) return;
-    setUnderlay(EMPTY_UNDERLAY);
+    replace(underlay, EMPTY_UNDERLAY);
     setMode("off");
     setScalePoints([]);
     setScaleUndo([]);
     setMessage("下敷きの図面を外しました");
-  }, [setMessage]);
+  }, [replace, setMessage, underlay]);
 
   const onSvgClick = useCallback(
     (event: MouseEvent<SVGSVGElement>): boolean => {
@@ -270,26 +296,31 @@ export function useUnderlay({ setMessage, planSize }: Options): Underlay {
       dragRef.current = {
         clientX: event.clientX,
         clientY: event.clientY,
-        x: underlay.x,
-        y: underlay.y,
+        from: underlay,
       };
+      if (dragStart) dragStart(underlay);
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [mode, underlay.x, underlay.y],
+    [dragStart, mode, underlay],
   );
 
-  const onPointerMove = useCallback((event: PointerEvent<SVGSVGElement>) => {
-    const start = dragRef.current;
-    if (start === null) return;
-    const svg = event.currentTarget;
-    const from = svgPoint(svg, start.clientX, start.clientY);
-    const to = svgPoint(svg, event.clientX, event.clientY);
-    setUnderlay((current) => ({
-      ...current,
-      x: start.x + (to.x - from.x),
-      y: start.y + (to.y - from.y),
-    }));
-  }, []);
+  const onPointerMove = useCallback(
+    (event: PointerEvent<SVGSVGElement>) => {
+      const start = dragRef.current;
+      if (start === null) return;
+      const svg = event.currentTarget;
+      const from = svgPoint(svg, start.clientX, start.clientY);
+      const to = svgPoint(svg, event.clientX, event.clientY);
+      const moved: TraceUnderlay = {
+        ...start.from,
+        x: start.from.x + (to.x - from.x),
+        y: start.from.y + (to.y - from.y),
+      };
+      if (drag) drag(start.from, moved);
+      setUnderlay(moved);
+    },
+    [drag],
+  );
 
   const onPointerUp = useCallback((event: PointerEvent<SVGSVGElement>) => {
     if (dragRef.current === null) return;
@@ -410,7 +441,7 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
           <button
             type="button"
             className={u.mode === "move" ? "on" : ""}
-            title="図面をつまんで動かし、図形と位置を合わせます（図形は動きません）"
+            title="図面をつまんで動かします（なぞったピットは図面と一緒に動き、手で入れた図形は動きません）"
             onClick={u.toggleMove}
           >
             ✋ 図面を動かす

@@ -28,6 +28,7 @@ import {
   setPitColumns,
   setPitPoints,
   placeTracedPit,
+  followUnderlay,
   pitTotal,
   pitPartVariables,
   pitSymbol,
@@ -1113,5 +1114,86 @@ describe("placeTracedPit（図面をなぞったピットの置き方）", () =>
     expect(redone.baseId).toBeUndefined();
     expect(redone.traceX).toBe(11);
     expect(p2.baseId).toBe(p1.id);
+  });
+});
+
+describe("followUnderlay（下敷きの縮尺合わせ・移動に、なぞったピットが付いていく）", () => {
+  const traced: PitShape = {
+    id: "p1",
+    symbol: "P1",
+    x: 4,
+    y: 3,
+    depth: 1,
+    direction: "free",
+    gap: DEFAULT_PIT_GAP,
+    points: [
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 4, y: 3 },
+      { x: 0, y: 3 },
+    ],
+    offsetX: 6,
+    offsetY: -2,
+    shiftX: 0.5,
+    shiftY: 0.25,
+    cutW: 1,
+    cutD: 0.5,
+    traceX: 10,
+    traceY: 20,
+  };
+  const manual: PitShape = {
+    id: "p2",
+    symbol: "P2",
+    x: 5,
+    y: 5,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  };
+
+  it("縮尺が2倍になれば寸法・形・置き場所も2倍。手で入れたピットは変えない", () => {
+    const before = { x: 0, y: 0, metersPerPixel: 0.01 };
+    const after = { x: 0, y: 0, metersPerPixel: 0.02 };
+    const [p1, p2] = followUnderlay([traced, manual], before, after);
+    expect(p1.x).toBe(8);
+    expect(p1.y).toBe(6);
+    expect(p1.points?.[2]).toEqual({ x: 8, y: 6 });
+    expect(p1.offsetX).toBe(12);
+    expect(p1.offsetY).toBe(-4);
+    expect(p1.shiftX).toBe(1);
+    expect(p1.shiftY).toBe(0.5);
+    expect(p1.cutW).toBe(2);
+    expect(p1.cutD).toBe(1);
+    expect(p1.traceX).toBe(20);
+    expect(p1.traceY).toBe(40);
+    expect(p2).toBe(manual);
+  });
+
+  it("縮尺合わせで図面の左上が動けば、その動きも含めて置き直す", () => {
+    const before = { x: 0, y: 0, metersPerPixel: 0.01 };
+    const after = { x: -5, y: 3, metersPerPixel: 0.02 };
+    const [p1] = followUnderlay([traced], before, after);
+    expect(p1.traceX).toBe(15);
+    expect(p1.traceY).toBe(43);
+  });
+
+  it("図面を動かすだけなら、寸法はそのままで置き場所だけ同じ量だけ動く", () => {
+    const before = { x: 1, y: 1, metersPerPixel: 0.01 };
+    const after = { x: 3, y: 0.5, metersPerPixel: 0.01 };
+    const [p1] = followUnderlay([traced], before, after);
+    expect(p1.x).toBe(4);
+    expect(p1.points).toEqual(traced.points);
+    expect(p1.offsetX).toBe(6);
+    expect(p1.traceX).toBe(12);
+    expect(p1.traceY).toBe(19.5);
+  });
+
+  it("縮尺が0以下なら何も変えない", () => {
+    const got = followUnderlay(
+      [traced],
+      { x: 0, y: 0, metersPerPixel: 0 },
+      { x: 0, y: 0, metersPerPixel: 0.02 },
+    );
+    expect(got).toEqual([traced]);
   });
 });
