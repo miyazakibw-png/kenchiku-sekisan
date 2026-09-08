@@ -217,6 +217,7 @@ export default function FurnitureSheetListPage({
       <table className="grid misc-list">
         <thead>
           <tr>
+            <th className="ops">操作</th>
             <th className="no">No</th>
             <th className="name">表の名前（部位Ⅲ）</th>
             <th className="name">種類</th>
@@ -226,7 +227,6 @@ export default function FurnitureSheetListPage({
             <th className="count">倍率</th>
             <th className="count">行数</th>
             <th className="note">メモ</th>
-            <th className="ops">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -247,6 +247,20 @@ export default function FurnitureSheetListPage({
                 setSelectedEnd(index);
               }}
             >
+              <td className="ops">
+                <button type="button" onClick={() => onOpen(sheet.id)}>
+                  📂 開く
+                </button>
+                <button type="button" onClick={() => void move(index, -1)}>
+                  ↑
+                </button>
+                <button type="button" onClick={() => void move(index, 1)}>
+                  ↓
+                </button>
+                <button type="button" onClick={() => void remove(sheet)}>
+                  🗑 消す
+                </button>
+              </td>
               <td className="no">{index + 1}</td>
               <td className="name">
                 <input
@@ -339,20 +353,6 @@ export default function FurnitureSheetListPage({
                   }
                   onBlur={() => void save(sheets)}
                 />
-              </td>
-              <td className="ops">
-                <button type="button" onClick={() => onOpen(sheet.id)}>
-                  📂 開く
-                </button>
-                <button type="button" onClick={() => void move(index, -1)}>
-                  ↑
-                </button>
-                <button type="button" onClick={() => void move(index, 1)}>
-                  ↓
-                </button>
-                <button type="button" onClick={() => void remove(sheet)}>
-                  🗑 消す
-                </button>
               </td>
             </tr>
           ))}

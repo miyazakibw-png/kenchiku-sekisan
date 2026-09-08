@@ -12,6 +12,8 @@ import {
   furnitureRow,
   furnitureSettings,
   furnitureSettingsFor,
+  fittingSizeText,
+  hasFittingSymbol,
   hasModel,
   hasShape,
   hasTripleWidth,
@@ -647,6 +649,105 @@ describe("ユニットバス（型番・床面積FA）", () => {
     const main = entries.find((entry) => entry.name === "ユニットバス");
     expect(main?.descriptionLower).toBe("1418");
     expect(main?.descriptionUpper).toBe("1");
+  });
+});
+
+describe("カーテン・ブラインド（建具記号から寸法を呼び出す）", () => {
+  const curtain = furnitureSettingsFor("curtain");
+  const fittings = [
+    { symbol: "AW209", width: 1.72, height: 1 },
+    { symbol: "AW1", width: 0.9, height: null },
+  ];
+
+  function curtainRows() {
+    return [
+      furnitureRow({
+        id: "c1",
+        subjectId: 42,
+        partNumber: 300,
+        detailNumber: 100,
+        part: "2",
+        partAdd: "事務室",
+        nameSymbol: "ブラインド",
+        fittingSymbol: "AW209",
+        quantity: "2",
+        unit: "ヶ所",
+      }),
+      furnitureRow({ id: "c2", partAdd: "会議室", fittingSymbol: "aw1" }),
+      furnitureRow({ id: "c3", nameSymbol: "C", fittingSymbol: "AW9" }),
+    ];
+  }
+
+  it("家具と同じ作りで、W・H・Dの代わりに建具記号。建具へは転記しない", () => {
+    expect(hasFittingSymbol("curtain")).toBe(true);
+    expect(hasTripleWidth("curtain")).toBe(false);
+    expect(hasModel("curtain")).toBe(false);
+    expect(hasShape("curtain")).toBe(false);
+    expect(transfersToFittings("curtain")).toBe(false);
+    expect(hasFittingSymbol("furniture")).toBe(false);
+    expect(curtain.partSuffix).toBe("F");
+    expect(curtain.fittingPrefix).toBe("(");
+    expect(curtain.fittingSeparator).toBe(":");
+    expect(curtain.widthLabel).toBe("W");
+    expect(curtain.heightLabel).toBe("*H");
+    expect(curtain.fittingSuffix).toBe(")部");
+  });
+
+  it("摘要下段は (記号:W幅*H高さ)部 のmm表示。記号は全角・小文字でも照合し、表に無い記号は記号だけ", () => {
+    const rows = applyFurnitureDetails(curtainRows(), curtain, "curtain", fittings);
+    expect(rows[0].detail.descriptionLower).toBe("(AW209:W1720*H1000)部");
+    expect(rows[1].detail.descriptionLower).toBe("(aw1:W900)部");
+    expect(rows[2].detail.descriptionLower).toBe("(AW9)部");
+    expect(
+      fittingSizeText(
+        furnitureRow({ fittingSymbol: "ＡＷ２０９" }),
+        { ...curtain, widthLabel: "", heightLabel: "*" },
+        fittings,
+      ),
+    ).toBe("(ＡＷ２０９:1720*1000)部");
+    expect(fittingSizeText(furnitureRow(), curtain, fittings)).toBe("");
+  });
+
+  it("部位は部位+F+部位Ⅲ、部材名称は空なら上の行と同じ（記号表にあれば文字に変わる）", () => {
+    const rows = applyFurnitureDetails(curtainRows(), curtain, "curtain", fittings);
+    expect(rows[0].detail.partName).toBe("2F事務室");
+    expect(rows[1].detail.partName).toBe("2F会議室");
+    expect(rows[0].detail.name).toBe("ブラインド");
+    expect(rows[1].detail.name).toBe("ブラインド");
+    expect(rows[2].detail.name).toBe("カーテン");
+    expect(resolveFurnitureRows(curtainRows(), "curtain")[1].nameSymbol).toBe(
+      "ブラインド",
+    );
+    // 家具は名称を引き継がない
+    expect(resolveFurnitureRows(curtainRows())[1].nameSymbol).toBe("");
+  });
+
+  it("呼び出したW・Hは計算式・タテ明細で使え、集計にも摘要下段が入る", () => {
+    const rows = curtainRows();
+    rows[0].values = { c1: "W*H" };
+    const entries = entriesFromFurnitureSheet(
+      { sheetId: 1, part1: "A", part2: "", part2Split: false, part3: "カーテン", multiplier: 1 },
+      {
+        rows,
+        settings: curtain,
+        kind: "curtain",
+        columns: [furnitureColumn({ id: "c1", name: "レール", unit: "m2" })],
+        fittings,
+      },
+      new Map(),
+    );
+    const main = entries.find((entry) => entry.name === "ブラインド");
+    expect(main?.descriptionLower).toBe("(AW209:W1720*H1000)部");
+    expect(main?.partName).toBe("2F事務室");
+    expect(main?.quantity).toBe(2);
+    const column = entries.find((entry) => entry.name === "レール");
+    expect(column?.quantity).toBe(3.44);
+    // 建具表を渡さなければ記号だけ（行の入力は書き換えない）
+    expect(
+      applyFurnitureDetails(curtainRows(), curtain, "curtain")[0].detail
+        .descriptionLower,
+    ).toBe("(AW209)部");
+    expect(curtainRows()[0].width).toBe("");
   });
 });
 

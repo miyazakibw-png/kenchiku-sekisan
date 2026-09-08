@@ -40,11 +40,13 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   furnitureSettings,
+  type FittingSize,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
+import { listFittings } from "./fittingService";
 import {
   listProjectBasicMasters,
   listProjectSubjects,
@@ -591,12 +593,22 @@ function miscEntries(
   });
 }
 
+/** 建具表の記号・W・H（カーテン・ブラインドの寸法呼び出し用） */
+function fittingSizes(db: AppDatabase, projectId: number): FittingSize[] {
+  return listFittings(db, projectId).map((fitting) => ({
+    symbol: fitting.symbol,
+    width: fitting.width,
+    height: fitting.height,
+  }));
+}
+
 /** 家具・設備入力表（家具計算書）。部位Ⅰ〜Ⅲの計算書に入れたのと同じ扱いで集計する */
 function furnitureEntries(
   db: AppDatabase,
   projectId: number,
   part2Order: Map<string, number>,
 ): AggregateEntry[] {
+  const fittings = fittingSizes(db, projectId);
   const sheets = db
     .select()
     .from(projectFurnitureSheets)
@@ -628,6 +640,7 @@ function furnitureEntries(
         settings,
         kind: sheet.kind,
         columns: parseJson<FurnitureColumn[]>(sheet.columnsJson, []),
+        fittings,
       },
       part2Order,
     );
@@ -884,6 +897,7 @@ export function saveAggregateEdits(
           .from(projectFurnitureSheets)
           .where(eq(projectFurnitureSheets.projectId, projectId))
           .all();
+        const fittings = fittingSizes(tx, projectId);
         furnitureSheets.forEach((furnitureSheet) => {
           const settings = {
             ...furnitureSettings(),
@@ -896,6 +910,7 @@ export function saveAggregateEdits(
             parseJson<FurnitureRow[]>(furnitureSheet.rowsJson, []),
             settings,
             furnitureSheet.kind,
+            fittings,
           );
           let furnitureChanged = false;
           const nextRows = rows.map((row) => {

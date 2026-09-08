@@ -67,6 +67,10 @@ export interface FurnitureSettings {
   windowSuffix?: string;
   /** ユニットバス用：型番→床面積の計算式の換算表（symbol＝型番・text＝計算式。例：1418→1.5*1.9） */
   floorAreaTable?: FurnitureSymbol[];
+  /** カーテン・ブラインド用：摘要下段「(AW1:W1720*H1000)部」の前の文字・記号と寸法の間の文字・後ろの文字（古い保存には無い） */
+  fittingPrefix?: string;
+  fittingSeparator?: string;
+  fittingSuffix?: string;
 }
 
 /** 右の明細欄（自動で作り、手で直せる） */
@@ -124,6 +128,8 @@ export interface FurnitureRow {
   window?: string;
   /** ユニットバスの床面積の計算式（手入力。空なら型番から自動。古い保存には無い） */
   floorFormula?: string;
+  /** カーテン・ブラインドの建具記号（建具表からW・Hを呼び出す。古い保存には無い） */
+  fittingSymbol?: string;
   /** 数量 */
   quantity: string;
   unit: string;
@@ -134,6 +140,13 @@ export interface FurnitureRow {
   values: Record<string, string>;
 }
 
+/** 建具表の1行のうち、寸法の呼び出しに使う分（W・Hはm） */
+export interface FittingSize {
+  symbol: string;
+  width: number | null;
+  height: number | null;
+}
+
 export interface FurnitureSheetData {
   rows: FurnitureRow[];
   settings: FurnitureSettings;
@@ -141,6 +154,8 @@ export interface FurnitureSheetData {
   kind?: string;
   /** タテ方向の明細（列） */
   columns?: FurnitureColumn[];
+  /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
+  fittings?: FittingSize[];
 }
 
 let sequence = 0;
@@ -191,6 +206,7 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
   { key: "shelf", label: "棚" },
   { key: "hanger", label: "ハンガーパイプ" },
   { key: "bath", label: "ユニットバス" },
+  { key: "curtain", label: "カーテン・ブラインド" },
   { key: "other", label: "その他" },
 ];
 
@@ -198,9 +214,14 @@ export function furnitureKindLabel(kind: string): string {
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** 家具（システム収納）・ユニットバス以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
+/** 家具（システム収納）・ユニットバス・カーテン以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind !== "furniture" && kind !== "bath";
+  return kind !== "furniture" && kind !== "bath" && !hasFittingSymbol(kind);
+}
+
+/** カーテン・ブラインドはW・H・Dの代わりに建具記号を入れ、W・Hは建具表から呼び出す。部材名称は上の行を引き継ぐ */
+export function hasFittingSymbol(kind: string): boolean {
+  return kind === "curtain";
 }
 
 /** ユニットバスはW・Dの代わりに型番、摘要上段は加工手間(梁欠き)・(窓)の2欄、床面積計算（FA）を持つ */
@@ -290,6 +311,13 @@ export const defaultOtherNameSymbols: FurnitureSymbol[] = [
   { symbol: "S", text: "設備" },
 ];
 
+/** カーテン・ブラインドの部材名称の記号の初めの並び */
+export const defaultCurtainNameSymbols: FurnitureSymbol[] = [
+  { symbol: "B", text: "ブラインド" },
+  { symbol: "C", text: "カーテン" },
+  { symbol: "R", text: "ロールスクリーン" },
+];
+
 export function furnitureSettings(
   patch: Partial<FurnitureSettings> = {},
 ): FurnitureSettings {
@@ -358,6 +386,20 @@ export function furnitureSettingsFor(
       shapeSymbols: defaultHangerShapeSymbols.map((item) => ({ ...item })),
       ...patch,
     });
+  if (hasFittingSymbol(kind))
+    return furnitureSettings({
+      partSuffix: "F",
+      addPrefix: "",
+      addSuffix: "",
+      widthLabel: "W",
+      heightLabel: "*H",
+      partSymbols: [],
+      nameSymbols: defaultCurtainNameSymbols.map((item) => ({ ...item })),
+      fittingPrefix: "(",
+      fittingSeparator: ":",
+      fittingSuffix: ")部",
+      ...patch,
+    });
   return furnitureSettings(patch);
 }
 
@@ -403,6 +445,7 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     beam: "",
     window: "",
     floorFormula: "",
+    fittingSymbol: "",
     quantity: "",
     unit: "",
     descriptionUpper: "",
@@ -561,6 +604,8 @@ export interface FurnitureResolved {
   partNumber: number | null;
   detailNumber: number | null;
   part: string;
+  /** 名称（部材名称）。カーテン・ブラインドだけ未入力なら上の行と同じ */
+  nameSymbol: string;
   quantity: string;
   unit: string;
   formula: string;
@@ -570,15 +615,19 @@ export interface FurnitureResolved {
  * 上の行からの引き継ぎ。
  * 科目・部位ID・部位・数量・単位・計算式は未入力なら上の行と同じ、
  * 名称IDは未入力なら上の行＋0.01。
+ * 名称（部材名称）は kind がカーテン・ブラインドのときだけ上の行と同じ。
  */
 export function resolveFurnitureRows(
   rows: FurnitureRow[],
+  kind = "furniture",
 ): FurnitureResolved[] {
+  const carriesName = hasFittingSymbol(kind);
   const carried: FurnitureResolved = {
     subjectId: null,
     partNumber: null,
     detailNumber: null,
     part: "",
+    nameSymbol: "",
     quantity: "",
     unit: "",
     formula: "",
@@ -590,11 +639,50 @@ export function resolveFurnitureRows(
     else if (carried.detailNumber !== null)
       carried.detailNumber = Math.round((carried.detailNumber + 0.01) * 100) / 100;
     if (row.part.trim() !== "") carried.part = row.part;
+    if (!carriesName || row.nameSymbol.trim() !== "")
+      carried.nameSymbol = row.nameSymbol;
     if (row.quantity.trim() !== "") carried.quantity = row.quantity;
     if (row.unit.trim() !== "") carried.unit = row.unit;
     if (row.detail.formula.trim() !== "") carried.formula = row.detail.formula;
     return { ...carried };
   });
+}
+
+/** 建具記号で建具表を探す（全角・半角・大文字・小文字の違いは同じ記号とみなす） */
+export function findFitting(
+  fittings: FittingSize[],
+  symbol: string,
+): FittingSize | null {
+  const key = symbolKey(symbol);
+  if (key === "") return null;
+  return fittings.find((item) => symbolKey(item.symbol) === key) ?? null;
+}
+
+/** m→mmの文字（建具表のW・Hを摘要に出す用。無ければ空） */
+function mmText(value: number | null): string {
+  return value === null ? "" : String(Math.round(value * 1000));
+}
+
+/**
+ * カーテン・ブラインドの摘要下段：設定[(]＋建具記号＋設定[:]＋設定[W]＋建具W(mm)＋設定[*H]＋建具H(mm)＋設定[)部]。
+ * 建具表に無い記号は記号だけ出す。
+ */
+export function fittingSizeText(
+  row: FurnitureRow,
+  settings: FurnitureSettings,
+  fittings: FittingSize[],
+): string {
+  const symbol = (row.fittingSymbol ?? "").trim();
+  if (symbol === "") return "";
+  const found = findFitting(fittings, symbol);
+  const size: string[] = [];
+  if (found?.width !== null && found?.width !== undefined)
+    size.push(`${settings.widthLabel}${mmText(found.width)}`);
+  if (found?.height !== null && found?.height !== undefined)
+    size.push(`${settings.heightLabel}${mmText(found.height)}`);
+  return `${settings.fittingPrefix ?? ""}${symbol}${
+    size.length === 0 ? "" : `${settings.fittingSeparator ?? ""}${size.join("")}`
+  }${settings.fittingSuffix ?? ""}`;
 }
 
 /** 形状（番号入力）を設定の文字にする（ハンガーパイプ。表に無い番号はそのまま。設定に表が無ければ初めの並び） */
@@ -673,8 +761,10 @@ export function sizeText(
   row: FurnitureRow,
   settings: FurnitureSettings,
   kind = "furniture",
+  fittings: FittingSize[] = [],
 ): string {
   if (hasModel(kind)) return (row.model ?? "").trim();
+  if (hasFittingSymbol(kind)) return fittingSizeText(row, settings, fittings);
   const withShape = hasShape(kind);
   const parts: string[] = [];
   const width1 = row.width.trim();
@@ -726,6 +816,7 @@ export function buildDetail(
   resolved: FurnitureResolved,
   settings: FurnitureSettings,
   kind = "furniture",
+  fittings: FittingSize[] = [],
 ): FurnitureDetail {
   const auto: FurnitureDetail = {
     ...row.detail,
@@ -733,11 +824,11 @@ export function buildDetail(
     partNumber: resolved.partNumber,
     detailNumber: resolved.detailNumber,
     partName: partText(row, resolved, settings),
-    name: symbolText(settings.nameSymbols, row.nameSymbol),
+    name: symbolText(settings.nameSymbols, resolved.nameSymbol),
     descriptionUpper: hasModel(kind)
       ? bathUpperText(row, settings)
       : row.descriptionUpper,
-    descriptionLower: sizeText(row, settings, kind),
+    descriptionLower: sizeText(row, settings, kind, fittings),
     floorFormula: hasModel(kind) ? floorFormulaOf(row, settings) : undefined,
     unit: resolved.unit,
     remarksUpper: "",
@@ -799,17 +890,36 @@ export function revertFurnitureDetail(
   return { ...row, detail: { ...row.detail, edited } };
 }
 
-/** 入力欄から明細欄を作り直す */
+/**
+ * 入力欄から明細欄を作り直す。
+ * カーテン・ブラインドは建具記号で建具表から呼び出したW・H（mm）を行のW・Hにも写す（計算式・タテ明細で使えるように）。
+ */
 export function applyFurnitureDetails(
   rows: FurnitureRow[],
   settings: FurnitureSettings,
   kind = "furniture",
+  fittings: FittingSize[] = [],
 ): FurnitureRow[] {
-  const resolved = resolveFurnitureRows(rows);
-  return rows.map((row, index) => ({
-    ...row,
-    detail: buildDetail(row, resolved[index], settings, kind),
-  }));
+  const resolved = resolveFurnitureRows(rows, kind);
+  const withFitting = hasFittingSymbol(kind);
+  return rows.map((row, index) => {
+    const found = withFitting
+      ? findFitting(fittings, row.fittingSymbol ?? "")
+      : null;
+    const sized = withFitting
+      ? {
+          ...row,
+          width: mmText(found?.width ?? null),
+          width2: "",
+          width3: "",
+          height: mmText(found?.height ?? null),
+        }
+      : row;
+    return {
+      ...sized,
+      detail: buildDetail(sized, resolved[index], settings, kind, fittings),
+    };
+  });
 }
 
 /** W1・W2・W3を合わせた幅（mm。どこにも無ければnull） */
@@ -889,8 +999,13 @@ export function entriesFromFurnitureSheet(
   data: FurnitureSheetData,
   part2Order: Map<string, number>,
 ): AggregateEntry[] {
-  const rows = applyFurnitureDetails(data.rows, data.settings, data.kind);
-  const resolved = resolveFurnitureRows(rows);
+  const rows = applyFurnitureDetails(
+    data.rows,
+    data.settings,
+    data.kind,
+    data.fittings ?? [],
+  );
+  const resolved = resolveFurnitureRows(rows, data.kind);
   const multiplier = place.multiplier === 0 ? 1 : place.multiplier;
   const entries: AggregateEntry[] = [];
   rows.forEach((row, index) => {

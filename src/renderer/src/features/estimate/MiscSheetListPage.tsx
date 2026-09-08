@@ -184,12 +184,12 @@ export default function MiscSheetListPage({
       <table className="grid misc-list">
         <thead>
           <tr>
+            <th className="ops">操作</th>
             <th className="no">No</th>
             <th className="name">表の名前</th>
             <th className="count">明細</th>
             <th className="count">部屋</th>
             <th className="note">メモ</th>
-            <th className="ops">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -210,6 +210,20 @@ export default function MiscSheetListPage({
                 setSelectedEnd(index);
               }}
             >
+              <td className="ops">
+                <button type="button" onClick={() => onOpen(sheet.id)}>
+                  📂 開く
+                </button>
+                <button type="button" onClick={() => void move(index, -1)}>
+                  ↑
+                </button>
+                <button type="button" onClick={() => void move(index, 1)}>
+                  ↓
+                </button>
+                <button type="button" onClick={() => void remove(sheet)}>
+                  🗑 消す
+                </button>
+              </td>
               <td className="no">{index + 1}</td>
               <td className="name">
                 <input
@@ -232,20 +246,6 @@ export default function MiscSheetListPage({
                   }
                   onBlur={() => void save(sheets)}
                 />
-              </td>
-              <td className="ops">
-                <button type="button" onClick={() => onOpen(sheet.id)}>
-                  📂 開く
-                </button>
-                <button type="button" onClick={() => void move(index, -1)}>
-                  ↑
-                </button>
-                <button type="button" onClick={() => void move(index, 1)}>
-                  ↓
-                </button>
-                <button type="button" onClick={() => void remove(sheet)}>
-                  🗑 消す
-                </button>
               </td>
             </tr>
           ))}
