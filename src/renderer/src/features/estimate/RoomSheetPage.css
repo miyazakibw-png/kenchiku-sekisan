@@ -772,11 +772,6 @@
   color: #b91c1c;
 }
 
-/* 両側の高さが決まっていて違う境目（段差になる所）は実線 */
-.room-sheet-page .ceiling-line.dropCeiling.solid {
-  stroke-dasharray: none;
-}
-
 /* 両側が同じ高さ（下がり0）の下がり天井の線。天井は分けないので薄く出す */
 .room-sheet-page .ceiling-line.dropCeiling.same {
   stroke: #94a3b8;
