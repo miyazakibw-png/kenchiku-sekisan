@@ -8,6 +8,8 @@ import {
   ceilingRegions,
   ceilingSymbols,
   normalizeCeilingHeights,
+  noteRegionHeight,
+  parseCeilingCodes,
   splitDropCeiling,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
@@ -262,12 +264,14 @@ describe("天井伏図", () => {
     ]);
     expect(both.totals.dropCeilingLength).toBe(7.1);
     expect(both.totals.dropCeilingArea).toBe(4.76);
-    // 区画は梁底の分を除いた両側で別々（面積は範囲の分だけ）
+    // 区画は梁底の分を除いた両側で別々（面積は範囲の分だけ）。
+    // 下がっていない天井も梁底で左右に分かれる（1.55×3.09／5.55×3.09）
     const regions = ceilingRegions([beam, ...parts], solved, 3.77);
     expect(regions.map((region) => [region.drop, region.area])).toEqual([
       [0.67, 1.41],
       [0.67, 5.05],
-      [0, 21.94],
+      [0, 4.79],
+      [0, 17.15],
     ]);
 
     // 片側を消すと、その分だけ線・長さ・面積・区画から無くなる
@@ -287,7 +291,8 @@ describe("天井伏図", () => {
       ]),
     ).toEqual([
       [0.67, 5.05],
-      [0, 23.35],
+      [0, 6.2],
+      [0, 17.15],
     ]);
 
     // 分かれていない下がり天井は分けられない
@@ -517,7 +522,7 @@ describe("天井伏図", () => {
     expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
   });
 
-  it("区画を分けるのは下がり天井の線だけ（壁付き梁型・下がり壁では分けない）", () => {
+  it("梁型の梁底で天井は分かれ、両側が別々の区画になる（梁底そのものは区画にしない）", () => {
     const solved = shape();
     const regions = ceilingRegions(
       [
@@ -532,10 +537,104 @@ describe("天井伏図", () => {
       solved,
       2.7,
     );
-    expect(regions.map((row) => row.code)).toEqual(["C1"]);
-    // 梁型の梁底（壁付き4.00×0.40＋天井付4.00×0.40）は天井の面積から引く
-    expect(regions[0].area).toBeCloseTo(8.8, 6);
-    expect(regions[0].height).toBe(2.7);
+    // 壁付き梁型と天井付梁型の間（4.00×0.60）と、天井付梁型の向こう（4.00×1.60）。
+    // 梁底（壁付き4.00×0.40＋天井付4.00×0.40）は天井ではないので番号は付かない
+    expect(regions.map((row) => [row.code, row.area])).toEqual([
+      ["C1", 2.4],
+      ["C2", 6.4],
+    ]);
+    expect(regions.map((row) => row.height)).toEqual([2.7, 2.7]);
+  });
+
+  it("梁型で分断された天井範囲はそれぞれC記号が付き、別々に天井高さを入れられる", () => {
+    // 8×6の部屋。縦の天井付梁型2本（x 2.4〜2.8・5.2〜5.6）と横の天井付梁型1本（y 2.8〜3.2）
+    // → 天井は 3列×2段＝6つに分かれる（UP図の C1〜C6）
+    const solved = solveShape(rectangleShape(8, 6));
+    const left = solved.edges[3]; // 左壁（x=0）
+    const bottom = solved.edges[0]; // 下壁（y=0）
+    const elements = [
+      element("ceilingBeam", left.id, { offset: 2.4, width: 0.4, height: 0.6 }),
+      element("ceilingBeam", left.id, { offset: 5.2, width: 0.4, height: 0.6 }),
+      element("ceilingBeam", bottom.id, {
+        offset: 2.8,
+        width: 0.4,
+        height: 0.6,
+      }),
+    ];
+    const regions = ceilingRegions(elements, solved, 2.7);
+    expect(regions.map((row) => row.code)).toEqual([
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "C6",
+    ]);
+    // 右側の梁と壁の間（x 5.6〜8）にも区画がある
+    expect(regions.map((row) => row.area)).toEqual([
+      6.72, 6.72, 6.72, 6.72, 6.72, 6.72,
+    ]);
+    expect(regions.every((row) => row.height === 2.7)).toBe(true);
+    // 下がり天井が無いので、高さの入れ先は区画そのもの（覚えた高さ）
+    expect(regions.every((row) => row.elementIds.length === 0)).toBe(true);
+
+    // C6（右下…右上の区画）だけ天井高さを2.4にする
+    const target = regions[5];
+    const heights = noteRegionHeight([], target, 0.3);
+    expect(heights).toEqual([{ at: target.center, drop: 0.3 }]);
+    const noted = ceilingRegions(elements, solved, 2.7, false, false, heights);
+    expect(noted.map((row) => row.height)).toEqual([
+      2.7, 2.7, 2.7, 2.7, 2.7, 2.4,
+    ]);
+    // ほかの区画・梁型の行は変わらない
+    expect(noted.slice(0, 5).map((row) => row.area)).toEqual(
+      regions.slice(0, 5).map((row) => row.area),
+    );
+    // 空（または0）にすると元に戻る
+    expect(noteRegionHeight(heights, noted[5], null)).toEqual([]);
+    expect(noteRegionHeight(heights, noted[5], 0)).toEqual([]);
+    // 別の区画に入れても、その区画の分だけが足される
+    const two = noteRegionHeight(heights, noted[0], 0.2);
+    expect(two).toHaveLength(2);
+    expect(
+      ceilingRegions(elements, solved, 2.7, false, false, two).map(
+        (row) => row.height,
+      ),
+    ).toEqual([2.5, 2.7, 2.7, 2.7, 2.7, 2.4]);
+
+    // 保存形式（ceilingCodesJson）は昔の「移動だけ」の形も読める
+    expect(parseCeilingCodes(JSON.stringify({ moves: {}, heights }))).toEqual(
+      { moves: {}, heights },
+    );
+    expect(parseCeilingCodes(JSON.stringify({ a: { x: 1, y: 2 } }))).toEqual({
+      moves: { a: { x: 1, y: 2 } },
+      heights: [],
+    });
+    expect(parseCeilingCodes("x")).toEqual({ moves: {}, heights: [] });
+  });
+
+  it("下がり天井より高い（Ｈが浅い）梁型は下がり天井の区画を分けない", () => {
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.6,
+    });
+    const shallow = element("wallBeam", solved.edges[1].id, {
+      width: 0.5,
+      height: 0.3,
+    });
+    const regions = ceilingRegions([drop, shallow], solved, 2.7);
+    // 下がり天井（壁から壁まで4.00×1.00）と、残りの天井（梁底3.50×0.50を除く）
+    expect(regions.map((row) => [row.code, row.drop, row.area])).toEqual([
+      ["C1", 0.6, 4],
+      ["C2", 0, 7],
+    ]);
+    // 下がり天井の線は、梁底（2.40）との段差0.30の所も含めて壁まで
+    const boundaries = ceilingBoundaries([drop, shallow], solved, 2.7);
+    expect(boundaries.map((row) => [row.length, row.step])).toEqual([
+      [3.5, 0.6],
+      [0.5, 0.3],
+    ]);
   });
 
   it("L型でも下がり天井の線で区画を2つに分ける", () => {

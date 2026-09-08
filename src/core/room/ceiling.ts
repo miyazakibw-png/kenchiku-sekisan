@@ -75,6 +75,81 @@ export interface CeilingRange {
   to: number;
 }
 
+/**
+ * 下がり天井が無い区画（梁型で分かれた天井など）に手で入れた天井高さ。
+ * 区画の番号は線を足すと変わるので、その区画の中の点で覚える
+ */
+export interface CeilingRegionHeight {
+  /** その区画の中の点（入れたときの番号の位置） */
+  at: CeilingPoint;
+  /** 部屋の天井高さからの下がり */
+  drop: number;
+}
+
+/** 天井伏図のC番号に関する保存内容（ceilingCodesJson） */
+export interface CeilingCodes {
+  /** C番号を手で動かした位置（番号→ずらし量） */
+  moves: Record<string, CeilingPoint>;
+  /** 下がり天井が無い区画に入れた天井高さ */
+  heights: CeilingRegionHeight[];
+}
+
+function isPoint(value: unknown): value is CeilingPoint {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { x?: unknown }).x === "number" &&
+    typeof (value as { y?: unknown }).y === "number"
+  );
+}
+
+/**
+ * ceilingCodesJson を読む。古い形（番号→ずらし量だけ）もそのまま読める。
+ * 壊れていれば空
+ */
+export function parseCeilingCodes(json: string): CeilingCodes {
+  const empty: CeilingCodes = { moves: {}, heights: [] };
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return empty;
+    const record = parsed as Record<string, unknown>;
+    if ("moves" in record || "heights" in record) {
+      const moves = record.moves;
+      const heights = record.heights;
+      return {
+        moves:
+          typeof moves === "object" && moves !== null && !Array.isArray(moves)
+            ? Object.fromEntries(
+                Object.entries(moves as Record<string, unknown>).filter(
+                  (entry): entry is [string, CeilingPoint] => isPoint(entry[1]),
+                ),
+              )
+            : {},
+        heights: Array.isArray(heights)
+          ? heights.filter(
+              (row): row is CeilingRegionHeight =>
+                typeof row === "object" &&
+                row !== null &&
+                isPoint((row as { at?: unknown }).at) &&
+                typeof (row as { drop?: unknown }).drop === "number",
+            )
+          : [],
+      };
+    }
+    return {
+      moves: Object.fromEntries(
+        Object.entries(record).filter(
+          (entry): entry is [string, CeilingPoint] => isPoint(entry[1]),
+        ),
+      ),
+      heights: [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
 /** その点の、沿う辺の始まりの角から壁の向きに測った位置 */
 export function alongWall(
   points: CeilingPoint[],
@@ -727,6 +802,83 @@ export interface CeilingRegion {
   boundaryIds: string[];
 }
 
+/**
+ * 下がり天井の無い区画（梁型で分かれた天井など）の天井高さを覚える。
+ * その区画の中に前から覚えていた高さがあれば置き換え、空・下がり0なら消す（部屋の天井高さに戻る）
+ */
+export function noteRegionHeight(
+  heights: CeilingRegionHeight[],
+  region: CeilingRegion,
+  drop: number | null,
+): CeilingRegionHeight[] {
+  const rest = heights.filter(
+    (row) => !region.parts.some((part) => inside(part, row.at)),
+  );
+  return drop === null || Math.abs(drop) < 1e-6
+    ? rest
+    : [...rest, { at: region.center, drop: round2(drop) }];
+}
+
+/** 梁型（壁付き・天井付）が天井から取っている梁底の帯（見えている所だけ） */
+interface BeamBand {
+  element: CeilingElement;
+  index: number;
+  /** 沿う辺からの離れの範囲 */
+  from: number;
+  to: number;
+  /** 見えている線（区画を切る線）と、その沿う辺の向きの範囲 */
+  lines: { line: CeilingSegment; along: CeilingRange }[];
+}
+
+/**
+ * 梁型の梁底の帯。天井は梁型で分かれるので、区画もここで切る。
+ * 線は下がり天井などで止まった所まで（見えていない所は切らない）
+ */
+function beamBands(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+): BeamBand[] {
+  const points = solved.points;
+  const lines = ceilingLines(elements, solved, roomCeilingHeight);
+  return elements.flatMap((element) => {
+    if (element.kind !== "wallBeam" && element.kind !== "ceilingBeam")
+      return [];
+    const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+    if (index < 0) return [];
+    const [from, to] = barrierSpan(element);
+    if (to - from < 1e-6) return [];
+    const own = lines
+      .filter((line) => line.elementId === element.id)
+      .map((line) => {
+        const [start, end] = [
+          alongWall(points, index, line.a),
+          alongWall(points, index, line.b),
+        ].sort((left, right) => left - right);
+        return { line, along: { from: start, to: end } };
+      });
+    if (own.length === 0) return [];
+    return [{ element, index, from, to, lines: own }];
+  });
+}
+
+/** その点が梁底の帯の中（見えている所）か */
+function insideBand(
+  points: CeilingPoint[],
+  band: BeamBand,
+  target: CeilingPoint,
+): boolean {
+  const from = points[band.index];
+  const normal = inwardNormal(points, band.index);
+  const distance =
+    (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
+  if (distance <= band.from + 1e-6 || distance >= band.to - 1e-6) return false;
+  const along = alongWall(points, band.index, target);
+  return band.lines.some(
+    (row) => along > row.along.from - 1e-6 && along < row.along.to + 1e-6,
+  );
+}
+
 /** その点が多角形のどの辺のどこに乗っているか（乗っていなければnull） */
 function boundaryAt(
   poly: CeilingPoint[],
@@ -934,10 +1086,11 @@ export function beamFootprintArea(
 }
 
 /**
- * 天井を、下がり天井の線で区切った区画に分けて番号（C1・C2…）を振る。
- * 区切りに使うのは下がり天井の線だけ（梁型・下がり壁は天井の高さを分けないので使わない）。
+ * 天井を、下がり天井の線と梁型の梁底で区切った区画に分けて番号（C1・C2…）を振る。
+ * 梁型で分断された天井は別々の区画（梁底そのものは天井ではないので区画にしない）。
  * 天井高さが同じで隣り合う区画（コ型・L型の下がり天井）は1つにまとめ、番号も1つ。
  * 番号は区画の中（一番ふところの広いところ）に出す。並びは左上から。
+ * 下がり天井の無い区画の高さは heights（区画の中の点で覚えた天井高さ）から取る
  */
 export function ceilingRegions(
   elements: CeilingElement[],
@@ -947,7 +1100,32 @@ export function ceilingRegions(
   mergeSameHeight = false,
   /** まとめずに、線で区切られた範囲すべてに番号を出すか（拡大して高さを入れるとき） */
   splitAll = false,
+  heights: CeilingRegionHeight[] = [],
 ): CeilingRegion[] {
+  return regionPieces(
+    elements,
+    solved,
+    roomCeilingHeight,
+    mergeSameHeight,
+    splitAll,
+    heights,
+  )
+    .filter((row) => !row.beam)
+    .map(({ beam: _beam, ...row }, no) => ({ code: `C${no + 1}`, ...row }));
+}
+
+/**
+ * 区画と梁底（beam）をまとめて出す。梁底の高さは梁底の高さ（部屋の天井高さ－梁の深さ）。
+ * 下がり天井と梁底の境目の段差を見るときに使う
+ */
+function regionPieces(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+  mergeSameHeight: boolean,
+  splitAll: boolean,
+  heights: CeilingRegionHeight[],
+): (Omit<CeilingRegion, "code"> & { beam: boolean })[] {
   const points = solved.points;
   if (points.length < 3) return [];
 
@@ -1003,37 +1181,71 @@ export function ceilingRegions(
     );
   });
 
-  // 梁型（壁付き・天井付）が取る梁底は、その区画の天井面積から引く
+  // 梁型の梁底で天井は分かれるので、見えている梁の線でも区切る（梁底の帯は天井ではない）
+  const bands = beamBands(elements, solved, roomCeilingHeight);
+  bands.forEach((band) => {
+    band.lines.forEach((row) => {
+      polygons = polygons.flatMap((poly) => cutPolygon(poly, row.line));
+    });
+  });
+
+  // 梁型（壁付き・天井付）が取る梁底が区画の中に残っていれば、その区画の天井面積から引く
   const beams = beamFootprints(elements, solved, roomCeilingHeight);
 
   const pieces = polygons.map((poly) => {
     const center = polygonCenter(poly);
+    const found = dropAt(elements, solved, roomCeilingHeight, center);
+    // 梁底が天井を取るのは、梁底がその所の天井より低いときだけ
+    // （下がり天井より高い梁型は下がり天井の中では見えない）
+    const band =
+      bands.find((row) => {
+        if (!insideBand(points, row, center)) return false;
+        const depth = elementDrop(row.element, roomCeilingHeight);
+        return depth === null || depth > found.drop + 1e-6;
+      }) ?? null;
+    const beam = band !== null;
     // その区画のふちになっている下がり天井（下がっていない側でも高さを入れられるように）
     const boundaryIds = lines
       .filter((row) => onBoundary(poly, row.line))
       .map((row) => row.element.id);
-    const found = dropAt(elements, solved, roomCeilingHeight, center);
-    const beamArea = beams
-      .filter((beam) => inside(poly, beam.center))
-      .reduce((sum, beam) => sum + beam.area, 0);
+    // 下がり天井の無い区画は、区画の中の点で覚えた天井高さ
+    const noted =
+      !beam && found.elementIds.length === 0 && found.waiting === ""
+        ? (heights.find((row) => inside(poly, row.at)) ?? null)
+        : null;
+    const beamArea = beam
+      ? 0
+      : beams
+          .filter((row) => inside(poly, row.center))
+          .reduce((sum, row) => sum + row.area, 0);
+    // 梁底の高さは梁の深さ（梁底と下がり天井の境目の段差に使う。Ｈが空なら未定）
+    const beamDepth =
+      band === null ? null : elementDrop(band.element, roomCeilingHeight);
     return {
       poly,
       center,
       area: Math.max(0, polygonArea(poly) - beamArea),
-      drop: found.drop,
-      waiting: found.waiting,
-      elementIds: found.elementIds,
+      drop: beam
+        ? (beamDepth ?? 0)
+        : noted === null
+          ? found.drop
+          : round2(noted.drop),
+      waiting: beam ? (beamDepth === null ? band.element.id : "") : found.waiting,
+      elementIds: beam ? [] : found.elementIds,
       boundaryIds,
+      beam,
     };
   });
 
   // 天井高さが同じ区画をまとめる。
   // 「同じ高さをまとめる」を入れていないときは、隣り合っている所だけまとめる（離れた所は別番号）。
   // Ｈ高さがまだ空の下がり天井のところは、高さが決まるまで別の区画にしておく（線も残す）。
+  // 梁底は天井の区画とはまとめない
   const merged = new Map<string, typeof pieces>();
   pieces.forEach((piece) => {
-    const key =
-      piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`;
+    const key = `${piece.beam ? "b" : ""}${
+      piece.waiting === "" ? `d${round2(piece.drop)}` : `w${piece.waiting}`
+    }`;
     merged.set(key, [...(merged.get(key) ?? []), piece]);
   });
   const groups = splitAll
@@ -1066,17 +1278,17 @@ export function ceilingRegions(
         elementIds: widest.elementIds,
         boundaryIds: [...new Set(rows.flatMap((row) => row.boundaryIds))],
         height:
-          roomCeilingHeight === null
+          roomCeilingHeight === null || widest.waiting !== ""
             ? null
             : round2(roomCeilingHeight - widest.drop),
+        beam: widest.beam,
       };
     })
     .sort((left, right) =>
       Math.abs(left.center.y - right.center.y) > 1e-6
         ? left.center.y - right.center.y
         : left.center.x - right.center.x,
-    )
-    .map((row, no) => ({ code: `C${no + 1}`, ...row }));
+    );
 }
 
 /** 天井の区画どうしの境目に引く線 */
@@ -1100,15 +1312,28 @@ export function ceilingBoundaries(
   solved: SolvedShape,
   roomCeilingHeight: number | null,
   mergeSameHeight = false,
+  heights: CeilingRegionHeight[] = [],
 ): CeilingBoundary[] {
   const points = solved.points;
   if (points.length < 3) return [];
 
-  const regions = ceilingRegions(
+  // 梁底も入れて見る（下がり天井とそれより高い梁底の境目も段差になる）
+  const pieces = regionPieces(
     elements,
     solved,
     roomCeilingHeight,
     mergeSameHeight,
+    false,
+    heights,
+  );
+  let count = 0;
+  const regions = pieces.map((row) => {
+    if (!row.beam) count += 1;
+    return { ...row, code: row.beam ? "" : `C${count}` };
+  });
+  // 区画は梁底の帯でも分かれているので、梁の線と交わるところでも区切る
+  const beamLines = beamBands(elements, solved, roomCeilingHeight).flatMap(
+    (band) => band.lines.map((row) => row.line),
   );
   const lines = elements
     .filter((element) => element.kind === "dropCeiling")
@@ -1125,7 +1350,7 @@ export function ceilingBoundaries(
         row.line !== null,
     );
 
-  const regionAt = (at: CeilingPoint): CeilingRegion | null =>
+  const regionAt = (at: CeilingPoint): (typeof regions)[number] | null =>
     regions.find((region) => region.parts.some((part) => inside(part, at))) ??
     null;
 
@@ -1160,6 +1385,7 @@ export function ceilingBoundaries(
       if (other.element.id === element.id) return;
       crossAt(other.line.a, other.line.b);
     });
+    beamLines.forEach((other) => crossAt(other.a, other.b));
     cuts.sort((left, right) => left - right);
 
     const at = (t: number): CeilingPoint => ({
@@ -1180,7 +1406,7 @@ export function ceilingBoundaries(
         x: middle.x - normal.x * step,
         y: middle.y - normal.y * step,
       });
-      if (one === null || other === null || one.code === other.code) continue;
+      if (one === null || other === null || one === other) continue;
       const stepHeight =
         one.height === null || other.height === null
           ? null
@@ -1515,6 +1741,8 @@ export function ceilingQuantities(
   elements: CeilingElement[],
   solved: SolvedShape,
   roomCeilingHeight: number | null,
+  /** 下がり天井の無い区画に入れた天井高さ（区画の高さの差を見るときに使う） */
+  heights: CeilingRegionHeight[] = [],
 ): CeilingQuantities {
   const totals: CeilingTotals = {
     wallBeamLength: 0,
@@ -1532,7 +1760,7 @@ export function ceilingQuantities(
   const lines = ceilingLines(elements, solved, roomCeilingHeight);
   const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
   // 下がり天井は、段差になっている所の長さと、その見付面積（長さ×段差）で数える
-  const spans = dropCeilingSpans(elements, solved, roomCeilingHeight);
+  const spans = dropCeilingSpans(elements, solved, roomCeilingHeight, heights);
 
   const items = elements.map((element) => {
     // 壁や自分より低い線で止めた（梁をまたいで分かれていれば合わせた）実際の長さ
@@ -1771,6 +1999,7 @@ export function dropCeilingSpans(
   elements: CeilingElement[],
   solved: SolvedShape,
   roomCeilingHeight: number | null,
+  heights: CeilingRegionHeight[] = [],
 ): Map<string, CeilingSpan> {
   // 梁型・下がり壁のところでは止める（梁底の分は抜き、またいでいれば両側を数える）が、
   // ほかの下がり天井では切らない。自分より低い線で切られた先にも、高さが違う所（段差）は残るため
@@ -1797,7 +2026,13 @@ export function dropCeilingSpans(
     });
 
   const spans = new Map<string, CeilingSpan>();
-  ceilingBoundaries(elements, solved, roomCeilingHeight).forEach((edge) => {
+  ceilingBoundaries(
+    elements,
+    solved,
+    roomCeilingHeight,
+    false,
+    heights,
+  ).forEach((edge) => {
     const length = drawn
       .filter((line) => line.elementId === edge.elementId)
       .reduce((sum, line) => sum + overlapLength(line, edge), 0);

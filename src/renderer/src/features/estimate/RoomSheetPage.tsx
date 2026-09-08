@@ -71,10 +71,12 @@ import {
   cutByBeams,
   ceilingRegions,
   normalizeCeilingHeights,
+  noteRegionHeight,
+  parseCeilingCodes,
   splitDropCeiling,
+  type CeilingCodes,
   type CeilingElement,
   type CeilingElementKind,
-  type CeilingPoint,
   type CeilingRegion,
 } from "../../../../core/room/ceiling";
 import {
@@ -197,22 +199,6 @@ function parseCeiling(
   }
 }
 
-/** C番号を手で動かした位置（番号→ずらし量） */
-type CeilingCodeMove = Record<string, CeilingPoint>;
-
-function parseCeilingCodes(json: string): CeilingCodeMove {
-  try {
-    const parsed = JSON.parse(json) as CeilingCodeMove;
-    return parsed !== null &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed)
-      ? parsed
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 function parseLower(json: string): CalcSet[] {
   try {
     const parsed = JSON.parse(json) as CalcSet[];
@@ -304,8 +290,8 @@ export default function RoomSheetPage({
     sill: "",
   });
   const [ceiling, setCeiling] = useState<CeilingElement[]>([]);
-  /** C番号をつかんで動かした位置（番号→ずらし量） */
-  const [codeMoves, setCodeMoves] = useState<CeilingCodeMove>({});
+  /** C番号を手で動かした位置と、下がり天井の無い区画に入れた天井高さ */
+  const [codes, setCodes] = useState<CeilingCodes>({ moves: {}, heights: [] });
   /** C番号をつかんでいる間の持ち手（番号と、つかんだ時の位置） */
   const codeDragRef = useRef<{
     code: string;
@@ -408,7 +394,7 @@ export default function RoomSheetPage({
       shape,
       roomFittings,
       ceiling,
-      codeMoves,
+      codes,
       lower,
       ceilingHeight,
       trace,
@@ -434,7 +420,7 @@ export default function RoomSheetPage({
       setShapeFuture([]);
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson, height));
-      setCodeMoves(parseCeilingCodes(loaded.ceilingCodesJson));
+      setCodes(parseCeilingCodes(loaded.ceilingCodesJson));
       setLower(parseLower(loaded.lowerJson));
       setTrace(parseTrace(loaded.traceJson));
       setUnderlay(parseUnderlay(loaded.traceJson));
@@ -444,7 +430,7 @@ export default function RoomSheetPage({
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
-        codeMoves: parseCeilingCodes(loaded.ceilingCodesJson),
+        codes: parseCeilingCodes(loaded.ceilingCodesJson),
         lower: parseLower(loaded.lowerJson),
         // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
         ceilingHeight: loaded.ceilingHeight,
@@ -542,8 +528,8 @@ export default function RoomSheetPage({
   );
 
   const ceilingResult = useMemo(
-    () => ceilingQuantities(ceiling, solved, ceilingHeight),
-    [ceiling, solved, ceilingHeight],
+    () => ceilingQuantities(ceiling, solved, ceilingHeight, codes.heights),
+    [ceiling, codes.heights, solved, ceilingHeight],
   );
   // 梁型・下がり壁で何本にも分かれている下がり天井（別々の行に分けられる）
   const splitCeiling = useMemo(
@@ -643,6 +629,7 @@ export default function RoomSheetPage({
             solved,
             ceilingHeight,
             mergeCeiling,
+            codes.heights,
           ).flatMap((edge) => {
             const element = ceiling.find((row) => row.id === edge.elementId);
             if (element === undefined) return [];
@@ -721,8 +708,9 @@ export default function RoomSheetPage({
             ceilingHeight,
             mergeCeiling,
             editCeiling,
+            codes.heights,
           ),
-    [ceiling, ceilingHeight, editCeiling, mergeCeiling, solved],
+    [ceiling, ceilingHeight, codes.heights, editCeiling, mergeCeiling, solved],
   );
 
   /** 壁の辺だけ（建具の取付先の選択肢） */
@@ -741,7 +729,7 @@ export default function RoomSheetPage({
       shape,
       roomFittings,
       ceiling,
-      codeMoves,
+      codes,
       lower: trimmed,
       ceilingHeight,
       trace,
@@ -751,7 +739,7 @@ export default function RoomSheetPage({
       shapeJson: JSON.stringify(shape),
       fittingsJson: JSON.stringify(roomFittings),
       ceilingJson: JSON.stringify(ceiling),
-      ceilingCodesJson: JSON.stringify(codeMoves),
+      ceilingCodesJson: JSON.stringify(codes),
       lowerJson: JSON.stringify(trimmed),
       traceJson: JSON.stringify({ ...trace, underlay }),
       ceilingHeight,
@@ -762,7 +750,7 @@ export default function RoomSheetPage({
   }, [
     ceiling,
     ceilingHeight,
-    codeMoves,
+    codes,
     lower,
     markSaved,
     printMode,
@@ -782,7 +770,7 @@ export default function RoomSheetPage({
   /** C番号をつかんで好きな位置へ動かす */
   const startCodeDrag = useCallback(
     (code: string, event: ReactPointerEvent<SVGTextElement>): void => {
-      const base = codeMoves[code] ?? { x: 0, y: 0 };
+      const base = codes.moves[code] ?? { x: 0, y: 0 };
       codeDragRef.current = {
         code,
         fromX: event.clientX,
@@ -793,7 +781,7 @@ export default function RoomSheetPage({
       event.currentTarget.setPointerCapture(event.pointerId);
       event.stopPropagation();
     },
-    [codeMoves],
+    [codes.moves],
   );
 
   const moveCodeDrag = useCallback(
@@ -804,7 +792,10 @@ export default function RoomSheetPage({
         x: drag.baseX + (event.clientX - drag.fromX) * perPixel,
         y: drag.baseY + (event.clientY - drag.fromY) * perPixel,
       };
-      setCodeMoves((current) => ({ ...current, [drag.code]: moved }));
+      setCodes((current) => ({
+        ...current,
+        moves: { ...current.moves, [drag.code]: moved },
+      }));
     },
     [perPixel],
   );
@@ -824,15 +815,22 @@ export default function RoomSheetPage({
   /**
    * 区画一覧で入れた下がりを、その区画を下げている下がり天井の行へ入れる。
    * まだ下がっていない側の区画に入れたときは、その下がり天井の下がる側をこちらへ入れ替える。
+   * 下がり天井の無い区画（梁型で分かれた天井など）は、その区画の高さとして覚える。
    * 空欄にしたときは未入力に戻す。
    */
   const setRegionDrop = useCallback(
     (region: CeilingRegion, drop: number | null): void => {
-      const lowered = region.elementIds[0];
-      const id = lowered ?? region.boundaryIds[0];
-      if (id === undefined) return;
       // 触っただけ（値が変わっていない）ときは何もしない
       if (Math.abs((drop ?? 0) - region.drop) < 1e-6) return;
+      const lowered = region.elementIds[0];
+      const id = lowered ?? region.boundaryIds[0];
+      if (id === undefined) {
+        setCodes((current) => ({
+          ...current,
+          heights: noteRegionHeight(current.heights, region, drop),
+        }));
+        return;
+      }
       // 下がっていない区画に部屋と同じ高さ（下がり0）を入れても、
       // 境目の下がり天井を0にしない（隣の区画の線が消えてしまうため）
       if (lowered === undefined && (drop === null || drop === 0)) return;
@@ -2056,7 +2054,7 @@ export default function RoomSheetPage({
               {showCeiling &&
                 ceilingCodes.flatMap((region) =>
                   region.centers.map((center, no) => {
-                    const moved = codeMoves[region.code] ?? { x: 0, y: 0 };
+                    const moved = codes.moves[region.code] ?? { x: 0, y: 0 };
                     return (
                       <text
                         key={`${region.code}-${no}`}
@@ -2071,10 +2069,10 @@ export default function RoomSheetPage({
                         onPointerMove={moveCodeDrag}
                         onPointerUp={endCodeDrag}
                         onDoubleClick={() =>
-                          setCodeMoves((current) => {
-                            const next = { ...current };
-                            delete next[region.code];
-                            return next;
+                          setCodes((current) => {
+                            const moves = { ...current.moves };
+                            delete moves[region.code];
+                            return { ...current, moves };
                           })
                         }
                       >
@@ -3048,8 +3046,8 @@ export default function RoomSheetPage({
             </tbody>
           </table>
           <p className="note">
-            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線だけで分け、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
-            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出し、同じ高さの境目の線も薄い点線で残します（区画一覧の天井高さに、その範囲の高さを入れてください）。閉じた通常画面と印刷では、残る記号と高さが違う所の点線だけになります。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。入れた分だけ点線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線と梁型（壁付き・天井付）の梁底で分け（梁型で分断された天井は別々の区画。梁底そのものには番号を付けません）、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
+            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出し、同じ高さの境目の線も薄い点線で残します（区画一覧の天井高さに、その範囲の高さを入れてください）。閉じた通常画面と印刷では、残る記号と高さが違う所の点線だけになります。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。入れた分だけ点線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力できます（その区画を下げている下がり天井の行に入り、下がっていない側に入れたときは下がる側がそちらへ入れ替わります。下がり天井が無い区画（梁型と壁の間など）は、その区画の天井高さとして覚えます。空欄か下がり0で部屋の天井高さに戻ります）。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
           </p>
           {ceilingCodes.length > 0 && (
             <table className="grid ceiling-regions">
@@ -3070,7 +3068,12 @@ export default function RoomSheetPage({
                         className="num"
                         key={`h${formatNumber(region.height, 2)}`}
                         defaultValue={formatNumber(region.height, 2)}
-                        title="この区画の天井高さ（下がり天井の行に入ります）"
+                        title={
+                          region.elementIds.length > 0 ||
+                          region.boundaryIds.length > 0
+                            ? "この区画の天井高さ（下がり天井の行に入ります）"
+                            : "この区画の天井高さ（下がり天井が無いので、この区画の高さとして覚えます）"
+                        }
                         onBlur={(e) => setRegionHeight(region, e.target.value)}
                       />
                     </td>

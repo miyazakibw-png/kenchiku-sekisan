@@ -75,6 +75,7 @@ import {
   ceilingQuantities,
   ceilingSymbols,
   normalizeCeilingHeights,
+  parseCeilingCodes,
   type CeilingElement,
 } from "../../core/room/ceiling";
 import {
@@ -533,7 +534,12 @@ export function collectEntries(
       parseJson<CeilingElement[]>(sheet.ceilingJson, []),
       ceilingHeight,
     );
-    const ceilingResult = ceilingQuantities(ceiling, solved, ceilingHeight);
+    const ceilingResult = ceilingQuantities(
+      ceiling,
+      solved,
+      ceilingHeight,
+      parseCeilingCodes(sheet.ceilingCodesJson).heights,
+    );
     // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
     const beamArea = beamFootprintArea(ceiling, solved, ceilingHeight);
     const symbols = [
