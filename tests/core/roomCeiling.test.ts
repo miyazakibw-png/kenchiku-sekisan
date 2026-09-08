@@ -175,6 +175,30 @@ describe("天井伏図", () => {
     expect(result.items[0].length).toBe(3.5);
   });
 
+  it("天井付梁型をまたぐ下がり天井は梁底の分を抜いて両側の2本になる", () => {
+    const solved = shape();
+    // 4mの壁に沿う下がり天井（離れ1）と、直交する3mの壁に沿う幅0.8の天井付梁型（離れ1.3）
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 1,
+      height: 0.67,
+    });
+    const beam = element("ceilingBeam", solved.edges[1].id, {
+      offset: 1.3,
+      width: 0.8,
+      height: 1.07,
+    });
+    const lines = ceilingLines([drop, beam], solved, 3.77).filter(
+      (line) => line.elementId === drop.id,
+    );
+    expect(lines.map((line) => line.length).sort()).toEqual([1.3, 1.9]);
+    // 長さは両側を合わせた 4 − 0.8、見付面積はその長さ×段差
+    const result = ceilingQuantities([drop, beam], solved, 3.77);
+    expect(result.items[0].length).toBe(3.2);
+    expect(result.items[0].area).toBe(2.14);
+    // 梁型自体は壁から壁まで（3m）のまま
+    expect(result.items[1].length).toBe(3);
+  });
+
   it("下がり0の線でも、反対側との段差で見付面積が出る", () => {
     const solved = solveShape(rectangleShape(10, 10));
     const deep = element("dropCeiling", solved.edges[3].id, {

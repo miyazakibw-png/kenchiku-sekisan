@@ -288,44 +288,111 @@ function offsetSegment(
   };
 }
 
-/** 線を、当たった線のところで切って一番長い区間を残す */
+/**
+ * 行き止まりになる線と、その線が天井から取っている場所（沿う壁からの離れの範囲）。
+ * 梁型は梁底（壁付き＝壁〜Ｗ幅、天井付＝離れ〜離れ＋Ｗ幅）、下がり壁は壁〜Ｗ幅、
+ * 下がり天井は壁〜離れ（そこは低い天井）。この範囲に入る線は消える
+ */
+interface CeilingBarrier {
+  lines: CeilingSegment[];
+  /** 沿う辺の番号 */
+  index: number;
+  /** 沿う辺からの離れの範囲（from < to） */
+  from: number;
+  to: number;
+}
+
+/** 要素が天井から取っている場所（沿う辺からの離れの範囲） */
+function barrierSpan(element: CeilingElement): [number, number] {
+  const width = element.width ?? 0;
+  const offset = element.offset ?? 0;
+  if (element.kind === "ceilingBeam") return [offset, offset + width];
+  if (element.kind === "dropCeiling") return [0, offset];
+  return [0, width];
+}
+
+/** その点が、行き止まりの要素が取っている場所の中か */
+function insideBarrier(
+  points: CeilingPoint[],
+  barrier: CeilingBarrier,
+  target: CeilingPoint,
+): boolean {
+  if (barrier.index < 0 || barrier.index >= points.length) return false;
+  const from = points[barrier.index];
+  const normal = inwardNormal(points, barrier.index);
+  const distance =
+    (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
+  return distance > barrier.from + 1e-6 && distance < barrier.to - 1e-6;
+}
+
+/**
+ * 線を、当たった線のところで切り、行き止まりの要素が取っている場所
+ * （梁底・下がり壁・低い天井）に入る区間を除いた残りを返す。
+ * 梁型をまたぐ下がり天井は、梁の両側の2本に分かれる
+ */
 function cutByBarriers(
+  points: CeilingPoint[],
   line: CeilingSegment,
-  barriers: CeilingSegment[],
-): CeilingSegment {
+  barriers: CeilingBarrier[],
+): CeilingSegment[] {
   const span = { x: line.b.x - line.a.x, y: line.b.y - line.a.y };
   const size = Math.hypot(span.x, span.y);
-  if (size === 0) return line;
+  if (size === 0) return [line];
   const dir = { x: span.x / size, y: span.y / size };
   const cuts = [0, size];
 
   barriers.forEach((barrier) => {
-    const other = {
-      x: barrier.b.x - barrier.a.x,
-      y: barrier.b.y - barrier.a.y,
-    };
-    const denom = cross(dir, other);
-    if (Math.abs(denom) < 1e-9) return;
-    const gap = { x: barrier.a.x - line.a.x, y: barrier.a.y - line.a.y };
-    const u = cross(gap, dir) / denom;
-    if (u < -1e-9 || u > 1 + 1e-9) return;
-    const t = cross(gap, other) / denom;
-    if (t < 1e-6 || t > size - 1e-6) return;
-    if (!cuts.some((value) => Math.abs(value - t) < 1e-6)) cuts.push(t);
+    barrier.lines.forEach((segment) => {
+      const other = {
+        x: segment.b.x - segment.a.x,
+        y: segment.b.y - segment.a.y,
+      };
+      const denom = cross(dir, other);
+      if (Math.abs(denom) < 1e-9) return;
+      const gap = { x: segment.a.x - line.a.x, y: segment.a.y - line.a.y };
+      const u = cross(gap, dir) / denom;
+      if (u < -1e-9 || u > 1 + 1e-9) return;
+      const t = cross(gap, other) / denom;
+      if (t < 1e-6 || t > size - 1e-6) return;
+      if (!cuts.some((value) => Math.abs(value - t) < 1e-6)) cuts.push(t);
+    });
   });
 
   cuts.sort((a, b) => a - b);
-  let best: [number, number] = [cuts[0], cuts[1]];
-  for (let no = 1; no + 1 < cuts.length; no += 1) {
-    if (cuts[no + 1] - cuts[no] > best[1] - best[0])
-      best = [cuts[no], cuts[no + 1]];
-  }
-
   const at = (t: number): CeilingPoint => ({
     x: line.a.x + dir.x * t,
     y: line.a.y + dir.y * t,
   });
-  return { a: at(best[0]), b: at(best[1]), length: round2(best[1] - best[0]) };
+
+  const pieces: CeilingSegment[] = [];
+  for (let no = 0; no + 1 < cuts.length; no += 1) {
+    const [start, end] = [cuts[no], cuts[no + 1]];
+    if (end - start < 1e-6) continue;
+    const middle = at((start + end) / 2);
+    if (barriers.some((barrier) => insideBarrier(points, barrier, middle)))
+      continue;
+    pieces.push({ a: at(start), b: at(end), length: round2(end - start) });
+  }
+  return pieces;
+}
+
+/** 行き止まりになる要素（梁型・下がり壁、低い下がり天井）を線の形にする */
+function barriersOf(
+  rows: {
+    element: CeilingElement;
+    index: number;
+    lines: (CeilingSegment | null)[];
+  }[],
+): CeilingBarrier[] {
+  return rows.map((row) => {
+    const [from, to] = barrierSpan(row.element);
+    return {
+      lines: row.lines.filter((line): line is CeilingSegment => line !== null),
+      index: row.index,
+      from,
+      to,
+    };
+  });
 }
 
 /** 天井伏図に描く線（天井付梁型は両側の2本） */
@@ -410,8 +477,8 @@ export function ceilingLines(
     // 自分より低くなる（下がりが大きい）線が行き止まりになる。
     // 梁型・下がり壁は天井より低く見えるときだけ入れる線なので、
     // 下がり天井の線は高さを比べずにその線で止める（端部は取りつく壁か梁）。
-    const barriers = rough
-      .filter((other) => {
+    const barriers = barriersOf(
+      rough.filter((other) => {
         if (other.element.id === row.element.id) return false;
         if (
           row.element.kind === "dropCeiling" &&
@@ -422,13 +489,54 @@ export function ceilingLines(
           other.drop !== null &&
           (row.drop === null || other.drop > row.drop + 1e-6)
         );
-      })
-      .flatMap((other) => other.lines.filter((line) => line !== null));
+      }),
+    );
 
     return row.lines
       .filter((line): line is CeilingLine => line !== null)
-      .map((line) => ({ ...line, ...cutByBarriers(line, barriers) }));
+      .flatMap((line) =>
+        cutByBarriers(points, line, barriers).map((piece) => ({
+          ...line,
+          ...piece,
+        })),
+      );
   });
+}
+
+/**
+ * 下がり天井の線（壁から壁）を、梁型・下がり壁のところで切る
+ * （梁底に入る区間は消え、梁をまたぐ線は両側の2本になる）。ほかの下がり天井では切らない
+ */
+export function cutByBeams(
+  line: CeilingSegment,
+  elements: CeilingElement[],
+  solved: SolvedShape,
+): CeilingSegment[] {
+  const points = solved.points;
+  if (points.length < 3) return [line];
+  const barriers = barriersOf(
+    elements
+      .filter((element) => element.kind !== "dropCeiling")
+      .map((element) => {
+        const index = solved.edges.findIndex(
+          (row) => row.id === element.edgeId,
+        );
+        const width = element.width ?? 0;
+        const offset = element.offset ?? 0;
+        const distances =
+          element.kind === "ceilingBeam" ? [offset, offset + width] : [width];
+        return {
+          element,
+          index,
+          lines: distances.map((distance) =>
+            element.kind === "ceilingBeam"
+              ? wallToWallLine(points, index, distance)
+              : offsetSegment(points, index, distance),
+          ),
+        };
+      }),
+  );
+  return cutByBarriers(points, line, barriers);
 }
 
 /** 線で囲まれた天井の区画（C1・C2…）。天井高さが同じ区画は1つにまとめる */
@@ -628,22 +736,19 @@ export function beamFootprints(
     if (width <= 0) return [];
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
     if (index < 0) return [];
-    const line = lines.find(
+    const pieces = lines.filter(
       (row) => row.elementId === element.id && row.no === 0,
     );
-    if (line === undefined) return [];
     const normal = inwardNormal(points, index);
     // 壁付き梁型は壁と線の間、天井付梁型は2本の線の間が梁底
     const step = element.kind === "wallBeam" ? -width / 2 : width / 2;
-    return [
-      {
-        center: {
-          x: (line.a.x + line.b.x) / 2 + normal.x * step,
-          y: (line.a.y + line.b.y) / 2 + normal.y * step,
-        },
-        area: round2(line.length * width),
+    return pieces.map((line) => ({
+      center: {
+        x: (line.a.x + line.b.x) / 2 + normal.x * step,
+        y: (line.a.y + line.b.y) / 2 + normal.y * step,
       },
-    ];
+      area: round2(line.length * width),
+    }));
   });
 }
 
@@ -1218,18 +1323,22 @@ export function ceilingQuantities(
   const spans = dropCeilingSpans(elements, solved, roomCeilingHeight);
 
   const items = elements.map((element) => {
-    const crossing =
+    // 壁や自分より低い線で止めた（梁をまたいで分かれていれば合わせた）実際の長さ
+    const pieces =
       element.kind === "dropCeiling" || element.kind === "ceilingBeam"
-        ? (lines.find((line) => line.elementId === element.id) ?? null)
-        : null;
-    // 下がり天井・天井付梁型は、壁や自分より低い線で止めた実際の長さで数える
+        ? lines.filter(
+            (line) => line.elementId === element.id && line.no === 0,
+          )
+        : [];
+    const crossing =
+      pieces.length === 0
+        ? null
+        : round2(pieces.reduce((sum, line) => sum + line.length, 0));
     // 下がり天井は段差になっている所だけ数える（両側が同じ高さなら0）
     const length =
       element.kind === "dropCeiling" && crossing !== null
         ? (spans.get(element.id)?.length ?? 0)
-        : (crossing?.length ??
-          element.length ??
-          edgeLength(solved, element.edgeId));
+        : (crossing ?? element.length ?? edgeLength(solved, element.edgeId));
     // 梁型・下がり壁はＨ（梁せい）をそのまま下がりに使い、壁の高さは取りつく天井から自動で決める
     const baseHeight = bases.get(element.id) ?? roomCeilingHeight;
     const drop = elementDrop(element, baseHeight);
@@ -1397,16 +1506,14 @@ export function ceilingCutLines(
       element.offset ?? 0,
     );
     if (line === null) return [];
-    return [
-      {
-        ...line,
-        elementId: element.id,
-        kind: element.kind,
-        no: 0,
-        distance: 0,
-        same: elementDrop(element, roomCeilingHeight) === 0,
-      },
-    ];
+    return cutByBeams(line, elements, solved).map((piece) => ({
+      ...piece,
+      elementId: element.id,
+      kind: element.kind,
+      no: 0,
+      distance: 0,
+      same: elementDrop(element, roomCeilingHeight) === 0,
+    }));
   });
 }
 
@@ -1447,26 +1554,23 @@ export function dropCeilingSpans(
   solved: SolvedShape,
   roomCeilingHeight: number | null,
 ): Map<string, CeilingSpan> {
-  // 梁型・下がり壁のところでは止めるが、ほかの下がり天井では切らない。
-  // 自分より低い線で切られた先にも、高さが違う所（段差）は残るため
-  const barriers = ceilingLines(elements, solved, roomCeilingHeight).filter(
-    (line) => line.kind !== "dropCeiling",
-  );
+  // 梁型・下がり壁のところでは止める（梁底の分は抜き、またいでいれば両側を数える）が、
+  // ほかの下がり天井では切らない。自分より低い線で切られた先にも、高さが違う所（段差）は残るため
   const drawn = elements
     .filter((element) => element.kind === "dropCeiling")
-    .map((element) => {
+    .flatMap((element) => {
       const line = wallToWallLine(
         solved.points,
         solved.edges.findIndex((row) => row.id === element.edgeId),
         element.offset ?? 0,
       );
       return line === null
-        ? null
-        : { elementId: element.id, ...cutByBarriers(line, barriers) };
-    })
-    .filter(
-      (row): row is { elementId: string } & CeilingSegment => row !== null,
-    );
+        ? []
+        : cutByBeams(line, elements, solved).map((piece) => ({
+            elementId: element.id,
+            ...piece,
+          }));
+    });
 
   const spans = new Map<string, CeilingSpan>();
   ceilingBoundaries(elements, solved, roomCeilingHeight).forEach((edge) => {

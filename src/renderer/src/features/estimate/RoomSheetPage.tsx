@@ -68,6 +68,7 @@ import {
   ceilingLines as buildCeilingLines,
   ceilingBoundaries,
   ceilingCutLines,
+  cutByBeams,
   ceilingRegions,
   normalizeCeilingHeights,
   type CeilingElement,
@@ -622,26 +623,30 @@ export default function RoomSheetPage({
           ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
             (line) => line.kind !== "dropCeiling",
           ),
+          // 梁型・下がり壁のところ（梁底）は抜く
           ...ceilingBoundaries(
             ceiling,
             solved,
             ceilingHeight,
             mergeCeiling,
-          ).map((edge) => {
-            const no = seen.get(edge.elementId) ?? shown;
-            seen.set(edge.elementId, no + 1);
-            return {
-              ...edge,
-              kind: "dropCeiling" as const,
-              no,
-              distance: 0,
-              same: false,
-              solid: edge.solid,
-            };
-          }),
+          ).flatMap((edge) =>
+            cutByBeams(edge, ceiling, solved).map((piece) => {
+              const no = seen.get(edge.elementId) ?? shown;
+              seen.set(edge.elementId, no + 1);
+              return {
+                ...edge,
+                ...piece,
+                kind: "dropCeiling" as const,
+                no,
+                distance: 0,
+                same: false,
+                solid: edge.solid,
+              };
+            }),
+          ),
         ];
 
-    return drawn.flatMap((line) => {
+    return drawn.flatMap((line, lineIndex) => {
       const itemIndex = ceilingResult.items.findIndex(
         (row) => row.element.id === line.elementId,
       );
@@ -653,7 +658,7 @@ export default function RoomSheetPage({
 
       return [
         {
-          key: `${line.elementId}-${line.no}`,
+          key: `${line.elementId}-${line.no}-${lineIndex}`,
           elementId: line.elementId,
           kind: line.kind,
           same: line.same,
