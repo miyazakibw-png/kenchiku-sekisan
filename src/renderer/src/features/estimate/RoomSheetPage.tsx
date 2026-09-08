@@ -67,7 +67,6 @@ import {
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
   ceilingBoundaries,
-  ceilingCutLines,
   cutByBeams,
   ceilingRegions,
   normalizeCeilingHeights,
@@ -609,51 +608,41 @@ export default function RoomSheetPage({
     // 下がり天井は「区画のふち」から作る（同じ高さの境目は引かず、高さが違う所は実線）
     const shown = 0;
     const seen = new Map<string, number>();
-    // 拡大して高さを入れるときは、入れた線をすべて出す（同じ高さの所は薄い点線）。
-    // 通常画面・印刷は、高さが違う区画の境目だけを出す。
-    const drawn = editCeiling
-      ? [
-          ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
-            (line) => line.kind !== "dropCeiling",
-          ),
-          // 区画を切っている線は、途中で止めずに壁から壁まで出す
-          ...ceilingCutLines(ceiling, solved, ceilingHeight),
-        ]
-      : [
-          ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
-            (line) => line.kind !== "dropCeiling",
-          ),
-          // 梁型・下がり壁のところ（梁底）は抜く
-          ...ceilingBoundaries(
-            ceiling,
-            solved,
-            ceilingHeight,
-            mergeCeiling,
-            codes.heights,
-          ).flatMap((edge) => {
-            const element = ceiling.find((row) => row.id === edge.elementId);
-            if (element === undefined) return [];
-            return cutByBeams(
-              edge,
-              element,
-              ceiling,
-              solved,
-              ceilingHeight,
-            ).map((piece) => {
-              const no = seen.get(edge.elementId) ?? shown;
-              seen.set(edge.elementId, no + 1);
-              return {
-                ...edge,
-                ...piece,
-                kind: "dropCeiling" as const,
-                no,
-                distance: 0,
-                same: false,
-                solid: edge.solid,
-              };
-            });
-          }),
-        ];
+    // 高さが違う区画の境目は実線、高さがまだ決まっていない境目は点線、
+    // 両側が同じ高さ（区画に入れた高さも含む）の境目は出さない。
+    // 拡大して高さを入れるときは区画をまとめないので、線で区切られた境目すべてを見る。
+    const drawn = [
+      ...buildCeilingLines(ceiling, solved, ceilingHeight).filter(
+        (line) => line.kind !== "dropCeiling",
+      ),
+      // 梁型・下がり壁のところ（梁底）は抜く
+      ...ceilingBoundaries(
+        ceiling,
+        solved,
+        ceilingHeight,
+        editCeiling ? false : mergeCeiling,
+        codes.heights,
+      ).flatMap((edge) => {
+        if (edge.step !== null && edge.step < 1e-6) return [];
+        const element = ceiling.find((row) => row.id === edge.elementId);
+        if (element === undefined) return [];
+        return cutByBeams(edge, element, ceiling, solved, ceilingHeight).map(
+          (piece) => {
+            const no = seen.get(edge.elementId) ?? shown;
+            seen.set(edge.elementId, no + 1);
+            return {
+              ...edge,
+              ...piece,
+              kind: "dropCeiling" as const,
+              no,
+              distance: 0,
+              same: false,
+              solid: edge.solid,
+            };
+          },
+        );
+      }),
+    ];
 
     return drawn.flatMap((line, lineIndex) => {
       const itemIndex = ceilingResult.items.findIndex(
@@ -689,6 +678,7 @@ export default function RoomSheetPage({
     ceiling,
     ceilingHeight,
     ceilingResult.items,
+    codes.heights,
     editCeiling,
     mergeCeiling,
     solved,
@@ -1996,8 +1986,8 @@ export default function RoomSheetPage({
                       x2={line.x2}
                       y2={line.y2}
                       className={`ceiling-line ${line.kind}${line.same ? " same" : ""}${
-                        pickedCeiling === line.elementId ? " picked" : ""
-                      }`}
+                        line.solid ? " solid" : ""
+                      }${pickedCeiling === line.elementId ? " picked" : ""}`}
                     />
                     <line
                       x1={line.x1}
@@ -3023,7 +3013,7 @@ export default function RoomSheetPage({
           </table>
           <p className="note">
             梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線と梁型（壁付き・天井付）の梁底で分け（梁型で分断された天井は別々の区画。梁底そのものには番号を付けません）、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
-            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出し、同じ高さの境目の線も薄い点線で残します（区画一覧の天井高さに、その範囲の高さを入れてください）。閉じた通常画面と印刷では、残る記号と高さが違う所の点線だけになります。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。入れた分だけ点線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力でき、入れた区画だけが変わります（隣の区画や上の入力表のＨは変わりません。上の入力表の下がり天井のＨは、その線で下がる側の区画の既定の高さです）。区画に入れた高さは、その区画の場所で覚えます（線を足して区画が分かれても残ります）。空欄にすると既定（下がり天井のＨ、なければ部屋の天井高さ）に戻ります。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出します（区画一覧の天井高さに、その範囲の高さを入れてください）。境目の線は、両側の高さが違う所は実線、まだ高さが決まっていない所は点線で、両側が同じ高さになった所（区画に入れた高さで同じになった所も）は消えます。閉じた通常画面と印刷も同じです。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。高さが違う所に線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力でき、入れた区画だけが変わります（隣の区画や上の入力表のＨは変わりません。上の入力表の下がり天井のＨは、その線で下がる側の区画の既定の高さです）。区画に入れた高さは、その区画の場所で覚えます（線を足して区画が分かれても残ります）。空欄にすると既定（下がり天井のＨ、なければ部屋の天井高さ）に戻ります。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
           </p>
           {ceilingCodes.length > 0 && (
             <table className="grid ceiling-regions">

@@ -673,6 +673,14 @@ describe("天井伏図", () => {
     expect(quantities.dropCeilingByHeight).toEqual([
       { drop: 0.1, length: 3.8 },
     ]);
+    // 境目の線も同じ高さで見る：左（3.0と3.0）は同じ区画になり線は出ず、右は段差0.10の実線だけ
+    expect(
+      ceilingBoundaries(elements, solved, 3.77, false, heights).map((row) => [
+        row.length,
+        row.step,
+        row.solid,
+      ]),
+    ).toEqual([[3.8, 0.1, true]]);
     // back：左は 3.77 と 3.0、右は 3.0 と 3.77 → 両側とも段差0.77
     expect(
       ceilingQuantities(elements, solved, 3.77, back).totals.dropCeilingArea,
