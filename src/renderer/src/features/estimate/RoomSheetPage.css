@@ -782,3 +782,10 @@
   background: #fff7ed;
   box-shadow: inset 0 0 0 1px #f97316;
 }
+
+/* 寸法入力表の「選」列：選んでいる辺に☑ */
+.room-sheet-page td.edge-pick {
+  text-align: center;
+  cursor: pointer;
+  color: #1e3a8a;
+}

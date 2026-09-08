@@ -26,6 +26,9 @@ import "./underlay.css";
 
 export type UnderlayMode = "off" | "scale" | "move";
 
+/** 図面を動かす中でも、この距離（px）未満のクリックは線・角の選択として扱う */
+const DRAG_START_PX = 4;
+
 export interface Point {
   x: number;
   y: number;
@@ -115,6 +118,8 @@ export function useUnderlay({
     clientX: number;
     clientY: number;
     from: TraceUnderlay;
+    /** この距離（px）以上動いたら動かすと見なす。動かさないクリックは図形の選択にそのまま渡す */
+    started: boolean;
   } | null>(null);
 
   const replace = useCallback(
@@ -297,11 +302,10 @@ export function useUnderlay({
         clientX: event.clientX,
         clientY: event.clientY,
         from: underlay,
+        started: false,
       };
-      if (dragStart) dragStart(underlay);
-      event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [dragStart, mode, underlay],
+    [mode, underlay],
   );
 
   const onPointerMove = useCallback(
@@ -309,6 +313,18 @@ export function useUnderlay({
       const start = dragRef.current;
       if (start === null) return;
       const svg = event.currentTarget;
+      if (!start.started) {
+        if (
+          Math.hypot(
+            event.clientX - start.clientX,
+            event.clientY - start.clientY,
+          ) < DRAG_START_PX
+        )
+          return;
+        start.started = true;
+        if (dragStart) dragStart(start.from);
+        svg.setPointerCapture(event.pointerId);
+      }
       const from = svgPoint(svg, start.clientX, start.clientY);
       const to = svgPoint(svg, event.clientX, event.clientY);
       const moved: TraceUnderlay = {
@@ -319,13 +335,14 @@ export function useUnderlay({
       if (drag) drag(start.from, moved);
       setUnderlay(moved);
     },
-    [drag],
+    [drag, dragStart],
   );
 
   const onPointerUp = useCallback((event: PointerEvent<SVGSVGElement>) => {
-    if (dragRef.current === null) return;
+    const start = dragRef.current;
+    if (start === null) return;
     dragRef.current = null;
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (start.started) event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
   return {

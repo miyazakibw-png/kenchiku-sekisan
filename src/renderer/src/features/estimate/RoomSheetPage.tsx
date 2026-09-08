@@ -2168,6 +2168,14 @@ export default function RoomSheetPage({
           <table className="grid">
             <thead>
               <tr>
+                {!printMode && (
+                  <th
+                    className="no"
+                    title="選んでいる辺（行か図の線をクリック。終わりの辺はShift＋クリック）"
+                  >
+                    選
+                  </th>
+                )}
                 <th className="no">No</th>
                 <th>向き</th>
                 <th className="num">寸法</th>
@@ -2194,6 +2202,11 @@ export default function RoomSheetPage({
                       : selectEdge(line.id, event.shiftKey)
                   }
                 >
+                  {!printMode && (
+                    <td className="no edge-pick">
+                      {selectedEdgeIds.includes(line.id) ? "☑" : "☐"}
+                    </td>
+                  )}
                   <td className="no">{index + 1}</td>
                   <td>
                     <select
@@ -2364,7 +2377,7 @@ export default function RoomSheetPage({
             </tbody>
           </table>
           <p className="note">
-            辺は表でも図でもクリックで選べます。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
+            辺は表の行でも図の線でもクリックで選べます（選んだ辺は「選」に☑が付き、図では太く光ります）。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
             範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
           </p>
         </section>
