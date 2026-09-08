@@ -1365,8 +1365,12 @@ export default function PitSheetPage({
         <tr>
           <th></th>
           {wallTable.lengths.map((length) => (
-            <th className="num" key={length}>
-              {length}
+            <th
+              className="num"
+              key={length}
+              title={`長さ ${length}mm 以下（${wallStep}mmごとに切り上げ）の本数`}
+            >
+              {`〜${length}`}
             </th>
           ))}
           <th className="num">計</th>

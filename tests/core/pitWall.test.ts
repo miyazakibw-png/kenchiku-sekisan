@@ -49,23 +49,32 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     ).toBe(5);
   });
 
-  it("長さは50mmごとにまとめる", () => {
-    expect(groupLengthMm(374)).toBe(350);
-    expect(groupLengthMm(375)).toBe(400);
-    expect(groupLengthMm(412)).toBe(400);
+  it("長さは50mmごとに切り上げてまとめる（その長さ以下の列）", () => {
+    expect(groupLengthMm(374)).toBe(400);
+    expect(groupLengthMm(351)).toBe(400);
+    expect(groupLengthMm(350)).toBe(350);
+    expect(groupLengthMm(412)).toBe(450);
     expect(groupLengthMm(500)).toBe(500);
+    expect(groupLengthMm(0)).toBe(0);
+  });
+
+  it("500mmごとにしても短い本は0にはならず500の列に入る", () => {
+    expect(groupLengthMm(200, 500)).toBe(500);
+    expect(groupLengthMm(800, 500)).toBe(1000);
+    expect(groupLengthMm(1000, 500)).toBe(1000);
+    expect(groupLengthMm(200, 50)).toBe(200);
   });
 
   it("長さ別に本数と合計長さを数える（図の太さは集計に関係しない）", () => {
     const walls = [
-      wall("w1", 3.02, 0.5),
+      wall("w1", 2.98, 0.5),
       wall("w2", 3.0, 0.2),
       wall("w3", 2.0, 0.2),
     ];
     const tallies = pitWallTallies(walls);
     expect(tallies).toEqual([
       { lengthMm: 2000, count: 1, total: 2 },
-      { lengthMm: 3000, count: 2, total: 6.02 },
+      { lengthMm: 3000, count: 2, total: 5.98 },
     ]);
   });
 
@@ -153,9 +162,9 @@ describe("ピット間の表（種類＝線色＋A・B別×長さ別の本数）
   it("まとめる長さの単位（50・100・300・500mm）を選べる", () => {
     const red = "#dc2626";
     const walls = [wall("w1", 0.44, 0.5, red), wall("w2", 0.56, 0.5, red)];
-    expect(pitWallTable(walls, 50).lengths).toEqual([450, 550]);
-    expect(pitWallTable(walls, 100).lengths).toEqual([400, 600]);
-    expect(pitWallTable(walls, 500).lengths).toEqual([500]);
-    expect(pitWallTable(walls, 500).rows[0].counts).toEqual([2]);
+    expect(pitWallTable(walls, 50).lengths).toEqual([450, 600]);
+    expect(pitWallTable(walls, 100).lengths).toEqual([500, 600]);
+    expect(pitWallTable(walls, 500).lengths).toEqual([500, 1000]);
+    expect(pitWallTable(walls, 500).rows[0].counts).toEqual([1, 1]);
   });
 });

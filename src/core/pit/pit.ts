@@ -1552,10 +1552,15 @@ export function pitWallLength(wall: PitWall): number {
 /** 集計でまとめる長さの単位（mm）。表の上で選べる */
 export const PIT_LENGTH_STEPS = [50, 100, 300, 500] as const;
 
-/** 集計でまとめる長さ（既定は50mmごと） */
+/**
+ * 集計でまとめる長さ（既定は50mmごと）。
+ * 単位に切り上げて「その長さ以下」の列に入れる（200mmは500mmごとなら500の列）。
+ * まとめ方を変えても本は消えず、列が変わるだけになる。
+ */
 export function groupLengthMm(mm: number, step = 50): number {
   if (step <= 0) return Math.round(mm);
-  return Math.round(mm / step) * step;
+  if (mm <= 0) return 0;
+  return Math.ceil(mm / step - 1e-6) * step;
 }
 
 /** スリーブ1か所の長さ（mm）。手入力が無いときは付けたピット間の長さ */
