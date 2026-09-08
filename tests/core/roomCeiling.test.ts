@@ -8,6 +8,7 @@ import {
   ceilingRegions,
   ceilingSymbols,
   normalizeCeilingHeights,
+  splitDropCeiling,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
 import {
@@ -159,20 +160,138 @@ describe("天井伏図", () => {
     expect(result.items[1].length).toBe(3);
   });
 
-  it("下がり天井の線は梁型のところで止まる（下がりが小さい梁でも）", () => {
+  it("下がり天井の線は自分より低い梁型のところで止まり、高い梁型は通す", () => {
     const solved = shape();
-    // 4mの壁に沿う下がり天井（下がり0.6）と、直交する壁に沿う幅0.5の梁型（下がり0.3）
+    // 4mの壁に沿う下がり天井（下がり0.6）と、直交する壁に沿う幅0.5の梁型
     const drop = element("dropCeiling", solved.edges[0].id, {
       offset: 1,
       height: 0.6,
     });
-    const beam = element("wallBeam", solved.edges[1].id, {
+    const deep = element("wallBeam", solved.edges[1].id, {
       width: 0.5,
-      height: 0.3,
+      height: 0.9,
     });
-    const result = ceilingQuantities([drop, beam], solved, 2.7);
     // 壁までの4mではなく、梁の見付（壁から0.5m）で止まる
-    expect(result.items[0].length).toBe(3.5);
+    expect(ceilingQuantities([drop, deep], solved, 2.7).items[0].length).toBe(
+      3.5,
+    );
+
+    // 梁底が下がり天井より高い（Ｈ0.3）梁型は下がり天井の中では見えないので通す
+    const shallow = { ...deep, height: 0.3 };
+    expect(
+      ceilingQuantities([drop, shallow], solved, 2.7).items[0].length,
+    ).toBe(4);
+
+    // Ｈが空の梁型は天井より低いものとして止める
+    const unknown = { ...deep, height: null };
+    expect(
+      ceilingQuantities([drop, unknown], solved, 2.7).items[0].length,
+    ).toBe(3.5);
+  });
+
+  it("下がり天井より高い天井付梁型は下がり天井で止まり、下がり天井は通る", () => {
+    const solved = solveShape(rectangleShape(8, 4));
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 0.91,
+      height: 0.67,
+    });
+    const beam = element("ceilingBeam", solved.edges[1].id, {
+      offset: 5.55,
+      width: 0.9,
+      height: 0.62,
+    });
+    const lines = ceilingLines([beam, drop], solved, 3.77);
+    expect(
+      lines
+        .filter((line) => line.elementId === drop.id)
+        .map((line) => line.length),
+    ).toEqual([8]);
+    // 梁型の2本の見付線は下がり天井の線（壁から0.91）で止まる
+    expect(
+      lines
+        .filter((line) => line.elementId === beam.id)
+        .map((line) => line.length),
+    ).toEqual([3.09, 3.09]);
+
+    // 同じ深さなら先に入れた行が通し
+    const same = { ...beam, height: 0.67 };
+    expect(
+      ceilingLines([same, drop], solved, 3.77)
+        .filter((line) => line.elementId === drop.id)
+        .map((line) => line.length)
+        .sort(),
+    ).toEqual([1.55, 5.55]);
+    expect(
+      ceilingLines([drop, same], solved, 3.77)
+        .filter((line) => line.elementId === drop.id)
+        .map((line) => line.length),
+    ).toEqual([8]);
+  });
+
+  it("梁型で分かれた下がり天井を別々の行にすると片側だけ消せて数量もその分だけになる", () => {
+    const solved = solveShape(rectangleShape(8, 4));
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      offset: 0.91,
+      height: 0.67,
+    });
+    const beam = element("ceilingBeam", solved.edges[1].id, {
+      offset: 5.55,
+      width: 0.9,
+      height: 1.07,
+    });
+    // 高い梁型（下がり天井より低い梁底）は下がり天井を2本に分ける
+    const parts = splitDropCeiling(drop, [beam, drop], solved, 3.77);
+    expect(parts).not.toBeNull();
+    if (parts === null) return;
+    expect(
+      parts.map((part) => [
+        Math.round((part.range?.from ?? -1) * 100) / 100,
+        Math.round((part.range?.to ?? -1) * 100) / 100,
+      ]),
+    ).toEqual([
+      [0, 1.55],
+      [2.45, 8],
+    ]);
+    expect(parts.map((part) => part.height)).toEqual([0.67, 0.67]);
+    expect(new Set(parts.map((part) => part.id)).size).toBe(2);
+
+    // 分けた直後は元と同じ長さ・面積
+    const both = ceilingQuantities([beam, ...parts], solved, 3.77);
+    expect(both.items.slice(1).map((item) => item.length)).toEqual([
+      1.55, 5.55,
+    ]);
+    expect(both.totals.dropCeilingLength).toBe(7.1);
+    expect(both.totals.dropCeilingArea).toBe(4.76);
+    // 区画は梁底の分を除いた両側で別々（面積は範囲の分だけ）
+    const regions = ceilingRegions([beam, ...parts], solved, 3.77);
+    expect(regions.map((region) => [region.drop, region.area])).toEqual([
+      [0.67, 1.41],
+      [0.67, 5.05],
+      [0, 21.94],
+    ]);
+
+    // 片側を消すと、その分だけ線・長さ・面積・区画から無くなる
+    const one = ceilingQuantities([beam, parts[1]], solved, 3.77);
+    expect(one.items[1].length).toBe(5.55);
+    expect(one.totals.dropCeilingLength).toBe(5.55);
+    expect(one.totals.dropCeilingArea).toBe(3.72);
+    expect(
+      ceilingLines([beam, parts[1]], solved, 3.77)
+        .filter((line) => line.kind === "dropCeiling")
+        .map((line) => [line.a.x, line.b.x]),
+    ).toEqual([[2.45, 8]]);
+    expect(
+      ceilingRegions([beam, parts[1]], solved, 3.77).map((region) => [
+        region.drop,
+        region.area,
+      ]),
+    ).toEqual([
+      [0.67, 5.05],
+      [0, 23.35],
+    ]);
+
+    // 分かれていない下がり天井は分けられない
+    expect(splitDropCeiling(drop, [drop], solved, 3.77)).toBeNull();
   });
 
   it("天井付梁型をまたぐ下がり天井は梁底の分を抜いて両側の2本になる", () => {

@@ -71,6 +71,7 @@ import {
   cutByBeams,
   ceilingRegions,
   normalizeCeilingHeights,
+  splitDropCeiling,
   type CeilingElement,
   type CeilingElementKind,
   type CeilingPoint,
@@ -544,6 +545,19 @@ export default function RoomSheetPage({
     () => ceilingQuantities(ceiling, solved, ceilingHeight),
     [ceiling, solved, ceilingHeight],
   );
+  // 梁型・下がり壁で何本にも分かれている下がり天井（別々の行に分けられる）
+  const splitCeiling = useMemo(
+    () =>
+      new Map(
+        ceiling
+          .filter((element) => element.kind === "dropCeiling")
+          .map((element) => [
+            element.id,
+            splitDropCeiling(element, ceiling, solved, ceilingHeight),
+          ]),
+      ),
+    [ceiling, solved, ceilingHeight],
+  );
   // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
   const beamArea = useMemo(
     () => beamFootprintArea(ceiling, solved, ceilingHeight),
@@ -629,8 +643,16 @@ export default function RoomSheetPage({
             solved,
             ceilingHeight,
             mergeCeiling,
-          ).flatMap((edge) =>
-            cutByBeams(edge, ceiling, solved).map((piece) => {
+          ).flatMap((edge) => {
+            const element = ceiling.find((row) => row.id === edge.elementId);
+            if (element === undefined) return [];
+            return cutByBeams(
+              edge,
+              element,
+              ceiling,
+              solved,
+              ceilingHeight,
+            ).map((piece) => {
               const no = seen.get(edge.elementId) ?? shown;
               seen.set(edge.elementId, no + 1);
               return {
@@ -642,8 +664,8 @@ export default function RoomSheetPage({
                 same: false,
                 solid: edge.solid,
               };
-            }),
-          ),
+            });
+          }),
         ];
 
     return drawn.flatMap((line, lineIndex) => {
@@ -2790,9 +2812,11 @@ export default function RoomSheetPage({
                       <select
                         value={element.edgeId ?? ""}
                         onChange={(e) =>
+                          // 範囲は元の壁の角から測っているので、壁を変えたら壁から壁までに戻す
                           updateCeiling(element.id, {
                             edgeId:
                               e.target.value === "" ? null : e.target.value,
+                            range: null,
                           })
                         }
                       >
@@ -2811,9 +2835,20 @@ export default function RoomSheetPage({
                         // 図で止まったところまでの長さ（手入力できると図と合わなくなる）
                         <span
                           className="num"
-                          title="自動（図に出る段差の線の長さ。突き当たる壁・自分より低い下がり天井・梁型まで）"
+                          title={
+                            element.range
+                              ? `壁${wallEdges.findIndex((line) => line.id === element.edgeId) + 1}の始まりの角から ${formatNumber(element.range.from, 2)}～${formatNumber(element.range.to, 2)}m の範囲だけ（梁型で分けた下がり天井）`
+                              : "自動（図に出る段差の線の長さ。突き当たる壁・自分より低い下がり天井・梁型まで）"
+                          }
                         >
                           {formatNumber(item.length, 2)}
+                          {element.range ? (
+                            <small className="ceiling-range">
+                              {" "}
+                              {formatNumber(element.range.from, 2)}～
+                              {formatNumber(element.range.to, 2)}
+                            </small>
+                          ) : null}
                         </span>
                       ) : (
                         <input
@@ -2958,9 +2993,46 @@ export default function RoomSheetPage({
                         formatNumber(item.area, 2)
                       )}
                     </td>
-                    <td>
+                    <td className="ceiling-actions">
+                      {(() => {
+                        const parts = splitCeiling.get(element.id) ?? null;
+                        return parts === null ? null : (
+                          <button
+                            type="button"
+                            title={`梁型・下がり壁で分かれている${parts.length}本を別々の下がり天井の行にします（片側だけ消す・高さを変えるとき）`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCeiling((current) =>
+                                current.flatMap((each) =>
+                                  each.id === element.id ? parts : [each],
+                                ),
+                              );
+                              setPickedCeiling(parts[0].id);
+                            }}
+                          >
+                            ✂ {parts.length}本に分ける
+                          </button>
+                        );
+                      })()}
+                      {element.range ? (
+                        <button
+                          type="button"
+                          title="範囲を外して壁から壁までの下がり天井に戻します"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCeiling(element.id, { range: null });
+                          }}
+                        >
+                          ↔ 壁まで
+                        </button>
+                      ) : null}
                       <button
                         type="button"
+                        title={
+                          element.range
+                            ? "この範囲の下がり天井だけ消す"
+                            : "この行を消す"
+                        }
                         onClick={() =>
                           setCeiling((current) =>
                             current.filter((each) => each.id !== element.id),

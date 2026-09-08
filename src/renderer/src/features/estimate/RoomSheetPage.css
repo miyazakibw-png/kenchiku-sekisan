@@ -547,6 +547,20 @@
   line-height: 1.1;
 }
 
+.room-sheet-page .ceiling table.grid td.ceiling-actions {
+  white-space: nowrap;
+}
+
+.room-sheet-page .ceiling table.grid td.ceiling-actions button + button {
+  margin-left: 2px;
+}
+
+/* 梁型で分けた下がり天井の範囲（壁の始まりの角からの位置） */
+.room-sheet-page .ceiling table.grid small.ceiling-range {
+  color: #2563eb;
+  font-size: 10px;
+}
+
 .room-sheet-page td.no,
 .room-sheet-page th.no {
   width: 32px;
