@@ -847,8 +847,14 @@ export default function RoomSheetPage({
    */
   const setRegionDrop = useCallback(
     (region: CeilingRegion, drop: number | null): void => {
-      // 触っただけ（値が変わっていない）ときは何もしない
-      if (drop !== null && Math.abs(drop - region.drop) < 1e-6) return;
+      // 触っただけ（値が変わっていない）ときは何もしない。
+      // 高さがまだ決まっていない区画（Ｈが空の下がり天井の側）は、同じ数字でもその区画の高さとして覚える
+      if (
+        drop !== null &&
+        region.height !== null &&
+        Math.abs(drop - region.drop) < 1e-6
+      )
+        return;
       setCodes((current) => ({
         ...current,
         heights: noteRegionHeight(current.heights, region, drop),

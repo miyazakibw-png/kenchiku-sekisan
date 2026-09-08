@@ -14,6 +14,7 @@ import {
   type CeilingElement,
 } from "../../src/core/room/ceiling";
 import {
+  edge,
   lShape,
   rectangleShape,
   roomQuantities,
@@ -933,5 +934,73 @@ describe("区画の境目の線", () => {
     const flat = ceilingQuantities([{ ...drop, height: 0 }], solved, 2.7);
     expect(flat.totals.dropCeilingLength).toBe(0);
     expect(flat.totals.dropCeilingArea).toBe(0);
+  });
+
+  it("Ｈが空の下がり天井の側の区画（高さ未定）に既定と同じ高さを入れても、その区画の高さとして残る", () => {
+    // 実際の部屋（凹凸のある形）で、左壁沿いのＨ空欄の下がり天井の側に C3（小さな帯）と C7 ができる
+    const solved = solveShape({
+      edges: [
+        edge("E", 7.84),
+        edge("S", 2.6),
+        edge("W", 0.6),
+        edge("S", 2.5),
+        edge("W", 1.24),
+        edge("N", 0.69),
+        edge("W", 0.93),
+        edge("S", 0.69),
+        edge("W", 2.89),
+        edge("N", 0.72),
+        edge("W", 0.5),
+        edge("W", 0.91),
+        edge("S", 0.72),
+        edge("W", 3.75),
+        edge("N", 0.69),
+        edge("W", 0.84),
+        edge("N", 2.51),
+        edge("E", 2.58),
+        edge("N", 1.6),
+        edge("E", 1.24),
+        edge("N", 0.3),
+      ],
+    });
+    const e = solved.edges;
+    const elements: CeilingElement[] = [
+      element("ceilingBeam", e[1].id, { width: 0.8, height: 1.07, offset: 1.3 }),
+      element("dropCeiling", e[0].id, { height: 0.67, offset: 0.91 }),
+      element("ceilingBeam", e[1].id, { width: 0.9, height: 0.62, offset: 5.55 }),
+      element("wallBeam", e[16].id, { width: 0.84, height: 1.07, offset: 0 }),
+      element("dropCeiling", e[16].id, { height: null, offset: 2.85 }),
+      element("wallBeam", e[4].id, { width: 0.2, height: 1.07, offset: 0 }),
+      element("wallBeam", e[8].id, { width: 0.2, height: 1.07, offset: 0 }),
+      element("wallBeam", e[13].id, { width: 0.2, height: 1.07, offset: 0 }),
+    ];
+    const before = ceilingRegions(elements, solved, 3.77, false, true);
+    expect(before.map((row) => [row.code, row.height, row.area])).toEqual([
+      ["C1", 3.1, 5.82],
+      ["C2", 3.1, 1.18],
+      ["C3", null, 0.16],
+      ["C4", 3.77, 3.81],
+      ["C5", 3.77, 9.09],
+      ["C6", 3.77, 13.03],
+      ["C7", null, 6.3],
+    ]);
+    // 既定と同じ下がり（C3は0.67、C7は0）を入れても、高さ未定ではなくなる
+    const c3 = before.find((row) => row.code === "C3")!;
+    const c7 = before.find((row) => row.code === "C7")!;
+    let heights = noteRegionHeight([], c3, c3.drop);
+    heights = noteRegionHeight(heights, c7, c7.drop);
+    const after = ceilingRegions(elements, solved, 3.77, false, true, heights);
+    expect(after.map((row) => [row.code, row.height])).toEqual([
+      ["C1", 3.1],
+      ["C2", 3.1],
+      ["C3", 3.1],
+      ["C4", 3.77],
+      ["C5", 3.77],
+      ["C6", 3.77],
+      ["C7", 3.77],
+    ]);
+    // 通常表示（同じ高さの隣をまとめる）でも C3・C7 の値は残る
+    const merged = ceilingRegions(elements, solved, 3.77, false, false, heights);
+    expect(merged.every((row) => row.height !== null)).toBe(true);
   });
 });
