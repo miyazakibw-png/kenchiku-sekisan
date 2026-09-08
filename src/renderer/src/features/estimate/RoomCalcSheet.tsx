@@ -27,6 +27,7 @@ import {
   removeSet,
   removeSetLine,
   removeSetRow,
+  resolveDescriptionMark,
   setRowCount,
   splitSetAt,
   syncLines,
@@ -106,6 +107,37 @@ const BANNER_COLORS: { label: string; color: string }[] = [
   { label: "紫", color: "#ede9fe" },
   { label: "水", color: "#cffafe" },
 ];
+
+/**
+ * 摘要の欄。マスターの○○面・○○下は、欄を離れている間は置き換わった文字（上下の行の積算用表示＋面・下）で見せ、
+ * 欄に入ると元の文字（○○面・○○下のまま）を直せる
+ */
+function DescriptionInput({
+  value,
+  resolved,
+  onFocus,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, "value"> & {
+  value: string;
+  resolved: string;
+}): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  return (
+    <input
+      {...props}
+      value={editing ? value : resolved}
+      title={resolved !== value ? `マスター：${value}` : undefined}
+      onFocus={(e) => {
+        setEditing(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setEditing(false);
+        props.onBlur?.(e);
+      }}
+    />
+  );
+}
 
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
 function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
@@ -1671,7 +1703,9 @@ export default function RoomCalcSheet({
                 void (async () => {
                   const loaded = lowerFromTemplate(await template.load());
                   if (loaded.length === 0) {
-                    onMessage("初期状態は空です（見出し行と部位を入れて「初期状態として保存」してください）");
+                    onMessage(
+                      "初期状態は空です（見出し行と部位を入れて「初期状態として保存」してください）",
+                    );
                     return;
                   }
                   if (!hasLowerContent(sets)) {
@@ -1699,7 +1733,9 @@ export default function RoomCalcSheet({
                   )
                     return;
                   await template.save(next);
-                  onMessage("下段の初期状態を保存しました（次に新しく開く部屋計算書からこの並びで始まります）");
+                  onMessage(
+                    "下段の初期状態を保存しました（次に新しく開く部屋計算書からこの並びで始まります）",
+                  );
                 })()
               }
             >
@@ -1976,11 +2012,18 @@ export default function RoomCalcSheet({
                             />
                           </td>
                           <td>
-                            <input
+                            <DescriptionInput
                               lang="ja"
                               data-row={gridRow}
                               data-col={7}
                               value={detail.descriptionLower}
+                              resolved={resolveDescriptionMark(
+                                detail.descriptionLower,
+                                set.details[rowIndex - 1]?.estimateDisplay ??
+                                  "",
+                                set.details[rowIndex + 1]?.estimateDisplay ??
+                                  "",
+                              )}
                               onFocus={focusDetail}
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
@@ -1990,11 +2033,18 @@ export default function RoomCalcSheet({
                             />
                           </td>
                           <td>
-                            <input
+                            <DescriptionInput
                               lang="ja"
                               data-row={gridRow}
                               data-col={8}
                               value={detail.descriptionUpper}
+                              resolved={resolveDescriptionMark(
+                                detail.descriptionUpper,
+                                set.details[rowIndex - 1]?.estimateDisplay ??
+                                  "",
+                                set.details[rowIndex + 1]?.estimateDisplay ??
+                                  "",
+                              )}
                               onFocus={focusDetail}
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {

@@ -96,6 +96,60 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
   };
 }
 
+/**
+ * 摘要の「○○面」「○○下」（マスターに置いた印）。○○は隣の明細の積算用表示に変わる。
+ * ○○面：下の行の積算用表示＋面　○○下：上の行の積算用表示＋下　該当が無ければ印ごと消す（前の空けも）
+ */
+const DESCRIPTION_MARK = /([ 　]?)[○〇]{2}(面|下)/g;
+
+export function hasDescriptionMark(text: string): boolean {
+  return /[○〇]{2}[面下]/.test(text);
+}
+
+export function resolveDescriptionMark(
+  text: string,
+  upper: string,
+  lower: string,
+): string {
+  if (!hasDescriptionMark(text)) return text;
+  let removed = false;
+  const replaced = text.replace(DESCRIPTION_MARK, (_match, space, kind) => {
+    const base = (kind === "面" ? lower : upper).trim();
+    if (base === "") {
+      removed = true;
+      return "";
+    }
+    return `${space}${base}${kind}`;
+  });
+  return removed ? replaced.trim() : replaced;
+}
+
+/** セットの明細の摘要（上段・下段）の○○面・○○下を、上下の行の積算用表示で置き換えた明細 */
+export function resolveDescriptionMarks(details: CalcDetail[]): CalcDetail[] {
+  return details.map((detail, index) => {
+    if (
+      !hasDescriptionMark(detail.descriptionLower) &&
+      !hasDescriptionMark(detail.descriptionUpper)
+    )
+      return detail;
+    const upper = details[index - 1]?.estimateDisplay ?? "";
+    const lower = details[index + 1]?.estimateDisplay ?? "";
+    return {
+      ...detail,
+      descriptionUpper: resolveDescriptionMark(
+        detail.descriptionUpper,
+        upper,
+        lower,
+      ),
+      descriptionLower: resolveDescriptionMark(
+        detail.descriptionLower,
+        upper,
+        lower,
+      ),
+    };
+  });
+}
+
 export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
   return {
     id: newId("l"),

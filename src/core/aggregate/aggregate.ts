@@ -7,6 +7,7 @@
 
 import {
   displayedValue,
+  resolveDescriptionMarks,
   type CalcSet,
   type CalcSheetResult,
 } from "../room/calcSheet";
@@ -105,7 +106,7 @@ export function entriesFromCalcSheet(
   const multiplier = context.multiplier === 0 ? 1 : context.multiplier;
   sets.forEach((set) => {
     const total = result.setTotals.get(set.id) ?? 0;
-    set.details.forEach((detail) => {
+    resolveDescriptionMarks(set.details).forEach((detail) => {
       if (detail.name.trim() === "" && detail.partName.trim() === "") return;
       const coefficient = detail.coefficient || 1;
       // 明細に入れた部位をそのまま使う。どちらも空欄のときだけセットの部位を使う

@@ -22,6 +22,8 @@ import {
   withUniqueIds,
   removeSet,
   removeSetLine,
+  resolveDescriptionMark,
+  resolveDescriptionMarks,
   splitSetAt,
   syncLines,
   setRowCount,
@@ -421,5 +423,64 @@ describe("partOfSet（セットの部位名）", () => {
     set.details[0].partName = "";
     expect(partOfSet(set)).toBe("");
     expect(partOfSet(undefined)).toBe("");
+  });
+});
+
+describe("摘要の○○面・○○下（マスターの印を積算用表示で置き換える）", () => {
+  it("○○面は下の行・○○下は上の行の積算用表示に変わり、面・下の文字と位置・空けはマスターのまま", () => {
+    expect(resolveDescriptionMark("t2.0 ○○面", "", "モルタル")).toBe(
+      "t2.0 モルタル面",
+    );
+    expect(
+      resolveDescriptionMark("トイレ用 ○○下 ○○面", "コンクリート", "タイル"),
+    ).toBe("トイレ用 コンクリート下 タイル面");
+    expect(resolveDescriptionMark("○○面 t2.0", "", "モルタル")).toBe(
+      "モルタル面 t2.0",
+    );
+  });
+
+  it("該当の積算用表示が無ければ○○面・○○下ごと（前の空けも）消す", () => {
+    expect(resolveDescriptionMark("t2.0 ○○面", "", "")).toBe("t2.0");
+    expect(resolveDescriptionMark("トイレ用 ○○下 ○○面", "", "タイル")).toBe(
+      "トイレ用 タイル面",
+    );
+    expect(
+      resolveDescriptionMark("トイレ用 ○○下 ○○面", "コンクリート", ""),
+    ).toBe("トイレ用 コンクリート下");
+    expect(resolveDescriptionMark("○○面", "", "")).toBe("");
+  });
+
+  it("〇（漢数字のゼロ）でも同じに見る。印の無い文字はそのまま", () => {
+    expect(resolveDescriptionMark("〇〇面", "", "モルタル")).toBe("モルタル面");
+    expect(resolveDescriptionMark("○〇下", "コンクリート", "")).toBe(
+      "コンクリート下",
+    );
+    expect(resolveDescriptionMark("t2.0 面材", "", "")).toBe("t2.0 面材");
+    expect(resolveDescriptionMark("○印", "", "")).toBe("○印");
+  });
+
+  it("セットの明細では上下の行の積算用表示を使い、元の明細は書き換えない", () => {
+    const details = [
+      calcDetail({
+        name: "コンクリート金ごて",
+        estimateDisplay: "コンクリート",
+      }),
+      calcDetail({
+        name: "モルタル下地",
+        descriptionLower: "t20 ○○下 ○○面",
+        estimateDisplay: "モルタル",
+      }),
+      calcDetail({
+        name: "磁器質タイル",
+        descriptionLower: "t2.0 ○○面",
+        estimateDisplay: "タイル",
+      }),
+    ];
+    const resolved = resolveDescriptionMarks(details);
+    expect(resolved[0].descriptionLower).toBe("");
+    expect(resolved[1].descriptionLower).toBe("t20 コンクリート下 タイル面");
+    expect(resolved[2].descriptionLower).toBe("t2.0");
+    expect(details[1].descriptionLower).toBe("t20 ○○下 ○○面");
+    expect(resolved[0]).toBe(details[0]);
   });
 });

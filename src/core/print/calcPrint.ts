@@ -2,6 +2,7 @@ import type { CalcSet, CalcSheetResult } from "../room/calcSheet";
 import {
   displayQuantity,
   displayedValue,
+  resolveDescriptionMarks,
   setRowCount,
 } from "../room/calcSheet";
 
@@ -98,8 +99,9 @@ export function calcPrintRows(
     const setTotal = result.setTotals.get(set.id) ?? null;
     const bSymbol =
       set.lines.find((line) => line.bSymbol.trim() !== "")?.bSymbol ?? "";
+    const details = resolveDescriptionMarks(set.details);
     for (let index = 0; index < count; index += 1) {
-      const detail = set.details[index];
+      const detail = details[index];
       const line = set.lines[index];
       const lineResult = line ? result.lines.get(line.id) : undefined;
       rows.push({

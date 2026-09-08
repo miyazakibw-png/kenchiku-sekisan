@@ -75,6 +75,39 @@ describe("集計処理", () => {
     expect(entries[0].quantity).toBe(21);
   });
 
+  it("摘要の○○面・○○下は集計へ入る時に上下の行の積算用表示で置き換わる", () => {
+    const target = set("s1", 1);
+    const base = target.details[0];
+    target.details = [
+      {
+        ...base,
+        id: "s1-d0",
+        name: "モルタル下地",
+        estimateDisplay: "モルタル",
+      },
+      {
+        ...base,
+        id: "s1-d1",
+        name: "磁器質タイル",
+        descriptionLower: "t8 ○○下 ○○面",
+        estimateDisplay: "タイル",
+      },
+      {
+        ...base,
+        id: "s1-d2",
+        name: "目地",
+        descriptionLower: "○○下 ○○面",
+        estimateDisplay: "",
+      },
+    ];
+    const entries = entriesFromCalcSheet(context(), [target], result("s1", 3));
+    expect(entries.map((entry) => entry.descriptionLower)).toEqual([
+      "t=2.0",
+      "t8 モルタル下",
+      "タイル下",
+    ]);
+  });
+
   it("部位名は明細に無ければセットの部位名を使う", () => {
     const entries = entriesFromCalcSheet(
       context(),
