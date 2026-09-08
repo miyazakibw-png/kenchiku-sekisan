@@ -17,6 +17,7 @@ import {
   nextBSymbol,
   openSetDetail,
   padLines,
+  partOfSet,
   quantityByPart,
   withUniqueIds,
   removeSet,
@@ -406,5 +407,19 @@ describe("重なったIDを付け直す", () => {
     expect(fixed[1].id).not.toBe("s1");
     expect(fixed[1].partName).toBe("天井");
     expect(fixed[0].lines[0].id).not.toBe(fixed[1].lines[0].id);
+  });
+});
+
+describe("partOfSet（セットの部位名）", () => {
+  it("左端の部位を使い、空なら明細の部位名で見る", () => {
+    const set = calcSet(1);
+    set.partName = "壁";
+    set.details[0].partName = "床";
+    expect(partOfSet(set)).toBe("壁");
+    set.partName = " ";
+    expect(partOfSet(set)).toBe("床");
+    set.details[0].partName = "";
+    expect(partOfSet(set)).toBe("");
+    expect(partOfSet(undefined)).toBe("");
   });
 });

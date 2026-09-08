@@ -8,6 +8,7 @@ import type {
 } from "@shared/types";
 import {
   evaluateCalcSheet,
+  partOfSet,
   trimEmptySets,
   withUniqueIds,
   type CalcSet,
@@ -105,16 +106,6 @@ interface PlanSnapshot {
   underlay: TraceUnderlay;
   trace: RoomTrace;
   traced: TracedShape[];
-}
-
-/** セットの部位名（左端の部位。空なら明細の部位名で見る） */
-function partOfSet(set: CalcSet | undefined): string {
-  if (!set) return "";
-  const part = set.partName.trim();
-  if (part !== "") return part;
-  return (
-    set.details.find((detail) => detail.partName.trim() !== "")?.partName ?? ""
-  );
 }
 
 interface Props {
@@ -1671,7 +1662,7 @@ export default function PitSheetPage({
                 >
                   ＰＡ
                 </td>
-                <td colSpan={11}>合計（全ピット）</td>
+                <td colSpan={12}>合計（全ピット）</td>
                 <td className="num">{formatNumber(total.floorArea, 2)}</td>
                 <td className="num">{formatNumber(total.wallLength, 2)}</td>
                 <td className="num">{formatNumber(total.columnLength, 2)}</td>

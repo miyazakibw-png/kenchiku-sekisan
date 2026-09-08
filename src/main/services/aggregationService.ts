@@ -61,6 +61,7 @@ import {
   displayedValue,
   evaluateCalcSheet,
   normalizeSets,
+  partOfSet,
   type CalcSet,
 } from "../../core/room/calcSheet";
 import {
@@ -431,7 +432,7 @@ export function collectEntries(
           context,
           sets,
           evaluateCalcSheet(sets, variables, (set) =>
-            pitPartVariables(quantities, set.partName),
+            pitPartVariables(quantities, partOfSet(set)),
           ),
         ),
       );

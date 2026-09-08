@@ -59,6 +59,16 @@ export interface CalcSet {
   assemblyId?: number | null;
 }
 
+/** セットの部位名（左端の部位。空なら明細の部位名で見る） */
+export function partOfSet(set: CalcSet | undefined): string {
+  if (!set) return "";
+  const part = set.partName.trim();
+  if (part !== "") return part;
+  return (
+    set.details.find((detail) => detail.partName.trim() !== "")?.partName ?? ""
+  );
+}
+
 let counter = 0;
 function newId(prefix: string): string {
   counter += 1;
