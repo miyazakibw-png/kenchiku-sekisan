@@ -1554,13 +1554,16 @@ export const PIT_LENGTH_STEPS = [50, 100, 300, 500] as const;
 
 /**
  * 集計でまとめる長さ（既定は50mmごと）。
- * 単位に切り上げて「その長さ以下」の列に入れる（200mmは500mmごとなら500の列）。
+ * 単位に切り上げて「その長さ以下」の列に入れる（200mmは500mmごとなら500の列。ちょうど1000は〜1000）。
+ * 長さは表の表示（m・小数点以下2桁）と同じ 1cm 単位に丸めてから判定するので、
+ * 1.00 と見える本（1.004mなど）が〜1500に入ることはない。
  * まとめ方を変えても本は消えず、列が変わるだけになる。
  */
 export function groupLengthMm(mm: number, step = 50): number {
-  if (step <= 0) return Math.round(mm);
-  if (mm <= 0) return 0;
-  return Math.ceil(mm / step - 1e-6) * step;
+  const shown = Math.round(mm / 10) * 10;
+  if (step <= 0) return shown;
+  if (shown <= 0) return 0;
+  return Math.ceil(shown / step - 1e-6) * step;
 }
 
 /** スリーブ1か所の長さ（mm）。手入力が無いときは付けたピット間の長さ */

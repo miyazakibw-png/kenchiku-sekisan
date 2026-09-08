@@ -51,7 +51,8 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
 
   it("長さは50mmごとに切り上げてまとめる（その長さ以下の列）", () => {
     expect(groupLengthMm(374)).toBe(400);
-    expect(groupLengthMm(351)).toBe(400);
+    expect(groupLengthMm(356)).toBe(400);
+    expect(groupLengthMm(351)).toBe(350);
     expect(groupLengthMm(350)).toBe(350);
     expect(groupLengthMm(412)).toBe(450);
     expect(groupLengthMm(500)).toBe(500);
@@ -63,6 +64,14 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     expect(groupLengthMm(800, 500)).toBe(1000);
     expect(groupLengthMm(1000, 500)).toBe(1000);
     expect(groupLengthMm(200, 50)).toBe(200);
+  });
+
+  it("表に 1.00 と出る長さ（1cm未満の端数）はちょうど1000として扱う", () => {
+    expect(groupLengthMm(1000.3, 500)).toBe(1000);
+    expect(groupLengthMm(1004, 500)).toBe(1000);
+    expect(groupLengthMm(1004, 50)).toBe(1000);
+    expect(groupLengthMm(1005, 500)).toBe(1500);
+    expect(groupLengthMm(996, 500)).toBe(1000);
   });
 
   it("長さ別に本数と合計長さを数える（図の太さは集計に関係しない）", () => {
