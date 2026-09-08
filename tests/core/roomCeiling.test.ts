@@ -581,7 +581,8 @@ describe("天井伏図", () => {
     // C6（右下…右上の区画）だけ天井高さを2.4にする
     const target = regions[5];
     const heights = noteRegionHeight([], target, 0.3);
-    expect(heights).toEqual([{ at: target.center, drop: 0.3 }]);
+    expect(heights).toHaveLength(1);
+    expect(heights[0].drop).toBe(0.3);
     const noted = ceilingRegions(elements, solved, 2.7, false, false, heights);
     expect(noted.map((row) => row.height)).toEqual([
       2.7, 2.7, 2.7, 2.7, 2.7, 2.4,
@@ -590,9 +591,11 @@ describe("天井伏図", () => {
     expect(noted.slice(0, 5).map((row) => row.area)).toEqual(
       regions.slice(0, 5).map((row) => row.area),
     );
-    // 空（または0）にすると元に戻る
+    // 空にすると元に戻る（0は「部屋と同じ高さ」として覚える）
     expect(noteRegionHeight(heights, noted[5], null)).toEqual([]);
-    expect(noteRegionHeight(heights, noted[5], 0)).toEqual([]);
+    expect(noteRegionHeight(heights, noted[5], 0).map((row) => row.drop)).toEqual(
+      [0],
+    );
     // 別の区画に入れても、その区画の分だけが足される
     const two = noteRegionHeight(heights, noted[0], 0.2);
     expect(two).toHaveLength(2);
@@ -611,6 +614,69 @@ describe("天井伏図", () => {
       heights: [],
     });
     expect(parseCeilingCodes("x")).toEqual({ moves: {}, heights: [] });
+  });
+
+  it("下がり天井で下がる区画も、区画ごとに別の天井高さを入れられる（隣は連動しない）", () => {
+    // 8×6の部屋。下壁沿いの下がり天井（離れ2.0・H0.77）を、縦の天井付梁型（x 3.8〜4.2・H0.77）がまたぐ
+    // → 下がり天井側2つ（左右）・残りの天井2つ（左右）。梁底は同じ深さでも区画にしない
+    const solved = solveShape(rectangleShape(8, 6));
+    const left = solved.edges[3];
+    const bottom = solved.edges[0];
+    const lowered = element("dropCeiling", bottom.id, {
+      offset: 2,
+      height: 0.77,
+    });
+    const elements = [
+      element("ceilingBeam", left.id, { offset: 3.8, width: 0.4, height: 0.77 }),
+      lowered,
+    ];
+    const regions = ceilingRegions(elements, solved, 3.77, false, true);
+    expect(regions.map((row) => [row.code, row.drop, row.area])).toEqual([
+      ["C1", 0.77, 7.6],
+      ["C2", 0.77, 7.6],
+      ["C3", 0, 15.2],
+      ["C4", 0, 15.2],
+    ]);
+    expect(regions[0].elementIds).toEqual([lowered.id]);
+    expect(regions[1].elementIds).toEqual([lowered.id]);
+
+    // 下がり天井の右側（C2）だけ 3.67（下がり0.10）、上の天井の左（C3）だけ 3.0（下がり0.77）にする
+    let heights = noteRegionHeight([], regions[1], 0.1);
+    heights = noteRegionHeight(heights, regions[2], 0.77);
+    const noted = ceilingRegions(elements, solved, 3.77, false, true, heights);
+    expect(noted.map((row) => [row.code, row.height])).toEqual([
+      ["C1", 3],
+      ["C2", 3.67],
+      ["C3", 3],
+      ["C4", 3.77],
+    ]);
+    // 下がり天井の行のＨは変えていない（左側C1は行のＨのまま）
+    expect(lowered.height).toBe(0.77);
+    // 下がる側に部屋と同じ高さ（下がり0）を入れると、その区画だけ元の高さに戻る
+    const flat = noteRegionHeight(heights, noted[0], 0);
+    expect(
+      ceilingRegions(elements, solved, 3.77, false, true, flat).map(
+        (row) => row.height,
+      ),
+    ).toEqual([3.77, 3.67, 3, 3.77]);
+    // 空欄にすると行のＨ（既定）に戻る
+    const back = noteRegionHeight(flat, noted[1], null);
+    expect(
+      ceilingRegions(elements, solved, 3.77, false, true, back).map(
+        (row) => row.height,
+      ),
+    ).toEqual([3.77, 3, 3, 3.77]);
+    // 見付面積SAも区画ごとの高さで数える。右側の段差は 3.77−3.67＝0.10、
+    // 左側は両側とも3.0なので段差なし（線も消える）
+    const quantities = ceilingQuantities(elements, solved, 3.77, heights);
+    expect(quantities.totals.dropCeilingArea).toBe(0.38);
+    expect(quantities.dropCeilingByHeight).toEqual([
+      { drop: 0.1, length: 3.8 },
+    ]);
+    // back：左は 3.77 と 3.0、右は 3.0 と 3.77 → 両側とも段差0.77
+    expect(
+      ceilingQuantities(elements, solved, 3.77, back).totals.dropCeilingArea,
+    ).toBe(2 * (Math.round(3.8 * 0.77 * 100) / 100));
   });
 
   it("下がり天井より高い（Ｈが浅い）梁型は下がり天井の区画を分けない", () => {

@@ -803,8 +803,10 @@ export interface CeilingRegion {
 }
 
 /**
- * 下がり天井の無い区画（梁型で分かれた天井など）の天井高さを覚える。
- * その区画の中に前から覚えていた高さがあれば置き換え、空・下がり0なら消す（部屋の天井高さに戻る）
+ * 区画の天井高さ（下がり）を、その区画の中の点で覚える。
+ * 下がり天井の行のＨはその線で下がる側全体の既定で、こちらは区画1つだけの高さ（隣の区画は変わらない）。
+ * 区画がいくつかの形をまとめたものなら、その形ごとに覚える（あとで別々に分かれても高さが残る）。
+ * その区画の中に前から覚えていた高さがあれば置き換え、空なら消す（既定に戻る）
  */
 export function noteRegionHeight(
   heights: CeilingRegionHeight[],
@@ -814,9 +816,14 @@ export function noteRegionHeight(
   const rest = heights.filter(
     (row) => !region.parts.some((part) => inside(part, row.at)),
   );
-  return drop === null || Math.abs(drop) < 1e-6
-    ? rest
-    : [...rest, { at: region.center, drop: round2(drop) }];
+  if (drop === null) return rest;
+  return [
+    ...rest,
+    ...region.parts.map((part) => ({
+      at: labelPoint([part], polygonCenter(part)),
+      drop: round2(drop),
+    })),
+  ];
 }
 
 /** 梁型（壁付き・天井付）が天井から取っている梁底の帯（見えている所だけ） */
@@ -1195,42 +1202,46 @@ function regionPieces(
   const pieces = polygons.map((poly) => {
     const center = polygonCenter(poly);
     const found = dropAt(elements, solved, roomCeilingHeight, center);
-    // 梁底が天井を取るのは、梁底がその所の天井より低いときだけ
+    // 梁底が天井を取るのは、梁底がその所の天井と同じか低いとき
     // （下がり天井より高い梁型は下がり天井の中では見えない）
     const band =
       bands.find((row) => {
         if (!insideBand(points, row, center)) return false;
         const depth = elementDrop(row.element, roomCeilingHeight);
-        return depth === null || depth > found.drop + 1e-6;
+        return depth === null || depth >= found.drop - 1e-6;
       }) ?? null;
-    const beam = band !== null;
+    const footprint = beams
+      .filter((row) => inside(poly, row.center))
+      .reduce((sum, row) => sum + row.area, 0);
+    // 梁底に丸ごと取られている形も梁底（天井は残らない）
+    const beam = band !== null || polygonArea(poly) - footprint < 1e-6;
     // その区画のふちになっている下がり天井（下がっていない側でも高さを入れられるように）
     const boundaryIds = lines
       .filter((row) => onBoundary(poly, row.line))
       .map((row) => row.element.id);
-    // 下がり天井の無い区画は、区画の中の点で覚えた天井高さ
-    const noted =
-      !beam && found.elementIds.length === 0 && found.waiting === ""
-        ? (heights.find((row) => inside(poly, row.at)) ?? null)
-        : null;
-    const beamArea = beam
-      ? 0
-      : beams
-          .filter((row) => inside(poly, row.center))
-          .reduce((sum, row) => sum + row.area, 0);
+    // 区画の中の点で覚えた天井高さがあればそれが優先（下がり天井の行のＨは既定）
+    const noted = beam
+      ? null
+      : (heights.find((row) => inside(poly, row.at)) ?? null);
     // 梁底の高さは梁の深さ（梁底と下がり天井の境目の段差に使う。Ｈが空なら未定）
     const beamDepth =
       band === null ? null : elementDrop(band.element, roomCeilingHeight);
     return {
       poly,
       center,
-      area: Math.max(0, polygonArea(poly) - beamArea),
+      area: beam ? polygonArea(poly) : Math.max(0, polygonArea(poly) - footprint),
       drop: beam
-        ? (beamDepth ?? 0)
+        ? (beamDepth ?? found.drop)
         : noted === null
           ? found.drop
           : round2(noted.drop),
-      waiting: beam ? (beamDepth === null ? band.element.id : "") : found.waiting,
+      waiting: beam
+        ? band !== null && beamDepth === null
+          ? band.element.id
+          : ""
+        : noted === null
+          ? found.waiting
+          : "",
       elementIds: beam ? [] : found.elementIds,
       boundaryIds,
       beam,
