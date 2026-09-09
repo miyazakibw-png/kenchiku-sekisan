@@ -130,6 +130,17 @@ const KIND_LABEL: Record<EdgeKind, string> = {
   curve: "曲面壁",
 };
 
+/** 記号表の左上から先に並べる記号（その部屋に無くても0で残す） */
+const HEAD_SYMBOLS: { symbol: string; label: string }[] = [
+  { symbol: "FA", label: "床面積" },
+  { symbol: "HL", label: "巾木長さ" },
+  { symbol: "WA", label: "壁面積" },
+  { symbol: "HA", label: "柱面積" },
+  { symbol: "GA", label: "壁付き梁型 面積" },
+  { symbol: "BA", label: "天井付梁型 面積" },
+  { symbol: "CA", label: "天井面積" },
+];
+
 /** まだ選んでいない欄を押したときは、中の数字をまるごと選んで上書きできるようにする */
 function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
   const input = event.currentTarget;
@@ -622,17 +633,31 @@ export default function RoomSheetPage({
   /**
    * 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため）。
    * 壁1・柱1などの辺ごとの記号は一覧には出さない（計算式には引き続き使える）。
+   * よく使う記号は左上から決まった順に並べ、その部屋に無くても0で残す。
    */
   const symbolPairs = useMemo(() => {
     const shown = symbols.filter(
       (item) => !("edgeId" in item) || item.edgeId === undefined,
     );
-    const half = Math.ceil(shown.length / 2);
-    return shown
+    const head = HEAD_SYMBOLS.map(
+      ({ symbol, label }) =>
+        shown.find((item) => item.symbol === symbol) ?? {
+          symbol,
+          label,
+          value: 0,
+        },
+    );
+    const headSymbols = new Set(HEAD_SYMBOLS.map((item) => item.symbol));
+    const ordered = [
+      ...head,
+      ...shown.filter((item) => !headSymbols.has(item.symbol)),
+    ];
+    const half = Math.ceil(ordered.length / 2);
+    return ordered
       .slice(0, half)
       .map(
         (item, index) =>
-          [item, shown[half + index] ?? null] as [
+          [item, ordered[half + index] ?? null] as [
             (typeof symbols)[number],
             (typeof symbols)[number] | null,
           ],
