@@ -43,7 +43,6 @@ import {
   lowerTemplateFrom,
 } from "../../../../core/room/lowerTemplate";
 import {
-  detailAsTsv,
   duplicateDetail,
   duplicateLine,
   duplicateSet,
@@ -1033,19 +1032,30 @@ export default function RoomCalcSheet({
     return currentSet.details[focus.index] ?? null;
   }, [currentSet, focus]);
 
-  /** 1行コピー（カーソルの明細1件）。Excelへも貼れるようTSVにする */
+  /** 1行コピー（カーソルの行を明細・計算式ごと）。Excelへも貼れるようTSVにする */
   const copyRow = useCallback(async () => {
-    if (!currentDetail) {
+    if (!currentDetail || !currentSet || !focus) {
       onMessage("コピーする明細の欄を選んでください");
       return;
     }
-    const text = detailAsTsv(currentDetail);
+    const line = currentSet.lines[focus.index] ?? calcLine();
+    const text = rowsAsTsv([currentDetail], [line]);
     await navigator.clipboard.writeText(text);
-    setCalcClip({ kind: "detail", text, detail: currentDetail });
+    setCalcClip({
+      kind: "rows",
+      text,
+      details: [currentDetail],
+      lines: [line],
+      // 1行だけのコピーでは、写し元のセットの部位は持っていかない（今までどおり）
+      partNumber: null,
+      partName: "",
+      banners: [],
+      parts: [{ at: 0, partNumber: null, partName: "" }],
+    });
     onMessage(
-      `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
+      `明細「${currentDetail.name || "（名称なし）"}」を計算式ごとコピーしました`,
     );
-  }, [currentDetail, onMessage]);
+  }, [currentDetail, currentSet, focus, onMessage]);
 
   /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため。※行も含む） */
   const flatRows = useMemo(() => {
