@@ -69,6 +69,7 @@ import {
 import {
   roomSymbols,
   solveShape,
+  withFixedRoomSymbols,
   type RoomFitting,
   type RoomShape,
 } from "../../core/room/shape";
@@ -554,7 +555,8 @@ export function collectEntries(
       ),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];
-    const variables = calcVariables(symbols, fittings);
+    // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
+    const variables = withFixedRoomSymbols(calcVariables(symbols, fittings));
     entries.push(
       ...entriesFromCalcSheet(
         context,
@@ -663,7 +665,17 @@ function transferEntries(
 
   return rows
     .map((row, index) => ({ row, head: inherited[index] }))
-    .filter(({ row }) => row.name.trim() !== "" || row.quantity !== null)
+    // 部位名・名称が無くても、摘要や備考だけの行（仕様の続きなど）も計上する
+    .filter(({ row }) =>
+      [
+        row.partName,
+        row.name,
+        row.descriptionUpper,
+        row.descriptionLower,
+        row.remarks,
+        row.remarksLower,
+      ].some((text) => text.trim() !== "") || row.quantity !== null,
+    )
     .map(({ row, head }) => {
       if (!part2Order.has(head.part2))
         part2Order.set(head.part2, part2Order.size);
@@ -683,9 +695,9 @@ function transferEntries(
         multiplier: 1,
         subjectId: head.subjectId,
         materialCategory: head.materialCategory,
-        partNumber: row.partId,
+        partNumber: head.partId,
         partName: row.partName,
-        detailNumber: row.detailNumber,
+        detailNumber: head.detailNumber,
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,
@@ -1191,7 +1203,7 @@ export function collectEstimateRowChecks(
   const parts = listProjectBasicMasters(db, projectId).aggregationParts;
   const byRow = new Map<
     number,
-    Map<string, { name: string; quantity: number }>
+    Map<string, { name: string; quantity: number; baseQuantity: number }>
   >();
 
   collectEntries(db, projectId).forEach((entry) => {
@@ -1205,8 +1217,13 @@ export function collectEstimateRowChecks(
     if (!part) return;
     const cells =
       byRow.get(entry.estimateRowId) ??
-      new Map<string, { name: string; quantity: number }>();
+      new Map<
+        string,
+        { name: string; quantity: number; baseQuantity: number }
+      >();
     byRow.set(entry.estimateRowId, cells);
+    // 倍率なしの数量（計算書そのままの数量）＝セット累計×掛け率
+    const baseQuantity = displayedValue(entry.setTotal * entry.coefficient);
     const cell = cells.get(part.name);
     if (cell) {
       // 同じ部位に複数の明細があるときは、名称を並べて数量を合計する
@@ -1215,12 +1232,14 @@ export function collectEstimateRowChecks(
           ? cell.name
           : `${cell.name}／${entry.name}`,
         quantity: displayedValue(cell.quantity + entry.quantity),
+        baseQuantity: displayedValue(cell.baseQuantity + baseQuantity),
       });
       return;
     }
     cells.set(part.name, {
       name: entry.name,
       quantity: displayedValue(entry.quantity),
+      baseQuantity,
     });
   });
 
@@ -1230,6 +1249,7 @@ export function collectEstimateRowChecks(
       partName,
       name: cell.name,
       quantity: cell.quantity,
+      baseQuantity: cell.baseQuantity,
     })),
   }));
 }

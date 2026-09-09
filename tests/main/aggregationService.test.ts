@@ -224,7 +224,13 @@ describe("集計処理", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0].estimateRowId).toBe(rowId);
     expect(checks[0].cells).toEqual([
-      { partName: "床", name: "ビニル床シート", quantity: 25.2 },
+      // 倍率2・掛け率1.05。倍率なしの数量は倍率をかける前の値
+      {
+        partName: "床",
+        name: "ビニル床シート",
+        quantity: 25.2,
+        baseQuantity: 12.6,
+      },
     ]);
 
     // 材種区分が違うときは拾わない
@@ -261,6 +267,31 @@ describe("集計処理", () => {
     expect(
       view.details.filter((detail) => detail.sourceKind === "transfer"),
     ).toHaveLength(1);
+  });
+
+  it("転記入力表は部位名・名称が無い行も計上し、部位ID・明細IDを引き継ぐ", () => {
+    saveTransferRows(db, {
+      projectId,
+      rows: [
+        transferDraft(3),
+        {
+          ...transferDraft(0),
+          partId: null,
+          partName: "",
+          detailNumber: null,
+          name: "",
+          descriptionLower: "仕様のつづき",
+          unit: "",
+        },
+      ],
+    });
+
+    const view = runAggregation(db, projectId);
+    const items = view.items.filter((item) => item.name === "");
+    expect(items).toHaveLength(1);
+    expect(items[0].partNumber).toBe(10);
+    expect(items[0].detailNumber).toBe(1.02);
+    expect(items[0].descriptionLower).toBe("仕様のつづき");
   });
 
   it("集計をかけ直しても過去の回は消さず、版として残す", () => {

@@ -47,6 +47,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  ROOM_FIXED_SYMBOLS,
   round2,
   shapeExtents,
   solveShape,
@@ -129,6 +130,9 @@ const KIND_LABEL: Record<EdgeKind, string> = {
   column: "柱",
   curve: "曲面壁",
 };
+
+/** 記号表の左上から先に並べる記号（その部屋に無くても0で残す） */
+const HEAD_SYMBOLS = ROOM_FIXED_SYMBOLS;
 
 /** まだ選んでいない欄を押したときは、中の数字をまるごと選んで上書きできるようにする */
 function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
@@ -622,17 +626,31 @@ export default function RoomSheetPage({
   /**
    * 記号表は横に2組並べて高さを半分にする（下段の表示行を増やすため）。
    * 壁1・柱1などの辺ごとの記号は一覧には出さない（計算式には引き続き使える）。
+   * よく使う記号は左上から決まった順に並べ、その部屋に無くても0で残す。
    */
   const symbolPairs = useMemo(() => {
     const shown = symbols.filter(
       (item) => !("edgeId" in item) || item.edgeId === undefined,
     );
-    const half = Math.ceil(shown.length / 2);
-    return shown
+    const head = HEAD_SYMBOLS.map(
+      ({ symbol, label }) =>
+        shown.find((item) => item.symbol === symbol) ?? {
+          symbol,
+          label,
+          value: 0,
+        },
+    );
+    const headSymbols = new Set(HEAD_SYMBOLS.map((item) => item.symbol));
+    const ordered = [
+      ...head,
+      ...shown.filter((item) => !headSymbols.has(item.symbol)),
+    ];
+    const half = Math.ceil(ordered.length / 2);
+    return ordered
       .slice(0, half)
       .map(
         (item, index) =>
-          [item, shown[half + index] ?? null] as [
+          [item, ordered[half + index] ?? null] as [
             (typeof symbols)[number],
             (typeof symbols)[number] | null,
           ],
@@ -983,6 +1001,10 @@ export default function RoomSheetPage({
     const values: Record<string, number> = {};
     symbols.forEach((item) => {
       if (item.value !== null) values[item.symbol] = item.value;
+    });
+    // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
+    HEAD_SYMBOLS.forEach(({ symbol }) => {
+      if (values[symbol] === undefined) values[symbol] = 0;
     });
     fittings.forEach((fitting) => {
       const computed = computeFitting(fitting);

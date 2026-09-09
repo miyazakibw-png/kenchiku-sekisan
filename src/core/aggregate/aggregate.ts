@@ -6,6 +6,7 @@
  */
 
 import {
+  displayQuantity,
   displayedValue,
   resolveDescriptionMarks,
   type CalcSet,
@@ -328,6 +329,12 @@ export function aggregateByRoom(
         ? a.roomName.localeCompare(b.roomName, "ja")
         : a.order - b.order,
     );
+}
+
+/** 集計書兼工事マスターの数量表示。単位が無い数量0（仕様の続きなど）は空欄にする */
+export function aggregateQuantityText(quantity: number, unit: string): string {
+  if (unit.trim() === "" && quantity === 0) return "";
+  return displayQuantity(quantity);
 }
 
 /** 数量・単位チェックの結果。error＝赤、warn＝黄 */

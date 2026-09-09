@@ -43,7 +43,6 @@ import {
   lowerTemplateFrom,
 } from "../../../../core/room/lowerTemplate";
 import {
-  detailAsTsv,
   duplicateDetail,
   duplicateLine,
   duplicateSet,
@@ -58,6 +57,7 @@ import {
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
+import { focusCell } from "../grid/focusCell";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import type { CalcFocus } from "@shared/calcWindow";
@@ -139,46 +139,10 @@ function DescriptionInput({
   );
 }
 
-/**
- * カーソルを欄に移す。画面はエクセルのように、欄が見えている間は動かさず、
- * 上下左右の端から外れるときだけその分（見出し行に隠れる分も）を送る
- */
-function focusCell(input: HTMLInputElement): void {
-  input.focus({ preventScroll: true });
+/** カーソルを欄へ移し、文字を全部選んでおく */
+function focusInput(input: HTMLInputElement): void {
+  focusCell(input);
   input.select();
-  const table = input.closest("table");
-  const headCell = table?.tHead?.querySelector("th");
-  const headHeight =
-    headCell && getComputedStyle(headCell).position === "sticky"
-      ? (table?.tHead?.getBoundingClientRect().height ?? 0)
-      : 0;
-  for (let node = input.parentElement; node; node = node.parentElement) {
-    const style = getComputedStyle(node);
-    const scrollsY =
-      /auto|scroll/.test(style.overflowY) &&
-      node.scrollHeight > node.clientHeight;
-    const scrollsX =
-      /auto|scroll/.test(style.overflowX) &&
-      node.scrollWidth > node.clientWidth;
-    if (!scrollsY && !scrollsX) continue;
-    const box = node.getBoundingClientRect();
-    const cell = input.getBoundingClientRect();
-    if (scrollsY) {
-      const top =
-        box.top +
-        node.clientTop +
-        (table && node.contains(table) ? headHeight : 0);
-      const bottom = box.top + node.clientTop + node.clientHeight;
-      if (cell.top < top) node.scrollTop -= top - cell.top;
-      else if (cell.bottom > bottom) node.scrollTop += cell.bottom - bottom;
-    }
-    if (scrollsX) {
-      const left = box.left + node.clientLeft;
-      const right = left + node.clientWidth;
-      if (cell.left < left) node.scrollLeft -= left - cell.left;
-      else if (cell.right > right) node.scrollLeft += cell.right - right;
-    }
-  }
 }
 
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
@@ -775,9 +739,25 @@ export default function RoomCalcSheet({
     setBannerSetId(null);
   }, [focus?.setId, focus?.area, focus?.index]);
 
+  /**
+   * 明細・計算式の欄へカーソルが入ったときの処理。
+   * 同じ欄へ戻ったときは上のカーソル記録が変わらず外れないので、ここでも外す。
+   */
+  const focusHere = useCallback(
+    (next: CalcFocus): void => {
+      setBannerSetId(null);
+      onFocus(next);
+    },
+    [onFocus],
+  );
+
+  /** 直前に処理した「飛べ」の合図。合図が変わったときだけ画面を送る */
+  const lastJumpTick = useRef(jumpTick);
   // 式の誤りなどで外から指された計算式欄へ、実際にカーソルを移して画面も送る
   useEffect(() => {
-    if (jumpTick === undefined || !focus || focus.area === "detail") return;
+    if (jumpTick === undefined || jumpTick === lastJumpTick.current) return;
+    lastJumpTick.current = jumpTick;
+    if (!focus || focus.area === "detail") return;
     const input = gridRef.current?.querySelector<HTMLInputElement>(
       `input[data-jump="${focus.setId}|${focus.area}|${focus.index}"]`,
     );
@@ -1052,19 +1032,30 @@ export default function RoomCalcSheet({
     return currentSet.details[focus.index] ?? null;
   }, [currentSet, focus]);
 
-  /** 1行コピー（カーソルの明細1件）。Excelへも貼れるようTSVにする */
+  /** 1行コピー（カーソルの行を明細・計算式ごと）。Excelへも貼れるようTSVにする */
   const copyRow = useCallback(async () => {
-    if (!currentDetail) {
+    if (!currentDetail || !currentSet || !focus) {
       onMessage("コピーする明細の欄を選んでください");
       return;
     }
-    const text = detailAsTsv(currentDetail);
+    const line = currentSet.lines[focus.index] ?? calcLine();
+    const text = rowsAsTsv([currentDetail], [line]);
     await navigator.clipboard.writeText(text);
-    setCalcClip({ kind: "detail", text, detail: currentDetail });
+    setCalcClip({
+      kind: "rows",
+      text,
+      details: [currentDetail],
+      lines: [line],
+      // 1行だけのコピーでは、写し元のセットの部位は持っていかない（今までどおり）
+      partNumber: null,
+      partName: "",
+      banners: [],
+      parts: [{ at: 0, partNumber: null, partName: "" }],
+    });
     onMessage(
-      `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
+      `明細「${currentDetail.name || "（名称なし）"}」を計算式ごとコピーしました`,
     );
-  }, [currentDetail, onMessage]);
+  }, [currentDetail, currentSet, focus, onMessage]);
 
   /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため。※行も含む） */
   const flatRows = useMemo(() => {
@@ -1196,7 +1187,9 @@ export default function RoomCalcSheet({
       // 貼付ボタンを押すと欄から離れるので、最後にいた列を覚えておいて使う
       const active = document.activeElement;
       const activeColumn =
-        active instanceof HTMLElement && active.dataset.col !== undefined
+        active instanceof HTMLElement &&
+        active.dataset.col !== undefined &&
+        active.dataset.rowspan === undefined
           ? Number(active.dataset.col)
           : null;
       const cursorColumn = activeColumn ?? lastColumn.current;
@@ -1460,32 +1453,49 @@ export default function RoomCalcSheet({
     ],
   );
 
+  /** 記号のように何行分かをまとめて受け持つ欄（エクセルの結合セルと同じ） */
+  const rowsOf = (cell: HTMLInputElement): number =>
+    Number(cell.dataset.rowspan ?? 1) || 1;
+  /** 結合された欄へ入ってきた行。出るときはこの行へ戻す */
+  const cameFromRow = useRef<number | null>(null);
+
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
   const moveFocus = useCallback(
-    (row: number, col: number, stepRow: number, stepCol: number): void => {
+    (from: HTMLInputElement, stepRow: number, stepCol: number): void => {
       const root = gridRef.current;
       if (!root) return;
       const cells = Array.from(
         root.querySelectorAll<HTMLInputElement>("input[data-row][data-col]"),
       );
-      const at = (r: number, c: number): HTMLInputElement | undefined =>
-        cells.find(
-          (cell) =>
-            Number(cell.dataset.row) === r && Number(cell.dataset.col) === c,
-        );
+      const covers = (cell: HTMLInputElement, r: number): boolean => {
+        const top = Number(cell.dataset.row);
+        return top <= r && r < top + rowsOf(cell);
+      };
+      const top = Number(from.dataset.row);
+      const rows = rowsOf(from);
+      const col = Number(from.dataset.col);
+      const row = rows > 1 ? (cameFromRow.current ?? top) : top;
       if (stepRow !== 0) {
-        for (let r = row + stepRow; r >= 0 && r <= 9999; r += stepRow) {
-          const found = at(r, col);
+        const start = stepRow > 0 ? top + rows : top - 1;
+        for (let r = start; r >= 0 && r <= 9999; r += stepRow) {
+          const found = cells.find(
+            (cell) => covers(cell, r) && Number(cell.dataset.col) === col,
+          );
           if (found) {
-            focusCell(found);
+            cameFromRow.current = null;
+            focusInput(found);
             return;
           }
-          if (!cells.some((cell) => Number(cell.dataset.row) === r)) return;
+          if (!cells.some((cell) => covers(cell, r))) return;
         }
         return;
       }
+      const go = (target: HTMLInputElement, fromRow: number): void => {
+        cameFromRow.current = rowsOf(target) > 1 ? fromRow : null;
+        focusInput(target);
+      };
       const sameRow = cells
-        .filter((cell) => Number(cell.dataset.row) === row)
+        .filter((cell) => covers(cell, row))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const next =
         stepCol > 0
@@ -1494,17 +1504,16 @@ export default function RoomCalcSheet({
               .reverse()
               .find((cell) => Number(cell.dataset.col) < col);
       if (next) {
-        focusCell(next);
+        go(next, row);
         return;
       }
       // 行の端では、次（前）の行の先頭（末尾）へ移る
+      const otherAt = row + (stepCol > 0 ? 1 : -1);
       const otherRow = cells
-        .filter(
-          (cell) => Number(cell.dataset.row) === row + (stepCol > 0 ? 1 : -1),
-        )
+        .filter((cell) => covers(cell, otherAt))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const edge = stepCol > 0 ? otherRow[0] : otherRow[otherRow.length - 1];
-      if (edge) focusCell(edge);
+      if (edge) go(edge, otherAt);
     },
     [],
   );
@@ -1518,27 +1527,30 @@ export default function RoomCalcSheet({
       if (Number.isNaN(row) || Number.isNaN(col)) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        moveFocus(el, 0, e.shiftKey ? -1 : 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        moveFocus(row, col, -1, 0);
+        moveFocus(el, -1, 0);
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        moveFocus(row, col, 1, 0);
+        moveFocus(el, 1, 0);
       } else if (
         e.key === "ArrowLeft" &&
         el.selectionStart === 0 &&
         el.selectionEnd === 0
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, -1);
+        moveFocus(el, 0, -1);
       } else if (
         e.key === "ArrowRight" &&
         el.selectionStart === el.value.length &&
         el.selectionEnd === el.value.length
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
       }
     },
     [moveFocus],
@@ -1586,7 +1598,8 @@ export default function RoomCalcSheet({
         const el = e.target;
         if (!(el instanceof HTMLElement)) return;
         const col = el.dataset.col;
-        if (col !== undefined) lastColumn.current = Number(col);
+        if (col !== undefined && el.dataset.rowspan === undefined)
+          lastColumn.current = Number(col);
       }}
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
@@ -1875,7 +1888,7 @@ export default function RoomCalcSheet({
                     : undefined;
                   const gridRow = rowStarts[setIndex] + rowIndex;
                   const focusDetail = (): void =>
-                    onFocus({
+                    focusHere({
                       setId: set.id,
                       area: "detail",
                       index: rowIndex,
@@ -2175,7 +2188,7 @@ export default function RoomCalcSheet({
                               data-jump={`${set.id}|formulaA|${rowIndex}`}
                               value={line.formulaA}
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaA",
                                   index: rowIndex,
@@ -2200,7 +2213,7 @@ export default function RoomCalcSheet({
                               value={line.formulaB}
                               title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaB",
                                   index: rowIndex,
@@ -2239,6 +2252,9 @@ export default function RoomCalcSheet({
                       {rowIndex === 0 && (
                         <td className="bsym" rowSpan={rowCount}>
                           <input
+                            data-row={gridRow}
+                            data-col={17}
+                            data-rowspan={rowCount}
                             value={setSymbol}
                             title="このセットの累計を他のセットで使うための記号（B1〜B99。セットに1つ）"
                             onChange={(e) => {

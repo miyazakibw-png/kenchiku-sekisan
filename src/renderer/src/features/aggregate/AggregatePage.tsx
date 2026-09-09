@@ -7,7 +7,10 @@ import type {
   ProjectSummary,
   Subject,
 } from "@shared/types";
-import { checkQuantityUnit } from "../../../../core/aggregate/aggregate";
+import {
+  aggregateQuantityText,
+  checkQuantityUnit,
+} from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -563,7 +566,9 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                       }
                     />
                   </td>
-                  <td className="number">{displayQuantity(item.quantity)}</td>
+                  <td className="number">
+                    {aggregateQuantityText(item.quantity, draft.unit)}
+                  </td>
                   <td>
                     <input
                       value={draft.unit}

@@ -11,20 +11,28 @@ import MasterCodeInput, {
   MasterCodeOptions,
 } from "../../components/MasterCodeInput";
 import PickInput, { type PickEntry } from "../../components/PickInput";
-import { buildPastePreview } from "../grid/gridClipboard";
+import { normalizePastedMatrix, parseTsv } from "@shared/tsv";
 import {
+  appendTransferRows,
   applyDetail,
   applyEstimateParts,
-  buildTransferColumns,
   emptyTransferRow,
   formatQuantity,
   insertTransferRow,
+  insertTransferRows,
+  overwriteTransferRows,
   parseQuantity,
   removeTransferRow,
   resolveTransferInherited,
   toTransferDrafts,
   updateTransferRow,
 } from "./transferRows";
+import {
+  copyTransferCells,
+  isCellInRange,
+  pasteTransferCells,
+  type TransferCellPos,
+} from "./transferCells";
 import "./EstimatePartsPage.css";
 import "./TransferSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -61,6 +69,16 @@ export default function TransferSheetPage({
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
   /** 明細IDで呼び出すための明細マスター（科目ごとに一度だけ読む） */
   const [detailCache, setDetailCache] = useState<Record<number, Detail[]>>({});
+  /** 行コピー（複数行可。Shift+クリックで広げる） */
+  const [selectedEnd, setSelectedEnd] = useState(0);
+  const [rowClip, setRowClip] = useState<TransferRowDraft[]>([]);
+  /** カーソルのマスと、Shift+クリックで広げた範囲 */
+  const [cell, setCell] = useState<TransferCellPos>({ row: 0, line: 0, col: 0 });
+  const [cellEnd, setCellEnd] = useState<TransferCellPos>({
+    row: 0,
+    line: 0,
+    col: 0,
+  });
 
   const history = useRowsHistory(rows, setRows);
 
@@ -201,31 +219,95 @@ export default function TransferSheetPage({
     [options.subjects],
   );
 
-  const pasteColumns = useMemo(
-    () =>
-      buildTransferColumns(materialEntries, unitEntries, options.pickupParts),
-    [materialEntries, options.pickupParts, unitEntries],
+  const masters = useMemo(
+    () => ({ units: unitEntries, parts: options.pickupParts }),
+    [options.pickupParts, unitEntries],
   );
 
-  /** エクセルの表をそのまま貼り付ける（選んでいる行の科目ID列から取り込む） */
+  /** 選んでいるマスを左上にして、エクセルの表を取り込む */
+  const pasteCells = useCallback(
+    (text: string) => {
+      if (text.trim() === "") return;
+      const matrix = normalizePastedMatrix(parseTsv(text));
+      const result = pasteTransferCells(rows, cell, matrix, masters);
+      history.edit(result.rows);
+      const notes = [
+        result.addedRows > 0 ? `${result.addedRows} 行追加` : "",
+        result.errorCount > 0
+          ? `取り込めない値 ${result.errorCount} 件（${result.firstError}）`
+          : "",
+      ].filter((note) => note !== "");
+      setMessage(
+        notes.length === 0 ? "貼り付けました" : `貼り付けました（${notes.join("／")}）`,
+      );
+    },
+    [cell, history, masters, rows],
+  );
+
+  /** エクセルの表をそのまま貼り付ける（選んでいるマスから取り込む） */
   const pasteFromExcel = useCallback(async () => {
-    const text = await navigator.clipboard.readText();
-    if (text.trim() === "") return;
-    const preview = buildPastePreview(
-      rows,
-      pasteColumns,
-      text,
-      Math.min(selected, Math.max(rows.length - 1, 0)),
-      0,
-      () => emptyTransferRow(),
+    pasteCells(await navigator.clipboard.readText());
+  }, [pasteCells]);
+
+  /** 選んだマスをエクセルへコピーする */
+  const copyCells = useCallback((): string => {
+    return copyTransferCells(rows, { start: cell, end: cellEnd });
+  }, [cell, cellEnd, rows]);
+
+  const selectionStart = Math.min(selected, selectedEnd);
+  const selectionEnd = Math.max(selected, selectedEnd);
+
+  /** 行コピー（複数行可） */
+  const copyRows = useCallback(() => {
+    const copied = rows.slice(selectionStart, selectionEnd + 1);
+    if (copied.length === 0) return;
+    setRowClip(copied);
+    setMessage(
+      `⧉ ${copied.length} 行をコピーしました（貼り付けたい行にカーソルを置いて「上書貼付」「挿入貼付」「追加貼付」）`,
     );
-    history.edit(preview.rows);
-    const notes = [
-      `${preview.addedRows} 行追加`,
-      preview.errorCount > 0 ? `取り込めない値 ${preview.errorCount} 件` : "",
-    ].filter((note) => note !== "");
-    setMessage(`貼り付けました（${notes.join("／")}）`);
-  }, [history, pasteColumns, rows, selected]);
+  }, [rows, selectionEnd, selectionStart]);
+
+  const pasteRows = useCallback(
+    (mode: "over" | "insert" | "append") => {
+      if (rowClip.length === 0) return;
+      const next =
+        mode === "over"
+          ? overwriteTransferRows(rows, selectionStart, rowClip)
+          : mode === "insert"
+            ? insertTransferRows(rows, selectionStart, rowClip)
+            : appendTransferRows(rows, rowClip);
+      history.edit(next);
+      const where =
+        mode === "over" ? "上書き" : mode === "insert" ? "挿入" : "追加";
+      setMessage(`${rowClip.length} 行を${where}しました`);
+    },
+    [history, rowClip, rows, selectionStart],
+  );
+
+  /** マスを選んだときの共通の割り当て（Shift+クリックで範囲を広げる） */
+  const cellProps = useCallback(
+    (row: number, line: number, col: number) => ({
+      onFocus: () => {
+        const pos = { row, line, col };
+        setCell(pos);
+        setCellEnd(pos);
+        setSelected(row);
+        setSelectedEnd(row);
+      },
+      onMouseDown: (event: React.MouseEvent<HTMLInputElement>) => {
+        if (!event.shiftKey) return;
+        event.preventDefault();
+        setCellEnd({ row, line, col });
+        setSelectedEnd(row);
+      },
+    }),
+    [],
+  );
+
+  const cellClass = (row: number, line: number, col: number): string =>
+    isCellInRange({ start: cell, end: cellEnd }, { row, line, col })
+      ? "picked"
+      : "";
 
   return (
     <div className="estimate-page transfer-page">
@@ -295,10 +377,41 @@ export default function TransferSheetPage({
         </button>
         <button
           type="button"
-          title="エクセルでコピーした表を、選んでいる行の科目IDから取り込みます（列の順番：科目ID・仕上区分・部位ID・明細ID・部位名・名称・摘要上・摘要下・数量・単位・備考上・備考下）"
+          title="カーソルのマスを左上にして、エクセルでコピーした表を取り込みます（表の中で Ctrl+V でも同じです）"
           onClick={() => void pasteFromExcel()}
         >
           📋 エクセルから貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックで広げた行）を控えます"
+          onClick={copyRows}
+        >
+          ⧉ 行コピー
+        </button>
+        <button
+          type="button"
+          title="カーソルの行から、コピーした行で上書きします"
+          disabled={rowClip.length === 0}
+          onClick={() => pasteRows("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行の上へ、コピーした行を挿入します"
+          disabled={rowClip.length === 0}
+          onClick={() => pasteRows("insert")}
+        >
+          📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
+          disabled={rowClip.length === 0}
+          onClick={() => pasteRows("append")}
+        >
+          📋 追加貼付
         </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
@@ -425,7 +538,24 @@ export default function TransferSheetPage({
         </div>
       )}
 
-      <table className="grid transfer" ref={tableRef}>
+      <table
+        className="grid transfer"
+        ref={tableRef}
+        onCopy={(event) => {
+          const text = copyCells();
+          // 1マスだけのときは今までどおりの文字のコピー
+          if (!text.includes("\t") && !text.includes("\n")) return;
+          event.preventDefault();
+          event.clipboardData.setData("text/plain", text);
+        }}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData("text");
+          // 1マス分の文字は今までどおりその欄へ貼る
+          if (!text.includes("\t") && !text.includes("\n")) return;
+          event.preventDefault();
+          pasteCells(text);
+        }}
+      >
         <thead>
           <tr>
             <th className="no">No</th>
@@ -457,12 +587,19 @@ export default function TransferSheetPage({
         </thead>
         {rows.map((row, index) => {
           const shown = inherited[index];
-          const isSelected = index === selected;
+          const isSelected = index >= selectionStart && index <= selectionEnd;
           return (
             <tbody
               key={row.id ?? `new-${index}`}
               className={isSelected ? "row selected" : "row"}
-              onClick={() => setSelected(index)}
+              onClick={(event) => {
+                if (event.shiftKey) {
+                  setSelectedEnd(index);
+                  return;
+                }
+                setSelected(index);
+                setSelectedEnd(index);
+              }}
             >
               <tr className="detail-upper">
                 <td className="no" rowSpan={2}>
@@ -551,10 +688,15 @@ export default function TransferSheetPage({
                     }
                   />
                 </td>
-                <td className="no">
+                <td className={`no ${cellClass(index, 0, 0)}`}>
                   <input
                     className="num"
                     value={row.partId === null ? "" : String(row.partId)}
+                    placeholder={
+                      shown.partId === null ? "" : String(shown.partId)
+                    }
+                    title="空欄のときは入力のある上の行と同じ部位IDになります"
+                    {...cellProps(index, 0, 0)}
                     onChange={(e) => {
                       const text = e.target.value.trim();
                       const parsed = Number.parseInt(text, 10);
@@ -569,20 +711,22 @@ export default function TransferSheetPage({
                     }}
                   />
                 </td>
-                <td>
+                <td className={cellClass(index, 0, 1)}>
                   <input
                     lang="ja"
                     list="transfer-parts"
                     value={row.partName}
+                    {...cellProps(index, 0, 1)}
                     onChange={(e) =>
                       update(index, { partName: e.target.value })
                     }
                   />
                 </td>
-                <td>
+                <td className={cellClass(index, 0, 2)}>
                   <input
                     lang="ja"
                     value={row.descriptionUpper}
+                    {...cellProps(index, 0, 2)}
                     onChange={(e) =>
                       update(index, { descriptionUpper: e.target.value })
                     }
@@ -592,11 +736,12 @@ export default function TransferSheetPage({
                 <td className="unit" />
                 <td className="num future" />
                 <td className="num future" />
-                <td>
+                <td className={cellClass(index, 0, 5)}>
                   <input
                     lang="ja"
                     value={row.remarks}
                     title="備考の上段"
+                    {...cellProps(index, 0, 5)}
                     onChange={(e) => update(index, { remarks: e.target.value })}
                   />
                 </td>
@@ -610,7 +755,7 @@ export default function TransferSheetPage({
                 </td>
               </tr>
               <tr className="detail-lower">
-                <td className="no">
+                <td className={`no ${cellClass(index, 1, 0)}`}>
                   <input
                     className="num"
                     key={`d-${index}-${row.detailNumber ?? ""}`}
@@ -619,7 +764,13 @@ export default function TransferSheetPage({
                         ? ""
                         : row.detailNumber.toFixed(2)
                     }
-                    title="明細IDを入れると、その科目の明細マスターから名称・摘要・単位を呼び出します"
+                    placeholder={
+                      shown.detailNumber === null
+                        ? ""
+                        : shown.detailNumber.toFixed(2)
+                    }
+                    title="明細IDを入れると、その科目の明細マスターから名称・摘要・単位を呼び出します（空欄のときは上の行＋0.01）"
+                    {...cellProps(index, 1, 0)}
                     onBlur={(e) =>
                       void callDetailNumber(
                         index,
@@ -629,27 +780,30 @@ export default function TransferSheetPage({
                     }
                   />
                 </td>
-                <td>
+                <td className={cellClass(index, 1, 1)}>
                   <input
                     lang="ja"
                     value={row.name}
+                    {...cellProps(index, 1, 1)}
                     onChange={(e) => update(index, { name: e.target.value })}
                   />
                 </td>
-                <td>
+                <td className={cellClass(index, 1, 2)}>
                   <input
                     lang="ja"
                     value={row.descriptionLower}
+                    {...cellProps(index, 1, 2)}
                     onChange={(e) =>
                       update(index, { descriptionLower: e.target.value })
                     }
                   />
                 </td>
-                <td className="num">
+                <td className={`num ${cellClass(index, 1, 3)}`}>
                   <input
                     className="num"
                     key={`q-${index}-${formatQuantity(row.quantity)}`}
                     defaultValue={formatQuantity(row.quantity)}
+                    {...cellProps(index, 1, 3)}
                     onBlur={(e) => {
                       const parsed = parseQuantity(e.target.value);
                       if (parsed.error) {
@@ -660,10 +814,11 @@ export default function TransferSheetPage({
                     }}
                   />
                 </td>
-                <td className="unit">
+                <td className={`unit ${cellClass(index, 1, 4)}`}>
                   <input
                     list="transfer-units"
                     value={row.unit}
+                    {...cellProps(index, 1, 4)}
                     onChange={(e) =>
                       update(index, {
                         unit: resolveMasterName(unitEntries, e.target.value),
@@ -673,11 +828,12 @@ export default function TransferSheetPage({
                 </td>
                 <td className="num future" title="将来用（単価）" />
                 <td className="num future" title="将来用（金額）" />
-                <td>
+                <td className={cellClass(index, 1, 5)}>
                   <input
                     lang="ja"
                     value={row.remarksLower}
                     title="備考の下段"
+                    {...cellProps(index, 1, 5)}
                     onChange={(e) =>
                       update(index, { remarksLower: e.target.value })
                     }
@@ -690,7 +846,8 @@ export default function TransferSheetPage({
       </table>
 
       <p className="hint">
-        Ａ〜Ｉ（部位Ⅰ〜部位Ⅲ・型枠・科目ID・仕上区分）は入力が無ければ入力のある上の行と同じ扱いです（薄い文字が引き継ぐ内容）。
+        Ａ〜Ｉ（部位Ⅰ〜部位Ⅲ・型枠・科目ID・仕上区分）と部位IDは入力が無ければ入力のある上の行と同じ扱い、明細IDは入力が無ければ上の行＋0.01です（薄い文字が引き継ぐ内容）。
+        エクセルとのコピー・貼り付けは、部位ID／明細ID〜備考の1マスをエクセルの1セルとして扱います（上段・下段がそれぞれエクセルの1行）。カーソルのマスが左上になり、Shift+クリックで範囲を広げられます。
         明細は全て1明細入力で、セット明細は呼び出しません。単価・金額は将来用の空欄です。メモはどこにも連動しません。
         ここで入力したものは集計書兼工事マスターにのみ計上し、根拠集計には出しません。
       </p>

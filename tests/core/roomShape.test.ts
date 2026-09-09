@@ -25,6 +25,7 @@ import {
   trimEdges,
   updateEdge,
   uShape,
+  withFixedRoomSymbols,
 } from "../../src/core/room/shape";
 
 /** 形の向きを見るために、左上を原点にそろえた頂点の並び */
@@ -567,6 +568,16 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     // 独立柱だけの記号は作らない
     const symbols = roomSymbols(solved, 2.5);
     expect(symbols.some((row) => row.symbol.startsWith("I"))).toBe(false);
+  });
+
+  it("記号表にいつも出す記号は、無いときも0で計算式に使える", () => {
+    const values = withFixedRoomSymbols({ FA: 24 });
+    // 天井伏図を描いていない部屋でも BA・GA を式に書ける
+    expect(values.BA).toBe(0);
+    expect(values.GA).toBe(0);
+    expect(values.CH).toBe(0);
+    // すでにある値は書き換えない
+    expect(values.FA).toBe(24);
   });
 
   it("独立柱が無い今までの図形は数量が変わらない", () => {
