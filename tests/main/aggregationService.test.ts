@@ -224,7 +224,13 @@ describe("集計処理", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0].estimateRowId).toBe(rowId);
     expect(checks[0].cells).toEqual([
-      { partName: "床", name: "ビニル床シート", quantity: 25.2 },
+      // 倍率2・掛け率1.05。倍率なしの数量は倍率をかける前の値
+      {
+        partName: "床",
+        name: "ビニル床シート",
+        quantity: 25.2,
+        baseQuantity: 12.6,
+      },
     ]);
 
     // 材種区分が違うときは拾わない

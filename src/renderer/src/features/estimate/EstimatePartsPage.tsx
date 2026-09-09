@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EstimateRowCheck,
+  EstimateRowCheckCell,
   EstimateRowDraft,
   MasterOptions,
   ProjectSummary,
@@ -75,6 +76,8 @@ export default function EstimatePartsPage({
       ? "仕上"
       : (options.materialCategories[0]?.name ?? "仕上"),
   );
+  /** チェック列の数量に倍率をかけるか（なしなら計算書そのままの数量） */
+  const [applyMultiplier, setApplyMultiplier] = useState(true);
   const columns = useMemo(
     () => buildEstimateColumns(options.formworkCategories),
     [options.formworkCategories],
@@ -103,15 +106,20 @@ export default function EstimatePartsPage({
     },
     [checks],
   );
+  const checkQuantityOf = useCallback(
+    (cell: EstimateRowCheckCell) =>
+      applyMultiplier ? cell.quantity : cell.baseQuantity,
+    [applyMultiplier],
+  );
 
   /** 小計行に入れる部位ごとの数量合計（ひとつ上の小計行から下の分） */
   const partSums = useMemo(
     () =>
       subtotalSums(rows, checkColumns, (row, partName) => {
         const cell = checkOf(row.id, partName);
-        return cell === null ? null : cell.quantity;
+        return cell === null ? null : checkQuantityOf(cell);
       }),
-    [rows, checkColumns, checkOf],
+    [rows, checkColumns, checkOf, checkQuantityOf],
   );
 
   /** 行ごとに中身の入っている計算書の種類（種類を変える前の確認に使う） */
@@ -573,10 +581,18 @@ export default function EstimatePartsPage({
             </option>
           ))}
         </select>
+        <span>数量</span>
+        <select
+          value={applyMultiplier ? "on" : "off"}
+          onChange={(e) => setApplyMultiplier(e.target.value === "on")}
+        >
+          <option value="on">倍率あり</option>
+          <option value="off">倍率なし</option>
+        </select>
         <span className="note">
           部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
           {checkCategory}
-          だけを表示します（計算書の作成後に反映）。
+          だけを表示します（計算書の作成後に反映）。「倍率なし」は倍率をかける前の計算書そのままの数量です。
         </span>
       </div>
 
@@ -629,7 +645,7 @@ export default function EstimatePartsPage({
                 {checkCategory}名称
               </th>,
               <th key={`q-${label}`} className="check">
-                数量
+                {applyMultiplier ? "数量" : "数量(倍率なし)"}
               </th>,
             ])}
           </tr>
@@ -888,7 +904,7 @@ export default function EstimatePartsPage({
                           ? ""
                           : sum.toFixed(2)
                         : cell
-                          ? cell.quantity.toFixed(2)
+                          ? checkQuantityOf(cell).toFixed(2)
                           : ""}
                     </td>,
                   ];

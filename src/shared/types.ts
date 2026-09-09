@@ -781,7 +781,10 @@ export interface SaveAggregateEditsRequest {
 export interface EstimateRowCheckCell {
   partName: string;
   name: string;
+  /** 倍率をかけた計上数量 */
   quantity: number;
+  /** 倍率をかける前の計算書そのままの数量 */
+  baseQuantity: number;
 }
 
 export interface EstimateRowCheck {

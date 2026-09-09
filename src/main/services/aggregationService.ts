@@ -1191,7 +1191,7 @@ export function collectEstimateRowChecks(
   const parts = listProjectBasicMasters(db, projectId).aggregationParts;
   const byRow = new Map<
     number,
-    Map<string, { name: string; quantity: number }>
+    Map<string, { name: string; quantity: number; baseQuantity: number }>
   >();
 
   collectEntries(db, projectId).forEach((entry) => {
@@ -1205,8 +1205,13 @@ export function collectEstimateRowChecks(
     if (!part) return;
     const cells =
       byRow.get(entry.estimateRowId) ??
-      new Map<string, { name: string; quantity: number }>();
+      new Map<
+        string,
+        { name: string; quantity: number; baseQuantity: number }
+      >();
     byRow.set(entry.estimateRowId, cells);
+    // 倍率なしの数量（計算書そのままの数量）＝セット累計×掛け率
+    const baseQuantity = displayedValue(entry.setTotal * entry.coefficient);
     const cell = cells.get(part.name);
     if (cell) {
       // 同じ部位に複数の明細があるときは、名称を並べて数量を合計する
@@ -1215,12 +1220,14 @@ export function collectEstimateRowChecks(
           ? cell.name
           : `${cell.name}／${entry.name}`,
         quantity: displayedValue(cell.quantity + entry.quantity),
+        baseQuantity: displayedValue(cell.baseQuantity + baseQuantity),
       });
       return;
     }
     cells.set(part.name, {
       name: entry.name,
       quantity: displayedValue(entry.quantity),
+      baseQuantity,
     });
   });
 
@@ -1230,6 +1237,7 @@ export function collectEstimateRowChecks(
       partName,
       name: cell.name,
       quantity: cell.quantity,
+      baseQuantity: cell.baseQuantity,
     })),
   }));
 }
