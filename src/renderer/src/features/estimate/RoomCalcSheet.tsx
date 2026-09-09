@@ -1165,7 +1165,9 @@ export default function RoomCalcSheet({
       // 貼付ボタンを押すと欄から離れるので、最後にいた列を覚えておいて使う
       const active = document.activeElement;
       const activeColumn =
-        active instanceof HTMLElement && active.dataset.col !== undefined
+        active instanceof HTMLElement &&
+        active.dataset.col !== undefined &&
+        active.dataset.rowspan === undefined
           ? Number(active.dataset.col)
           : null;
       const cursorColumn = activeColumn ?? lastColumn.current;
@@ -1429,32 +1431,49 @@ export default function RoomCalcSheet({
     ],
   );
 
+  /** 記号のように何行分かをまとめて受け持つ欄（エクセルの結合セルと同じ） */
+  const rowsOf = (cell: HTMLInputElement): number =>
+    Number(cell.dataset.rowspan ?? 1) || 1;
+  /** 結合された欄へ入ってきた行。出るときはこの行へ戻す */
+  const cameFromRow = useRef<number | null>(null);
+
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
   const moveFocus = useCallback(
-    (row: number, col: number, stepRow: number, stepCol: number): void => {
+    (from: HTMLInputElement, stepRow: number, stepCol: number): void => {
       const root = gridRef.current;
       if (!root) return;
       const cells = Array.from(
         root.querySelectorAll<HTMLInputElement>("input[data-row][data-col]"),
       );
-      const at = (r: number, c: number): HTMLInputElement | undefined =>
-        cells.find(
-          (cell) =>
-            Number(cell.dataset.row) === r && Number(cell.dataset.col) === c,
-        );
+      const covers = (cell: HTMLInputElement, r: number): boolean => {
+        const top = Number(cell.dataset.row);
+        return top <= r && r < top + rowsOf(cell);
+      };
+      const top = Number(from.dataset.row);
+      const rows = rowsOf(from);
+      const col = Number(from.dataset.col);
+      const row = rows > 1 ? (cameFromRow.current ?? top) : top;
       if (stepRow !== 0) {
-        for (let r = row + stepRow; r >= 0 && r <= 9999; r += stepRow) {
-          const found = at(r, col);
+        const start = stepRow > 0 ? top + rows : top - 1;
+        for (let r = start; r >= 0 && r <= 9999; r += stepRow) {
+          const found = cells.find(
+            (cell) => covers(cell, r) && Number(cell.dataset.col) === col,
+          );
           if (found) {
+            cameFromRow.current = null;
             focusInput(found);
             return;
           }
-          if (!cells.some((cell) => Number(cell.dataset.row) === r)) return;
+          if (!cells.some((cell) => covers(cell, r))) return;
         }
         return;
       }
+      const go = (target: HTMLInputElement, fromRow: number): void => {
+        cameFromRow.current = rowsOf(target) > 1 ? fromRow : null;
+        focusInput(target);
+      };
       const sameRow = cells
-        .filter((cell) => Number(cell.dataset.row) === row)
+        .filter((cell) => covers(cell, row))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const next =
         stepCol > 0
@@ -1463,17 +1482,16 @@ export default function RoomCalcSheet({
               .reverse()
               .find((cell) => Number(cell.dataset.col) < col);
       if (next) {
-        focusInput(next);
+        go(next, row);
         return;
       }
       // 行の端では、次（前）の行の先頭（末尾）へ移る
+      const otherAt = row + (stepCol > 0 ? 1 : -1);
       const otherRow = cells
-        .filter(
-          (cell) => Number(cell.dataset.row) === row + (stepCol > 0 ? 1 : -1),
-        )
+        .filter((cell) => covers(cell, otherAt))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const edge = stepCol > 0 ? otherRow[0] : otherRow[otherRow.length - 1];
-      if (edge) focusInput(edge);
+      if (edge) go(edge, otherAt);
     },
     [],
   );
@@ -1487,30 +1505,30 @@ export default function RoomCalcSheet({
       if (Number.isNaN(row) || Number.isNaN(col)) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
       } else if (e.key === "Tab") {
         e.preventDefault();
-        moveFocus(row, col, 0, e.shiftKey ? -1 : 1);
+        moveFocus(el, 0, e.shiftKey ? -1 : 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        moveFocus(row, col, -1, 0);
+        moveFocus(el, -1, 0);
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        moveFocus(row, col, 1, 0);
+        moveFocus(el, 1, 0);
       } else if (
         e.key === "ArrowLeft" &&
         el.selectionStart === 0 &&
         el.selectionEnd === 0
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, -1);
+        moveFocus(el, 0, -1);
       } else if (
         e.key === "ArrowRight" &&
         el.selectionStart === el.value.length &&
         el.selectionEnd === el.value.length
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
       }
     },
     [moveFocus],
@@ -1558,7 +1576,8 @@ export default function RoomCalcSheet({
         const el = e.target;
         if (!(el instanceof HTMLElement)) return;
         const col = el.dataset.col;
-        if (col !== undefined) lastColumn.current = Number(col);
+        if (col !== undefined && el.dataset.rowspan === undefined)
+          lastColumn.current = Number(col);
       }}
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
@@ -2211,6 +2230,9 @@ export default function RoomCalcSheet({
                       {rowIndex === 0 && (
                         <td className="bsym" rowSpan={rowCount}>
                           <input
+                            data-row={gridRow}
+                            data-col={17}
+                            data-rowspan={rowCount}
                             value={setSymbol}
                             title="このセットの累計を他のセットで使うための記号（B1〜B99。セットに1つ）"
                             onChange={(e) => {
