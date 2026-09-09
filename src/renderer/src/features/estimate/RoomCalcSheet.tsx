@@ -139,6 +139,48 @@ function DescriptionInput({
   );
 }
 
+/**
+ * カーソルを欄に移す。画面はエクセルのように、欄が見えている間は動かさず、
+ * 上下左右の端から外れるときだけその分（見出し行に隠れる分も）を送る
+ */
+function focusCell(input: HTMLInputElement): void {
+  input.focus({ preventScroll: true });
+  input.select();
+  const table = input.closest("table");
+  const headCell = table?.tHead?.querySelector("th");
+  const headHeight =
+    headCell && getComputedStyle(headCell).position === "sticky"
+      ? (table?.tHead?.getBoundingClientRect().height ?? 0)
+      : 0;
+  for (let node = input.parentElement; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    const scrollsY =
+      /auto|scroll/.test(style.overflowY) &&
+      node.scrollHeight > node.clientHeight;
+    const scrollsX =
+      /auto|scroll/.test(style.overflowX) &&
+      node.scrollWidth > node.clientWidth;
+    if (!scrollsY && !scrollsX) continue;
+    const box = node.getBoundingClientRect();
+    const cell = input.getBoundingClientRect();
+    if (scrollsY) {
+      const top =
+        box.top +
+        node.clientTop +
+        (table && node.contains(table) ? headHeight : 0);
+      const bottom = box.top + node.clientTop + node.clientHeight;
+      if (cell.top < top) node.scrollTop -= top - cell.top;
+      else if (cell.bottom > bottom) node.scrollTop += cell.bottom - bottom;
+    }
+    if (scrollsX) {
+      const left = box.left + node.clientLeft;
+      const right = left + node.clientWidth;
+      if (cell.left < left) node.scrollLeft -= left - cell.left;
+      else if (cell.right > right) node.scrollLeft += cell.right - right;
+    }
+  }
+}
+
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
 function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
   return set.lines.map((line, index) => ({
@@ -1435,8 +1477,7 @@ export default function RoomCalcSheet({
         for (let r = row + stepRow; r >= 0 && r <= 9999; r += stepRow) {
           const found = at(r, col);
           if (found) {
-            found.focus();
-            found.select();
+            focusCell(found);
             return;
           }
           if (!cells.some((cell) => Number(cell.dataset.row) === r)) return;
@@ -1453,8 +1494,7 @@ export default function RoomCalcSheet({
               .reverse()
               .find((cell) => Number(cell.dataset.col) < col);
       if (next) {
-        next.focus();
-        next.select();
+        focusCell(next);
         return;
       }
       // 行の端では、次（前）の行の先頭（末尾）へ移る
@@ -1464,8 +1504,7 @@ export default function RoomCalcSheet({
         )
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const edge = stepCol > 0 ? otherRow[0] : otherRow[otherRow.length - 1];
-      edge?.focus();
-      edge?.select();
+      if (edge) focusCell(edge);
     },
     [],
   );
