@@ -139,6 +139,8 @@ const HEAD_SYMBOLS: { symbol: string; label: string }[] = [
   { symbol: "GA", label: "壁付き梁型 面積" },
   { symbol: "BA", label: "天井付梁型 面積" },
   { symbol: "CA", label: "天井面積" },
+  { symbol: "ML", label: "廻り縁" },
+  { symbol: "CH", label: "天井高さ" },
 ];
 
 /** まだ選んでいない欄を押したときは、中の数字をまるごと選んで上書きできるようにする */
