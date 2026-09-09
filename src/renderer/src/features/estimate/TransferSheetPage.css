@@ -88,6 +88,11 @@ table.transfer tbody.row.selected {
   background: #e8f0fe;
 }
 
+/* コピー・貼り付けで選んでいるマス */
+table.transfer td.picked {
+  background: #cfe3ff;
+}
+
 .transfer-page .call-window {
   position: fixed;
   right: 24px;

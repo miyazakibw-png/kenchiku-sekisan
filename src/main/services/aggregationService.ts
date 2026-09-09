@@ -665,7 +665,17 @@ function transferEntries(
 
   return rows
     .map((row, index) => ({ row, head: inherited[index] }))
-    .filter(({ row }) => row.name.trim() !== "" || row.quantity !== null)
+    // 部位名・名称が無くても、摘要や備考だけの行（仕様の続きなど）も計上する
+    .filter(({ row }) =>
+      [
+        row.partName,
+        row.name,
+        row.descriptionUpper,
+        row.descriptionLower,
+        row.remarks,
+        row.remarksLower,
+      ].some((text) => text.trim() !== "") || row.quantity !== null,
+    )
     .map(({ row, head }) => {
       if (!part2Order.has(head.part2))
         part2Order.set(head.part2, part2Order.size);
@@ -685,9 +695,9 @@ function transferEntries(
         multiplier: 1,
         subjectId: head.subjectId,
         materialCategory: head.materialCategory,
-        partNumber: row.partId,
+        partNumber: head.partId,
         partName: row.partName,
-        detailNumber: row.detailNumber,
+        detailNumber: head.detailNumber,
         name: row.name,
         descriptionUpper: row.descriptionUpper,
         descriptionLower: row.descriptionLower,

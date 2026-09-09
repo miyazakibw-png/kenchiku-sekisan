@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateByRoom,
   aggregateItems,
+  aggregateQuantityText,
   checkQuantityUnit,
   entriesFromCalcSheet,
   masterKeyOf,
@@ -322,5 +323,17 @@ describe("数量・単位チェック", () => {
     expect(checkQuantityUnit(3, "")).toBe("warn");
     expect(checkQuantityUnit(0, "")).toBe("");
     expect(checkQuantityUnit(null, "")).toBe("");
+  });
+});
+
+describe("集計書兼工事マスターの数量表示", () => {
+  it("単位が無い数量0は何も書かない", () => {
+    expect(aggregateQuantityText(0, "")).toBe("");
+    expect(aggregateQuantityText(0, " ")).toBe("");
+  });
+
+  it("単位があるとき・数量があるときは今までどおり表示する", () => {
+    expect(aggregateQuantityText(0, "m2")).toBe("0.00");
+    expect(aggregateQuantityText(1.25, "")).toBe("1.25");
   });
 });
