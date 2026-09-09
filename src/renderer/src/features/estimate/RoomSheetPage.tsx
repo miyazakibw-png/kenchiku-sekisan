@@ -47,6 +47,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  ROOM_FIXED_SYMBOLS,
   round2,
   shapeExtents,
   solveShape,
@@ -131,17 +132,7 @@ const KIND_LABEL: Record<EdgeKind, string> = {
 };
 
 /** 記号表の左上から先に並べる記号（その部屋に無くても0で残す） */
-const HEAD_SYMBOLS: { symbol: string; label: string }[] = [
-  { symbol: "FA", label: "床面積" },
-  { symbol: "HL", label: "巾木長さ" },
-  { symbol: "WA", label: "壁面積" },
-  { symbol: "HA", label: "柱面積" },
-  { symbol: "GA", label: "壁付き梁型 面積" },
-  { symbol: "BA", label: "天井付梁型 面積" },
-  { symbol: "CA", label: "天井面積" },
-  { symbol: "ML", label: "廻り縁" },
-  { symbol: "CH", label: "天井高さ" },
-];
+const HEAD_SYMBOLS = ROOM_FIXED_SYMBOLS;
 
 /** まだ選んでいない欄を押したときは、中の数字をまるごと選んで上書きできるようにする */
 function selectWholeOnFirstClick(event: MouseEvent<HTMLInputElement>): void {
@@ -1010,6 +1001,10 @@ export default function RoomSheetPage({
     const values: Record<string, number> = {};
     symbols.forEach((item) => {
       if (item.value !== null) values[item.symbol] = item.value;
+    });
+    // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
+    HEAD_SYMBOLS.forEach(({ symbol }) => {
+      if (values[symbol] === undefined) values[symbol] = 0;
     });
     fittings.forEach((fitting) => {
       const computed = computeFitting(fitting);

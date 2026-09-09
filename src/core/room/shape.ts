@@ -1007,6 +1007,33 @@ export interface RoomSymbol {
 }
 
 /**
+ * 部屋計算書でいつも出す記号（左上からの並び）。
+ * その部屋に無くても0で残し、計算式でも0として使える。
+ */
+export const ROOM_FIXED_SYMBOLS: { symbol: string; label: string }[] = [
+  { symbol: "FA", label: "床面積" },
+  { symbol: "HL", label: "巾木長さ" },
+  { symbol: "WA", label: "壁面積" },
+  { symbol: "HA", label: "柱面積" },
+  { symbol: "GA", label: "壁付き梁型 面積" },
+  { symbol: "BA", label: "天井付梁型 面積" },
+  { symbol: "CA", label: "天井面積" },
+  { symbol: "ML", label: "廻り縁" },
+  { symbol: "CH", label: "天井高さ" },
+];
+
+/** 固定表示の記号のうち、その部屋に無いものを0で足す */
+export function withFixedRoomSymbols(
+  values: Record<string, number>,
+): Record<string, number> {
+  const filled = { ...values };
+  ROOM_FIXED_SYMBOLS.forEach(({ symbol }) => {
+    if (filled[symbol] === undefined) filled[symbol] = 0;
+  });
+  return filled;
+}
+
+/**
  * 計算式で使う記号表。
  * 合計の記号（FA/CA/CH/HL/WA/HA/ML）に加えて、辺ごとの記号（HL1・WA1…）を作る。
  */

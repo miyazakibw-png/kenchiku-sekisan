@@ -69,6 +69,7 @@ import {
 import {
   roomSymbols,
   solveShape,
+  withFixedRoomSymbols,
   type RoomFitting,
   type RoomShape,
 } from "../../core/room/shape";
@@ -554,7 +555,8 @@ export function collectEntries(
       ),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];
-    const variables = calcVariables(symbols, fittings);
+    // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
+    const variables = withFixedRoomSymbols(calcVariables(symbols, fittings));
     entries.push(
       ...entriesFromCalcSheet(
         context,
