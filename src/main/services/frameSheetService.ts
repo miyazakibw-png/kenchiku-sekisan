@@ -60,26 +60,36 @@ export function getFrameSheet(
   return toSheet(created);
 }
 
+/** 保存。施工高さは部位別入力表の天井高さと相互連動させる */
 export function saveFrameSheet(
   db: AppDatabase,
   request: SaveFrameSheetRequest,
 ): FrameSheet {
-  const saved = db
-    .update(projectFrameSheets)
-    .set({
-      layoutJson: request.layoutJson,
-      linesJson: request.linesJson,
-      attributesJson: request.attributesJson,
-      fittingsJson: request.fittingsJson,
-      lowerJson: request.lowerJson,
-      workHeight: request.workHeight,
-      traceJson: request.traceJson,
-      kindsJson: request.kindsJson,
-      note: request.note,
-    })
-    .where(eq(projectFrameSheets.id, request.id))
-    .returning()
-    .get();
+  const saved = db.transaction((tx) => {
+    const row = tx
+      .update(projectFrameSheets)
+      .set({
+        layoutJson: request.layoutJson,
+        linesJson: request.linesJson,
+        attributesJson: request.attributesJson,
+        fittingsJson: request.fittingsJson,
+        lowerJson: request.lowerJson,
+        workHeight: request.workHeight,
+        traceJson: request.traceJson,
+        kindsJson: request.kindsJson,
+        note: request.note,
+      })
+      .where(eq(projectFrameSheets.id, request.id))
+      .returning()
+      .get();
+
+    tx.update(projectEstimateRows)
+      .set({ ceilingHeight: request.workHeight })
+      .where(eq(projectEstimateRows.id, row.estimateRowId))
+      .run();
+
+    return row;
+  });
   return toSheet(saved);
 }
 

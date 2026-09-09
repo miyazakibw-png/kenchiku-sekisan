@@ -72,6 +72,8 @@ interface Props {
   onBack: () => void;
   /** 置ける部屋の名前を押したとき、その部屋の計算書を開く */
   onOpenRoomSheet?: (estimateRowId: number) => void;
+  /** 施工高さを直したときに部位別入力表の行（天井高さ）へも伝える */
+  onWorkHeightChange?: (height: number | null) => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
 }
@@ -150,6 +152,7 @@ export default function FrameSheetPage({
   roomName,
   onBack,
   onOpenRoomSheet,
+  onWorkHeightChange,
   printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FrameSheet | null>(null);
@@ -242,6 +245,10 @@ export default function FrameSheetPage({
     y: number;
   } | null>(null);
 
+  /** 部位別入力表の行の天井高さ（読み込みのときだけ見る） */
+  const rowHeightRef = useRef(row.ceilingHeight);
+  rowHeightRef.current = row.ceilingHeight;
+
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
     {
@@ -261,6 +268,8 @@ export default function FrameSheetPage({
     if (row.id === null) return;
     void (async () => {
       const loaded = await window.sekisan.getFrameSheet(row.id as number);
+      // 施工高さは部位別入力表の天井高さを優先（部位別入力表で直した高さを引き継ぐ）
+      const height = rowHeightRef.current ?? loaded.workHeight;
       setSheet(loaded);
       setPlacements(parseJson<FramePlacement[]>(loaded.layoutJson, []));
       setManualLines(parseJson<FrameManualLine[]>(loaded.linesJson, []));
@@ -281,7 +290,7 @@ export default function FrameSheetPage({
         >(loaded.fittingsJson, []),
       );
       setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
-      setWorkHeight(loaded.workHeight);
+      setWorkHeight(height);
       const loadedTrace = parseJson<FrameTrace>(
         loaded.traceJson,
         EMPTY_FRAME_TRACE,
@@ -305,6 +314,7 @@ export default function FrameSheetPage({
           }[]
         >(loaded.fittingsJson, []),
         lower: trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
+        // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
         workHeight: loaded.workHeight,
         trace: loadedTrace,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
@@ -315,6 +325,18 @@ export default function FrameSheetPage({
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [markSaved, project.id, row.id]);
+
+  /** 施工高さを直す（部位別入力表の天井高さへも伝える） */
+  const changeWorkHeight = useCallback(
+    (text: string): void => {
+      const trimmed = text.trim();
+      const value = trimmed === "" ? null : Number(trimmed);
+      if (value !== null && Number.isNaN(value)) return;
+      setWorkHeight(value);
+      onWorkHeightChange?.(value);
+    },
+    [onWorkHeightChange],
+  );
 
   // 図で選んだ「引いた線」は Delete（BackSpace）で消せるようにする
   useEffect(() => {
@@ -1266,283 +1288,243 @@ export default function FrameSheetPage({
 
   /** 軸組の表の見出し（種類別でも、まとめて1つの表でも同じ） */
   const kindTableHead = (
-            <thead>
-              <tr>
-                <th className="no" />
-                <th className="no">番号</th>
-                <th>種類</th>
-                <th className="num">長さ</th>
-                <th className="num">高さ</th>
-                <th>建具</th>
-                <th className="num">面積</th>
-                <th className="num">補強</th>
-                <th />
-              </tr>
-            </thead>
+    <thead>
+      <tr>
+        <th className="no" />
+        <th className="no">番号</th>
+        <th>種類</th>
+        <th className="num">長さ</th>
+        <th className="num">高さ</th>
+        <th>建具</th>
+        <th className="num">面積</th>
+        <th className="num">補強</th>
+        <th />
+      </tr>
+    </thead>
   );
 
   /** 種類ごとの合計行 */
   const kindTotalRow = (group: FrameKindGroup): ReactElement => (
-              <tr className="kind-total">
-                <td className="no" />
-                <td
-                  className="symbol"
-                  title="クリックで計算式に入ります（面積計）"
-                  onClick={() => group.symbol && useSymbol(group.symbol)}
-                >
-                  {group.symbol}
-                </td>
-                <td>合計</td>
-                <td
-                  className="num"
-                  title="クリックで長さ計を計算式に入れます"
-                  onClick={() =>
-                    group.symbol && useSymbol(`WSL${group.symbol.slice(2)}`)
-                  }
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + each.line.length,
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">
-                    {`WSL${group.symbol.slice(2)}`}
-                  </span>
-                </td>
-                <td className="num" />
-                <td />
-                <td
-                  className="num"
-                  title="クリックで面積計を計算式に入れます"
-                  onClick={() => group.symbol && useSymbol(group.symbol)}
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + (each.area ?? 0),
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">{group.symbol}</span>
-                </td>
-                <td
-                  className="num"
-                  title="クリックで補強計を計算式に入れます"
-                  onClick={() =>
-                    group.symbol && useSymbol(`WSR${group.symbol.slice(2)}`)
-                  }
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + each.reinforcement,
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">
-                    {`WSR${group.symbol.slice(2)}`}
-                  </span>
-                </td>
-                <td />
-              </tr>
+    <tr className="kind-total">
+      <td className="no" />
+      <td
+        className="symbol"
+        title="クリックで計算式に入ります（面積計）"
+        onClick={() => group.symbol && useSymbol(group.symbol)}
+      >
+        {group.symbol}
+      </td>
+      <td>合計</td>
+      <td
+        className="num"
+        title="クリックで長さ計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(`WSL${group.symbol.slice(2)}`)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + each.line.length, 0),
+          2,
+        )}
+        <span className="total-symbol">{`WSL${group.symbol.slice(2)}`}</span>
+      </td>
+      <td className="num" />
+      <td />
+      <td
+        className="num"
+        title="クリックで面積計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(group.symbol)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + (each.area ?? 0), 0),
+          2,
+        )}
+        <span className="total-symbol">{group.symbol}</span>
+      </td>
+      <td
+        className="num"
+        title="クリックで補強計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(`WSR${group.symbol.slice(2)}`)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + each.reinforcement, 0),
+          2,
+        )}
+        <span className="total-symbol">{`WSR${group.symbol.slice(2)}`}</span>
+      </td>
+      <td />
+    </tr>
   );
 
   /** 種類の中の線を1本ずつ */
   const kindLineRows = (group: FrameKindGroup): ReactElement[] =>
     group.results.map((result) => {
-                const manual = result.line;
-                return (
-                  <tr
-                    key={manual.id}
-                    className={selectedLineId === manual.id ? "selected" : ""}
-                    onClick={() => setSelectedLineId(manual.id)}
-                  >
-                    <td className="no">
-                      <input
-                        type="checkbox"
-                        title="まとめて軸組種類を付ける線を選びます"
-                        checked={checkedIds.includes(manual.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          setCheckedIds((current) =>
-                            e.target.checked
-                              ? [...current, manual.id]
-                              : current.filter((id) => id !== manual.id),
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="no" style={{ color: group.color }}>
-                      {manual.label}
-                      {doubled.ids.has(manual.id) && (
-                        <span
-                          className="doubled-mark"
-                          title="同じ位置に他の線があります"
-                        >
-                          重
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <select
-                        value={manual.kindId}
-                        style={{ color: group.color, fontWeight: 700 }}
-                        title="この線の軸組種類（図の色になります）"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          updateAttribute(manual.id, {
-                            kindId: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">（種類なし）</option>
-                        {kinds.map((kind) => (
-                          <option key={kind.id} value={kind.id}>
-                            {kind.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`l-${manual.id}-${manual.length}`}
-                        defaultValue={formatNumber(manual.length, 2)}
-                        title="長さを入れると、始めの端はそのままで終わりの端が動きます"
-                        onBlur={(e) =>
-                          setManualLength(manual.id, Number(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`h-${manual.id}-${manual.workHeight ?? ""}`}
-                        defaultValue={
-                          manual.workHeight === null
-                            ? ""
-                            : formatNumber(manual.workHeight, 2)
-                        }
-                        placeholder={formatNumber(workHeight, 2)}
-                        title="空欄なら上の施工高さを使います"
-                        onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateAttribute(manual.id, {
-                            workHeight: text === "" ? null : Number(text),
-                          });
-                        }}
-                      />
-                    </td>
-                    <td className="fitting-cell">
-                      {frameFittings
-                        .filter((item) => item.lineId === manual.id)
-                        .map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="chip"
-                            title="押すとこの線から建具を外します"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFrameFittings((current) =>
-                                current.filter((each) => each.id !== item.id),
-                              );
-                            }}
-                          >
-                            {item.symbol}
-                            {item.multiplier > 1 ? `×${item.multiplier}` : ""}
-                          </button>
-                        ))}
-                      <select
-                        value=""
-                        title="この番号の線に付く建具を選びます"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const symbol = e.target.value;
-                          if (symbol === "") return;
-                          setFrameFittings((current) => [
-                            ...current,
-                            {
-                              id: newId("ff"),
-                              symbol,
-                              multiplier: 1,
-                              lineId: manual.id,
-                            },
-                          ]);
-                        }}
-                      >
-                        <option value="">＋建具</option>
-                        {fittings.map((fitting) => (
-                          <option key={fitting.id} value={fitting.symbol}>
-                            {fitting.symbol}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="num">{formatNumber(result.area, 2)}</td>
-                    <td className="num">
-                      {formatNumber(result.reinforcement, 2)}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        title="この線を消します"
-                        onClick={() => {
-                          setManualLines((current) =>
-                            current.filter((each) => each.id !== manual.id),
-                          );
-                          setSelectedLineId(null);
-                          setMessage("引いた線を消しました");
-                        }}
-                      >
-                        🗑
-                      </button>
-                    </td>
-                  </tr>
+      const manual = result.line;
+      return (
+        <tr
+          key={manual.id}
+          className={selectedLineId === manual.id ? "selected" : ""}
+          onClick={() => setSelectedLineId(manual.id)}
+        >
+          <td className="no">
+            <input
+              type="checkbox"
+              title="まとめて軸組種類を付ける線を選びます"
+              checked={checkedIds.includes(manual.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) =>
+                setCheckedIds((current) =>
+                  e.target.checked
+                    ? [...current, manual.id]
+                    : current.filter((id) => id !== manual.id),
+                )
+              }
+            />
+          </td>
+          <td className="no" style={{ color: group.color }}>
+            {manual.label}
+            {doubled.ids.has(manual.id) && (
+              <span className="doubled-mark" title="同じ位置に他の線があります">
+                重
+              </span>
+            )}
+          </td>
+          <td>
+            <select
+              value={manual.kindId}
+              style={{ color: group.color, fontWeight: 700 }}
+              title="この線の軸組種類（図の色になります）"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) =>
+                updateAttribute(manual.id, {
+                  kindId: e.target.value,
+                })
+              }
+            >
+              <option value="">（種類なし）</option>
+              {kinds.map((kind) => (
+                <option key={kind.id} value={kind.id}>
+                  {kind.name}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td>
+            <input
+              className="num"
+              key={`l-${manual.id}-${manual.length}`}
+              defaultValue={formatNumber(manual.length, 2)}
+              title="長さを入れると、始めの端はそのままで終わりの端が動きます"
+              onBlur={(e) => setManualLength(manual.id, Number(e.target.value))}
+            />
+          </td>
+          <td>
+            <input
+              className="num"
+              key={`h-${manual.id}-${manual.workHeight ?? ""}`}
+              defaultValue={
+                manual.workHeight === null
+                  ? ""
+                  : formatNumber(manual.workHeight, 2)
+              }
+              placeholder={formatNumber(workHeight, 2)}
+              title="空欄なら上の施工高さを使います"
+              onBlur={(e) => {
+                const text = e.target.value.trim();
+                updateAttribute(manual.id, {
+                  workHeight: text === "" ? null : Number(text),
+                });
+              }}
+            />
+          </td>
+          <td className="fitting-cell">
+            {frameFittings
+              .filter((item) => item.lineId === manual.id)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="chip"
+                  title="押すとこの線から建具を外します"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFrameFittings((current) =>
+                      current.filter((each) => each.id !== item.id),
+                    );
+                  }}
+                >
+                  {item.symbol}
+                  {item.multiplier > 1 ? `×${item.multiplier}` : ""}
+                </button>
+              ))}
+            <select
+              value=""
+              title="この番号の線に付く建具を選びます"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const symbol = e.target.value;
+                if (symbol === "") return;
+                setFrameFittings((current) => [
+                  ...current,
+                  {
+                    id: newId("ff"),
+                    symbol,
+                    multiplier: 1,
+                    lineId: manual.id,
+                  },
+                ]);
+              }}
+            >
+              <option value="">＋建具</option>
+              {fittings.map((fitting) => (
+                <option key={fitting.id} value={fitting.symbol}>
+                  {fitting.symbol}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td className="num">{formatNumber(result.area, 2)}</td>
+          <td className="num">{formatNumber(result.reinforcement, 2)}</td>
+          <td>
+            <button
+              type="button"
+              title="この線を消します"
+              onClick={() => {
+                setManualLines((current) =>
+                  current.filter((each) => each.id !== manual.id),
                 );
-              });
+                setSelectedLineId(null);
+                setMessage("引いた線を消しました");
+              }}
+            >
+              🗑
+            </button>
+          </td>
+        </tr>
+      );
+    });
 
   /** 種類ごとの合計（表の下の注記） */
   const kindTotalsNote = (group: FrameKindGroup): ReactElement => (
-          <p className="totals">
-            長さ計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + each.line.length,
-                0,
-              ),
-              2,
-            )}
-            ／面積計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + (each.area ?? 0),
-                0,
-              ),
-              2,
-            )}
-            ／補強計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + each.reinforcement,
-                0,
-              ),
-              2,
-            )}
-            ／たて{" "}
-            {
-              group.results.filter((each) => each.line.label.startsWith("Y"))
-                .length
-            }
-            本・よこ{" "}
-            {
-              group.results.filter((each) => each.line.label.startsWith("X"))
-                .length
-            }
-            本
-          </p>
+    <p className="totals">
+      長さ計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + each.line.length, 0),
+        2,
+      )}
+      ／面積計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + (each.area ?? 0), 0),
+        2,
+      )}
+      ／補強計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + each.reinforcement, 0),
+        2,
+      )}
+      ／たて{" "}
+      {group.results.filter((each) => each.line.label.startsWith("Y")).length}
+      本・よこ{" "}
+      {group.results.filter((each) => each.line.label.startsWith("X")).length}本
+    </p>
   );
 
   /** 上段（レイアウト図・軸組の表）。印刷では紙の1枚目に入れる */
@@ -3000,11 +2982,10 @@ export default function FrameSheetPage({
           <input
             className="num"
             defaultValue={formatNumber(workHeight, 2)}
-            key={`wh-${sheet?.id ?? "new"}`}
+            key={`wh-${sheet?.id ?? "new"}-${formatNumber(workHeight, 2)}`}
             title="軸組の施工高さ。ここを直すと全体が再計算されます"
             onBlur={(e) => {
-              const value = e.target.value.trim();
-              setWorkHeight(value === "" ? null : Number(value));
+              changeWorkHeight(e.target.value);
             }}
           />
         </label>
