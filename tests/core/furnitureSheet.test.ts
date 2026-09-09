@@ -1,0 +1,823 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyFurnitureDetails,
+  bathUpperText,
+  entriesFromFurnitureSheet,
+  floorAreaOf,
+  floorFormulaOfModel,
+  fittingsFromFurniture,
+  furnitureCellValue,
+  furnitureColumn,
+  furnitureColumnTotal,
+  furnitureRow,
+  furnitureSettings,
+  furnitureSettingsFor,
+  fittingSizeText,
+  hasFittingSymbol,
+  hasModel,
+  hasShape,
+  hasTripleWidth,
+  pasteFurnitureRows,
+  resolveFurnitureRows,
+  revertFurnitureDetail,
+  rowQuantity,
+  transfersToFittings,
+  symbolText,
+} from "../../src/core/furniture/furnitureSheet";
+
+const settings = furnitureSettings({
+  partSymbols: [{ symbol: "GE", text: "玄関" }],
+  nameSymbols: [
+    { symbol: "G", text: "下足入" },
+    { symbol: "IS", text: "インフィル収納" },
+  ],
+});
+
+function sample(): ReturnType<typeof furnitureRow>[] {
+  return [
+    furnitureRow({
+      id: "r1",
+      subjectId: 42,
+      partNumber: 300,
+      detailNumber: 100,
+      nameSymbol: "＜Ａタイプ＞",
+      quantity: "0",
+    }),
+    furnitureRow({
+      id: "r2",
+      part: "A",
+      partAdd: "2",
+      partSymbol: "GE",
+      nameSymbol: "G",
+      width: "1200",
+      height: "1100",
+      depth: "400",
+      quantity: "1",
+      unit: "ヶ所",
+      remarksLower: "設計標準ﾁｪｯｸﾘｽﾄ",
+    }),
+    furnitureRow({
+      id: "r3",
+      partSymbol: "GE",
+      nameSymbol: "IS",
+      width: "400",
+      height: "2170",
+      depth: "400",
+      quantity: "5",
+      unit: "ヶ所",
+    }),
+  ];
+}
+
+describe("家具計算書の引き継ぎ", () => {
+  it("科目・部位ID・部位・数量は上の行と同じ、名称IDは+0.01", () => {
+    const resolved = resolveFurnitureRows(sample());
+    expect(resolved[1].subjectId).toBe(42);
+    expect(resolved[1].partNumber).toBe(300);
+    expect(resolved[1].detailNumber).toBe(100.01);
+    expect(resolved[2].detailNumber).toBe(100.02);
+    expect(resolved[2].part).toBe("A");
+  });
+
+  it("単位も未入力なら上の行と同じ（明細側にもその単位が出る）", () => {
+    const rows = sample();
+    rows[2].unit = "";
+    const resolved = resolveFurnitureRows(rows);
+    expect(resolved[2].unit).toBe("ヶ所");
+    expect(applyFurnitureDetails(rows, settings)[2].detail.unit).toBe("ヶ所");
+  });
+});
+
+describe("明細欄の自動作成", () => {
+  it("部位は設定文字を付け、W・H・Dは摘要下段に出す", () => {
+    const rows = applyFurnitureDetails(sample(), settings);
+    expect(rows[1].detail.partName).toBe("Aﾀｲﾌﾟ(2F)玄関");
+    expect(rows[1].detail.name).toBe("下足入");
+    expect(rows[1].detail.descriptionLower).toBe("W1200*H1100*D400");
+    expect(rows[1].detail.unit).toBe("ヶ所");
+    expect(rows[1].detail.remarksLower).toBe("設計標準ﾁｪｯｸﾘｽﾄ");
+  });
+
+  it("記号は全角・小文字・空白の違いがあっても文字に変わる（表に無いものはそのまま）", () => {
+    const symbols = settings.nameSymbols;
+    expect(symbolText(symbols, "Ｇ")).toBe("下足入");
+    expect(symbolText(symbols, "g")).toBe("下足入");
+    expect(symbolText(symbols, " IS ")).toBe("インフィル収納");
+    expect(symbolText(symbols, "ＩＳ")).toBe("インフィル収納");
+    expect(symbolText(symbols, "CL")).toBe("CL");
+    expect(symbolText(symbols, "")).toBe("");
+    const rows = sample();
+    rows[2].nameSymbol = "ｉｓ";
+    expect(applyFurnitureDetails(rows, settings)[2].detail.name).toBe(
+      "インフィル収納",
+    );
+  });
+
+  it("手で直した欄は自動作成で上書きしない", () => {
+    const rows = sample();
+    rows[1].detail = {
+      ...rows[1].detail,
+      name: "下足入（特注）",
+      edited: ["name"],
+    };
+    const applied = applyFurnitureDetails(rows, settings);
+    expect(applied[1].detail.name).toBe("下足入（特注）");
+    expect(applied[1].detail.partName).toBe("Aﾀｲﾌﾟ(2F)玄関");
+  });
+
+  it("手で直した欄は1欄だけ・行ごとに自動作成（記号からの変換）に戻せる", () => {
+    const rows = sample();
+    rows[1].detail = {
+      ...rows[1].detail,
+      name: "下足入（特注）",
+      partName: "玄関ホール",
+      edited: ["name", "partName"],
+    };
+    rows[1] = revertFurnitureDetail(rows[1], ["name"]);
+    expect(rows[1].detail.edited).toEqual(["partName"]);
+    let applied = applyFurnitureDetails(rows, settings);
+    expect(applied[1].detail.name).toBe("下足入");
+    expect(applied[1].detail.partName).toBe("玄関ホール");
+    rows[1] = revertFurnitureDetail(rows[1]);
+    expect(rows[1].detail.edited).toEqual([]);
+    applied = applyFurnitureDetails(rows, settings);
+    expect(applied[1].detail.partName).toBe("Aﾀｲﾌﾟ(2F)玄関");
+  });
+});
+
+describe("数量", () => {
+  it("0はタイトル行なので数量にしない", () => {
+    const rows = sample();
+    const resolved = resolveFurnitureRows(rows);
+    expect(rowQuantity(rows[0], resolved[0])).toBeNull();
+    expect(rowQuantity(rows[1], resolved[1])).toBe(1);
+  });
+
+  it("計算式ではW・H・Dをm換算で使える（未入力は上の行の式）", () => {
+    const rows = sample();
+    rows[1].detail = { ...rows[1].detail, formula: "W*H" };
+    const resolved = resolveFurnitureRows(rows);
+    expect(rowQuantity(rows[1], resolved[1])).toBe(1.32);
+    expect(rowQuantity(rows[2], resolved[2])).toBe(0.87);
+  });
+});
+
+describe("集計と建具転記", () => {
+  it("空の明細と数量0の行は集計しない", () => {
+    const entries = entriesFromFurnitureSheet(
+      {
+        sheetId: 3,
+        part1: "建築",
+        part2: "2階",
+        part2Split: true,
+        part3: "システム収納",
+        multiplier: 2,
+      },
+      { rows: sample(), settings },
+      new Map(),
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries[0].traceId).toBe("furniture:3:r2");
+    expect(entries[0].quantity).toBe(2);
+    expect(entries[0].part3).toBe("システム収納");
+  });
+
+  it("名称の記号は明細側で設定の文字に変わる（表に無い文字はそのまま）", () => {
+    const view = applyFurnitureDetails(sample(), settings);
+    expect(view[1].detail.name).toBe("下足入");
+    expect(view[2].detail.name).toBe("インフィル収納");
+    expect(view[0].detail.name).toBe("＜Ａタイプ＞");
+  });
+
+  it("建具記号は入力した英数字をつなげ、寸法はm換算する", () => {
+    const fittings = fittingsFromFurniture({ rows: sample(), settings });
+    expect(fittings).toHaveLength(2);
+    expect(fittings[0]).toMatchObject({
+      symbol: "A2GEG",
+      width: 1.2,
+      height: 1.1,
+    });
+    expect(fittings[1].symbol).toBe("AGEIS");
+  });
+});
+
+describe("タテ方向の明細（列）", () => {
+  const column = furnitureColumn({
+    id: "c1",
+    subjectId: 42,
+    partNumber: 300,
+    detailNumber: 12.5,
+    partName: "家具",
+    name: "カウンター取付",
+    unit: "ヶ所",
+  });
+
+  function rowsWithValues(): ReturnType<typeof furnitureRow>[] {
+    const rows = sample();
+    rows[1].values = { c1: "2" };
+    rows[2].values = { c1: "1+2" };
+    return rows;
+  }
+
+  it("列の合計は各行の値（計算式も可）×その行の数量を足したもの", () => {
+    // rows[1]: 2 × 数量1, rows[2]: (1+2) × 数量5
+    expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(17);
+  });
+
+  it("数量が未入力の行は上の行の数量を使い、どこにも無ければ1とする", () => {
+    const rows = rowsWithValues();
+    rows[2].quantity = "";
+    expect(furnitureColumnTotal(rows, "c1")).toBe(5);
+    rows[0].quantity = "";
+    rows[1].quantity = "";
+    expect(furnitureColumnTotal(rows, "c1")).toBe(5);
+  });
+
+  it("計算式では行のW・H・D（mm→m）が使える（全角・小文字も）", () => {
+    const row = sample()[1]; // W1200 H1100 D400
+    expect(furnitureCellValue(row, "W*H")).toBe(1.32);
+    expect(furnitureCellValue(row, "Ｗ＊Ｈ")).toBe(1.32);
+    expect(furnitureCellValue(row, "(w+d)*2")).toBe(3.2);
+    expect(furnitureCellValue(row, "2*3")).toBe(6);
+    expect(furnitureCellValue(row, "")).toBeNull();
+    expect(furnitureCellValue(furnitureRow(), "W*H")).toBe(0);
+  });
+
+  it("列の合計・集計でもW・H・Dが使える（数量を掛ける）", () => {
+    const rows = sample();
+    rows[1].values = { c1: "W" }; // 1.2 × 1
+    rows[2].values = { c1: "H" }; // 2.17 × 5
+    expect(furnitureColumnTotal(rows, "c1")).toBe(12.05);
+  });
+
+  it("ヨコの自動明細とは別のtraceIdで集計する", () => {
+    const entries = entriesFromFurnitureSheet(
+      {
+        sheetId: 3,
+        part1: "建築",
+        part2: "2階",
+        part2Split: true,
+        part3: "システム収納",
+        multiplier: 2,
+      },
+      { rows: rowsWithValues(), settings, columns: [column] },
+      new Map(),
+    );
+    const vertical = entries.filter((entry) =>
+      entry.traceId.startsWith("furniturecol:"),
+    );
+    expect(vertical.map((entry) => entry.traceId)).toEqual([
+      "furniturecol:3:r2:c1",
+      "furniturecol:3:r3:c1",
+    ]);
+    // 値 × 行の数量 × 表の倍率
+    expect(vertical[0].setTotal).toBe(2);
+    expect(vertical[0].quantity).toBe(4);
+    expect(vertical[1].setTotal).toBe(15);
+    expect(vertical[1].quantity).toBe(30);
+    expect(vertical[0].name).toBe("カウンター取付");
+    expect(vertical[0].sourceKind).toBe("furniture");
+  });
+});
+
+describe("システムキッチン（W1・W2・W3）", () => {
+  const kitchen = furnitureSettingsFor("kitchen");
+
+  function kitchenRow(patch: Parameters<typeof furnitureRow>[0]) {
+    return furnitureRow({
+      part: "1",
+      partSymbol: "K",
+      nameSymbol: "S",
+      height: "850",
+      depth: "650",
+      quantity: "1",
+      unit: "ヶ所",
+      ...patch,
+    });
+  }
+
+  it("システムキッチン・洗面化粧台・棚はW欄が3つ", () => {
+    expect(hasTripleWidth("kitchen")).toBe(true);
+    expect(hasTripleWidth("washstand")).toBe(true);
+    expect(hasTripleWidth("shelf")).toBe(true);
+    expect(transfersToFittings("shelf")).toBe(false);
+    expect(hasTripleWidth("furniture")).toBe(false);
+    expect(hasTripleWidth("other")).toBe(true);
+    expect(transfersToFittings("other")).toBe(false);
+    const other = furnitureSettingsFor("other");
+    expect(other.nameSymbols).toEqual([{ symbol: "S", text: "設備" }]);
+    expect(other).not.toEqual(furnitureSettingsFor("kitchen"));
+    expect(other).not.toEqual(furnitureSettingsFor("shelf"));
+    expect(
+      applyFurnitureDetails(
+        [furnitureRow({ nameSymbol: "S", width: "900", width2: "600" })],
+        other,
+        "other",
+      )[0].detail,
+    ).toMatchObject({ name: "設備", descriptionLower: "W900+600(L型)" });
+  });
+
+  it("棚は作りはキッチンと同じで、初めの記号表は棚用（基準は別）", () => {
+    const shelf = furnitureSettingsFor("shelf");
+    expect(shelf.nameSymbols).toEqual([
+      { symbol: "T", text: "棚" },
+      { symbol: "K", text: "可動棚" },
+      { symbol: "H", text: "枕棚" },
+    ]);
+    expect(shelf).not.toEqual(furnitureSettingsFor("kitchen"));
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          partSymbol: "K",
+          nameSymbol: "K",
+          width: "1200",
+          width2: "600",
+          width3: "600",
+          height: "300",
+          depth: "450",
+        }),
+      ],
+      shelf,
+    );
+    expect(rows[0].detail.partName).toBe("キッチン");
+    expect(rows[0].detail.name).toBe("可動棚");
+    expect(rows[0].detail.descriptionLower).toBe(
+      "W1200+600+600(コ型)*H300*D450",
+    );
+    expect(furnitureCellValue(rows[0], "W")).toBe(2.4);
+  });
+
+  it("ハンガーパイプは棚と同じ作りで、Dの代わりに形状（番号→計上設定の文字）", () => {
+    expect(hasTripleWidth("hanger")).toBe(true);
+    expect(hasShape("hanger")).toBe(true);
+    expect(hasShape("shelf")).toBe(false);
+    expect(transfersToFittings("hanger")).toBe(false);
+    const hanger = furnitureSettingsFor("hanger");
+    expect(hanger.shapeSymbols).toEqual([
+      { symbol: "1", text: "(L型)" },
+      { symbol: "2", text: "(十型)" },
+      { symbol: "3", text: "(キ型)" },
+      { symbol: "4", text: "(T型)" },
+      { symbol: "5", text: "(TT型)" },
+    ]);
+    expect(hanger).not.toEqual(furnitureSettingsFor("shelf"));
+    expect(furnitureSettingsFor("shelf").shapeSymbols).toBeUndefined();
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          nameSymbol: "H",
+          width: "1200",
+          width2: "600",
+          height: "1800",
+          depth: "450",
+          shape: "１",
+        }),
+        furnitureRow({ width: "900", height: "1800", shape: "5" }),
+        furnitureRow({ width: "900", width2: "600", shape: "9" }),
+        furnitureRow({ width: "900", width2: "600", width3: "800" }),
+      ],
+      hanger,
+      "hanger",
+    );
+    expect(rows[0].detail.name).toBe("ハンガーパイプ");
+    expect(rows[0].detail.descriptionLower).toBe("W1200+600*H1800(L型)");
+    expect(furnitureCellValue(rows[0], "W")).toBe(1.8);
+    expect(rows[1].detail.descriptionLower).toBe("W900*H1800(TT型)");
+    expect(rows[2].detail.descriptionLower).toBe("W900+6009");
+    expect(rows[3].detail.descriptionLower).toBe("W900+600+800");
+    const shelfRow = furnitureRow({ width: "1200", depth: "450", shape: "1" });
+    expect(
+      applyFurnitureDetails([shelfRow], furnitureSettingsFor("shelf"), "shelf")[0]
+        .detail.descriptionLower,
+    ).toBe("W1200*D450");
+    expect(
+      applyFurnitureDetails([shelfRow], furnitureSettingsFor("shelf"), "hanger")[0]
+        .detail.descriptionLower,
+    ).toBe("W1200(L型)");
+  });
+
+  it("洗面化粧台は作りはキッチンと同じで、初めの記号表は洗面用（基準は別）", () => {
+    const washstand = furnitureSettingsFor("washstand");
+    expect(washstand.partSymbols).toEqual([
+      { symbol: "S", text: "洗面脱衣室" },
+      { symbol: "T", text: "トイレ" },
+    ]);
+    expect(washstand.nameSymbols).toEqual([{ symbol: "S", text: "洗面化粧台" }]);
+    expect(washstand).toMatchObject({
+      width2Label: "+",
+      width3Label: "+",
+      lShapeLabel: "(L型)",
+      uShapeLabel: "(コ型)",
+    });
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({
+          partSymbol: "S",
+          nameSymbol: "S",
+          width: "900",
+          width2: "600",
+          height: "1900",
+          depth: "500",
+        }),
+      ],
+      washstand,
+    );
+    expect(rows[0].detail.partName).toBe("洗面脱衣室");
+    expect(rows[0].detail.name).toBe("洗面化粧台");
+    expect(rows[0].detail.descriptionLower).toBe("W900+600(L型)*H1900*D500");
+  });
+
+  it("初めの設定は種類ごと（キッチンは記号表がキッチン用・W2/W3の文字は+・(L型)・(コ型)）", () => {
+    expect(kitchen.partSymbols).toEqual([
+      { symbol: "K", text: "キッチン" },
+      { symbol: "LDK", text: "LDK" },
+    ]);
+    expect(kitchen.nameSymbols.map((item) => item.text)).toEqual([
+      "システムキッチン",
+      "ミニキッチン",
+      "キッチンセット",
+    ]);
+    expect(kitchen).toMatchObject({
+      partPrefix: "",
+      partSuffix: "ﾀｲﾌﾟ",
+      addPrefix: "(",
+      addSuffix: "F)",
+      widthLabel: "W",
+      width2Label: "+",
+      width3Label: "+",
+      lShapeLabel: "(L型)",
+      uShapeLabel: "(コ型)",
+      heightLabel: "*H",
+      depthLabel: "*D",
+    });
+    expect(furnitureSettingsFor("furniture")).toEqual(furnitureSettings());
+    expect(furnitureSettingsFor("other")).not.toEqual(furnitureSettings());
+  });
+
+  it("W1だけ→家具と同じ、W2あり・W3なし→(L型)、W3あり→(コ型)を摘要下段に付ける", () => {
+    const rows = applyFurnitureDetails(
+      [
+        kitchenRow({ width: "2550" }),
+        kitchenRow({ width: "2550", width2: "1800" }),
+        kitchenRow({ width: "2550", width2: "1800", width3: "1650" }),
+        kitchenRow({ width: "2550", width2: "", width3: "1650" }),
+        kitchenRow({ width: "", width2: "1800" }),
+      ],
+      kitchen,
+    );
+    expect(rows[0].detail.partName).toBe("1ﾀｲﾌﾟキッチン");
+    expect(rows[0].detail.name).toBe("システムキッチン");
+    expect(rows[0].detail.descriptionLower).toBe("W2550*H850*D650");
+    expect(rows[1].detail.descriptionLower).toBe("W2550+1800(L型)*H850*D650");
+    expect(rows[2].detail.descriptionLower).toBe(
+      "W2550+1800+1650(コ型)*H850*D650",
+    );
+    expect(rows[3].detail.descriptionLower).toBe("W2550+1650(コ型)*H850*D650");
+    expect(rows[4].detail.descriptionLower).toBe("W+1800(L型)*H850*D650");
+  });
+
+  it("設定の文字を変えると摘要に反映する", () => {
+    const custom = furnitureSettingsFor("kitchen", {
+      width2Label: "×",
+      width3Label: "×",
+      lShapeLabel: "L",
+      uShapeLabel: "U",
+    });
+    const rows = applyFurnitureDetails(
+      [
+        kitchenRow({ width: "2550", width2: "1800" }),
+        kitchenRow({ width: "2550", width2: "1800", width3: "900" }),
+      ],
+      custom,
+    );
+    expect(rows[0].detail.descriptionLower).toBe("W2550×1800L*H850*D650");
+    expect(rows[1].detail.descriptionLower).toBe("W2550×1800×900U*H850*D650");
+  });
+
+  it("古い保存（width2/width3が無い行）は家具と同じ", () => {
+    const row = furnitureRow({ width: "1200", height: "1100" });
+    delete row.width2;
+    delete row.width3;
+    const rows = applyFurnitureDetails([row], kitchen);
+    expect(rows[0].detail.descriptionLower).toBe("W1200*H1100");
+    expect(furnitureCellValue(row, "W*H")).toBe(1.32);
+  });
+
+  it("計算式ではW1・W2・W3をm換算で使え、WはW1+W2+W3の合計", () => {
+    const row = kitchenRow({ width: "2550", width2: "1800", width3: "1650" });
+    expect(furnitureCellValue(row, "W1")).toBe(2.55);
+    expect(furnitureCellValue(row, "W2")).toBe(1.8);
+    expect(furnitureCellValue(row, "W3")).toBe(1.65);
+    expect(furnitureCellValue(row, "W")).toBe(6);
+    expect(furnitureCellValue(row, "w1+w2")).toBe(4.35);
+    expect(furnitureCellValue(row, "W*D")).toBe(3.9);
+    const rows = [row];
+    rows[0].detail = { ...rows[0].detail, formula: "W1*H" };
+    const resolved = resolveFurnitureRows(rows);
+    expect(rowQuantity(rows[0], resolved[0])).toBe(2.17);
+    expect(furnitureCellValue(kitchenRow({ width: "2550" }), "W")).toBe(2.55);
+  });
+
+  it("建具転記の幅はW1+W2+W3の合計（m換算）", () => {
+    const fittings = fittingsFromFurniture({
+      rows: [kitchenRow({ width: "2550", width2: "1800" })],
+      settings: kitchen,
+    });
+    expect(fittings).toHaveLength(1);
+    expect(fittings[0]).toMatchObject({ symbol: "1KS", width: 4.35, height: 0.85 });
+  });
+
+  it("行コピーでW2・W3も写る", () => {
+    const rows = [kitchenRow({ width: "2550", width2: "1800", width3: "900" })];
+    const pasted = pasteFurnitureRows(rows, 0, rows, "append");
+    expect(pasted[1]).toMatchObject({ width: "2550", width2: "1800", width3: "900" });
+    expect(pasted[1].id).not.toBe(rows[0].id);
+  });
+});
+
+describe("ユニットバス（型番・床面積FA）", () => {
+  const bath = furnitureSettingsFor("bath");
+
+  function bathRow(patch: Parameters<typeof furnitureRow>[0]) {
+    return furnitureRow({
+      part: "1",
+      partSymbol: "B",
+      nameSymbol: "UB",
+      quantity: "1",
+      unit: "ヶ所",
+      ...patch,
+    });
+  }
+
+  it("ユニットバスはW欄3つでも形状でもなく型番。建具へは転記しない", () => {
+    expect(hasModel("bath")).toBe(true);
+    expect(hasTripleWidth("bath")).toBe(false);
+    expect(hasShape("bath")).toBe(false);
+    expect(transfersToFittings("bath")).toBe(false);
+    expect(hasModel("kitchen")).toBe(false);
+    expect(bath.floorAreaTable).toEqual([{ symbol: "1418", text: "1.5*1.9" }]);
+    expect(bath.windowPrefix).toBe("(");
+    expect(bath.windowSuffix).toBe(")");
+  });
+
+  it("型番はそのまま摘要下段、梁欠き・窓は前後文字を付けて摘要上段に並ぶ", () => {
+    const settings = { ...bath, beamPrefix: "梁欠き", beamSuffix: "ヶ所" };
+    const [row] = applyFurnitureDetails(
+      [bathRow({ model: "1418", beam: "2", window: "W600*H800", depth: "650" })],
+      settings,
+      "bath",
+    );
+    expect(row.detail.descriptionLower).toBe("1418");
+    expect(row.detail.descriptionUpper).toBe("梁欠き2ヶ所(W600*H800)");
+    expect(row.detail.name).toBe("ユニットバス");
+    expect(row.detail.partName).toContain("浴室");
+    expect(row.detail.floorFormula).toBe("1.5*1.9");
+    expect(bathUpperText(bathRow({ window: "1" }), bath)).toBe("(1)");
+    expect(bathUpperText(bathRow({}), bath)).toBe("");
+  });
+
+  it("型番→床面積：換算表にあれば表の式、無い4桁は上2桁・下2桁を/10して+0.1", () => {
+    expect(floorFormulaOfModel("1418", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("１４１８", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("UB1418", bath)).toBe("1.5*1.9");
+    expect(floorFormulaOfModel("UB-1616 S", bath)).toBe("1.7*1.7");
+    expect(floorFormulaOfModel("1616", bath)).toBe("1.7*1.7");
+    expect(floorFormulaOfModel("1620", bath)).toBe("1.7*2.1");
+    expect(floorFormulaOfModel("0812", bath)).toBe("0.9*1.3");
+    expect(floorFormulaOfModel("ABC", bath)).toBe("");
+    expect(floorFormulaOfModel("", bath)).toBe("");
+    expect(floorAreaOf("1.5*1.9")).toBe(2.85);
+    expect(floorAreaOf("")).toBeNull();
+  });
+
+  it("床面積計算の手入力があればそれを使う", () => {
+    const [auto, manual] = applyFurnitureDetails(
+      [bathRow({ model: "1616" }), bathRow({ model: "1616", floorFormula: "1.6*1.6" })],
+      bath,
+      "bath",
+    );
+    expect(auto.detail.floorFormula).toBe("1.7*1.7");
+    expect(manual.detail.floorFormula).toBe("1.6*1.6");
+  });
+
+  it("タテ明細・数量の計算式でFA（床面積m²）が使える（全角・小文字も）", () => {
+    const [row] = applyFurnitureDetails(
+      [bathRow({ model: "1418", quantity: "2" })],
+      bath,
+      "bath",
+    );
+    expect(furnitureCellValue(row, "FA")).toBe(2.85);
+    expect(furnitureCellValue(row, "fa*2")).toBe(5.7);
+    expect(furnitureCellValue(row, "ＦＡ")).toBe(2.85);
+    const [resolved] = resolveFurnitureRows([
+      { ...row, detail: { ...row.detail, formula: "FA" } },
+    ]);
+    expect(rowQuantity({ ...row, detail: { ...row.detail, formula: "FA" } }, resolved)).toBe(2.85);
+    expect(furnitureColumnTotal(
+      [{ ...row, values: { c1: "FA" } }],
+      "c1",
+    )).toBe(5.7);
+  });
+
+  it("家具・キッチンではFAは0（床面積が無い）", () => {
+    const [row] = applyFurnitureDetails(
+      [furnitureRow({ width: "1000", height: "1000" })],
+      furnitureSettings(),
+    );
+    expect(furnitureCellValue(row, "FA")).toBe(0);
+    expect(row.detail.floorFormula).toBeUndefined();
+  });
+
+  it("集計にもFAと摘要上段・下段が入る", () => {
+    const rows = applyFurnitureDetails(
+      [bathRow({ model: "1418", beam: "1", values: { c1: "FA" } })],
+      bath,
+      "bath",
+    );
+    const entries = entriesFromFurnitureSheet(
+      { sheetId: 1, part1: "A", part2: "", part2Split: false, part3: "UB", multiplier: 1 },
+      {
+        rows,
+        settings: bath,
+        kind: "bath",
+        columns: [furnitureColumn({ id: "c1", name: "床防水", unit: "m2" })],
+      },
+      new Map(),
+    );
+    const column = entries.find((entry) => entry.name === "床防水");
+    expect(column?.quantity).toBe(2.85);
+    const main = entries.find((entry) => entry.name === "ユニットバス");
+    expect(main?.descriptionLower).toBe("1418");
+    expect(main?.descriptionUpper).toBe("1");
+  });
+});
+
+describe("カーテン・ブラインド（建具記号から寸法を呼び出す）", () => {
+  const curtain = furnitureSettingsFor("curtain");
+  const fittings = [
+    { symbol: "AW209", width: 1.72, height: 1 },
+    { symbol: "AW1", width: 0.9, height: null },
+  ];
+
+  function curtainRows() {
+    return [
+      furnitureRow({
+        id: "c1",
+        subjectId: 42,
+        partNumber: 300,
+        detailNumber: 100,
+        part: "2",
+        partAdd: "事務室",
+        nameSymbol: "ブラインド",
+        fittingSymbol: "AW209",
+        quantity: "2",
+        unit: "ヶ所",
+      }),
+      furnitureRow({ id: "c2", partAdd: "会議室", fittingSymbol: "aw1" }),
+      furnitureRow({ id: "c3", nameSymbol: "C", fittingSymbol: "AW9" }),
+    ];
+  }
+
+  it("家具と同じ作りで、W・H・Dの代わりに建具記号。建具へは転記しない", () => {
+    expect(hasFittingSymbol("curtain")).toBe(true);
+    expect(hasTripleWidth("curtain")).toBe(false);
+    expect(hasModel("curtain")).toBe(false);
+    expect(hasShape("curtain")).toBe(false);
+    expect(transfersToFittings("curtain")).toBe(false);
+    expect(hasFittingSymbol("furniture")).toBe(false);
+    expect(curtain.partSuffix).toBe("F");
+    expect(curtain.fittingPrefix).toBe("(");
+    expect(curtain.fittingSeparator).toBe(":");
+    expect(curtain.widthLabel).toBe("W");
+    expect(curtain.heightLabel).toBe("*H");
+    expect(curtain.fittingSuffix).toBe(")部");
+  });
+
+  it("摘要下段は (記号:W幅*H高さ)部 のmm表示。記号は全角・小文字でも照合し、表に無い記号は記号だけ", () => {
+    const rows = applyFurnitureDetails(curtainRows(), curtain, "curtain", fittings);
+    expect(rows[0].detail.descriptionLower).toBe("(AW209:W1720*H1000)部");
+    expect(rows[1].detail.descriptionLower).toBe("(aw1:W900)部");
+    expect(rows[2].detail.descriptionLower).toBe("(AW9)部");
+    expect(
+      fittingSizeText(
+        furnitureRow({ fittingSymbol: "ＡＷ２０９" }),
+        { ...curtain, widthLabel: "", heightLabel: "*" },
+        fittings,
+      ),
+    ).toBe("(ＡＷ２０９:1720*1000)部");
+    expect(fittingSizeText(furnitureRow(), curtain, fittings)).toBe("");
+  });
+
+  it("部位は部位+F+部位Ⅲ、部材名称は空なら上の行と同じ（記号表にあれば文字に変わる）", () => {
+    const rows = applyFurnitureDetails(curtainRows(), curtain, "curtain", fittings);
+    expect(rows[0].detail.partName).toBe("2F事務室");
+    expect(rows[1].detail.partName).toBe("2F会議室");
+    expect(rows[0].detail.name).toBe("ブラインド");
+    expect(rows[1].detail.name).toBe("ブラインド");
+    expect(rows[2].detail.name).toBe("カーテン");
+    expect(resolveFurnitureRows(curtainRows(), "curtain")[1].nameSymbol).toBe(
+      "ブラインド",
+    );
+    // 家具は名称を引き継がない
+    expect(resolveFurnitureRows(curtainRows())[1].nameSymbol).toBe("");
+  });
+
+  it("呼び出したW・Hは計算式・タテ明細で使え、集計にも摘要下段が入る", () => {
+    const rows = curtainRows();
+    rows[0].values = { c1: "W*H" };
+    const entries = entriesFromFurnitureSheet(
+      { sheetId: 1, part1: "A", part2: "", part2Split: false, part3: "カーテン", multiplier: 1 },
+      {
+        rows,
+        settings: curtain,
+        kind: "curtain",
+        columns: [furnitureColumn({ id: "c1", name: "レール", unit: "m2" })],
+        fittings,
+      },
+      new Map(),
+    );
+    const main = entries.find((entry) => entry.name === "ブラインド");
+    expect(main?.descriptionLower).toBe("(AW209:W1720*H1000)部");
+    expect(main?.partName).toBe("2F事務室");
+    expect(main?.quantity).toBe(2);
+    const column = entries.find((entry) => entry.name === "レール");
+    expect(column?.quantity).toBe(3.44);
+    // 建具表を渡さなければ記号だけ（行の入力は書き換えない）
+    expect(
+      applyFurnitureDetails(curtainRows(), curtain, "curtain")[0].detail
+        .descriptionLower,
+    ).toBe("(AW209)部");
+    expect(curtainRows()[0].width).toBe("");
+  });
+});
+
+describe("家具計算書の行コピー・貼り付け", () => {
+  const copied = () => {
+    const rows = sample();
+    return [
+      {
+        ...rows[1],
+        detail: { ...rows[1].detail, name: "手直し", edited: ["name"] },
+        values: { c1: "2*2" },
+      },
+      rows[2],
+    ];
+  };
+
+  it("上書貼付：カーソルの行から順に置き換え、足りない分は末尾へ足す", () => {
+    const rows = sample();
+    const over = pasteFurnitureRows(rows, 2, copied(), "over");
+    expect(over).toHaveLength(4);
+    expect(over.slice(0, 2).map((row) => row.id)).toEqual(["r1", "r2"]);
+    expect(over[2].nameSymbol).toBe("G");
+    expect(over[3].nameSymbol).toBe("IS");
+    const head = pasteFurnitureRows(rows, 0, copied(), "over");
+    expect(head).toHaveLength(3);
+    expect(head.map((row) => row.nameSymbol)).toEqual(["G", "IS", "IS"]);
+    expect(head[2].id).toBe("r3");
+  });
+
+  it("挿入貼付：カーソルの行の上へ入る", () => {
+    const rows = sample();
+    const inserted = pasteFurnitureRows(rows, 1, copied(), "insert");
+    expect(inserted).toHaveLength(5);
+    expect(inserted[0].id).toBe("r1");
+    expect(inserted[1].nameSymbol).toBe("G");
+    expect(inserted[2].nameSymbol).toBe("IS");
+    expect(inserted[3].id).toBe("r2");
+    expect(inserted[4].id).toBe("r3");
+  });
+
+  it("追加貼付：カーソル位置に関係なく最終行の下へ", () => {
+    const rows = sample();
+    const appended = pasteFurnitureRows(rows, 0, copied(), "append");
+    expect(appended.map((row) => row.id).slice(0, 3)).toEqual([
+      "r1",
+      "r2",
+      "r3",
+    ]);
+    expect(appended[3].nameSymbol).toBe("G");
+    expect(appended[4].nameSymbol).toBe("IS");
+  });
+
+  it("貼った行は別のidになり、手直しの明細とタテの数量も写す（元とは別々に直せる）", () => {
+    const rows = sample();
+    const source = copied();
+    const appended = pasteFurnitureRows(rows, 0, source, "append");
+    const ids = new Set(appended.map((row) => row.id));
+    expect(ids.size).toBe(appended.length);
+    expect(appended[3].id).not.toBe("r2");
+    expect(appended[3].detail.name).toBe("手直し");
+    expect(appended[3].detail.edited).toEqual(["name"]);
+    expect(appended[3].values).toEqual({ c1: "2*2" });
+    expect(appended[3].detail.edited).not.toBe(source[0].detail.edited);
+    expect(appended[3].values).not.toBe(source[0].values);
+    const twice = pasteFurnitureRows(appended, 0, source, "append");
+    expect(new Set(twice.map((row) => row.id)).size).toBe(twice.length);
+  });
+
+  it("何もコピーしていなければそのまま", () => {
+    const rows = sample();
+    expect(pasteFurnitureRows(rows, 1, [], "insert")).toBe(rows);
+  });
+});

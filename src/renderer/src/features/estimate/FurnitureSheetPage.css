@@ -1,0 +1,267 @@
+.furniture-page .furniture-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.furniture-page .furniture-table th,
+.furniture-page .furniture-table td {
+  border: 1px solid #999;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.furniture-page .furniture-table th {
+  background: #1f4e79;
+  color: #fff;
+  padding: 2px 4px;
+  font-weight: normal;
+}
+
+.furniture-page .furniture-table th.side {
+  background: #2e6da4;
+}
+
+.furniture-page .furniture-table input {
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  padding: 1px 2px;
+  background: transparent;
+}
+
+.furniture-page .furniture-table td.num input {
+  text-align: right;
+}
+
+/** 操作欄（＋－）は番号欄にはみ出さないように小さくする */
+.furniture-page .furniture-table td.ops-col {
+  text-align: center;
+  overflow: hidden;
+}
+
+.furniture-page .furniture-table td.ops-col button {
+  width: 20px;
+  padding: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/** 右側の明細欄。左の入力欄から自動で作る（手で直した欄は色を変える） */
+.furniture-page .furniture-table td.detail {
+  background: #f3f7fb;
+}
+
+.furniture-page .furniture-table td.detail.edited input {
+  color: #c0392b;
+}
+
+.furniture-page .furniture-table tr.title-row td {
+  background: #fffbe6;
+}
+
+/** 行コピーで選んだ行（カーソルの行・Shift+クリックの範囲） */
+.furniture-page .furniture-table tbody tr.selected td.num,
+.furniture-page .furniture-table tbody tr.selected td.ops-col {
+  background: #cfe0ff;
+}
+
+/** 設定は呼び出し窓（画面の上に浮かべる別窓）。開いたまま表を入力でき、見出しのドラッグで動かせる */
+.furniture-page .furniture-settings {
+  position: fixed;
+  right: 24px;
+  top: 90px;
+  z-index: 3000;
+  border: 1px solid #666;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  background: #fafafa;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+}
+
+.furniture-page .furniture-settings .settings-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  cursor: move;
+  user-select: none;
+}
+
+.furniture-page .furniture-settings .settings-bar button {
+  margin-left: auto;
+}
+
+.furniture-page .furniture-settings .settings-base {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #eef3fa;
+  border: 1px solid #b8c6dc;
+}
+
+.furniture-page .furniture-settings table {
+  border-collapse: collapse;
+}
+
+.furniture-page .furniture-settings td {
+  padding: 2px 4px;
+}
+
+.furniture-page .furniture-settings .size-labels input {
+  width: 56px;
+  margin-right: 2px;
+}
+
+.furniture-page .furniture-settings .size-labels span {
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.furniture-page .furniture-settings .size-labels .hint {
+  color: #a00;
+}
+
+/** 記号表は左右2列に並べて、入力の行がたくさん見えるようにする */
+.furniture-page .furniture-settings .symbol-tables {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+.furniture-page .furniture-settings .symbol-table input {
+  font-size: 12px;
+  width: 110px;
+}
+
+.furniture-page .furniture-settings .symbol-table input.duplicated {
+  background: #ffe6e6;
+  color: #c0392b;
+}
+
+.furniture-page .furniture-settings .symbol-table td {
+  padding: 0 2px;
+}
+
+.furniture-page .furniture-columns label {
+  margin-right: 10px;
+  font-size: 12px;
+}
+
+.furniture-page .furniture-columns .detail-toggle {
+  font-weight: bold;
+}
+
+.furniture-page .furniture-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 190px);
+}
+
+.furniture-page .furniture-table {
+  table-layout: fixed;
+}
+
+/** 見出しの中身（th 自体を position 指定すると Chrome で行の高さが崩れるため、この箱を基準にする） */
+.furniture-page .furniture-table .cellbox {
+  position: relative;
+  display: block;
+}
+
+/** 見出しの右端をドラッグして列幅を変える（当たり判定は th 側で右端 8px を見ている） */
+.furniture-page .furniture-table .resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  cursor: col-resize;
+  user-select: none;
+}
+
+/** タテ方向の明細（列）：見出しの名前を出す列 */
+.furniture-page .furniture-table th.vlabel {
+  background: #dceaf7;
+  color: #000;
+  text-align: right;
+  font-weight: normal;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.furniture-page .furniture-table td.vlabel {
+  background: #f3f3f3;
+}
+
+/** タテ方向の明細（列）：部位別雑・金物入力表と同じ見た目（欄は白・文字は黒） */
+.furniture-page .furniture-table th.vcol {
+  background: #fff;
+  color: #0f172a;
+  font-weight: normal;
+  padding: 0;
+}
+
+.furniture-page .furniture-table th.vcol.on {
+  background: #fde68a;
+}
+
+.furniture-page .furniture-table th.vcol input {
+  color: #0f172a;
+  background: transparent;
+}
+
+/** タテ明細の列幅つまみ：入力欄の上に重ねて右端8pxを必ずつかめるようにし、触ると線が出る */
+.furniture-page .furniture-table th.vcol .grip {
+  right: 0;
+  width: 8px;
+  z-index: 2;
+}
+
+.furniture-page .furniture-table th.vcol .grip:hover {
+  border-right: 3px solid #2563eb;
+}
+
+.furniture-page .furniture-table tr.vcol-total th {
+  background: #dceaf7;
+  color: #000;
+  text-align: right;
+}
+
+.furniture-page .furniture-table tr.vcol-total .drop {
+  float: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.furniture-page .furniture-table td.vcell {
+  background: #fff;
+}
+
+.furniture-page .furniture-table td.vcell.error input {
+  background: #ffe6e6;
+}
+
+@media print {
+  .furniture-page .toolbar,
+  .furniture-page .furniture-settings,
+  .furniture-page .hint,
+  .furniture-page .furniture-columns,
+  .furniture-page .ops-col,
+  .furniture-page .no-print {
+    display: none !important;
+  }
+
+  .furniture-page .furniture-table th,
+  .furniture-page .furniture-table td {
+    background: #fff !important;
+    color: #000 !important;
+    position: static !important;
+  }
+}

@@ -77,29 +77,97 @@
   background: var(--selected, #eaf1fb);
 }
 
-.assembly-editor .fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+.assembly-main .toolbar .hint {
+  font-size: 12px;
+  color: #6b7280;
 }
 
-.assembly-editor .fields label {
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
+  max-height: 88vh;
+  max-width: 94vw;
+  min-width: 480px;
+}
+
+.modal header,
+.modal footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.modal header {
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.modal footer {
+  border-top: 1px solid #d5d9e0;
+}
+
+.modal header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.modal header .note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
-  gap: 2px;
+  margin-left: auto;
 }
 
-.assembly-editor .fields label.wide {
-  flex: 1 1 320px;
+.modal .modal-body {
+  overflow: auto;
+  padding: 8px 12px;
 }
 
-.assembly-editor .items .ops button {
+.modal .spacer {
+  margin-left: auto;
+}
+
+.modal .primary {
+  font-weight: 600;
+}
+
+.modal .hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.modal.confirm {
+  min-width: 360px;
+  max-width: 520px;
+}
+
+.modal.confirm p {
+  padding: 16px 16px 0;
+}
+
+.modal.picker tbody tr {
+  cursor: pointer;
+}
+
+.assembly-editor .ops button {
   padding: 0 4px;
 }
 
-.assembly-editor .num {
+.assembly-page .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -108,4 +176,16 @@
   text-align: center;
   color: #8a93a2;
   padding: 12px;
+}
+
+.modal.picker header button.on {
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.modal.picker header .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #6b7280;
 }

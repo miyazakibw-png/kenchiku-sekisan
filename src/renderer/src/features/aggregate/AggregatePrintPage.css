@@ -1,0 +1,133 @@
+.aggregate-print-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.aggregate-print-page > .toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  flex-wrap: wrap;
+  background: #fff;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.aggregate-print-page > .toolbar h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.aggregate-print-page > .toolbar .project {
+  font-size: 12px;
+  color: #475569;
+}
+
+.aggregate-print-page > .sheets {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* A4横1枚（用紙の余白8mmを引いた 281mm×194mm） */
+.aggregate-print-sheet {
+  width: 1047px;
+  height: 733px;
+  overflow: hidden;
+  background: #fff;
+  color: #000;
+  margin: 0 auto 12px;
+  box-sizing: border-box;
+}
+
+.aggregate-print-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.aggregate-print-body {
+  transform-origin: top left;
+}
+
+.aggregate-print-body table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.aggregate-print-body th,
+.aggregate-print-body td {
+  border: 1px solid #000;
+  padding: 0 3px;
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.aggregate-print-sheet thead th,
+.aggregate-print-sheet thead td {
+  position: static;
+  height: 22px;
+  background: #e5e7eb;
+  color: #000;
+  font-weight: 600;
+  text-align: center;
+}
+
+.aggregate-print-body td.num {
+  text-align: right;
+}
+
+.aggregate-print-body tr.heading td {
+  font-weight: 600;
+  background: #f1f5f9;
+}
+
+/* 数量根拠（部屋ごとの拾い）は明細より小さく、少し右へ寄せて出す */
+.aggregate-print-body tr.room td {
+  font-size: 11px;
+  color: #1f2937;
+}
+
+.aggregate-print-body tr.room td.room-name {
+  padding-left: 14px;
+}
+
+@media print {
+  .aggregate-print-page {
+    display: block;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .aggregate-print-page > .toolbar {
+    display: none;
+  }
+
+  .aggregate-print-page > .sheets {
+    overflow: visible;
+    padding: 0;
+  }
+
+  .aggregate-print-sheet {
+    margin: 0;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .aggregate-print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

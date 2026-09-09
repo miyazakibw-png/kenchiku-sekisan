@@ -1,0 +1,94 @@
+.basic-master-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: auto;
+}
+
+.basic-master-page .toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #d5d9e0;
+}
+
+.basic-master-page .toolbar h2 {
+  margin: 0 8px 0 0;
+  font-size: 15px;
+}
+
+.basic-master-page .toolbar .spacer {
+  flex: 1;
+}
+
+.basic-master-page .tab.active {
+  background: #1f3864;
+  color: #fff;
+}
+
+.basic-master-page .hint {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.basic-master-page .messages {
+  margin: 0 8px 6px;
+  padding: 4px 8px 4px 24px;
+  font-size: 12px;
+  color: #a03000;
+  background: #ffe8e0;
+  border: 1px solid #f0b0a0;
+}
+
+.basic-master-page .messages.ok {
+  color: #1f3864;
+  background: #e8f0fe;
+  border-color: #b9cdf0;
+}
+
+.basic-master-list {
+  border-collapse: collapse;
+  margin: 0 8px 8px;
+  width: auto;
+}
+
+.basic-master-list th,
+.basic-master-list td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+.basic-master-list th {
+  background: #eef1f6;
+  color: #1f2937;
+}
+
+.basic-master-list .no {
+  width: 6ch;
+}
+
+.basic-master-list td.no input {
+  text-align: right;
+  font-family: "Consolas", "Menlo", monospace;
+}
+
+.basic-master-list th.name {
+  min-width: 24ch;
+}
+
+.basic-master-list th.note {
+  min-width: 20ch;
+}
+
+.basic-master-list input {
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.basic-master-list tr.selected {
+  background: #e8f0fe;
+}

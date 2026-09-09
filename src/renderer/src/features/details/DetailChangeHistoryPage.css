@@ -1,0 +1,43 @@
+.detail-change-history table.change-history {
+  font-size: 12px;
+}
+
+.detail-change-history table.change-history th,
+.detail-change-history table.change-history td {
+  padding: 1px 4px;
+  white-space: nowrap;
+}
+
+.detail-change-history table.change-history th.when,
+.detail-change-history table.change-history td.when {
+  width: 130px;
+}
+
+.detail-change-history table.change-history th.kind,
+.detail-change-history table.change-history td.kind,
+.detail-change-history table.change-history th.stage,
+.detail-change-history table.change-history td.stage {
+  width: 48px;
+  text-align: center;
+}
+
+.detail-change-history table.change-history th.origin,
+.detail-change-history table.change-history td.origin {
+  width: 150px;
+}
+
+/* 修正後の行は背景色を付け、変わった欄だけ赤文字にする */
+.detail-change-history table.change-history tr.after > td {
+  background: #fff7e6;
+}
+
+/* 空欄に直したときも分かるよう、変わった欄は薄い赤の背景にする */
+.detail-change-history table.change-history tr.after > td.changed {
+  color: #dc2626;
+  font-weight: 600;
+  background: #ffe4e6;
+}
+
+.detail-change-history tbody.log {
+  border-bottom: 2px solid #cbd5f5;
+}

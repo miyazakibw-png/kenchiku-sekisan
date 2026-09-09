@@ -1,0 +1,2281 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import type {
+  Detail,
+  Fitting,
+  FurnitureSheet,
+  MasterEntry,
+  MasterOptions,
+  ProjectSummary,
+} from "@shared/types";
+import {
+  applyFurnitureDetails,
+  furnitureCellQuantity,
+  furnitureCellValue,
+  furnitureColumn,
+  furnitureColumnTotal,
+  furnitureKindLabel,
+  furnitureRow,
+  furnitureSettings,
+  furnitureSettingsFor,
+  hasFittingSymbol,
+  hasTripleWidth,
+  hasModel,
+  hasShape,
+  floorAreaOf,
+  isEmptyFurnitureColumn,
+  pasteFurnitureRows,
+  resolveFurnitureRows,
+  revertFurnitureDetail,
+  rowQuantity,
+  type FittingSize,
+  type FurnitureColumn,
+  type FurniturePasteMode,
+  type FurnitureDetail,
+  type FurnitureRow,
+  type FurnitureSettings,
+  type FurnitureSymbol,
+} from "../../../../core/furniture/furnitureSheet";
+import { PickInput, type PickEntry } from "../../components/PickInput";
+import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { ask } from "../common/askDialog";
+import "./RoomCalcSheet.css";
+import "./EstimatePartsPage.css";
+import "./FurnitureSheetPage.css";
+
+interface Props {
+  project: ProjectSummary;
+  options: MasterOptions;
+  sheetId: number;
+  onBack: () => void;
+}
+
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed === null ? fallback : (parsed as T);
+  } catch {
+    return fallback;
+  }
+}
+
+function pickMaster(
+  entries: MasterEntry[],
+  text: string,
+): { id: number | null; name: string } {
+  const value = text.trim();
+  if (value === "") return { id: null, name: "" };
+  const byId = entries.find((entry) => String(entry.id) === value);
+  if (byId) return { id: byId.id, name: byId.name };
+  const byName = entries.find((entry) => entry.name === value);
+  if (byName) return { id: byName.id, name: byName.name };
+  return { id: null, name: value };
+}
+
+/** 呼び出し窓（設定・マスター呼出）を見出しのドラッグで動かす */
+function useDragWindow(): {
+  style: CSSProperties | undefined;
+  onMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+} {
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const onMouseDown = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest("button, input, select, textarea, label") !== null
+    ) {
+      return;
+    }
+    const box = event.currentTarget.parentElement;
+    if (!box) return;
+    event.preventDefault();
+    const rect = box.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    const move = (moveEvent: MouseEvent): void =>
+      setPosition({
+        x: Math.max(0, moveEvent.clientX - offsetX),
+        y: Math.max(0, moveEvent.clientY - offsetY),
+      });
+    const up = (): void => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  return {
+    style:
+      position === null
+        ? undefined
+        : { left: position.x, top: position.y, right: "auto" },
+    onMouseDown,
+  };
+}
+
+/** 入力欄の列（表示・非表示を切り替えられる） */
+interface InputColumn {
+  key: string;
+  label: string;
+  forDetail: boolean;
+}
+
+const INPUT_COLUMNS: InputColumn[] = [
+  { key: "subjectId", label: "科目", forDetail: true },
+  { key: "partNumber", label: "部位ID", forDetail: true },
+  { key: "detailNumber", label: "名称ID", forDetail: true },
+  { key: "part", label: "部位", forDetail: false },
+  { key: "partAdd", label: "+部位", forDetail: false },
+  { key: "partSymbol", label: "+部位(記号)", forDetail: false },
+  { key: "nameSymbol", label: "名称", forDetail: false },
+  { key: "width", label: "W", forDetail: false },
+  { key: "height", label: "H", forDetail: false },
+  { key: "depth", label: "D", forDetail: false },
+  { key: "quantity", label: "数量", forDetail: false },
+  { key: "unit", label: "単位", forDetail: false },
+  { key: "descriptionUpper", label: "摘要(上段)", forDetail: false },
+  { key: "remarksLower", label: "備考(下段)", forDetail: false },
+];
+
+/** カーテン・ブラインドの入力欄（部位〜建具記号・数量・単位。摘要・備考は右の明細欄で直す） */
+const CURTAIN_INPUT_COLUMNS: InputColumn[] = [
+  { key: "subjectId", label: "科目", forDetail: true },
+  { key: "partNumber", label: "部位ID", forDetail: true },
+  { key: "detailNumber", label: "名称ID", forDetail: true },
+  { key: "part", label: "部位", forDetail: false },
+  { key: "partAdd", label: "+部位", forDetail: false },
+  { key: "partSymbol", label: "+部位", forDetail: false },
+  { key: "nameSymbol", label: "部材名称", forDetail: false },
+  { key: "fittingSymbol", label: "建具記号", forDetail: false },
+  { key: "quantity", label: "数量", forDetail: false },
+  { key: "unit", label: "単位", forDetail: false },
+];
+
+/** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台・棚・ハンガーパイプはW1・W2・W3。
+ * ハンガーパイプはDの代わりに形状。カーテン・ブラインドはW・H・Dの代わりに建具記号） */
+function inputColumnsFor(kind: string): InputColumn[] {
+  if (hasFittingSymbol(kind)) return CURTAIN_INPUT_COLUMNS;
+  if (hasModel(kind))
+    return INPUT_COLUMNS.flatMap((column) => {
+      if (column.key === "width")
+        return [{ key: "model", label: "型番", forDetail: false }];
+      if (column.key === "depth") return [];
+      if (column.key === "descriptionUpper")
+        return [
+          { key: "beam", label: "加工手間(梁欠き)", forDetail: false },
+          { key: "window", label: "(窓)", forDetail: false },
+        ];
+      if (column.key === "remarksLower")
+        return [
+          column,
+          { key: "floorFormula", label: "床面積計算", forDetail: false },
+        ];
+      return [column];
+    });
+  if (!hasTripleWidth(kind)) return INPUT_COLUMNS;
+  return INPUT_COLUMNS.flatMap((column) => {
+    if (column.key === "width")
+      return [
+        { ...column, label: "W1" },
+        { key: "width2", label: "W2", forDetail: false },
+        { key: "width3", label: "W3", forDetail: false },
+      ];
+    if (column.key === "depth" && hasShape(kind))
+      return [{ key: "shape", label: "形状", forDetail: false }];
+    return [column];
+  });
+}
+
+/** 右側の明細欄の列（数量は「明細:単位」の前に出す） */
+const DETAIL_COLUMNS: { key: keyof FurnitureDetail; label: string }[] = [
+  { key: "subjectId", label: "科目" },
+  { key: "partNumber", label: "部位ID" },
+  { key: "detailNumber", label: "名称ID" },
+  { key: "partName", label: "部位" },
+  { key: "name", label: "名称" },
+  { key: "descriptionLower", label: "摘要(下段)" },
+  { key: "descriptionUpper", label: "摘要(上段)" },
+  { key: "formula", label: "計算式" },
+  { key: "unit", label: "単位" },
+  { key: "remarksLower", label: "備考(下段)" },
+  { key: "remarksUpper", label: "備考(上段)" },
+];
+
+/** 明細側に並べる列（数量＋明細欄）。まとめて出す・消すができる */
+type DetailCell =
+  | { kind: "quantity"; id: string; label: string }
+  | { kind: "detail"; id: string; label: string; key: keyof FurnitureDetail };
+
+const DETAIL_CELLS: DetailCell[] = DETAIL_COLUMNS.flatMap((column) => {
+  const cell: DetailCell = {
+    kind: "detail",
+    id: `d:${String(column.key)}`,
+    label: `明細:${column.label}`,
+    key: column.key,
+  };
+  return column.key === "unit"
+    ? [{ kind: "quantity", id: "d:quantity", label: "明細:数量" }, cell]
+    : [cell];
+});
+
+/** マスター呼出の元（基準マスター／この工事でできた明細） */
+type CallSource = "basic" | "project";
+
+const SOURCE_LABEL: Record<CallSource, string> = {
+  basic: "基準マスター（明細）",
+  project: "工事マスター（明細）",
+};
+
+/** タテ方向の明細（列）の見出し。上から順に1行ずつ出す */
+type HeadKind = "subject" | "pickupPart" | "detailNumber" | "unit" | "text";
+
+const COLUMN_HEADS: {
+  key: keyof FurnitureColumn;
+  label: string;
+  kind: HeadKind;
+}[] = [
+  { key: "subjectId", label: "科目", kind: "subject" },
+  { key: "partNumber", label: "部位ID", kind: "pickupPart" },
+  { key: "detailNumber", label: "名称ID", kind: "detailNumber" },
+  { key: "partName", label: "部位", kind: "text" },
+  { key: "name", label: "名称", kind: "text" },
+  { key: "descriptionUpper", label: "摘要(上段)", kind: "text" },
+  { key: "descriptionLower", label: "摘要(下段)", kind: "text" },
+  { key: "unit", label: "単位", kind: "unit" },
+  { key: "remarksUpper", label: "備考(上段)", kind: "text" },
+  { key: "remarksLower", label: "備考(下段)", kind: "text" },
+];
+
+/** 列幅は文字が見えなくなるほど細くできる */
+const MIN_WIDTH = 8;
+/** 列幅を変えるつまみの幅（見出しの右端からの距離） */
+const RESIZE_GRIP = 8;
+const OPS_WIDTH = 46;
+const NO_WIDTH = 34;
+const INPUT_DEFAULT = 80;
+const DETAIL_DEFAULT = 100;
+const COLUMN_DEFAULT = 90;
+/** タテの明細の見出し（科目・部位ID…）を出す列 */
+const LABEL_WIDTH = 72;
+
+function readWidths(key: string): Record<string, number> {
+  const saved = window.localStorage.getItem(key);
+  if (saved === null) return {};
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (parsed === null || typeof parsed !== "object") return {};
+    const result: Record<string, number> = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([id, value]) => {
+      if (typeof value === "number" && value >= MIN_WIDTH) result[id] = value;
+    });
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+/** 非表示にした列。計算書（表）ごとに覚え、初めて開く表は最後に使った並びから始める */
+const HIDDEN_KEY = "furniture-hidden";
+
+function hiddenKeyOf(sheetId: number): string {
+  return `${HIDDEN_KEY}:${sheetId}`;
+}
+
+function readHidden(sheetId: number): string[] {
+  const saved =
+    window.localStorage.getItem(hiddenKeyOf(sheetId)) ??
+    window.localStorage.getItem(HIDDEN_KEY);
+  if (saved === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function detailText(
+  detail: FurnitureDetail,
+  key: keyof FurnitureDetail,
+): string {
+  const value = detail[key];
+  if (value === null) return "";
+  if (typeof value === "number") return String(value);
+  return typeof value === "string" ? value : "";
+}
+
+function columnText(
+  column: FurnitureColumn,
+  key: keyof FurnitureColumn,
+): string {
+  const value = column[key];
+  if (value === null) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
+/** 記号と表示文字の対応表（＋部位・名称） */
+function SymbolTable({
+  title,
+  symbols,
+  onChange,
+}: {
+  title: string;
+  symbols: FurnitureSymbol[];
+  onChange: (next: FurnitureSymbol[]) => void;
+}): JSX.Element {
+  const rows = [...symbols, { symbol: "", text: "" }];
+  /** 同じ記号は使えない（この計算書は記号→文字で置き換えるため） */
+  const duplicated = new Set(
+    symbols
+      .map((item) => item.symbol.trim())
+      .filter(
+        (symbol, index, all) =>
+          symbol !== "" && all.indexOf(symbol) !== index,
+      ),
+  );
+  const change = (index: number, patch: Partial<FurnitureSymbol>): void => {
+    const next = [...symbols];
+    if (index === symbols.length) next.push({ symbol: "", text: "", ...patch });
+    else next[index] = { ...next[index], ...patch };
+    onChange(
+      next.filter((item) => item.symbol !== "" || item.text !== ""),
+    );
+  };
+  return (
+    <div className="symbol-table">
+      <b>{title}</b>
+      <table>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${title}${index}`}>
+              <td>
+                <input
+                  className={
+                    duplicated.has(row.symbol.trim()) ? "duplicated" : ""
+                  }
+                  title={
+                    duplicated.has(row.symbol.trim())
+                      ? "同じ記号が2つ以上あります"
+                      : "記号（英数字）"
+                  }
+                  value={row.symbol}
+                  onChange={(event) =>
+                    change(index, { symbol: event.target.value })
+                  }
+                />
+              </td>
+              <td>→</td>
+              <td>
+                <input
+                  lang="ja"
+                  value={row.text}
+                  onChange={(event) =>
+                    change(index, { text: event.target.value })
+                  }
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * 家具計算書（システム収納などの拾い）。
+ * 左の入力欄から右の明細欄（ヨコ1行＝1明細）を自動で作り、右は手で直せる。
+ * さらにその右に、部位別雑・金物入力表と同じタテ方向の明細（列）を拾える。
+ */
+export default function FurnitureSheetPage({
+  project,
+  options,
+  sheetId,
+  onBack,
+}: Props): JSX.Element {
+  const [sheet, setSheet] = useState<FurnitureSheet | null>(null);
+  const [rows, setRows] = useState<FurnitureRow[]>([]);
+  const [columns, setColumns] = useState<FurnitureColumn[]>([]);
+  const [settings, setSettings] = useState<FurnitureSettings>(
+    furnitureSettings(),
+  );
+  const [hidden, setHidden] = useState<string[]>(() => readHidden(sheetId));
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsDrag = useDragWindow();
+  const callDrag = useDragWindow();
+  const [message, setMessage] = useState("");
+  const [picked, setPicked] = useState(0);
+  /** 複数行コピーの範囲の終わり（Shift+クリックで選んだ行） */
+  const [pickedEnd, setPickedEnd] = useState(0);
+  /** 行コピーで控えた行（この計算書の中だけ） */
+  const [clipboard, setClipboard] = useState<FurnitureRow[]>([]);
+  const [pickedColumn, setPickedColumn] = useState<string | null>(null);
+  /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
+  const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
+  const [fittings, setFittings] = useState<Fitting[]>([]);
+  /** 部位別入力表の部位Ⅲ（カーテン・ブラインドの+部位の候補） */
+  const [part3Options, setPart3Options] = useState<string[]>([]);
+  /** マスター呼出画面（部位別雑・金物入力表と同じ作り） */
+  const [callOpen, setCallOpen] = useState(false);
+  const [callSource, setCallSource] = useState<CallSource>("basic");
+  const [callInsert, setCallInsert] = useState(false);
+  const [callSubjectId, setCallSubjectId] = useState<number | null>(null);
+  const [callSubjectNumber, setCallSubjectNumber] = useState("");
+  const [callDetails, setCallDetails] = useState<Detail[]>([]);
+  const widthKey = `furniture-widths:${project.id}`;
+  const [widths, setWidths] = useState<Record<string, number>>(() =>
+    readWidths(`furniture-widths:${project.id}`),
+  );
+  const widthRef = useRef(widths);
+  widthRef.current = widths;
+
+  const { markSaved } = useSaveOnLeave({ rows, columns, settings }, () =>
+    save(true),
+  );
+
+  const save = useCallback(
+    async (quiet = false): Promise<void> => {
+      if (!sheet) return;
+      const saved = await window.sekisan.saveFurnitureSheet({
+        id: sheet.id,
+        name: sheet.name,
+        part1: sheet.part1,
+        part2: sheet.part2,
+        part2Split: sheet.part2Split,
+        multiplier: sheet.multiplier,
+        kind: sheet.kind,
+        rowsJson: JSON.stringify(rows),
+        columnsJson: JSON.stringify(columns),
+        settingsJson: JSON.stringify(settings),
+        note: sheet.note,
+      });
+      setSheet(saved);
+      markSaved({ rows, columns, settings });
+      if (!quiet)
+        setMessage("保存しました（建具表へ転記し、集計実行で集計書に入ります）");
+    },
+    [columns, markSaved, rows, settings, sheet],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      const loaded = await window.sekisan.getFurnitureSheet(sheetId);
+      const loadedRows = parseJson<FurnitureRow[]>(loaded.rowsJson, []);
+      const nextRows = loadedRows.length > 0 ? loadedRows : [furnitureRow()];
+      const loadedColumns = parseJson<FurnitureColumn[]>(
+        loaded.columnsJson,
+        [],
+      );
+      const nextColumns =
+        loadedColumns.length > 0 ? loadedColumns : [furnitureColumn()];
+      const saved = parseJson<Partial<FurnitureSettings>>(
+        loaded.settingsJson,
+        {},
+      );
+      // 古い保存（記号表が無い・空）でも初めの並びが出るようにする
+      const base = furnitureSettingsFor(loaded.kind);
+      const nextSettings: FurnitureSettings = {
+        ...base,
+        ...saved,
+        partSymbols:
+          saved.partSymbols === undefined || saved.partSymbols.length === 0
+            ? base.partSymbols
+            : saved.partSymbols,
+        nameSymbols:
+          saved.nameSymbols === undefined || saved.nameSymbols.length === 0
+            ? base.nameSymbols
+            : saved.nameSymbols,
+      };
+      setSheet(loaded);
+      setRows(nextRows);
+      setColumns(nextColumns);
+      setSettings(nextSettings);
+      setHidden(readHidden(sheetId));
+      markSaved({
+        rows: nextRows,
+        columns: nextColumns,
+        settings: nextSettings,
+      });
+      if (hasFittingSymbol(loaded.kind)) {
+        setFittings(await window.sekisan.listFittings(loaded.projectId));
+        const estimateRows = await window.sekisan.listEstimateRows(
+          loaded.projectId,
+        );
+        setPart3Options(
+          Array.from(
+            new Set(
+              estimateRows
+                .filter((row) => row.rowType === "room")
+                .map((row) => row.part3.trim())
+                .filter((text) => text !== ""),
+            ),
+          ),
+        );
+      }
+    })();
+  }, [markSaved, sheetId]);
+
+  const fittingSizes = useMemo<FittingSize[]>(
+    () =>
+      fittings.map((fitting) => ({
+        symbol: fitting.symbol,
+        width: fitting.width,
+        height: fitting.height,
+      })),
+    [fittings],
+  );
+
+  useEffect(() => {
+    window.localStorage.setItem(widthKey, JSON.stringify(widths));
+  }, [widthKey, widths]);
+  useEffect(() => {
+    const json = JSON.stringify(hidden);
+    window.localStorage.setItem(hiddenKeyOf(sheetId), json);
+    window.localStorage.setItem(HIDDEN_KEY, json);
+  }, [hidden, sheetId]);
+
+  /** 右端をドラッグして列幅を変える */
+  const startResize = useCallback(
+    (id: string, defaultWidth: number, event: React.MouseEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth = widthRef.current[id] ?? defaultWidth;
+      const move = (e: MouseEvent): void =>
+        setWidths({
+          ...widthRef.current,
+          [id]: Math.max(MIN_WIDTH, startWidth + e.clientX - startX),
+        });
+      const up = (): void => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    },
+    [],
+  );
+
+  /** 見出しの右端近く（つまみ）を押したときだけ列幅の変更を始める */
+  const resizeAtEdge = useCallback(
+    (id: string, defaultWidth: number, event: React.MouseEvent): void => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (rect.right - event.clientX <= RESIZE_GRIP) {
+        startResize(id, defaultWidth, event);
+      }
+    },
+    [startResize],
+  );
+
+  const widthOf = (id: string, defaultWidth: number): number =>
+    widths[id] ?? defaultWidth;
+
+  /** タテ明細の見出しは入力欄で埋まるので、右端に入力欄より上に来るつまみを置く */
+  const columnGrip = (columnId: string): JSX.Element => (
+    <span
+      className="resizer grip"
+      title="ドラッグで列幅を変えます"
+      onMouseDown={(event) => startResize(columnId, COLUMN_DEFAULT, event)}
+    />
+  );
+
+  /** 右の明細欄は左の入力欄から作る（手で直した欄はそのまま残る） */
+  const view = useMemo(
+    () =>
+      applyFurnitureDetails(
+        rows,
+        settings,
+        sheet?.kind ?? "furniture",
+        fittingSizes,
+      ),
+    [fittingSizes, rows, settings, sheet?.kind],
+  );
+  const resolved = useMemo(
+    () => resolveFurnitureRows(view, sheet?.kind ?? "furniture"),
+    [sheet?.kind, view],
+  );
+
+  const subjectEntries = useMemo<PickEntry[]>(
+    () =>
+      options.subjects.map((subject) => ({
+        value: String(subject.id),
+        label: subject.name,
+      })),
+    [options.subjects],
+  );
+  const pickupPartEntries = useMemo<PickEntry[]>(
+    () =>
+      options.pickupParts.map((part) => ({
+        value: String(part.id),
+        label: `${part.name}${part.note ? `　${part.note}` : ""}`,
+      })),
+    [options.pickupParts],
+  );
+  const unitEntries = useMemo<PickEntry[]>(
+    () => options.units.map((unit) => ({ value: unit.name, label: unit.name })),
+    [options.units],
+  );
+  const part3Entries = useMemo<PickEntry[]>(
+    () => part3Options.map((text) => ({ value: text, label: text })),
+    [part3Options],
+  );
+  const fittingEntries = useMemo<PickEntry[]>(
+    () =>
+      fittings
+        .filter((fitting) => fitting.symbol.trim() !== "")
+        .map((fitting) => ({
+          value: fitting.symbol,
+          label: `${fitting.symbol}　${fitting.name}　${
+            fitting.width === null ? "" : Math.round(fitting.width * 1000)
+          }×${
+            fitting.height === null ? "" : Math.round(fitting.height * 1000)
+          }`,
+        })),
+    [fittings],
+  );
+  const numberEntries = useMemo<PickEntry[]>(
+    () =>
+      numberOptions.map((item) => ({
+        value: item.detailNumber?.toFixed(2) ?? "",
+        label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
+      })),
+    [numberOptions],
+  );
+
+  /** 名称ID欄に入ったとき、その科目の明細を候補として読み込む（工事→基準の順） */
+  const loadNumberOptions = useCallback(
+    async (subjectId: number | null): Promise<void> => {
+      if (subjectId === null) {
+        setNumberOptions([]);
+        return;
+      }
+      const forProject = await window.sekisan.listDetails(subjectId, project.id);
+      const basic = await window.sekisan.listDetails(subjectId, null);
+      const numbers = new Set(forProject.map((row) => row.detailNumber));
+      setNumberOptions([
+        ...forProject,
+        ...basic.filter((row) => !numbers.has(row.detailNumber)),
+      ]);
+    },
+    [project.id],
+  );
+
+  // 呼出画面に出す明細（基準マスター＝全明細／工事マスター＝この工事でできた明細）
+  useEffect(() => {
+    if (!callOpen || callSubjectId === null) {
+      setCallDetails([]);
+      return;
+    }
+    void (async () =>
+      setCallDetails(
+        callSource === "project"
+          ? await window.sekisan.listProjectDetailsInUse(
+              callSubjectId,
+              project.id,
+            )
+          : await window.sekisan.listDetails(callSubjectId, project.id),
+      ))();
+  }, [callOpen, callSource, callSubjectId, project.id]);
+
+  /** 呼出画面からタテ明細（列）に入れる（上書き呼出＝選んでいる列／挿入呼出＝その左に足す） */
+  const callDetail = useCallback(
+    (detail: Detail): void => {
+      const patch: Partial<FurnitureColumn> = {
+        subjectId: detail.subjectId,
+        materialCategory: detail.materialCategory,
+        partNumber:
+          detail.partNumber ??
+          options.pickupParts.find((part) => part.name === detail.partName)
+            ?.id ??
+          null,
+        detailNumber: detail.detailNumber,
+        partName: detail.partName,
+        name: detail.name,
+        descriptionUpper: detail.descriptionUpper,
+        descriptionLower: detail.descriptionLower,
+        unit: detail.unit,
+        remarksUpper: detail.remarksUpper,
+        remarksLower: detail.remarksLower,
+        sourceDetailId: detail.id,
+      };
+      setColumns((current) => {
+        const at = current.findIndex((column) => column.id === pickedColumn);
+        if (at < 0) {
+          const created = furnitureColumn(patch);
+          setPickedColumn(created.id);
+          return [...current, created];
+        }
+        if (callInsert) {
+          const created = furnitureColumn(patch);
+          setPickedColumn(created.id);
+          return [...current.slice(0, at), created, ...current.slice(at)];
+        }
+        if (isEmptyFurnitureColumn(current[at])) {
+          return current.map((column, index) =>
+            index === at ? { ...column, ...patch } : column,
+          );
+        }
+        const created = furnitureColumn(patch);
+        setPickedColumn(created.id);
+        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+      });
+      setMessage(`${detail.name} を呼び出しました`);
+    },
+    [callInsert, options.pickupParts, pickedColumn],
+  );
+
+  const editRow = (index: number, patch: Partial<FurnitureRow>): void => {
+    setRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+  };
+
+  /** 右の明細欄を手で直す（直した欄は自動作成で上書きしない） */
+  const editDetail = (
+    index: number,
+    patch: Partial<FurnitureDetail>,
+  ): void => {
+    setRows(
+      rows.map((row, at) => {
+        if (at !== index) return row;
+        const edited = [...row.detail.edited];
+        Object.keys(patch).forEach((key) => {
+          if (key !== "formula" && !edited.includes(key)) edited.push(key);
+        });
+        return {
+          ...row,
+          detail: { ...view[index].detail, ...patch, edited },
+        };
+      }),
+    );
+  };
+
+  /** 手で直した明細欄（赤字）を自動作成に戻す。key を省くと行の全部の欄 */
+  const revertDetail = (index: number, key?: string): void => {
+    setRows(
+      rows.map((row, at) =>
+        at === index
+          ? revertFurnitureDetail(row, key === undefined ? undefined : [key])
+          : row,
+      ),
+    );
+  };
+
+  const pickRow = (index: number, shift: boolean): void => {
+    if (shift) {
+      setPickedEnd(index);
+      return;
+    }
+    setPicked(index);
+    setPickedEnd(index);
+  };
+
+  const selectionStart = Math.min(picked, pickedEnd);
+  const selectionEnd = Math.max(picked, pickedEnd);
+
+  const addRow = (at: number): void => {
+    const next = [...rows];
+    next.splice(at, 0, furnitureRow());
+    setRows(next);
+    pickRow(at, false);
+  };
+
+  const removeRow = (at: number): void => {
+    if (rows.length <= 1) return;
+    setRows(rows.filter((_row, index) => index !== at));
+    pickRow(Math.min(at, rows.length - 2), false);
+  };
+
+  const moveRow = (at: number, step: number): void => {
+    const to = at + step;
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    const moved = next.splice(at, 1)[0];
+    next.splice(to, 0, moved);
+    setRows(next);
+    pickRow(to, false);
+  };
+
+  /** 行コピー（Shift+クリックで選んだ範囲、無ければカーソルの1行。手で直した明細・タテの数量も一緒に） */
+  const copyRows = (): void => {
+    const copied = rows.slice(selectionStart, selectionEnd + 1);
+    if (copied.length === 0) return;
+    setClipboard(copied);
+    setMessage(
+      `⧉ ${copied.length} 行をコピーしました（貼り付けたい行にカーソルを置いて「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  };
+
+  /** 選んでいる行（Shift+クリックの範囲）の赤字の明細欄をまとめて自動作成に戻す */
+  const revertSelectedDetails = async (): Promise<void> => {
+    const count = rows
+      .slice(selectionStart, selectionEnd + 1)
+      .filter((row) => row.detail.edited.length > 0).length;
+    if (count === 0) {
+      setMessage("選んでいる行に手で直した明細欄（赤字）はありません");
+      return;
+    }
+    if (
+      !(await ask(
+        `${count} 行の手で直した明細欄（赤字）をすべて自動作成（入力欄・記号からの変換）に戻します。よろしいですか？`,
+      ))
+    )
+      return;
+    setRows(
+      rows.map((row, at) =>
+        at >= selectionStart && at <= selectionEnd
+          ? revertFurnitureDetail(row)
+          : row,
+      ),
+    );
+    setMessage(`${count} 行の明細欄を自動作成に戻しました`);
+  };
+
+  const pasteRows = (mode: FurniturePasteMode): void => {
+    if (clipboard.length === 0) return;
+    const at = mode === "append" ? rows.length : selectionStart;
+    setRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
+    setPicked(at);
+    setPickedEnd(at + clipboard.length - 1);
+    const where =
+      mode === "over"
+        ? "カーソルの行から上書き"
+        : mode === "insert"
+          ? "カーソルの行の上へ挿入"
+          : "最終行の下へ追加";
+    setMessage(`${clipboard.length} 行を${where}しました（保存で確定）`);
+  };
+
+  const editColumn = (id: string, patch: Partial<FurnitureColumn>): void =>
+    setColumns(
+      columns.map((column) =>
+        column.id === id ? { ...column, ...patch } : column,
+      ),
+    );
+
+  /** タテ方向の明細（列）を足す */
+  const addColumn = (): void => {
+    const created = furnitureColumn();
+    setColumns([...columns, created]);
+    setPickedColumn(created.id);
+    setMessage("タテの明細を足しました");
+  };
+
+  /** タテの明細は少なくとも1列は残す（入力欄が見えるように） */
+  const removeColumn = (id: string): void => {
+    const rest = columns.filter((column) => column.id !== id);
+    setColumns(rest.length > 0 ? rest : [furnitureColumn()]);
+    if (pickedColumn === id) setPickedColumn(null);
+  };
+
+  const moveColumn = (step: number): void => {
+    const at = columns.findIndex((column) => column.id === pickedColumn);
+    const to = at + step;
+    if (at < 0 || to < 0 || to >= columns.length) return;
+    const next = [...columns];
+    const [moved] = next.splice(at, 1);
+    next.splice(to, 0, moved);
+    setColumns(next);
+  };
+
+  /** タテの明細のマス（行×列）に数量（計算式も可）を入れる */
+  const editCell = (rowId: string, columnId: string, text: string): void =>
+    setRows(
+      rows.map((row) =>
+        row.id === rowId
+          ? { ...row, values: { ...(row.values ?? {}), [columnId]: text } }
+          : row,
+      ),
+    );
+
+  /** 名称ID（明細番号）を入れたら、その明細をマスターから呼び出して列に入れる */
+  const applyDetailNumber = useCallback(
+    async (column: FurnitureColumn, text: string): Promise<void> => {
+      const value = text.trim();
+      if (value === "") {
+        setColumns((current) =>
+          current.map((each) =>
+            each.id === column.id ? { ...each, detailNumber: null } : each,
+          ),
+        );
+        return;
+      }
+      const number = Number.parseFloat(value);
+      if (Number.isNaN(number)) {
+        setMessage("名称ID（明細番号）は数字で入れてください");
+        return;
+      }
+      const targets =
+        column.subjectId === null
+          ? options.subjects.map((subject) => subject.id)
+          : [column.subjectId];
+      let found: Detail | undefined;
+      for (const subjectKey of targets) {
+        for (const scope of [project.id, null]) {
+          const list = await window.sekisan.listDetails(subjectKey, scope);
+          const hits = list.filter(
+            (item) =>
+              item.detailNumber !== null &&
+              Math.abs(item.detailNumber - number) < 0.005,
+          );
+          if (hits.length === 0) continue;
+          const part = column.partName.trim();
+          found =
+            (part === ""
+              ? undefined
+              : hits.find((item) => item.partName.trim() === part)) ?? hits[0];
+          break;
+        }
+        if (found) break;
+      }
+      const detail = found;
+      if (detail === undefined) {
+        setColumns((current) =>
+          current.map((each) =>
+            each.id === column.id ? { ...each, detailNumber: number } : each,
+          ),
+        );
+        setMessage(`名称ID ${value} の明細が見つかりません`);
+        return;
+      }
+      const keepPart = column.partNumber !== null || column.partName !== "";
+      setColumns((current) =>
+        current.map((each) =>
+          each.id === column.id
+            ? {
+                ...each,
+                sourceDetailId: detail.id,
+                subjectId: detail.subjectId,
+                detailNumber: detail.detailNumber,
+                materialCategory:
+                  detail.materialCategory || each.materialCategory,
+                partNumber: keepPart
+                  ? each.partNumber
+                  : (options.pickupParts.find(
+                      (part) => part.name === detail.partName,
+                    )?.id ?? null),
+                partName: keepPart ? each.partName : detail.partName,
+                name: detail.name,
+                descriptionUpper: detail.descriptionUpper,
+                descriptionLower: detail.descriptionLower,
+                unit: detail.unit || each.unit,
+                remarksUpper: detail.remarksUpper,
+                remarksLower: detail.remarksLower,
+              }
+            : each,
+        ),
+      );
+      setMessage(`${detail.name} を呼び出しました`);
+    },
+    [options.pickupParts, options.subjects, project.id],
+  );
+
+  const visible = (key: string): boolean => !hidden.includes(key);
+
+  const toggleColumnView = (key: string): void => {
+    setHidden(
+      hidden.includes(key)
+        ? hidden.filter((item) => item !== key)
+        : [...hidden, key],
+    );
+  };
+
+  /** この表の設定をこの種類の基準（全物件共通）にする。他の既存の表は変えない */
+  const saveAsBase = async (): Promise<void> => {
+    if (!sheet) return;
+    await window.sekisan.saveFurnitureBaseSettings(sheet.kind, settings);
+    setMessage(
+      `「${furnitureKindLabel(sheet.kind)}」の基準として保存しました（どの物件でもこの種類の新しい表はこの設定から始まります）`,
+    );
+  };
+
+  /** この種類の基準をこの表に写す（表の保存で確定） */
+  const loadBase = async (): Promise<void> => {
+    if (!sheet) return;
+    if (
+      !(await ask(
+        `この表の設定を「${furnitureKindLabel(sheet.kind)}」の基準に置き換えます。よろしいですか？`,
+      ))
+    )
+      return;
+    const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
+    setSettings(base);
+    setMessage("基準の設定を読み込みました（保存するとこの表に確定します）");
+  };
+
+  const changeSettings = (patch: Partial<FurnitureSettings>): void => {
+    setSettings({ ...settings, ...patch });
+  };
+
+  const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
+  const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
+  const withShape = hasShape(sheet?.kind ?? "furniture");
+  const withModel = hasModel(sheet?.kind ?? "furniture");
+  const withFitting = hasFittingSymbol(sheet?.kind ?? "furniture");
+  const shapeHint = (settings.shapeSymbols ?? [])
+    .map((item) => `${item.symbol}→${item.text}`)
+    .join("　");
+  const inputColumns = allInputColumns.filter((column) =>
+    visible(column.key),
+  );
+  const detailCells = visible("detail") ? DETAIL_CELLS : [];
+  const headRowCount = COLUMN_HEADS.length + 1;
+
+  const tableWidth =
+    OPS_WIDTH +
+    NO_WIDTH +
+    inputColumns.reduce(
+      (sum, column) => sum + widthOf(column.key, INPUT_DEFAULT),
+      0,
+    ) +
+    detailCells.reduce((sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT), 0) +
+    LABEL_WIDTH +
+    columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+
+  /** タテの明細（列）の1マス分の入力欄 */
+  const headCell = (
+    column: FurnitureColumn,
+    head: (typeof COLUMN_HEADS)[number],
+  ): JSX.Element => {
+    if (head.kind === "subject") {
+      return (
+        <PickInput
+          entries={subjectEntries}
+          halfWidth
+          value={column.subjectId === null ? "" : String(column.subjectId)}
+          title="科目"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) => {
+            const id = Number.parseInt(text.trim(), 10);
+            editColumn(column.id, { subjectId: Number.isNaN(id) ? null : id });
+          }}
+        />
+      );
+    }
+    if (head.kind === "pickupPart") {
+      return (
+        <PickInput
+          entries={pickupPartEntries}
+          halfWidth
+          value={column.partNumber === null ? "" : String(column.partNumber)}
+          title="部位ID"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) => {
+            const found = pickMaster(options.pickupParts, text);
+            editColumn(column.id, {
+              partNumber: found.id,
+              partName: found.id === null ? column.partName : found.name,
+            });
+          }}
+        />
+      );
+    }
+    if (head.kind === "detailNumber") {
+      return (
+        <PickInput
+          entries={numberEntries}
+          halfWidth
+          commitOnBlur
+          value={column.detailNumber?.toFixed(2) ?? ""}
+          title="名称ID（明細番号）を入れるとマスターの明細を呼び出します（科目を入れると一覧から選べます）"
+          onFocus={() => {
+            setPickedColumn(column.id);
+            void loadNumberOptions(column.subjectId);
+          }}
+          onCommit={(text) => {
+            if (text.trim() === (column.detailNumber?.toFixed(2) ?? "")) return;
+            void applyDetailNumber(column, text);
+          }}
+        />
+      );
+    }
+    if (head.kind === "unit") {
+      return (
+        <PickInput
+          entries={unitEntries}
+          halfWidth
+          value={column.unit}
+          title="単位"
+          onFocus={() => setPickedColumn(column.id)}
+          onCommit={(text) =>
+            editColumn(column.id, {
+              unit: pickMaster(options.units, text).name,
+            })
+          }
+        />
+      );
+    }
+    return (
+      <input
+        lang="ja"
+        value={columnText(column, head.key)}
+        title={head.label}
+        onFocus={() => setPickedColumn(column.id)}
+        onChange={(event) =>
+          editColumn(column.id, {
+            [head.key]: event.target.value,
+          } as Partial<FurnitureColumn>)
+        }
+      />
+    );
+  };
+
+  if (!sheet)
+    return <div className="estimate-page furniture-page">読み込み中…</div>;
+
+  return (
+    <div className="estimate-page furniture-page">
+      <div className="toolbar">
+        <button
+          type="button"
+          onClick={() => {
+            void save(true).then(onBack);
+          }}
+        >
+          ← 家具・設備入力表（一覧）へ
+        </button>
+        <h2>家具計算書</h2>
+        <span className="project">
+          {sheet.name}／{project.managementNo} {project.name}
+        </span>
+        <button type="button" onClick={() => addRow(picked + 1)}>
+          ＋ 行を足す
+        </button>
+        <button type="button" onClick={() => removeRow(picked)}>
+          － 行を消す
+        </button>
+        <button type="button" onClick={() => moveRow(picked, -1)}>
+          ↑
+        </button>
+        <button type="button" onClick={() => moveRow(picked, 1)}>
+          ↓
+        </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックで選んだ範囲）をコピーします"
+          onClick={copyRows}
+        >
+          ⧉ 行コピー（複数可）
+        </button>
+        <button
+          type="button"
+          title="カーソルの行から、コピーした行で上書きします"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行の上へ、コピーした行を挿入します"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("insert")}
+        >
+          📋 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
+          disabled={clipboard.length === 0}
+          onClick={() => pasteRows("append")}
+        >
+          📋 追加貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルの行（Shift+クリックの範囲）で手で直した明細欄（赤字）をすべて自動作成に戻します。1欄だけならその欄を右クリック"
+          onClick={() => void revertSelectedDetails()}
+        >
+          ↩ 明細を自動に戻す
+        </button>
+        <button
+          type="button"
+          title="右側にタテ方向の明細（部位別雑・金物入力表と同じ形）を足します"
+          onClick={addColumn}
+        >
+          ➕ タテ明細
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテの明細を左へ動かします"
+          onClick={() => moveColumn(-1)}
+        >
+          ← 明細
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテの明細を右へ動かします"
+          onClick={() => moveColumn(1)}
+        >
+          明細 →
+        </button>
+        <button
+          type="button"
+          className={callOpen ? "on" : ""}
+          title="タテの明細にマスターの明細を呼び出します"
+          onClick={() => setCallOpen(!callOpen)}
+        >
+          📂 マスター呼出
+        </button>
+        <button
+          type="button"
+          className={showSettings ? "on" : ""}
+          onClick={() => setShowSettings(!showSettings)}
+        >
+          ⚙ 設定
+        </button>
+        <button type="button" onClick={() => window.print()}>
+          🖨 印刷
+        </button>
+        <button type="button" onClick={() => void save()}>
+          💾 保存
+        </button>
+        <span className="status">{message}</span>
+      </div>
+
+      <div className="furniture-columns">
+        表示する列：
+        {allInputColumns.map((column) => (
+          <label key={column.key}>
+            <input
+              type="checkbox"
+              checked={visible(column.key)}
+              onChange={() => toggleColumnView(column.key)}
+            />
+            {column.label}
+          </label>
+        ))}
+        <label className="detail-toggle">
+          <input
+            type="checkbox"
+            checked={visible("detail")}
+            onChange={() => toggleColumnView("detail")}
+          />
+          明細（数量〜備考(上段)）
+        </label>
+        <button
+          type="button"
+          className="width-reset"
+          title="変えた列幅をもとに戻します"
+          onClick={() => setWidths({})}
+        >
+          列幅を戻す
+        </button>
+      </div>
+
+      {callOpen && (
+        <div className="room-calc-sheet no-print">
+          <div className="call-window" style={callDrag.style}>
+            <div
+              className="section-bar drag"
+              onMouseDown={callDrag.onMouseDown}
+              title="この見出しをドラッグすると呼出画面を動かせます"
+            >
+              <span>マスター呼出（タテ明細・見出しをドラッグで移動）</span>
+              {(Object.keys(SOURCE_LABEL) as CallSource[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={callSource === key ? "on" : ""}
+                  onClick={() => setCallSource(key)}
+                >
+                  {SOURCE_LABEL[key]}
+                </button>
+              ))}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!callInsert}
+                  onChange={() => setCallInsert(false)}
+                />
+                上書き呼出
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={callInsert}
+                  onChange={() => setCallInsert(true)}
+                />
+                挿入呼出
+              </label>
+              <span className="call-target">
+                書込先：
+                {pickedColumn === null ||
+                !columns.some((column) => column.id === pickedColumn)
+                  ? "（新しいタテ明細）"
+                  : `タテ明細 ${columns.findIndex((column) => column.id === pickedColumn) + 1}列目`}
+              </span>
+              <button type="button" onClick={() => setCallOpen(false)}>
+                ✕ 閉じる
+              </button>
+            </div>
+            <div className="call-subject">
+              <span>工種科目</span>
+              <input
+                className="num"
+                value={callSubjectNumber}
+                title="工種科目の番号を入れると、その科目の明細を出します"
+                onChange={(e) => {
+                  const text = e.target.value.trim();
+                  setCallSubjectNumber(e.target.value);
+                  const found = options.subjects.find(
+                    (subject) => String(subject.id) === text,
+                  );
+                  setCallSubjectId(found?.id ?? null);
+                }}
+              />
+              <select
+                value={callSubjectId === null ? "" : String(callSubjectId)}
+                onChange={(e) => {
+                  const id = Number.parseInt(e.target.value, 10);
+                  setCallSubjectId(Number.isNaN(id) ? null : id);
+                  setCallSubjectNumber(Number.isNaN(id) ? "" : String(id));
+                }}
+              >
+                <option value="">（工種科目を選ぶ）</option>
+                {options.subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.id}：{subject.name}
+                  </option>
+                ))}
+              </select>
+              <span className="count">{callDetails.length}件</span>
+            </div>
+            <div className="call-scroll">
+              <table className="call-table">
+                <thead>
+                  <tr>
+                    <th className="no">部位ID</th>
+                    <th className="no">番号</th>
+                    <th>部位名／名称</th>
+                    <th>摘要</th>
+                    <th className="unit">単位</th>
+                    <th>備考</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {callDetails.map((detail, index) => (
+                    <tr
+                      key={`${detail.id}-${index}`}
+                      tabIndex={0}
+                      onDoubleClick={() => callDetail(detail)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") callDetail(detail);
+                      }}
+                    >
+                      <td className="no">{detail.partNumber ?? ""}</td>
+                      <td className="no">
+                        {detail.detailNumber?.toFixed(2) ?? ""}
+                      </td>
+                      <td>
+                        <div className="upper">{detail.partName}</div>
+                        <div className="lower">{detail.name}</div>
+                      </td>
+                      <td>
+                        <div className="upper">{detail.descriptionUpper}</div>
+                        <div className="lower">{detail.descriptionLower}</div>
+                      </td>
+                      <td className="unit">{detail.unit}</td>
+                      <td>
+                        <div className="upper">{detail.remarksUpper}</div>
+                        <div className="lower">{detail.remarksLower}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="note">
+              選んでダブルクリック（またはEnter）でタテの明細に呼び出します。呼出画面は閉じないので続けて呼び出せます。
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="furniture-settings no-print" style={settingsDrag.style}>
+          <div
+            className="settings-bar drag"
+            onMouseDown={settingsDrag.onMouseDown}
+            title="この見出しをドラッグすると設定の窓を動かせます"
+          >
+            <b>家具計算書の設定</b>
+            <span>（この表だけの設定。見出しをドラッグで移動）</span>
+            <button type="button" onClick={() => setShowSettings(false)}>
+              ✕ 閉じる
+            </button>
+          </div>
+          <div className="settings-base">
+            <span>
+              基準（全物件共通・種類「
+              {sheet ? furnitureKindLabel(sheet.kind) : ""}」）：
+            </span>
+            <button
+              type="button"
+              onClick={() => void saveAsBase()}
+              title="この表の設定をこの種類の基準にします。以後どの物件でもこの種類の新しい表はこの設定から始まります（既存の表は変わりません）"
+            >
+              基準として保存
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadBase()}
+              title="この種類の基準の設定をこの表に写します"
+            >
+              基準を読込
+            </button>
+          </div>
+            <table>
+              <tbody>
+                <tr>
+                  <td>部位の前後付加文字</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.partPrefix}
+                      onChange={(event) =>
+                        changeSettings({ partPrefix: event.target.value })
+                      }
+                    />
+                    ＋部位＋
+                    <input
+                      lang="ja"
+                      value={settings.partSuffix}
+                      onChange={(event) =>
+                        changeSettings({ partSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                  <td>+部位の前後付加文字</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.addPrefix}
+                      onChange={(event) =>
+                        changeSettings({ addPrefix: event.target.value })
+                      }
+                    />
+                    ＋部位＋
+                    <input
+                      lang="ja"
+                      value={settings.addSuffix}
+                      onChange={(event) =>
+                        changeSettings({ addSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                </tr>
+                {withModel && (
+                  <tr>
+                    <td>加工手間(梁欠き)の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.beamPrefix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ beamPrefix: event.target.value })
+                        }
+                      />
+                      ＋梁欠き＋
+                      <input
+                        lang="ja"
+                        value={settings.beamSuffix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ beamSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                    <td>(窓)の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.windowPrefix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ windowPrefix: event.target.value })
+                        }
+                      />
+                      ＋窓＋
+                      <input
+                        lang="ja"
+                        value={settings.windowSuffix ?? ""}
+                        onChange={(event) =>
+                          changeSettings({ windowSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                  </tr>
+                )}
+                {withFitting && (
+                  <tr>
+                    <td>摘要(下段)の文字（建具記号から建具表のW・Hをmmで呼び出し）</td>
+                    <td colSpan={3} className="size-labels">
+                      <input
+                        lang="ja"
+                        value={settings.fittingPrefix ?? ""}
+                        title="前に付ける文字（例：(）"
+                        onChange={(event) =>
+                          changeSettings({ fittingPrefix: event.target.value })
+                        }
+                      />
+                      <span className="hint">＋建具記号＋</span>
+                      <input
+                        lang="ja"
+                        value={settings.fittingSeparator ?? ""}
+                        title="記号と寸法の間の文字（例：:）"
+                        onChange={(event) =>
+                          changeSettings({
+                            fittingSeparator: event.target.value,
+                          })
+                        }
+                      />
+                      <input
+                        value={settings.widthLabel}
+                        title="Wの前に付ける文字（例：W。空でも可）"
+                        onChange={(event) =>
+                          changeSettings({ widthLabel: event.target.value })
+                        }
+                      />
+                      <span className="hint">＋建具W(mm)＋</span>
+                      <input
+                        value={settings.heightLabel}
+                        title="Hの前に付ける文字（例：*H）"
+                        onChange={(event) =>
+                          changeSettings({ heightLabel: event.target.value })
+                        }
+                      />
+                      <span className="hint">＋建具H(mm)＋</span>
+                      <input
+                        lang="ja"
+                        value={settings.fittingSuffix ?? ""}
+                        title="後ろに付ける文字（例：)部）"
+                        onChange={(event) =>
+                          changeSettings({ fittingSuffix: event.target.value })
+                        }
+                      />
+                      <span className="hint">
+                        →{" "}
+                        {`${settings.fittingPrefix ?? ""}AW1${settings.fittingSeparator ?? ""}${settings.widthLabel}1720${settings.heightLabel}1000${settings.fittingSuffix ?? ""}`}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+                {!withModel && !withFitting && (
+                <tr>
+                  <td>
+                    {withShape
+                      ? "W1・W2・W3・Hの表示文字（形状は末尾に付く）"
+                      : tripleWidth
+                        ? "W1・W2・W3・H・Dの表示文字"
+                        : "W・H・Dの表示文字"}
+                  </td>
+                  <td colSpan={3} className="size-labels">
+                    <input
+                      value={settings.widthLabel}
+                      title="Wの前に付ける文字"
+                      onChange={(event) =>
+                        changeSettings({ widthLabel: event.target.value })
+                      }
+                    />
+                    {tripleWidth && (
+                      <>
+                        <span>＋W1＋</span>
+                        <input
+                          value={settings.width2Label}
+                          title="W2の前に付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ width2Label: event.target.value })
+                          }
+                        />
+                        <span>W2</span>
+                        <input
+                          value={settings.width3Label}
+                          title="W3の前に付ける文字"
+                          onChange={(event) =>
+                            changeSettings({ width3Label: event.target.value })
+                          }
+                        />
+                        <span>W3</span>
+                        {!withShape && (
+                          <>
+                            <input
+                              value={settings.lShapeLabel}
+                              title="W2に入力がありW3に入力が無いときWの後ろに付ける文字"
+                              onChange={(event) =>
+                                changeSettings({
+                                  lShapeLabel: event.target.value,
+                                })
+                              }
+                            />
+                            <span className="hint">←W2あり・W3なし</span>
+                            <input
+                              value={settings.uShapeLabel}
+                              title="W3に入力があるときWの後ろに付ける文字"
+                              onChange={(event) =>
+                                changeSettings({
+                                  uShapeLabel: event.target.value,
+                                })
+                              }
+                            />
+                            <span className="hint">←W3あり</span>
+                          </>
+                        )}
+                      </>
+                    )}
+                    <input
+                      value={settings.heightLabel}
+                      title="Hの前に付ける文字"
+                      onChange={(event) =>
+                        changeSettings({ heightLabel: event.target.value })
+                      }
+                    />
+                    {!withShape && (
+                      <input
+                        value={settings.depthLabel}
+                        title="Dの前に付ける文字"
+                        onChange={(event) =>
+                          changeSettings({ depthLabel: event.target.value })
+                        }
+                      />
+                    )}
+                  </td>
+                </tr>
+                )}
+              </tbody>
+            </table>
+            <div className="symbol-tables">
+              <SymbolTable
+                title={
+                  withFitting
+                    ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
+                    : "+部位の記号"
+                }
+                symbols={settings.partSymbols}
+                onChange={(partSymbols) => changeSettings({ partSymbols })}
+              />
+              <SymbolTable
+                title={
+                  withFitting
+                    ? "部材名称の記号（表に無い文字はそのまま出ます）"
+                    : "名称の記号"
+                }
+                symbols={settings.nameSymbols}
+                onChange={(nameSymbols) => changeSettings({ nameSymbols })}
+              />
+              {withShape && (
+                <SymbolTable
+                  title="形状の記号（計上設定）"
+                  symbols={settings.shapeSymbols ?? []}
+                  onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
+                />
+              )}
+              {withModel && (
+                <SymbolTable
+                  title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
+                  symbols={settings.floorAreaTable ?? []}
+                  onChange={(floorAreaTable) =>
+                    changeSettings({ floorAreaTable })
+                  }
+                />
+              )}
+            </div>
+        </div>
+      )}
+
+      <div className="furniture-table-wrap">
+        <table className="furniture-table" style={{ width: tableWidth }}>
+          <colgroup>
+            <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            <col style={{ width: NO_WIDTH }} />
+            {inputColumns.map((column) => (
+              <col
+                key={column.key}
+                style={{ width: widthOf(column.key, INPUT_DEFAULT) }}
+              />
+            ))}
+            {detailCells.map((cell) => (
+              <col
+                key={cell.id}
+                style={{ width: widthOf(cell.id, DETAIL_DEFAULT) }}
+              />
+            ))}
+            <col className="vlabel-col" style={{ width: LABEL_WIDTH }} />
+            {columns.map((column) => (
+              <col
+                key={column.id}
+                style={{ width: widthOf(column.id, COLUMN_DEFAULT) }}
+              />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="ops-col" rowSpan={headRowCount}>
+                操作
+              </th>
+              <th rowSpan={headRowCount}>番号</th>
+              {inputColumns.map((column) => (
+                <th
+                  key={column.key}
+                  rowSpan={headRowCount}
+                  className={column.forDetail ? "no-print" : ""}
+                  onMouseDown={(event) =>
+                    resizeAtEdge(column.key, INPUT_DEFAULT, event)
+                  }
+                >
+                  <span className="cellbox">
+                    {column.label}
+                    <span className="resizer" />
+                  </span>
+                </th>
+              ))}
+              {detailCells.map((cell) => (
+                <th
+                  key={cell.id}
+                  rowSpan={headRowCount}
+                  className="side"
+                  onMouseDown={(event) =>
+                    resizeAtEdge(cell.id, DETAIL_DEFAULT, event)
+                  }
+                >
+                  <span className="cellbox">
+                    {cell.label}
+                    <span className="resizer" />
+                  </span>
+                </th>
+              ))}
+              <th className="vlabel">{COLUMN_HEADS[0].label}</th>
+              {columns.map((column) => (
+                <th
+                  key={column.id}
+                  className={pickedColumn === column.id ? "vcol on" : "vcol"}
+                  onClick={() => setPickedColumn(column.id)}
+                  onMouseDown={(event) =>
+                    resizeAtEdge(column.id, COLUMN_DEFAULT, event)
+                  }
+                >
+                  <span className="cellbox">
+                    {headCell(column, COLUMN_HEADS[0])}
+                    {columnGrip(column.id)}
+                  </span>
+                </th>
+              ))}
+            </tr>
+            {COLUMN_HEADS.slice(1).map((head) => (
+                <tr key={String(head.key)}>
+                  <th className="vlabel">{head.label}</th>
+                  {columns.map((column) => (
+                    <th
+                      key={column.id}
+                      className={
+                        pickedColumn === column.id ? "vcol on" : "vcol"
+                      }
+                      onClick={() => setPickedColumn(column.id)}
+                    >
+                      <span className="cellbox">
+                        {headCell(column, head)}
+                        {columnGrip(column.id)}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            <tr className="vcol-total">
+              <th className="vlabel">合計</th>
+              {columns.map((column) => (
+                  <th key={column.id} className="vcol num">
+                    <span className="cellbox">
+                      {isEmptyFurnitureColumn(column) &&
+                      !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
+                        ? ""
+                        : furnitureColumnTotal(view, column.id).toFixed(2)}
+                      <button
+                        type="button"
+                        className="drop"
+                        title="このタテの明細（列）を消します"
+                        onClick={() => removeColumn(column.id)}
+                      >
+                        🗑
+                      </button>
+                      {columnGrip(column.id)}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+          </thead>
+          <tbody>
+            {view.map((row, index) => {
+              const quantity = rowQuantity(row, resolved[index]);
+              return (
+                <tr
+                  key={row.id}
+                  className={
+                    [
+                      quantity === null ? "title-row" : "",
+                      index >= selectionStart && index <= selectionEnd
+                        ? "selected"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                  onMouseDown={(event) => {
+                    if (
+                      event.shiftKey &&
+                      event.target instanceof Element &&
+                      event.target.closest("input, select, textarea") === null
+                    ) {
+                      event.preventDefault();
+                    }
+                    pickRow(index, event.shiftKey);
+                  }}
+                >
+                  <td className="ops-col">
+                    <button type="button" onClick={() => addRow(index + 1)}>
+                      ＋
+                    </button>
+                    <button type="button" onClick={() => removeRow(index)}>
+                      －
+                    </button>
+                  </td>
+                  <td className="num">{index + 1}</td>
+                  {visible("subjectId") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={subjectEntries}
+                        halfWidth
+                        value={
+                          rows[index].subjectId === null
+                            ? ""
+                            : String(rows[index].subjectId)
+                        }
+                        placeholder={
+                          resolved[index].subjectId === null
+                            ? ""
+                            : String(resolved[index].subjectId)
+                        }
+                        onCommit={(text) => {
+                          const id = Number.parseInt(text.trim(), 10);
+                          editRow(index, {
+                            subjectId: Number.isNaN(id) ? null : id,
+                          });
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("partNumber") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={pickupPartEntries}
+                        halfWidth
+                        value={
+                          rows[index].partNumber === null
+                            ? ""
+                            : String(rows[index].partNumber)
+                        }
+                        placeholder={
+                          resolved[index].partNumber === null
+                            ? ""
+                            : String(resolved[index].partNumber)
+                        }
+                        onCommit={(text) => {
+                          const found = pickMaster(options.pickupParts, text);
+                          editRow(index, { partNumber: found.id });
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("detailNumber") && (
+                    <td className="num no-print">
+                      <input
+                        value={
+                          rows[index].detailNumber === null
+                            ? ""
+                            : String(rows[index].detailNumber)
+                        }
+                        placeholder={
+                          resolved[index].detailNumber === null
+                            ? ""
+                            : resolved[index].detailNumber.toFixed(2)
+                        }
+                        title="空欄のときは上の行に0.01を足します"
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          editRow(index, {
+                            detailNumber:
+                              event.target.value.trim() === "" ||
+                              Number.isNaN(value)
+                                ? null
+                                : value,
+                          });
+                        }}
+                      />
+                    </td>
+                  )}
+                  {visible("part") && (
+                    <td>
+                      <input
+                        value={rows[index].part}
+                        placeholder={resolved[index].part}
+                        onChange={(event) =>
+                          editRow(index, { part: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("partAdd") && (
+                    <td>
+                      {withFitting ? (
+                        <PickInput
+                          entries={part3Entries}
+                          japanese
+                          commitOnBlur
+                          value={rows[index].partAdd}
+                          title="文字を入れるか、部位別入力表の部位Ⅲから選びます"
+                          onCommit={(text) => editRow(index, { partAdd: text })}
+                        />
+                      ) : (
+                        <input
+                          value={rows[index].partAdd}
+                          onChange={(event) =>
+                            editRow(index, { partAdd: event.target.value })
+                          }
+                        />
+                      )}
+                    </td>
+                  )}
+                  {visible("partSymbol") && (
+                    <td>
+                      {withFitting ? (
+                        <PickInput
+                          entries={part3Entries}
+                          japanese
+                          commitOnBlur
+                          value={rows[index].partSymbol}
+                          title="文字を入れるか、部位別入力表の部位Ⅲから選びます（設定の記号表にある文字は変わります）"
+                          onCommit={(text) =>
+                            editRow(index, { partSymbol: text })
+                          }
+                        />
+                      ) : (
+                        <input
+                          value={rows[index].partSymbol}
+                          title="設定の記号表で文字に変わります"
+                          onChange={(event) =>
+                            editRow(index, { partSymbol: event.target.value })
+                          }
+                        />
+                      )}
+                    </td>
+                  )}
+                  {visible("nameSymbol") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].nameSymbol}
+                        placeholder={withFitting ? resolved[index].nameSymbol : ""}
+                        title={
+                          withFitting
+                            ? "部材名称。空欄のときは上の行と同じ（設定の記号表にある文字は変わります）"
+                            : "設定の記号表で文字に変わります（表に無い文字はそのまま出ます）"
+                        }
+                        onChange={(event) =>
+                          editRow(index, { nameSymbol: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withFitting && visible("fittingSymbol") && (
+                    <td>
+                      <PickInput
+                        entries={fittingEntries}
+                        halfWidth
+                        commitOnBlur
+                        value={rows[index].fittingSymbol ?? ""}
+                        title="建具記号。建具表のW・Hを呼び出して明細:摘要(下段)に出します（表に無い記号は記号だけ）"
+                        onCommit={(text) =>
+                          editRow(index, { fittingSymbol: text })
+                        }
+                      />
+                    </td>
+                  )}
+                  {!withModel && !withFitting && visible("width") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width}
+                        onChange={(event) =>
+                          editRow(index, { width: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("model") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].model ?? ""}
+                        title="そのまま明細:摘要(下段)に出ます。4桁の数字は床面積計算に使います"
+                        onChange={(event) =>
+                          editRow(index, { model: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {tripleWidth && visible("width2") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width2 ?? ""}
+                        title="W2に入力があるとW3が無ければ(L型)、W3もあれば(コ型)を摘要に付けます"
+                        onChange={(event) =>
+                          editRow(index, { width2: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {tripleWidth && visible("width3") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].width3 ?? ""}
+                        onChange={(event) =>
+                          editRow(index, { width3: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {!withFitting && visible("height") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].height}
+                        onChange={(event) =>
+                          editRow(index, { height: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {!withShape && !withModel && !withFitting && visible("depth") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].depth}
+                        onChange={(event) =>
+                          editRow(index, { depth: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withShape && visible("shape") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].shape ?? ""}
+                        title={shapeHint}
+                        onChange={(event) =>
+                          editRow(index, { shape: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("quantity") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].quantity}
+                        placeholder={resolved[index].quantity}
+                        title="0はタイトル行になり、集計しません"
+                        onChange={(event) =>
+                          editRow(index, { quantity: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {visible("unit") && (
+                    <td>
+                      <PickInput
+                        entries={unitEntries}
+                        value={rows[index].unit}
+                        placeholder={resolved[index].unit}
+                        onCommit={(text) =>
+                          editRow(index, {
+                            unit: pickMaster(options.units, text).name,
+                          })
+                        }
+                      />
+                    </td>
+                  )}
+                  {!withModel && !withFitting && visible("descriptionUpper") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].descriptionUpper}
+                        onChange={(event) =>
+                          editRow(index, {
+                            descriptionUpper: event.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("beam") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].beam ?? ""}
+                        title="設定の前後文字を付けて明細:摘要(上段)に出ます"
+                        onChange={(event) =>
+                          editRow(index, { beam: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("window") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].window ?? ""}
+                        title="設定の前後文字を付けて明細:摘要(上段)に出ます"
+                        onChange={(event) =>
+                          editRow(index, { window: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {!withFitting && visible("remarksLower") && (
+                    <td>
+                      <input
+                        lang="ja"
+                        value={rows[index].remarksLower}
+                        onChange={(event) =>
+                          editRow(index, { remarksLower: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {withModel && visible("floorFormula") && (
+                    <td className="num">
+                      <input
+                        value={rows[index].floorFormula ?? ""}
+                        placeholder={row.detail.floorFormula ?? ""}
+                        title={`床面積 FA＝${
+                          floorAreaOf(row.detail.floorFormula ?? "")?.toFixed(
+                            2,
+                          ) ?? "—"
+                        }（型番の換算表から。手で式を入れると優先）`}
+                        onChange={(event) =>
+                          editRow(index, { floorFormula: event.target.value })
+                        }
+                      />
+                    </td>
+                  )}
+                  {detailCells.map((cell) =>
+                    cell.kind === "quantity" ? (
+                      <td key={cell.id} className="num detail">
+                        {quantity === null ? "" : quantity}
+                      </td>
+                    ) : (
+                      <td
+                        key={cell.id}
+                        className={`detail${
+                          row.detail.edited.includes(String(cell.key))
+                            ? " edited"
+                            : ""
+                        }`}
+                      >
+                        <input
+                          lang="ja"
+                          value={detailText(row.detail, cell.key)}
+                          title={
+                            row.detail.edited.includes(String(cell.key))
+                              ? "手で直した欄です。右クリックで自動作成（入力欄・記号からの変換）に戻します"
+                              : "ここを直しても左の入力欄には返しません"
+                          }
+                          onContextMenu={(event) => {
+                            if (!row.detail.edited.includes(String(cell.key)))
+                              return;
+                            event.preventDefault();
+                            revertDetail(index, String(cell.key));
+                            setMessage(
+                              `${index + 1} 行目の「${cell.label}」を自動作成に戻しました（保存で確定）`,
+                            );
+                          }}
+                          onChange={(event) => {
+                            const text = event.target.value;
+                            if (
+                              cell.key === "subjectId" ||
+                              cell.key === "partNumber" ||
+                              cell.key === "detailNumber"
+                            ) {
+                              const value = Number(text);
+                              editDetail(index, {
+                                [cell.key]:
+                                  text.trim() === "" || Number.isNaN(value)
+                                    ? null
+                                    : value,
+                              });
+                              return;
+                            }
+                            editDetail(index, { [cell.key]: text });
+                          }}
+                        />
+                      </td>
+                    ),
+                  )}
+                  <td className="vlabel" />
+                  {columns.map((column) => {
+                    const text = rows[index].values?.[column.id] ?? "";
+                    const value = furnitureCellValue(row, text);
+                    const counted = furnitureCellQuantity(
+                      row,
+                      resolved[index],
+                      text,
+                    );
+                    return (
+                      <td
+                        key={column.id}
+                        className={
+                          text !== "" && value === null
+                            ? "num vcell error"
+                            : "num vcell"
+                        }
+                        title={
+                          value === null || counted === null
+                            ? ""
+                            : `計算結果 ${value.toFixed(2)} × 数量${resolved[index].quantity.trim() === "" ? "1" : resolved[index].quantity.trim()} = ${counted.toFixed(2)}`
+                        }
+                      >
+                        <input
+                          value={text}
+                          title={
+                            withFitting
+                              ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）"
+                              : withModel
+                              ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
+                              : tripleWidth
+                                ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
+                                : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                          }
+                          onFocus={() => setPickedColumn(column.id)}
+                          onChange={(event) =>
+                            editCell(row.id, column.id, event.target.value)
+                          }
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="hint">
+        ヨコの1行＝家具1件の明細（左の入力から自動で作ります）。
+        右端のタテの列（科目〜備考の見出し）は、部位別雑・金物入力表と同じように
+        家具に付く関連明細をタテに拾います（［➕ タテ明細］で列を足します。どちらも集計に入ります）。
+      </p>
+    </div>
+  );
+}

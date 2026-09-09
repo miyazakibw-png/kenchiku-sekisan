@@ -1,0 +1,124 @@
+/* 部屋別計算書の印刷書式（A3横1枚 ＝ 余白8mmを引いた 404mm×281mm） */
+.calc-print-sheet {
+  background: #fff;
+  color: #000;
+  overflow: auto;
+  height: 100%;
+}
+
+.calc-print-page {
+  position: relative;
+  width: 1527px;
+  height: 1062px;
+  overflow: hidden;
+  background: #fff;
+  margin: 0 auto 12px;
+  box-sizing: border-box;
+}
+
+.calc-print-page:last-child {
+  margin-bottom: 0;
+}
+
+.calc-print-title {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+/* 上段（図・寸法入力・記号・建具・天井伏図）はスクロールなしで全部出す */
+.calc-print-upper {
+  overflow: hidden;
+}
+
+.calc-print-upper .room-sheet-page {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+
+.calc-print-upper .room-sheet-page > .upper {
+  max-height: none;
+  overflow: visible;
+  padding: 0 0 6px;
+}
+
+.calc-print-upper .room-sheet-page > .upper > section {
+  overflow: visible;
+}
+
+.calc-print-upper .room-sheet-page .canvas {
+  max-height: 300px;
+}
+
+/* 下段の計算書。画面の設定幅のままA3横の幅へ縮める */
+.calc-print-lower {
+  transform-origin: top left;
+}
+
+.calc-print-lower table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.calc-print-lower th,
+.calc-print-lower td {
+  border: 1px solid #000;
+  padding: 0 2px;
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  box-sizing: border-box;
+}
+
+/* 紙は白地・黒文字（画面の濃紺の見出しは使わない） */
+.calc-print-sheet thead th,
+.calc-print-sheet thead td {
+  position: static;
+  background: #e5e7eb;
+  color: #000;
+}
+
+.calc-print-lower thead th {
+  height: 22px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.calc-print-lower td.num {
+  text-align: right;
+}
+
+.calc-print-lower tr.banner td {
+  text-align: left;
+  font-weight: 600;
+}
+
+/* 計算式が少なくて下に空白ができる分は、手入力できるよう横罫線だけを引く */
+.calc-print-lower tr.blank td {
+  border: none;
+  border-bottom: 1px solid #000;
+}
+
+@media print {
+  .calc-print-sheet {
+    overflow: visible;
+    height: auto;
+  }
+
+  .calc-print-page {
+    margin: 0;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .calc-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

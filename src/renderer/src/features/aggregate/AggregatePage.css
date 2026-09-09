@@ -1,0 +1,177 @@
+.aggregate-page .aggregate-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: auto;
+}
+
+/* タイトル行の工事名などを黒く（薄い文字を読めるように） */
+.aggregate-page .toolbar .project,
+.aggregate-page .toolbar .message {
+  color: #000;
+}
+
+table.aggregate {
+  border-collapse: collapse;
+  margin: 8px;
+  width: max-content;
+  table-layout: fixed;
+}
+
+table.aggregate th,
+table.aggregate td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 見出しは他の積算画面と同じ濃紺地に白文字 */
+table.aggregate th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* 見出しの右端。ドラッグで列幅を変える */
+table.aggregate th .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+table.aggregate th .col-resize:hover {
+  background: #94a3b8;
+}
+
+table.aggregate td.no {
+  text-align: right;
+}
+
+table.aggregate td.number {
+  text-align: right;
+}
+
+/* 1明細＝上下2行。明細の中は罫線を出さず、明細どうしの区切りだけ残す */
+table.aggregate tr.detail-upper > td:not([rowspan]) {
+  border-bottom: none;
+}
+
+table.aggregate tr.detail-lower > td:not([rowspan]) {
+  border-top: none;
+}
+
+table.aggregate tbody.heading td {
+  background: #eef2f7;
+  font-weight: bold;
+}
+
+table.aggregate tbody.heading.subject td {
+  background: #d9e6f2;
+}
+
+/* 数量・単位チェック：赤＝要修正、黄＝単位未入力 */
+table.aggregate tbody.row.error td {
+  background: #ffcccc;
+}
+
+table.aggregate tbody.row.warn td {
+  background: #ffffcc;
+}
+
+/* 不要明細（内訳書へ飛ばさない明細）は灰色で示す */
+table.aggregate tbody.row.unused td {
+  background: #eeeeee;
+  color: #888888;
+}
+
+/* 選んだ明細は枠ではなく薄い黄色の背景で示す */
+table.aggregate tbody.row.selected td {
+  background: #fff6b8;
+}
+
+/* 左端の工種科目ボタン。押すとその科目の先頭明細へ飛ぶ */
+/* 工種科目の選択ボタンは、上下・左右どちらへ動かしても常に見えるようにする */
+.aggregate-page .subject-jump {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 8px 4px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  background: #fff;
+}
+
+.aggregate-page .subject-jump button {
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.aggregate-page .subject-jump .note {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 数量根拠は選んだ明細の行に合わせて上下に動かす（2ページ目以降でも見えるように） */
+.aggregate-page .basis {
+  min-width: 44ch;
+  margin: 8px 8px 8px 0;
+  align-self: flex-start;
+  position: sticky;
+  right: 8px;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #c9ced6;
+}
+
+.aggregate-page .basis .title {
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.aggregate-page .basis .note {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 集計書の欄はそのまま直せる（保存すると計算書・明細マスターへ書き戻す） */
+table.aggregate td input,
+table.aggregate td select {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0;
+}
+
+table.aggregate td input.number {
+  text-align: right;
+}
+
+table.aggregate td input:focus,
+table.aggregate td select:focus {
+  background: #fff;
+  outline: 1px solid #1f4e79;
+}
