@@ -740,6 +740,18 @@ export default function RoomCalcSheet({
     setBannerSetId(null);
   }, [focus?.setId, focus?.area, focus?.index]);
 
+  /**
+   * 明細・計算式の欄へカーソルが入ったときの処理。
+   * 同じ欄へ戻ったときは上のカーソル記録が変わらず外れないので、ここでも外す。
+   */
+  const focusHere = useCallback(
+    (next: CalcFocus): void => {
+      setBannerSetId(null);
+      onFocus(next);
+    },
+    [onFocus],
+  );
+
   /** 直前に処理した「飛べ」の合図。合図が変わったときだけ画面を送る */
   const lastJumpTick = useRef(jumpTick);
   // 式の誤りなどで外から指された計算式欄へ、実際にカーソルを移して画面も送る
@@ -1866,7 +1878,7 @@ export default function RoomCalcSheet({
                     : undefined;
                   const gridRow = rowStarts[setIndex] + rowIndex;
                   const focusDetail = (): void =>
-                    onFocus({
+                    focusHere({
                       setId: set.id,
                       area: "detail",
                       index: rowIndex,
@@ -2166,7 +2178,7 @@ export default function RoomCalcSheet({
                               data-jump={`${set.id}|formulaA|${rowIndex}`}
                               value={line.formulaA}
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaA",
                                   index: rowIndex,
@@ -2191,7 +2203,7 @@ export default function RoomCalcSheet({
                               value={line.formulaB}
                               title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaB",
                                   index: rowIndex,
