@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AggregateDetail,
   MasterOptions,
   ProjectField,
   ProjectSummary,
 } from "@shared/types";
+import type { MiscRow } from "../../../../core/misc/miscSheet";
+import { sourceJumpOf } from "../aggregate/aggregateRows";
 import { normalizeDate } from "./projectLedger";
 import {
   ALWAYS_VISIBLE,
@@ -60,6 +63,15 @@ interface HeaderField {
 
 const keepAsIs = (project: ProjectSummary): ProjectSummary => project;
 
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed === null ? fallback : (parsed as T);
+  } catch {
+    return fallback;
+  }
+}
+
 export default function ProjectWorkspacePage({
   project,
   fields,
@@ -82,6 +94,8 @@ export default function ProjectWorkspacePage({
   const [jumpEstimateRowId, setJumpEstimateRowId] = useState<number | null>(
     null,
   );
+  /** 集計書兼工事マスターの数量根拠から出所へ飛んできたときの戻り先 */
+  const [backToAggregate, setBackToAggregate] = useState<string | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
 
   useEffect(() => setOptions(initialOptions), [initialOptions]);
@@ -185,6 +199,53 @@ export default function ProjectWorkspacePage({
     onSave(draft);
   };
 
+  /** 集計書の数量根拠1件から、その拾いを書いた計算書・入力表を開く */
+  const openSource = async (detail: AggregateDetail): Promise<void> => {
+    const jump = sourceJumpOf(detail);
+    if (jump === null) {
+      setMessage("この拾いの出所が分かりません（元の計算書が消えています）");
+      return;
+    }
+    const from = openedMenu;
+    if (jump.kind === "calcSheet") {
+      setBackToAggregate(from);
+      setJumpEstimateRowId(jump.estimateRowId);
+      setOpenedMenu("roomFinishes");
+      return;
+    }
+    if (jump.kind === "furniture") {
+      setBackToAggregate(from);
+      setFurnitureSheetId(jump.sheetId);
+      setOpenedMenu("furnitureInput");
+      return;
+    }
+    if (jump.kind === "transfer") {
+      setBackToAggregate(from);
+      setOpenedMenu("transferInput");
+      return;
+    }
+    // 部位別雑・金物入力表は行のidしか持たないので、その行のある表を探す
+    const sheets = await window.sekisan.listMiscSheets(draft.id);
+    for (const summary of sheets) {
+      const sheet = await window.sekisan.getMiscSheet(summary.id);
+      const rows = parseJson<MiscRow[]>(sheet.rowsJson, []);
+      if (!rows.some((row) => row.id === jump.rowId)) continue;
+      setBackToAggregate(from);
+      setMiscSheetId(summary.id);
+      setOpenedMenu("miscInput");
+      return;
+    }
+    setMessage("この拾いの出所が分かりません（元の入力表が消えています）");
+  };
+
+  /** 出所から戻るときは、飛んできた集計書兼工事マスターへ返す */
+  const leaveSource = (): boolean => {
+    if (backToAggregate === null) return false;
+    setOpenedMenu(backToAggregate);
+    setBackToAggregate(null);
+    return true;
+  };
+
   const openMenu = (item: WorkspaceMenuItem): void => {
     if (!item.ready) {
       setMessage(`${item.label} は次の工程で作ります（${item.note}）`);
@@ -271,6 +332,7 @@ export default function ProjectWorkspacePage({
         initialEstimateRowId={jumpEstimateRowId}
         onBack={() => {
           setJumpEstimateRowId(null);
+          if (leaveSource()) return;
           setOpenedMenu(null);
         }}
       />
@@ -292,7 +354,10 @@ export default function ProjectWorkspacePage({
         project={draft}
         options={options}
         sheetId={miscSheetId}
-        onBack={() => setMiscSheetId(null)}
+        onBack={() => {
+          setMiscSheetId(null);
+          leaveSource();
+        }}
       />
     );
   }
@@ -312,7 +377,10 @@ export default function ProjectWorkspacePage({
         project={draft}
         options={options}
         sheetId={furnitureSheetId}
-        onBack={() => setFurnitureSheetId(null)}
+        onBack={() => {
+          setFurnitureSheetId(null);
+          leaveSource();
+        }}
       />
     );
   }
@@ -322,7 +390,10 @@ export default function ProjectWorkspacePage({
       <TransferSheetPage
         project={draft}
         options={options}
-        onBack={() => setOpenedMenu(null)}
+        onBack={() => {
+          if (leaveSource()) return;
+          setOpenedMenu(null);
+        }}
       />
     );
   }
@@ -347,7 +418,13 @@ export default function ProjectWorkspacePage({
   }
 
   if (openedMenu === "aggregate" || openedMenu === "projectMaster") {
-    return <AggregatePage project={draft} onBack={() => setOpenedMenu(null)} />;
+    return (
+      <AggregatePage
+        project={draft}
+        onBack={() => setOpenedMenu(null)}
+        onOpenSource={(detail) => void openSource(detail)}
+      />
+    );
   }
 
   if (openedMenu === "roomAggregate") {

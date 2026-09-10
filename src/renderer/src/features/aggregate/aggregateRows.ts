@@ -34,6 +34,43 @@ export function sourceLabelOf(value: string): string {
   return SOURCE_LABEL[sourceKindOf(value)];
 }
 
+/** 数量根拠の1件から開く出所（計算書・入力表） */
+export type SourceJump =
+  | { kind: "calcSheet"; estimateRowId: number }
+  | { kind: "misc"; rowId: string }
+  | { kind: "furniture"; sheetId: number }
+  | { kind: "transfer" }
+  | null;
+
+/**
+ * 数量根拠の1件が、どの表のどこから来たかを返す。
+ * 計算書（部屋・軸組・汎用・ピット）は部位別入力表の行、
+ * 家具・設備入力表は表のid、部位別雑・金物入力表は行のid（表は呼び出し側で探す）。
+ */
+export function sourceJumpOf(detail: {
+  sourceKind: string;
+  estimateRowId: number | null;
+  traceId: string;
+}): SourceJump {
+  const parts = detail.traceId.split(":");
+  switch (sourceKindOf(detail.sourceKind)) {
+    case "misc":
+      return parts[1] ? { kind: "misc", rowId: parts[1] } : null;
+    case "furniture": {
+      const sheetId = Number(parts[1]);
+      return Number.isFinite(sheetId) && sheetId > 0
+        ? { kind: "furniture", sheetId }
+        : null;
+    }
+    case "transfer":
+      return { kind: "transfer" };
+    default:
+      return detail.estimateRowId === null
+        ? null
+        : { kind: "calcSheet", estimateRowId: detail.estimateRowId };
+  }
+}
+
 /** 保存済みの集計詳細データ（数量根拠）を、集計し直せる形に戻す */
 export function detailsToEntries(details: AggregateDetail[]): AggregateEntry[] {
   return details.map((detail) => ({

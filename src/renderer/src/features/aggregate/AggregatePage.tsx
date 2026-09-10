@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AggregateDetail,
   AggregateItem,
   AggregateItemEdit,
   AggregateRun,
@@ -21,6 +22,8 @@ import "./AggregatePage.css";
 interface Props {
   project: ProjectSummary;
   onBack: () => void;
+  /** 数量根拠の1件から、その拾いを書いた計算書（出所）を開く */
+  onOpenSource?: (detail: AggregateDetail) => void;
 }
 
 const COLUMNS = [
@@ -141,7 +144,11 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
  * 計算書（部屋別・軸組・汎用）と転記入力表から集計した明細を、科目→部位Ⅰ→部位Ⅱの順に並べる。
  * 行をクリックすると数量根拠（部屋別の内訳）を表示する。
  */
-export default function AggregatePage({ project, onBack }: Props): JSX.Element {
+export default function AggregatePage({
+  project,
+  onBack,
+  onOpenSource,
+}: Props): JSX.Element {
   const [view, setView] = useState<AggregateView>({
     run: null,
     items: [],
@@ -642,7 +649,20 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                 <tbody>
                   {basis.map((detail) => (
                     <tr key={detail.id}>
-                      <td>{sourceLabelOf(detail.sourceKind)}</td>
+                      <td className="source">
+                        {onOpenSource ? (
+                          <button
+                            type="button"
+                            className="link"
+                            title={`${sourceLabelOf(detail.sourceKind)} を開く`}
+                            onClick={() => onOpenSource(detail)}
+                          >
+                            📐 {sourceLabelOf(detail.sourceKind)}
+                          </button>
+                        ) : (
+                          sourceLabelOf(detail.sourceKind)
+                        )}
+                      </td>
                       <td>{`${detail.part2Raw} ${detail.part3}`.trim()}</td>
                       <td className="number">
                         {displayQuantity(detail.setTotal)}
