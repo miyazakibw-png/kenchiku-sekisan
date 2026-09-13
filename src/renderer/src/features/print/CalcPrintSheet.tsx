@@ -34,12 +34,25 @@ const ROW_HEIGHT = 20;
 const HEAD_HEIGHT = 22;
 const TITLE_HEIGHT = 24;
 
-/** 列幅の合計（画面の設定幅。この幅をA3横の幅に合わせて縮める） */
-const NATURAL_WIDTH = CALC_PRINT_COLUMNS.reduce(
-  (total, column) => total + column.width,
-  0,
-);
-const SCALE = PAGE_WIDTH / NATURAL_WIDTH;
+/** 画面で伸縮した計算書の列幅（下段計算書と同じ置き場）。無ければ既定幅 */
+function screenColumnWidths(): number[] {
+  const defaults = CALC_PRINT_COLUMNS.map((column) => column.width);
+  try {
+    const raw = window.localStorage.getItem("calc-sheet-columns-v2");
+    if (!raw) return defaults;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return defaults;
+    const stored = parsed as Record<string, unknown>;
+    return defaults.map((width, index) => {
+      const value = stored[String(index)];
+      return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : width;
+    });
+  } catch {
+    return defaults;
+  }
+}
 
 function TitleRow({ title }: { title: string }): JSX.Element {
   return (
@@ -83,19 +96,27 @@ function DetailRow({ row }: { row: CalcPrintRow }): JSX.Element {
 }
 
 /** 下段の計算書（1枚分）。余った下は手書き用の横罫線で埋める */
-function LowerTable({ page }: { page: CalcPrintPage }): JSX.Element {
+function LowerTable({
+  page,
+  widths,
+  scale,
+}: {
+  page: CalcPrintPage;
+  widths: number[];
+  scale: number;
+}): JSX.Element {
   return (
     <div
       className="calc-print-lower"
       style={{
-        transform: `scale(${SCALE})`,
-        width: `${NATURAL_WIDTH}px`,
+        transform: `scale(${scale})`,
+        width: `${widths.reduce((total, width) => total + width, 0)}px`,
       }}
     >
       <table>
         <colgroup>
           {CALC_PRINT_COLUMNS.map((column, index) => (
-            <col key={`${column.label}-${index}`} width={column.width} />
+            <col key={`${column.label}-${index}`} width={widths[index]} />
           ))}
         </colgroup>
         <thead>
@@ -135,6 +156,12 @@ export default function CalcPrintSheet({
 }: Props): JSX.Element {
   const upperRef = useRef<HTMLDivElement>(null);
   const [upperHeight, setUpperHeight] = useState<number | null>(null);
+  // 紙の列幅は画面で設定した列幅に合わせ、A3横の幅へ縮める
+  const widths = useMemo(() => screenColumnWidths(), []);
+  const scale = useMemo(
+    () => PAGE_WIDTH / widths.reduce((total, width) => total + width, 0),
+    [widths],
+  );
 
   useLayoutEffect(() => {
     const element = upperRef.current;
@@ -149,16 +176,16 @@ export default function CalcPrintSheet({
   const rows = useMemo(() => calcPrintRows(sets, result), [result, sets]);
 
   const pages = useMemo(() => {
-    const head = (TITLE_HEIGHT + HEAD_HEIGHT * SCALE) | 0;
-    const later = Math.floor((PAGE_HEIGHT - head) / (ROW_HEIGHT * SCALE));
+    const head = (TITLE_HEIGHT + HEAD_HEIGHT * scale) | 0;
+    const later = Math.floor((PAGE_HEIGHT - head) / (ROW_HEIGHT * scale));
     // 上段が無い計算書（汎用）は1枚目から下段だけを目いっぱい入れる
     if (upper === null) return paginateCalcRows(rows, later, later);
     if (upperHeight === null) return paginateCalcRows([], 0, later);
     const first = Math.floor(
-      (PAGE_HEIGHT - upperHeight - head) / (ROW_HEIGHT * SCALE),
+      (PAGE_HEIGHT - upperHeight - head) / (ROW_HEIGHT * scale),
     );
     return paginateCalcRows(rows, first, later);
-  }, [rows, upper, upperHeight]);
+  }, [rows, scale, upper, upperHeight]);
 
   return (
     <div className="calc-print-sheet">
@@ -176,7 +203,7 @@ export default function CalcPrintSheet({
               </div>
             </div>
           )}
-          <LowerTable page={page} />
+          <LowerTable page={page} widths={widths} scale={scale} />
         </div>
       ))}
     </div>

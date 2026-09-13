@@ -447,7 +447,11 @@ export function collectEntries(
       const sheet = generalSheets.get(row.id);
       if (!sheet) return;
       const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
-      const variables = calcVariables([], fittings);
+      // 汎用計算書は部位別入力表の天井高さを記号CHとして使う
+      const variables = {
+        CH: row.ceilingHeight ?? 0,
+        ...calcVariables([], fittings),
+      };
       entries.push(
         ...entriesFromCalcSheet(
           context,

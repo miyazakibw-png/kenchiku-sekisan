@@ -55,6 +55,8 @@ interface Props {
   options: MasterOptions;
   sheetId: number;
   onBack: () => void;
+  /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
+  printMode?: boolean;
 }
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -120,6 +122,9 @@ function useDragWindow(): {
     onMouseDown,
   };
 }
+
+/** A3横1枚に入る幅（用紙の余白8mmを引いた分。96dpiの画素） */
+const PRINT_WIDTH = 1527;
 
 /** 入力欄の列（表示・非表示を切り替えられる） */
 interface InputColumn {
@@ -402,6 +407,7 @@ export default function FurnitureSheetPage({
   options,
   sheetId,
   onBack,
+  printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FurnitureSheet | null>(null);
   const [rows, setRows] = useState<FurnitureRow[]>([]);
@@ -446,7 +452,8 @@ export default function FurnitureSheetPage({
 
   const save = useCallback(
     async (quiet = false): Promise<void> => {
-      if (!sheet) return;
+      // 印刷書式は見るだけ（保存しない）
+      if (!sheet || printMode) return;
       const saved = await window.sekisan.saveFurnitureSheet({
         id: sheet.id,
         name: sheet.name,
@@ -465,7 +472,7 @@ export default function FurnitureSheetPage({
       if (!quiet)
         setMessage("保存しました（建具表へ転記し、集計実行で集計書に入ります）");
     },
-    [columns, markSaved, rows, settings, sheet],
+    [columns, markSaved, printMode, rows, settings, sheet],
   );
 
   useEffect(() => {
@@ -721,14 +728,10 @@ export default function FurnitureSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        if (isEmptyFurnitureColumn(current[at])) {
-          return current.map((column, index) =>
-            index === at ? { ...column, ...patch } : column,
-          );
-        }
-        const created = furnitureColumn(patch);
-        setPickedColumn(created.id);
-        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+        // 上書き呼出：選んでいる列の中身をそのまま入れ替える
+        return current.map((column, index) =>
+          index === at ? { ...column, ...patch } : column,
+        );
       });
       setMessage(`${detail.name} を呼び出しました`);
     },
@@ -1027,6 +1030,19 @@ export default function FurnitureSheetPage({
   const inputColumns = allInputColumns.filter((column) =>
     visible(column.key),
   );
+
+  /** 行入力部の見出し文字（直してあればその文字） */
+  const labelOf = (column: InputColumn): string => {
+    const text = settings.columnLabels?.[column.key] ?? "";
+    return text.trim() === "" ? column.label : text;
+  };
+
+  /** 見出し文字を直す（空欄にするともとの見出しへ戻る） */
+  const editLabel = (key: string, text: string): void =>
+    setSettings({
+      ...settings,
+      columnLabels: { ...(settings.columnLabels ?? {}), [key]: text },
+    });
   const detailCells = visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
@@ -1130,10 +1146,21 @@ export default function FurnitureSheetPage({
   };
 
   if (!sheet)
-    return <div className="estimate-page furniture-page">読み込み中…</div>;
+    return printMode ? (
+      <></>
+    ) : (
+      <div className="estimate-page furniture-page">読み込み中…</div>
+    );
 
   return (
-    <div className="estimate-page furniture-page">
+    <div
+      className={`estimate-page furniture-page${printMode ? " furniture-print" : ""}`}
+    >
+      {printMode && (
+        <div className="calc-print-title">
+          家具計算書　{sheet.name}　{project.managementNo} {project.name}
+        </div>
+      )}
       <div className="toolbar">
         <button
           type="button"
@@ -1251,7 +1278,13 @@ export default function FurnitureSheetPage({
               checked={visible(column.key)}
               onChange={() => toggleColumnView(column.key)}
             />
-            {column.label}
+            <input
+              className="title-text"
+              value={settings.columnLabels?.[column.key] ?? ""}
+              placeholder={column.label}
+              title="表の見出しに出す文字。空欄にするともとの見出しに戻ります"
+              onChange={(event) => editLabel(column.key, event.target.value)}
+            />
           </label>
         ))}
         <label className="detail-toggle">
@@ -1690,7 +1723,15 @@ export default function FurnitureSheetPage({
         </div>
       )}
 
-      <div className="furniture-table-wrap">
+      <div
+        className="furniture-table-wrap"
+        style={
+          // 紙（A3横）の幅に収まらないときだけ、表全体を縮めて出す
+          printMode && tableWidth > PRINT_WIDTH
+            ? { transform: `scale(${PRINT_WIDTH / tableWidth})` }
+            : undefined
+        }
+      >
         <table className="furniture-table" style={{ width: tableWidth }}>
           <colgroup>
             <col className="ops-col" style={{ width: OPS_WIDTH }} />
@@ -1731,7 +1772,7 @@ export default function FurnitureSheetPage({
                   }
                 >
                   <span className="cellbox">
-                    {column.label}
+                    {labelOf(column)}
                     <span className="resizer" />
                   </span>
                 </th>
@@ -1894,7 +1935,10 @@ export default function FurnitureSheetPage({
                   )}
                   {visible("detailNumber") && (
                     <td className="num no-print">
-                      <input
+                      <PickInput
+                        entries={numberEntries}
+                        halfWidth
+                        commitOnBlur
                         value={
                           rows[index].detailNumber === null
                             ? ""
@@ -1905,13 +1949,17 @@ export default function FurnitureSheetPage({
                             ? ""
                             : resolved[index].detailNumber.toFixed(2)
                         }
-                        title="空欄のときは上の行に0.01を足します"
-                        onChange={(event) => {
-                          const value = Number(event.target.value);
+                        title="空欄のときは上の行に0.01を足します（科目を入れるとマスターの明細から選べます）"
+                        onFocus={() =>
+                          void loadNumberOptions(
+                            rows[index].subjectId ?? resolved[index].subjectId,
+                          )
+                        }
+                        onCommit={(text) => {
+                          const value = Number(text);
                           editRow(index, {
                             detailNumber:
-                              event.target.value.trim() === "" ||
-                              Number.isNaN(value)
+                              text.trim() === "" || Number.isNaN(value)
                                 ? null
                                 : value,
                           });

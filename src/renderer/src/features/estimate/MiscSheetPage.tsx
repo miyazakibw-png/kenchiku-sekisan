@@ -467,8 +467,7 @@ export default function MiscSheetPage({
       };
       setColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
-        // 挿入呼出は左へ、上書き呼出は空の列へ。
-        // すでに入っている列にいるときは、その右へ新しい明細を作る
+        // 挿入呼出は左へ。上書き呼出は選んでいる列の中身をそのまま入れ替える
         if (at < 0) {
           const created = miscColumn(patch);
           setPickedColumn(created.id);
@@ -479,14 +478,9 @@ export default function MiscSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        if (isEmptyColumn(current[at])) {
-          return current.map((column, index) =>
-            index === at ? { ...column, ...patch } : column,
-          );
-        }
-        const created = miscColumn(patch);
-        setPickedColumn(created.id);
-        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+        return current.map((column, index) =>
+          index === at ? { ...column, ...patch } : column,
+        );
       });
       setMessage(`${detail.name} を呼び出しました`);
     },

@@ -67,6 +67,8 @@ export interface FurnitureSettings {
   windowSuffix?: string;
   /** ユニットバス用：型番→床面積の計算式の換算表（symbol＝型番・text＝計算式。例：1418→1.5*1.9） */
   floorAreaTable?: FurnitureSymbol[];
+  /** 行入力部の見出し文字（列のキー→出す文字。空欄ならもとの見出し。古い保存には無い） */
+  columnLabels?: Record<string, string>;
   /** カーテン・ブラインド用：摘要下段「(AW1:W1720*H1000)部」の前の文字・記号と寸法の間の文字・後ろの文字（古い保存には無い） */
   fittingPrefix?: string;
   fittingSeparator?: string;
@@ -1009,9 +1011,21 @@ export function entriesFromFurnitureSheet(
   const multiplier = place.multiplier === 0 ? 1 : place.multiplier;
   const entries: AggregateEntry[] = [];
   rows.forEach((row, index) => {
-    if (isEmptyDetail(row.detail)) return;
-    const value = rowQuantity(row, resolved[index]);
-    if (value === null) return;
+    const quantity = rowQuantity(row, resolved[index]);
+    if (quantity === null) {
+      // 科目・部位ID・名称ID・部材名称のどれかを入れた行は、見出し用に数量0で計上する
+      // （上行から引き継いだだけの行は数えない。手で直した明細欄のある行は数える）
+      const heading =
+        row.subjectId !== null ||
+        row.partNumber !== null ||
+        row.detailNumber !== null ||
+        row.nameSymbol.trim() !== "" ||
+        row.detail.edited.length > 0;
+      if (!heading) return;
+    } else if (isEmptyDetail(row.detail)) {
+      return;
+    }
+    const value = quantity ?? 0;
     entries.push({
       traceId: `furniture:${place.sheetId}:${row.id}`,
       sourceKind: "furniture",

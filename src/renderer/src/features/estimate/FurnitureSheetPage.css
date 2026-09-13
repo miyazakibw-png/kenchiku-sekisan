@@ -265,3 +265,40 @@
     position: static !important;
   }
 }
+
+/** 一括印刷に入れるときの家具計算書（表だけを紙に出す） */
+.furniture-page.furniture-print {
+  display: block;
+  height: auto;
+  overflow: visible;
+  background: #fff;
+  page-break-before: always;
+}
+
+.furniture-page.furniture-print > .toolbar,
+.furniture-page.furniture-print > .furniture-columns,
+.furniture-page.furniture-print > .hint {
+  display: none;
+}
+
+.furniture-page.furniture-print > .calc-print-title {
+  height: 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.furniture-page.furniture-print .furniture-table-wrap {
+  overflow: visible;
+  max-height: none;
+  transform-origin: top left;
+}
+
+/** 表示する列の見出し文字（✔の右横。ここで表の見出しを直せる） */
+.furniture-page .furniture-columns label .title-text {
+  width: 84px;
+  margin-left: 2px;
+  font-size: 12px;
+  padding: 0 2px;
+  border: 1px solid #c7d2de;
+  background: #fff;
+}

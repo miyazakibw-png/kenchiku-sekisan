@@ -366,12 +366,18 @@ export default function EstimatePartsPage({
     );
   };
 
+  /** 計算書に出す部屋名。部位Ⅱは空欄なら上の行から引き継いだ内容を使う */
+  const openedRoomName =
+    openedSheet !== null && rows[openedSheet]
+      ? `${inherited[openedSheet]?.part2 ?? rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()
+      : "";
+
   if (openedSheet !== null && rows[openedSheet]?.calcType === "frame") {
     return (
       <FrameSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
         onWorkHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
@@ -403,7 +409,15 @@ export default function EstimatePartsPage({
       <GeneralSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
+        onCeilingHeightChange={(height) => {
+          if (openedSheet === null) return;
+          editRows(
+            updateRow(rowsRef.current, openedSheet, {
+              ceilingHeight: height,
+            }),
+          );
+        }}
         onBack={() => {
           setOpenedSheet(null);
           void reload();
@@ -417,7 +431,7 @@ export default function EstimatePartsPage({
       <PitSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
         onBack={() => {
           setOpenedSheet(null);
           void reload();
@@ -431,7 +445,7 @@ export default function EstimatePartsPage({
       <RoomSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(

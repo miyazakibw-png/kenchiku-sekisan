@@ -22,6 +22,8 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  /** 天井高さを直したときに部位別入力表の行へも伝える */
+  onCeilingHeightChange?: (height: number | null) => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
 }
@@ -41,11 +43,15 @@ export default function GeneralSheetPage({
   row,
   roomName,
   onBack,
+  onCeilingHeightChange,
   printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<GeneralSheet | null>(null);
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [note, setNote] = useState("");
+  const [ceilingHeight, setCeilingHeight] = useState<number | null>(
+    row.ceilingHeight,
+  );
   const [fittings, setFittings] = useState<Fitting[]>([]);
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
@@ -72,9 +78,21 @@ export default function GeneralSheetPage({
     })();
   }, [markSaved, project.id, row.id]);
 
-  /** 上段が無いので、計算式に使えるのは建具表の記号だけ */
+  /** 天井高さは部位別入力表の行と相互に連動する */
+  const applyCeilingHeight = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      const value = trimmed === "" ? null : Number(trimmed);
+      if (value !== null && Number.isNaN(value)) return;
+      setCeilingHeight(value);
+      onCeilingHeightChange?.(value);
+    },
+    [onCeilingHeightChange],
+  );
+
+  /** 計算式に使えるのは天井高さ（CH）と建具表の記号 */
   const calcVariables = useMemo(() => {
-    const values: Record<string, number> = {};
+    const values: Record<string, number> = { CH: ceilingHeight ?? 0 };
     fittings.forEach((fitting) => {
       const computed = computeFitting(fitting);
       if (computed.area !== null) values[`<${fitting.symbol}>`] = computed.area;
@@ -86,7 +104,7 @@ export default function GeneralSheetPage({
         values[`<${fitting.symbol}:HL>`] = computed.baseboardDeduction;
     });
     return values;
-  }, [fittings]);
+  }, [ceilingHeight, fittings]);
 
   const calcResult = useMemo(
     () => evaluateCalcSheet(lower, calcVariables),
@@ -141,7 +159,9 @@ export default function GeneralSheetPage({
   if (printMode)
     return (
       <CalcPrintSheet
-        title={`汎用計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
+        title={`汎用計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}${
+          ceilingHeight === null ? "" : `　CH ${ceilingHeight.toFixed(2)}`
+        }`}
         upper={null}
         sets={lower}
         result={calcResult}
@@ -158,6 +178,16 @@ export default function GeneralSheetPage({
         <span className="project">
           {project.managementNo} {roomName || "（名称なし）"}
         </span>
+        <label className="ceiling-height">
+          天井高さ
+          <input
+            className="num"
+            key={`gch-${sheet?.id ?? "new"}-${ceilingHeight === null ? "" : ceilingHeight.toFixed(2)}`}
+            defaultValue={ceilingHeight === null ? "" : ceilingHeight.toFixed(2)}
+            title="この計算書の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+            onBlur={(e) => applyCeilingHeight(e.target.value)}
+          />
+        </label>
         <label className="grow">
           備考
           <input
@@ -189,7 +219,7 @@ export default function GeneralSheetPage({
       />
 
       <p className="hint">
-        汎用計算書は上段（図・記号）が無く、明細と計算式だけで拾います。計算式には数字と
+        汎用計算書は上段（図・記号）が無く、明細と計算式だけで拾います。計算式には数字と CH（天井高さ）、
         B1〜B100（他セットの累計）、&lt;SD2&gt;・&lt;SD2:W&gt;・&lt;SD2:H&gt;・&lt;SD2:HL&gt;（建具表から直接引用）が使えます。
       </p>
     </div>

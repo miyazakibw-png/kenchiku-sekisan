@@ -1046,11 +1046,17 @@ export default function RoomCalcSheet({
       text,
       details: [currentDetail],
       lines: [line],
-      // 1行だけのコピーでは、写し元のセットの部位は持っていかない（今までどおり）
-      partNumber: null,
-      partName: "",
+      // 写し元のセットの部位（一番左）も一緒に持っていく
+      partNumber: currentSet.partNumber,
+      partName: currentSet.partName,
       banners: [],
-      parts: [{ at: 0, partNumber: null, partName: "" }],
+      parts: [
+        {
+          at: 0,
+          partNumber: currentSet.partNumber,
+          partName: currentSet.partName,
+        },
+      ],
     });
     onMessage(
       `明細「${currentDetail.name || "（名称なし）"}」を計算式ごとコピーしました`,
@@ -1130,8 +1136,8 @@ export default function RoomCalcSheet({
       if (row.setId !== lastSetId) {
         parts.push({
           at: details.length,
-          partNumber: row.index === 0 ? set.partNumber : null,
-          partName: row.index === 0 ? set.partName : "",
+          partNumber: set.partNumber,
+          partName: set.partName,
         });
         lastSetId = row.setId;
       }
