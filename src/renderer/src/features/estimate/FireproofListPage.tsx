@@ -553,7 +553,7 @@ function FloorListSection({
                           placeholder={
                             resolved.first === null
                               ? `${sizeLabels[0]}＊${sizeLabels[1]}`
-                              : `${resolved.first}＊${resolved.second ?? ""}`
+                              : `${resolved.first}*${resolved.second ?? ""}`
                           }
                           title={`${sizeLabels[0]}＊${sizeLabels[1]} を1マスに打ちます（例 250*125）。空欄は下の階の数字を使います`}
                           onChange={(next) =>

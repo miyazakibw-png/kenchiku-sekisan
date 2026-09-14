@@ -148,24 +148,30 @@
   background: transparent;
 }
 
-/* 形状はＨ・□が見えればよいので細く、Ｗ*Ｄは「1000*1000」（半角9文字）が見える幅 */
+/* 形状はＨ・□と▽が見える幅、Ｗ*Ｄは「1000*1000」（半角9文字）が全部見える幅 */
 .fireproof-page table.fireproof td.shape select {
-  width: 4ch;
+  width: 6ch;
   min-width: 0;
+  padding: 0;
 }
 
 .fireproof-page table.fireproof th.shape {
-  width: 4ch;
+  width: 6ch;
+}
+
+.fireproof-page table.fireproof td.size {
+  padding: 1px 0;
 }
 
 .fireproof-page table.fireproof td.size input {
-  min-width: 9ch;
-  width: 9ch;
+  min-width: 12ch;
+  width: 12ch;
+  padding: 0 1ch;
   text-align: right;
 }
 
 .fireproof-page table.fireproof th.size {
-  width: 9ch;
+  width: 14ch;
 }
 
 .fireproof-page table.fireproof th.symbol input {
