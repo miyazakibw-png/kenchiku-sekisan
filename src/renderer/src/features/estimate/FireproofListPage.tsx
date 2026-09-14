@@ -9,6 +9,8 @@ import {
   formatSizeInput,
   newCommonRow,
   newMember,
+  normalizeCommonRows,
+  normalizeFloorList,
   resolveCommonRow,
   resolveSize,
   sizeFromInput,
@@ -64,16 +66,12 @@ export default function FireproofListPage({
   useEffect(() => {
     void (async () => {
       const record = await window.sekisan.getFireproofSheet(project.id);
-      const empty = emptyFireproofSheet();
       setRecordId(record.id);
       setSheet({
         floorCount: record.floorCount,
-        columns: parseJson<FireproofFloorList>(
-          record.columnsJson,
-          empty.columns,
-        ),
-        beams: parseJson<FireproofFloorList>(record.beamsJson, empty.beams),
-        common: parseJson<FireproofCommonRow[]>(record.commonJson, []),
+        columns: normalizeFloorList(parseJson(record.columnsJson, {})),
+        beams: normalizeFloorList(parseJson(record.beamsJson, {})),
+        common: normalizeCommonRows(parseJson(record.commonJson, [])),
       });
       setNote(record.note);
     })();

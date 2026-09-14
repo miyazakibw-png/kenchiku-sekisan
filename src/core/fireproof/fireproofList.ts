@@ -62,6 +62,38 @@ export const EMPTY_SIZE: FireproofSize = {
   second: null,
 };
 
+/** 保存したJSONを画面で使える形に整える（空・古い形でも止まらないようにする） */
+export function normalizeFloorList(value: unknown): FireproofFloorList {
+  const list = (value ?? {}) as Partial<FireproofFloorList>;
+  return {
+    floors: Array.isArray(list.floors)
+      ? list.floors.map((floor) => ({
+          id: floor.id ?? fireproofId("f"),
+          label: floor.label ?? "",
+          ...(floor.manual === true ? { manual: true } : {}),
+        }))
+      : [],
+    members: Array.isArray(list.members)
+      ? list.members.map((member) => ({
+          id: member.id ?? fireproofId("m"),
+          symbol: member.symbol ?? "",
+          sizes: member.sizes ?? {},
+        }))
+      : [],
+  };
+}
+
+export function normalizeCommonRows(value: unknown): FireproofCommonRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => ({
+    id: row.id ?? fireproofId("c"),
+    symbol: row.symbol ?? "",
+    shape: row.shape ?? "",
+    first: row.first ?? null,
+    second: row.second ?? null,
+  }));
+}
+
 export function emptyFireproofSheet(): FireproofSheet {
   return {
     floorCount: 0,
