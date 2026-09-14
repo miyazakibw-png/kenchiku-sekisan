@@ -53,6 +53,10 @@ describe("耐火被覆・塗装入力表", () => {
     expect(autoSectionFormula("box", 250, 250, 2, 25)).toBe("0.25+0.25+0.025");
     expect(autoSectionFormula("box", 250, 250, 1, 25)).toBe("0.25");
     expect(autoSectionFormula("box", null, 250, 3, 25)).toBe("");
+    // 厚みが未入力・0以下のときは自動で出さない（1面は厚みを使わないので出る）
+    expect(autoSectionFormula("box", 250, 250, 4, null)).toBe("");
+    expect(autoSectionFormula("box", 250, 250, 4, 0)).toBe("");
+    expect(autoSectionFormula("box", 250, 250, 1, null)).toBe("0.25");
   });
 
   it("Ｈ鋼の断面必要計算式を自動で作る（資料の図どおり）", () => {

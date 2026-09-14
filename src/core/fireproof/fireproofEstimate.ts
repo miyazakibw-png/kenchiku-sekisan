@@ -192,6 +192,7 @@ function thicknessText(mm: number): string {
  * 断面必要計算式を自動で作る（mm→mに直して書く）。式は資料の図のとおり。
  * □（コラム・箱型）：4面 W*2+D*2+厚み*4、3面 W*2+D+厚み*2、2面 W+D+厚み、1面 D。
  * Ｈ鉄：4面 W*2+D*4+厚み*4、3面 W*2+D*3+厚み*2、2面 W+D+D/2*2+厚み、1面 D。
+ * 厚みが未入力（または0以下）のときは自動で出さない。
  */
 export function autoSectionFormula(
   shape: SteelShape | "",
@@ -204,8 +205,10 @@ export function autoSectionFormula(
   if (faces < 1 || faces > 4) return "";
   const w = meterText(width);
   const d = meterText(depth);
-  const t = thicknessText(thicknessMm ?? 0);
+  // 壁囲い1面は厚みを使わない（Dのみ）
   if (faces === 1) return d;
+  if (thicknessMm === null || thicknessMm <= 0) return "";
+  const t = thicknessText(thicknessMm);
   if (shape === "h") {
     if (faces === 4) return `${w}*2+${d}*4+${t}*4`;
     if (faces === 3) return `${w}*2+${d}*3+${t}*2`;
