@@ -51,7 +51,11 @@ import {
   listProjectBasicMasters,
   listProjectSubjects,
 } from "./projectMasterService";
-import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
+import {
+  aggregationPartIdOf,
+  parseNumberRanges,
+} from "../../core/aggregate/checkSheet";
+import { getCheckSheetPartMap } from "./checkSheetService";
 import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import { syncAssembliesFromSheets } from "./assemblyService";
@@ -1200,6 +1204,23 @@ export function getAggregate(
   return { run, items, details };
 }
 
+/** チェック表の設定（部位番号の並び）で、その部位番号が入る列を探す */
+function mappedPartId(
+  partNumber: number | null,
+  partMap: Record<string, string>,
+): number | null {
+  if (partNumber === null || !Number.isFinite(partNumber)) return null;
+  const whole = Math.floor(partNumber);
+  for (const [key, text] of Object.entries(partMap)) {
+    const numbers = parseNumberRanges(text);
+    if (numbers && numbers.has(whole)) {
+      const id = Number(key);
+      if (Number.isFinite(id)) return id;
+    }
+  }
+  return null;
+}
+
 /**
  * 部位別入力表のチェック列（1部位＝名称＋数量の2列）。
  * 各行の計算書で拾った明細を、管理用部位（床・巾木・壁…）ごとにまとめる。
@@ -1211,6 +1232,7 @@ export function collectEstimateRowChecks(
   materialCategory: string,
 ): EstimateRowCheck[] {
   const parts = listProjectBasicMasters(db, projectId).aggregationParts;
+  const partMap = getCheckSheetPartMap(db);
   const byRow = new Map<
     number,
     Map<string, { name: string; quantity: number; baseQuantity: number }>
@@ -1220,7 +1242,8 @@ export function collectEstimateRowChecks(
     if (entry.estimateRowId === null) return;
     if (entry.materialCategory !== materialCategory) return;
     if (entry.name.trim() === "") return;
-    const partId = aggregationPartIdOf(entry.partNumber);
+    const mapped = mappedPartId(entry.partNumber, partMap);
+    const partId = mapped ?? aggregationPartIdOf(entry.partNumber);
     const part =
       parts.find((row) => row.id === partId) ??
       parts.find((row) => entry.partName.includes(row.name));

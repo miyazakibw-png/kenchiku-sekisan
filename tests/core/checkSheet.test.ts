@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   aggregationPartIdOf,
   buildCheckSheet,
+  describePartMap,
+  parseNumberRanges,
   toCheckSheetTsv,
   type CheckSheetSourceItem,
 } from "../../src/core/aggregate/checkSheet";
@@ -84,6 +86,42 @@ describe("チェック表", () => {
       "仕上",
     );
     expect(sheet.parts.map((part) => part.name)).toEqual(["天井"]);
+  });
+
+  it("計上する部位番号の並びを読む", () => {
+    expect([...(parseNumberRanges("10-12") ?? [])]).toEqual([10, 11, 12]);
+    expect([...(parseNumberRanges("10,12-13") ?? [])]).toEqual([10, 12, 13]);
+    expect(parseNumberRanges("")).toBe(null);
+  });
+
+  it("設定した部位番号のとおりに列へ入れる", () => {
+    const sheet = buildCheckSheet(
+      [item({ partNumber: 32, partName: "フカシ壁", name: "ＥＰ塗装" })],
+      PARTS,
+      "仕上",
+      { "1": "10-19,32" },
+    );
+    // 32番は本来「壁」の列だが、設定で「床」の列に計上する
+    expect(sheet.parts.map((part) => part.name)).toEqual(["床"]);
+    expect(sheet.blocks[0].columns[0]).toEqual([
+      { name: "ＥＰ塗装", quantity: 10 },
+    ]);
+  });
+
+  it("計上される仕組みを一覧にする（設定が無ければもとの決まり）", () => {
+    const rules = describePartMap(PARTS, { "1": "10-19,32" });
+    expect(rules[0]).toEqual({
+      id: 1,
+      name: "床",
+      numbers: "10-19,32",
+      custom: true,
+    });
+    expect(rules[1]).toEqual({
+      id: 2,
+      name: "巾木",
+      numbers: "20-29",
+      custom: false,
+    });
   });
 
   it("Excel貼り付け用に余白の列と空行を残す", () => {

@@ -25,6 +25,7 @@ import type {
   DetailChangeLog,
   EstimateRow,
   ImeMode,
+  LineStyleSettings,
   FinishAssembly,
   Fitting,
   FittingSource,
@@ -334,6 +335,26 @@ const api = {
     request: BreakdownExportRequest,
   ): Promise<BreakdownExportResult> =>
     ipcRenderer.invoke(IPC.breakdownExport, request),
+  /** 画面の罫線（細い線・太い線）の設定。未設定なら null */
+  getLineStyles: (): Promise<LineStyleSettings | null> =>
+    ipcRenderer.invoke(IPC.lineStylesGet),
+  saveLineStyles: (settings: LineStyleSettings): Promise<LineStyleSettings> =>
+    ipcRenderer.invoke(IPC.lineStylesSave, settings),
+  /** 罫線の設定が変わったとき（他ウィンドウで直した場合にも追従する） */
+  onLineStylesChanged: (
+    listener: (settings: LineStyleSettings) => void,
+  ): void => {
+    ipcRenderer.on(IPC.lineStylesChanged, (_event, settings) =>
+      listener(settings as LineStyleSettings),
+    );
+  },
+  /** チェック表：管理用部位の番号 → 計上する部位番号の並び（例 "10-19"） */
+  getCheckSheetPartMap: (): Promise<Record<string, string>> =>
+    ipcRenderer.invoke(IPC.checkSheetPartMapGet),
+  saveCheckSheetPartMap: (
+    map: Record<string, string>,
+  ): Promise<Record<string, string>> =>
+    ipcRenderer.invoke(IPC.checkSheetPartMapSave, map),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

@@ -990,3 +990,19 @@ export interface SaveBasicMasterResult {
   /** 番号・名称の不備。1件でもあれば保存しない */
   errors: string[];
 }
+
+/** 画面の罫線1種類分の形（設定画面で直せる） */
+export interface LineStyleSetting {
+  /** 太さ（px） */
+  width: number;
+  /** 線の形（solid=実線 dashed=破線 dotted=点線） */
+  style: string;
+  /** 線の色（#rrggbb） */
+  color: string;
+}
+
+/** 画面の罫線の設定（thin=細い線＝表のマス目、thick=太い線＝まとまりの区切り） */
+export interface LineStyleSettings {
+  thin: LineStyleSetting;
+  thick: LineStyleSetting;
+}

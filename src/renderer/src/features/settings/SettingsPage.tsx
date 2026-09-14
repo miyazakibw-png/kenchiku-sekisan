@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BackupInfo } from "@shared/types";
+import type { BackupInfo, LineStyleSettings } from "@shared/types";
 import { imeAutoEnabled, setImeAutoEnabled } from "../../hooks/useImeMode";
+import {
+  DEFAULT_LINE_STYLES,
+  applyLineStyles,
+} from "../../hooks/useLineStyles";
 import "./SettingsPage.css";
+
+/** 線の形の選べる種類（エクセルの線種に合わせた言い方） */
+const LINE_SHAPES: { value: string; label: string }[] = [
+  { value: "solid", label: "実線" },
+  { value: "dashed", label: "破線" },
+  { value: "dotted", label: "点線" },
+  { value: "double", label: "二重線" },
+];
 
 function sizeText(size: number): string {
   if (size < 1024) return `${size} バイト`;
@@ -16,12 +28,36 @@ export default function SettingsPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [imeAuto, setImeAuto] = useState(imeAutoEnabled);
   const [imeReport, setImeReport] = useState("");
+  /** 画面の罫線（細い線＝表のマス目、太い線＝まとまりの区切り） */
+  const [lines, setLines] = useState<LineStyleSettings>(DEFAULT_LINE_STYLES);
+  const [lineMessage, setLineMessage] = useState("");
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
   }, []);
 
   useEffect(reload, [reload]);
+
+  useEffect(() => {
+    void window.sekisan
+      .getLineStyles()
+      .then((saved) => setLines(saved ?? DEFAULT_LINE_STYLES));
+  }, []);
+
+  /** 直したらすぐ画面に当てて見せる（保存もする） */
+  const editLines = (next: LineStyleSettings): void => {
+    setLines(next);
+    applyLineStyles(next);
+    void window.sekisan.saveLineStyles(next);
+    setLineMessage(
+      "画面の線を変えました（すべての工事・すべての画面に効きます）",
+    );
+  };
+
+  const editLine = (
+    key: "thin" | "thick",
+    patch: Partial<LineStyleSettings["thin"]>,
+  ): void => editLines({ ...lines, [key]: { ...lines[key], ...patch } });
 
   const save = async (): Promise<void> => {
     setBusy(true);
@@ -97,6 +133,80 @@ export default function SettingsPage(): JSX.Element {
           復元前のデータは自動で退避するので、間違えても元に戻せます。
         </p>
         {message !== "" && <p className="settings-message">{message}</p>}
+      </section>
+      <section className="settings-card">
+        <h3>画面の線（線種・太さ・色）</h3>
+        <p className="settings-note">
+          表の罫線は2種類あります。「細い線」は表のマス目（部位別入力表・各計算書の下段・部位別雑・金物入力表・家具・設備入力表・チェック表）、「太い線」は計算書のセット明細の区切りです。直すとすぐ画面に反映し、すべての工事で同じ線になります。
+        </p>
+        <table className="settings-table">
+          <thead>
+            <tr>
+              <th>線</th>
+              <th>太さ</th>
+              <th>線種</th>
+              <th>色</th>
+              <th>見本</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(["thin", "thick"] as const).map((key) => (
+              <tr key={key}>
+                <th>
+                  {key === "thin" ? "細い線（マス目）" : "太い線（区切り）"}
+                </th>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={lines[key].width}
+                    onChange={(e) =>
+                      editLine(key, { width: Number(e.target.value) })
+                    }
+                  />
+                  px
+                </td>
+                <td>
+                  <select
+                    value={lines[key].style}
+                    onChange={(e) => editLine(key, { style: e.target.value })}
+                  >
+                    {LINE_SHAPES.map((shape) => (
+                      <option key={shape.value} value={shape.value}>
+                        {shape.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="color"
+                    value={lines[key].color}
+                    onChange={(e) => editLine(key, { color: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <span
+                    className="line-sample"
+                    style={{
+                      borderTop: `${lines[key].width}px ${lines[key].style} ${lines[key].color}`,
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="settings-buttons">
+          <button type="button" onClick={() => editLines(DEFAULT_LINE_STYLES)}>
+            ↺ もとの線に戻す
+          </button>
+        </div>
+        {lineMessage !== "" && (
+          <p className="settings-message">{lineMessage}</p>
+        )}
       </section>
       <section className="settings-card">
         <h3>文字の入力</h3>

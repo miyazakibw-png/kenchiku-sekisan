@@ -130,6 +130,11 @@ import {
   saveFurnitureSheetList,
 } from "./services/furnitureSheetService";
 import { getPitSheet, savePitSheet } from "./services/pitSheetService";
+import { getLineStyles, saveLineStyles } from "./services/lineStyleService";
+import {
+  getCheckSheetPartMap,
+  saveCheckSheetPartMap,
+} from "./services/checkSheetService";
 import {
   listTransferRows,
   saveTransferRows,
@@ -167,6 +172,7 @@ import { setImeMode } from "./ime";
 import type {
   BackupInfo,
   ImeMode,
+  LineStyleSettings,
   BackupResult,
   PrintPaper,
   PrintResult,
@@ -605,6 +611,25 @@ function registerIpcHandlers(): void {
       if (result.canceled || !result.filePath) return { filePath: null };
       writeExport(result.filePath, content);
       return { filePath: result.filePath };
+    },
+  );
+  ipcMain.handle(IPC.lineStylesGet, () => getLineStyles(getDatabase()));
+  ipcMain.handle(IPC.lineStylesSave, (_event, settings: LineStyleSettings) => {
+    saveLineStyles(getDatabase(), settings);
+    // 開いている別ウィンドウ（物件専用・明細入力ウィンドウ）にも即反映する
+    for (const contents of webContents.getAllWebContents()) {
+      contents.send(IPC.lineStylesChanged, settings);
+    }
+    return settings;
+  });
+  ipcMain.handle(IPC.checkSheetPartMapGet, () =>
+    getCheckSheetPartMap(getDatabase()),
+  );
+  ipcMain.handle(
+    IPC.checkSheetPartMapSave,
+    (_event, map: Record<string, string>) => {
+      saveCheckSheetPartMap(getDatabase(), map);
+      return map;
     },
   );
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
