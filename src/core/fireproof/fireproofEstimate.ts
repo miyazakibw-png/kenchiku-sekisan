@@ -54,8 +54,8 @@ export interface FireproofColumnRow {
   symbol: string;
   /** 倍数（この階に同じ柱が何本あるか） */
   count: number | null;
-  /** 取合（耐火被覆を吹く面の数 1〜4） */
-  faces: number | null;
+  /** 取合（面数 1〜4 または取合記号 H1〜H4・HA3・HA4 など。文字で保存する） */
+  mark: string;
   /** 計算式（有効長）。「3.42」や「3.42*2」のように書く */
   lengthFormula: string;
   /**
@@ -144,7 +144,7 @@ export function newColumnRow(floor = "", symbol = ""): FireproofColumnRow {
     comment: "",
     symbol,
     count: null,
-    faces: null,
+    mark: "",
     lengthFormula: "",
     sectionFormula: "",
     wallChecks: normalizeWallChecks([]),
@@ -177,17 +177,24 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
       thickness: row?.sheet?.thickness ?? null,
       wallLabels: normalizeWallLabels(row?.sheet?.wallLabels),
       rows: Array.isArray(row?.sheet?.rows)
-        ? row.sheet.rows.map((each: Partial<FireproofColumnRow>) => ({
-            id: typeof each?.id === "string" ? each.id : estimateId("r"),
-            floor: each?.floor ?? "",
-            comment: each?.comment ?? "",
-            symbol: each?.symbol ?? "",
-            count: each?.count ?? null,
-            faces: each?.faces ?? null,
-            lengthFormula: each?.lengthFormula ?? "",
-            sectionFormula: each?.sectionFormula ?? "",
-            wallChecks: normalizeWallChecks(each?.wallChecks),
-          }))
+        ? row.sheet.rows.map(
+            (each: Partial<FireproofColumnRow> & { faces?: number }) => ({
+              id: typeof each?.id === "string" ? each.id : estimateId("r"),
+              floor: each?.floor ?? "",
+              comment: each?.comment ?? "",
+              symbol: each?.symbol ?? "",
+              count: each?.count ?? null,
+              mark:
+                typeof each?.mark === "string"
+                  ? each.mark
+                  : typeof each?.faces === "number"
+                    ? String(each.faces)
+                    : "",
+              lengthFormula: each?.lengthFormula ?? "",
+              sectionFormula: each?.sectionFormula ?? "",
+              wallChecks: normalizeWallChecks(each?.wallChecks),
+            }),
+          )
         : [],
     },
   }));
@@ -221,6 +228,36 @@ function meterText(mm: number): string {
 
 function thicknessText(mm: number): string {
   return (mm / 1000).toFixed(3);
+}
+
+/**
+ * 取合の文字を面数（1〜4）に読み替える。
+ * 柱は「1」〜「4」とＨ鋼の「H1」〜「H4」がそのままの面数。
+ * 「HA3」「A3」は梁型側の取合記号（梁型計算書で使う。壁付き梁型）。
+ * （あとの「取合対応表設定画面」で増やせるように表にしている）。
+ */
+const MARK_FACES: Record<string, number> = {
+  "1": 1,
+  "2": 2,
+  "3": 3,
+  "4": 4,
+  H1: 1,
+  H2: 2,
+  H3: 3,
+  H4: 4,
+};
+
+/** 柱の取合の文字を面数（1〜4）に読み替える（A3など梁型の記号は対象外） */
+export function markFaces(mark: string): number | null {
+  const key = mark.trim().toUpperCase();
+  return MARK_FACES[key] ?? null;
+}
+
+/** 梁型の取合記号を面数に読み替える（HA3・A3は壁付き梁型で3面と同じ計算） */
+export function beamMarkFaces(mark: string): number | null {
+  const key = mark.trim().toUpperCase();
+  const beamMarks: Record<string, number> = { HA3: 3, A3: 3 };
+  return beamMarks[key] ?? markFaces(key);
 }
 
 /**
@@ -268,8 +305,9 @@ export interface FireproofColumnCalc {
   wall: number | null;
 }
 
-/** 取合（面数）ごとの壁取合の本数（4:0、3:2、2:2、1:2） */
-export function wallFactor(faces: number | null): number {
+/** 取合（面数）ごとの壁取合の本数（4:0、3:2、2:2、1:2。記号は面数に読み替える） */
+export function wallFactor(mark: string): number {
+  const faces = markFaces(mark);
   if (faces === null) return 0;
   return faces >= 4 ? 0 : 2;
 }
@@ -284,7 +322,7 @@ export function calcColumnRow(
     size?.shape ?? "",
     size?.first ?? null,
     size?.second ?? size?.first ?? null,
-    row.faces,
+    markFaces(row.mark),
     thicknessMm,
   );
   const sectionText =
@@ -298,7 +336,7 @@ export function calcColumnRow(
     length,
     needed:
       section !== null && length !== null ? section * length * count : null,
-    wall: length !== null ? length * wallFactor(row.faces) : null,
+    wall: length !== null ? length * wallFactor(row.mark) : null,
   };
 }
 

@@ -8,6 +8,8 @@ import {
   entriesFromFireproofSheet,
   findColumnSize,
   inheritedFloors,
+  beamMarkFaces,
+  markFaces,
   manageRowQuantity,
   newColumnRow,
   newManageRow,
@@ -75,16 +77,41 @@ describe("耐火被覆・塗装入力表", () => {
   });
 
   it("壁取合の本数は取合ごとに決まる（4:0、3:2、2:2、1:2）", () => {
-    expect(wallFactor(4)).toBe(0);
-    expect(wallFactor(3)).toBe(2);
-    expect(wallFactor(2)).toBe(2);
-    expect(wallFactor(1)).toBe(2);
-    expect(wallFactor(null)).toBe(0);
+    expect(wallFactor("4")).toBe(0);
+    expect(wallFactor("3")).toBe(2);
+    expect(wallFactor("2")).toBe(2);
+    expect(wallFactor("1")).toBe(2);
+    expect(wallFactor("")).toBe(0);
+  });
+
+  it("柱の取合に 1〜4・H1〜H4 を打てる（梁型の記号は柱では使わない）", () => {
+    expect(markFaces("H1")).toBe(1);
+    expect(markFaces("H4")).toBe(4);
+    expect(markFaces("h2")).toBe(2);
+    // HA3・A3 は梁型側の記号なので柱の表では読まない
+    expect(markFaces("HA3")).toBeNull();
+    expect(markFaces("HA4")).toBeNull();
+    expect(markFaces("A3")).toBeNull();
+    expect(markFaces("X")).toBeNull();
+    // 梁型側では HA3・A3 が 3面（壁付き梁型）と同じ計算
+    expect(beamMarkFaces("HA3")).toBe(3);
+    expect(beamMarkFaces("A3")).toBe(3);
+    expect(beamMarkFaces("HA4")).toBeNull();
+    expect(beamMarkFaces("A4")).toBeNull();
+    expect(beamMarkFaces("H3")).toBe(3);
+    // H3 は柱と同じく3面の断面必要計算式が自動で出る
+    const calc = calcColumnRow(
+      columnRow({ count: 1, mark: "H3", lengthFormula: "3.42" }),
+      list(),
+      25,
+    );
+    expect(calc.sectionText).toBe("0.25*2+0.25+0.025*2");
+    expect(calc.wall).toBeCloseTo(6.84, 2);
   });
 
   it("必要数㎡＝断面×計算式(有効長)×倍数、壁取合m＝有効長×取合の本数", () => {
     const calc = calcColumnRow(
-      columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
+      columnRow({ count: 4, mark: "3", lengthFormula: "3.42" }),
       list(),
       25,
     );
@@ -98,7 +125,7 @@ describe("耐火被覆・塗装入力表", () => {
     const calc = calcColumnRow(
       columnRow({
         count: 1,
-        faces: 3,
+        mark: "3",
         lengthFormula: "2",
         sectionFormula: "0.5",
       }),
@@ -117,8 +144,8 @@ describe("耐火被覆・塗装入力表", () => {
         thickness: 25,
         wallLabels: defaultWallLabels(),
         rows: [
-          columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
-          columnRow({ count: 1, faces: 4, lengthFormula: "3.42" }),
+          columnRow({ count: 4, mark: "3", lengthFormula: "3.42" }),
+          columnRow({ count: 1, mark: "4", lengthFormula: "3.42" }),
         ],
       },
     };
@@ -150,11 +177,11 @@ describe("耐火被覆・塗装入力表", () => {
         thickness: 25,
         wallLabels: defaultWallLabels(),
         rows: [
-          columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
+          columnRow({ count: 4, mark: "3", lengthFormula: "3.42" }),
           columnRow({
             floor: "",
             count: 4,
-            faces: 3,
+            mark: "3",
             lengthFormula: "3.42",
           }),
         ],
@@ -171,12 +198,12 @@ describe("耐火被覆・塗装入力表", () => {
         wallLabels: defaultWallLabels(),
         rows: [
           columnRow({
-            faces: 3,
+            mark: "3",
             lengthFormula: "3.42",
             wallChecks: [true, false, false],
           }),
           columnRow({
-            faces: 3,
+            mark: "3",
             lengthFormula: "3.42",
             wallChecks: [true, true, false],
           }),
@@ -200,7 +227,7 @@ describe("耐火被覆・塗装入力表", () => {
         detail: { ...emptyManageDetail(), partName: "柱", name: "耐火被覆" },
         sheet: {
           thickness: 25,
-          rows: [columnRow({ count: 4, faces: 3, lengthFormula: "3.42" })],
+          rows: [columnRow({ count: 4, mark: "3", lengthFormula: "3.42" })],
         },
       },
       // 部位名も名称も無い行は集計に載せない

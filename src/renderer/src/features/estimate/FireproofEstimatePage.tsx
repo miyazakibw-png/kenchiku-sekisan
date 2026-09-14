@@ -1194,19 +1194,14 @@ function ColumnSheetView({
                   <td className="faces">
                     <input
                       lang="en"
-                      className="num"
-                      value={each.faces === null ? "" : String(each.faces)}
-                      title="耐火被覆を吹く面の数（1〜4）。壁取合mは4面のとき0、それ以外は有効長×2です"
-                      onChange={(event) => {
-                        const text = toHalfWidth(event.target.value).trim();
-                        const value = text === "" ? null : Number(text);
+                      value={each.mark}
+                      placeholder="1〜4"
+                      title="面の数（1〜4）か取合記号（H1〜H4。同じ面数で計算します）を入れます。壁取合mは4面（H4）のとき0、それ以外は有効長×2です"
+                      onChange={(event) =>
                         changeRow(index, {
-                          faces:
-                            value === null || Number.isNaN(value)
-                              ? null
-                              : value,
-                        });
-                      }}
+                          mark: toHalfWidth(event.target.value).trim(),
+                        })
+                      }
                     />
                   </td>
                   <td className="formula">
@@ -1269,7 +1264,8 @@ function ColumnSheetView({
         Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面
         Ｄ。厚みは25mmなら0.025）。厚みが未入力のときは出ません。欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
-        必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4のときは0）です。
+        必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4・H4のときは0）です。
+        取合の欄は面の数（1〜4）のほか取合記号（H1〜H4。同じ面数で計算します）も入れられます（HA3・A3は梁型側の記号です）。
         壁取合mの右のＡ・Ｂ・Ｃの欄に✔を付けると、その行の壁取合mがその欄で合計されます（上の帯に3種類出ます）。見出しのＡ・Ｂ・Ｃは書き換えられます。
       </p>
     </div>
