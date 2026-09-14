@@ -76,6 +76,8 @@ export const IPC = {
   lineStylesChanged: "settings:lineStylesChanged",
   checkSheetPartMapGet: "checkSheet:partMapGet",
   checkSheetPartMapSave: "checkSheet:partMapSave",
+  checkSheetShownPartsGet: "checkSheet:shownPartsGet",
+  checkSheetShownPartsSave: "checkSheet:shownPartsSave",
   roomLowerTemplateGet: "settings:roomLowerTemplateGet",
   roomLowerTemplateSave: "settings:roomLowerTemplateSave",
   fittingsList: "fittings:list",

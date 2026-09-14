@@ -63,3 +63,14 @@ table.check-sheet tr.spacer td {
 .check-sheet-page table.check-sheet td.number input {
   text-align: right;
 }
+
+/* 計上される仕組みの表：左端の✔（表に出す部位） */
+.check-sheet-page table.part-rules td.flag {
+  min-width: 0;
+  width: 5ch;
+  text-align: center;
+}
+
+.check-sheet-page table.part-rules td.flag input {
+  width: auto;
+}

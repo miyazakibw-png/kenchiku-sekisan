@@ -108,6 +108,30 @@ describe("チェック表", () => {
     ]);
   });
 
+  it("✔を付けた列だけ出し、明細が無い列も空欄で出す", () => {
+    const sheet = buildCheckSheet([item({})], PARTS, "仕上", {}, [1, 6]);
+    expect(sheet.parts.map((part) => part.name)).toEqual(["床", "天井"]);
+    expect(sheet.blocks[0].columns[0]).toEqual([
+      { name: "ビニル床シート", quantity: 10 },
+    ]);
+    expect(sheet.blocks[0].columns[1]).toEqual([]);
+    // Excelへのコピーも✔を付けた列だけ
+    const header = toCheckSheetTsv(sheet).split("\n")[0].split("\t");
+    expect(header).toEqual([
+      "部位",
+      "",
+      "",
+      "床",
+      "",
+      "",
+      "",
+      "天井",
+      "",
+      "",
+      "",
+    ]);
+  });
+
   it("計上される仕組みを一覧にする（設定が無ければもとの決まり）", () => {
     const rules = describePartMap(PARTS, { "1": "10-19,32" });
     expect(rules[0]).toEqual({

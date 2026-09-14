@@ -133,7 +133,9 @@ import { getPitSheet, savePitSheet } from "./services/pitSheetService";
 import { getLineStyles, saveLineStyles } from "./services/lineStyleService";
 import {
   getCheckSheetPartMap,
+  getCheckSheetShownParts,
   saveCheckSheetPartMap,
+  saveCheckSheetShownParts,
 } from "./services/checkSheetService";
 import {
   listTransferRows,
@@ -632,6 +634,13 @@ function registerIpcHandlers(): void {
       return map;
     },
   );
+  ipcMain.handle(IPC.checkSheetShownPartsGet, () =>
+    getCheckSheetShownParts(getDatabase()),
+  );
+  ipcMain.handle(IPC.checkSheetShownPartsSave, (_event, partIds: number[]) => {
+    saveCheckSheetShownParts(getDatabase(), partIds);
+    return partIds;
+  });
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
     saveDeductionLimit(getDatabase(), limit),

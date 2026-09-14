@@ -42,6 +42,8 @@ export default function CheckSheetPage({
   const [message, setMessage] = useState("");
   /** 列ごとに計上する部位番号（管理用部位の番号 → "10-19" など） */
   const [partMap, setPartMap] = useState<Record<string, string>>({});
+  /** 表に出す列（✔を付けた管理用部位の番号）。null は未設定＝全部に✔ */
+  const [shownParts, setShownParts] = useState<number[] | null>(null);
 
   const reload = useCallback(
     async (runId?: number) => {
@@ -56,6 +58,7 @@ export default function CheckSheetPage({
       const masters = await window.sekisan.listBasicMasters(project.id);
       setAggregationParts(masters.aggregationParts);
       setPartMap(await window.sekisan.getCheckSheetPartMap());
+      setShownParts(await window.sekisan.getCheckSheetShownParts());
       await reload();
     })();
   }, [reload]);
@@ -67,10 +70,22 @@ export default function CheckSheetPage({
     return found.includes("仕上") ? found : ["仕上", ...found];
   }, [view.items]);
 
+  /** ✔を付けた列。未設定なら全部に✔が付いている扱い */
+  const checkedParts = useMemo(
+    () => shownParts ?? aggregationParts.map((part) => part.id),
+    [aggregationParts, shownParts],
+  );
+
   const sheet = useMemo(
     () =>
-      buildCheckSheet(view.items, aggregationParts, materialCategory, partMap),
-    [aggregationParts, materialCategory, partMap, view.items],
+      buildCheckSheet(
+        view.items,
+        aggregationParts,
+        materialCategory,
+        partMap,
+        checkedParts,
+      ),
+    [aggregationParts, checkedParts, materialCategory, partMap, view.items],
   );
 
   /** 今どの部位番号がどの列に入るか（表の下に出す説明） */
@@ -86,6 +101,17 @@ export default function CheckSheetPage({
     await window.sekisan.saveCheckSheetPartMap(next);
     setMessage(
       "計上する部位番号を保存しました（集計をし直すと部位別入力表のチェック列にも従います）",
+    );
+  };
+
+  const toggleShown = async (id: number, on: boolean): Promise<void> => {
+    const next = on
+      ? [...checkedParts, id]
+      : checkedParts.filter((each) => each !== id);
+    setShownParts(next);
+    await window.sekisan.saveCheckSheetShownParts(next);
+    setMessage(
+      "表に出す部位を保存しました（Excelへのコピーも✔を付けた列だけです）",
     );
   };
 
@@ -194,10 +220,12 @@ export default function CheckSheetPage({
       <p className="note">
         明細の「部位番号」でどの列に入るかが決まります。いずれの列にも当てはまらないときは、明細の部位名に列の名前（床・壁など）が含まれていればその列に入ります。
         番号は「10-19」のような範囲や「10,12-15」のような並べ方で入れられます（空にするともとの決まり…番号の十の位で分ける…に戻ります）。
+        左端の✔を付けた部位だけを上の表に出します（Excelへのコピーも同じです）。✔を付けた部位は、明細が1件も無くても空欄の列として出ます。
       </p>
       <table className="parts check-sheet part-rules">
         <thead>
           <tr>
+            <th title="✔を付けた部位を表に出します">表示</th>
             <th>番号</th>
             <th>列（管理用部位）</th>
             <th>計上する部位番号</th>
@@ -207,6 +235,13 @@ export default function CheckSheetPage({
         <tbody>
           {partRules.map((rule) => (
             <tr key={rule.id}>
+              <td className="flag">
+                <input
+                  type="checkbox"
+                  checked={checkedParts.includes(rule.id)}
+                  onChange={(e) => void toggleShown(rule.id, e.target.checked)}
+                />
+              </td>
               <td className="number">{rule.id}</td>
               <td>{rule.name}</td>
               <td>

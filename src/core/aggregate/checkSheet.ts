@@ -138,6 +138,8 @@ export function buildCheckSheet(
   aggregationParts: readonly CheckSheetPart[],
   materialCategory: string,
   partMap: CheckSheetPartMap = {},
+  /** 出す列（管理用部位の番号）。渡した列は明細0件でも空欄で出す。省略時は使われた列だけ出す */
+  onlyPartIds?: readonly number[],
 ): CheckSheet {
   const targets = items.filter(
     (item) => item.materialCategory === materialCategory,
@@ -159,7 +161,10 @@ export function buildCheckSheet(
     column.set(item.name, (column.get(item.name) ?? 0) + item.quantity);
   });
 
-  const parts = aggregationParts.filter((part) => usedPartIds.has(part.id));
+  const parts =
+    onlyPartIds === undefined
+      ? aggregationParts.filter((part) => usedPartIds.has(part.id))
+      : aggregationParts.filter((part) => onlyPartIds.includes(part.id));
 
   return {
     materialCategory,

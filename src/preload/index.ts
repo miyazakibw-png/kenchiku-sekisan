@@ -355,6 +355,11 @@ const api = {
     map: Record<string, string>,
   ): Promise<Record<string, string>> =>
     ipcRenderer.invoke(IPC.checkSheetPartMapSave, map),
+  /** チェック表に出す列（管理用部位の番号）。未設定なら null＝使われた列だけ出す */
+  getCheckSheetShownParts: (): Promise<number[] | null> =>
+    ipcRenderer.invoke(IPC.checkSheetShownPartsGet),
+  saveCheckSheetShownParts: (partIds: number[]): Promise<number[]> =>
+    ipcRenderer.invoke(IPC.checkSheetShownPartsSave, partIds),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),

@@ -38,3 +38,39 @@ export function saveCheckSheetPartMap(
     .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: json } })
     .run();
 }
+
+/**
+ * チェック表に出す列（管理用部位の番号）。
+ * 未設定（null）なら従来どおり「使われた列だけ出す」。
+ * 全物件共通で app_settings に保存する（キー checkSheetShownParts）。
+ */
+const SHOWN_PARTS_KEY = "checkSheetShownParts";
+
+export function getCheckSheetShownParts(db: AppDatabase): number[] | null {
+  const row = db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SHOWN_PARTS_KEY))
+    .get();
+  if (!row) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.valueJson);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((each): each is number => typeof each === "number");
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCheckSheetShownParts(
+  db: AppDatabase,
+  partIds: number[],
+): void {
+  const json = JSON.stringify(partIds);
+  db.insert(appSettings)
+    .values({ key: SHOWN_PARTS_KEY, valueJson: json })
+    .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: json } })
+    .run();
+}
