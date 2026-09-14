@@ -6,6 +6,7 @@ import type {
   ProjectSummary,
 } from "@shared/types";
 import {
+  adjacencyVariables,
   BEAM_MARK_COUNT,
   calcBeamRow,
   calcColumnRow,
@@ -24,6 +25,12 @@ import {
   type FireproofManageRow,
   type FireproofSheetKind,
 } from "../../../../core/fireproof/fireproofEstimate";
+import {
+  evaluateCalcSheet,
+  normalizeSets,
+  type CalcSet,
+} from "../../../../core/room/calcSheet";
+import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { findBeamSize } from "../../../../core/fireproof/fireproofEstimate";
 import {
   normalizeFloorList,
@@ -84,9 +91,12 @@ const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70, 44, 44, 44];
 /** 梁型入力表（階〜床取合m＋✔欄4列）の既定の幅 */
 const BEAM_WIDTHS = [...COLUMN_WIDTHS, 44];
 
+/** 柱入力表と梁型入力表（表のある計算書）の種類 */
+type FireproofTableKind = "column" | "beam";
+
 /** 柱入力表と梁型入力表の違い（あとは全部同じ） */
 const SHEET_KIND: Record<
-  FireproofSheetKind,
+  FireproofTableKind,
   {
     title: string;
     /** 鉄骨リストのどちらを見るか（柱リスト／梁リスト） */
@@ -125,6 +135,13 @@ const SHEET_KIND: Record<
   },
 };
 
+/** 計算書の欄で選べる種類（今後増やせるようにここに並べる） */
+const CALC_TYPE_OPTIONS: { kind: FireproofSheetKind; title: string }[] = [
+  { kind: "column", title: SHEET_KIND.column.title },
+  { kind: "beam", title: SHEET_KIND.beam.title },
+  { kind: "general", title: "汎用計算書" },
+];
+
 /** 表の幅＝列幅の合計（画面いっぱいに広げず、列を小さくできるようにする） */
 function tableStyle(widths: number[]): React.CSSProperties {
   const total = widths.reduce((sum, each) => sum + each, 0);
@@ -136,7 +153,7 @@ function sizeHint(
   list: FireproofFloorList,
   floor: string,
   symbol: string,
-  kind: FireproofSheetKind = "column",
+  kind: FireproofTableKind = "column",
 ): string {
   if (symbol.trim() === "") return "";
   const member = list.members.find(
@@ -301,6 +318,7 @@ export default function FireproofEstimatePage({
         ...row.beamSheet,
         rows: row.beamSheet.rows.map((each) => ({ ...each })),
       },
+      generalSheet: normalizeSets(row.generalSheet),
     }));
     if (copied.length === 0) return;
     setClipboard(copied);
@@ -334,6 +352,7 @@ export default function FireproofEstimatePage({
           id: newBeamRow().id,
         })),
       },
+      generalSheet: normalizeSets(row.generalSheet),
     }));
     const next = [...rows];
     if (mode === "overwrite") next.splice(start, fresh.length, ...fresh);
@@ -488,6 +507,25 @@ export default function FireproofEstimatePage({
   if (opened !== null && rows[opened.index]) {
     const index = opened.index;
     const kind = opened.kind;
+    if (kind === "general") {
+      return (
+        <GeneralSheetView
+          project={project}
+          row={rows[index]}
+          part1={inheritedPart1[index] ?? ""}
+          columnsList={columnsList}
+          beamsList={beamsList}
+          options={options}
+          detailCell={(key, className) => detailInput(index, key, className)}
+          onChange={(next) => change(index, next)}
+          onBack={() => {
+            setOpened(null);
+            void save(true);
+          }}
+          onMessage={setMessage}
+        />
+      );
+    }
     return (
       <ColumnSheetView
         project={project}
@@ -830,13 +868,11 @@ export default function FireproofEstimatePage({
                       )
                     }
                   >
-                    {(Object.keys(SHEET_KIND) as FireproofSheetKind[]).map(
-                      (key) => (
-                        <option key={key} value={key}>
-                          {SHEET_KIND[key].title}
-                        </option>
-                      ),
-                    )}
+                    {CALC_TYPE_OPTIONS.map((each) => (
+                      <option key={each.kind} value={each.kind}>
+                        {each.title}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td className="open">
@@ -875,9 +911,11 @@ export default function FireproofEstimatePage({
       </div>
       <p className="hint">
         1行が1明細です。部位1は空欄なら入力のある上の行を引き継ぎます（部位Ⅱ別仕訳・部位Ⅲはありません）。
-        倍率は未入力なら1です。「計算書」の欄で種類（柱入力表・梁型入力表）を選んで「📐
+        倍率は未入力なら1です。「計算書」の欄で種類（柱入力表・梁型入力表・汎用計算書）を選んで「📐
         開く」を押すと、先頭行に同じ明細が出て、どちらで直しても両方に反映します。
         数量はその行で選んだ計算書の必要数㎡の合計×倍率です（もう片方の入力は残りますが数量には入りません）。
+        汎用計算書は部位別入力表と同じもので、計算式に
+        WA・WB・WC（壁取合Ａ・Ｂ・Ｃの合計）、SA・SB・SC・SD（床取合Ａ・Ｂ・Ｃ・Ｄの合計）をはめ込めます（数量はその計算書の合計×倍率）。
       </p>
     </div>
   );
@@ -897,7 +935,7 @@ function ColumnSheetView({
   detailCell,
 }: {
   project: ProjectSummary;
-  kind: FireproofSheetKind;
+  kind: FireproofTableKind;
   row: FireproofManageRow;
   part1: string;
   list: FireproofFloorList;
@@ -929,10 +967,6 @@ function ColumnSheetView({
   const findSize = kind === "beam" ? findBeamSize : findColumnSize;
   const newRow = kind === "beam" ? newBeamRow : newColumnRow;
 
-  const { widths: headWidths, startResize: startHeadResize } = useColumnWidths(
-    "fireproof-head-detail-cols",
-    HEAD_DETAIL_WIDTHS,
-  );
   const { widths: columnWidths, startResize: startColumnResize } =
     useColumnWidths(config.storageKey, config.widths);
   const start = Math.min(selected, selectedEnd);
@@ -1078,59 +1112,7 @@ function ColumnSheetView({
       </div>
 
       {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
-      <table
-        className="grid fireproof-manage head"
-        style={tableStyle(headWidths)}
-      >
-        <colgroup>
-          {HEAD_DETAIL_WIDTHS.map((_, index) => (
-            <col key={index} style={{ width: `${headWidths[index]}px` }} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr>
-            {(
-              [
-                ["区分", "material"],
-                ["科目", "id"],
-                ["部位ID", "id"],
-                ["名称ID", "id"],
-                ["部位", "part"],
-                ["名称", "name"],
-                ["摘要（下段）", "desc"],
-                ["摘要（上段）", "desc"],
-                ["単位", "unit"],
-                ["備考（下段）", "note"],
-                ["備考（上段）", "note"],
-              ] as const
-            ).map(([label, cls], index) => (
-              <th key={label} className={cls}>
-                {label}
-                <span
-                  className="col-resize"
-                  title="ドラッグで列幅を変えられます"
-                  onMouseDown={(e) => startHeadResize(index, e)}
-                />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="material">{detailCell("materialCategory")}</td>
-            <td className="id">{detailCell("subjectId")}</td>
-            <td className="id">{detailCell("partNumber")}</td>
-            <td className="id">{detailCell("detailNumber")}</td>
-            <td className="part">{detailCell("partName")}</td>
-            <td className="name">{detailCell("name")}</td>
-            <td className="desc">{detailCell("descriptionLower")}</td>
-            <td className="desc">{detailCell("descriptionUpper")}</td>
-            <td className="unit">{detailCell("unit")}</td>
-            <td className="note">{detailCell("remarksLower")}</td>
-            <td className="note">{detailCell("remarksUpper")}</td>
-          </tr>
-        </tbody>
-      </table>
+      <HeadDetailTable detailCell={detailCell} />
 
       <div className="fireproof-thickness">
         <span>耐火被覆厚み→</span>
@@ -1443,6 +1425,189 @@ function ColumnSheetView({
           ? "（4:0、3:2、2:1、A3:0、H4:0、H3:2、H2:1、HA3:0）"
           : "（4面（H4）は0、それ以外は2）"}
         です。
+      </p>
+    </div>
+  );
+}
+
+/** 計算書先頭の明細行（管理表と同じ明細。どちらで直しても両方に反映） */
+function HeadDetailTable({
+  detailCell,
+}: {
+  detailCell: (
+    key: keyof FireproofManageDetail,
+    className?: string,
+  ) => JSX.Element;
+}): JSX.Element {
+  const { widths, startResize } = useColumnWidths(
+    "fireproof-head-detail-cols",
+    HEAD_DETAIL_WIDTHS,
+  );
+  return (
+    <table className="grid fireproof-manage head" style={tableStyle(widths)}>
+      <colgroup>
+        {HEAD_DETAIL_WIDTHS.map((_, index) => (
+          <col key={index} style={{ width: `${widths[index]}px` }} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          {(
+            [
+              ["区分", "material"],
+              ["科目", "id"],
+              ["部位ID", "id"],
+              ["名称ID", "id"],
+              ["部位", "part"],
+              ["名称", "name"],
+              ["摘要（下段）", "desc"],
+              ["摘要（上段）", "desc"],
+              ["単位", "unit"],
+              ["備考（下段）", "note"],
+              ["備考（上段）", "note"],
+            ] as const
+          ).map(([label, cls], index) => (
+            <th key={label} className={cls}>
+              {label}
+              <span
+                className="col-resize"
+                title="ドラッグで列幅を変えられます"
+                onMouseDown={(e) => startResize(index, e)}
+              />
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td className="material">{detailCell("materialCategory")}</td>
+          <td className="id">{detailCell("subjectId")}</td>
+          <td className="id">{detailCell("partNumber")}</td>
+          <td className="id">{detailCell("detailNumber")}</td>
+          <td className="part">{detailCell("partName")}</td>
+          <td className="name">{detailCell("name")}</td>
+          <td className="desc">{detailCell("descriptionLower")}</td>
+          <td className="desc">{detailCell("descriptionUpper")}</td>
+          <td className="unit">{detailCell("unit")}</td>
+          <td className="note">{detailCell("remarksLower")}</td>
+          <td className="note">{detailCell("remarksUpper")}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** 汎用計算書（部位別入力表と同じもの。WA〜WC・SA〜SDで取合の合計を拾える） */
+function GeneralSheetView({
+  project,
+  row,
+  part1,
+  columnsList,
+  beamsList,
+  options,
+  onChange,
+  onBack,
+  onMessage,
+  detailCell,
+}: {
+  project: ProjectSummary;
+  row: FireproofManageRow;
+  part1: string;
+  columnsList: FireproofFloorList;
+  beamsList: FireproofFloorList;
+  options: MasterOptions;
+  onChange: (patch: Partial<FireproofManageRow>) => void;
+  onBack: () => void;
+  onMessage: (text: string) => void;
+  detailCell: (
+    key: keyof FireproofManageDetail,
+    className?: string,
+  ) => JSX.Element;
+}): JSX.Element {
+  const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
+  const [jumpTick, setJumpTick] = useState(0);
+  const [warnedKey, setWarnedKey] = useState("");
+  /** 取合記号（WA〜WC・SA〜SD）にはめ込む数量＝この行の柱入力表・梁型入力表の欄ごとの合計 */
+  const variables = useMemo(
+    () => adjacencyVariables(row, columnsList, beamsList),
+    [beamsList, columnsList, row],
+  );
+  const result = useMemo(
+    () => evaluateCalcSheet(row.generalSheet, variables),
+    [row.generalSheet, variables],
+  );
+
+  const closePage = (): void => {
+    const errorKey = result.errors
+      .map((error) => `${error.lineId}:${error.message}`)
+      .join("|");
+    if (result.errors.length > 0 && errorKey !== warnedKey) {
+      const first = result.errors[0];
+      const set = row.generalSheet.find((each) => each.id === first.setId);
+      const found = set?.lines.findIndex((line) => line.id === first.lineId);
+      const index = found === undefined || found < 0 ? 0 : found;
+      setCalcFocus({
+        setId: first.setId,
+        area:
+          set?.lines[index] && set.lines[index].formulaA.trim() === ""
+            ? "formulaB"
+            : "formulaA",
+        index,
+      });
+      setJumpTick((tick) => tick + 1);
+      setWarnedKey(errorKey);
+      onMessage(
+        `計算式の誤りが${result.errors.length}件あります（${first.message}）。誤りの計算式へカーソルを移しました。直さずに閉じるときは、もう一度押してください`,
+      );
+      return;
+    }
+    onBack();
+  };
+
+  return (
+    <div className="estimate-page fireproof-estimate-page">
+      <div className="toolbar">
+        <button type="button" onClick={closePage}>
+          ← 入力管理表へ
+        </button>
+        <h2>汎用計算書</h2>
+        <span className="project">
+          {project.managementNo} {project.name}
+          {part1 ? `　${part1}` : ""}
+        </span>
+        <span className="adjacency-symbols">
+          {(["WA", "WB", "WC", "SA", "SB", "SC", "SD"] as const).map(
+            (symbol) => (
+              <span className="sum" key={symbol}>
+                {symbol} <b>{formatNumber(variables[symbol] ?? 0)}</b>
+              </span>
+            ),
+          )}
+        </span>
+      </div>
+
+      {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
+      <HeadDetailTable detailCell={detailCell} />
+
+      <RoomCalcSheet
+        sets={row.generalSheet}
+        onChange={(sets: CalcSet[]) => onChange({ generalSheet: sets })}
+        variables={variables}
+        options={options}
+        projectId={project.id}
+        focus={calcFocus}
+        onFocus={setCalcFocus}
+        jumpTick={jumpTick}
+        result={result}
+        onMessage={onMessage}
+        hasUpper={false}
+        windowTitle={`汎用計算書　${project.managementNo}`}
+      />
+
+      <p className="hint">
+        汎用計算書は部位別入力表のものと同じです。計算式には数字のほか、WA・WB・WC（この行の柱入力表の壁取合Ａ・Ｂ・Ｃの合計）、
+        SA・SB・SC・SD（梁型入力表の床取合Ａ・Ｂ・Ｃ・Ｄの合計）、B1〜B100（他セットの累計）がはめ込めます。
+        数量（自動）にはこの計算書の合計×倍率が入ります。
       </p>
     </div>
   );

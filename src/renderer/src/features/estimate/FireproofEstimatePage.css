@@ -119,6 +119,23 @@
   text-align: right;
 }
 
+/* 汎用計算書の記号（WA〜WC・SA〜SD）と合計数量の帯 */
+.fireproof-estimate-page .toolbar .adjacency-symbols {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.fireproof-estimate-page .toolbar .adjacency-symbols .sum b {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
+  background: #fde3c8;
+  padding: 0 4px;
+}
+
 /* 厚みが未入力のときの案内 */
 .fireproof-estimate-page .fireproof-thickness .thickness-note {
   color: #b2452b;

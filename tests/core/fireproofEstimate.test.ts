@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjacencyVariables,
   autoSectionFormula,
   BEAM_MARK_COUNT,
   beamSheetTotals,
@@ -28,6 +29,7 @@ import {
   newMember,
   type FireproofFloorList,
 } from "../../src/core/fireproof/fireproofList";
+import { calcLine, calcSet } from "../../src/core/room/calcSheet";
 
 /** 1階だけ・柱C1が□250*250 のリスト */
 function list(): FireproofFloorList {
@@ -172,6 +174,40 @@ describe("耐火被覆・塗装入力表", () => {
     ).toBeNull();
     // 梁型入力表を選んだ行は柱入力表の分を数量に入れない（入力は残る）
     expect(manageRowQuantity({ ...row, calcType: "beam" }, list())).toBeNull();
+  });
+
+  it("汎用計算書はWA〜WC・SA〜SDで取合の合計を拾い、合計×倍率を数量にする", () => {
+    const row: FireproofManageRow = {
+      ...newManageRow(),
+      calcType: "general",
+      multiplier: 2,
+      sheet: {
+        thickness: 25,
+        wallLabels: defaultWallLabels(),
+        rows: [
+          // 壁取合m 6.84 をＡとＣに振る
+          {
+            ...columnRow({ count: 4, mark: "3", lengthFormula: "3.42" }),
+            wallChecks: [true, false, true],
+          },
+        ],
+      },
+      generalSheet: [
+        {
+          ...calcSet(1),
+          lines: [calcLine({ formulaA: "WA*2" }), calcLine({ formulaA: "WC" })],
+        },
+      ],
+    };
+    // WA＝6.84、WC＝6.84 → (6.84*2+6.84)*2 ＝ 41.04
+    expect(manageRowQuantity(row, list())).toBeCloseTo(41.04, 6);
+    // 式が無ければ数量なし
+    expect(
+      manageRowQuantity({ ...newManageRow(), calcType: "general" }, list()),
+    ).toBeNull();
+    // SA〜SDは梁型入力表の床取合の合計（この行は空なので0）
+    expect(adjacencyVariables(row, list()).SA).toBe(0);
+    expect(adjacencyVariables(row, list()).WA).toBeCloseTo(6.84, 6);
   });
 
   it("階が空欄の行は上の行と同じ階で拾う", () => {

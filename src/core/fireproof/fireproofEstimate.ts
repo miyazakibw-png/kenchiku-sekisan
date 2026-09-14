@@ -5,7 +5,12 @@
  */
 
 import type { AggregateEntry } from "../aggregate/aggregate";
-import { displayedValue } from "../room/calcSheet";
+import {
+  displayedValue,
+  evaluateCalcSheet,
+  normalizeSets,
+  type CalcSet,
+} from "../room/calcSheet";
 import { evaluateFormula } from "../formula/evaluate";
 import {
   resolveSize,
@@ -120,13 +125,15 @@ export interface FireproofManageRow {
   scope: FireproofScope;
   /** 倍率（未入力は1） */
   multiplier: number | null;
-  /** 開く計算書の種類（柱入力表／梁型入力表。あとで増やせる） */
+  /** 開く計算書の種類（柱入力表／梁型入力表／汎用計算書。あとで増やせる） */
   calcType: FireproofSheetKind;
   detail: FireproofManageDetail;
   /** 柱入力表 */
   sheet: FireproofColumnSheet;
   /** 梁型入力表（床取合はＡ〜Ｄの4欄） */
   beamSheet: FireproofColumnSheet;
+  /** 汎用計算書（部屋計算書下段と同じセット明細。WA〜WC・SA〜SDの記号で取合合計を拾える） */
+  generalSheet: CalcSet[];
 }
 
 export function emptyManageDetail(): FireproofManageDetail {
@@ -181,6 +188,7 @@ export function newManageRow(): FireproofManageRow {
       wallLabels: defaultWallLabels(BEAM_MARK_COUNT),
       rows: [],
     },
+    generalSheet: [],
   };
 }
 
@@ -232,10 +240,17 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
         ? row.multiplier
         : null,
     calcType:
-      row?.calcType === "beam" ? ("beam" as const) : ("column" as const),
+      row?.calcType === "beam"
+        ? ("beam" as const)
+        : row?.calcType === "general"
+          ? ("general" as const)
+          : ("column" as const),
     detail: { ...emptyManageDetail(), ...(row?.detail ?? {}) },
     sheet: normalizeSheet(row?.sheet, WALL_MARK_COUNT),
     beamSheet: normalizeSheet(row?.beamSheet, BEAM_MARK_COUNT),
+    generalSheet: normalizeSets(
+      Array.isArray(row?.generalSheet) ? (row.generalSheet as CalcSet[]) : [],
+    ),
   }));
 }
 
@@ -366,8 +381,8 @@ export interface FireproofColumnCalc {
   wall: number | null;
 }
 
-/** 入力表の種類（柱＝壁取合／梁型＝床取合） */
-export type FireproofSheetKind = "column" | "beam";
+/** 入力表の種類（柱＝壁取合／梁型＝床取合／汎用計算書） */
+export type FireproofSheetKind = "column" | "beam" | "general";
 
 /** 取合（面数）ごとの壁取合の本数（柱。4:0、3:2、2:2、1:2。記号は面数に読み替える） */
 export function wallFactor(mark: string): number {
@@ -582,6 +597,25 @@ export function entriesFromFireproofSheet(
   return entries;
 }
 
+/** 壁取合・床取合の欄ごとの合計を記号で呼べるようにする（WA〜WC＝壁取合Ａ〜Ｃ、SA〜SD＝床取合Ａ〜Ｄ） */
+export function adjacencyVariables(
+  row: FireproofManageRow,
+  columnsList: FireproofFloorList,
+  beamsList: FireproofFloorList = { floors: [], members: [] },
+): Record<string, number> {
+  const wall = columnSheetTotals(row.sheet, columnsList).wallMarks;
+  const slab = beamSheetTotals(row.beamSheet, beamsList).wallMarks;
+  return {
+    WA: wall[0] ?? 0,
+    WB: wall[1] ?? 0,
+    WC: wall[2] ?? 0,
+    SA: slab[0] ?? 0,
+    SB: slab[1] ?? 0,
+    SC: slab[2] ?? 0,
+    SD: slab[3] ?? 0,
+  };
+}
+
 /** 管理表の行の数量（その行で選んだ計算書の必要数合計×倍率。計算が無ければnull） */
 export function manageRowQuantity(
   row: FireproofManageRow,
@@ -589,6 +623,22 @@ export function manageRowQuantity(
   beamsList: FireproofFloorList = { floors: [], members: [] },
 ): number | null {
   // 選んだ計算書の分だけ数量にする（もう片方の入力は残るが数量には入れない）
+  if (row.calcType === "general") {
+    // 汎用計算書はセット明細の合計を数量にする（WA〜WC・SA〜SD・B1〜の記号が使える）
+    const result = evaluateCalcSheet(
+      row.generalSheet,
+      adjacencyVariables(row, columnsList, beamsList),
+    );
+    const hasValue = [...result.lines.values()].some(
+      (line) => line.value !== null,
+    );
+    if (!hasValue) return null;
+    const total = [...result.setTotals.values()].reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    return total * (row.multiplier ?? 1);
+  }
   const needed =
     row.calcType === "beam"
       ? beamSheetTotals(row.beamSheet, beamsList).needed
