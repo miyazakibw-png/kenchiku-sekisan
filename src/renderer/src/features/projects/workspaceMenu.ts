@@ -3,7 +3,7 @@ export interface WorkspaceMenuItem {
   key: string;
   label: string;
   /** 画面上の区分け */
-  group: "master" | "input" | "aggregate" | "output";
+  group: "master" | "fireproof" | "input" | "aggregate" | "output";
   note: string;
   ready: boolean;
 }
@@ -35,6 +35,20 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: "セット明細表示",
     group: "master",
     note: "この物件専用の仕上明細セット。計算書でまとめて呼び出せる",
+    ready: true,
+  },
+  {
+    key: "fireproofFloor",
+    label: "階別リスト",
+    group: "fireproof",
+    note: "耐火被覆・鉄骨塗装：階ごとの柱リスト・梁リスト（階数を入れると行ができます）",
+    ready: true,
+  },
+  {
+    key: "fireproofCommon",
+    label: "階共通リスト",
+    group: "fireproof",
+    note: "耐火被覆・鉄骨塗装：階で分けない部材（Ｐ1・Ｂ1…）を1つの表に書く",
     ready: true,
   },
   {
@@ -139,7 +153,8 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
 
 export const MENU_GROUP_LABEL: Record<WorkspaceMenuItem["group"], string> = {
   master: "物件専用マスター",
-  input: "積算入力",
+  fireproof: "耐火被覆・塗装積算入力",
+  input: "仕上積算入力",
   aggregate: "集計",
   output: "内訳書・出力",
 };

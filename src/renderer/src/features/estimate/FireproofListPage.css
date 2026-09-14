@@ -1,0 +1,139 @@
+/* 耐火被覆・塗装積算入力のリスト（柱・梁・階共通）：表ごとに別々に動かす */
+
+.fireproof-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fireproof-page .toolbar .floor-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fireproof-page .toolbar .floor-count input {
+  width: 4ch;
+  text-align: right;
+}
+
+.fireproof-page .toolbar .hint,
+.fireproof-section .hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.fireproof-section {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 120px;
+  border-top: 2px solid #1f4e79;
+}
+
+.fireproof-section .section-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f1f5f9;
+}
+
+.fireproof-section .section-bar h3 {
+  margin: 0 8px 0 0;
+  font-size: 13px;
+  color: #1f4e79;
+}
+
+.fireproof-section .section-scroll {
+  flex: 1 1 0;
+  overflow: auto;
+  min-height: 60px;
+}
+
+.fireproof-section .section-scroll.common {
+  max-height: none;
+}
+
+.fireproof-page table.fireproof {
+  border-collapse: collapse;
+  width: auto;
+}
+
+.fireproof-page table.fireproof th,
+.fireproof-page table.fireproof td {
+  border: var(--line-thin);
+  padding: 1px 2px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #fff;
+}
+
+.fireproof-page table.fireproof th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.fireproof-page table.fireproof th.floor,
+.fireproof-page table.fireproof th.ops {
+  left: 0;
+}
+
+.fireproof-page table.fireproof td.floor,
+.fireproof-page table.fireproof td.ops {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #f8fafc;
+}
+
+.fireproof-page table.fireproof td.ops {
+  left: 6ch;
+}
+
+.fireproof-page table.fireproof th.selected,
+.fireproof-page table.fireproof td.selected,
+.fireproof-page table.fireproof tr.selected td {
+  background: #dbeafe;
+}
+
+.fireproof-page table.fireproof .symbol {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fireproof-page table.fireproof input,
+.fireproof-page table.fireproof select {
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  background: transparent;
+}
+
+.fireproof-page table.fireproof td.size input {
+  min-width: 11ch;
+  text-align: right;
+}
+
+.fireproof-page table.fireproof th.symbol input {
+  min-width: 8ch;
+  color: #fff;
+  background: transparent;
+}
+
+.fireproof-page table.fireproof td.floor input {
+  width: 6ch;
+  text-align: center;
+}
+
+.fireproof-page table.fireproof .note {
+  margin: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}

@@ -130,6 +130,10 @@ import {
   saveFurnitureSheetList,
 } from "./services/furnitureSheetService";
 import { getPitSheet, savePitSheet } from "./services/pitSheetService";
+import {
+  getFireproofSheet,
+  saveFireproofSheet,
+} from "./services/fireproofService";
 import { getLineStyles, saveLineStyles } from "./services/lineStyleService";
 import {
   getCheckSheetPartMap,
@@ -196,6 +200,7 @@ import type {
   SaveMiscSheetRequest,
   SaveFurnitureSheetRequest,
   SavePitSheetRequest,
+  SaveFireproofSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SaveAggregateEditsRequest,
@@ -500,6 +505,14 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.pitSheetSave, (_event, request: SavePitSheetRequest) =>
     savePitSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.fireproofSheetGet, (_event, projectId: number) =>
+    getFireproofSheet(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.fireproofSheetSave,
+    (_event, request: SaveFireproofSheetRequest) =>
+      saveFireproofSheet(getDatabase(), request),
   );
   ipcMain.handle(IPC.transferRowsList, (_event, projectId: number) =>
     listTransferRows(getDatabase(), projectId),

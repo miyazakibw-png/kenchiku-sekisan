@@ -30,6 +30,7 @@ import MiscSheetPage from "../estimate/MiscSheetPage";
 import FurnitureSheetListPage from "../estimate/FurnitureSheetListPage";
 import FurnitureSheetPage from "../estimate/FurnitureSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
+import FireproofListPage from "../estimate/FireproofListPage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
 import AggregatePage from "../aggregate/AggregatePage";
@@ -385,6 +386,16 @@ export default function ProjectWorkspacePage({
     );
   }
 
+  if (openedMenu === "fireproofFloor" || openedMenu === "fireproofCommon") {
+    return (
+      <FireproofListPage
+        project={draft}
+        focus={openedMenu === "fireproofCommon" ? "common" : "floor"}
+        onBack={() => setOpenedMenu(null)}
+      />
+    );
+  }
+
   if (openedMenu === "transferInput") {
     return (
       <TransferSheetPage
@@ -547,24 +558,26 @@ export default function ProjectWorkspacePage({
       </div>
 
       <div className="workspace-menu">
-        {(["master", "input", "aggregate", "output"] as const).map((group) => (
-          <section key={group}>
-            <h3>{MENU_GROUP_LABEL[group]}</h3>
-            {WORKSPACE_MENU.filter((item) => item.group === group).map(
-              (item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={item.ready ? "menu-item" : "menu-item pending"}
-                  title={item.note}
-                  onClick={() => openMenu(item)}
-                >
-                  {item.label}
-                </button>
-              ),
-            )}
-          </section>
-        ))}
+        {(["master", "fireproof", "input", "aggregate", "output"] as const).map(
+          (group) => (
+            <section key={group}>
+              <h3>{MENU_GROUP_LABEL[group]}</h3>
+              {WORKSPACE_MENU.filter((item) => item.group === group).map(
+                (item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={item.ready ? "menu-item" : "menu-item pending"}
+                    title={item.note}
+                    onClick={() => openMenu(item)}
+                  >
+                    {item.label}
+                  </button>
+                ),
+              )}
+            </section>
+          ),
+        )}
       </div>
     </div>
   );

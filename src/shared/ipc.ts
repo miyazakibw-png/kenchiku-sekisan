@@ -49,6 +49,8 @@ export const IPC = {
   furnitureBaseSettingsSave: "furnitureSheet:baseSettingsSave",
   pitSheetGet: "pitSheet:get",
   pitSheetSave: "pitSheet:save",
+  fireproofSheetGet: "fireproofSheet:get",
+  fireproofSheetSave: "fireproofSheet:save",
   transferRowsList: "transferRows:list",
   transferRowsSave: "transferRows:save",
   aggregateRun: "aggregate:run",

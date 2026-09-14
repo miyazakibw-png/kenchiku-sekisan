@@ -450,6 +450,29 @@ export interface FurnitureSheetSummary {
   updatedAt: string;
 }
 
+/** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト。1工事に1つ） */
+export interface FireproofSheetRecord {
+  id: number;
+  projectId: number;
+  floorCount: number;
+  /** 柱リスト（FireproofFloorList） */
+  columnsJson: string;
+  /** 梁リスト（FireproofFloorList） */
+  beamsJson: string;
+  /** 階共通リスト（FireproofCommonRowの配列） */
+  commonJson: string;
+  note: string;
+}
+
+export interface SaveFireproofSheetRequest {
+  id: number;
+  floorCount: number;
+  columnsJson: string;
+  beamsJson: string;
+  commonJson: string;
+  note: string;
+}
+
 /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
 export interface PitSheet {
   id: number;

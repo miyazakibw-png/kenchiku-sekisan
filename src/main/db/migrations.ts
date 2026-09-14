@@ -974,4 +974,18 @@ UPDATE project_fittings SET symbol = trim(symbol, ' 　	') WHERE symbol <> trim(
   `
 ALTER TABLE project_fittings ADD COLUMN reinforcement_formula TEXT NOT NULL DEFAULT '';
 `,
+  // 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト）
+  `
+CREATE TABLE project_fireproof_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  floor_count INTEGER NOT NULL DEFAULT 0,
+  columns_json TEXT NOT NULL DEFAULT '{}',
+  beams_json TEXT NOT NULL DEFAULT '{}',
+  common_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_fireproof_sheet_project ON project_fireproof_sheets(project_id);
+`,
 ];

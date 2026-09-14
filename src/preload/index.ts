@@ -59,6 +59,8 @@ import type {
   SaveMiscSheetRequest,
   SaveFurnitureSheetRequest,
   SavePitSheetRequest,
+  FireproofSheetRecord,
+  SaveFireproofSheetRequest,
   RoomSheet,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -265,6 +267,13 @@ const api = {
     ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),
   savePitSheet: (request: SavePitSheetRequest): Promise<PitSheet> =>
     ipcRenderer.invoke(IPC.pitSheetSave, request),
+  /** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト） */
+  getFireproofSheet: (projectId: number): Promise<FireproofSheetRecord> =>
+    ipcRenderer.invoke(IPC.fireproofSheetGet, projectId),
+  saveFireproofSheet: (
+    request: SaveFireproofSheetRequest,
+  ): Promise<FireproofSheetRecord> =>
+    ipcRenderer.invoke(IPC.fireproofSheetSave, request),
   /** 転記入力表（集計書兼工事マスターへ直接計上する1明細入力） */
   listTransferRows: (projectId: number): Promise<TransferRow[]> =>
     ipcRenderer.invoke(IPC.transferRowsList, projectId),
