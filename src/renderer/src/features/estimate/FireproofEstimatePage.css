@@ -24,6 +24,8 @@
   font-size: 12px;
   white-space: nowrap;
   background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fireproof-estimate-page table.grid th {

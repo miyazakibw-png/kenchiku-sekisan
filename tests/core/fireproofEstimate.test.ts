@@ -3,6 +3,8 @@ import {
   autoSectionFormula,
   calcColumnRow,
   columnSheetTotals,
+  emptyManageDetail,
+  entriesFromFireproofSheet,
   findColumnSize,
   manageRowQuantity,
   newColumnRow,
@@ -41,14 +43,29 @@ describe("耐火被覆・塗装入力表", () => {
     expect(findColumnSize(list(), "1", "C9")).toBeNull();
   });
 
-  it("□型の断面必要計算式を自動で作る（Ｗ×取合＋厚み×(取合−1)）", () => {
-    expect(autoSectionFormula("box", 250, 3, 25)).toBe("0.25*3+0.025*2");
-    expect(autoSectionFormula("box", 250, 4, 25)).toBe("0.25*4+0.025*3");
-    expect(autoSectionFormula("box", 250, 2, 25)).toBe("0.25*2+0.025");
-    expect(autoSectionFormula("box", 250, 1, 25)).toBe("0.25*1");
-    // Ｈ形は取合対応表ができるまで自動で作らない
-    expect(autoSectionFormula("h", 250, 3, 25)).toBe("");
-    expect(autoSectionFormula("box", null, 3, 25)).toBe("");
+  it("□型の断面必要計算式を自動で作る（資料の図どおり・厚みは小数3桁）", () => {
+    expect(autoSectionFormula("box", 250, 250, 4, 25)).toBe(
+      "0.25*2+0.25*2+0.025*4",
+    );
+    expect(autoSectionFormula("box", 250, 250, 3, 25)).toBe(
+      "0.25*2+0.25+0.025*2",
+    );
+    expect(autoSectionFormula("box", 250, 250, 2, 25)).toBe("0.25+0.25+0.025");
+    expect(autoSectionFormula("box", 250, 250, 1, 25)).toBe("0.25");
+    expect(autoSectionFormula("box", null, 250, 3, 25)).toBe("");
+  });
+
+  it("Ｈ鋼の断面必要計算式を自動で作る（資料の図どおり）", () => {
+    expect(autoSectionFormula("h", 250, 125, 4, 25)).toBe(
+      "0.25*2+0.125*4+0.025*4",
+    );
+    expect(autoSectionFormula("h", 250, 125, 3, 25)).toBe(
+      "0.25*2+0.125*3+0.025*2",
+    );
+    expect(autoSectionFormula("h", 250, 125, 2, 25)).toBe(
+      "0.25+0.125+0.125/2*2+0.025",
+    );
+    expect(autoSectionFormula("h", 250, 125, 1, 25)).toBe("0.125");
   });
 
   it("壁取合の本数は取合ごとに決まる（4:0、3:2、2:2、1:2）", () => {
@@ -65,7 +82,7 @@ describe("耐火被覆・塗装入力表", () => {
       list(),
       25,
     );
-    expect(calc.sectionText).toBe("0.25*3+0.025*2");
+    expect(calc.sectionText).toBe("0.25*2+0.25+0.025*2");
     expect(calc.section).toBeCloseTo(0.8, 6);
     expect(calc.needed).toBeCloseTo(10.94, 2);
     expect(calc.wall).toBeCloseTo(6.84, 2);
@@ -99,8 +116,8 @@ describe("耐火被覆・塗装入力表", () => {
       },
     };
     const totals = columnSheetTotals(row.sheet, list());
-    // 4面の行は 0.25*4+0.025*3 ＝ 1.075 → 1.075*3.42 ＝ 3.6765
-    expect(totals.needed).toBeCloseTo(10.94 + 3.6765, 2);
+    // 4面の行は 0.25*2+0.25*2+0.025*4 ＝ 1.1 → 1.1*3.42 ＝ 3.762
+    expect(totals.needed).toBeCloseTo(10.94 + 3.762, 2);
     expect(totals.wall).toBeCloseTo(6.84, 2);
     expect(manageRowQuantity(row, list())).toBeCloseTo(
       (totals.needed ?? 0) * 2,
@@ -110,6 +127,31 @@ describe("耐火被覆・塗装入力表", () => {
     expect(
       manageRowQuantity({ ...newManageRow(), multiplier: null }, list()),
     ).toBeNull();
+  });
+
+  it("入力管理表の明細を集計に載せる（数量＝必要数㎡合計×倍率）", () => {
+    const rows: FireproofManageRow[] = [
+      {
+        ...newManageRow(),
+        part1: "1階",
+        multiplier: 2,
+        detail: { ...emptyManageDetail(), partName: "柱", name: "耐火被覆" },
+        sheet: {
+          thickness: 25,
+          rows: [columnRow({ count: 4, faces: 3, lengthFormula: "3.42" })],
+        },
+      },
+      // 部位名も名称も無い行は集計に載せない
+      { ...newManageRow(), part1: "" },
+    ];
+    const entries = entriesFromFireproofSheet(rows, list(), new Map());
+    expect(entries).toHaveLength(1);
+    expect(entries[0].sourceKind).toBe("fireproof");
+    expect(entries[0].traceId).toBe(`fireproof:${rows[0].id}`);
+    expect(entries[0].part1).toBe("1階");
+    expect(entries[0].name).toBe("耐火被覆");
+    // 10.94×2＝21.888 → 小数2桁表示で21.89
+    expect(entries[0].quantity).toBeCloseTo(21.89, 2);
   });
 
   it("空・古い保存でも入力管理表として読める", () => {

@@ -12,6 +12,7 @@ const SOURCE_KINDS: AggregateSourceKind[] = [
   "area",
   "misc",
   "furniture",
+  "fireproof",
   "transfer",
 ];
 
@@ -23,6 +24,7 @@ export const SOURCE_LABEL: Record<AggregateSourceKind, string> = {
   area: "面積計算書",
   misc: "部位別雑・金物入力表",
   furniture: "家具・設備入力表",
+  fireproof: "耐火被覆・塗装入力表",
   transfer: "転記入力表",
 };
 
@@ -41,6 +43,7 @@ export type SourceJump =
   | { kind: "calcSheet"; estimateRowId: number }
   | { kind: "misc"; rowId: string }
   | { kind: "furniture"; sheetId: number }
+  | { kind: "fireproof"; rowId: string }
   | { kind: "transfer" }
   | null;
 
@@ -64,6 +67,8 @@ export function sourceJumpOf(detail: {
         ? { kind: "furniture", sheetId }
         : null;
     }
+    case "fireproof":
+      return parts[1] ? { kind: "fireproof", rowId: parts[1] } : null;
     case "transfer":
       return { kind: "transfer" };
     default:

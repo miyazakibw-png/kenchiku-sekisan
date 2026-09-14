@@ -73,6 +73,12 @@ const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
 /** 柱入力表（階〜壁取合m）の既定の幅 */
 const COLUMN_WIDTHS = [36, 100, 80, 44, 44, 110, 200, 70, 70];
 
+/** 表の幅＝列幅の合計（画面いっぱいに広げず、列を小さくできるようにする） */
+function tableStyle(widths: number[]): React.CSSProperties {
+  const total = widths.reduce((sum, each) => sum + each, 0);
+  return { width: `${total}px`, tableLayout: "fixed" };
+}
+
 /** 記号の下に出す小さな案内（拾った寸法、または出ない理由） */
 function sizeHint(
   list: FireproofFloorList,
@@ -607,7 +613,10 @@ export default function FireproofEstimatePage({
       </div>
 
       <div className="section-scroll">
-        <table className="grid fireproof-manage">
+        <table
+          className="grid fireproof-manage"
+          style={tableStyle(manageWidths)}
+        >
           <colgroup>
             {MANAGE_WIDTHS.map((_, index) => (
               <col key={index} style={{ width: `${manageWidths[index]}px` }} />
@@ -944,7 +953,10 @@ function ColumnSheetView({
       </div>
 
       {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
-      <table className="grid fireproof-manage head">
+      <table
+        className="grid fireproof-manage head"
+        style={tableStyle(headWidths)}
+      >
         <colgroup>
           {HEAD_DETAIL_WIDTHS.map((_, index) => (
             <col key={index} style={{ width: `${headWidths[index]}px` }} />
@@ -1024,7 +1036,10 @@ function ColumnSheetView({
       </div>
 
       <div className="section-scroll">
-        <table className="grid fireproof-column">
+        <table
+          className="grid fireproof-column"
+          style={tableStyle(columnWidths)}
+        >
           <colgroup>
             {COLUMN_WIDTHS.map((_, index) => (
               <col key={index} style={{ width: `${columnWidths[index]}px` }} />
@@ -1193,7 +1208,10 @@ function ColumnSheetView({
       </div>
       <p className="hint">
         階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の下に拾った寸法（出ない理由）が出ます。
-        □型は「Ｗ×取合＋厚み×(取合−1)」の断面必要計算式を薄い字で自動表示します（そのまま計算に使います。欄に打つとその式が優先します）。
+        断面必要計算式は資料の図のとおり自動で薄く出します（□：4面
+        Ｗ*2+Ｄ*2+厚み*4／3面 Ｗ*2+Ｄ+厚み*2／2面 Ｗ+Ｄ+厚み／1面 Ｄ、Ｈ：4面
+        Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面
+        Ｄ。厚みは25mmなら0.025）。そのまま計算に使い、欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
         必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4のときは0）です。
       </p>

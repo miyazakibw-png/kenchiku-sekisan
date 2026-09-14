@@ -4,6 +4,8 @@
  * 数量は柱入力表の必要数㎡の合計×倍率で出る。
  */
 
+import type { AggregateEntry } from "../aggregate/aggregate";
+import { displayedValue } from "../room/calcSheet";
 import { evaluateFormula } from "../formula/evaluate";
 import {
   resolveSize,
@@ -177,25 +179,41 @@ export function findColumnSize(
   return resolveSize(member, list.floors, index, "column");
 }
 
+/** mmをmの文字にする（寸法は余りの0を消し、厚みは小数点3桁まで出す：25→0.025） */
+function meterText(mm: number): string {
+  return String(mm / 1000);
+}
+
+function thicknessText(mm: number): string {
+  return (mm / 1000).toFixed(3);
+}
+
 /**
- * 断面必要計算式を自動で作る（mm→mに直して書く）。
- * □型：「Ｗ×面数＋厚さ×(面数−1)」（例 0.25*3+0.025*2）。
- * 面数1のときは厚さ分を足さない（例 0.25）。Ｈ形は取合対応表ができるまで自動では作らない。
+ * 断面必要計算式を自動で作る（mm→mに直して書く）。式は資料の図のとおり。
+ * □（コラム・箱型）：4面 W*2+D*2+厚み*4、3面 W*2+D+厚み*2、2面 W+D+厚み、1面 D。
+ * Ｈ鉄：4面 W*2+D*4+厚み*4、3面 W*2+D*3+厚み*2、2面 W+D+D/2*2+厚み、1面 D。
  */
 export function autoSectionFormula(
   shape: SteelShape | "",
   width: number | null,
+  depth: number | null,
   faces: number | null,
   thicknessMm: number | null,
 ): string {
-  if (shape !== "box" || width === null || faces === null) return "";
+  if (width === null || depth === null || faces === null) return "";
   if (faces < 1 || faces > 4) return "";
-  const w = width / 1000;
-  const t = (thicknessMm ?? 0) / 1000;
-  const parts = [`${w}*${faces}`];
-  if (t > 0 && faces > 1)
-    parts.push(faces - 1 === 1 ? `${t}` : `${t}*${faces - 1}`);
-  return parts.join("+");
+  const w = meterText(width);
+  const d = meterText(depth);
+  const t = thicknessText(thicknessMm ?? 0);
+  if (faces === 1) return d;
+  if (shape === "h") {
+    if (faces === 4) return `${w}*2+${d}*4+${t}*4`;
+    if (faces === 3) return `${w}*2+${d}*3+${t}*2`;
+    return `${w}+${d}+${d}/2*2+${t}`;
+  }
+  if (faces === 4) return `${w}*2+${d}*2+${t}*4`;
+  if (faces === 3) return `${w}*2+${d}+${t}*2`;
+  return `${w}+${d}+${t}`;
 }
 
 /** 柱入力表1行の計算結果 */
@@ -227,6 +245,7 @@ export function calcColumnRow(
   const auto = autoSectionFormula(
     size?.shape ?? "",
     size?.first ?? null,
+    size?.second ?? size?.first ?? null,
     row.faces,
     thicknessMm,
   );
@@ -266,6 +285,57 @@ export function columnSheetTotals(
     }
   }
   return { needed: hasNeeded ? needed : null, wall: hasWall ? wall : null };
+}
+
+/**
+ * 集計詳細データ（合算前）を作る。1行＝1明細で、数量は必要数㎡の合計×倍率。
+ * 部位1は空欄なら上の行を引き継ぐ（部位Ⅱ別仕訳・部位Ⅲは無し）。
+ */
+export function entriesFromFireproofSheet(
+  rows: FireproofManageRow[],
+  list: FireproofFloorList,
+  part2Order: Map<string, number>,
+): AggregateEntry[] {
+  const entries: AggregateEntry[] = [];
+  let part1 = "";
+  rows.forEach((row) => {
+    if (row.part1.trim() !== "") part1 = row.part1;
+    const detail = row.detail;
+    if (detail.name.trim() === "" && detail.partName.trim() === "") return;
+    const quantity = manageRowQuantity(row, list) ?? 0;
+    if (!part2Order.has("")) part2Order.set("", part2Order.size);
+    entries.push({
+      traceId: `fireproof:${row.id}`,
+      sourceKind: "fireproof",
+      estimateRowId: null,
+      transferRowId: null,
+      part1,
+      part2: "",
+      part2Raw: "",
+      part2Split: false,
+      part2Order: part2Order.get("") ?? 0,
+      part3: "",
+      formwork: "",
+      multiplier: 1,
+      subjectId: detail.subjectId,
+      materialCategory: detail.materialCategory,
+      partNumber: detail.partNumber,
+      partName: detail.partName,
+      detailNumber: detail.detailNumber,
+      name: detail.name,
+      descriptionUpper: detail.descriptionUpper,
+      descriptionLower: detail.descriptionLower,
+      unit: detail.unit,
+      remarksUpper: detail.remarksUpper,
+      remarksLower: detail.remarksLower,
+      estimateDisplay: "",
+      coefficient: 1,
+      setTotal: quantity,
+      quantity: displayedValue(quantity),
+      sourceDetailId: null,
+    });
+  });
+  return entries;
 }
 
 /** 管理表の行の数量（柱入力表の必要数合計×倍率。計算書が無ければnull） */

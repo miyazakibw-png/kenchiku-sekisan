@@ -22,6 +22,7 @@ export type AggregateSourceKind =
   | "area"
   | "misc"
   | "furniture"
+  | "fireproof"
   | "transfer";
 
 /** 合算前の1件（集計詳細データの1行） */

@@ -221,6 +221,11 @@ export default function ProjectWorkspacePage({
       setOpenedMenu("furnitureInput");
       return;
     }
+    if (jump.kind === "fireproof") {
+      setBackToAggregate(from);
+      setOpenedMenu("fireproofEstimate");
+      return;
+    }
     if (jump.kind === "transfer") {
       setBackToAggregate(from);
       setOpenedMenu("transferInput");
@@ -398,7 +403,10 @@ export default function ProjectWorkspacePage({
       <FireproofEstimatePage
         project={draft}
         options={options}
-        onBack={() => setOpenedMenu(null)}
+        onBack={() => {
+          if (leaveSource()) return;
+          setOpenedMenu(null);
+        }}
       />
     );
   }

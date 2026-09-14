@@ -17,6 +17,7 @@ import {
   projectFrameSheets,
   projectGeneralSheets,
   projectMiscSheets,
+  projectFireproofSheets,
   projectFurnitureSheets,
   projectPitSheets,
   projectRoomSheets,
@@ -45,6 +46,11 @@ import {
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
+import {
+  entriesFromFireproofSheet,
+  normalizeManageRows,
+} from "../../core/fireproof/fireproofEstimate";
+import { normalizeFloorList } from "../../core/fireproof/fireproofList";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
 import { listFittings } from "./fittingService";
 import {
@@ -579,6 +585,7 @@ export function collectEntries(
 
   entries.push(...miscEntries(db, projectId, part2Order));
   entries.push(...furnitureEntries(db, projectId, part2Order));
+  entries.push(...fireproofEntries(db, projectId, part2Order));
   entries.push(...transferEntries(db, projectId, part2Order));
   return entries;
 }
@@ -604,6 +611,25 @@ function miscEntries(
     });
     return entriesFromMiscSheet({ columns, rows }, part2Order);
   });
+}
+
+/** 耐火被覆・塗装入力表（1行＝1明細。数量は柱入力表の必要数㎡合計×倍率） */
+function fireproofEntries(
+  db: AppDatabase,
+  projectId: number,
+  part2Order: Map<string, number>,
+): AggregateEntry[] {
+  const sheet = db
+    .select()
+    .from(projectFireproofSheets)
+    .where(eq(projectFireproofSheets.projectId, projectId))
+    .get();
+  if (!sheet) return [];
+  return entriesFromFireproofSheet(
+    normalizeManageRows(parseJson<unknown>(sheet.estimateJson, [])),
+    normalizeFloorList(parseJson<unknown>(sheet.columnsJson, {})),
+    part2Order,
+  );
 }
 
 /** 建具表の記号・W・H（カーテン・ブラインドの寸法呼び出し用） */
@@ -1005,6 +1031,56 @@ export function saveAggregateEdits(
               .run();
           }
         });
+      }
+
+      // 耐火被覆・塗装入力表の明細（入力管理表の行）
+      const fireproofRowIds = new Set(
+        targets
+          .filter((target) => target.traceId.startsWith("fireproof:"))
+          .map((target) => target.traceId.split(":")[1]),
+      );
+      if (fireproofRowIds.size > 0) {
+        const fireproofSheet = tx
+          .select()
+          .from(projectFireproofSheets)
+          .where(eq(projectFireproofSheets.projectId, projectId))
+          .get();
+        if (fireproofSheet) {
+          const manageRows = normalizeManageRows(
+            parseJson<unknown>(fireproofSheet.estimateJson, []),
+          );
+          let fireproofChanged = false;
+          const nextManageRows = manageRows.map((manageRow) => {
+            if (!fireproofRowIds.has(manageRow.id)) return manageRow;
+            fireproofChanged = true;
+            return {
+              ...manageRow,
+              detail: {
+                ...manageRow.detail,
+                subjectId: edit.subjectId,
+                materialCategory: edit.materialCategory,
+                partNumber: edit.partNumber,
+                partName: edit.partName,
+                detailNumber: edit.detailNumber,
+                name: edit.name,
+                descriptionUpper: edit.descriptionUpper,
+                descriptionLower: edit.descriptionLower,
+                unit: edit.unit,
+                remarksUpper: edit.remarksUpper,
+                remarksLower: edit.remarksLower,
+              },
+            };
+          });
+          if (fireproofChanged) {
+            tx.update(projectFireproofSheets)
+              .set({
+                estimateJson: JSON.stringify(nextManageRows),
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(projectFireproofSheets.id, fireproofSheet.id))
+              .run();
+          }
+        }
       }
 
       // 計算書（部屋別・軸組・汎用）の下段
