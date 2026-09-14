@@ -1134,7 +1134,7 @@ function ColumnSheetView({
         <input
           lang="en"
           value={sheet.thickness === null ? "" : String(sheet.thickness)}
-          title="耐火被覆厚みを mm で入れます（例 25。断面必要計算式では m に直して使います。未入力のときは断面必要計算式を自動で出しません）"
+          title="耐火被覆厚みを mm で入れます（例 25。断面必要計算式では m に直して使います。未入力・0 のときは鋼材分だけの式になります）"
           onChange={(event) => {
             const text = toHalfWidth(event.target.value).trim();
             const value = text === "" ? null : Number(text);
@@ -1147,9 +1147,9 @@ function ColumnSheetView({
           }}
         />
         <span className="unit-mm">mm</span>
-        {sheet.thickness === null && (
+        {(sheet.thickness === null || sheet.thickness <= 0) && (
           <span className="thickness-note">
-            厚みを入れると断面必要計算式が出ます
+            厚みなし＝鋼材分だけの計算書（鉄骨表面の面積）
           </span>
         )}
         <span className="sum">
@@ -1433,7 +1433,7 @@ function ColumnSheetView({
         断面必要計算式は資料の図のとおり自動で薄く出します（□：4面
         Ｗ*2+Ｄ*2+厚み*4／3面 Ｗ*2+Ｄ+厚み*2／2面 Ｗ+Ｄ+厚み／1面 Ｄ、Ｈ：4面
         Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面
-        Ｄ。厚みは25mmなら0.025）。厚みが未入力のときは出ません。欄に打つとその式が優先します。
+        Ｄ。厚みは25mmなら0.025）。厚みが未入力・0のときは厚み分を足さず鋼材分だけの式（鉄骨表面の面積）になります。欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
         必要数㎡は断面×計算式(有効長)×倍数、{config.adjacency}は有効長×本数
         {kind === "beam"

@@ -62,9 +62,13 @@ describe("耐火被覆・塗装入力表", () => {
     expect(autoSectionFormula("box", 250, 250, 2, 25)).toBe("0.25+0.25+0.025");
     expect(autoSectionFormula("box", 250, 250, 1, 25)).toBe("0.25");
     expect(autoSectionFormula("box", null, 250, 3, 25)).toBe("");
-    // 厚みが未入力・0以下のときは自動で出さない（1面は厚みを使わないので出る）
-    expect(autoSectionFormula("box", 250, 250, 4, null)).toBe("");
-    expect(autoSectionFormula("box", 250, 250, 4, 0)).toBe("");
+    // 厚みが未入力・0のときは鋼材分だけの式にする（鉄骨表面の面積）
+    expect(autoSectionFormula("box", 250, 250, 4, null)).toBe("0.25*2+0.25*2");
+    expect(autoSectionFormula("box", 250, 250, 4, 0)).toBe("0.25*2+0.25*2");
+    expect(autoSectionFormula("box", 250, 250, 3, 0)).toBe("0.25*2+0.25");
+    expect(autoSectionFormula("box", 250, 250, 2, 0)).toBe("0.25+0.25");
+    expect(autoSectionFormula("h", 250, 500, 4, 0)).toBe("0.25*2+0.5*4");
+    expect(autoSectionFormula("h", 250, 500, 2, 0)).toBe("0.25+0.5+0.5/2*2");
     expect(autoSectionFormula("box", 250, 250, 1, null)).toBe("0.25");
   });
 

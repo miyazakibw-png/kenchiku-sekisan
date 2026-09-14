@@ -324,7 +324,7 @@ export function beamMarkFaces(mark: string): number | null {
  * 断面必要計算式を自動で作る（mm→mに直して書く）。式は資料の図のとおり。
  * □（コラム・箱型）：4面 W*2+D*2+厚み*4、3面 W*2+D+厚み*2、2面 W+D+厚み、1面 D。
  * Ｈ鉄：4面 W*2+D*4+厚み*4、3面 W*2+D*3+厚み*2、2面 W+D+D/2*2+厚み、1面 D。
- * 厚みが未入力（または0以下）のときは自動で出さない。
+ * 厚みが未入力（または0）のときは厚み分を足さず、鋼材分だけの式にする（鉄骨表面の面積）。
  */
 export function autoSectionFormula(
   shape: SteelShape | "",
@@ -339,16 +339,17 @@ export function autoSectionFormula(
   const d = meterText(depth);
   // 壁囲い1面は厚みを使わない（Dのみ）
   if (faces === 1) return d;
-  if (thicknessMm === null || thicknessMm <= 0) return "";
-  const t = thicknessText(thicknessMm);
+  // 厚みが未入力・0のときは鋼材分だけの式にする（鉄骨表面の面積を拾う）
+  const bare = thicknessMm === null || thicknessMm <= 0;
+  const t = bare ? "" : thicknessText(thicknessMm);
   if (shape === "h") {
-    if (faces === 4) return `${w}*2+${d}*4+${t}*4`;
-    if (faces === 3) return `${w}*2+${d}*3+${t}*2`;
-    return `${w}+${d}+${d}/2*2+${t}`;
+    if (faces === 4) return `${w}*2+${d}*4${bare ? "" : `+${t}*4`}`;
+    if (faces === 3) return `${w}*2+${d}*3${bare ? "" : `+${t}*2`}`;
+    return `${w}+${d}+${d}/2*2${bare ? "" : `+${t}`}`;
   }
-  if (faces === 4) return `${w}*2+${d}*2+${t}*4`;
-  if (faces === 3) return `${w}*2+${d}+${t}*2`;
-  return `${w}+${d}+${t}`;
+  if (faces === 4) return `${w}*2+${d}*2${bare ? "" : `+${t}*4`}`;
+  if (faces === 3) return `${w}*2+${d}${bare ? "" : `+${t}*2`}`;
+  return `${w}+${d}${bare ? "" : `+${t}`}`;
 }
 
 /** 柱入力表1行の計算結果 */
