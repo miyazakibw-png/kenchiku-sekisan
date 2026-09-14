@@ -536,7 +536,9 @@ function FloorListSection({
                           {SHAPE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label === ""
-                                ? `（${resolved.shape === "box" ? "□" : "Ｈ"}）`
+                                ? resolved.shape === "box"
+                                  ? "□"
+                                  : "Ｈ"
                                 : option.label}
                             </option>
                           ))}
@@ -760,7 +762,9 @@ function CommonListSection({
                       {SHAPE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label === ""
-                            ? `（${resolved.shape === "box" ? "□" : "Ｈ"}）`
+                            ? resolved.shape === "box"
+                              ? "□"
+                              : "Ｈ"
                             : option.label}
                         </option>
                       ))}

@@ -88,7 +88,8 @@ export function normalizeCommonRows(value: unknown): FireproofCommonRow[] {
   return value.map((row) => ({
     id: row.id ?? fireproofId("c"),
     symbol: row.symbol ?? "",
-    shape: row.shape ?? "",
+    /* 階共通の形状の基本はＨ（空欄・古い形もＨとして入れておく） */
+    shape: row.shape === "box" || row.shape === "h" ? row.shape : "h",
     first: row.first ?? null,
     second: row.second ?? null,
   }));
@@ -161,7 +162,13 @@ export function newMember(symbol = ""): FireproofMember {
 }
 
 export function newCommonRow(symbol = ""): FireproofCommonRow {
-  return { id: fireproofId("c"), symbol, shape: "", first: null, second: null };
+  return {
+    id: fireproofId("c"),
+    symbol,
+    shape: "h",
+    first: null,
+    second: null,
+  };
 }
 
 /**

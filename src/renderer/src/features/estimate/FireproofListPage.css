@@ -46,6 +46,11 @@
   min-width: 0;
 }
 
+/* 狭い列でも操作ボタンが切れないように折り返す */
+.fireproof-common .section-bar {
+  flex-wrap: wrap;
+}
+
 .fireproof-section {
   display: flex;
   flex: 1 1 0;
@@ -143,9 +148,24 @@
   background: transparent;
 }
 
+/* 形状はＨ・□が見えればよいので細く、Ｗ*Ｄは「1000*1000」（半角9文字）が見える幅 */
+.fireproof-page table.fireproof td.shape select {
+  width: 4ch;
+  min-width: 0;
+}
+
+.fireproof-page table.fireproof th.shape {
+  width: 4ch;
+}
+
 .fireproof-page table.fireproof td.size input {
-  min-width: 11ch;
+  min-width: 9ch;
+  width: 9ch;
   text-align: right;
+}
+
+.fireproof-page table.fireproof th.size {
+  width: 9ch;
 }
 
 .fireproof-page table.fireproof th.symbol input {
