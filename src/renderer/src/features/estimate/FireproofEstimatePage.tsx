@@ -695,27 +695,15 @@ export default function FireproofEstimatePage({
                   />
                 </td>
                 <td className="scope">
-                  <select
+                  <input
+                    lang="ja"
                     value={row.scope}
+                    placeholder="柱"
+                    title="積算範囲は自由に書けます（柱・梁型など。名称欄と同じく変換して打てます）"
                     onChange={(event) =>
-                      commit(
-                        rows.map((each, at) =>
-                          at === index
-                            ? {
-                                ...each,
-                                scope:
-                                  event.target.value === "column"
-                                    ? "column"
-                                    : "",
-                              }
-                            : each,
-                        ),
-                      )
+                      change(index, { scope: event.target.value })
                     }
-                  >
-                    <option value="column">柱</option>
-                    <option value="">（未選択）</option>
-                  </select>
+                  />
                 </td>
                 <td className="num">
                   <input
@@ -737,11 +725,7 @@ export default function FireproofEstimatePage({
                   />
                 </td>
                 <td className="sheet">
-                  <button
-                    type="button"
-                    disabled={row.scope !== "column"}
-                    onClick={() => setOpened(index)}
-                  >
+                  <button type="button" onClick={() => setOpened(index)}>
                     📐 柱入力表
                   </button>
                 </td>
@@ -1256,6 +1240,34 @@ function ColumnSheetView({
             <option key={`${index}-${label}`} value={label} />
           ))}
         </datalist>
+        {/* 取合記号表（資料どおり。✔欄の右に独立して出す） */}
+        <table className="grid mark-table">
+          <thead>
+            <tr>
+              <th colSpan={3}>取合記号</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(
+              [
+                ["Ｈ鋼", "独立4面", "4"],
+                ["Ｈ鋼", "床付3面", "3"],
+                ["Ｈ鋼", "壁・床付2面", "2"],
+                ["Ｈ鋼", "壁付3面", "A3"],
+                ["箱型", "独立4面", "H4"],
+                ["箱型", "床付3面", "H3"],
+                ["箱型", "壁・床付2面", "H2"],
+                ["箱型", "壁付3面", "HA3"],
+              ] as const
+            ).map(([shape, name, mark], index) => (
+              <tr key={index}>
+                <td className="shape">{shape}</td>
+                <td>{name}</td>
+                <td className="code">{mark}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       <p className="hint">
         階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の右横に拾った寸法（出ない理由）が出ます。

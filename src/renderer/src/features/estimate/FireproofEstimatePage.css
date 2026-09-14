@@ -10,6 +10,23 @@
   flex: 1 1 0;
   overflow: auto;
   min-height: 60px;
+  /* 柱入力表と右側の取合記号表を横に並べる */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 取合記号表（資料どおりの対応表。柱入力表の右に独立して出す） */
+.fireproof-estimate-page table.mark-table {
+  flex: none;
+}
+.fireproof-estimate-page table.mark-table td,
+.fireproof-estimate-page table.mark-table th {
+  white-space: nowrap;
+}
+.fireproof-estimate-page table.mark-table td.code {
+  text-align: center;
+  min-width: 32px;
 }
 
 .fireproof-estimate-page table.grid {

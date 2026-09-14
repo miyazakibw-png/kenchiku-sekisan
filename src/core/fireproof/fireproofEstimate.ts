@@ -104,8 +104,8 @@ export interface FireproofColumnSheet {
   rows: FireproofColumnRow[];
 }
 
-/** 積算範囲（今は柱のみ。梁型はあとで足す） */
-export type FireproofScope = "column" | "";
+/** 積算範囲（自由文字。「柱」は柱入力表を持つ。梁型はあとで足す） */
+export type FireproofScope = string;
 
 /** 入力管理表の1行 */
 export interface FireproofManageRow {
@@ -155,7 +155,7 @@ export function newManageRow(): FireproofManageRow {
   return {
     id: estimateId("m"),
     part1: "",
-    scope: "column",
+    scope: "柱",
     multiplier: null,
     detail: emptyManageDetail(),
     sheet: { thickness: null, wallLabels: defaultWallLabels(), rows: [] },
@@ -167,7 +167,12 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
   return value.map((row) => ({
     id: typeof row?.id === "string" ? row.id : estimateId("m"),
     part1: row?.part1 ?? "",
-    scope: row?.scope === "column" ? "column" : "",
+    scope:
+      row?.scope === "column"
+        ? "柱"
+        : typeof row?.scope === "string"
+          ? row.scope
+          : "",
     multiplier:
       typeof row?.multiplier === "number" || row?.multiplier === null
         ? row.multiplier
@@ -448,7 +453,7 @@ export function manageRowQuantity(
   row: FireproofManageRow,
   list: FireproofFloorList,
 ): number | null {
-  if (row.scope !== "column") return null;
+  // 柱入力表の計算がある行だけ数量を出す（積算範囲の文字には依存しない）
   const totals = columnSheetTotals(row.sheet, list);
   if (totals.needed === null) return null;
   return totals.needed * (row.multiplier ?? 1);
