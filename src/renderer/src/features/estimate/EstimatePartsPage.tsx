@@ -661,6 +661,7 @@ export default function EstimatePartsPage({
             <th className="num">天井高さ</th>
             <th className="num">倍率</th>
             <th className="calc-type">計算書</th>
+            <th className="open">開く</th>
             <th className="note">備考</th>
             {checkColumns.map((label) => (
               <th key={label} className="check" colSpan={2}>
@@ -669,7 +670,7 @@ export default function EstimatePartsPage({
             ))}
           </tr>
           <tr>
-            <th colSpan={10} />
+            <th colSpan={11} />
             {checkColumns.flatMap((label) => [
               <th key={`n-${label}`} className="check">
                 {checkCategory}名称
@@ -903,6 +904,19 @@ export default function EstimatePartsPage({
                         </option>
                       ))}
                     </select>
+                  )}
+                </td>
+                <td className="open">
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <button
+                      type="button"
+                      title="選んだ計算書を開きます"
+                      onClick={() => void openCalcSheet(index)}
+                    >
+                      📐 開く
+                    </button>
                   )}
                 </td>
                 <td>

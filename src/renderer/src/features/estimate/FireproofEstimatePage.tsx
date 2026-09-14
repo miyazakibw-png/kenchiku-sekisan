@@ -75,7 +75,7 @@ function formatNumber(value: number | null, decimals = 2): string {
 
 /** 入力管理表の列（No〜備考（上段））の既定の幅 */
 const MANAGE_WIDTHS = [
-  30, 100, 72, 50, 110, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
+  30, 100, 72, 50, 100, 60, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
 ];
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
 const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
@@ -200,7 +200,7 @@ export default function FireproofEstimatePage({
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   const history = useUndoRedo<FireproofManageRow[]>();
   const { widths: manageWidths, startResize: startManageResize } =
-    useColumnWidths("fireproof-manage-cols-v2", MANAGE_WIDTHS);
+    useColumnWidths("fireproof-manage-cols-v3", MANAGE_WIDTHS);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -721,6 +721,7 @@ export default function FireproofEstimatePage({
                   ["積算範囲", "scope"],
                   ["倍率", "num"],
                   ["計算書", "sheet"],
+                  ["開く", "open"],
                   ["数量（自動）", "num"],
                   ["区分", "material"],
                   ["科目", "id"],
@@ -837,6 +838,8 @@ export default function FireproofEstimatePage({
                       ),
                     )}
                   </select>
+                </td>
+                <td className="open">
                   <button
                     type="button"
                     title="選んだ計算書を開きます"

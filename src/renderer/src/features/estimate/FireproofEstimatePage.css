@@ -16,12 +16,11 @@
   gap: 8px;
 }
 
-/* 計算書の欄（種類を選ぶ欄と開くボタンを縦に並べる） */
+/* 計算書の欄（種類を選ぶ欄）と、その右の「開く」の欄 */
 .fireproof-estimate-page table.fireproof-manage td.sheet select,
-.fireproof-estimate-page table.fireproof-manage td.sheet button {
+.fireproof-estimate-page table.fireproof-manage td.open button {
   display: block;
   width: 100%;
-  margin: 1px 0;
 }
 
 /* 取合記号表（資料どおりの対応表。柱入力表の右に独立して出す） */
