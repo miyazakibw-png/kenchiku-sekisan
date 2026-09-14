@@ -120,6 +120,8 @@ export interface FireproofManageRow {
   scope: FireproofScope;
   /** 倍率（未入力は1） */
   multiplier: number | null;
+  /** 開く計算書の種類（柱入力表／梁型入力表。あとで増やせる） */
+  calcType: FireproofSheetKind;
   detail: FireproofManageDetail;
   /** 柱入力表 */
   sheet: FireproofColumnSheet;
@@ -171,6 +173,7 @@ export function newManageRow(): FireproofManageRow {
     part1: "",
     scope: "柱",
     multiplier: null,
+    calcType: "column",
     detail: emptyManageDetail(),
     sheet: { thickness: null, wallLabels: defaultWallLabels(), rows: [] },
     beamSheet: {
@@ -228,6 +231,8 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
       typeof row?.multiplier === "number" || row?.multiplier === null
         ? row.multiplier
         : null,
+    calcType:
+      row?.calcType === "beam" ? ("beam" as const) : ("column" as const),
     detail: { ...emptyManageDetail(), ...(row?.detail ?? {}) },
     sheet: normalizeSheet(row?.sheet, WALL_MARK_COUNT),
     beamSheet: normalizeSheet(row?.beamSheet, BEAM_MARK_COUNT),
@@ -370,13 +375,21 @@ export function wallFactor(mark: string): number {
   return faces >= 4 ? 0 : 2;
 }
 
-/** 取合ごとの床取合の本数（梁型。床につかない A3・HA3 と4面（H4）は0、それ以外は2） */
+/** 取合ごとの床取合の本数（梁型。4:0、3:2、2:1、A3:0、H4:0、H3:2、H2:1、HA3:0） */
+const SLAB_FACTOR: Record<string, number> = {
+  "4": 0,
+  "3": 2,
+  "2": 1,
+  A3: 0,
+  H4: 0,
+  H3: 2,
+  H2: 1,
+  HA3: 0,
+};
+
+/** 取合ごとの床取合の本数（梁型） */
 export function slabFactor(mark: string): number {
-  const key = mark.trim().toUpperCase();
-  if (key === "A3" || key === "HA3") return 0;
-  const faces = beamMarkFaces(mark);
-  if (faces === null) return 0;
-  return faces >= 4 ? 0 : 2;
+  return SLAB_FACTOR[mark.trim().toUpperCase()] ?? 0;
 }
 
 /** 入力表の1行を計算する（柱・梁型で共通。寸法・取合・取合の係数だけ種類で変わる） */

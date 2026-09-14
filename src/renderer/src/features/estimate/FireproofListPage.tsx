@@ -587,7 +587,7 @@ function FloorListSection({
                     inputMode="text"
                     className="symbol-input"
                     value={member.symbol}
-                    placeholder={kind === "column" ? "C1" : "G1"}
+                    title={`部材の記号（${kind === "column" ? "C1" : "G1"} のように打ちます。計算書はこの記号で寸法を拾います）`}
                     onChange={(event) =>
                       onChange({
                         ...list,
@@ -909,7 +909,7 @@ function CommonListSection({
                       lang="en"
                       inputMode="text"
                       value={row.symbol}
-                      placeholder="P1"
+                      title="部材の記号（P1 のように打ちます。計算書はこの記号で寸法を拾います）"
                       onChange={(event) =>
                         change(index, {
                           symbol: toHalfWidth(event.target.value),

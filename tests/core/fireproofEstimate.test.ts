@@ -274,10 +274,15 @@ describe("耐火被覆・塗装入力表", () => {
       25,
     );
     expect(slab3.wall).toBeCloseTo(8, 6);
-    // 独立4面（H4）は0
-    expect(slabFactor("H4")).toBe(0);
-    expect(slabFactor("HA3")).toBe(0);
+    // 取合記号ごとの本数（4:0、3:2、2:1、A3:0、H4:0、H3:2、H2:1、HA3:0）
+    expect(slabFactor("4")).toBe(0);
     expect(slabFactor("3")).toBe(2);
+    expect(slabFactor("2")).toBe(1);
+    expect(slabFactor("A3")).toBe(0);
+    expect(slabFactor("H4")).toBe(0);
+    expect(slabFactor("H3")).toBe(2);
+    expect(slabFactor("H2")).toBe(1);
+    expect(slabFactor("HA3")).toBe(0);
   });
 
   it("梁型入力表の床取合mはＡ〜Ｄの4欄で合計する", () => {

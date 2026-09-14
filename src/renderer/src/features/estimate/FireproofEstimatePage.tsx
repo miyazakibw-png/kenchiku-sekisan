@@ -121,7 +121,7 @@ const SHEET_KIND: Record<
     widths: BEAM_WIDTHS,
     storageKey: "fireproof-beam-cols-v1",
     markTitle:
-      "取合記号（Ｈ鋼：4・3・2・A3／箱型：H4・H3・H2・HA3。A3・HA3は壁付き＝床につかない）を入れます。床取合mはA3・HA3・4面（H4）のとき0、それ以外は有効長×2です",
+      "取合記号（Ｈ鋼：4・3・2・A3／箱型：H4・H3・H2・HA3。A3・HA3は壁付き＝床につかない）を入れます。床取合mは有効長×本数（4:0、3:2、2:1、A3:0、H4:0、H3:2、H2:1、HA3:0）です",
   },
 };
 
@@ -143,10 +143,8 @@ function sizeHint(
     (each) => each.symbol.trim() === symbol.trim(),
   );
   if (!member) return "リストにこの記号がありません";
-  if (
-    floor.trim() !== "" &&
-    !list.floors.some((each) => each.label.trim() === floor.trim())
-  )
+  if (floor.trim() === "") return "階を入れてください";
+  if (!list.floors.some((each) => each.label.trim() === floor.trim()))
     return "リストにこの階がありません";
   const size =
     kind === "beam"
@@ -318,6 +316,7 @@ export default function FireproofEstimatePage({
       part1: row.part1,
       scope: row.scope,
       multiplier: row.multiplier,
+      calcType: row.calcType,
       detail: { ...row.detail },
       sheet: {
         ...row.sheet,
@@ -685,6 +684,18 @@ export default function FireproofEstimatePage({
         >
           📋 追加貼付
         </button>
+        <button
+          type="button"
+          title="カーソルの行で選んだ計算書を開きます"
+          disabled={!rows[start]}
+          onClick={() => {
+            const row = rows[start];
+            if (!row) return;
+            setOpened({ index: start, kind: row.calcType });
+          }}
+        >
+          📐 計算書を開く
+        </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
         </button>
@@ -729,7 +740,7 @@ export default function FireproofEstimatePage({
                   className={cls}
                   title={
                     label === "数量（自動）"
-                      ? "柱入力表の必要数㎡の合計×倍率で自動で出ます（手では打てません）"
+                      ? "計算書（柱入力表・梁型入力表）の必要数㎡の合計×倍率で自動で出ます（手では打てません）"
                       : undefined
                   }
                 >
@@ -802,17 +813,37 @@ export default function FireproofEstimatePage({
                   />
                 </td>
                 <td className="sheet">
+                  <select
+                    value={row.calcType}
+                    title="この行で使う計算書を選びます"
+                    onChange={(event) =>
+                      commit(
+                        rows.map((each, at) =>
+                          at === index
+                            ? {
+                                ...each,
+                                calcType: event.target
+                                  .value as FireproofSheetKind,
+                              }
+                            : each,
+                        ),
+                      )
+                    }
+                  >
+                    {(Object.keys(SHEET_KIND) as FireproofSheetKind[]).map(
+                      (key) => (
+                        <option key={key} value={key}>
+                          {SHEET_KIND[key].title}
+                        </option>
+                      ),
+                    )}
+                  </select>
                   <button
                     type="button"
-                    onClick={() => setOpened({ index, kind: "column" })}
+                    title="選んだ計算書を開きます"
+                    onClick={() => setOpened({ index, kind: row.calcType })}
                   >
-                    📐 柱入力表
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOpened({ index, kind: "beam" })}
-                  >
-                    📐 梁型入力表
+                    📐 開く
                   </button>
                 </td>
                 <td className="num number">
@@ -1241,11 +1272,10 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       value={each.symbol}
-                      placeholder={config.symbolPlaceholder}
                       title={
                         size
                           ? `鉄骨リスト：${SHAPE_LABEL[size.shape === "" ? "box" : size.shape]} ${size.first ?? ""}${size.second === null ? "" : `*${size.second}`}`
-                          : `鉄骨リストの${config.listLabel}にある記号を入れます`
+                          : `鉄骨リストの${config.listLabel}にある記号（${config.symbolPlaceholder}…）を入れます`
                       }
                       onChange={(event) =>
                         changeRow(index, {
@@ -1402,8 +1432,11 @@ function ColumnSheetView({
         Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面
         Ｄ。厚みは25mmなら0.025）。厚みが未入力のときは出ません。欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
-        必要数㎡は断面×計算式(有効長)×倍数、{config.adjacency}
-        は有効長×2（取合が4面のときは0）です。
+        必要数㎡は断面×計算式(有効長)×倍数、{config.adjacency}は有効長×本数
+        {kind === "beam"
+          ? "（4:0、3:2、2:1、A3:0、H4:0、H3:2、H2:1、HA3:0）"
+          : "（4面（H4）は0、それ以外は2）"}
+        です。
       </p>
     </div>
   );

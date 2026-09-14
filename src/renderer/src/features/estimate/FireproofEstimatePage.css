@@ -16,7 +16,8 @@
   gap: 8px;
 }
 
-/* 計算書の欄（柱入力表・梁型入力表のボタンを縦に並べる） */
+/* 計算書の欄（種類を選ぶ欄と開くボタンを縦に並べる） */
+.fireproof-estimate-page table.fireproof-manage td.sheet select,
 .fireproof-estimate-page table.fireproof-manage td.sheet button {
   display: block;
   width: 100%;
