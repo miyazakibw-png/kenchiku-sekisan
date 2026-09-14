@@ -3,9 +3,11 @@ import type {
   FormworkSourceItem,
   FormworkTransferRule,
   FormworkTransferView,
+  MasterOptions,
   ProjectSummary,
   Subject,
 } from "@shared/types";
+import { resolveMasterName } from "@shared/masters";
 import {
   buildFormworkRulesFromSources,
   moveFormworkRow,
@@ -78,6 +80,7 @@ export default function FormworkTransferPage({
   const tableRef1 = useTableResize("table-widths-formwork-rows-v4");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [options, setOptions] = useState<MasterOptions | null>(null);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -97,9 +100,14 @@ export default function FormworkTransferPage({
   useEffect(() => {
     void (async () => {
       setSubjects(await window.sekisan.listSubjects());
+      setOptions(await window.sekisan.getMasterOptions(project.id));
       await reload();
     })();
-  }, [reload]);
+  }, [reload, project.id]);
+
+  /** 単位欄は番号入力で単位マスターの名称に変わる（全画面共通の入力方式） */
+  const unitOf = (text: string): string =>
+    resolveMasterName(options?.units ?? [], text);
 
   /** 名称で探した元明細（空欄なら全部） */
   const shown = useMemo(() => {
@@ -335,7 +343,8 @@ export default function FormworkTransferPage({
             className="num"
             value={bulkUnit}
             placeholder="空欄＝元の単位"
-            onCommit={setBulkUnit}
+            title="単位。番号を打つと単位の文字に変わります"
+            onCommit={(value) => setBulkUnit(unitOf(value))}
           />
         </label>
         <label>
@@ -386,8 +395,8 @@ export default function FormworkTransferPage({
             <th>科目</th>
             <th>材種区分</th>
             <th>名称</th>
-            <th>摘要 上段</th>
             <th>摘要 下段</th>
+            <th>摘要 上段</th>
             <th>単位</th>
           </tr>
         </thead>
@@ -464,12 +473,6 @@ export default function FormworkTransferPage({
                 </td>
                 <td>
                   <TextInput
-                    value={rule.description}
-                    onCommit={(value) => update(index, { description: value })}
-                  />
-                </td>
-                <td>
-                  <TextInput
                     value={rule.descriptionLower}
                     onCommit={(value) =>
                       update(index, { descriptionLower: value })
@@ -478,8 +481,17 @@ export default function FormworkTransferPage({
                 </td>
                 <td>
                   <TextInput
+                    value={rule.description}
+                    onCommit={(value) => update(index, { description: value })}
+                  />
+                </td>
+                <td>
+                  <TextInput
                     value={rule.unit}
-                    onCommit={(value) => update(index, { unit: value })}
+                    title="単位。番号を打つと単位の文字に変わります"
+                    onCommit={(value) =>
+                      update(index, { unit: unitOf(value) })
+                    }
                   />
                 </td>
                 <td>
@@ -528,8 +540,8 @@ export default function FormworkTransferPage({
             <th className="flag">並び</th>
             <th>明細番号</th>
             <th>名称</th>
-            <th>摘要 上段</th>
             <th>摘要 下段</th>
+            <th>摘要 上段</th>
             <th>元数量</th>
             <th>転記数量</th>
             <th>単位</th>
@@ -581,8 +593,8 @@ export default function FormworkTransferPage({
               </td>
               <td className="number">{row.detailNumber}</td>
               <td>{row.name}</td>
-              <td>{row.description}</td>
               <td>{row.descriptionLower}</td>
+              <td>{row.description}</td>
               <td className="number">
                 {row.title ? "" : row.sourceQuantity.toFixed(2)}
               </td>
