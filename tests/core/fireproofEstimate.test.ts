@@ -3,6 +3,7 @@ import {
   autoSectionFormula,
   calcColumnRow,
   columnSheetTotals,
+  defaultWallLabels,
   emptyManageDetail,
   entriesFromFireproofSheet,
   findColumnSize,
@@ -114,6 +115,7 @@ describe("耐火被覆・塗装入力表", () => {
       multiplier: 2,
       sheet: {
         thickness: 25,
+        wallLabels: defaultWallLabels(),
         rows: [
           columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
           columnRow({ count: 1, faces: 4, lengthFormula: "3.42" }),
@@ -146,6 +148,7 @@ describe("耐火被覆・塗装入力表", () => {
     const totals = columnSheetTotals(
       {
         thickness: 25,
+        wallLabels: defaultWallLabels(),
         rows: [
           columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
           columnRow({
@@ -159,6 +162,33 @@ describe("耐火被覆・塗装入力表", () => {
       list(),
     );
     expect(totals.needed).toBeCloseTo(21.888, 2);
+  });
+
+  it("壁取合mは✔を付けたＡ・Ｂ・Ｃの欄で別々に合計する", () => {
+    const totals = columnSheetTotals(
+      {
+        thickness: 25,
+        wallLabels: defaultWallLabels(),
+        rows: [
+          columnRow({
+            faces: 3,
+            lengthFormula: "3.42",
+            wallChecks: [true, false, false],
+          }),
+          columnRow({
+            faces: 3,
+            lengthFormula: "3.42",
+            wallChecks: [true, true, false],
+          }),
+        ],
+      },
+      list(),
+    );
+    expect(totals.wall).toBeCloseTo(6.84 * 2, 2);
+    expect(totals.wallMarks[0]).toBeCloseTo(6.84 * 2, 2);
+    expect(totals.wallMarks[1]).toBeCloseTo(6.84, 2);
+    // ✔の付いていない欄は空欄
+    expect(totals.wallMarks[2]).toBeNull();
   });
 
   it("入力管理表の明細を集計に載せる（数量＝必要数㎡合計×倍率）", () => {

@@ -13,6 +13,7 @@ import {
   newColumnRow,
   newManageRow,
   normalizeManageRows,
+  normalizeWallLabels,
   type FireproofColumnRow,
   type FireproofManageDetail,
   type FireproofManageRow,
@@ -71,8 +72,8 @@ const MANAGE_WIDTHS = [
 ];
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
 const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
-/** 柱入力表（階〜壁取合m）の既定の幅 */
-const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70];
+/** 柱入力表（階〜壁取合m＋✔欄3列）の既定の幅 */
+const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70, 44, 44, 44];
 
 /** 表の幅＝列幅の合計（画面いっぱいに広げず、列を小さくできるようにする） */
 function tableStyle(widths: number[]): React.CSSProperties {
@@ -815,11 +816,13 @@ function ColumnSheetView({
     HEAD_DETAIL_WIDTHS,
   );
   const { widths: columnWidths, startResize: startColumnResize } =
-    useColumnWidths("fireproof-column-cols-v2", COLUMN_WIDTHS);
+    useColumnWidths("fireproof-column-cols-v3", COLUMN_WIDTHS);
   const start = Math.min(selected, selectedEnd);
   const end = Math.max(selected, selectedEnd);
 
   const totals = columnSheetTotals(row.sheet, list);
+  /** 壁取合mを分ける3欄の見出し（既定Ａ・Ｂ・Ｃ） */
+  const wallLabels = normalizeWallLabels(row.sheet.wallLabels);
   /** 階が空欄の行は上の行と同じ階（薄いグレーで出す） */
   const sheetFloors = inheritedFloors(row.sheet.rows);
 
@@ -1037,6 +1040,11 @@ function ColumnSheetView({
         <span className="sum">
           壁取合m <b>{formatNumber(totals.wall)}</b>
         </span>
+        {wallLabels.map((label, mark) => (
+          <span className="sum" key={mark}>
+            壁取合{label} <b>{formatNumber(totals.wallMarks[mark])}</b>
+          </span>
+        ))}
       </div>
 
       <div className="section-scroll">
@@ -1070,6 +1078,28 @@ function ColumnSheetView({
                     className="col-resize"
                     title="ドラッグで列幅を変えられます"
                     onMouseDown={(e) => startColumnResize(index, e)}
+                  />
+                </th>
+              ))}
+              {wallLabels.map((label, mark) => (
+                <th key={`mark${mark}`} className="mark">
+                  <input
+                    className="mark-label"
+                    value={label}
+                    title="見出しの名前は書き換えられます。✔を付けた行の壁取合mをこの欄で合計します"
+                    onChange={(event) => {
+                      const labels = wallLabels.map((each, index) =>
+                        index === mark ? event.target.value : each,
+                      );
+                      onChange({
+                        sheet: { ...row.sheet, wallLabels: labels },
+                      });
+                    }}
+                  />
+                  <span
+                    className="col-resize"
+                    title="ドラッグで列幅を変えられます"
+                    onMouseDown={(e) => startColumnResize(9 + mark, e)}
                   />
                 </th>
               ))}
@@ -1206,6 +1236,21 @@ function ColumnSheetView({
                   </td>
                   <td className="num number">{formatNumber(calc.needed)}</td>
                   <td className="num number">{formatNumber(calc.wall)}</td>
+                  {wallLabels.map((label, mark) => (
+                    <td className="mark" key={mark}>
+                      <input
+                        type="checkbox"
+                        checked={each.wallChecks[mark] === true}
+                        title={`この行の壁取合mを${label}の欄で合計します`}
+                        onChange={(event) => {
+                          const checks = each.wallChecks.map((checked, at) =>
+                            at === mark ? event.target.checked : checked,
+                          );
+                          changeRow(index, { wallChecks: checks });
+                        }}
+                      />
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -1225,6 +1270,7 @@ function ColumnSheetView({
         Ｄ。厚みは25mmなら0.025）。厚みが未入力のときは出ません。欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
         必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4のときは0）です。
+        壁取合mの右のＡ・Ｂ・Ｃの欄に✔を付けると、その行の壁取合mがその欄で合計されます（上の帯に3種類出ます）。見出しのＡ・Ｂ・Ｃは書き換えられます。
       </p>
     </div>
   );

@@ -63,12 +63,44 @@ export interface FireproofColumnRow {
    * □は「Ｗ×面数＋厚さ×(面数−1)」。Ｈ形は取合対応表ができるまで手入力）
    */
   sectionFormula: string;
+  /** 壁取合mをどの欄（Ａ・Ｂ・Ｃ）に入れるかの✔ */
+  wallChecks: boolean[];
+}
+
+/** 壁取合mを分ける欄の数（Ａ・Ｂ・Ｃ） */
+export const WALL_MARK_COUNT = 3;
+
+/** 壁取合の欄の見出し（書き換えられる） */
+export function defaultWallLabels(): string[] {
+  return ["Ａ", "Ｂ", "Ｃ"];
+}
+
+/** ✔の並びを必ず3こにそろえる */
+function normalizeWallChecks(value: unknown): boolean[] {
+  const list = Array.isArray(value) ? value : [];
+  return Array.from(
+    { length: WALL_MARK_COUNT },
+    (_unused, index) => list[index] === true,
+  );
+}
+
+/** 見出しの並びを必ず3こにそろえる（空欄は既定のＡ・Ｂ・Ｃ） */
+export function normalizeWallLabels(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : [];
+  const defaults = defaultWallLabels();
+  return defaults.map((label, index) =>
+    typeof list[index] === "string" && list[index].trim() !== ""
+      ? list[index]
+      : label,
+  );
 }
 
 /** 柱入力表（管理表の1行が持つ） */
 export interface FireproofColumnSheet {
   /** 耐火被覆厚（mm。25 → 断面の計算では0.025m） */
   thickness: number | null;
+  /** 壁取合mを分ける3欄の見出し（既定Ａ・Ｂ・Ｃ） */
+  wallLabels: string[];
   rows: FireproofColumnRow[];
 }
 
@@ -115,6 +147,7 @@ export function newColumnRow(floor = "", symbol = ""): FireproofColumnRow {
     faces: null,
     lengthFormula: "",
     sectionFormula: "",
+    wallChecks: normalizeWallChecks([]),
   };
 }
 
@@ -125,7 +158,7 @@ export function newManageRow(): FireproofManageRow {
     scope: "column",
     multiplier: null,
     detail: emptyManageDetail(),
-    sheet: { thickness: null, rows: [] },
+    sheet: { thickness: null, wallLabels: defaultWallLabels(), rows: [] },
   };
 }
 
@@ -142,6 +175,7 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
     detail: { ...emptyManageDetail(), ...(row?.detail ?? {}) },
     sheet: {
       thickness: row?.sheet?.thickness ?? null,
+      wallLabels: normalizeWallLabels(row?.sheet?.wallLabels),
       rows: Array.isArray(row?.sheet?.rows)
         ? row.sheet.rows.map((each: Partial<FireproofColumnRow>) => ({
             id: typeof each?.id === "string" ? each.id : estimateId("r"),
@@ -152,6 +186,7 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
             faces: each?.faces ?? null,
             lengthFormula: each?.lengthFormula ?? "",
             sectionFormula: each?.sectionFormula ?? "",
+            wallChecks: normalizeWallChecks(each?.wallChecks),
           }))
         : [],
     },
@@ -280,11 +315,17 @@ export function inheritedFloors(rows: FireproofColumnRow[]): string[] {
 export function columnSheetTotals(
   sheet: FireproofColumnSheet,
   list: FireproofFloorList,
-): { needed: number | null; wall: number | null } {
+): {
+  needed: number | null;
+  wall: number | null;
+  wallMarks: (number | null)[];
+} {
   let needed = 0;
   let wall = 0;
   let hasNeeded = false;
   let hasWall = false;
+  const marks = Array.from({ length: WALL_MARK_COUNT }, () => 0);
+  const hasMark = Array.from({ length: WALL_MARK_COUNT }, () => false);
   const floors = inheritedFloors(sheet.rows);
   for (const [index, row] of sheet.rows.entries()) {
     const calc = calcColumnRow(
@@ -299,9 +340,18 @@ export function columnSheetTotals(
     if (calc.wall !== null) {
       wall += calc.wall;
       hasWall = true;
+      row.wallChecks.forEach((checked, mark) => {
+        if (!checked || mark >= WALL_MARK_COUNT) return;
+        marks[mark] += calc.wall ?? 0;
+        hasMark[mark] = true;
+      });
     }
   }
-  return { needed: hasNeeded ? needed : null, wall: hasWall ? wall : null };
+  return {
+    needed: hasNeeded ? needed : null,
+    wall: hasWall ? wall : null,
+    wallMarks: marks.map((total, mark) => (hasMark[mark] ? total : null)),
+  };
 }
 
 /**

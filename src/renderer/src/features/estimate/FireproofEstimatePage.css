@@ -140,6 +140,21 @@
   vertical-align: middle;
 }
 
+/* 壁取合mを分けるＡ・Ｂ・Ｃの✔欄 */
+.fireproof-estimate-page table.fireproof-column td.mark,
+.fireproof-estimate-page table.fireproof-column th.mark {
+  text-align: center;
+}
+
+.fireproof-estimate-page table.fireproof-column th.mark .mark-label {
+  width: 90%;
+  background: #fff;
+  color: #111;
+  text-align: center;
+  border: var(--line-thin);
+  font-size: 12px;
+}
+
 .fireproof-estimate-page table.fireproof-column td.num,
 .fireproof-estimate-page table.fireproof-column td.num input {
   text-align: right;
