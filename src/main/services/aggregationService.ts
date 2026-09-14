@@ -409,10 +409,13 @@ export function collectEntries(
             ? ("general" as const)
             : row.calcType === "pit"
               ? ("pit" as const)
-              : ("room" as const),
+              : row.calcType === "area"
+                ? ("area" as const)
+                : ("room" as const),
     };
 
-    if (row.calcType === "pit") {
+    // 面積計算書はピット計算書と同じもの（同じ表に入る）
+    if (row.calcType === "pit" || row.calcType === "area") {
       const sheet = pitSheets.get(row.id);
       if (!sheet) return;
       const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
@@ -667,54 +670,57 @@ function transferEntries(
     .all();
   const inherited = inheritTransferRows(rows);
 
-  return rows
-    .map((row, index) => ({ row, head: inherited[index] }))
-    // 部位名・名称が無くても、摘要や備考だけの行（仕様の続きなど）も計上する
-    .filter(({ row }) =>
-      [
-        row.partName,
-        row.name,
-        row.descriptionUpper,
-        row.descriptionLower,
-        row.remarks,
-        row.remarksLower,
-      ].some((text) => text.trim() !== "") || row.quantity !== null,
-    )
-    .map(({ row, head }) => {
-      if (!part2Order.has(head.part2))
-        part2Order.set(head.part2, part2Order.size);
-      const quantity = row.quantity ?? 0;
-      return {
-        traceId: `transfer:${row.id}`,
-        sourceKind: "transfer" as const,
-        estimateRowId: null,
-        transferRowId: row.id,
-        part1: head.part1,
-        part2: head.part2Split === 1 ? head.part2 : "",
-        part2Raw: head.part2,
-        part2Split: head.part2Split === 1,
-        part2Order: part2Order.get(head.part2) ?? 0,
-        part3: head.part3,
-        formwork: head.formwork,
-        multiplier: 1,
-        subjectId: head.subjectId,
-        materialCategory: head.materialCategory,
-        partNumber: head.partId,
-        partName: row.partName,
-        detailNumber: head.detailNumber,
-        name: row.name,
-        descriptionUpper: row.descriptionUpper,
-        descriptionLower: row.descriptionLower,
-        unit: row.unit,
-        remarksUpper: row.remarks,
-        remarksLower: row.remarksLower,
-        estimateDisplay: "",
-        coefficient: 1,
-        setTotal: quantity,
-        quantity: displayedValue(quantity),
-        sourceDetailId: row.sourceDetailId,
-      };
-    });
+  return (
+    rows
+      .map((row, index) => ({ row, head: inherited[index] }))
+      // 部位名・名称が無くても、摘要や備考だけの行（仕様の続きなど）も計上する
+      .filter(
+        ({ row }) =>
+          [
+            row.partName,
+            row.name,
+            row.descriptionUpper,
+            row.descriptionLower,
+            row.remarks,
+            row.remarksLower,
+          ].some((text) => text.trim() !== "") || row.quantity !== null,
+      )
+      .map(({ row, head }) => {
+        if (!part2Order.has(head.part2))
+          part2Order.set(head.part2, part2Order.size);
+        const quantity = row.quantity ?? 0;
+        return {
+          traceId: `transfer:${row.id}`,
+          sourceKind: "transfer" as const,
+          estimateRowId: null,
+          transferRowId: row.id,
+          part1: head.part1,
+          part2: head.part2Split === 1 ? head.part2 : "",
+          part2Raw: head.part2,
+          part2Split: head.part2Split === 1,
+          part2Order: part2Order.get(head.part2) ?? 0,
+          part3: head.part3,
+          formwork: head.formwork,
+          multiplier: 1,
+          subjectId: head.subjectId,
+          materialCategory: head.materialCategory,
+          partNumber: head.partId,
+          partName: row.partName,
+          detailNumber: head.detailNumber,
+          name: row.name,
+          descriptionUpper: row.descriptionUpper,
+          descriptionLower: row.descriptionLower,
+          unit: row.unit,
+          remarksUpper: row.remarks,
+          remarksLower: row.remarksLower,
+          estimateDisplay: "",
+          coefficient: 1,
+          setTotal: quantity,
+          quantity: displayedValue(quantity),
+          sourceDetailId: row.sourceDetailId,
+        };
+      })
+  );
 }
 
 /** 計算書の下段（セット明細計算表）の1明細を、集計書で直した内容に書き換える */
@@ -1016,7 +1022,7 @@ export function saveAggregateEdits(
             ? projectFrameSheets
             : sourceKind === "general"
               ? projectGeneralSheets
-              : sourceKind === "pit"
+              : sourceKind === "pit" || sourceKind === "area"
                 ? projectPitSheets
                 : projectRoomSheets;
         const sheet = tx

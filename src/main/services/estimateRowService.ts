@@ -184,7 +184,9 @@ export function listFilledCalcSheets(
     .all()
     .forEach((sheet) => {
       if (hasContent(sheet.pitsJson, sheet.beamsJson, sheet.lowerJson)) {
+        // 面積計算書はピット計算書と同じ表に入るので、どちらの種類にも内容がある扱いにする
         add(sheet.estimateRowId, "pit");
+        add(sheet.estimateRowId, "area");
       }
     });
 

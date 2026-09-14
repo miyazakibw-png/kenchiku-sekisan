@@ -824,6 +824,12 @@ export interface SaveFormworkRulesRequest {
   rules: FormworkTransferRule[];
 }
 
+/** ④の表で並び替えた順を転記入力表へ反映する */
+export interface ReorderFormworkRowsRequest {
+  projectId: number;
+  rows: FormworkTransferRow[];
+}
+
 /** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
 export interface BreakdownSettingsRecord {
   projectId: number;
@@ -902,10 +908,7 @@ export interface SaveBreakdownRowsRequest {
 
 /** 掃き出しの種類 */
 export type BreakdownExportKind =
-  | "bcs"
-  | "excelAll"
-  | "excelBySubject"
-  | "excelCompare";
+  "bcs" | "excelAll" | "excelBySubject" | "excelCompare";
 
 export interface BreakdownExportRequest {
   projectId: number;

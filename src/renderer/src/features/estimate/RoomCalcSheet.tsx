@@ -302,6 +302,8 @@ export default function RoomCalcSheet({
   const shiftClicking = useRef(false);
   /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
   const lastColumn = useRef<number | null>(null);
+  /** 最後にカーソルがあった表の行（通し番号）。ボタンを押しても残るので、行追加・行挿入の先に使う */
+  const lastGridRow = useRef<number | null>(null);
   /** 元に戻す・やり直しのための履歴 */
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
@@ -970,13 +972,29 @@ export default function RoomCalcSheet({
         commit(next);
         return;
       }
-      const target = currentSet;
+      // カーソルの行を表から拾う。部位・コメント・記号などカーソルの記録が乗らない欄や、
+      // セットの分け直しで記録が消えたあとでも、最後に触った行が入るセットを足し先にする
+      const gridRow = lastGridRow.current;
+      let target = currentSet;
+      let targetIndex: number | undefined;
+      if (gridRow !== null) {
+        let start = 0;
+        for (const set of sets) {
+          const count = setRowCount(set);
+          if (gridRow >= start && gridRow < start + count) {
+            target = set;
+            targetIndex = gridRow - start;
+            break;
+          }
+          start += count;
+        }
+      }
       if (!target) {
         commit([...sets, calcSet()]);
         return;
       }
       // どの欄で押しても、明細と計算式を1組（1行分）足す
-      const at = insert ? (focus?.index ?? 0) : undefined;
+      const at = insert ? (targetIndex ?? focus?.index ?? 0) : undefined;
       const next = addSetRow(target, at);
       updateSet(target.id, { details: next.details, lines: next.lines });
     },
@@ -1606,6 +1624,8 @@ export default function RoomCalcSheet({
         const col = el.dataset.col;
         if (col !== undefined && el.dataset.rowspan === undefined)
           lastColumn.current = Number(col);
+        const row = el.dataset.row;
+        if (row !== undefined) lastGridRow.current = Number(row);
       }}
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;

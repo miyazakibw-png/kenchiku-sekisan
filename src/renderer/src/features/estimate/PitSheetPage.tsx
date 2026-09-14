@@ -115,6 +115,8 @@ interface Props {
   onBack: () => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
+  /** 表の題名（面積計算書など。省略はピット計算書） */
+  sheetName?: string;
 }
 
 const ALIGNS_SIDE: { key: PitAlign; label: string }[] = [
@@ -179,6 +181,7 @@ export default function PitSheetPage({
   roomName,
   onBack,
   printMode = false,
+  sheetName = "ピット計算書",
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<PitSheet | null>(null);
   const [pits, setPits] = useState<PitShape[]>([]);
@@ -312,12 +315,9 @@ export default function PitSheetPage({
     [beams, pits, planHistory, sleeves, trace, traced, walls],
   );
 
-  const dragUnderlay = useCallback(
-    (from: TraceUnderlay, to: TraceUnderlay) => {
-      setPits(followUnderlay(dragPitsRef.current, from, to));
-    },
-    [],
-  );
+  const dragUnderlay = useCallback((from: TraceUnderlay, to: TraceUnderlay) => {
+    setPits(followUnderlay(dragPitsRef.current, from, to));
+  }, []);
 
   const underlayTool = useUnderlay({
     setMessage,
@@ -1528,7 +1528,7 @@ export default function PitSheetPage({
   if (printMode)
     return (
       <CalcPrintSheet
-        title={`ピット計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
+        title={`${sheetName}　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
         upper={
           <div className="pit-print-upper">
             {drawing}
@@ -1547,7 +1547,7 @@ export default function PitSheetPage({
         <button type="button" onClick={closePage}>
           ← 部位別入力表へ
         </button>
-        <h2>ピット計算書</h2>
+        <h2>{sheetName}</h2>
         <span className="project">
           {project.managementNo} {roomName || "（名称なし）"}
         </span>
@@ -2637,7 +2637,7 @@ export default function PitSheetPage({
         result={calcResult}
         onMessage={setMessage}
         hasUpper
-        windowTitle={`ピット計算書　${project.managementNo}`}
+        windowTitle={`${sheetName}　${project.managementNo}`}
       />
 
       <p className="hint">

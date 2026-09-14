@@ -426,12 +426,20 @@ export default function EstimatePartsPage({
     );
   }
 
-  if (openedSheet !== null && rows[openedSheet]?.calcType === "pit") {
+  // 面積計算書はピット計算書と同じもの（表の題名だけ変える）
+  if (
+    openedSheet !== null &&
+    (rows[openedSheet]?.calcType === "pit" ||
+      rows[openedSheet]?.calcType === "area")
+  ) {
     return (
       <PitSheetPage
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        sheetName={
+          rows[openedSheet]?.calcType === "area" ? "面積計算書" : undefined
+        }
         onBack={() => {
           setOpenedSheet(null);
           void reload();

@@ -144,6 +144,7 @@ import {
 } from "./services/aggregationService";
 import {
   getFormworkTransfer,
+  reorderFormworkTransfer,
   runFormworkTransfer,
   saveFormworkRules,
 } from "./services/formworkTransferService";
@@ -190,6 +191,7 @@ import type {
   SaveProjectRequest,
   SaveRoomSheetRequest,
   SaveAggregateEditsRequest,
+  ReorderFormworkRowsRequest,
   SaveFormworkRulesRequest,
   SaveTransferRowsRequest,
   SetDetailUnusedRequest,
@@ -535,6 +537,11 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.formworkTransferRun, (_event, projectId: number) =>
     runFormworkTransfer(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.formworkTransferReorder,
+    (_event, request: ReorderFormworkRowsRequest) =>
+      reorderFormworkTransfer(getDatabase(), request.projectId, request.rows),
   );
   ipcMain.handle(
     IPC.breakdownGet,

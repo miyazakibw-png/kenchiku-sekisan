@@ -141,13 +141,14 @@ export default function RoomCalcPrintPage({
                 onBack={onBack}
               />
             );
-          if (row.calcType === "pit")
+          if (row.calcType === "pit" || row.calcType === "area")
             return (
               <PitSheetPage
                 key={key}
                 project={project}
                 row={row}
                 roomName={roomName}
+                sheetName={row.calcType === "area" ? "面積計算書" : undefined}
                 printMode
                 onBack={onBack}
               />

@@ -51,6 +51,7 @@ import type {
   SaveFittingsRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
+  ReorderFormworkRowsRequest,
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
@@ -239,11 +240,7 @@ const api = {
     projectId: number,
     sourceIds: number[],
   ): Promise<FurnitureSheetSummary[]> =>
-    ipcRenderer.invoke(
-      IPC.furnitureSheetCopyFromProject,
-      projectId,
-      sourceIds,
-    ),
+    ipcRenderer.invoke(IPC.furnitureSheetCopyFromProject, projectId, sourceIds),
   saveFurnitureSheetList: (
     projectId: number,
     sheets: FurnitureSheetSummary[],
@@ -304,6 +301,11 @@ const api = {
     ipcRenderer.invoke(IPC.formworkTransferSaveRules, request),
   runFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferRun, projectId),
+  /** ④の表で並び替えた順を転記入力表へ反映する */
+  reorderFormworkRows: (
+    request: ReorderFormworkRowsRequest,
+  ): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferReorder, request),
   /** 内訳書（集計書兼工事マスターからの変換転記） */
   getBreakdown: (
     projectId: number,

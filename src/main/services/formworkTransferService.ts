@@ -11,6 +11,8 @@ import {
 import {
   buildFormworkTransferRows,
   collectFormworkQuantities,
+  orderFormworkRows,
+  storedRowSignature,
   type FormworkCategory,
   type FormworkSourceDetail,
   type FormworkTransferRule,
@@ -156,8 +158,78 @@ export function getFormworkTransfer(
     groups: collectFormworkQuantities(details).filter((group) =>
       selected.has(group.masterKey),
     ),
-    rows: buildFormworkTransferRows(details, rules, formworkCategories(db)),
+    rows: orderFormworkRows(
+      buildFormworkTransferRows(details, rules, formworkCategories(db)),
+      storedRowOrder(db, projectId),
+    ),
   };
+}
+
+/** 転記入力表に入っている型枠転記の行の並び（④で並び替えた順を覚えるため） */
+function storedRowOrder(db: AppDatabase, projectId: number): string[] {
+  return db
+    .select()
+    .from(projectTransferRows)
+    .where(eq(projectTransferRows.projectId, projectId))
+    .orderBy(asc(projectTransferRows.displayOrder))
+    .all()
+    .filter((row) => row.formworkKey !== "")
+    .map((row) => storedRowSignature(row));
+}
+
+/** 型枠転記で作った行を消して、渡された順で入れ直す */
+function replaceFormworkRows(
+  tx: AppDatabase,
+  projectId: number,
+  rows: readonly FormworkTransferRow[],
+): void {
+  const existing = tx
+    .select()
+    .from(projectTransferRows)
+    .where(eq(projectTransferRows.projectId, projectId))
+    .all();
+  existing
+    .filter((row) => row.formworkKey !== "")
+    .forEach((row) => {
+      tx.delete(projectTransferRows)
+        .where(eq(projectTransferRows.id, row.id))
+        .run();
+    });
+  let order =
+    existing
+      .filter((row) => row.formworkKey === "")
+      .reduce((max, row) => Math.max(max, row.displayOrder), -1) + 1;
+  rows.forEach((row) => {
+    tx.insert(projectTransferRows)
+      .values({
+        projectId,
+        part1: row.part1,
+        part2: row.part2,
+        part2Split: row.part2Split ? 1 : 0,
+        formwork: row.formwork,
+        part3: row.part3,
+        subjectId: row.subjectId,
+        materialCategory: row.materialCategory,
+        partId: row.partNumber,
+        partName: row.partName,
+        detailNumber: row.detailNumber,
+        name: row.name,
+        sourceDetailId: null,
+        descriptionUpper: row.description,
+        descriptionLower: row.descriptionLower,
+        quantity: row.quantity,
+        unit: row.unit,
+        unitPrice: null,
+        amount: null,
+        remarks: row.remarks,
+        remarksLower: "",
+        memo: "",
+        formworkKey: row.formworkKey,
+        displayOrder: order,
+      })
+      .run();
+    order += 1;
+  });
 }
 
 export function saveFormworkRules(
@@ -230,53 +302,22 @@ export function runFormworkTransfer(
 ): FormworkTransferView {
   const view = getFormworkTransfer(db, projectId);
   db.transaction((tx) => {
-    const existing = tx
-      .select()
-      .from(projectTransferRows)
-      .where(eq(projectTransferRows.projectId, projectId))
-      .all();
-    existing
-      .filter((row) => row.formworkKey !== "")
-      .forEach((row) => {
-        tx.delete(projectTransferRows)
-          .where(eq(projectTransferRows.id, row.id))
-          .run();
-      });
-    let order =
-      existing
-        .filter((row) => row.formworkKey === "")
-        .reduce((max, row) => Math.max(max, row.displayOrder), -1) + 1;
-    view.rows.forEach((row: FormworkTransferRow) => {
-      tx.insert(projectTransferRows)
-        .values({
-          projectId,
-          part1: row.part1,
-          part2: row.part2,
-          part2Split: row.part2Split ? 1 : 0,
-          formwork: row.formwork,
-          part3: row.part3,
-          subjectId: row.subjectId,
-          materialCategory: row.materialCategory,
-          partId: row.partNumber,
-          partName: row.partName,
-          detailNumber: row.detailNumber,
-          name: row.name,
-          sourceDetailId: null,
-          descriptionUpper: row.description,
-          descriptionLower: row.descriptionLower,
-          quantity: row.quantity,
-          unit: row.unit,
-          unitPrice: null,
-          amount: null,
-          remarks: row.remarks,
-          remarksLower: "",
-          memo: "",
-          formworkKey: row.formworkKey,
-          displayOrder: order,
-        })
-        .run();
-      order += 1;
-    });
+    replaceFormworkRows(tx, projectId, view.rows);
+  });
+  return getFormworkTransfer(db, projectId);
+}
+
+/**
+ * ④の表で並び替えた順を転記入力表へ反映する。
+ * 作った行を全部消して並び替えた順に入れ直す（手入力の行はそのまま残す）。
+ */
+export function reorderFormworkTransfer(
+  db: AppDatabase,
+  projectId: number,
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferView {
+  db.transaction((tx) => {
+    replaceFormworkRows(tx, projectId, rows);
   });
   return getFormworkTransfer(db, projectId);
 }

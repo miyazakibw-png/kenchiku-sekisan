@@ -60,6 +60,7 @@ export const IPC = {
   formworkTransferGet: "formworkTransfer:get",
   formworkTransferSaveRules: "formworkTransfer:saveRules",
   formworkTransferRun: "formworkTransfer:run",
+  formworkTransferReorder: "formworkTransfer:reorder",
   breakdownGet: "breakdown:get",
   breakdownVersions: "breakdown:versions",
   breakdownTransfer: "breakdown:transfer",
