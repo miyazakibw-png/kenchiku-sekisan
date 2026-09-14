@@ -134,10 +134,19 @@
   background: #dbeafe;
 }
 
-.fireproof-page table.fireproof .symbol {
+/* 部材記号の上の行は ← → 🗑 のボタンだけ、下の行に記号の入力欄 */
+.fireproof-page table.fireproof .symbol-ops {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+}
+
+.fireproof-page table.fireproof .symbol-input {
+  width: 100%;
+  min-width: 10ch;
+  color: #fff;
+  background: transparent;
 }
 
 .fireproof-page table.fireproof input,
@@ -174,10 +183,10 @@
   width: 14ch;
 }
 
-.fireproof-page table.fireproof th.symbol input {
-  min-width: 8ch;
-  color: #fff;
-  background: transparent;
+/* 階共通の記号欄は寸法欄と同じく半角9文字が見える幅 */
+.fireproof-page table.fireproof td.symbol input {
+  width: 12ch;
+  min-width: 12ch;
 }
 
 .fireproof-page table.fireproof td.floor input {

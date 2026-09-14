@@ -422,10 +422,10 @@ function FloorListSection({
         <table className="grid fireproof">
           <thead>
             <tr>
-              <th className="floor" rowSpan={2}>
+              <th className="floor" rowSpan={3}>
                 階
               </th>
-              <th className="ops" rowSpan={2}>
+              <th className="ops" rowSpan={3}>
                 操作
               </th>
               {list.members.map((member, index) => (
@@ -442,22 +442,8 @@ function FloorListSection({
                     setSelectedEnd(index);
                   }}
                 >
-                  <div className="symbol">
-                    <input
-                      lang="ja"
-                      value={member.symbol}
-                      placeholder={kind === "column" ? "Ｃ1" : "Ｇ1"}
-                      onChange={(event) =>
-                        onChange({
-                          ...list,
-                          members: list.members.map((each, at) =>
-                            at === index
-                              ? { ...each, symbol: event.target.value }
-                              : each,
-                          ),
-                        })
-                      }
-                    />
+                  {/* ←→で列を動かし・🗑で列を消す。記号の入力欄はこの下の行 */}
+                  <div className="symbol-ops">
                     <button type="button" onClick={() => moveMember(index, -1)}>
                       ←
                     </button>
@@ -468,6 +454,40 @@ function FloorListSection({
                       🗑
                     </button>
                   </div>
+                </th>
+              ))}
+            </tr>
+            <tr>
+              {list.members.map((member, index) => (
+                <th
+                  key={member.id}
+                  colSpan={2}
+                  className={index >= start && index <= end ? "selected" : ""}
+                  onMouseDown={(event) => {
+                    if (event.shiftKey) {
+                      setSelectedEnd(index);
+                      return;
+                    }
+                    setSelected(index);
+                    setSelectedEnd(index);
+                  }}
+                >
+                  <input
+                    lang="ja"
+                    className="symbol-input"
+                    value={member.symbol}
+                    placeholder={kind === "column" ? "Ｃ1" : "Ｇ1"}
+                    onChange={(event) =>
+                      onChange({
+                        ...list,
+                        members: list.members.map((each, at) =>
+                          at === index
+                            ? { ...each, symbol: event.target.value }
+                            : each,
+                        ),
+                      })
+                    }
+                  />
                 </th>
               ))}
             </tr>
