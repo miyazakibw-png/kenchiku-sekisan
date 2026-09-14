@@ -21,15 +21,11 @@
   height: 20px;
 }
 
-/** 見出しの行と左の列（部位Ⅰ〜倍率）は、スクロールしても残す。
-   位置を固定したマス目は罫線が消えるので、影で罫線を描く */
+/** 見出しの行と左の列（部位Ⅰ〜倍率）は、スクロールしても残す */
 .misc-page table.grid.misc th.fix,
 .misc-page table.grid.misc td.fix {
   position: sticky;
   z-index: 1;
-  box-shadow:
-    inset -1px 0 0 var(--line-thin-color),
-    inset 0 -1px 0 var(--line-thin-color);
 }
 
 .misc-page table.grid.misc thead th.fix {
