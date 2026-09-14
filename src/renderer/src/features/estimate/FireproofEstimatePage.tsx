@@ -8,6 +8,7 @@ import type {
 import {
   calcColumnRow,
   columnSheetTotals,
+  inheritedFloors,
   manageRowQuantity,
   newColumnRow,
   newManageRow,
@@ -71,7 +72,7 @@ const MANAGE_WIDTHS = [
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
 const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
 /** 柱入力表（階〜壁取合m）の既定の幅 */
-const COLUMN_WIDTHS = [36, 100, 80, 44, 44, 110, 200, 70, 70];
+const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70];
 
 /** 表の幅＝列幅の合計（画面いっぱいに広げず、列を小さくできるようにする） */
 function tableStyle(widths: number[]): React.CSSProperties {
@@ -814,11 +815,13 @@ function ColumnSheetView({
     HEAD_DETAIL_WIDTHS,
   );
   const { widths: columnWidths, startResize: startColumnResize } =
-    useColumnWidths("fireproof-column-cols", COLUMN_WIDTHS);
+    useColumnWidths("fireproof-column-cols-v2", COLUMN_WIDTHS);
   const start = Math.min(selected, selectedEnd);
   const end = Math.max(selected, selectedEnd);
 
   const totals = columnSheetTotals(row.sheet, list);
+  /** 階が空欄の行は上の行と同じ階（薄いグレーで出す） */
+  const sheetFloors = inheritedFloors(row.sheet.rows);
 
   const commitRows = (rows: FireproofColumnRow[]): void => {
     history.push(rowRef.current);
@@ -1074,8 +1077,14 @@ function ColumnSheetView({
           </thead>
           <tbody>
             {row.sheet.rows.map((each, index) => {
-              const calc = calcColumnRow(each, list, row.sheet.thickness);
-              const size = findColumnSize(list, each.floor, each.symbol);
+              // 階が空欄の行は上の行と同じ階として計算する
+              const floor = sheetFloors[index] ?? "";
+              const calc = calcColumnRow(
+                { ...each, floor },
+                list,
+                row.sheet.thickness,
+              );
+              const size = findColumnSize(list, floor, each.symbol);
               return (
                 <tr
                   key={each.id}
@@ -1097,7 +1106,8 @@ function ColumnSheetView({
                       inputMode="text"
                       list="fireproof-floor-list"
                       value={each.floor}
-                      title="直接打てます。▼を押すと鉄骨リストの柱リストの階から選べます"
+                      placeholder={index > 0 ? floor : ""}
+                      title="直接打てます。▼を押すと鉄骨リストの柱リストの階から選べます（空欄は上の行と同じ階）"
                       onChange={(event) =>
                         changeRow(index, {
                           floor: toHalfWidth(event.target.value),
@@ -1130,9 +1140,9 @@ function ColumnSheetView({
                         })
                       }
                     />
-                    <div className="size-hint">
-                      {sizeHint(list, each.floor, each.symbol)}
-                    </div>
+                    <span className="size-hint">
+                      {sizeHint(list, floor, each.symbol)}
+                    </span>
                   </td>
                   <td className="count">
                     <input
@@ -1208,7 +1218,7 @@ function ColumnSheetView({
         </datalist>
       </div>
       <p className="hint">
-        階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の下に拾った寸法（出ない理由）が出ます。
+        階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の右横に拾った寸法（出ない理由）が出ます。
         断面必要計算式は資料の図のとおり自動で薄く出します（□：4面
         Ｗ*2+Ｄ*2+厚み*4／3面 Ｗ*2+Ｄ+厚み*2／2面 Ｗ+Ｄ+厚み／1面 Ｄ、Ｈ：4面
         Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面

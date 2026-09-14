@@ -6,6 +6,7 @@ import {
   emptyManageDetail,
   entriesFromFireproofSheet,
   findColumnSize,
+  inheritedFloors,
   manageRowQuantity,
   newColumnRow,
   newManageRow,
@@ -131,6 +132,33 @@ describe("耐火被覆・塗装入力表", () => {
     expect(
       manageRowQuantity({ ...newManageRow(), multiplier: null }, list()),
     ).toBeNull();
+  });
+
+  it("階が空欄の行は上の行と同じ階で拾う", () => {
+    const rows = [
+      columnRow({ floor: "1" }),
+      columnRow({ floor: "" }),
+      columnRow({ floor: "2" }),
+      columnRow({ floor: "" }),
+    ];
+    expect(inheritedFloors(rows)).toEqual(["1", "1", "2", "2"]);
+    // 階を空欄にした行も上の階の寸法で計算する
+    const totals = columnSheetTotals(
+      {
+        thickness: 25,
+        rows: [
+          columnRow({ count: 4, faces: 3, lengthFormula: "3.42" }),
+          columnRow({
+            floor: "",
+            count: 4,
+            faces: 3,
+            lengthFormula: "3.42",
+          }),
+        ],
+      },
+      list(),
+    );
+    expect(totals.needed).toBeCloseTo(21.888, 2);
   });
 
   it("入力管理表の明細を集計に載せる（数量＝必要数㎡合計×倍率）", () => {

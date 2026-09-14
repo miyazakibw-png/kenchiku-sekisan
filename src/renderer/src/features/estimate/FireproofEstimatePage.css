@@ -108,12 +108,36 @@
   background: #fbfbd0;
 }
 
-/* 記号の下に出す寸法・出ない理由の小さな案内 */
+/* 階が空欄の行は上の階を薄いグレーで出す（上の行と同じ扱い） */
+.fireproof-estimate-page table.fireproof-column td.floor input::placeholder {
+  color: #94a3b8;
+}
+
+/* 柱入力表は行を詰めて多くの行が見えるようにする */
+.fireproof-estimate-page table.fireproof-column td {
+  padding: 0 2px;
+  line-height: 1.2;
+  height: 16px;
+}
+
+.fireproof-estimate-page table.fireproof-column td input {
+  padding: 0;
+  line-height: 1.2;
+}
+
+/* 記号の右横に出す寸法・出ない理由の小さな案内 */
+.fireproof-estimate-page table.fireproof-column td.symbol input {
+  width: 6ch;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .fireproof-estimate-page table.fireproof-column td.symbol .size-hint {
   font-size: 10px;
   color: #64748b;
-  white-space: normal;
-  line-height: 1.1;
+  white-space: nowrap;
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 .fireproof-estimate-page table.fireproof-column td.num,

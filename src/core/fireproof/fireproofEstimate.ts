@@ -267,6 +267,15 @@ export function calcColumnRow(
   };
 }
 
+/** 階が空欄の行は上の行と同じ階として扱う。行ごとの階を返す */
+export function inheritedFloors(rows: FireproofColumnRow[]): string[] {
+  let floor = "";
+  return rows.map((row) => {
+    if (row.floor.trim() !== "") floor = row.floor;
+    return floor;
+  });
+}
+
 /** 柱入力表の合計（必要数㎡・壁取合m） */
 export function columnSheetTotals(
   sheet: FireproofColumnSheet,
@@ -276,8 +285,13 @@ export function columnSheetTotals(
   let wall = 0;
   let hasNeeded = false;
   let hasWall = false;
-  for (const row of sheet.rows) {
-    const calc = calcColumnRow(row, list, sheet.thickness);
+  const floors = inheritedFloors(sheet.rows);
+  for (const [index, row] of sheet.rows.entries()) {
+    const calc = calcColumnRow(
+      { ...row, floor: floors[index] },
+      list,
+      sheet.thickness,
+    );
     if (calc.needed !== null) {
       needed += calc.needed;
       hasNeeded = true;
