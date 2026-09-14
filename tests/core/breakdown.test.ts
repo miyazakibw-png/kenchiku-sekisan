@@ -183,6 +183,21 @@ describe("内訳書の行づくり", () => {
     expect(rows[1].nameLower).toBe("基礎 普通コンクリート");
   });
 
+  it("名称パターンで部位：名称にできる（2段1行・1段とも）", () => {
+    const twoLine = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(twoLine[1].nameUpper).toBe("");
+    expect(twoLine[1].nameLower).toBe("基礎:普通コンクリート");
+    const oneLine = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.oneLine,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(oneLine[1].nameLower).toBe("基礎:普通コンクリート");
+  });
+
   it("工種科目の並びを設定どおりにする", () => {
     const rows = buildBreakdownRows(
       [item({}), item({ id: 2, masterKey: "k2", subjectId: 2 })],

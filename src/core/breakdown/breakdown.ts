@@ -22,6 +22,8 @@ export const NAME_PATTERN = {
   asIs: 1,
   /** 部位＋半角スペース＋名称 */
   withPart: 2,
+  /** 部位＋半角「：」＋名称 */
+  withPartColon: 3,
 } as const;
 
 export interface TextReplacement {
@@ -437,10 +439,14 @@ function detailRows(
   row.partName = item.partName;
   if (
     settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-    settings.namePattern === NAME_PATTERN.withPart
+    settings.namePattern === NAME_PATTERN.withPart ||
+    settings.namePattern === NAME_PATTERN.withPartColon
   ) {
+    const separator =
+      settings.namePattern === NAME_PATTERN.withPartColon ? ":" : " ";
     row.nameUpper = "";
-    row.nameLower = partName === "" ? name : `${partName} ${name}`.trim();
+    row.nameLower =
+      partName === "" ? name : `${partName}${separator}${name}`.trim();
   } else {
     row.nameUpper = partName;
     row.nameLower = name;

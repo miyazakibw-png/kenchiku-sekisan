@@ -63,6 +63,7 @@ import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import "./FrameSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { ask } from "../common/askDialog";
 
 interface Props {
@@ -144,6 +145,21 @@ function viewBox(points: { x: number; y: number }[]): {
   const top = Math.min(...ys) - (size - height) / 2 - margin;
   const span = size + margin * 2;
   return { box: `${left} ${top} ${span} ${span}`, span };
+}
+
+/** ↶戻る・↷進むで戻す図の中身（置いた部屋・引いた線・線の設定・建具・下敷き図面・軸組種類をまとめて1つにする） */
+interface FrameDiagramContent {
+  placements: FramePlacement[];
+  manualLines: FrameManualLine[];
+  attributes: Record<string, FrameLineAttribute>;
+  frameFittings: {
+    id: string;
+    symbol: string;
+    multiplier: number;
+    lineId: string | null;
+  }[];
+  trace: FrameTrace;
+  kinds: FrameKind[];
 }
 
 export default function FrameSheetPage({
@@ -264,6 +280,78 @@ export default function FrameSheetPage({
     () => save(),
   );
 
+  /** 図の履歴（↶戻る・↷進む用） */
+  const diagramHistory = useUndoRedo<FrameDiagramContent>();
+  const diagramRef = useRef<FrameDiagramContent>({
+    placements: [],
+    manualLines: [],
+    attributes: {},
+    frameFittings: [],
+    trace: EMPTY_FRAME_TRACE,
+    kinds: defaultFrameKinds(),
+  });
+  useEffect(() => {
+    diagramRef.current = {
+      placements,
+      manualLines,
+      attributes,
+      frameFittings,
+      trace,
+      kinds,
+    };
+  }, [placements, manualLines, attributes, frameFittings, trace, kinds]);
+
+  /** 図を直す直前に、今の形を履歴へ積む */
+  const pushDiagram = useCallback((): void => {
+    diagramHistory.push(diagramRef.current);
+  }, [diagramHistory]);
+
+  /** 図を1つ前の形に戻す */
+  const undoDiagram = (): void => {
+    const previous = diagramHistory.undo(diagramRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    panDragRef.current = null;
+    traceDragRef.current = null;
+    dragRef.current = null;
+    endRef.current = null;
+    setDrawStart(null);
+    setScalePoints([]);
+    setHeldView(null);
+    setPlacements(previous.placements);
+    setManualLines(previous.manualLines);
+    setAttributes(previous.attributes);
+    setFrameFittings(previous.frameFittings);
+    setTrace(previous.trace);
+    setKinds(previous.kinds);
+    setMessage("図を1つ前に戻しました（保存すると確定します）");
+  };
+
+  /** 戻した図を1つ先へ進める */
+  const redoDiagram = (): void => {
+    const next = diagramHistory.redo(diagramRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    panDragRef.current = null;
+    traceDragRef.current = null;
+    dragRef.current = null;
+    endRef.current = null;
+    setDrawStart(null);
+    setScalePoints([]);
+    setHeldView(null);
+    setPlacements(next.placements);
+    setManualLines(next.manualLines);
+    setAttributes(next.attributes);
+    setFrameFittings(next.frameFittings);
+    setTrace(next.trace);
+    setKinds(next.kinds);
+    setMessage("図を1つ先へ進めました（保存すると確定します）");
+  };
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
@@ -319,6 +407,7 @@ export default function FrameSheetPage({
         trace: loadedTrace,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
       });
+      diagramHistory.clear();
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
       setPartValues(await window.sekisan.getFittingPartValues());
@@ -349,6 +438,7 @@ export default function FrameSheetPage({
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (target?.isContentEditable === true) return;
       event.preventDefault();
+      pushDiagram();
       setManualLines((current) =>
         current.filter((line) => line.id !== selectedLineId),
       );
@@ -484,6 +574,7 @@ export default function FrameSheetPage({
   const resizeTrace = useCallback(
     (factor: number) => {
       if (traceBox === null) return;
+      pushDiagram();
       setTrace((current) => ({
         ...current,
         metersPerPixel: current.metersPerPixel * factor,
@@ -491,7 +582,7 @@ export default function FrameSheetPage({
         y: current.y + (traceBox.height * (1 - factor)) / 2,
       }));
     },
-    [traceBox],
+    [pushDiagram, traceBox],
   );
 
   const points = useMemo(
@@ -630,12 +721,14 @@ export default function FrameSheetPage({
   ]);
 
   const updateAttribute = useCallback(
-    (lineId: string, patch: Partial<FrameLineAttribute>) =>
+    (lineId: string, patch: Partial<FrameLineAttribute>, quiet = false) => {
+      if (!quiet) pushDiagram();
       setAttributes((current) => ({
         ...current,
         [lineId]: { ...frameLineAttribute(current[lineId]), ...patch },
-      })),
-    [],
+      }));
+    },
+    [pushDiagram],
   );
 
   // 図面画像の大きさ（画素）を測る
@@ -648,19 +741,23 @@ export default function FrameSheetPage({
   }, [trace.image]);
 
   /** 取り込んだ図面を置く（縮尺はいったん仮に決めて、あとで合わせる） */
-  const putTraceImage = useCallback((dataUrl: string) => {
-    setHeldView(null);
-    setFitTrace(true);
-    setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
-    setScalePoints([]);
-    setTraceMode("scale");
-    // 縮尺合わせの間は線を引けないので、線引きは止めておく
-    setDrawing(false);
-    setDrawStart(null);
-    setMessage(
-      "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
-    );
-  }, []);
+  const putTraceImage = useCallback(
+    (dataUrl: string) => {
+      pushDiagram();
+      setHeldView(null);
+      setFitTrace(true);
+      setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
+      setScalePoints([]);
+      setTraceMode("scale");
+      // 縮尺合わせの間は線を引けないので、線引きは止めておく
+      setDrawing(false);
+      setDrawStart(null);
+      setMessage(
+        "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
+      );
+    },
+    [pushDiagram],
+  );
 
   /** クリップボードの画像（Shift+Windows+S の切り取り）を図面にする */
   const pasteTraceImage = useCallback(async () => {
@@ -738,6 +835,7 @@ export default function FrameSheetPage({
       return;
     }
     const factor = meters / now;
+    pushDiagram();
     setScaleUndo((current) => [
       ...current.slice(-9),
       { trace, lines: manualLines },
@@ -762,7 +860,7 @@ export default function FrameSheetPage({
     setHeldView(null);
     setTraceMode("off");
     setMessage("縮尺を合わせました（図面も引いた線も一緒に伸び縮みしました）");
-  }, [manualLines, scalePoints, scaleText, selectedLineId, trace]);
+  }, [manualLines, pushDiagram, scalePoints, scaleText, selectedLineId, trace]);
 
   /** 縮尺合わせを1回分もとに戻す */
   const undoScale = useCallback(() => {
@@ -819,19 +917,21 @@ export default function FrameSheetPage({
         setMessage("先に表の左のチェックで線を選んでください");
         return;
       }
-      checkedIds.forEach((id) => updateAttribute(id, { kindId }));
+      pushDiagram();
+      checkedIds.forEach((id) => updateAttribute(id, { kindId }, true));
       setMessage(
         `${checkedIds.length}本を「${kindOf(kindId)?.name ?? "種類なし"}」にしました`,
       );
       setCheckedIds([]);
     },
-    [checkedIds, kindOf, updateAttribute],
+    [checkedIds, kindOf, pushDiagram, updateAttribute],
   );
 
   /** レイアウトへ部屋を置く（重ならないように少しずらして置く） */
   const addPlacement = useCallback(
     (room: FrameRoomOption) => {
       const offset = placements.length * 0.5;
+      pushDiagram();
       setPlacements((current) => [
         ...current,
         {
@@ -845,7 +945,7 @@ export default function FrameSheetPage({
       ]);
       setMessage(`${room.roomName} を置きました（ドラッグで移動できます）`);
     },
-    [placements.length],
+    [placements.length, pushDiagram],
   );
 
   /** 画面の位置を図の座標（m）に直す */
@@ -968,24 +1068,28 @@ export default function FrameSheetPage({
   const showRoomTables = expanded && !manualOnly && showRoomList;
 
   /** 表に入れた長さに合わせて、引いた線の終わりの端だけを動かす */
-  const setManualLength = useCallback((id: string, length: number): void => {
-    if (!Number.isFinite(length) || length <= 0) return;
-    setManualLines((current) =>
-      current.map((line) => {
-        if (line.id !== id) return line;
-        const dx = line.x2 - line.x1;
-        const dy = line.y2 - line.y1;
-        const now = Math.hypot(dx, dy);
-        if (now < 1e-6) return line;
-        const at = (value: number): number => Math.round(value * 1000) / 1000;
-        return {
-          ...line,
-          x2: at(line.x1 + (dx / now) * length),
-          y2: at(line.y1 + (dy / now) * length),
-        };
-      }),
-    );
-  }, []);
+  const setManualLength = useCallback(
+    (id: string, length: number): void => {
+      if (!Number.isFinite(length) || length <= 0) return;
+      pushDiagram();
+      setManualLines((current) =>
+        current.map((line) => {
+          if (line.id !== id) return line;
+          const dx = line.x2 - line.x1;
+          const dy = line.y2 - line.y1;
+          const now = Math.hypot(dx, dy);
+          if (now < 1e-6) return line;
+          const at = (value: number): number => Math.round(value * 1000) / 1000;
+          return {
+            ...line,
+            x2: at(line.x1 + (dx / now) * length),
+            y2: at(line.y1 + (dy / now) * length),
+          };
+        }),
+      );
+    },
+    [pushDiagram],
+  );
 
   /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
   const endRef = useRef<{
@@ -1152,6 +1256,7 @@ export default function FrameSheetPage({
       const snap = (value: number): number => Math.round(value * 20) / 20;
       const next = snapPoint({ x: snap(point.x), y: snap(point.y) });
       if (drawStart === null) {
+        pushDiagram();
         setDrawStart(next);
         setMessage("終点をクリックしてください");
         return;
@@ -1172,7 +1277,7 @@ export default function FrameSheetPage({
         ...current,
         { id, x1: drawStart.x, y1: drawStart.y, x2: end.x, y2: end.y },
       ]);
-      if (drawKindId !== "") updateAttribute(id, { kindId: drawKindId });
+      if (drawKindId !== "") updateAttribute(id, { kindId: drawKindId }, true);
       setDrawStart(null);
       setMessage(
         drawKindId === ""
@@ -1189,6 +1294,7 @@ export default function FrameSheetPage({
       scalePoints.length,
       snapPoint,
       toModel,
+      pushDiagram,
       traceMode,
       updateAttribute,
     ],
@@ -1446,6 +1552,7 @@ export default function FrameSheetPage({
                   title="押すとこの線から建具を外します"
                   onClick={(e) => {
                     e.stopPropagation();
+                    pushDiagram();
                     setFrameFittings((current) =>
                       current.filter((each) => each.id !== item.id),
                     );
@@ -1462,6 +1569,7 @@ export default function FrameSheetPage({
               onChange={(e) => {
                 const symbol = e.target.value;
                 if (symbol === "") return;
+                pushDiagram();
                 setFrameFittings((current) => [
                   ...current,
                   {
@@ -1488,6 +1596,7 @@ export default function FrameSheetPage({
               type="button"
               title="この線を消します"
               onClick={() => {
+                pushDiagram();
                 setManualLines((current) =>
                   current.filter((each) => each.id !== manual.id),
                 );
@@ -1542,6 +1651,26 @@ export default function FrameSheetPage({
       <section className="drawing">
         <div className="section-bar">
           <span>建物レイアウト（{MODE_LABEL[mode]}）</span>
+          {!printMode && (
+            <>
+              <button
+                type="button"
+                title="図の直しを1つ前に戻します"
+                onClick={undoDiagram}
+                disabled={!diagramHistory.canUndo}
+              >
+                ↶ 戻る
+              </button>
+              <button
+                type="button"
+                title="戻した図を1つ先へ進めます"
+                onClick={redoDiagram}
+                disabled={!diagramHistory.canRedo}
+              >
+                ↷ 進む
+              </button>
+            </>
+          )}
           <button
             type="button"
             title={
@@ -1656,6 +1785,7 @@ export default function FrameSheetPage({
               type="button"
               title="最後に引いた線を1本消します（図の上の線をダブルクリックでも消せます）"
               onClick={() => {
+                pushDiagram();
                 setManualLines((current) => current.slice(0, -1));
                 setDrawStart(null);
                 setMessage("引いた線を1本消しました");
@@ -1675,6 +1805,7 @@ export default function FrameSheetPage({
                   ))
                 )
                   return;
+                pushDiagram();
                 setManualLines([]);
                 setDrawStart(null);
                 setSelectedLineId(null);
@@ -1692,6 +1823,7 @@ export default function FrameSheetPage({
               onClick={async () => {
                 if (!(await ask("下敷きの図面を外します。よろしいですか")))
                   return;
+                pushDiagram();
                 setTrace(EMPTY_FRAME_TRACE);
                 setTraceMode("off");
                 setScalePoints([]);
@@ -1813,12 +1945,13 @@ export default function FrameSheetPage({
                 図面の濃さ
                 <select
                   value={String(trace.opacity ?? 0.75)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    pushDiagram();
                     setTrace((current) => ({
                       ...current,
                       opacity: Number(e.target.value),
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <option value="1">濃い</option>
                   <option value="0.75">ふつう</option>
@@ -1988,6 +2121,7 @@ export default function FrameSheetPage({
                 onPointerDown={(event) => {
                   if (traceMode !== "move") return;
                   event.stopPropagation();
+                  pushDiagram();
                   traceDragRef.current = {
                     clientX: event.clientX,
                     clientY: event.clientY,
@@ -2038,6 +2172,7 @@ export default function FrameSheetPage({
                       onPointerDown={(event) => {
                         setSelectedPlacementId(placement.id);
                         if (drawing) return;
+                        pushDiagram();
                         dragRef.current = {
                           placementId: placement.id,
                           clientX: event.clientX,
@@ -2094,6 +2229,7 @@ export default function FrameSheetPage({
                   onDoubleClick={(event) => {
                     if (line.source !== "manual") return;
                     event.stopPropagation();
+                    pushDiagram();
                     setManualLines((current) =>
                       current.filter((each) => each.id !== line.id),
                     );
@@ -2122,6 +2258,7 @@ export default function FrameSheetPage({
                     }
                     if (mode !== "layout" || drawing || !placement) return;
                     setSelectedPlacementId(placement.id);
+                    pushDiagram();
                     dragRef.current = {
                       placementId: placement.id,
                       clientX: event.clientX,
@@ -2172,6 +2309,7 @@ export default function FrameSheetPage({
                       event.stopPropagation();
                       // つまんでいる間に表示範囲が変わって図面が動かないよう止める
                       setHeldView(baseView);
+                      pushDiagram();
                       endRef.current = {
                         lineId: line.id,
                         end,
@@ -2207,6 +2345,7 @@ export default function FrameSheetPage({
               type="button"
               title="重なっている線を、1つの位置につき1本だけ残します"
               onClick={() => {
+                pushDiagram();
                 setManualLines((current) =>
                   current.filter((line) => !doubled.extras.has(line.id)),
                 );
@@ -2302,6 +2441,7 @@ export default function FrameSheetPage({
                           onBlur={(e) => {
                             const value = Number(e.target.value);
                             if (!Number.isFinite(value)) return;
+                            pushDiagram();
                             setPlacements((current) =>
                               current.map((each) =>
                                 each.id === placement.id
@@ -2317,11 +2457,12 @@ export default function FrameSheetPage({
                       <button
                         type="button"
                         title="レイアウトから外します（部屋計算書は消えません）"
-                        onClick={() =>
+                        onClick={() => {
+                          pushDiagram();
                           setPlacements((current) =>
                             current.filter((each) => each.id !== placement.id),
-                          )
-                        }
+                          );
+                        }}
                       >
                         🗑
                       </button>
@@ -2351,6 +2492,7 @@ export default function FrameSheetPage({
                   <td>
                     <input
                       value={kind.name}
+                      onFocus={pushDiagram}
                       onChange={(e) =>
                         setKinds((current) =>
                           current.map((each) =>
@@ -2367,6 +2509,7 @@ export default function FrameSheetPage({
                       type="color"
                       className="kind-color"
                       value={kind.color}
+                      onFocus={pushDiagram}
                       onChange={(e) =>
                         setKinds((current) =>
                           current.map((each) =>
@@ -2627,11 +2770,12 @@ export default function FrameSheetPage({
                       {line.source === "manual" && (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            pushDiagram();
                             setManualLines((current) =>
                               current.filter((each) => each.id !== line.id),
-                            )
-                          }
+                            );
+                          }}
                         >
                           🗑
                         </button>
@@ -2680,6 +2824,7 @@ export default function FrameSheetPage({
                       <input
                         list="frame-fitting-symbols"
                         defaultValue={item.symbol}
+                        onFocus={pushDiagram}
                         onBlur={(e) =>
                           setFrameFittings((current) =>
                             current.map((each) =>
@@ -2695,6 +2840,7 @@ export default function FrameSheetPage({
                       <input
                         className="num"
                         defaultValue={String(item.multiplier)}
+                        onFocus={pushDiagram}
                         onBlur={(e) => {
                           const value = Number(e.target.value);
                           if (!Number.isFinite(value)) return;
@@ -2711,7 +2857,8 @@ export default function FrameSheetPage({
                     <td>
                       <select
                         value={item.lineId ?? ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          pushDiagram();
                           setFrameFittings((current) =>
                             current.map((each) =>
                               each.id === item.id
@@ -2724,8 +2871,8 @@ export default function FrameSheetPage({
                                   }
                                 : each,
                             ),
-                          )
-                        }
+                          );
+                        }}
                       >
                         <option value="">指定なし（合計から減）</option>
                         {lines.map((line) => (
@@ -2752,11 +2899,12 @@ export default function FrameSheetPage({
                     <td>
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          pushDiagram();
                           setFrameFittings((current) =>
                             current.filter((each) => each.id !== item.id),
-                          )
-                        }
+                          );
+                        }}
                       >
                         🗑
                       </button>
@@ -2831,6 +2979,7 @@ export default function FrameSheetPage({
                         title="この軸組の建具へ加える"
                         onClick={(e) => {
                           e.stopPropagation();
+                          pushDiagram();
                           setFrameFittings((current) => [
                             ...current,
                             {

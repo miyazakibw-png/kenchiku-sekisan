@@ -813,6 +813,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             >
               <option value={NAME_PATTERN.asIs}>そのまま</option>
               <option value={NAME_PATTERN.withPart}>部位＋名称</option>
+              <option value={NAME_PATTERN.withPartColon}>部位：名称</option>
             </select>
           </label>
           <label>
