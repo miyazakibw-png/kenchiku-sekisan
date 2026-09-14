@@ -740,7 +740,7 @@ export default function FireproofEstimatePage({
                   className={cls}
                   title={
                     label === "数量（自動）"
-                      ? "計算書（柱入力表・梁型入力表）の必要数㎡の合計×倍率で自動で出ます（手では打てません）"
+                      ? "その行で選んだ計算書の必要数㎡の合計×倍率で自動で出ます（手では打てません）"
                       : undefined
                   }
                 >
@@ -786,7 +786,6 @@ export default function FireproofEstimatePage({
                   <input
                     lang="ja"
                     value={row.scope}
-                    placeholder="柱"
                     title="積算範囲は自由に書けます（柱・梁型など。名称欄と同じく変換して打てます）"
                     onChange={(event) =>
                       change(index, { scope: event.target.value })
@@ -873,8 +872,9 @@ export default function FireproofEstimatePage({
       </div>
       <p className="hint">
         1行が1明細です。部位1は空欄なら入力のある上の行を引き継ぎます（部位Ⅱ別仕訳・部位Ⅲはありません）。
-        倍率は未入力なら1です。「計算書」で柱入力表を開くと、先頭行に同じ明細が出て、どちらで直しても両方に反映します。
-        数量は柱入力表の必要数㎡の合計×倍率です。
+        倍率は未入力なら1です。「計算書」の欄で種類（柱入力表・梁型入力表）を選んで「📐
+        開く」を押すと、先頭行に同じ明細が出て、どちらで直しても両方に反映します。
+        数量はその行で選んだ計算書の必要数㎡の合計×倍率です（もう片方の入力は残りますが数量には入りません）。
       </p>
     </div>
   );
@@ -1134,8 +1134,7 @@ function ColumnSheetView({
         <input
           lang="en"
           value={sheet.thickness === null ? "" : String(sheet.thickness)}
-          placeholder="25"
-          title="mmで入れます（断面必要計算式では m に直して使います）"
+          title="耐火被覆厚みを mm で入れます（例 25。断面必要計算式では m に直して使います。未入力のときは断面必要計算式を自動で出しません）"
           onChange={(event) => {
             const text = toHalfWidth(event.target.value).trim();
             const value = text === "" ? null : Number(text);
@@ -1148,6 +1147,11 @@ function ColumnSheetView({
           }}
         />
         <span className="unit-mm">mm</span>
+        {sheet.thickness === null && (
+          <span className="thickness-note">
+            厚みを入れると断面必要計算式が出ます
+          </span>
+        )}
         <span className="sum">
           必要数㎡ <b>{formatNumber(totals.needed)}</b>
         </span>
@@ -1308,7 +1312,6 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       value={each.mark}
-                      placeholder={kind === "beam" ? "H4…" : "1〜4"}
                       title={config.markTitle}
                       onChange={(event) =>
                         changeRow(index, {

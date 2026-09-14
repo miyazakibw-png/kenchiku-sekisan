@@ -120,6 +120,11 @@
   text-align: right;
 }
 
+/* 厚みが未入力のときの案内 */
+.fireproof-estimate-page .fireproof-thickness .thickness-note {
+  color: #b2452b;
+}
+
 .fireproof-estimate-page .fireproof-thickness .sum b {
   display: inline-block;
   min-width: 8ch;

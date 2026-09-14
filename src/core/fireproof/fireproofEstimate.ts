@@ -581,15 +581,17 @@ export function entriesFromFireproofSheet(
   return entries;
 }
 
-/** 管理表の行の数量（柱入力表＋梁型入力表の必要数合計×倍率。計算書が無ければnull） */
+/** 管理表の行の数量（その行で選んだ計算書の必要数合計×倍率。計算が無ければnull） */
 export function manageRowQuantity(
   row: FireproofManageRow,
   columnsList: FireproofFloorList,
   beamsList: FireproofFloorList = { floors: [], members: [] },
 ): number | null {
-  // 計算書の計算がある行だけ数量を出す（積算範囲の文字には依存しない）
-  const column = columnSheetTotals(row.sheet, columnsList).needed;
-  const beam = beamSheetTotals(row.beamSheet, beamsList).needed;
-  if (column === null && beam === null) return null;
-  return ((column ?? 0) + (beam ?? 0)) * (row.multiplier ?? 1);
+  // 選んだ計算書の分だけ数量にする（もう片方の入力は残るが数量には入れない）
+  const needed =
+    row.calcType === "beam"
+      ? beamSheetTotals(row.beamSheet, beamsList).needed
+      : columnSheetTotals(row.sheet, columnsList).needed;
+  if (needed === null) return null;
+  return needed * (row.multiplier ?? 1);
 }

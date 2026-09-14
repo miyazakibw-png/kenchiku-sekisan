@@ -166,6 +166,8 @@ describe("耐火被覆・塗装入力表", () => {
     expect(
       manageRowQuantity({ ...newManageRow(), multiplier: null }, list()),
     ).toBeNull();
+    // 梁型入力表を選んだ行は柱入力表の分を数量に入れない（入力は残る）
+    expect(manageRowQuantity({ ...row, calcType: "beam" }, list())).toBeNull();
   });
 
   it("階が空欄の行は上の行と同じ階で拾う", () => {
