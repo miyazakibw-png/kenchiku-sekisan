@@ -41,7 +41,7 @@
 
 .fireproof-common {
   display: flex;
-  flex: 0 0 300px;
+  flex: 0 0 460px;
   flex-direction: column;
   min-width: 0;
 }
