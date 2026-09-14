@@ -24,6 +24,7 @@ import {
 } from "../../../../core/fireproof/fireproofList";
 import { findColumnSize } from "../../../../core/fireproof/fireproofEstimate";
 import PickInput, { type PickEntry } from "../../components/PickInput";
+import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 import "./EstimatePartsPage.css";
@@ -63,6 +64,37 @@ function formatNumber(value: number | null, decimals = 2): string {
   return value === null ? "" : value.toFixed(decimals);
 }
 
+/** 入力管理表の列（No〜備考（上段））の既定の幅 */
+const MANAGE_WIDTHS = [
+  30, 100, 72, 50, 90, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
+];
+/** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
+const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
+/** 柱入力表（階〜壁取合m）の既定の幅 */
+const COLUMN_WIDTHS = [36, 100, 80, 44, 44, 110, 200, 70, 70];
+
+/** 記号の下に出す小さな案内（拾った寸法、または出ない理由） */
+function sizeHint(
+  list: FireproofFloorList,
+  floor: string,
+  symbol: string,
+): string {
+  if (symbol.trim() === "") return "";
+  const member = list.members.find(
+    (each) => each.symbol.trim() === symbol.trim(),
+  );
+  if (!member) return "リストにこの記号がありません";
+  if (
+    floor.trim() !== "" &&
+    !list.floors.some((each) => each.label.trim() === floor.trim())
+  )
+    return "リストにこの階がありません";
+  const size = findColumnSize(list, floor, symbol);
+  if (!size || size.first === null) return "リストに寸法が入っていません";
+  const shape = SHAPE_LABEL[size.shape === "" ? "box" : size.shape];
+  return `${shape}${size.first}${size.second === null ? "" : `*${size.second}`}`;
+}
+
 /**
  * 耐火被覆・塗装入力表。
  * 上：入力管理表（1行＝1明細。積算範囲ごとに数量を出す）
@@ -100,6 +132,8 @@ export default function FireproofEstimatePage({
   const [message, setMessage] = useState("");
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   const history = useUndoRedo<FireproofManageRow[]>();
+  const { widths: manageWidths, startResize: startManageResize } =
+    useColumnWidths("fireproof-manage-cols", MANAGE_WIDTHS);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -574,25 +608,51 @@ export default function FireproofEstimatePage({
 
       <div className="section-scroll">
         <table className="grid fireproof-manage">
+          <colgroup>
+            {MANAGE_WIDTHS.map((_, index) => (
+              <col key={index} style={{ width: `${manageWidths[index]}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th className="no">No</th>
-              <th className="part1">部位1</th>
-              <th className="scope">積算範囲</th>
-              <th className="num">倍率</th>
-              <th className="sheet">計算書</th>
-              <th className="num">数量</th>
-              <th className="material">区分</th>
-              <th className="id">科目</th>
-              <th className="id">部位ID</th>
-              <th className="id">名称ID</th>
-              <th className="part">部位</th>
-              <th className="name">名称</th>
-              <th className="desc">摘要（下段）</th>
-              <th className="desc">摘要（上段）</th>
-              <th className="unit">単位</th>
-              <th className="note">備考（下段）</th>
-              <th className="note">備考（上段）</th>
+              {(
+                [
+                  ["No", "no"],
+                  ["部位1", "part1"],
+                  ["積算範囲", "scope"],
+                  ["倍率", "num"],
+                  ["計算書", "sheet"],
+                  ["数量（自動）", "num"],
+                  ["区分", "material"],
+                  ["科目", "id"],
+                  ["部位ID", "id"],
+                  ["名称ID", "id"],
+                  ["部位", "part"],
+                  ["名称", "name"],
+                  ["摘要（下段）", "desc"],
+                  ["摘要（上段）", "desc"],
+                  ["単位", "unit"],
+                  ["備考（下段）", "note"],
+                  ["備考（上段）", "note"],
+                ] as const
+              ).map(([label, cls], index) => (
+                <th
+                  key={label}
+                  className={cls}
+                  title={
+                    label === "数量（自動）"
+                      ? "柱入力表の必要数㎡の合計×倍率で自動で出ます（手では打てません）"
+                      : undefined
+                  }
+                >
+                  {label}
+                  <span
+                    className="col-resize"
+                    title="ドラッグで列幅を変えられます"
+                    onMouseDown={(e) => startManageResize(index, e)}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -740,6 +800,12 @@ function ColumnSheetView({
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<FireproofColumnRow[]>([]);
+  const { widths: headWidths, startResize: startHeadResize } = useColumnWidths(
+    "fireproof-head-detail-cols",
+    HEAD_DETAIL_WIDTHS,
+  );
+  const { widths: columnWidths, startResize: startColumnResize } =
+    useColumnWidths("fireproof-column-cols", COLUMN_WIDTHS);
   const start = Math.min(selected, selectedEnd);
   const end = Math.max(selected, selectedEnd);
 
@@ -879,19 +945,37 @@ function ColumnSheetView({
 
       {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
       <table className="grid fireproof-manage head">
+        <colgroup>
+          {HEAD_DETAIL_WIDTHS.map((_, index) => (
+            <col key={index} style={{ width: `${headWidths[index]}px` }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th className="material">区分</th>
-            <th className="id">科目</th>
-            <th className="id">部位ID</th>
-            <th className="id">名称ID</th>
-            <th className="part">部位</th>
-            <th className="name">名称</th>
-            <th className="desc">摘要（下段）</th>
-            <th className="desc">摘要（上段）</th>
-            <th className="unit">単位</th>
-            <th className="note">備考（下段）</th>
-            <th className="note">備考（上段）</th>
+            {(
+              [
+                ["区分", "material"],
+                ["科目", "id"],
+                ["部位ID", "id"],
+                ["名称ID", "id"],
+                ["部位", "part"],
+                ["名称", "name"],
+                ["摘要（下段）", "desc"],
+                ["摘要（上段）", "desc"],
+                ["単位", "unit"],
+                ["備考（下段）", "note"],
+                ["備考（上段）", "note"],
+              ] as const
+            ).map(([label, cls], index) => (
+              <th key={label} className={cls}>
+                {label}
+                <span
+                  className="col-resize"
+                  title="ドラッグで列幅を変えられます"
+                  onMouseDown={(e) => startHeadResize(index, e)}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -941,17 +1025,35 @@ function ColumnSheetView({
 
       <div className="section-scroll">
         <table className="grid fireproof-column">
+          <colgroup>
+            {COLUMN_WIDTHS.map((_, index) => (
+              <col key={index} style={{ width: `${columnWidths[index]}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th className="floor">階</th>
-              <th className="comment">コメント</th>
-              <th className="symbol">記号</th>
-              <th className="count">倍数</th>
-              <th className="faces">取合</th>
-              <th className="formula">計算式(有効長)</th>
-              <th className="section">断面必要計算式</th>
-              <th className="num">必要数㎡</th>
-              <th className="num">壁取合m</th>
+              {(
+                [
+                  ["階", "floor"],
+                  ["コメント", "comment"],
+                  ["記号", "symbol"],
+                  ["倍数", "count"],
+                  ["取合", "faces"],
+                  ["計算式(有効長)", "formula"],
+                  ["断面必要計算式", "section"],
+                  ["必要数㎡", "num"],
+                  ["壁取合m", "num"],
+                ] as const
+              ).map(([label, cls], index) => (
+                <th key={label} className={cls}>
+                  {label}
+                  <span
+                    className="col-resize"
+                    title="ドラッグで列幅を変えられます"
+                    onMouseDown={(e) => startColumnResize(index, e)}
+                  />
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -976,8 +1078,10 @@ function ColumnSheetView({
                   <td className="floor">
                     <input
                       lang="en"
+                      inputMode="text"
                       list="fireproof-floor-list"
                       value={each.floor}
+                      title="直接打てます。▼を押すと鉄骨リストの柱リストの階から選べます"
                       onChange={(event) =>
                         changeRow(index, {
                           floor: toHalfWidth(event.target.value),
@@ -1010,6 +1114,9 @@ function ColumnSheetView({
                         })
                       }
                     />
+                    <div className="size-hint">
+                      {sizeHint(list, each.floor, each.symbol)}
+                    </div>
                   </td>
                   <td className="count">
                     <input
@@ -1079,14 +1186,15 @@ function ColumnSheetView({
           </tbody>
         </table>
         <datalist id="fireproof-floor-list">
-          {floorEntries.map((label) => (
-            <option key={label} value={label} />
+          {floorEntries.map((label, index) => (
+            <option key={`${index}-${label}`} value={label} />
           ))}
         </datalist>
       </div>
       <p className="hint">
-        記号は鉄骨リスト（柱リスト）の記号です。階と記号から寸法を拾い、□型は「Ｗ×取合＋厚み×(取合−1)」の
-        断面必要計算式を薄い字で自動表示します（そのまま計算に使います。欄に打つとその式が優先します）。
+        階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の下に拾った寸法（出ない理由）が出ます。
+        □型は「Ｗ×取合＋厚み×(取合−1)」の断面必要計算式を薄い字で自動表示します（そのまま計算に使います。欄に打つとその式が優先します）。
+        表の列幅は見出しの右端をドラッグして変えられます。
         必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4のときは0）です。
       </p>
     </div>

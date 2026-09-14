@@ -52,58 +52,24 @@
   background: #dbeafe;
 }
 
-/* 入力管理表の列幅 */
+/* 見出しの右端。ドラッグで列幅を変える（計算書と同じつまみ） */
+.fireproof-estimate-page table.grid th .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.fireproof-estimate-page table.grid th .col-resize:hover {
+  background: #94a3b8;
+}
+
+/* 列の並びだけ（幅は見出しで変えられる） */
 .fireproof-estimate-page table.fireproof-manage td.no,
 .fireproof-estimate-page table.fireproof-manage th.no {
-  width: 3ch;
   text-align: center;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.part1,
-.fireproof-estimate-page table.fireproof-manage td.part1 {
-  width: 14ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.scope,
-.fireproof-estimate-page table.fireproof-manage td.scope {
-  width: 10ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.num,
-.fireproof-estimate-page table.fireproof-manage td.num {
-  width: 7ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.id,
-.fireproof-estimate-page table.fireproof-manage td.id {
-  width: 6ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.material,
-.fireproof-estimate-page table.fireproof-manage td.material,
-.fireproof-estimate-page table.fireproof-manage th.unit,
-.fireproof-estimate-page table.fireproof-manage td.unit {
-  width: 8ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.part,
-.fireproof-estimate-page table.fireproof-manage td.part {
-  width: 12ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.name,
-.fireproof-estimate-page table.fireproof-manage td.name {
-  width: 24ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.desc,
-.fireproof-estimate-page table.fireproof-manage td.desc {
-  width: 20ch;
-}
-
-.fireproof-estimate-page table.fireproof-manage th.note,
-.fireproof-estimate-page table.fireproof-manage td.note {
-  width: 12ch;
 }
 
 /* 柱入力表の先頭（管理表と同じ明細）はスクロールしない固定の表 */
@@ -135,45 +101,22 @@
   padding: 0 4px;
 }
 
-/* 柱入力表の列幅 */
-.fireproof-estimate-page table.fireproof-column th.floor,
-.fireproof-estimate-page table.fireproof-column td.floor {
-  width: 5ch;
-}
-
-.fireproof-estimate-page table.fireproof-column th.comment,
-.fireproof-estimate-page table.fireproof-column td.comment {
-  width: 14ch;
-}
-
-.fireproof-estimate-page table.fireproof-column th.symbol,
-.fireproof-estimate-page table.fireproof-column td.symbol {
-  width: 8ch;
-}
-
-.fireproof-estimate-page table.fireproof-column th.count,
-.fireproof-estimate-page table.fireproof-column td.count,
-.fireproof-estimate-page table.fireproof-column th.faces,
-.fireproof-estimate-page table.fireproof-column td.faces {
-  width: 5ch;
-}
-
-.fireproof-estimate-page table.fireproof-column th.formula,
-.fireproof-estimate-page table.fireproof-column td.formula {
-  width: 16ch;
-}
-
-.fireproof-estimate-page table.fireproof-column th.section {
-  width: 24ch;
-}
-
+/* 柱入力表：断面必要計算式は薄い黄色（自動で出る欄の目印） */
 .fireproof-estimate-page table.fireproof-column td.section {
   background: #fbfbd0;
 }
 
-.fireproof-estimate-page table.fireproof-column th.num,
-.fireproof-estimate-page table.fireproof-column td.num {
-  width: 9ch;
+/* 記号の下に出す寸法・出ない理由の小さな案内 */
+.fireproof-estimate-page table.fireproof-column td.symbol .size-hint {
+  font-size: 10px;
+  color: #64748b;
+  white-space: normal;
+  line-height: 1.1;
+}
+
+.fireproof-estimate-page table.fireproof-column td.num,
+.fireproof-estimate-page table.fireproof-column td.num input {
+  text-align: right;
 }
 
 .fireproof-estimate-page .hint {
