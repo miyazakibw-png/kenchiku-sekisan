@@ -24,12 +24,39 @@
   color: #6b7280;
 }
 
+/* 左：柱・梁（上下に分ける）／右：階共通（縦に長く見せる） */
+.fireproof-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 4px;
+}
+
+.fireproof-floor {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fireproof-common {
+  display: flex;
+  flex: 0 0 300px;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .fireproof-section {
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   min-height: 120px;
   border-top: 2px solid #1f4e79;
+}
+
+/* 階共通は横幅いっぱいまで伸ばさない（右側の狭い表） */
+.fireproof-common .fireproof-section {
+  min-height: 0;
 }
 
 .fireproof-section .section-bar {

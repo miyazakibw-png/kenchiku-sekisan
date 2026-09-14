@@ -81,17 +81,30 @@ describe("耐火被覆・塗装のリスト", () => {
     expect(top.shape).toBe("box");
   });
 
-  it("柱で□のときＤが空ならＷと同じにする", () => {
+  it("柱は□でもＷとＤが違うものを入れられる（空欄だけ下の階を使う）", () => {
     const list = floorList(["2", "1"]);
     const member = newMember("C1");
     member.sizes[list.floors[0].id] = {
       shape: "box",
       first: 300,
-      second: null,
+      second: 200,
     };
     const resolved = resolveSize(member, list.floors, 0, "column");
     expect(resolved.first).toBe(300);
-    expect(resolved.second).toBe(300);
+    expect(resolved.second).toBe(200);
+    // Ｗだけ入れたとき、Ｄは下の階から引き継ぐ（Ｈ鋼と同じ決まり）
+    const half = newMember("C2");
+    half.sizes[list.floors[0].id] = {
+      shape: "box",
+      first: 300,
+      second: null,
+    };
+    half.sizes[list.floors[1].id] = {
+      shape: "box",
+      first: 500,
+      second: 450,
+    };
+    expect(resolveSize(half, list.floors, 0, "column").second).toBe(450);
   });
 
   it("梁の寸法が空なら下の階の数字を使う（Ｈ→Ｗの順）", () => {
@@ -104,7 +117,7 @@ describe("耐火被覆・塗装のリスト", () => {
     expect(top.shape).toBe("h");
   });
 
-  it("階共通リスト：形の初期はＨ、□でＤが空ならＷと同じにする", () => {
+  it("階共通リスト：形の初期はＨ、□でもＷとＤは別々に入る", () => {
     const empty = resolveCommonRow({
       id: "c1",
       symbol: "P1",
@@ -120,9 +133,9 @@ describe("耐火被覆・塗装のリスト", () => {
       symbol: "B1",
       shape: "box",
       first: 300,
-      second: null,
+      second: 100,
     });
     expect(box.shape).toBe("box");
-    expect(box.second).toBe(300);
+    expect(box.second).toBe(100);
   });
 });

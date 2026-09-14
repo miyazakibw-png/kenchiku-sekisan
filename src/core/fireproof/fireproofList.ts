@@ -208,7 +208,7 @@ export interface ResolvedSize {
 /**
  * 実際に使う寸法を求める。
  * ・空欄は「下にある階」の数字を上の階の数字として使う（柱＝Ｗ→Ｄ、梁＝Ｈ→Ｗの順）
- * ・柱で形が□のときは、Ｄが空ならＷと同じ寸法にする
+ * ・□でもＷとＤが違う部材があるので、Ｄが空ならＨ鋼と同じく下の階の数字を使う
  */
 export function resolveSize(
   member: FireproofMember,
@@ -238,31 +238,17 @@ export function resolveSize(
   })();
   const shape = shapeBelow === "" ? defaultShape : shapeBelow;
   const first = below((size) => size.first);
-  let second = own.second;
-  if (second === null) {
-    if (kind === "column" && shape === "box") {
-      second = first;
-    } else {
-      second = below((size) => size.second);
-    }
-  }
+  const second = below((size) => size.second);
   const inherited =
     (own.first === null && first !== null) ||
     (own.second === null && second !== null);
   return { shape, first, second, inherited };
 }
 
-/** 階共通リストの寸法（□でＤが空ならＷと同じ。引き継ぎは無い） */
+/** 階共通リストの寸法（引き継ぎは無い。形の初期はＨ） */
 export function resolveCommonRow(row: FireproofCommonRow): ResolvedSize {
   const shape: SteelShape = row.shape === "" ? "h" : row.shape;
-  const second =
-    row.second === null && shape === "box" ? row.first : row.second;
-  return {
-    shape,
-    first: row.first,
-    second,
-    inherited: row.second === null && second !== null,
-  };
+  return { shape, first: row.first, second: row.second, inherited: false };
 }
 
 export const SHAPE_LABEL: Record<SteelShape, string> = {

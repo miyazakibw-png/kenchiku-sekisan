@@ -48,6 +48,48 @@ const SHAPE_OPTIONS: { value: SteelShape | ""; label: string }[] = [
   { value: "h", label: "Ｈ" },
 ];
 
+interface SizeInputProps {
+  size: { shape: SteelShape | ""; first: number | null; second: number | null };
+  placeholder: string;
+  title: string;
+  onChange: (size: { first: number | null; second: number | null }) => void;
+}
+
+/**
+ * 「250*125」の1マス入力。入力中は打った文字をそのまま残し、
+ * 欄から出たときにきれいな形へ直す（打つたびに直すと「*」が消えてしまうため）。
+ */
+function SizeInput({
+  size,
+  placeholder,
+  title,
+  onChange,
+}: SizeInputProps): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(() => formatSizeInput(size));
+  // 表の外から値が変わったとき（戻る・貼付など）は欄に反映する
+  useEffect(() => {
+    if (!editing) setText(formatSizeInput(size));
+  }, [size, editing]);
+  return (
+    <input
+      value={text}
+      placeholder={placeholder}
+      title={title}
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        setText(formatSizeInput(size));
+      }}
+      onChange={(event) => {
+        setText(event.target.value);
+        const next = sizeFromInput(size, event.target.value);
+        onChange({ first: next.first, second: next.second });
+      }}
+    />
+  );
+}
+
 /**
  * 耐火被覆・塗装積算入力のリスト画面。
  * 上：階別リスト（柱リスト・梁リスト）、下：階共通リスト。表ごとに別々にスクロールする。
@@ -142,36 +184,39 @@ export default function FireproofListPage({
         <span className="status">{message}</span>
       </div>
 
-      <FloorListSection
-        title="柱リスト"
-        kind="column"
-        sizeLabels={["Ｗ", "Ｄ"]}
-        list={sheet.columns}
-        onChange={(next) =>
-          setSheet((current) => ({ ...current, columns: next }))
-        }
-        onMessage={setMessage}
-      />
-
-      <FloorListSection
-        title="梁リスト"
-        kind="beam"
-        sizeLabels={["Ｈ", "Ｗ"]}
-        list={sheet.beams}
-        onChange={(next) =>
-          setSheet((current) => ({ ...current, beams: next }))
-        }
-        onMessage={setMessage}
-      />
-
-      <div ref={commonRef}>
-        <CommonListSection
-          rows={sheet.common}
-          onChange={(next) =>
-            setSheet((current) => ({ ...current, common: next }))
-          }
-          onMessage={setMessage}
-        />
+      {/* 左を上下に分けて柱・梁、右に階共通を縦長に出す（UP図の配置） */}
+      <div className="fireproof-body">
+        <div className="fireproof-floor">
+          <FloorListSection
+            title="柱リスト"
+            kind="column"
+            sizeLabels={["Ｗ", "Ｄ"]}
+            list={sheet.columns}
+            onChange={(next) =>
+              setSheet((current) => ({ ...current, columns: next }))
+            }
+            onMessage={setMessage}
+          />
+          <FloorListSection
+            title="梁リスト"
+            kind="beam"
+            sizeLabels={["Ｈ", "Ｗ"]}
+            list={sheet.beams}
+            onChange={(next) =>
+              setSheet((current) => ({ ...current, beams: next }))
+            }
+            onMessage={setMessage}
+          />
+        </div>
+        <div className="fireproof-common" ref={commonRef}>
+          <CommonListSection
+            rows={sheet.common}
+            onChange={(next) =>
+              setSheet((current) => ({ ...current, common: next }))
+            }
+            onMessage={setMessage}
+          />
+        </div>
       </div>
     </div>
   );
@@ -501,20 +546,16 @@ function FloorListSection({
                         key={`${member.id}z`}
                         className={`size${selectedColumn ? " selected" : ""}`}
                       >
-                        <input
-                          value={formatSizeInput(size)}
+                        <SizeInput
+                          size={size}
                           placeholder={
                             resolved.first === null
                               ? `${sizeLabels[0]}＊${sizeLabels[1]}`
                               : `${resolved.first}＊${resolved.second ?? ""}`
                           }
                           title={`${sizeLabels[0]}＊${sizeLabels[1]} を1マスに打ちます（例 250*125）。空欄は下の階の数字を使います`}
-                          onChange={(event) =>
-                            changeSize(
-                              memberIndex,
-                              floor.id,
-                              sizeFromInput(size, event.target.value),
-                            )
+                          onChange={(next) =>
+                            changeSize(memberIndex, floor.id, next)
                           }
                         />
                       </td>
@@ -726,28 +767,11 @@ function CommonListSection({
                     </select>
                   </td>
                   <td className="size">
-                    <input
-                      value={formatSizeInput({
-                        shape: row.shape,
-                        first: row.first,
-                        second: row.second,
-                      })}
+                    <SizeInput
+                      size={row}
                       placeholder="Ｗ＊Ｄ"
                       title="Ｗ＊Ｄ を1マスに打ちます（例 250*125）"
-                      onChange={(event) => {
-                        const size = sizeFromInput(
-                          {
-                            shape: row.shape,
-                            first: row.first,
-                            second: row.second,
-                          },
-                          event.target.value,
-                        );
-                        change(index, {
-                          first: size.first,
-                          second: size.second,
-                        });
-                      }}
+                      onChange={(next) => change(index, next)}
                     />
                   </td>
                 </tr>
