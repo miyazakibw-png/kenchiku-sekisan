@@ -128,6 +128,12 @@
   left: 6ch;
 }
 
+/* 階共通リストには「階」列が無いので、操作列の張り付きを外す（外さないと記号に重なる） */
+.fireproof-common table.fireproof td.ops {
+  position: static;
+  left: auto;
+}
+
 .fireproof-page table.fireproof th.selected,
 .fireproof-page table.fireproof td.selected,
 .fireproof-page table.fireproof tr.selected td {
