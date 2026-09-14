@@ -421,6 +421,8 @@ export default function FurnitureSheetPage({
   const settingsDrag = useDragWindow();
   const callDrag = useDragWindow();
   const [message, setMessage] = useState("");
+  /** 印刷の間だけ紙の形（明細だけ）にする */
+  const [forPrint, setForPrint] = useState(false);
   const [picked, setPicked] = useState(0);
   /** 複数行コピーの範囲の終わり（Shift+クリックで選んだ行） */
   const [pickedEnd, setPickedEnd] = useState(0);
@@ -1086,9 +1088,14 @@ export default function FurnitureSheetPage({
   const shapeHint = (settings.shapeSymbols ?? [])
     .map((item) => `${item.symbol}→${item.text}`)
     .join("　");
-  const inputColumns = allInputColumns.filter((column) =>
-    visible(column.key),
-  );
+  // 紙には明細だけを出す（明細を作るための入力欄は出さない・画面の✔に関わらず明細は出す）
+  const printing = printMode || forPrint;
+  const inputColumns = printing
+    ? []
+    : allInputColumns.filter((column) => visible(column.key));
+
+  /** 行入力部の欄を出すか（紙には出さない） */
+  const showInput = (key: string): boolean => !printing && visible(key);
 
   /** 行入力部の見出し文字（直してあればその文字） */
   const labelOf = (column: InputColumn): string => {
@@ -1102,7 +1109,7 @@ export default function FurnitureSheetPage({
       ...settings,
       columnLabels: { ...(settings.columnLabels ?? {}), [key]: text },
     });
-  const detailCells = visible("detail") ? DETAIL_CELLS : [];
+  const detailCells = printing || visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
   const tableWidth =
@@ -1339,7 +1346,17 @@ export default function FurnitureSheetPage({
         >
           ⚙ 設定
         </button>
-        <button type="button" onClick={() => window.print()}>
+        <button
+          type="button"
+          title="明細だけを紙に出します（明細を作るための入力欄は出しません）"
+          onClick={() => {
+            setForPrint(true);
+            window.setTimeout(() => {
+              window.print();
+              setForPrint(false);
+            }, 100);
+          }}
+        >
           🖨 印刷
         </button>
         <button type="button" onClick={() => void save()}>
@@ -1966,7 +1983,7 @@ export default function FurnitureSheetPage({
                     </button>
                   </td>
                   <td className="num">{index + 1}</td>
-                  {visible("subjectId") && (
+                  {showInput("subjectId") && (
                     <td className="no-print">
                       <PickInput
                         entries={subjectEntries}
@@ -1990,7 +2007,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("partNumber") && (
+                  {showInput("partNumber") && (
                     <td className="no-print">
                       <PickInput
                         entries={pickupPartEntries}
@@ -2012,7 +2029,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("detailNumber") && (
+                  {showInput("detailNumber") && (
                     <td className="num no-print">
                       <PickInput
                         entries={numberEntries}
@@ -2046,7 +2063,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("part") && (
+                  {showInput("part") && (
                     <td>
                       <input
                         value={rows[index].part}
@@ -2057,7 +2074,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("partAdd") && (
+                  {showInput("partAdd") && (
                     <td>
                       {withFitting ? (
                         <PickInput
@@ -2078,7 +2095,7 @@ export default function FurnitureSheetPage({
                       )}
                     </td>
                   )}
-                  {visible("partSymbol") && (
+                  {showInput("partSymbol") && (
                     <td>
                       {withFitting ? (
                         <PickInput
@@ -2102,7 +2119,7 @@ export default function FurnitureSheetPage({
                       )}
                     </td>
                   )}
-                  {visible("nameSymbol") && (
+                  {showInput("nameSymbol") && (
                     <td>
                       <input
                         lang="ja"
@@ -2119,7 +2136,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withFitting && visible("fittingSymbol") && (
+                  {withFitting && showInput("fittingSymbol") && (
                     <td>
                       <PickInput
                         entries={fittingEntries}
@@ -2133,7 +2150,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withModel && !withFitting && visible("width") && (
+                  {!withModel && !withFitting && showInput("width") && (
                     <td className="num">
                       <input
                         value={rows[index].width}
@@ -2143,7 +2160,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("model") && (
+                  {withModel && showInput("model") && (
                     <td className="num">
                       <input
                         value={rows[index].model ?? ""}
@@ -2154,7 +2171,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {tripleWidth && visible("width2") && (
+                  {tripleWidth && showInput("width2") && (
                     <td className="num">
                       <input
                         value={rows[index].width2 ?? ""}
@@ -2165,7 +2182,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {tripleWidth && visible("width3") && (
+                  {tripleWidth && showInput("width3") && (
                     <td className="num">
                       <input
                         value={rows[index].width3 ?? ""}
@@ -2175,7 +2192,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withFitting && visible("height") && (
+                  {!withFitting && showInput("height") && (
                     <td className="num">
                       <input
                         value={rows[index].height}
@@ -2185,7 +2202,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withShape && !withModel && !withFitting && visible("depth") && (
+                  {!withShape && !withModel && !withFitting && showInput("depth") && (
                     <td className="num">
                       <input
                         value={rows[index].depth}
@@ -2195,7 +2212,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withShape && visible("shape") && (
+                  {withShape && showInput("shape") && (
                     <td className="num">
                       <input
                         value={rows[index].shape ?? ""}
@@ -2206,7 +2223,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("quantity") && (
+                  {showInput("quantity") && (
                     <td className="num">
                       <input
                         value={rows[index].quantity}
@@ -2218,7 +2235,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("unit") && (
+                  {showInput("unit") && (
                     <td>
                       <PickInput
                         entries={unitEntries}
@@ -2232,7 +2249,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withModel && !withFitting && visible("descriptionUpper") && (
+                  {!withModel && !withFitting && showInput("descriptionUpper") && (
                     <td>
                       <input
                         lang="ja"
@@ -2245,7 +2262,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("beam") && (
+                  {withModel && showInput("beam") && (
                     <td>
                       <input
                         lang="ja"
@@ -2257,7 +2274,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("window") && (
+                  {withModel && showInput("window") && (
                     <td>
                       <input
                         lang="ja"
@@ -2269,7 +2286,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withFitting && visible("remarksLower") && (
+                  {!withFitting && showInput("remarksLower") && (
                     <td>
                       <input
                         lang="ja"
@@ -2280,7 +2297,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("floorFormula") && (
+                  {withModel && showInput("floorFormula") && (
                     <td className="num">
                       <input
                         value={rows[index].floorFormula ?? ""}
