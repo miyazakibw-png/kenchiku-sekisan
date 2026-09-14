@@ -345,17 +345,14 @@ function SymbolTable({
     symbols
       .map((item) => item.symbol.trim())
       .filter(
-        (symbol, index, all) =>
-          symbol !== "" && all.indexOf(symbol) !== index,
+        (symbol, index, all) => symbol !== "" && all.indexOf(symbol) !== index,
       ),
   );
   const change = (index: number, patch: Partial<FurnitureSymbol>): void => {
     const next = [...symbols];
     if (index === symbols.length) next.push({ symbol: "", text: "", ...patch });
     else next[index] = { ...next[index], ...patch };
-    onChange(
-      next.filter((item) => item.symbol !== "" || item.text !== ""),
-    );
+    onChange(next.filter((item) => item.symbol !== "" || item.text !== ""));
   };
   return (
     <div className="symbol-table">
@@ -413,9 +410,8 @@ export default function FurnitureSheetPage({
   const [sheet, setSheet] = useState<FurnitureSheet | null>(null);
   const [rows, setRows] = useState<FurnitureRow[]>([]);
   const [columns, setColumns] = useState<FurnitureColumn[]>([]);
-  const [settings, setSettings] = useState<FurnitureSettings>(
-    furnitureSettings(),
-  );
+  const [settings, setSettings] =
+    useState<FurnitureSettings>(furnitureSettings());
   const [hidden, setHidden] = useState<string[]>(() => readHidden(sheetId));
   const [showSettings, setShowSettings] = useState(false);
   const settingsDrag = useDragWindow();
@@ -423,6 +419,8 @@ export default function FurnitureSheetPage({
   const [message, setMessage] = useState("");
   /** 印刷の間だけ紙の形（明細だけ）にする */
   const [forPrint, setForPrint] = useState(false);
+  /** 見出し文字の基準（全物件共通。この種類の表はみなこれを表示する） */
+  const [baseLabels, setBaseLabels] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState(0);
   /** 複数行コピーの範囲の終わり（Shift+クリックで選んだ行） */
   const [pickedEnd, setPickedEnd] = useState(0);
@@ -530,7 +528,9 @@ export default function FurnitureSheetPage({
       setSheet(saved);
       markSaved({ rows, columns, settings });
       if (!quiet)
-        setMessage("保存しました（建具表へ転記し、集計実行で集計書に入ります）");
+        setMessage(
+          "保存しました（建具表へ転記し、集計実行で集計書に入ります）",
+        );
     },
     [columns, markSaved, printMode, rows, settings, sheet],
   );
@@ -591,6 +591,10 @@ export default function FurnitureSheetPage({
           ),
         );
       }
+      const baseSettings = await window.sekisan.getFurnitureBaseSettings(
+        loaded.kind,
+      );
+      setBaseLabels(baseSettings.columnLabels ?? {});
     })();
   }, [markSaved, sheetId]);
 
@@ -728,7 +732,10 @@ export default function FurnitureSheetPage({
         setNumberOptions([]);
         return;
       }
-      const forProject = await window.sekisan.listDetails(subjectId, project.id);
+      const forProject = await window.sekisan.listDetails(
+        subjectId,
+        project.id,
+      );
       const basic = await window.sekisan.listDetails(subjectId, null);
       const numbers = new Set(forProject.map((row) => row.detailNumber));
       setNumberOptions([
@@ -800,14 +807,13 @@ export default function FurnitureSheetPage({
   );
 
   const editRow = (index: number, patch: Partial<FurnitureRow>): void => {
-    changeRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+    changeRows(
+      rows.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+    );
   };
 
   /** 右の明細欄を手で直す（直した欄は自動作成で上書きしない） */
-  const editDetail = (
-    index: number,
-    patch: Partial<FurnitureDetail>,
-  ): void => {
+  const editDetail = (index: number, patch: Partial<FurnitureDetail>): void => {
     changeRows(
       rows.map((row, at) => {
         if (at !== index) return row;
@@ -1057,6 +1063,7 @@ export default function FurnitureSheetPage({
   const saveAsBase = async (): Promise<void> => {
     if (!sheet) return;
     await window.sekisan.saveFurnitureBaseSettings(sheet.kind, settings);
+    setBaseLabels(settings.columnLabels ?? {});
     setMessage(
       `「${furnitureKindLabel(sheet.kind)}」の基準として保存しました（どの物件でもこの種類の新しい表はこの設定から始まります）`,
     );
@@ -1072,6 +1079,7 @@ export default function FurnitureSheetPage({
     )
       return;
     const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
+    setBaseLabels(base.columnLabels ?? {});
     commitSettings(base);
     setMessage("基準の設定を読み込みました（保存するとこの表に確定します）");
   };
@@ -1097,18 +1105,38 @@ export default function FurnitureSheetPage({
   /** 行入力部の欄を出すか（紙には出さない） */
   const showInput = (key: string): boolean => !printing && visible(key);
 
-  /** 行入力部の見出し文字（直してあればその文字） */
+  /** 行入力部の見出し文字（この表で直した文字が優先。無ければ基準の文字、それも無ければもとの見出し） */
+  const labelText = (key: string): string =>
+    settings.columnLabels?.[key] ?? baseLabels[key] ?? "";
   const labelOf = (column: InputColumn): string => {
-    const text = settings.columnLabels?.[column.key] ?? "";
+    const text = labelText(column.key);
     return text.trim() === "" ? column.label : text;
   };
 
-  /** 見出し文字を直す（空欄にするともとの見出しへ戻る） */
+  /** 見出し文字を直す（この表だけに効く。空欄にするともとの見出しへ戻る） */
   const editLabel = (key: string, text: string): void =>
     commitSettings({
       ...settings,
       columnLabels: { ...(settings.columnLabels ?? {}), [key]: text },
     });
+
+  /** 見出し文字をこの種類の基準（全物件共通）に登録する。以後どの物件の同じ種類の表にもこの見出しが出る（表ごとに直した文字がある表はそちらが優先） */
+  const registerLabelsAsBase = async (): Promise<void> => {
+    if (!sheet) return;
+    const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
+    const labels = {
+      ...(base.columnLabels ?? {}),
+      ...(settings.columnLabels ?? {}),
+    };
+    await window.sekisan.saveFurnitureBaseSettings(sheet.kind, {
+      ...base,
+      columnLabels: labels,
+    });
+    setBaseLabels(labels);
+    setMessage(
+      "見出し文字を基準に登録しました（この種類のどの表にも同じ見出しが出ます）",
+    );
+  };
   const detailCells = printing || visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
@@ -1119,9 +1147,15 @@ export default function FurnitureSheetPage({
       (sum, column) => sum + widthOf(column.key, INPUT_DEFAULT),
       0,
     ) +
-    detailCells.reduce((sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT), 0) +
+    detailCells.reduce(
+      (sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT),
+      0,
+    ) +
     LABEL_WIDTH +
-    columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+    columns.reduce(
+      (sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT),
+      0,
+    );
 
   /** タテの明細（列）の1マス分の入力欄 */
   const headCell = (
@@ -1376,7 +1410,7 @@ export default function FurnitureSheetPage({
             />
             <input
               className="title-text"
-              value={settings.columnLabels?.[column.key] ?? ""}
+              value={labelText(column.key)}
               placeholder={column.label}
               title="表の見出しに出す文字。空欄にするともとの見出しに戻ります"
               onChange={(event) => editLabel(column.key, event.target.value)}
@@ -1562,142 +1596,151 @@ export default function FurnitureSheetPage({
             >
               基準を読込
             </button>
+            <button
+              type="button"
+              onClick={() => void registerLabelsAsBase()}
+              title="見出しの文字（表示する列の右横で直せる文字）をこの種類の基準にします。以後どの物件でもこの種類の表に同じ見出しが出ます（表ごとに直した文字がある表はそちらが優先）"
+            >
+              見出しを基準に登録
+            </button>
           </div>
-            <table>
-              <tbody>
+          <table>
+            <tbody>
+              <tr>
+                <td>部位の前後付加文字</td>
+                <td>
+                  <input
+                    lang="ja"
+                    value={settings.partPrefix}
+                    onChange={(event) =>
+                      changeSettings({ partPrefix: event.target.value })
+                    }
+                  />
+                  ＋部位＋
+                  <input
+                    lang="ja"
+                    value={settings.partSuffix}
+                    onChange={(event) =>
+                      changeSettings({ partSuffix: event.target.value })
+                    }
+                  />
+                </td>
+                <td>+部位の前後付加文字</td>
+                <td>
+                  <input
+                    lang="ja"
+                    value={settings.addPrefix}
+                    onChange={(event) =>
+                      changeSettings({ addPrefix: event.target.value })
+                    }
+                  />
+                  ＋部位＋
+                  <input
+                    lang="ja"
+                    value={settings.addSuffix}
+                    onChange={(event) =>
+                      changeSettings({ addSuffix: event.target.value })
+                    }
+                  />
+                </td>
+              </tr>
+              {withModel && (
                 <tr>
-                  <td>部位の前後付加文字</td>
+                  <td>加工手間(梁欠き)の前後付加文字</td>
                   <td>
                     <input
                       lang="ja"
-                      value={settings.partPrefix}
+                      value={settings.beamPrefix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ partPrefix: event.target.value })
+                        changeSettings({ beamPrefix: event.target.value })
                       }
                     />
-                    ＋部位＋
+                    ＋梁欠き＋
                     <input
                       lang="ja"
-                      value={settings.partSuffix}
+                      value={settings.beamSuffix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ partSuffix: event.target.value })
+                        changeSettings({ beamSuffix: event.target.value })
                       }
                     />
                   </td>
-                  <td>+部位の前後付加文字</td>
+                  <td>(窓)の前後付加文字</td>
                   <td>
                     <input
                       lang="ja"
-                      value={settings.addPrefix}
+                      value={settings.windowPrefix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ addPrefix: event.target.value })
+                        changeSettings({ windowPrefix: event.target.value })
                       }
                     />
-                    ＋部位＋
+                    ＋窓＋
                     <input
                       lang="ja"
-                      value={settings.addSuffix}
+                      value={settings.windowSuffix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ addSuffix: event.target.value })
+                        changeSettings({ windowSuffix: event.target.value })
                       }
                     />
                   </td>
                 </tr>
-                {withModel && (
-                  <tr>
-                    <td>加工手間(梁欠き)の前後付加文字</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        value={settings.beamPrefix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ beamPrefix: event.target.value })
-                        }
-                      />
-                      ＋梁欠き＋
-                      <input
-                        lang="ja"
-                        value={settings.beamSuffix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ beamSuffix: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>(窓)の前後付加文字</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        value={settings.windowPrefix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ windowPrefix: event.target.value })
-                        }
-                      />
-                      ＋窓＋
-                      <input
-                        lang="ja"
-                        value={settings.windowSuffix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ windowSuffix: event.target.value })
-                        }
-                      />
-                    </td>
-                  </tr>
-                )}
-                {withFitting && (
-                  <tr>
-                    <td>摘要(下段)の文字（建具記号から建具表のW・Hをmmで呼び出し）</td>
-                    <td colSpan={3} className="size-labels">
-                      <input
-                        lang="ja"
-                        value={settings.fittingPrefix ?? ""}
-                        title="前に付ける文字（例：(）"
-                        onChange={(event) =>
-                          changeSettings({ fittingPrefix: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具記号＋</span>
-                      <input
-                        lang="ja"
-                        value={settings.fittingSeparator ?? ""}
-                        title="記号と寸法の間の文字（例：:）"
-                        onChange={(event) =>
-                          changeSettings({
-                            fittingSeparator: event.target.value,
-                          })
-                        }
-                      />
-                      <input
-                        value={settings.widthLabel}
-                        title="Wの前に付ける文字（例：W。空でも可）"
-                        onChange={(event) =>
-                          changeSettings({ widthLabel: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具W(mm)＋</span>
-                      <input
-                        value={settings.heightLabel}
-                        title="Hの前に付ける文字（例：*H）"
-                        onChange={(event) =>
-                          changeSettings({ heightLabel: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具H(mm)＋</span>
-                      <input
-                        lang="ja"
-                        value={settings.fittingSuffix ?? ""}
-                        title="後ろに付ける文字（例：)部）"
-                        onChange={(event) =>
-                          changeSettings({ fittingSuffix: event.target.value })
-                        }
-                      />
-                      <span className="hint">
-                        →{" "}
-                        {`${settings.fittingPrefix ?? ""}AW1${settings.fittingSeparator ?? ""}${settings.widthLabel}1720${settings.heightLabel}1000${settings.fittingSuffix ?? ""}`}
-                      </span>
-                    </td>
-                  </tr>
-                )}
-                {!withModel && !withFitting && (
+              )}
+              {withFitting && (
+                <tr>
+                  <td>
+                    摘要(下段)の文字（建具記号から建具表のW・Hをmmで呼び出し）
+                  </td>
+                  <td colSpan={3} className="size-labels">
+                    <input
+                      lang="ja"
+                      value={settings.fittingPrefix ?? ""}
+                      title="前に付ける文字（例：(）"
+                      onChange={(event) =>
+                        changeSettings({ fittingPrefix: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具記号＋</span>
+                    <input
+                      lang="ja"
+                      value={settings.fittingSeparator ?? ""}
+                      title="記号と寸法の間の文字（例：:）"
+                      onChange={(event) =>
+                        changeSettings({
+                          fittingSeparator: event.target.value,
+                        })
+                      }
+                    />
+                    <input
+                      value={settings.widthLabel}
+                      title="Wの前に付ける文字（例：W。空でも可）"
+                      onChange={(event) =>
+                        changeSettings({ widthLabel: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具W(mm)＋</span>
+                    <input
+                      value={settings.heightLabel}
+                      title="Hの前に付ける文字（例：*H）"
+                      onChange={(event) =>
+                        changeSettings({ heightLabel: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具H(mm)＋</span>
+                    <input
+                      lang="ja"
+                      value={settings.fittingSuffix ?? ""}
+                      title="後ろに付ける文字（例：)部）"
+                      onChange={(event) =>
+                        changeSettings({ fittingSuffix: event.target.value })
+                      }
+                    />
+                    <span className="hint">
+                      →{" "}
+                      {`${settings.fittingPrefix ?? ""}AW1${settings.fittingSeparator ?? ""}${settings.widthLabel}1720${settings.heightLabel}1000${settings.fittingSuffix ?? ""}`}
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {!withModel && !withFitting && (
                 <tr>
                   <td>
                     {withShape
@@ -1777,45 +1820,45 @@ export default function FurnitureSheetPage({
                     )}
                   </td>
                 </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="symbol-tables">
-              <SymbolTable
-                title={
-                  withFitting
-                    ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
-                    : "+部位の記号"
-                }
-                symbols={settings.partSymbols}
-                onChange={(partSymbols) => changeSettings({ partSymbols })}
-              />
-              <SymbolTable
-                title={
-                  withFitting
-                    ? "部材名称の記号（表に無い文字はそのまま出ます）"
-                    : "名称の記号"
-                }
-                symbols={settings.nameSymbols}
-                onChange={(nameSymbols) => changeSettings({ nameSymbols })}
-              />
-              {withShape && (
-                <SymbolTable
-                  title="形状の記号（計上設定）"
-                  symbols={settings.shapeSymbols ?? []}
-                  onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
-                />
               )}
-              {withModel && (
-                <SymbolTable
-                  title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
-                  symbols={settings.floorAreaTable ?? []}
-                  onChange={(floorAreaTable) =>
-                    changeSettings({ floorAreaTable })
-                  }
-                />
-              )}
-            </div>
+            </tbody>
+          </table>
+          <div className="symbol-tables">
+            <SymbolTable
+              title={
+                withFitting
+                  ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
+                  : "+部位の記号"
+              }
+              symbols={settings.partSymbols}
+              onChange={(partSymbols) => changeSettings({ partSymbols })}
+            />
+            <SymbolTable
+              title={
+                withFitting
+                  ? "部材名称の記号（表に無い文字はそのまま出ます）"
+                  : "名称の記号"
+              }
+              symbols={settings.nameSymbols}
+              onChange={(nameSymbols) => changeSettings({ nameSymbols })}
+            />
+            {withShape && (
+              <SymbolTable
+                title="形状の記号（計上設定）"
+                symbols={settings.shapeSymbols ?? []}
+                onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
+              />
+            )}
+            {withModel && (
+              <SymbolTable
+                title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
+                symbols={settings.floorAreaTable ?? []}
+                onChange={(floorAreaTable) =>
+                  changeSettings({ floorAreaTable })
+                }
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -1906,46 +1949,46 @@ export default function FurnitureSheetPage({
               ))}
             </tr>
             {COLUMN_HEADS.slice(1).map((head) => (
-                <tr key={String(head.key)}>
-                  <th className="vlabel">{head.label}</th>
-                  {columns.map((column) => (
-                    <th
-                      key={column.id}
-                      className={
-                        pickedColumn === column.id ? "vcol on" : "vcol"
-                      }
-                      onClick={() => setPickedColumn(column.id)}
-                    >
-                      <span className="cellbox">
-                        {headCell(column, head)}
-                        {columnGrip(column.id)}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            <tr className="vcol-total">
-              <th className="vlabel">合計</th>
-              {columns.map((column) => (
-                  <th key={column.id} className="vcol num">
+              <tr key={String(head.key)}>
+                <th className="vlabel">{head.label}</th>
+                {columns.map((column) => (
+                  <th
+                    key={column.id}
+                    className={pickedColumn === column.id ? "vcol on" : "vcol"}
+                    onClick={() => setPickedColumn(column.id)}
+                  >
                     <span className="cellbox">
-                      {isEmptyFurnitureColumn(column) &&
-                      !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
-                        ? ""
-                        : furnitureColumnTotal(view, column.id).toFixed(2)}
-                      <button
-                        type="button"
-                        className="drop"
-                        title="このタテの明細（列）を消します"
-                        onClick={() => removeColumn(column.id)}
-                      >
-                        🗑
-                      </button>
+                      {headCell(column, head)}
                       {columnGrip(column.id)}
                     </span>
                   </th>
                 ))}
               </tr>
+            ))}
+            <tr className="vcol-total">
+              <th className="vlabel">合計</th>
+              {columns.map((column) => (
+                <th key={column.id} className="vcol num">
+                  <span className="cellbox">
+                    {isEmptyFurnitureColumn(column) &&
+                    !rows.some(
+                      (row) => (row.values?.[column.id] ?? "").trim() !== "",
+                    )
+                      ? ""
+                      : furnitureColumnTotal(view, column.id).toFixed(2)}
+                    <button
+                      type="button"
+                      className="drop"
+                      title="このタテの明細（列）を消します"
+                      onClick={() => removeColumn(column.id)}
+                    >
+                      🗑
+                    </button>
+                    {columnGrip(column.id)}
+                  </span>
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {view.map((row, index) => {
@@ -2124,7 +2167,9 @@ export default function FurnitureSheetPage({
                       <input
                         lang="ja"
                         value={rows[index].nameSymbol}
-                        placeholder={withFitting ? resolved[index].nameSymbol : ""}
+                        placeholder={
+                          withFitting ? resolved[index].nameSymbol : ""
+                        }
                         title={
                           withFitting
                             ? "部材名称。空欄のときは上の行と同じ（設定の記号表にある文字は変わります）"
@@ -2202,16 +2247,19 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withShape && !withModel && !withFitting && showInput("depth") && (
-                    <td className="num">
-                      <input
-                        value={rows[index].depth}
-                        onChange={(event) =>
-                          editRow(index, { depth: event.target.value })
-                        }
-                      />
-                    </td>
-                  )}
+                  {!withShape &&
+                    !withModel &&
+                    !withFitting &&
+                    showInput("depth") && (
+                      <td className="num">
+                        <input
+                          value={rows[index].depth}
+                          onChange={(event) =>
+                            editRow(index, { depth: event.target.value })
+                          }
+                        />
+                      </td>
+                    )}
                   {withShape && showInput("shape") && (
                     <td className="num">
                       <input
@@ -2249,19 +2297,21 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withModel && !withFitting && showInput("descriptionUpper") && (
-                    <td>
-                      <input
-                        lang="ja"
-                        value={rows[index].descriptionUpper}
-                        onChange={(event) =>
-                          editRow(index, {
-                            descriptionUpper: event.target.value,
-                          })
-                        }
-                      />
-                    </td>
-                  )}
+                  {!withModel &&
+                    !withFitting &&
+                    showInput("descriptionUpper") && (
+                      <td>
+                        <input
+                          lang="ja"
+                          value={rows[index].descriptionUpper}
+                          onChange={(event) =>
+                            editRow(index, {
+                              descriptionUpper: event.target.value,
+                            })
+                          }
+                        />
+                      </td>
+                    )}
                   {withModel && showInput("beam") && (
                     <td>
                       <input
@@ -2395,10 +2445,10 @@ export default function FurnitureSheetPage({
                             withFitting
                               ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）"
                               : withModel
-                              ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
-                              : tripleWidth
-                                ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
-                                : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                                ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
+                                : tripleWidth
+                                  ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
+                                  : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
                           }
                           onFocus={() => setPickedColumn(column.id)}
                           onChange={(event) =>
@@ -2418,7 +2468,8 @@ export default function FurnitureSheetPage({
       <p className="hint">
         ヨコの1行＝家具1件の明細（左の入力から自動で作ります）。
         右端のタテの列（科目〜備考の見出し）は、部位別雑・金物入力表と同じように
-        家具に付く関連明細をタテに拾います（［➕ タテ明細］で列を足します。どちらも集計に入ります）。
+        家具に付く関連明細をタテに拾います（［➕
+        タテ明細］で列を足します。どちらも集計に入ります）。
       </p>
     </div>
   );
