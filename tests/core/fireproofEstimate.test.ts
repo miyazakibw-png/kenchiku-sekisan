@@ -176,22 +176,26 @@ describe("耐火被覆・塗装入力表", () => {
     expect(manageRowQuantity({ ...row, calcType: "beam" }, list())).toBeNull();
   });
 
-  it("汎用計算書はWA〜WC・SA〜SDで取合の合計を拾い、合計×倍率を数量にする", () => {
-    const row: FireproofManageRow = {
+  it("汎用計算書はWA〜WC・SA〜SDで入力表全体の取合の合計を拾い、合計×倍率を数量にする", () => {
+    // 柱入力表の行（壁取合m 6.84 をＡとＣに振る）
+    const columnManageRow: FireproofManageRow = {
       ...newManageRow(),
-      calcType: "general",
-      multiplier: 2,
       sheet: {
         thickness: 25,
         wallLabels: defaultWallLabels(),
         rows: [
-          // 壁取合m 6.84 をＡとＣに振る
           {
             ...columnRow({ count: 4, mark: "3", lengthFormula: "3.42" }),
             wallChecks: [true, false, true],
           },
         ],
       },
+    };
+    // 別の行の汎用計算書から、上の柱入力表の合計を記号で呼ぶ
+    const row: FireproofManageRow = {
+      ...newManageRow(),
+      calcType: "general",
+      multiplier: 2,
       generalSheet: [
         {
           ...calcSet(1),
@@ -199,15 +203,42 @@ describe("耐火被覆・塗装入力表", () => {
         },
       ],
     };
+    const rows = [columnManageRow, row];
     // WA＝6.84、WC＝6.84 → (6.84*2+6.84)*2 ＝ 41.04
-    expect(manageRowQuantity(row, list())).toBeCloseTo(41.04, 6);
+    expect(manageRowQuantity(row, list(), undefined, rows)).toBeCloseTo(
+      41.04,
+      6,
+    );
     // 式が無ければ数量なし
     expect(
       manageRowQuantity({ ...newManageRow(), calcType: "general" }, list()),
     ).toBeNull();
-    // SA〜SDは梁型入力表の床取合の合計（この行は空なので0）
-    expect(adjacencyVariables(row, list()).SA).toBe(0);
-    expect(adjacencyVariables(row, list()).WA).toBeCloseTo(6.84, 6);
+    // SA〜SDは梁型入力表の床取合の合計（入力が空なので0）
+    expect(adjacencyVariables(rows, list()).SA).toBe(0);
+    expect(adjacencyVariables(rows, list()).WA).toBeCloseTo(6.84, 6);
+  });
+
+  it("汎用計算書の行は計算書のセット明細がそのまま集計に載る（管理表の明細欄は未入力でよい）", () => {
+    const set = calcSet(1);
+    const row: FireproofManageRow = {
+      ...newManageRow(),
+      part1: "内部",
+      calcType: "general",
+      multiplier: 2,
+      generalSheet: [
+        {
+          ...set,
+          details: [{ ...set.details[0], partName: "柱", name: "耐火被覆" }],
+          lines: [calcLine({ formulaA: "10" })],
+        },
+      ],
+    };
+    const entries = entriesFromFireproofSheet([row], list(), new Map());
+    expect(entries).toHaveLength(1);
+    expect(entries[0].part1).toBe("内部");
+    expect(entries[0].name).toBe("耐火被覆");
+    expect(entries[0].quantity).toBeCloseTo(20, 6);
+    expect(entries[0].traceId.startsWith(`fireproof:${row.id}:`)).toBe(true);
   });
 
   it("階が空欄の行は上の行と同じ階で拾う", () => {

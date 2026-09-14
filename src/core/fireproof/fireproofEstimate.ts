@@ -4,7 +4,10 @@
  * 数量は柱入力表の必要数㎡の合計×倍率で出る。
  */
 
-import type { AggregateEntry } from "../aggregate/aggregate";
+import {
+  entriesFromCalcSheet,
+  type AggregateEntry,
+} from "../aggregate/aggregate";
 import {
   displayedValue,
   evaluateCalcSheet,
@@ -557,12 +560,39 @@ export function entriesFromFireproofSheet(
 ): AggregateEntry[] {
   const entries: AggregateEntry[] = [];
   let part1 = "";
+  const variables = adjacencyVariables(rows, list, beamsList);
   rows.forEach((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
+    if (!part2Order.has("")) part2Order.set("", part2Order.size);
+    // 汎用計算書の行は、計算書のセット明細がそのまま集計の明細になる（管理表の明細は使わない）
+    if (row.calcType === "general") {
+      const result = evaluateCalcSheet(row.generalSheet, variables);
+      entries.push(
+        ...entriesFromCalcSheet(
+          {
+            estimateRowId: null,
+            part1,
+            part2: "",
+            part2Split: false,
+            part2Order: part2Order.get("") ?? 0,
+            part3: "",
+            formwork: "",
+            multiplier: row.multiplier ?? 1,
+            sourceKind: "fireproof",
+          },
+          row.generalSheet,
+          result,
+        ).map((entry) => ({
+          ...entry,
+          // どの行の汎用計算書か分かるようにする（集計書からの書き戻しに使う）
+          traceId: `fireproof:${row.id}:${entry.traceId.split(":").slice(1).join(":")}`,
+        })),
+      );
+      return;
+    }
     const detail = row.detail;
     if (detail.name.trim() === "" && detail.partName.trim() === "") return;
-    const quantity = manageRowQuantity(row, list, beamsList) ?? 0;
-    if (!part2Order.has("")) part2Order.set("", part2Order.size);
+    const quantity = manageRowQuantity(row, list, beamsList, rows) ?? 0;
     entries.push({
       traceId: `fireproof:${row.id}`,
       sourceKind: "fireproof",
@@ -597,22 +627,37 @@ export function entriesFromFireproofSheet(
   return entries;
 }
 
-/** 壁取合・床取合の欄ごとの合計を記号で呼べるようにする（WA〜WC＝壁取合Ａ〜Ｃ、SA〜SD＝床取合Ａ〜Ｄ） */
+/**
+ * 壁取合・床取合の欄ごとの合計を記号で呼べるようにする
+ * （WA〜WC＝入力表全体の柱入力表の壁取合Ａ〜Ｃ、SA〜SD＝梁型入力表の床取合Ａ〜Ｄ）。
+ */
 export function adjacencyVariables(
-  row: FireproofManageRow,
+  rows: FireproofManageRow[],
   columnsList: FireproofFloorList,
   beamsList: FireproofFloorList = { floors: [], members: [] },
 ): Record<string, number> {
-  const wall = columnSheetTotals(row.sheet, columnsList).wallMarks;
-  const slab = beamSheetTotals(row.beamSheet, beamsList).wallMarks;
+  const wall = [0, 0, 0];
+  const slab = [0, 0, 0, 0];
+  rows.forEach((row) => {
+    columnSheetTotals(row.sheet, columnsList).wallMarks.forEach(
+      (total, mark) => {
+        if (mark < wall.length) wall[mark] += total ?? 0;
+      },
+    );
+    beamSheetTotals(row.beamSheet, beamsList).wallMarks.forEach(
+      (total, mark) => {
+        if (mark < slab.length) slab[mark] += total ?? 0;
+      },
+    );
+  });
   return {
-    WA: wall[0] ?? 0,
-    WB: wall[1] ?? 0,
-    WC: wall[2] ?? 0,
-    SA: slab[0] ?? 0,
-    SB: slab[1] ?? 0,
-    SC: slab[2] ?? 0,
-    SD: slab[3] ?? 0,
+    WA: wall[0],
+    WB: wall[1],
+    WC: wall[2],
+    SA: slab[0],
+    SB: slab[1],
+    SC: slab[2],
+    SD: slab[3],
   };
 }
 
@@ -621,13 +666,15 @@ export function manageRowQuantity(
   row: FireproofManageRow,
   columnsList: FireproofFloorList,
   beamsList: FireproofFloorList = { floors: [], members: [] },
+  /** 記号WA〜SDは入力表全体の取合を拾うので、管理表の全行を渡す */
+  rows: FireproofManageRow[] = [row],
 ): number | null {
   // 選んだ計算書の分だけ数量にする（もう片方の入力は残るが数量には入れない）
   if (row.calcType === "general") {
     // 汎用計算書はセット明細の合計を数量にする（WA〜WC・SA〜SD・B1〜の記号が使える）
     const result = evaluateCalcSheet(
       row.generalSheet,
-      adjacencyVariables(row, columnsList, beamsList),
+      adjacencyVariables(rows, columnsList, beamsList),
     );
     const hasValue = [...result.lines.values()].some(
       (line) => line.value !== null,

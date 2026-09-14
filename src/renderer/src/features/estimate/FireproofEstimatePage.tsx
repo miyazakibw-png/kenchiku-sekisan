@@ -512,11 +512,11 @@ export default function FireproofEstimatePage({
         <GeneralSheetView
           project={project}
           row={rows[index]}
+          rows={rows}
           part1={inheritedPart1[index] ?? ""}
           columnsList={columnsList}
           beamsList={beamsList}
           options={options}
-          detailCell={(key, className) => detailInput(index, key, className)}
           onChange={(next) => change(index, next)}
           onBack={() => {
             setOpened(null);
@@ -885,7 +885,9 @@ export default function FireproofEstimatePage({
                   </button>
                 </td>
                 <td className="num number">
-                  {formatNumber(manageRowQuantity(row, columnsList, beamsList))}
+                  {formatNumber(
+                    manageRowQuantity(row, columnsList, beamsList, rows),
+                  )}
                 </td>
                 <td className="material">
                   {detailInput(index, "materialCategory")}
@@ -1501,6 +1503,7 @@ function HeadDetailTable({
 function GeneralSheetView({
   project,
   row,
+  rows,
   part1,
   columnsList,
   beamsList,
@@ -1508,10 +1511,10 @@ function GeneralSheetView({
   onChange,
   onBack,
   onMessage,
-  detailCell,
 }: {
   project: ProjectSummary;
   row: FireproofManageRow;
+  rows: FireproofManageRow[];
   part1: string;
   columnsList: FireproofFloorList;
   beamsList: FireproofFloorList;
@@ -1519,18 +1522,14 @@ function GeneralSheetView({
   onChange: (patch: Partial<FireproofManageRow>) => void;
   onBack: () => void;
   onMessage: (text: string) => void;
-  detailCell: (
-    key: keyof FireproofManageDetail,
-    className?: string,
-  ) => JSX.Element;
 }): JSX.Element {
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [jumpTick, setJumpTick] = useState(0);
   const [warnedKey, setWarnedKey] = useState("");
-  /** 取合記号（WA〜WC・SA〜SD）にはめ込む数量＝この行の柱入力表・梁型入力表の欄ごとの合計 */
+  /** 取合記号（WA〜WC・SA〜SD）にはめ込む数量＝入力表全体の柱入力表・梁型入力表の欄ごとの合計 */
   const variables = useMemo(
-    () => adjacencyVariables(row, columnsList, beamsList),
-    [beamsList, columnsList, row],
+    () => adjacencyVariables(rows, columnsList, beamsList),
+    [beamsList, columnsList, rows],
   );
   const result = useMemo(
     () => evaluateCalcSheet(row.generalSheet, variables),
@@ -1586,9 +1585,6 @@ function GeneralSheetView({
         </span>
       </div>
 
-      {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
-      <HeadDetailTable detailCell={detailCell} />
-
       <RoomCalcSheet
         sets={row.generalSheet}
         onChange={(sets: CalcSet[]) => onChange({ generalSheet: sets })}
@@ -1605,9 +1601,9 @@ function GeneralSheetView({
       />
 
       <p className="hint">
-        汎用計算書は部位別入力表のものと同じです。計算式には数字のほか、WA・WB・WC（この行の柱入力表の壁取合Ａ・Ｂ・Ｃの合計）、
+        汎用計算書は部位別入力表のものと同じです。計算式には数字のほか、WA・WB・WC（この入力表の柱入力表の壁取合Ａ・Ｂ・Ｃの合計）、
         SA・SB・SC・SD（梁型入力表の床取合Ａ・Ｂ・Ｃ・Ｄの合計）、B1〜B100（他セットの累計）がはめ込めます。
-        数量（自動）にはこの計算書の合計×倍率が入ります。
+        集計にはこの計算書のセット明細（数量＝セット累計×掛け率×倍率）がそのまま載ります（入力管理表の明細欄は未入力でかまいません）。
       </p>
     </div>
   );

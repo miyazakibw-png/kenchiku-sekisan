@@ -1034,13 +1034,25 @@ export function saveAggregateEdits(
         });
       }
 
-      // 耐火被覆・塗装入力表の明細（入力管理表の行）
+      // 耐火被覆・塗装入力表の明細（入力管理表の行。汎用計算書の行はセット明細）
+      const fireproofTraceIds = targets
+        .filter((target) => target.traceId.startsWith("fireproof:"))
+        .map((target) => target.traceId);
+      // 「fireproof:行ID」＝管理表の明細、「fireproof:行ID:セットID:明細ID」＝汎用計算書の明細
       const fireproofRowIds = new Set(
-        targets
-          .filter((target) => target.traceId.startsWith("fireproof:"))
-          .map((target) => target.traceId.split(":")[1]),
+        fireproofTraceIds
+          .filter((traceId) => traceId.split(":").length === 2)
+          .map((traceId) => traceId.split(":")[1]),
       );
-      if (fireproofRowIds.size > 0) {
+      const fireproofSetTargets = new Map<string, string[]>();
+      fireproofTraceIds.forEach((traceId) => {
+        const parts = traceId.split(":");
+        if (parts.length < 4) return;
+        const list = fireproofSetTargets.get(parts[1]) ?? [];
+        list.push(`${parts[2]}:${parts[3]}`);
+        fireproofSetTargets.set(parts[1], list);
+      });
+      if (fireproofRowIds.size > 0 || fireproofSetTargets.size > 0) {
         const fireproofSheet = tx
           .select()
           .from(projectFireproofSheets)
@@ -1052,6 +1064,22 @@ export function saveAggregateEdits(
           );
           let fireproofChanged = false;
           const nextManageRows = manageRows.map((manageRow) => {
+            const setTargets = fireproofSetTargets.get(manageRow.id);
+            if (setTargets) {
+              // 汎用計算書のセット明細を直す（管理表の明細欄は触らない）
+              const nextJson = applyEditToSheet(
+                JSON.stringify(manageRow.generalSheet),
+                setTargets.map((key) => `general:${key}`),
+                edit,
+              );
+              if (nextJson !== null) {
+                fireproofChanged = true;
+                return {
+                  ...manageRow,
+                  generalSheet: parseJson<CalcSet[]>(nextJson, []),
+                };
+              }
+            }
             if (!fireproofRowIds.has(manageRow.id)) return manageRow;
             fireproofChanged = true;
             return {
