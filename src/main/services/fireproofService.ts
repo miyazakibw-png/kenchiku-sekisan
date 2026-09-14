@@ -16,6 +16,7 @@ function toRecord(
     columnsJson: row.columnsJson,
     beamsJson: row.beamsJson,
     commonJson: row.commonJson,
+    estimateJson: row.estimateJson,
     note: row.note,
   };
 }
@@ -50,6 +51,7 @@ export function saveFireproofSheet(
       columnsJson: request.columnsJson,
       beamsJson: request.beamsJson,
       commonJson: request.commonJson,
+      estimateJson: request.estimateJson,
       note: request.note,
     })
     .where(eq(projectFireproofSheets.id, request.id))

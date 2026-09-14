@@ -1,0 +1,183 @@
+/* 耐火被覆・塗装入力表（入力管理表・柱入力表） */
+.fireproof-estimate-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fireproof-estimate-page .section-scroll {
+  flex: 1 1 0;
+  overflow: auto;
+  min-height: 60px;
+}
+
+.fireproof-estimate-page table.grid {
+  border-collapse: collapse;
+  width: auto;
+}
+
+.fireproof-estimate-page table.grid th,
+.fireproof-estimate-page table.grid td {
+  border: var(--line-thin);
+  padding: 1px 2px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #fff;
+}
+
+.fireproof-estimate-page table.grid th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.fireproof-estimate-page table.grid input,
+.fireproof-estimate-page table.grid select {
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  background: transparent;
+}
+
+.fireproof-estimate-page table.grid input.num,
+.fireproof-estimate-page table.grid td.number {
+  text-align: right;
+}
+
+.fireproof-estimate-page table.grid tr.selected td {
+  background: #dbeafe;
+}
+
+/* 入力管理表の列幅 */
+.fireproof-estimate-page table.fireproof-manage td.no,
+.fireproof-estimate-page table.fireproof-manage th.no {
+  width: 3ch;
+  text-align: center;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.part1,
+.fireproof-estimate-page table.fireproof-manage td.part1 {
+  width: 14ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.scope,
+.fireproof-estimate-page table.fireproof-manage td.scope {
+  width: 10ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.num,
+.fireproof-estimate-page table.fireproof-manage td.num {
+  width: 7ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.id,
+.fireproof-estimate-page table.fireproof-manage td.id {
+  width: 6ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.material,
+.fireproof-estimate-page table.fireproof-manage td.material,
+.fireproof-estimate-page table.fireproof-manage th.unit,
+.fireproof-estimate-page table.fireproof-manage td.unit {
+  width: 8ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.part,
+.fireproof-estimate-page table.fireproof-manage td.part {
+  width: 12ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.name,
+.fireproof-estimate-page table.fireproof-manage td.name {
+  width: 24ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.desc,
+.fireproof-estimate-page table.fireproof-manage td.desc {
+  width: 20ch;
+}
+
+.fireproof-estimate-page table.fireproof-manage th.note,
+.fireproof-estimate-page table.fireproof-manage td.note {
+  width: 12ch;
+}
+
+/* 柱入力表の先頭（管理表と同じ明細）はスクロールしない固定の表 */
+.fireproof-estimate-page table.fireproof-manage.head {
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+}
+
+/* 耐火被覆厚み・合計の行 */
+.fireproof-estimate-page .fireproof-thickness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #eef1f6;
+  font-size: 12px;
+}
+
+.fireproof-estimate-page .fireproof-thickness input {
+  width: 6ch;
+  text-align: right;
+}
+
+.fireproof-estimate-page .fireproof-thickness .sum b {
+  display: inline-block;
+  min-width: 8ch;
+  text-align: right;
+  background: #fde3c8;
+  padding: 0 4px;
+}
+
+/* 柱入力表の列幅 */
+.fireproof-estimate-page table.fireproof-column th.floor,
+.fireproof-estimate-page table.fireproof-column td.floor {
+  width: 5ch;
+}
+
+.fireproof-estimate-page table.fireproof-column th.comment,
+.fireproof-estimate-page table.fireproof-column td.comment {
+  width: 14ch;
+}
+
+.fireproof-estimate-page table.fireproof-column th.symbol,
+.fireproof-estimate-page table.fireproof-column td.symbol {
+  width: 8ch;
+}
+
+.fireproof-estimate-page table.fireproof-column th.count,
+.fireproof-estimate-page table.fireproof-column td.count,
+.fireproof-estimate-page table.fireproof-column th.faces,
+.fireproof-estimate-page table.fireproof-column td.faces {
+  width: 5ch;
+}
+
+.fireproof-estimate-page table.fireproof-column th.formula,
+.fireproof-estimate-page table.fireproof-column td.formula {
+  width: 16ch;
+}
+
+.fireproof-estimate-page table.fireproof-column th.section {
+  width: 24ch;
+}
+
+.fireproof-estimate-page table.fireproof-column td.section {
+  background: #fbfbd0;
+}
+
+.fireproof-estimate-page table.fireproof-column th.num,
+.fireproof-estimate-page table.fireproof-column td.num {
+  width: 9ch;
+}
+
+.fireproof-estimate-page .hint {
+  margin: 4px 8px;
+  font-size: 12px;
+  color: #374151;
+}

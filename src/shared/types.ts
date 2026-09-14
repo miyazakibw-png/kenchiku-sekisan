@@ -461,6 +461,8 @@ export interface FireproofSheetRecord {
   beamsJson: string;
   /** 階共通リスト（FireproofCommonRowの配列） */
   commonJson: string;
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: string;
   note: string;
 }
 
@@ -470,6 +472,7 @@ export interface SaveFireproofSheetRequest {
   columnsJson: string;
   beamsJson: string;
   commonJson: string;
+  estimateJson: string;
   note: string;
 }
 

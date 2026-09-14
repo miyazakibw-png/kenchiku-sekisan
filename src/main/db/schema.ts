@@ -619,6 +619,8 @@ export const projectFireproofSheets = sqliteTable("project_fireproof_sheets", {
   beamsJson: text("beams_json").notNull().default("{}"),
   /** 階共通リスト（FireproofCommonRowの配列） */
   commonJson: text("common_json").notNull().default("[]"),
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: text("estimate_json").notNull().default("[]"),
   note: text("note").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
 });

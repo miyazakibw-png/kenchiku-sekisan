@@ -38,17 +38,17 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
-    key: "fireproofFloor",
-    label: "階別リスト",
+    key: "fireproofList",
+    label: "鉄骨リスト",
     group: "fireproof",
-    note: "耐火被覆・鉄骨塗装：階ごとの柱リスト・梁リスト（階数を入れると行ができます）",
+    note: "階別リスト（柱・梁）と階共通リストを1つの画面で入力（階数を入れると行ができます）",
     ready: true,
   },
   {
-    key: "fireproofCommon",
-    label: "階共通リスト",
+    key: "fireproofEstimate",
+    label: "耐火被覆・塗装入力表",
     group: "fireproof",
-    note: "耐火被覆・鉄骨塗装：階で分けない部材（Ｐ1・Ｂ1…）を1つの表に書く",
+    note: "入力管理表（1行＝1明細）と柱入力表（鉄骨リストの寸法から必要数㎡を出す）",
     ready: true,
   },
   {

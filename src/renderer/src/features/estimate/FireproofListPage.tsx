@@ -105,6 +105,8 @@ export default function FireproofListPage({
   onBack,
 }: Props): JSX.Element {
   const [recordId, setRecordId] = useState<number | null>(null);
+  /** 入力管理表のJSON（この画面では触らない。保存時にそのまま戻す） */
+  const estimateJsonRef = useRef("[]");
   const [sheet, setSheet] = useState<FireproofSheet>(emptyFireproofSheet());
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
@@ -114,6 +116,7 @@ export default function FireproofListPage({
     void (async () => {
       const record = await window.sekisan.getFireproofSheet(project.id);
       setRecordId(record.id);
+      estimateJsonRef.current = record.estimateJson;
       setSheet({
         floorCount: record.floorCount,
         columns: normalizeFloorList(parseJson(record.columnsJson, {})),
@@ -136,6 +139,7 @@ export default function FireproofListPage({
       columnsJson: JSON.stringify(sheet.columns),
       beamsJson: JSON.stringify(sheet.beams),
       commonJson: JSON.stringify(sheet.common),
+      estimateJson: estimateJsonRef.current,
       note,
     });
     markSaved({ sheet, note });
@@ -165,7 +169,7 @@ export default function FireproofListPage({
         <button type="button" onClick={onBack}>
           ← 工事管理画面へ
         </button>
-        <h2>耐火被覆・塗装積算入力（リスト）</h2>
+        <h2>鉄骨リスト</h2>
         <span className="project">
           {project.managementNo} {project.name}
         </span>

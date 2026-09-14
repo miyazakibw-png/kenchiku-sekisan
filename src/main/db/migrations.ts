@@ -988,4 +988,8 @@ CREATE TABLE project_fireproof_sheets (
 );
 CREATE UNIQUE INDEX uq_fireproof_sheet_project ON project_fireproof_sheets(project_id);
 `,
+  // 耐火被覆・塗装入力表（入力管理表）の置き場
+  `
+ALTER TABLE project_fireproof_sheets ADD COLUMN estimate_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];

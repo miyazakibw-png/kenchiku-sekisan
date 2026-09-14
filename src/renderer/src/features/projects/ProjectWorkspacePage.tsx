@@ -31,6 +31,7 @@ import FurnitureSheetListPage from "../estimate/FurnitureSheetListPage";
 import FurnitureSheetPage from "../estimate/FurnitureSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
 import FireproofListPage from "../estimate/FireproofListPage";
+import FireproofEstimatePage from "../estimate/FireproofEstimatePage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
 import AggregatePage from "../aggregate/AggregatePage";
@@ -386,11 +387,17 @@ export default function ProjectWorkspacePage({
     );
   }
 
-  if (openedMenu === "fireproofFloor" || openedMenu === "fireproofCommon") {
+  if (openedMenu === "fireproofList") {
     return (
-      <FireproofListPage
+      <FireproofListPage project={draft} onBack={() => setOpenedMenu(null)} />
+    );
+  }
+
+  if (openedMenu === "fireproofEstimate") {
+    return (
+      <FireproofEstimatePage
         project={draft}
-        focus={openedMenu === "fireproofCommon" ? "common" : "floor"}
+        options={options}
         onBack={() => setOpenedMenu(null)}
       />
     );
