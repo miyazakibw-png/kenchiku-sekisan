@@ -45,6 +45,7 @@ import {
 } from "../../../../core/furniture/furnitureSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { ask } from "../common/askDialog";
 import "./RoomCalcSheet.css";
 import "./EstimatePartsPage.css";
@@ -450,6 +451,63 @@ export default function FurnitureSheetPage({
     save(true),
   );
 
+  /** ↶戻る・↷進む用の履歴（行・タテの明細列・表の設定をまとめて1つの履歴にする） */
+  const history = useUndoRedo<{
+    rows: FurnitureRow[];
+    columns: FurnitureColumn[];
+    settings: FurnitureSettings;
+  }>();
+  const contentRef = useRef({ rows, columns, settings });
+  useEffect(() => {
+    contentRef.current = { rows, columns, settings };
+  });
+
+  /** 行を直す（直す前の中身を履歴へ積む） */
+  const changeRows = (next: React.SetStateAction<FurnitureRow[]>): void => {
+    history.push(contentRef.current);
+    setRows(next);
+  };
+
+  /** タテの明細列を直す（直す前の中身を履歴へ積む） */
+  const changeColumns = (
+    next: React.SetStateAction<FurnitureColumn[]>,
+  ): void => {
+    history.push(contentRef.current);
+    setColumns(next);
+  };
+
+  /** 表の設定を直す（直す前の中身を履歴へ積む） */
+  const commitSettings = (
+    next: React.SetStateAction<FurnitureSettings>,
+  ): void => {
+    history.push(contentRef.current);
+    setSettings(next);
+  };
+
+  const undo = (): void => {
+    const previous = history.undo(contentRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    setRows(previous.rows);
+    setColumns(previous.columns);
+    setSettings(previous.settings);
+    setMessage("1つ前に戻しました（保存すると確定します）");
+  };
+
+  const redo = (): void => {
+    const next = history.redo(contentRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    setRows(next.rows);
+    setColumns(next.columns);
+    setSettings(next.settings);
+    setMessage("1つ先へ進めました（保存すると確定します）");
+  };
+
   const save = useCallback(
     async (quiet = false): Promise<void> => {
       // 印刷書式は見るだけ（保存しない）
@@ -509,6 +567,7 @@ export default function FurnitureSheetPage({
       setColumns(nextColumns);
       setSettings(nextSettings);
       setHidden(readHidden(sheetId));
+      history.clear();
       markSaved({
         rows: nextRows,
         columns: nextColumns,
@@ -716,7 +775,7 @@ export default function FurnitureSheetPage({
         remarksLower: detail.remarksLower,
         sourceDetailId: detail.id,
       };
-      setColumns((current) => {
+      changeColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
         if (at < 0) {
           const created = furnitureColumn(patch);
@@ -739,7 +798,7 @@ export default function FurnitureSheetPage({
   );
 
   const editRow = (index: number, patch: Partial<FurnitureRow>): void => {
-    setRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+    changeRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
   };
 
   /** 右の明細欄を手で直す（直した欄は自動作成で上書きしない） */
@@ -747,7 +806,7 @@ export default function FurnitureSheetPage({
     index: number,
     patch: Partial<FurnitureDetail>,
   ): void => {
-    setRows(
+    changeRows(
       rows.map((row, at) => {
         if (at !== index) return row;
         const edited = [...row.detail.edited];
@@ -764,7 +823,7 @@ export default function FurnitureSheetPage({
 
   /** 手で直した明細欄（赤字）を自動作成に戻す。key を省くと行の全部の欄 */
   const revertDetail = (index: number, key?: string): void => {
-    setRows(
+    changeRows(
       rows.map((row, at) =>
         at === index
           ? revertFurnitureDetail(row, key === undefined ? undefined : [key])
@@ -788,13 +847,13 @@ export default function FurnitureSheetPage({
   const addRow = (at: number): void => {
     const next = [...rows];
     next.splice(at, 0, furnitureRow());
-    setRows(next);
+    changeRows(next);
     pickRow(at, false);
   };
 
   const removeRow = (at: number): void => {
     if (rows.length <= 1) return;
-    setRows(rows.filter((_row, index) => index !== at));
+    changeRows(rows.filter((_row, index) => index !== at));
     pickRow(Math.min(at, rows.length - 2), false);
   };
 
@@ -804,7 +863,7 @@ export default function FurnitureSheetPage({
     const next = [...rows];
     const moved = next.splice(at, 1)[0];
     next.splice(to, 0, moved);
-    setRows(next);
+    changeRows(next);
     pickRow(to, false);
   };
 
@@ -833,7 +892,7 @@ export default function FurnitureSheetPage({
       ))
     )
       return;
-    setRows(
+    changeRows(
       rows.map((row, at) =>
         at >= selectionStart && at <= selectionEnd
           ? revertFurnitureDetail(row)
@@ -846,7 +905,7 @@ export default function FurnitureSheetPage({
   const pasteRows = (mode: FurniturePasteMode): void => {
     if (clipboard.length === 0) return;
     const at = mode === "append" ? rows.length : selectionStart;
-    setRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
+    changeRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
     setPicked(at);
     setPickedEnd(at + clipboard.length - 1);
     const where =
@@ -859,7 +918,7 @@ export default function FurnitureSheetPage({
   };
 
   const editColumn = (id: string, patch: Partial<FurnitureColumn>): void =>
-    setColumns(
+    changeColumns(
       columns.map((column) =>
         column.id === id ? { ...column, ...patch } : column,
       ),
@@ -868,7 +927,7 @@ export default function FurnitureSheetPage({
   /** タテ方向の明細（列）を足す */
   const addColumn = (): void => {
     const created = furnitureColumn();
-    setColumns([...columns, created]);
+    changeColumns([...columns, created]);
     setPickedColumn(created.id);
     setMessage("タテの明細を足しました");
   };
@@ -876,7 +935,7 @@ export default function FurnitureSheetPage({
   /** タテの明細は少なくとも1列は残す（入力欄が見えるように） */
   const removeColumn = (id: string): void => {
     const rest = columns.filter((column) => column.id !== id);
-    setColumns(rest.length > 0 ? rest : [furnitureColumn()]);
+    changeColumns(rest.length > 0 ? rest : [furnitureColumn()]);
     if (pickedColumn === id) setPickedColumn(null);
   };
 
@@ -887,12 +946,12 @@ export default function FurnitureSheetPage({
     const next = [...columns];
     const [moved] = next.splice(at, 1);
     next.splice(to, 0, moved);
-    setColumns(next);
+    changeColumns(next);
   };
 
   /** タテの明細のマス（行×列）に数量（計算式も可）を入れる */
   const editCell = (rowId: string, columnId: string, text: string): void =>
-    setRows(
+    changeRows(
       rows.map((row) =>
         row.id === rowId
           ? { ...row, values: { ...(row.values ?? {}), [columnId]: text } }
@@ -905,7 +964,7 @@ export default function FurnitureSheetPage({
     async (column: FurnitureColumn, text: string): Promise<void> => {
       const value = text.trim();
       if (value === "") {
-        setColumns((current) =>
+        changeColumns((current) =>
           current.map((each) =>
             each.id === column.id ? { ...each, detailNumber: null } : each,
           ),
@@ -942,7 +1001,7 @@ export default function FurnitureSheetPage({
       }
       const detail = found;
       if (detail === undefined) {
-        setColumns((current) =>
+        changeColumns((current) =>
           current.map((each) =>
             each.id === column.id ? { ...each, detailNumber: number } : each,
           ),
@@ -951,7 +1010,7 @@ export default function FurnitureSheetPage({
         return;
       }
       const keepPart = column.partNumber !== null || column.partName !== "";
-      setColumns((current) =>
+      changeColumns((current) =>
         current.map((each) =>
           each.id === column.id
             ? {
@@ -1011,12 +1070,12 @@ export default function FurnitureSheetPage({
     )
       return;
     const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
-    setSettings(base);
+    commitSettings(base);
     setMessage("基準の設定を読み込みました（保存するとこの表に確定します）");
   };
 
   const changeSettings = (patch: Partial<FurnitureSettings>): void => {
-    setSettings({ ...settings, ...patch });
+    commitSettings({ ...settings, ...patch });
   };
 
   const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
@@ -1039,7 +1098,7 @@ export default function FurnitureSheetPage({
 
   /** 見出し文字を直す（空欄にするともとの見出しへ戻る） */
   const editLabel = (key: string, text: string): void =>
-    setSettings({
+    commitSettings({
       ...settings,
       columnLabels: { ...(settings.columnLabels ?? {}), [key]: text },
     });
@@ -1174,6 +1233,26 @@ export default function FurnitureSheetPage({
         <span className="project">
           {sheet.name}／{project.managementNo} {project.name}
         </span>
+        {!printMode && (
+          <>
+            <button
+              type="button"
+              disabled={!history.canUndo}
+              title="1つ前の内容に戻します"
+              onClick={undo}
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              disabled={!history.canRedo}
+              title="戻した内容を1つ先へ進めます"
+              onClick={redo}
+            >
+              ↷ 進む
+            </button>
+          </>
+        )}
         <button type="button" onClick={() => addRow(picked + 1)}>
           ＋ 行を足す
         </button>

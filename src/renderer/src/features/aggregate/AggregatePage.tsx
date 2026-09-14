@@ -5,6 +5,7 @@ import type {
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  MasterOptions,
   ProjectSummary,
   Subject,
 } from "@shared/types";
@@ -13,6 +14,8 @@ import {
   checkQuantityUnit,
 } from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
+import { resolveMasterName } from "@shared/masters";
+import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
@@ -156,6 +159,7 @@ export default function AggregatePage({
   });
   const [runs, setRuns] = useState<AggregateRun[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [units, setUnits] = useState<MasterOptions["units"]>([]);
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
@@ -186,6 +190,7 @@ export default function AggregatePage({
   useEffect(() => {
     void (async () => {
       setSubjects(await window.sekisan.listSubjects(project.id));
+      setUnits((await window.sekisan.getMasterOptions(project.id)).units);
       await reload();
     })();
   }, [project.id, reload]);
@@ -261,6 +266,16 @@ export default function AggregatePage({
   const lines = useMemo(
     () => buildLines(view.items, subjects),
     [subjects, view.items],
+  );
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [units],
   );
 
   /** 選んだ明細の数量根拠（合算前の1件ずつ） */
@@ -577,9 +592,16 @@ export default function AggregatePage({
                     {aggregateQuantityText(item.quantity, draft.unit)}
                   </td>
                   <td>
-                    <input
+                    <PickInput
+                      entries={unitEntries}
+                      halfWidth
                       value={draft.unit}
-                      onChange={(e) => editItem(item, { unit: e.target.value })}
+                      title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                      onCommit={(text) =>
+                        editItem(item, {
+                          unit: resolveMasterName(units, text),
+                        })
+                      }
                     />
                   </td>
                   <td>

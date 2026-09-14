@@ -13,6 +13,7 @@ import {
   moveFormworkRow,
   sortFormworkRowsByName,
 } from "../../../../core/aggregate/formworkTransfer";
+import PickInput, { type PickEntry } from "../../components/PickInput";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -108,6 +109,16 @@ export default function FormworkTransferPage({
   /** 単位欄は番号入力で単位マスターの名称に変わる（全画面共通の入力方式） */
   const unitOf = (text: string): string =>
     resolveMasterName(options?.units ?? [], text);
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      (options?.units ?? []).map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [options],
+  );
 
   /** 名称で探した元明細（空欄なら全部） */
   const shown = useMemo(() => {
@@ -339,11 +350,13 @@ export default function FormworkTransferPage({
         </label>
         <label>
           単位{" "}
-          <TextInput
+          <PickInput
             className="num"
+            entries={unitEntries}
+            halfWidth
             value={bulkUnit}
             placeholder="空欄＝元の単位"
-            title="単位。番号を打つと単位の文字に変わります"
+            title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
             onCommit={(value) => setBulkUnit(unitOf(value))}
           />
         </label>
@@ -486,9 +499,11 @@ export default function FormworkTransferPage({
                   />
                 </td>
                 <td>
-                  <TextInput
+                  <PickInput
+                    entries={unitEntries}
+                    halfWidth
                     value={rule.unit}
-                    title="単位。番号を打つと単位の文字に変わります"
+                    title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
                     onCommit={(value) =>
                       update(index, { unit: unitOf(value) })
                     }
