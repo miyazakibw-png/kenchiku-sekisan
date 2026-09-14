@@ -5,11 +5,14 @@ import {
   columnFloorLabels,
   fireproofId,
   formatSizeInput,
+  newCommonRow,
   newMember,
+  normalizeCommonRows,
   parseSizeInput,
   resolveCommonRow,
   resolveSize,
   sizeFromInput,
+  toHalfWidth,
   type FireproofFloorList,
   type FireproofMember,
 } from "../../src/core/fireproof/fireproofList";
@@ -137,5 +140,20 @@ describe("耐火被覆・塗装のリスト", () => {
     });
     expect(box.shape).toBe("box");
     expect(box.second).toBe(100);
+  });
+
+  it("階共通リストの形状は基本Ｈ（新しい行・空欄の古い保存も）", () => {
+    expect(newCommonRow("P1").shape).toBe("h");
+    const rows = normalizeCommonRows([
+      { id: "c1", symbol: "P1", shape: "", first: null, second: null },
+      { id: "c2", symbol: "B1", shape: "box", first: null, second: null },
+    ]);
+    expect(rows.map((row) => row.shape)).toEqual(["h", "box"]);
+  });
+
+  it("全角で打った記号・寸法は半角にする（日本語変換は使わない）", () => {
+    expect(toHalfWidth("Ｃ１")).toBe("C1");
+    expect(toHalfWidth("２５０＊１２５")).toBe("250*125");
+    expect(parseSizeInput("２５０＊１２５")).toEqual([250, 125]);
   });
 });

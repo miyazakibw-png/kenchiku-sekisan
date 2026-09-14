@@ -78,6 +78,25 @@
   color: #1f4e79;
 }
 
+/* 記号まとめて入力（建具表と同じ形） */
+.fireproof-section .series-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #eef1f6;
+  font-size: 12px;
+}
+
+.fireproof-section .series-form input {
+  width: 8ch;
+}
+
+.fireproof-section .series-form input.num {
+  width: 5ch;
+}
+
 .fireproof-section .section-scroll {
   flex: 1 1 0;
   overflow: auto;
@@ -148,11 +167,25 @@
   gap: 2px;
 }
 
+/* 記号の行は白いマスにして、打った記号がはっきり見えるようにする */
+.fireproof-page table.fireproof th.symbol-cell {
+  padding: 0;
+  background: #fff;
+}
+
+.fireproof-page table.fireproof th.symbol-cell.selected,
+.fireproof-page table.fireproof th.symbol-cell.selected .symbol-input {
+  background: #dbeafe;
+}
+
 .fireproof-page table.fireproof .symbol-input {
   width: 100%;
-  min-width: 10ch;
-  color: #fff;
-  background: transparent;
+  min-width: 12ch;
+  height: 20px;
+  padding: 0 4px;
+  color: #1f2937;
+  text-align: center;
+  background: #fff;
 }
 
 .fireproof-page table.fireproof input,

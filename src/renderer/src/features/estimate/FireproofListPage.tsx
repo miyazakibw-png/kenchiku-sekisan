@@ -14,6 +14,7 @@ import {
   resolveCommonRow,
   resolveSize,
   sizeFromInput,
+  toHalfWidth,
   EMPTY_SIZE,
   type FireproofCommonRow,
   type FireproofFloorList,
@@ -21,6 +22,7 @@ import {
   type FireproofSheet,
   type SteelShape,
 } from "../../../../core/fireproof/fireproofList";
+import { expandSymbols } from "../../../../core/fittings/fitting";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 import "./EstimatePartsPage.css";
@@ -73,6 +75,8 @@ function SizeInput({
   }, [size, editing]);
   return (
     <input
+      lang="en"
+      inputMode="text"
       value={text}
       placeholder={placeholder}
       title={title}
@@ -82,8 +86,9 @@ function SizeInput({
         setText(formatSizeInput(size));
       }}
       onChange={(event) => {
-        setText(event.target.value);
-        const next = sizeFromInput(size, event.target.value);
+        const typed = toHalfWidth(event.target.value);
+        setText(typed);
+        const next = sizeFromInput(size, typed);
         onChange({ first: next.first, second: next.second });
       }}
     />
@@ -232,6 +237,78 @@ interface FloorSectionProps {
   onMessage: (text: string) => void;
 }
 
+interface SeriesForm {
+  prefix: string;
+  from: string;
+  to: string;
+  suffixFrom: string;
+  suffixTo: string;
+}
+
+const EMPTY_SERIES: SeriesForm = {
+  prefix: "",
+  from: "1",
+  to: "1",
+  suffixFrom: "",
+  suffixTo: "",
+};
+
+/** 建具表と同じ「記号まとめて入力」（記号＋連番＋枝番から記号をまとめて作る） */
+function SymbolSeriesForm({
+  form,
+  onChange,
+  onAdd,
+  onCancel,
+}: {
+  form: SeriesForm;
+  onChange: (next: SeriesForm) => void;
+  onAdd: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const text = (key: keyof SeriesForm, className?: string): JSX.Element => (
+    <input
+      lang="en"
+      inputMode="text"
+      className={className}
+      value={form[key]}
+      onChange={(event) =>
+        onChange({ ...form, [key]: toHalfWidth(event.target.value) })
+      }
+    />
+  );
+  return (
+    <div className="series-form">
+      <span>記号</span>
+      {text("prefix")}
+      <span>番号</span>
+      {text("from", "num")}
+      <span>〜</span>
+      {text("to", "num")}
+      <span>枝番（任意）</span>
+      {text("suffixFrom", "num")}
+      <span>〜</span>
+      {text("suffixTo", "num")}
+      <button type="button" onClick={onAdd}>
+        追加
+      </button>
+      <button type="button" onClick={onCancel}>
+        取消
+      </button>
+    </div>
+  );
+}
+
+/** まとめて入力の欄から記号を作る（空なら空配列） */
+function seriesSymbols(form: SeriesForm): string[] {
+  return expandSymbols({
+    prefix: form.prefix.trim(),
+    from: Number(form.from),
+    to: Number(form.to),
+    suffixFrom: form.suffixFrom.trim() || undefined,
+    suffixTo: form.suffixTo.trim() || undefined,
+  });
+}
+
 /** 階別リスト（柱・梁）。階をタテ、部材記号（C1・G1…）をヨコに並べる */
 function FloorListSection({
   title,
@@ -248,6 +325,7 @@ function FloorListSection({
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<FireproofMember[]>([]);
+  const [series, setSeries] = useState<SeriesForm | null>(null);
 
   const commit = (next: FireproofFloorList): void => {
     history.push(listRef.current);
@@ -416,7 +494,35 @@ function FloorListSection({
         >
           ＋ 階の行追加
         </button>
+        <button
+          type="button"
+          title="記号＋連番（＋枝番）からリストをまとめて作ります"
+          onClick={() => setSeries(EMPTY_SERIES)}
+        >
+          🔢 記号まとめて入力
+        </button>
       </div>
+
+      {series && (
+        <SymbolSeriesForm
+          form={series}
+          onChange={setSeries}
+          onAdd={() => {
+            const symbols = seriesSymbols(series);
+            if (symbols.length === 0) {
+              onMessage(`${title}：記号と番号を確認してください`);
+              return;
+            }
+            setMembers([
+              ...list.members,
+              ...symbols.map((symbol) => newMember(symbol)),
+            ]);
+            setSeries(null);
+            onMessage(`${title}：${symbols.length} 列追加しました`);
+          }}
+          onCancel={() => setSeries(null)}
+        />
+      )}
 
       <div className="section-scroll">
         <table className="grid fireproof">
@@ -462,7 +568,7 @@ function FloorListSection({
                 <th
                   key={member.id}
                   colSpan={2}
-                  className={index >= start && index <= end ? "selected" : ""}
+                  className={`symbol-cell${index >= start && index <= end ? " selected" : ""}`}
                   onMouseDown={(event) => {
                     if (event.shiftKey) {
                       setSelectedEnd(index);
@@ -473,16 +579,20 @@ function FloorListSection({
                   }}
                 >
                   <input
-                    lang="ja"
+                    lang="en"
+                    inputMode="text"
                     className="symbol-input"
                     value={member.symbol}
-                    placeholder={kind === "column" ? "Ｃ1" : "Ｇ1"}
+                    placeholder={kind === "column" ? "C1" : "G1"}
                     onChange={(event) =>
                       onChange({
                         ...list,
                         members: list.members.map((each, at) =>
                           at === index
-                            ? { ...each, symbol: event.target.value }
+                            ? {
+                                ...each,
+                                symbol: toHalfWidth(event.target.value),
+                              }
                             : each,
                         ),
                       })
@@ -507,10 +617,14 @@ function FloorListSection({
               <tr key={floor.id}>
                 <td className="floor">
                   <input
-                    lang="ja"
+                    lang="en"
+                    inputMode="text"
                     value={floor.label}
                     onChange={(event) =>
-                      changeFloorLabel(floorIndex, event.target.value)
+                      changeFloorLabel(
+                        floorIndex,
+                        toHalfWidth(event.target.value),
+                      )
                     }
                   />
                 </td>
@@ -614,6 +728,7 @@ function CommonListSection({
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<FireproofCommonRow[]>([]);
+  const [series, setSeries] = useState<SeriesForm | null>(null);
 
   const commit = (next: FireproofCommonRow[]): void => {
     history.push(rowsRef.current);
@@ -719,10 +834,35 @@ function CommonListSection({
         >
           📋 追加貼付
         </button>
+        <button
+          type="button"
+          title="記号＋連番（＋枝番）からリスト行をまとめて作ります"
+          onClick={() => setSeries(EMPTY_SERIES)}
+        >
+          🔢 記号まとめて入力
+        </button>
         <span className="hint">
           柱・梁と同じ部材でも、階で分けないものはこの表に書きます（形状の初期はＨ）
         </span>
       </div>
+
+      {series && (
+        <SymbolSeriesForm
+          form={series}
+          onChange={setSeries}
+          onAdd={() => {
+            const symbols = seriesSymbols(series);
+            if (symbols.length === 0) {
+              onMessage("階共通リスト：記号と番号を確認してください");
+              return;
+            }
+            commit([...rows, ...symbols.map((symbol) => newCommonRow(symbol))]);
+            setSeries(null);
+            onMessage(`階共通リスト：${symbols.length} 行追加しました`);
+          }}
+          onCancel={() => setSeries(null)}
+        />
+      )}
 
       <div className="section-scroll common">
         <table className="grid fireproof">
@@ -762,11 +902,14 @@ function CommonListSection({
                   </td>
                   <td className="symbol">
                     <input
-                      lang="ja"
+                      lang="en"
+                      inputMode="text"
                       value={row.symbol}
-                      placeholder="Ｐ1"
+                      placeholder="P1"
                       onChange={(event) =>
-                        change(index, { symbol: event.target.value })
+                        change(index, {
+                          symbol: toHalfWidth(event.target.value),
+                        })
                       }
                     />
                   </td>

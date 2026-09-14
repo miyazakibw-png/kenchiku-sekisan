@@ -172,11 +172,20 @@ export function newCommonRow(symbol = ""): FireproofCommonRow {
 }
 
 /**
+ * 全角の英数字・記号を半角に直す（リストは記号と寸法だけなので日本語変換は使わない）。
+ */
+export function toHalfWidth(text: string): string {
+  return text.replace(/[！-～]/g, (char) =>
+    String.fromCharCode(char.charCodeAt(0) - 0xfee0),
+  );
+}
+
+/**
  * 1マスに打った寸法を読む（「250*125」＝Ｗ250・Ｄ125、「250」＝Ｗだけ）。
  * ＊・×・x・空白区切りも同じに読む。将来 Ｗ*Ｄ*Ｔ1*Ｔ2 と増やせるよう数字は全部返す。
  */
 export function parseSizeInput(text: string): number[] {
-  return text
+  return toHalfWidth(text)
     .split(/[*＊xX×,、\s]+/)
     .map((part) => part.trim())
     .filter((part) => part !== "")
