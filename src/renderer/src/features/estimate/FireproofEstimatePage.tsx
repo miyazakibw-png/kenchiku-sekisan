@@ -6,18 +6,25 @@ import type {
   ProjectSummary,
 } from "@shared/types";
 import {
+  BEAM_MARK_COUNT,
+  calcBeamRow,
   calcColumnRow,
+  beamSheetTotals,
   columnSheetTotals,
   inheritedFloors,
   manageRowQuantity,
+  newBeamRow,
   newColumnRow,
   newManageRow,
   normalizeManageRows,
   normalizeWallLabels,
   type FireproofColumnRow,
+  type FireproofColumnSheet,
   type FireproofManageDetail,
   type FireproofManageRow,
+  type FireproofSheetKind,
 } from "../../../../core/fireproof/fireproofEstimate";
+import { findBeamSize } from "../../../../core/fireproof/fireproofEstimate";
 import {
   normalizeFloorList,
   SHAPE_LABEL,
@@ -68,12 +75,55 @@ function formatNumber(value: number | null, decimals = 2): string {
 
 /** 入力管理表の列（No〜備考（上段））の既定の幅 */
 const MANAGE_WIDTHS = [
-  30, 100, 72, 50, 90, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
+  30, 100, 72, 50, 110, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
 ];
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
 const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
 /** 柱入力表（階〜壁取合m＋✔欄3列）の既定の幅 */
 const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70, 44, 44, 44];
+/** 梁型入力表（階〜床取合m＋✔欄4列）の既定の幅 */
+const BEAM_WIDTHS = [...COLUMN_WIDTHS, 44];
+
+/** 柱入力表と梁型入力表の違い（あとは全部同じ） */
+const SHEET_KIND: Record<
+  FireproofSheetKind,
+  {
+    title: string;
+    /** 鉄骨リストのどちらを見るか（柱リスト／梁リスト） */
+    listLabel: string;
+    symbolPlaceholder: string;
+    /** 取合mの名前（壁取合m／床取合m） */
+    adjacency: string;
+    markCount: number;
+    widths: number[];
+    storageKey: string;
+    /** 取合欄の説明文 */
+    markTitle: string;
+  }
+> = {
+  column: {
+    title: "柱入力表",
+    listLabel: "柱リスト",
+    symbolPlaceholder: "C1",
+    adjacency: "壁取合m",
+    markCount: 3,
+    widths: COLUMN_WIDTHS,
+    storageKey: "fireproof-column-cols-v3",
+    markTitle:
+      "面の数（1〜4。□・Ｈ鋼どちらにも使えます）か取合記号（H1〜H4。同じ面数で計算します）を入れます。壁取合mは4面（H4）のとき0、それ以外は有効長×2です",
+  },
+  beam: {
+    title: "梁型入力表",
+    listLabel: "梁リスト",
+    symbolPlaceholder: "G1",
+    adjacency: "床取合m",
+    markCount: BEAM_MARK_COUNT,
+    widths: BEAM_WIDTHS,
+    storageKey: "fireproof-beam-cols-v1",
+    markTitle:
+      "取合記号（Ｈ鋼：4・3・2・A3／箱型：H4・H3・H2・HA3。A3・HA3は壁付き＝床につかない）を入れます。床取合mはA3・HA3・4面（H4）のとき0、それ以外は有効長×2です",
+  },
+};
 
 /** 表の幅＝列幅の合計（画面いっぱいに広げず、列を小さくできるようにする） */
 function tableStyle(widths: number[]): React.CSSProperties {
@@ -86,6 +136,7 @@ function sizeHint(
   list: FireproofFloorList,
   floor: string,
   symbol: string,
+  kind: FireproofSheetKind = "column",
 ): string {
   if (symbol.trim() === "") return "";
   const member = list.members.find(
@@ -97,7 +148,10 @@ function sizeHint(
     !list.floors.some((each) => each.label.trim() === floor.trim())
   )
     return "リストにこの階がありません";
-  const size = findColumnSize(list, floor, symbol);
+  const size =
+    kind === "beam"
+      ? findBeamSize(list, floor, symbol)
+      : findColumnSize(list, floor, symbol);
   if (!size || size.first === null) return "リストに寸法が入っていません";
   const shape = SHAPE_LABEL[size.shape === "" ? "box" : size.shape];
   return `${shape}${size.first}${size.second === null ? "" : `*${size.second}`}`;
@@ -132,16 +186,23 @@ export default function FireproofEstimatePage({
     floors: [],
     members: [],
   });
+  const [beamsList, setBeamsList] = useState<FireproofFloorList>({
+    floors: [],
+    members: [],
+  });
   const [rows, setRows] = useState<FireproofManageRow[]>([]);
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<FireproofManageRow[]>([]);
-  const [opened, setOpened] = useState<number | null>(null);
+  const [opened, setOpened] = useState<{
+    index: number;
+    kind: FireproofSheetKind;
+  } | null>(null);
   const [message, setMessage] = useState("");
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   const history = useUndoRedo<FireproofManageRow[]>();
   const { widths: manageWidths, startResize: startManageResize } =
-    useColumnWidths("fireproof-manage-cols", MANAGE_WIDTHS);
+    useColumnWidths("fireproof-manage-cols-v2", MANAGE_WIDTHS);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
 
@@ -157,6 +218,7 @@ export default function FireproofEstimatePage({
         note: record.note,
       };
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
+      setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
       setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
     })();
   }, [project.id]);
@@ -237,6 +299,10 @@ export default function FireproofEstimatePage({
         ...row.sheet,
         rows: row.sheet.rows.map((each) => ({ ...each })),
       },
+      beamSheet: {
+        ...row.beamSheet,
+        rows: row.beamSheet.rows.map((each) => ({ ...each })),
+      },
     }));
     if (copied.length === 0) return;
     setClipboard(copied);
@@ -259,6 +325,14 @@ export default function FireproofEstimatePage({
           ...newColumnRow(),
           ...each,
           id: newColumnRow().id,
+        })),
+      },
+      beamSheet: {
+        ...row.beamSheet,
+        rows: row.beamSheet.rows.map((each) => ({
+          ...newBeamRow(),
+          ...each,
+          id: newBeamRow().id,
         })),
       },
     }));
@@ -412,18 +486,21 @@ export default function FireproofEstimatePage({
     [options.pickupParts, options.subjects, project.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  if (opened !== null && rows[opened]) {
+  if (opened !== null && rows[opened.index]) {
+    const index = opened.index;
+    const kind = opened.kind;
     return (
       <ColumnSheetView
         project={project}
-        row={rows[opened]}
-        part1={inheritedPart1[opened] ?? ""}
-        list={columnsList}
+        kind={kind}
+        row={rows[index]}
+        part1={inheritedPart1[index] ?? ""}
+        list={kind === "beam" ? beamsList : columnsList}
         options={options}
-        detailCell={(key, className) => detailInput(opened, key, className)}
-        onChange={(next) => change(opened, next)}
+        detailCell={(key, className) => detailInput(index, key, className)}
+        onChange={(next) => change(index, next)}
         onCommit={(next) =>
-          commit(rows.map((row, at) => (at === opened ? next : row)))
+          commit(rows.map((row, at) => (at === index ? next : row)))
         }
         onBack={() => {
           setOpened(null);
@@ -725,12 +802,21 @@ export default function FireproofEstimatePage({
                   />
                 </td>
                 <td className="sheet">
-                  <button type="button" onClick={() => setOpened(index)}>
+                  <button
+                    type="button"
+                    onClick={() => setOpened({ index, kind: "column" })}
+                  >
                     📐 柱入力表
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpened({ index, kind: "beam" })}
+                  >
+                    📐 梁型入力表
                   </button>
                 </td>
                 <td className="num number">
-                  {formatNumber(manageRowQuantity(row, columnsList))}
+                  {formatNumber(manageRowQuantity(row, columnsList, beamsList))}
                 </td>
                 <td className="material">
                   {detailInput(index, "materialCategory")}
@@ -766,6 +852,7 @@ export default function FireproofEstimatePage({
 /** 柱入力表（1つの明細に対して数量を出す） */
 function ColumnSheetView({
   project,
+  kind,
   row,
   part1,
   list,
@@ -776,6 +863,7 @@ function ColumnSheetView({
   detailCell,
 }: {
   project: ProjectSummary;
+  kind: FireproofSheetKind;
   row: FireproofManageRow;
   part1: string;
   list: FireproofFloorList;
@@ -795,31 +883,46 @@ function ColumnSheetView({
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [clipboard, setClipboard] = useState<FireproofColumnRow[]>([]);
+  /** 柱入力表と梁型入力表の違い（あとは全部同じ） */
+  const config = SHEET_KIND[kind];
+  /** この画面で動かす方の入力表（柱＝sheet／梁型＝beamSheet） */
+  const sheet = kind === "beam" ? row.beamSheet : row.sheet;
+  const withSheet = (nextSheet: FireproofColumnSheet): FireproofManageRow =>
+    kind === "beam"
+      ? { ...rowRef.current, beamSheet: nextSheet }
+      : { ...rowRef.current, sheet: nextSheet };
+  const calcRow = kind === "beam" ? calcBeamRow : calcColumnRow;
+  const findSize = kind === "beam" ? findBeamSize : findColumnSize;
+  const newRow = kind === "beam" ? newBeamRow : newColumnRow;
+
   const { widths: headWidths, startResize: startHeadResize } = useColumnWidths(
     "fireproof-head-detail-cols",
     HEAD_DETAIL_WIDTHS,
   );
   const { widths: columnWidths, startResize: startColumnResize } =
-    useColumnWidths("fireproof-column-cols-v3", COLUMN_WIDTHS);
+    useColumnWidths(config.storageKey, config.widths);
   const start = Math.min(selected, selectedEnd);
   const end = Math.max(selected, selectedEnd);
 
-  const totals = columnSheetTotals(row.sheet, list);
-  /** 壁取合mを分ける3欄の見出し（既定Ａ・Ｂ・Ｃ） */
-  const wallLabels = normalizeWallLabels(row.sheet.wallLabels);
+  const totals =
+    kind === "beam"
+      ? beamSheetTotals(sheet, list)
+      : columnSheetTotals(sheet, list);
+  /** 取合mを分ける欄の見出し（柱＝Ａ・Ｂ・Ｃ／梁型＝Ａ・Ｂ・Ｃ・Ｄ） */
+  const wallLabels = normalizeWallLabels(sheet.wallLabels, config.markCount);
   /** 階が空欄の行は上の行と同じ階（薄いグレーで出す） */
-  const sheetFloors = inheritedFloors(row.sheet.rows);
+  const sheetFloors = inheritedFloors(sheet.rows);
 
   const commitRows = (rows: FireproofColumnRow[]): void => {
     history.push(rowRef.current);
-    onCommit({ ...rowRef.current, sheet: { ...rowRef.current.sheet, rows } });
+    onCommit(withSheet({ ...sheet, rows }));
   };
 
   const changeRow = (index: number, patch: Partial<FireproofColumnRow>): void =>
     onChange({
-      sheet: {
-        ...row.sheet,
-        rows: row.sheet.rows.map((each, at) =>
+      [kind === "beam" ? "beamSheet" : "sheet"]: {
+        ...sheet,
+        rows: sheet.rows.map((each, at) =>
           at === index ? { ...each, ...patch } : each,
         ),
       },
@@ -828,7 +931,7 @@ function ColumnSheetView({
   const undo = (): void => {
     const previous = history.undo(rowRef.current);
     if (previous === null) {
-      onMessage("柱入力表：戻せる操作がありません");
+      onMessage(`${config.title}：戻せる操作がありません`);
       return;
     }
     onCommit(previous);
@@ -837,33 +940,33 @@ function ColumnSheetView({
   const redo = (): void => {
     const next = history.redo(rowRef.current);
     if (next === null) {
-      onMessage("柱入力表：進める操作がありません");
+      onMessage(`${config.title}：進める操作がありません`);
       return;
     }
     onCommit(next);
   };
 
   const copyRows = (): void => {
-    const copied = row.sheet.rows
+    const copied = sheet.rows
       .slice(start, end + 1)
       .map((each) => ({ ...each }));
     if (copied.length === 0) return;
     setClipboard(copied);
-    onMessage(`⧉ 柱入力表：${copied.length} 行をコピーしました`);
+    onMessage(`⧉ ${config.title}：${copied.length} 行をコピーしました`);
   };
 
   const pasteRows = (mode: "overwrite" | "insert" | "append"): void => {
     if (clipboard.length === 0) return;
     const fresh = clipboard.map((each) => ({
       ...each,
-      id: newColumnRow().id,
+      id: newRow().id,
     }));
-    const next = [...row.sheet.rows];
+    const next = [...sheet.rows];
     if (mode === "overwrite") next.splice(start, fresh.length, ...fresh);
     if (mode === "insert") next.splice(start, 0, ...fresh);
     if (mode === "append") next.push(...fresh);
     commitRows(next);
-    onMessage(`柱入力表：${fresh.length} 行を貼り付けました`);
+    onMessage(`${config.title}：${fresh.length} 行を貼り付けました`);
   };
 
   /** 階の候補（鉄骨リストの柱リストの階） */
@@ -877,7 +980,7 @@ function ColumnSheetView({
         <button type="button" onClick={onBack}>
           ← 入力管理表へ
         </button>
-        <h2>柱入力表</h2>
+        <h2>{config.title}</h2>
         <span className="project">
           {project.managementNo} {project.name}
           {part1 ? `　${part1}` : ""}
@@ -890,15 +993,15 @@ function ColumnSheetView({
         </button>
         <button
           type="button"
-          onClick={() => commitRows([...row.sheet.rows, newColumnRow()])}
+          onClick={() => commitRows([...sheet.rows, newRow()])}
         >
           ⤓ 行追加
         </button>
         <button
           type="button"
           onClick={() => {
-            const next = [...row.sheet.rows];
-            next.splice(start, 0, newColumnRow());
+            const next = [...sheet.rows];
+            next.splice(start, 0, newRow());
             commitRows(next);
           }}
         >
@@ -906,9 +1009,7 @@ function ColumnSheetView({
         </button>
         <button
           type="button"
-          onClick={() =>
-            commitRows(row.sheet.rows.filter((_, at) => at !== start))
-          }
+          onClick={() => commitRows(sheet.rows.filter((_, at) => at !== start))}
         >
           🗑 行削除
         </button>
@@ -1001,17 +1102,15 @@ function ColumnSheetView({
         <span>耐火被覆厚み→</span>
         <input
           lang="en"
-          value={
-            row.sheet.thickness === null ? "" : String(row.sheet.thickness)
-          }
+          value={sheet.thickness === null ? "" : String(sheet.thickness)}
           placeholder="25"
           title="mmで入れます（断面必要計算式では m に直して使います）"
           onChange={(event) => {
             const text = toHalfWidth(event.target.value).trim();
             const value = text === "" ? null : Number(text);
             onChange({
-              sheet: {
-                ...row.sheet,
+              [kind === "beam" ? "beamSheet" : "sheet"]: {
+                ...sheet,
                 thickness: value === null || Number.isNaN(value) ? null : value,
               },
             });
@@ -1022,11 +1121,12 @@ function ColumnSheetView({
           必要数㎡ <b>{formatNumber(totals.needed)}</b>
         </span>
         <span className="sum">
-          壁取合m <b>{formatNumber(totals.wall)}</b>
+          {config.adjacency} <b>{formatNumber(totals.wall)}</b>
         </span>
         {wallLabels.map((label, mark) => (
           <span className="sum" key={mark}>
-            壁取合{label} <b>{formatNumber(totals.wallMarks[mark])}</b>
+            {config.adjacency.slice(0, -1)}
+            {label} <b>{formatNumber(totals.wallMarks[mark])}</b>
           </span>
         ))}
       </div>
@@ -1053,7 +1153,7 @@ function ColumnSheetView({
                   ["計算式(有効長)", "formula"],
                   ["断面必要計算式", "section"],
                   ["必要数㎡", "num"],
-                  ["壁取合m", "num"],
+                  [config.adjacency, "num"],
                 ] as const
               ).map(([label, cls], index) => (
                 <th key={label} className={cls}>
@@ -1070,13 +1170,16 @@ function ColumnSheetView({
                   <input
                     className="mark-label"
                     value={label}
-                    title="見出しの名前は書き換えられます。✔を付けた行の壁取合mをこの欄で合計します"
+                    title={`見出しの名前は書き換えられます。✔を付けた行の${config.adjacency}をこの欄で合計します`}
                     onChange={(event) => {
                       const labels = wallLabels.map((each, index) =>
                         index === mark ? event.target.value : each,
                       );
                       onChange({
-                        sheet: { ...row.sheet, wallLabels: labels },
+                        [kind === "beam" ? "beamSheet" : "sheet"]: {
+                          ...sheet,
+                          wallLabels: labels,
+                        },
                       });
                     }}
                   />
@@ -1090,15 +1193,11 @@ function ColumnSheetView({
             </tr>
           </thead>
           <tbody>
-            {row.sheet.rows.map((each, index) => {
+            {sheet.rows.map((each, index) => {
               // 階が空欄の行は上の行と同じ階として計算する
               const floor = sheetFloors[index] ?? "";
-              const calc = calcColumnRow(
-                { ...each, floor },
-                list,
-                row.sheet.thickness,
-              );
-              const size = findColumnSize(list, floor, each.symbol);
+              const calc = calcRow({ ...each, floor }, list, sheet.thickness);
+              const size = findSize(list, floor, each.symbol);
               return (
                 <tr
                   key={each.id}
@@ -1118,10 +1217,10 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       inputMode="text"
-                      list="fireproof-floor-list"
+                      list={`fireproof-floor-list-${kind}`}
                       value={each.floor}
                       placeholder={index > 0 ? floor : ""}
-                      title="直接打てます。▼を押すと鉄骨リストの柱リストの階から選べます（空欄は上の行と同じ階）"
+                      title={`直接打てます。▼を押すと鉄骨リストの${config.listLabel}の階から選べます（空欄は上の行と同じ階）`}
                       onChange={(event) =>
                         changeRow(index, {
                           floor: toHalfWidth(event.target.value),
@@ -1142,11 +1241,11 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       value={each.symbol}
-                      placeholder="C1"
+                      placeholder={config.symbolPlaceholder}
                       title={
                         size
                           ? `鉄骨リスト：${SHAPE_LABEL[size.shape === "" ? "box" : size.shape]} ${size.first ?? ""}${size.second === null ? "" : `*${size.second}`}`
-                          : "鉄骨リストの柱リストにある記号を入れます"
+                          : `鉄骨リストの${config.listLabel}にある記号を入れます`
                       }
                       onChange={(event) =>
                         changeRow(index, {
@@ -1155,7 +1254,7 @@ function ColumnSheetView({
                       }
                     />
                     <span className="size-hint">
-                      {sizeHint(list, floor, each.symbol)}
+                      {sizeHint(list, floor, each.symbol, kind)}
                     </span>
                   </td>
                   <td className="count">
@@ -1179,8 +1278,8 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       value={each.mark}
-                      placeholder="1〜4"
-                      title="面の数（1〜4）か取合記号（H1〜H4。同じ面数で計算します）を入れます。壁取合mは4面（H4）のとき0、それ以外は有効長×2です"
+                      placeholder={kind === "beam" ? "H4…" : "1〜4"}
+                      title={config.markTitle}
                       onChange={(event) =>
                         changeRow(index, {
                           mark: toHalfWidth(event.target.value).trim(),
@@ -1192,7 +1291,7 @@ function ColumnSheetView({
                     <input
                       lang="en"
                       value={each.lengthFormula}
-                      placeholder="3.42"
+                      title="有効長を打ちます（「3.42」「3.42*2」のように書けます）"
                       onChange={(event) =>
                         changeRow(index, {
                           lengthFormula: toHalfWidth(event.target.value),
@@ -1220,7 +1319,7 @@ function ColumnSheetView({
                       <input
                         type="checkbox"
                         checked={each.wallChecks[mark] === true}
-                        title={`この行の壁取合mを${label}の欄で合計します`}
+                        title={`この行の${config.adjacency}を${label}の欄で合計します`}
                         onChange={(event) => {
                           const checks = each.wallChecks.map((checked, at) =>
                             at === mark ? event.target.checked : checked,
@@ -1235,7 +1334,7 @@ function ColumnSheetView({
             })}
           </tbody>
         </table>
-        <datalist id="fireproof-floor-list">
+        <datalist id={`fireproof-floor-list-${kind}`}>
           {floorEntries.map((label, index) => (
             <option key={`${index}-${label}`} value={label} />
           ))}
@@ -1248,37 +1347,63 @@ function ColumnSheetView({
             </tr>
           </thead>
           <tbody>
-            {(
-              [
-                ["Ｈ鋼", "独立4面", "4"],
-                ["Ｈ鋼", "床付3面", "3"],
-                ["Ｈ鋼", "壁・床付2面", "2"],
-                ["Ｈ鋼", "壁付3面", "A3"],
-                ["箱型", "独立4面", "H4"],
-                ["箱型", "床付3面", "H3"],
-                ["箱型", "壁・床付2面", "H2"],
-                ["箱型", "壁付3面", "HA3"],
-              ] as const
-            ).map(([shape, name, mark], index) => (
-              <tr key={index}>
-                <td className="shape">{shape}</td>
-                <td>{name}</td>
-                <td className="code">{mark}</td>
-              </tr>
-            ))}
+            {kind === "beam"
+              ? // 梁型（資料の取合記号表どおり。A3・HA3は壁付き＝床につかない）
+                (
+                  [
+                    ["Ｈ鋼", "独立4面", "4"],
+                    ["Ｈ鋼", "床付3面", "3"],
+                    ["Ｈ鋼", "壁・床付2面", "2"],
+                    ["Ｈ鋼", "壁付3面", "A3"],
+                    ["箱型", "独立4面", "H4"],
+                    ["箱型", "床付3面", "H3"],
+                    ["箱型", "壁・床付2面", "H2"],
+                    ["箱型", "壁付3面", "HA3"],
+                  ] as const
+                ).map(([shape, name, mark], index) => (
+                  <tr key={index}>
+                    <td className="shape">{shape}</td>
+                    <td>{name}</td>
+                    <td className="code">{mark}</td>
+                  </tr>
+                ))
+              : // 柱（1〜4は□・Ｈ鋼どちらにも使える。箱型はH1〜H4も）
+                (
+                  [
+                    ["□・Ｈ鋼", "面の数", "1〜4"],
+                    ["箱型", "面の数", "H1〜H4"],
+                  ] as const
+                ).map(([shape, name, mark], index) => (
+                  <tr key={index}>
+                    <td className="shape">{shape}</td>
+                    <td>{name}</td>
+                    <td className="code">{mark}</td>
+                  </tr>
+                ))}
           </tbody>
         </table>
       </div>
       <p className="hint">
-        階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の右横に拾った寸法（出ない理由）が出ます。
+        {kind === "beam" ? (
+          <>
+            階は直接打つか▼から鉄骨リストの階を選び、記号に梁リストの記号（G1…）を入れます。記号の右横に拾った寸法（出ない理由）が出ます。
+            取合の欄は取合記号（Ｈ鋼：4・3・2・A3／箱型：H4・H3・H2・HA3。右の表参照）を入れます。A3・HA3は壁付き＝床につかない梁型です。
+            床取合mの右のＡ・Ｂ・Ｃ・Ｄの欄に✔を付けると、その行の床取合mがその欄で合計されます（上の帯に4種類出ます）。見出しは書き換えられます。
+          </>
+        ) : (
+          <>
+            階は直接打つか▼から鉄骨リストの階を選び、記号に柱リストの記号（C1…）を入れます。記号の右横に拾った寸法（出ない理由）が出ます。
+            取合の欄は面の数（1〜4。□・Ｈ鋼どちらにも使えます）のほか箱型の記号（H1〜H4。同じ面数で計算します）も入れられます（A3・HA3は梁型側の記号です）。
+            壁取合mの右のＡ・Ｂ・Ｃの欄に✔を付けると、その行の壁取合mがその欄で合計されます（上の帯に3種類出ます）。見出しのＡ・Ｂ・Ｃは書き換えられます。
+          </>
+        )}
         断面必要計算式は資料の図のとおり自動で薄く出します（□：4面
         Ｗ*2+Ｄ*2+厚み*4／3面 Ｗ*2+Ｄ+厚み*2／2面 Ｗ+Ｄ+厚み／1面 Ｄ、Ｈ：4面
         Ｗ*2+Ｄ*4+厚み*4／3面 Ｗ*2+Ｄ*3+厚み*2／2面 Ｗ+Ｄ+Ｄ/2*2+厚み／1面
         Ｄ。厚みは25mmなら0.025）。厚みが未入力のときは出ません。欄に打つとその式が優先します。
         表の列幅は見出しの右端をドラッグして変えられます。
-        必要数㎡は断面×計算式(有効長)×倍数、壁取合mは有効長×2（取合が4・H4のときは0）です。
-        取合の欄は面の数（1〜4）のほか取合記号（H1〜H4。同じ面数で計算します）も入れられます（HA3・A3は梁型側の記号です）。
-        壁取合mの右のＡ・Ｂ・Ｃの欄に✔を付けると、その行の壁取合mがその欄で合計されます（上の帯に3種類出ます）。見出しのＡ・Ｂ・Ｃは書き換えられます。
+        必要数㎡は断面×計算式(有効長)×倍数、{config.adjacency}
+        は有効長×2（取合が4面のときは0）です。
       </p>
     </div>
   );

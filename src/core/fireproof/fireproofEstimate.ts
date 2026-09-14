@@ -67,27 +67,31 @@ export interface FireproofColumnRow {
   wallChecks: boolean[];
 }
 
-/** 壁取合mを分ける欄の数（Ａ・Ｂ・Ｃ） */
+/** 壁取合mを分ける欄の数（柱＝Ａ・Ｂ・Ｃの3こ、梁型＝Ａ・Ｂ・Ｃ・Ｄの4こ） */
 export const WALL_MARK_COUNT = 3;
+export const BEAM_MARK_COUNT = 4;
 
-/** 壁取合の欄の見出し（書き換えられる） */
-export function defaultWallLabels(): string[] {
-  return ["Ａ", "Ｂ", "Ｃ"];
+/** 壁取合・床取合の欄の見出し（書き換えられる。数を増やせる） */
+export function defaultWallLabels(count = WALL_MARK_COUNT): string[] {
+  return ["Ａ", "Ｂ", "Ｃ", "Ｄ"].slice(0, count);
 }
 
-/** ✔の並びを必ず3こにそろえる */
-function normalizeWallChecks(value: unknown): boolean[] {
+/** ✔の並びを欄の数にそろえる */
+function normalizeWallChecks(value: unknown, count: number): boolean[] {
   const list = Array.isArray(value) ? value : [];
   return Array.from(
-    { length: WALL_MARK_COUNT },
+    { length: count },
     (_unused, index) => list[index] === true,
   );
 }
 
-/** 見出しの並びを必ず3こにそろえる（空欄は既定のＡ・Ｂ・Ｃ） */
-export function normalizeWallLabels(value: unknown): string[] {
+/** 見出しの並びを欄の数にそろえる（空欄は既定のＡ・Ｂ・Ｃ…） */
+export function normalizeWallLabels(
+  value: unknown,
+  count = WALL_MARK_COUNT,
+): string[] {
   const list = Array.isArray(value) ? value : [];
-  const defaults = defaultWallLabels();
+  const defaults = defaultWallLabels(count);
   return defaults.map((label, index) =>
     typeof list[index] === "string" && list[index].trim() !== ""
       ? list[index]
@@ -95,7 +99,7 @@ export function normalizeWallLabels(value: unknown): string[] {
   );
 }
 
-/** 柱入力表（管理表の1行が持つ） */
+/** 柱入力表・梁型入力表（管理表の1行が持つ） */
 export interface FireproofColumnSheet {
   /** 耐火被覆厚（mm。25 → 断面の計算では0.025m） */
   thickness: number | null;
@@ -117,8 +121,10 @@ export interface FireproofManageRow {
   /** 倍率（未入力は1） */
   multiplier: number | null;
   detail: FireproofManageDetail;
-  /** 柱を選んだ行の柱入力表 */
+  /** 柱入力表 */
   sheet: FireproofColumnSheet;
+  /** 梁型入力表（床取合はＡ〜Ｄの4欄） */
+  beamSheet: FireproofColumnSheet;
 }
 
 export function emptyManageDetail(): FireproofManageDetail {
@@ -147,7 +153,15 @@ export function newColumnRow(floor = "", symbol = ""): FireproofColumnRow {
     mark: "",
     lengthFormula: "",
     sectionFormula: "",
-    wallChecks: normalizeWallChecks([]),
+    wallChecks: normalizeWallChecks([], WALL_MARK_COUNT),
+  };
+}
+
+/** 梁型入力表の1行を作る（床取合の✔は4こ） */
+export function newBeamRow(floor = "", symbol = ""): FireproofColumnRow {
+  return {
+    ...newColumnRow(floor, symbol),
+    wallChecks: normalizeWallChecks([], BEAM_MARK_COUNT),
   };
 }
 
@@ -159,6 +173,43 @@ export function newManageRow(): FireproofManageRow {
     multiplier: null,
     detail: emptyManageDetail(),
     sheet: { thickness: null, wallLabels: defaultWallLabels(), rows: [] },
+    beamSheet: {
+      thickness: null,
+      wallLabels: defaultWallLabels(BEAM_MARK_COUNT),
+      rows: [],
+    },
+  };
+}
+
+/** 柱入力表または梁型入力表を保存した中身から整える */
+function normalizeSheet(
+  value: unknown,
+  markCount: number,
+): FireproofColumnSheet {
+  const sheet = (value ?? {}) as Partial<FireproofColumnSheet>;
+  return {
+    thickness: sheet?.thickness ?? null,
+    wallLabels: normalizeWallLabels(sheet?.wallLabels, markCount),
+    rows: Array.isArray(sheet?.rows)
+      ? sheet.rows.map(
+          (each: Partial<FireproofColumnRow> & { faces?: number }) => ({
+            id: typeof each?.id === "string" ? each.id : estimateId("r"),
+            floor: each?.floor ?? "",
+            comment: each?.comment ?? "",
+            symbol: each?.symbol ?? "",
+            count: each?.count ?? null,
+            mark:
+              typeof each?.mark === "string"
+                ? each.mark
+                : typeof each?.faces === "number"
+                  ? String(each.faces)
+                  : "",
+            lengthFormula: each?.lengthFormula ?? "",
+            sectionFormula: each?.sectionFormula ?? "",
+            wallChecks: normalizeWallChecks(each?.wallChecks, markCount),
+          }),
+        )
+      : [],
   };
 }
 
@@ -178,30 +229,8 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
         ? row.multiplier
         : null,
     detail: { ...emptyManageDetail(), ...(row?.detail ?? {}) },
-    sheet: {
-      thickness: row?.sheet?.thickness ?? null,
-      wallLabels: normalizeWallLabels(row?.sheet?.wallLabels),
-      rows: Array.isArray(row?.sheet?.rows)
-        ? row.sheet.rows.map(
-            (each: Partial<FireproofColumnRow> & { faces?: number }) => ({
-              id: typeof each?.id === "string" ? each.id : estimateId("r"),
-              floor: each?.floor ?? "",
-              comment: each?.comment ?? "",
-              symbol: each?.symbol ?? "",
-              count: each?.count ?? null,
-              mark:
-                typeof each?.mark === "string"
-                  ? each.mark
-                  : typeof each?.faces === "number"
-                    ? String(each.faces)
-                    : "",
-              lengthFormula: each?.lengthFormula ?? "",
-              sectionFormula: each?.sectionFormula ?? "",
-              wallChecks: normalizeWallChecks(each?.wallChecks),
-            }),
-          )
-        : [],
-    },
+    sheet: normalizeSheet(row?.sheet, WALL_MARK_COUNT),
+    beamSheet: normalizeSheet(row?.beamSheet, BEAM_MARK_COUNT),
   }));
 }
 
@@ -224,6 +253,27 @@ export function findColumnSize(
   );
   if (index < 0) return null;
   return resolveSize(member, list.floors, index, "column");
+}
+
+/** 記号と階名から鉄骨リスト（梁）の寸法を探す。階名が合わないときは空を返す */
+export function findBeamSize(
+  list: FireproofFloorList,
+  floor: string,
+  symbol: string,
+): {
+  shape: SteelShape | "";
+  first: number | null;
+  second: number | null;
+} | null {
+  const member = list.members.find(
+    (each) => each.symbol.trim() !== "" && each.symbol.trim() === symbol.trim(),
+  );
+  if (!member) return null;
+  const index = list.floors.findIndex(
+    (each) => each.label.trim() === floor.trim(),
+  );
+  if (index < 0) return null;
+  return resolveSize(member, list.floors, index, "beam");
 }
 
 /** mmをmの文字にする（寸法は余りの0を消し、厚みは小数点3桁まで出す：25→0.025） */
@@ -310,24 +360,42 @@ export interface FireproofColumnCalc {
   wall: number | null;
 }
 
-/** 取合（面数）ごとの壁取合の本数（4:0、3:2、2:2、1:2。記号は面数に読み替える） */
+/** 入力表の種類（柱＝壁取合／梁型＝床取合） */
+export type FireproofSheetKind = "column" | "beam";
+
+/** 取合（面数）ごとの壁取合の本数（柱。4:0、3:2、2:2、1:2。記号は面数に読み替える） */
 export function wallFactor(mark: string): number {
   const faces = markFaces(mark);
   if (faces === null) return 0;
   return faces >= 4 ? 0 : 2;
 }
 
-export function calcColumnRow(
+/** 取合ごとの床取合の本数（梁型。床につかない A3・HA3 と4面（H4）は0、それ以外は2） */
+export function slabFactor(mark: string): number {
+  const key = mark.trim().toUpperCase();
+  if (key === "A3" || key === "HA3") return 0;
+  const faces = beamMarkFaces(mark);
+  if (faces === null) return 0;
+  return faces >= 4 ? 0 : 2;
+}
+
+/** 入力表の1行を計算する（柱・梁型で共通。寸法・取合・取合の係数だけ種類で変わる） */
+function calcSheetRow(
   row: FireproofColumnRow,
   list: FireproofFloorList,
   thicknessMm: number | null,
+  kind: FireproofSheetKind,
 ): FireproofColumnCalc {
-  const size = findColumnSize(list, row.floor, row.symbol);
+  const size =
+    kind === "beam"
+      ? findBeamSize(list, row.floor, row.symbol)
+      : findColumnSize(list, row.floor, row.symbol);
+  const faces = kind === "beam" ? beamMarkFaces(row.mark) : markFaces(row.mark);
   const auto = autoSectionFormula(
     size?.shape ?? "",
     size?.first ?? null,
     size?.second ?? size?.first ?? null,
-    markFaces(row.mark),
+    faces,
     thicknessMm,
   );
   const sectionText =
@@ -341,8 +409,28 @@ export function calcColumnRow(
     length,
     needed:
       section !== null && length !== null ? section * length * count : null,
-    wall: length !== null ? length * wallFactor(row.mark) : null,
+    wall:
+      length !== null
+        ? length * (kind === "beam" ? slabFactor : wallFactor)(row.mark)
+        : null,
   };
+}
+
+export function calcColumnRow(
+  row: FireproofColumnRow,
+  list: FireproofFloorList,
+  thicknessMm: number | null,
+): FireproofColumnCalc {
+  return calcSheetRow(row, list, thicknessMm, "column");
+}
+
+/** 梁型入力表の1行を計算する */
+export function calcBeamRow(
+  row: FireproofColumnRow,
+  list: FireproofFloorList,
+  thicknessMm: number | null,
+): FireproofColumnCalc {
+  return calcSheetRow(row, list, thicknessMm, "beam");
 }
 
 /** 階が空欄の行は上の行と同じ階として扱う。行ごとの階を返す */
@@ -354,27 +442,34 @@ export function inheritedFloors(rows: FireproofColumnRow[]): string[] {
   });
 }
 
-/** 柱入力表の合計（必要数㎡・壁取合m） */
-export function columnSheetTotals(
+/** 入力表の合計（必要数㎡・取合m・✔欄ごとの取合m）。✔欄の数は見出しの数だけ */
+export function sheetTotals(
   sheet: FireproofColumnSheet,
   list: FireproofFloorList,
+  kind: FireproofSheetKind,
 ): {
   needed: number | null;
   wall: number | null;
   wallMarks: (number | null)[];
 } {
+  const count = kind === "beam" ? BEAM_MARK_COUNT : WALL_MARK_COUNT;
+  const markCount = Math.max(
+    count,
+    normalizeWallLabels(sheet.wallLabels, count).length,
+  );
   let needed = 0;
   let wall = 0;
   let hasNeeded = false;
   let hasWall = false;
-  const marks = Array.from({ length: WALL_MARK_COUNT }, () => 0);
-  const hasMark = Array.from({ length: WALL_MARK_COUNT }, () => false);
+  const marks = Array.from({ length: markCount }, () => 0);
+  const hasMark = Array.from({ length: markCount }, () => false);
   const floors = inheritedFloors(sheet.rows);
   for (const [index, row] of sheet.rows.entries()) {
-    const calc = calcColumnRow(
+    const calc = calcSheetRow(
       { ...row, floor: floors[index] },
       list,
       sheet.thickness,
+      kind,
     );
     if (calc.needed !== null) {
       needed += calc.needed;
@@ -384,7 +479,7 @@ export function columnSheetTotals(
       wall += calc.wall;
       hasWall = true;
       row.wallChecks.forEach((checked, mark) => {
-        if (!checked || mark >= WALL_MARK_COUNT) return;
+        if (!checked || mark >= markCount) return;
         marks[mark] += calc.wall ?? 0;
         hasMark[mark] = true;
       });
@@ -397,6 +492,30 @@ export function columnSheetTotals(
   };
 }
 
+/** 柱入力表の合計（必要数㎡・壁取合m） */
+export function columnSheetTotals(
+  sheet: FireproofColumnSheet,
+  list: FireproofFloorList,
+): {
+  needed: number | null;
+  wall: number | null;
+  wallMarks: (number | null)[];
+} {
+  return sheetTotals(sheet, list, "column");
+}
+
+/** 梁型入力表の合計（必要数㎡・床取合m） */
+export function beamSheetTotals(
+  sheet: FireproofColumnSheet,
+  list: FireproofFloorList,
+): {
+  needed: number | null;
+  wall: number | null;
+  wallMarks: (number | null)[];
+} {
+  return sheetTotals(sheet, list, "beam");
+}
+
 /**
  * 集計詳細データ（合算前）を作る。1行＝1明細で、数量は必要数㎡の合計×倍率。
  * 部位1は空欄なら上の行を引き継ぐ（部位Ⅱ別仕訳・部位Ⅲは無し）。
@@ -405,6 +524,7 @@ export function entriesFromFireproofSheet(
   rows: FireproofManageRow[],
   list: FireproofFloorList,
   part2Order: Map<string, number>,
+  beamsList: FireproofFloorList = { floors: [], members: [] },
 ): AggregateEntry[] {
   const entries: AggregateEntry[] = [];
   let part1 = "";
@@ -412,7 +532,7 @@ export function entriesFromFireproofSheet(
     if (row.part1.trim() !== "") part1 = row.part1;
     const detail = row.detail;
     if (detail.name.trim() === "" && detail.partName.trim() === "") return;
-    const quantity = manageRowQuantity(row, list) ?? 0;
+    const quantity = manageRowQuantity(row, list, beamsList) ?? 0;
     if (!part2Order.has("")) part2Order.set("", part2Order.size);
     entries.push({
       traceId: `fireproof:${row.id}`,
@@ -448,13 +568,15 @@ export function entriesFromFireproofSheet(
   return entries;
 }
 
-/** 管理表の行の数量（柱入力表の必要数合計×倍率。計算書が無ければnull） */
+/** 管理表の行の数量（柱入力表＋梁型入力表の必要数合計×倍率。計算書が無ければnull） */
 export function manageRowQuantity(
   row: FireproofManageRow,
-  list: FireproofFloorList,
+  columnsList: FireproofFloorList,
+  beamsList: FireproofFloorList = { floors: [], members: [] },
 ): number | null {
-  // 柱入力表の計算がある行だけ数量を出す（積算範囲の文字には依存しない）
-  const totals = columnSheetTotals(row.sheet, list);
-  if (totals.needed === null) return null;
-  return totals.needed * (row.multiplier ?? 1);
+  // 計算書の計算がある行だけ数量を出す（積算範囲の文字には依存しない）
+  const column = columnSheetTotals(row.sheet, columnsList).needed;
+  const beam = beamSheetTotals(row.beamSheet, beamsList).needed;
+  if (column === null && beam === null) return null;
+  return ((column ?? 0) + (beam ?? 0)) * (row.multiplier ?? 1);
 }

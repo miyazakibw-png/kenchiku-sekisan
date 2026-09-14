@@ -613,7 +613,7 @@ function miscEntries(
   });
 }
 
-/** 耐火被覆・塗装入力表（1行＝1明細。数量は柱入力表の必要数㎡合計×倍率） */
+/** 耐火被覆・塗装入力表（1行＝1明細。数量は柱入力表＋梁型入力表の必要数㎡合計×倍率） */
 function fireproofEntries(
   db: AppDatabase,
   projectId: number,
@@ -629,6 +629,7 @@ function fireproofEntries(
     normalizeManageRows(parseJson<unknown>(sheet.estimateJson, [])),
     normalizeFloorList(parseJson<unknown>(sheet.columnsJson, {})),
     part2Order,
+    normalizeFloorList(parseJson<unknown>(sheet.beamsJson, {})),
   );
 }
 

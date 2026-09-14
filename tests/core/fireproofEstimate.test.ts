@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   autoSectionFormula,
+  BEAM_MARK_COUNT,
+  beamSheetTotals,
+  calcBeamRow,
   calcColumnRow,
   columnSheetTotals,
+  newBeamRow,
+  slabFactor,
   defaultWallLabels,
   emptyManageDetail,
   entriesFromFireproofSheet,
@@ -243,6 +248,70 @@ describe("耐火被覆・塗装入力表", () => {
     expect(entries[0].quantity).toBeCloseTo(21.89, 2);
   });
 
+  it("梁型入力表は梁リストの寸法と梁型の取合記号で計算する", () => {
+    const member = newMember("G1");
+    const floors = [{ id: fireproofId("f"), label: "R" }];
+    member.sizes[floors[0].id] = { shape: "h", first: 500, second: 250 };
+    const beams: FireproofFloorList = { floors, members: [member] };
+    const beamRow = (
+      patch: Partial<FireproofColumnRow>,
+    ): FireproofColumnRow => ({
+      ...newBeamRow("R", "G1"),
+      ...patch,
+    });
+    // 壁付3面（A3）は3面と同じ断面。床につかないので床取合mは0
+    const wall3 = calcBeamRow(
+      beamRow({ count: 1, mark: "A3", lengthFormula: "4" }),
+      beams,
+      25,
+    );
+    expect(wall3.sectionText).toBe("0.5*2+0.25*3+0.025*2");
+    expect(wall3.wall).toBe(0);
+    // 床付3面（箱型記号H3）は床取合mが有効長×2
+    const slab3 = calcBeamRow(
+      beamRow({ count: 1, mark: "H3", lengthFormula: "4" }),
+      beams,
+      25,
+    );
+    expect(slab3.wall).toBeCloseTo(8, 6);
+    // 独立4面（H4）は0
+    expect(slabFactor("H4")).toBe(0);
+    expect(slabFactor("HA3")).toBe(0);
+    expect(slabFactor("3")).toBe(2);
+  });
+
+  it("梁型入力表の床取合mはＡ〜Ｄの4欄で合計する", () => {
+    expect(defaultWallLabels(BEAM_MARK_COUNT)).toEqual([
+      "Ａ",
+      "Ｂ",
+      "Ｃ",
+      "Ｄ",
+    ]);
+    const member = newMember("G1");
+    const floors = [{ id: fireproofId("f"), label: "R" }];
+    member.sizes[floors[0].id] = { shape: "h", first: 500, second: 250 };
+    const beams: FireproofFloorList = { floors, members: [member] };
+    const totals = beamSheetTotals(
+      {
+        thickness: 25,
+        wallLabels: defaultWallLabels(BEAM_MARK_COUNT),
+        rows: [
+          {
+            ...newBeamRow("R", "G1"),
+            mark: "H3",
+            lengthFormula: "4",
+            wallChecks: [true, false, false, true],
+          },
+        ],
+      },
+      beams,
+    );
+    expect(totals.wall).toBeCloseTo(8, 6);
+    expect(totals.wallMarks[0]).toBeCloseTo(8, 6);
+    expect(totals.wallMarks[1]).toBeNull();
+    expect(totals.wallMarks[3]).toBeCloseTo(8, 6);
+  });
+
   it("空・古い保存でも入力管理表として読める", () => {
     expect(normalizeManageRows(null)).toEqual([]);
     const rows = normalizeManageRows([{ part1: "1階" }]);
@@ -251,5 +320,8 @@ describe("耐火被覆・塗装入力表", () => {
     expect(rows[0].multiplier).toBeNull();
     expect(rows[0].detail.name).toBe("");
     expect(rows[0].sheet.rows).toEqual([]);
+    // 梁型入力表の無い古い保存でも空の梁型入力表として読む
+    expect(rows[0].beamSheet.rows).toEqual([]);
+    expect(rows[0].beamSheet.wallLabels).toHaveLength(BEAM_MARK_COUNT);
   });
 });
