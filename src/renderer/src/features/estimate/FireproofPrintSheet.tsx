@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { ProjectSummary } from "@shared/types";
 import {
   adjacencyVariables,
@@ -224,10 +224,14 @@ function TablePage({
             </div>
             <div
               className="fireproof-print-body"
-              style={{
-                transform: `scale(${scale})`,
-                width: `${contentWidth}px`,
-              }}
+              style={
+                {
+                  transform: `scale(${scale})`,
+                  width: `${contentWidth}px`,
+                  // 拡大した分だけ罫線を割り引いて、紙の上では1pxのまま出す
+                  "--print-line-scale": scale,
+                } as CSSProperties
+              }
             >
               {page === 0 && (
                 <>

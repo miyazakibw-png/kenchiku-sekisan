@@ -21,6 +21,9 @@ export function applyLineStyles(settings: LineStyleSettings): void {
   root.style.setProperty("--line-thick", lineText(settings.thick));
   root.style.setProperty("--line-thin-color", settings.thin.color);
   root.style.setProperty("--line-thick-color", settings.thick.color);
+  /* 印刷で表を拡大して出すとき、罫線がいっしょに太くならないよう幅を割り引くのに使う */
+  root.style.setProperty("--line-thin-width", `${settings.thin.width}px`);
+  root.style.setProperty("--line-thick-width", `${settings.thick.width}px`);
 }
 
 /** ソフトを開いたときに、保存してある罫線の設定を当てる（他ウィンドウでの変更にも追従する） */

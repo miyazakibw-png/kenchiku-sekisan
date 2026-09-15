@@ -1908,7 +1908,11 @@ export default function FurnitureSheetPage({
         style={
           // 紙（A3横）の幅に収まらないときだけ、表全体を縮めて出す
           printMode && tableWidth > PRINT_WIDTH
-            ? { transform: `scale(${PRINT_WIDTH / tableWidth})` }
+            ? ({
+                transform: `scale(${PRINT_WIDTH / tableWidth})`,
+                // 縮めた分だけ罫線を割り引いて、紙の上では1pxのまま出す
+                "--print-line-scale": PRINT_WIDTH / tableWidth,
+              } as CSSProperties)
             : undefined
         }
       >

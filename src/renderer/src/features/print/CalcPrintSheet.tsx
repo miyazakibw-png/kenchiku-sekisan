@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import type { CalcSet, CalcSheetResult } from "../../../../core/room/calcSheet";
@@ -115,10 +116,14 @@ function LowerTable({
   return (
     <div
       className="calc-print-lower"
-      style={{
-        transform: `scale(${scale})`,
-        width: `${widths.reduce((total, width) => total + width, 0)}px`,
-      }}
+      style={
+        {
+          transform: `scale(${scale})`,
+          width: `${widths.reduce((total, width) => total + width, 0)}px`,
+          // 拡大した分だけ罫線を割り引いて、設定どおりの太さで出す
+          "--print-line-scale": scale,
+        } as CSSProperties
+      }
     >
       <table>
         <colgroup>

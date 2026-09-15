@@ -293,16 +293,19 @@
   font-weight: 600;
 }
 
-/** 紙の罫線は細い線でそろえる（計算書・部位別雑金物の印刷と同じ） */
+/** 紙の罫線は細い線でそろえる（計算書・部位別雑金物の印刷と同じ）。
+    表を縮めて出すときも罫線が変わらないよう、縮尺の分だけ幅を割り引く */
 .furniture-page.furniture-print .furniture-table th,
 .furniture-page.furniture-print .furniture-table td {
   border: 1px solid #000;
+  border-width: calc(1px / var(--print-line-scale, 1));
 }
 
 /** 下が空く分は、手入力できるよう横罫線だけを引く */
 .furniture-page.furniture-print .furniture-table tr.blank td {
   border: none;
   border-bottom: 1px solid #000;
+  border-bottom-width: calc(1px / var(--print-line-scale, 1));
   height: 22px;
 }
 
