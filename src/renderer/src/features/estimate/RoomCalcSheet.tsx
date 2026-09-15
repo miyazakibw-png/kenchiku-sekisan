@@ -586,31 +586,67 @@ export default function RoomCalcSheet({
   );
 
   /**
+   * セットを分けたり前のセットにつなげたりすると行の目印が変わり、
+   * 入力欄が作り直されてカーソルが消える。組み替えた後の並びで、
+   * 入れていた行（明細・計算式のIDで探す）の部位欄へカーソルを戻す。
+   */
+  const refocusSetPart = useCallback(
+    (next: CalcSet[], detailId?: string, lineId?: string): void => {
+      if (detailId === undefined && lineId === undefined) return;
+      let row = 0;
+      for (const set of next) {
+        const count = setRowCount(set);
+        for (let index = 0; index < count; index += 1) {
+          const hit =
+            (detailId !== undefined && set.details[index]?.id === detailId) ||
+            (lineId !== undefined && set.lines[index]?.id === lineId);
+          if (!hit) continue;
+          const target = row + index;
+          requestAnimationFrame(() => {
+            const input = gridRef.current?.querySelector<HTMLInputElement>(
+              `input[data-row="${target}"][data-col="0"]`,
+            );
+            if (input) focusInput(input);
+          });
+          return;
+        }
+        row += count;
+      }
+    },
+    [],
+  );
+
+  /**
    * 部位欄の入力。セットの先頭の行なら、そのセットの部位を変える。
    * 途中の行に入れると、その行から下を別のセットに分ける（空にすると上のセットにつなげる）。
    */
   const commitSetPart = useCallback(
     (setId: string, rowIndex: number, text: string): void => {
       const picked = pickMaster(aggregationParts, text);
+      const target = sets.find((set) => set.id === setId);
+      const detailId = target?.details[rowIndex]?.id;
+      const lineId = target?.lines[rowIndex]?.id;
       if (rowIndex === 0) {
         const at = sets.findIndex((set) => set.id === setId);
         if (picked.name === "" && at > 0) {
-          commit(mergeWithPreviousSet(sets, setId));
+          const next = mergeWithPreviousSet(sets, setId);
+          commit(next);
+          refocusSetPart(next, detailId, lineId);
           return;
         }
         updateSet(setId, { partNumber: picked.id, partName: picked.name });
         return;
       }
       if (picked.name === "") return;
-      commit(
-        splitSetAt(sets, setId, rowIndex, {
-          partNumber: picked.id,
-          partName: picked.name,
-        }),
-      );
+      const next = splitSetAt(sets, setId, rowIndex, {
+        partNumber: picked.id,
+        partName: picked.name,
+      });
+      commit(next);
+      refocusSetPart(next, detailId, lineId);
       onMessage("この行から別のセット明細に分けました");
     },
-    [aggregationParts, commit, onMessage, sets, updateSet],
+    [aggregationParts, commit, onMessage, refocusSetPart, sets, updateSet],
   );
 
   /**
