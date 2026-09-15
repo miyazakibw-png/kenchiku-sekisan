@@ -53,6 +53,12 @@
   max-height: 300px;
 }
 
+/* 紙に出すのは図だけ。画面の作図ボタン列と図面取り込みの欄（頁・縮尺合わせ等）は出さない */
+.calc-print-upper .room-sheet-page .shape-tools,
+.calc-print-upper .room-sheet-page .underlay-tools {
+  display: none;
+}
+
 /* 下段の計算書。画面の設定幅のままA3横の幅へ縮める */
 .calc-print-lower {
   transform-origin: top left;

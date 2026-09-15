@@ -1557,7 +1557,7 @@ export default function RoomSheetPage({
     <div className={expanded ? "upper expanded" : "upper"}>
       <section className="drawing">
         <div className="section-bar">
-          <span>部屋形状イメージ（{showCeiling ? "天井伏図" : "平面図"}）</span>
+          <span>部屋形状イメージ</span>
           <button
             type="button"
             className={showCeiling ? "on" : ""}
