@@ -34,6 +34,12 @@ const PAGE_HEIGHT = 1062;
 const ROW_HEIGHT = 20;
 const HEAD_HEIGHT = 22;
 const TITLE_HEIGHT = 24;
+/** 罫線を細くする割合（0.7倍）。
+   印刷では罫線の太さが1画素単位に丸められるため、0.7pxと書いても1pxで出る。
+   そこで表を 1/0.7 倍の大きさで組んでから 0.7 倍に縮めて出す。
+   文字も列幅も同じ割合で伸縮するので紙の見た目は変わらず、罫線だけが0.7倍になる */
+const LINE_FINE = 0.7;
+const LAYOUT_SCALE = 1 / LINE_FINE;
 
 /** 画面で伸縮した計算書の列幅（下段計算書と同じ置き場）。無ければ既定幅 */
 function screenColumnWidths(): number[] {
@@ -113,26 +119,30 @@ function LowerTable({
   widths: number[];
   scale: number;
 }): JSX.Element {
+  const total = widths.reduce((sum, width) => sum + width, 0);
   return (
     <div
       className="calc-print-lower"
       style={
         {
-          transform: `scale(${scale})`,
-          width: `${widths.reduce((total, width) => total + width, 0)}px`,
-          // 拡大した分だけ罫線を割り引いて、設定どおりの太さで出す
-          "--print-line-scale": scale,
+          // 大きめに組んでから縮める（紙の上の大きさは今までと同じ）
+          transform: `scale(${scale / LAYOUT_SCALE})`,
+          width: `${total * LAYOUT_SCALE}px`,
+          "--print-layout-scale": LAYOUT_SCALE,
         } as CSSProperties
       }
     >
       <table>
         <colgroup>
           {CALC_PRINT_COLUMNS.map((column, index) => (
-            <col key={`${column.label}-${index}`} width={widths[index]} />
+            <col
+              key={`${column.label}-${index}`}
+              width={(widths[index] ?? 0) * LAYOUT_SCALE}
+            />
           ))}
         </colgroup>
         <thead>
-          <tr style={{ height: `${HEAD_HEIGHT}px` }}>
+          <tr style={{ height: `${HEAD_HEIGHT * LAYOUT_SCALE}px` }}>
             {CALC_PRINT_COLUMNS.map((column, index) => (
               <th key={`${column.label}-${index}`}>{column.label}</th>
             ))}
