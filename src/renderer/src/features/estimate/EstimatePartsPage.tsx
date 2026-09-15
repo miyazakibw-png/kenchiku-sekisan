@@ -483,7 +483,12 @@ export default function EstimatePartsPage({
             ← 工事管理画面へ
           </button>
           <div className="three">
-            <button type="button" onClick={() => void openCalcSheet(selected)}>
+            {/* 計算書は行ごとの「開く」欄から開く（上の帯のボタンは使わない） */}
+            <button
+              type="button"
+              disabled
+              title="計算書は行ごとの「📐 開く」から開いてください"
+            >
               📐 計算書を開く
             </button>
             <button type="button" onClick={() => void pasteFromExcel()}>
