@@ -13,6 +13,11 @@ import {
   toDrafts,
 } from "./estimateRows";
 import RoomCalcPrintPage from "./RoomCalcPrintPage";
+import {
+  normalizeManageRows,
+  type FireproofManageRow,
+} from "../../../../core/fireproof/fireproofEstimate";
+import { CALC_TYPE_OPTIONS } from "./FireproofEstimatePage";
 import "./EstimatePartsPage.css";
 
 interface Props {
@@ -20,6 +25,15 @@ interface Props {
   /** all: 保存済みの計算書を表紙付きで全部／select: 部位別入力表で選んでから */
   mode: "all" | "select";
   onBack: () => void;
+}
+
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed === null ? fallback : (parsed as T);
+  } catch {
+    return fallback;
+  }
 }
 
 /** 紙にできるのは保存済みの行だけ（小計行は表紙にだけ出す） */
@@ -50,6 +64,10 @@ export default function CalcPrintLauncher({
   >([]);
   const [pickedFurniture, setPickedFurniture] = useState<number[]>([]);
   const [printFurniture, setPrintFurniture] = useState<number[] | null>(null);
+  /** 耐火被覆・塗装入力表の行（一覧）と、印刷に選んだ行 */
+  const [fireproofRows, setFireproofRows] = useState<FireproofManageRow[]>([]);
+  const [pickedFireproof, setPickedFireproof] = useState<string[]>([]);
+  const [printFireproof, setPrintFireproof] = useState<string[] | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -57,6 +75,10 @@ export default function CalcPrintLauncher({
       setOptions(await window.sekisan.getMasterOptions(project.id));
       setMiscSheets(await window.sekisan.listMiscSheets(project.id));
       setFurnitureSheets(await window.sekisan.listFurnitureSheets(project.id));
+      const fireproof = await window.sekisan.getFireproofSheet(project.id);
+      setFireproofRows(
+        normalizeManageRows(parseJson(fireproof.estimateJson, [])),
+      );
     })();
   }, [project.id]);
 
@@ -94,6 +116,14 @@ export default function CalcPrintLauncher({
     );
   }, []);
 
+  const toggleFireproof = useCallback((id: string): void => {
+    setPickedFireproof((current) =>
+      current.includes(id)
+        ? current.filter((each) => each !== id)
+        : [...current, id],
+    );
+  }, []);
+
   const printPicked = useCallback((): void => {
     const target = sheetRows.filter(
       (row) => row.id !== null && picked.includes(row.id),
@@ -101,7 +131,8 @@ export default function CalcPrintLauncher({
     if (
       target.length === 0 &&
       pickedMisc.length === 0 &&
-      pickedFurniture.length === 0
+      pickedFurniture.length === 0 &&
+      pickedFireproof.length === 0
     ) {
       setMessage("印刷する計算書にチェックを付けてください");
       return;
@@ -109,7 +140,8 @@ export default function CalcPrintLauncher({
     setPrintRows(target);
     setPrintMisc(pickedMisc);
     setPrintFurniture(pickedFurniture);
-  }, [picked, pickedFurniture, pickedMisc, sheetRows]);
+    setPrintFireproof(pickedFireproof);
+  }, [picked, pickedFireproof, pickedFurniture, pickedMisc, sheetRows]);
 
   if (printRows !== null)
     return (
@@ -119,11 +151,13 @@ export default function CalcPrintLauncher({
         roomNames={roomNames}
         miscSheetIds={printMisc ?? []}
         furnitureSheetIds={printFurniture ?? []}
+        fireproofRowIds={printFireproof ?? []}
         options={options}
         onBack={() => {
           setPrintRows(null);
           setPrintMisc(null);
           setPrintFurniture(null);
+          setPrintFireproof(null);
         }}
       />
     );
@@ -133,7 +167,8 @@ export default function CalcPrintLauncher({
     if (
       sheetRows.length === 0 &&
       miscSheets.length === 0 &&
-      furnitureSheets.length === 0
+      furnitureSheets.length === 0 &&
+      fireproofRows.length === 0
     )
       return (
         <div className="estimate-page">
@@ -154,6 +189,7 @@ export default function CalcPrintLauncher({
         roomNames={roomNames}
         miscSheetIds={miscSheets.map((sheet) => sheet.id)}
         furnitureSheetIds={furnitureSheets.map((sheet) => sheet.id)}
+        fireproofRowIds={fireproofRows.map((row) => row.id)}
         options={options}
         onBack={onBack}
       />
@@ -180,6 +216,7 @@ export default function CalcPrintLauncher({
             );
             setPickedMisc(miscSheets.map((sheet) => sheet.id));
             setPickedFurniture(furnitureSheets.map((sheet) => sheet.id));
+            setPickedFireproof(fireproofRows.map((row) => row.id));
           }}
         >
           ☑ 全部選ぶ
@@ -190,13 +227,18 @@ export default function CalcPrintLauncher({
             setPicked([]);
             setPickedMisc([]);
             setPickedFurniture([]);
+            setPickedFireproof([]);
           }}
         >
           ☐ 全部外す
         </button>
         <button type="button" onClick={printPicked}>
           🖨 選んだ計算書を印刷（
-          {picked.length + pickedMisc.length + pickedFurniture.length}件）
+          {picked.length +
+            pickedMisc.length +
+            pickedFurniture.length +
+            pickedFireproof.length}
+          件）
         </button>
         <span className="status">{message}</span>
       </div>
@@ -292,6 +334,44 @@ export default function CalcPrintLauncher({
               <td>{sheet.note}</td>
             </tr>
           ))}
+          {(() => {
+            // 耐火被覆・塗装入力表：1行＝計算書1画面分（部位Ⅰは空欄なら上を引き継ぐ）
+            let part1 = "";
+            return fireproofRows.map((row, index) => {
+              if (row.part1.trim() !== "") part1 = row.part1;
+              const kindName =
+                CALC_TYPE_OPTIONS.find((option) => option.kind === row.calcType)
+                  ?.title ?? "";
+              const label =
+                [row.detail.partName, row.detail.name]
+                  .filter((text) => text.trim() !== "")
+                  .join("　") || row.scope;
+              return (
+                <tr key={`fireproof-${row.id}`}>
+                  <td className="pick">
+                    <input
+                      type="checkbox"
+                      checked={pickedFireproof.includes(row.id)}
+                      onChange={() => toggleFireproof(row.id)}
+                    />
+                  </td>
+                  <td className="no">
+                    {rows.length +
+                      miscSheets.length +
+                      furnitureSheets.length +
+                      index +
+                      1}
+                  </td>
+                  <td>{part1}</td>
+                  <td />
+                  <td>{label}</td>
+                  <td className="num" />
+                  <td>耐火被覆・塗装入力表（{kindName}）</td>
+                  <td />
+                </tr>
+              );
+            });
+          })()}
         </tbody>
       </table>
     </div>

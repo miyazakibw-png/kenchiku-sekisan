@@ -287,6 +287,21 @@
   font-weight: 600;
 }
 
+/** 紙の罫線は細い線でそろえる（計算書・部位別雑金物の印刷と同じ） */
+.furniture-page.furniture-print .furniture-table th,
+.furniture-page.furniture-print .furniture-table td {
+  border: 1px solid #000;
+  background: #fff;
+  color: #000;
+}
+
+/** 下が空く分は、手入力できるよう横罫線だけを引く */
+.furniture-page.furniture-print .furniture-table tr.blank td {
+  border: none;
+  border-bottom: 1px solid #000;
+  height: 22px;
+}
+
 .furniture-page.furniture-print .furniture-table-wrap {
   overflow: visible;
   max-height: none;

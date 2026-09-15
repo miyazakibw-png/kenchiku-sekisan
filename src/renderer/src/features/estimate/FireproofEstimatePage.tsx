@@ -85,17 +85,19 @@ const MANAGE_WIDTHS = [
   30, 100, 72, 50, 100, 60, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
 ];
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
-const HEAD_DETAIL_WIDTHS = [64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100];
+export const HEAD_DETAIL_WIDTHS = [
+  64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
+];
 /** 柱入力表（階〜壁取合m＋✔欄3列）の既定の幅 */
 const COLUMN_WIDTHS = [36, 100, 150, 44, 44, 110, 200, 70, 70, 44, 44, 44];
 /** 梁型入力表（階〜床取合m＋✔欄4列）の既定の幅 */
 const BEAM_WIDTHS = [...COLUMN_WIDTHS, 44];
 
 /** 柱入力表と梁型入力表（表のある計算書）の種類 */
-type FireproofTableKind = "column" | "beam";
+export type FireproofTableKind = "column" | "beam";
 
 /** 柱入力表と梁型入力表の違い（あとは全部同じ） */
-const SHEET_KIND: Record<
+export const SHEET_KIND: Record<
   FireproofTableKind,
   {
     title: string;
@@ -136,7 +138,7 @@ const SHEET_KIND: Record<
 };
 
 /** 計算書の欄で選べる種類（今後増やせるようにここに並べる） */
-const CALC_TYPE_OPTIONS: { kind: FireproofSheetKind; title: string }[] = [
+export const CALC_TYPE_OPTIONS: { kind: FireproofSheetKind; title: string }[] = [
   { kind: "column", title: SHEET_KIND.column.title },
   { kind: "beam", title: SHEET_KIND.beam.title },
   { kind: "general", title: "汎用計算書" },
@@ -149,7 +151,7 @@ function tableStyle(widths: number[]): React.CSSProperties {
 }
 
 /** 記号の下に出す小さな案内（拾った寸法、または出ない理由） */
-function sizeHint(
+export function sizeHint(
   list: FireproofFloorList,
   floor: string,
   symbol: string,

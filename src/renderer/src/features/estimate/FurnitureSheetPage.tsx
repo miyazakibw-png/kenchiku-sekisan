@@ -126,6 +126,10 @@ function useDragWindow(): {
 
 /** A3横1枚に入る幅（用紙の余白8mmを引いた分。96dpiの画素） */
 const PRINT_WIDTH = 1527;
+/** A3横1枚の高さ・見出しの帯・1行の高さ（計算書印刷と同じ） */
+const PRINT_HEIGHT = 1062;
+const PRINT_TITLE_HEIGHT = 24;
+const PRINT_ROW_HEIGHT = 22;
 
 /** 入力欄の列（表示・非表示を切り替えられる） */
 interface InputColumn {
@@ -268,7 +272,8 @@ const OPS_WIDTH = 46;
 const NO_WIDTH = 34;
 const INPUT_DEFAULT = 80;
 const DETAIL_DEFAULT = 100;
-const COLUMN_DEFAULT = 90;
+/** タテの明細（列）の標準の幅 */
+const COLUMN_DEFAULT = 153;
 /** タテの明細の見出し（科目・部位ID…）を出す列 */
 const LABEL_WIDTH = 72;
 
@@ -1141,7 +1146,8 @@ export default function FurnitureSheetPage({
   const headRowCount = COLUMN_HEADS.length + 1;
 
   const tableWidth =
-    OPS_WIDTH +
+    // 紙には操作欄（＋－）を出さないので、その分は幅に入れない
+    (printing ? 0 : OPS_WIDTH) +
     NO_WIDTH +
     inputColumns.reduce(
       (sum, column) => sum + widthOf(column.key, INPUT_DEFAULT),
@@ -1156,6 +1162,18 @@ export default function FurnitureSheetPage({
       (sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT),
       0,
     );
+
+  /** 紙（A3横）の大きさに収まらないときの縮め方と、下の空白を埋める横罫線の本数 */
+  const printScale = Math.min(1, PRINT_WIDTH / Math.max(tableWidth, 1));
+  const printBlankRows = Math.max(
+    0,
+    Math.floor(
+      (PRINT_HEIGHT / printScale -
+        PRINT_TITLE_HEIGHT -
+        headRowCount * PRINT_ROW_HEIGHT) /
+        PRINT_ROW_HEIGHT,
+    ) - view.length,
+  );
 
   /** タテの明細（列）の1マス分の入力欄 */
   const headCell = (
@@ -1873,7 +1891,9 @@ export default function FurnitureSheetPage({
       >
         <table className="furniture-table" style={{ width: tableWidth }}>
           <colgroup>
-            <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            {!printing && (
+              <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            )}
             <col style={{ width: NO_WIDTH }} />
             {inputColumns.map((column) => (
               <col
@@ -1897,9 +1917,11 @@ export default function FurnitureSheetPage({
           </colgroup>
           <thead>
             <tr>
-              <th className="ops-col" rowSpan={headRowCount}>
-                操作
-              </th>
+              {!printing && (
+                <th className="ops-col" rowSpan={headRowCount}>
+                  操作
+                </th>
+              )}
               <th rowSpan={headRowCount}>番号</th>
               {inputColumns.map((column) => (
                 <th
@@ -2017,14 +2039,16 @@ export default function FurnitureSheetPage({
                     pickRow(index, event.shiftKey);
                   }}
                 >
-                  <td className="ops-col">
-                    <button type="button" onClick={() => addRow(index + 1)}>
-                      ＋
-                    </button>
-                    <button type="button" onClick={() => removeRow(index)}>
-                      －
-                    </button>
-                  </td>
+                  {!printing && (
+                    <td className="ops-col">
+                      <button type="button" onClick={() => addRow(index + 1)}>
+                        ＋
+                      </button>
+                      <button type="button" onClick={() => removeRow(index)}>
+                        －
+                      </button>
+                    </td>
+                  )}
                   <td className="num">{index + 1}</td>
                   {showInput("subjectId") && (
                     <td className="no-print">
@@ -2461,6 +2485,13 @@ export default function FurnitureSheetPage({
                 </tr>
               );
             })}
+            {/* 紙で下が空く分は、手入力できるよう横罫線だけを引く（計算書と同じ） */}
+            {printing &&
+              Array.from({ length: printBlankRows }, (_unused, blank) => (
+                <tr className="blank" key={`blank-${blank}`}>
+                  <td colSpan={1 + detailCells.length + 1 + columns.length} />
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>

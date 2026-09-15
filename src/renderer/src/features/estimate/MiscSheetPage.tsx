@@ -93,7 +93,8 @@ const LEFT_LABELS = [
   "倍率",
 ];
 const LEFT_DEFAULTS = [90, 90, 80, 150, 56];
-const COLUMN_DEFAULT = 130;
+/** タテの明細（列）の標準の幅 */
+const COLUMN_DEFAULT = 221;
 /** 列幅は文字が見えなくなるほど細くできる */
 const MIN_WIDTH = 8;
 
@@ -237,7 +238,8 @@ export default function MiscSheetPage({
       markSaved({ columns: columnsOrOne, rows: nextRows });
       history.clear();
     })();
-  }, [markSaved, sheetId, history]);
+    // historyは毎回作り直すので入れない（入れると明細を足すたびに読み直して消えてしまう）
+  }, [markSaved, sheetId]);
 
   useEffect(() => {
     window.localStorage.setItem(widthKey, JSON.stringify(widths));
@@ -298,7 +300,11 @@ export default function MiscSheetPage({
     LEFT_DEFAULTS.reduce(
       (sum, value, index) => sum + widthOf(`left${index}`, value),
       0,
-    ) + columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+    ) +
+    columns.reduce(
+      (sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT),
+      0,
+    );
 
   useLayoutEffect(() => {
     const tops: number[] = [];

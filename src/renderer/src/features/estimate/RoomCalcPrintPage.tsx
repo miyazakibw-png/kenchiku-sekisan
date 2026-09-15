@@ -11,6 +11,7 @@ import PitSheetPage from "./PitSheetPage";
 import EstimateCoverSheet from "./EstimateCoverSheet";
 import MiscSheetPrintSheet from "./MiscSheetPrintSheet";
 import FurnitureSheetPage from "./FurnitureSheetPage";
+import FireproofPrintSheet from "./FireproofPrintSheet";
 import "./RoomCalcPrintPage.css";
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
   miscSheetIds?: number[];
   /** いっしょに印刷する家具・設備入力表（雑・金物のうしろに続けて出す） */
   furnitureSheetIds?: number[];
+  /** いっしょに印刷する耐火被覆・塗装入力表の行（家具・設備のうしろに続けて出す） */
+  fireproofRowIds?: string[];
   options?: MasterOptions | null;
   onBack: () => void;
 }
@@ -41,6 +44,7 @@ export default function RoomCalcPrintPage({
   roomNames,
   miscSheetIds = [],
   furnitureSheetIds = [],
+  fireproofRowIds = [],
   options = null,
   onBack,
 }: Props): JSX.Element {
@@ -81,7 +85,10 @@ export default function RoomCalcPrintPage({
         <h2>計算書 印刷</h2>
         <span className="project">
           {project.managementNo} {project.name}（
-          {rows.length + miscSheetIds.length + furnitureSheetIds.length}{" "}
+          {rows.length +
+            miscSheetIds.length +
+            furnitureSheetIds.length +
+            fireproofRowIds.length}{" "}
           件・A3横）
         </span>
         <button
@@ -183,6 +190,9 @@ export default function RoomCalcPrintPage({
               onBack={onBack}
             />
           ))}
+        {fireproofRowIds.length > 0 && (
+          <FireproofPrintSheet project={project} rowIds={fireproofRowIds} />
+        )}
       </div>
     </div>
   );
