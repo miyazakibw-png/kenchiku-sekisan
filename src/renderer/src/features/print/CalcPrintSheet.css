@@ -71,9 +71,10 @@
   font-size: 12px;
 }
 
+/* 罫線は画面の線設定（細線・太線）をそのまま使う */
 .calc-print-lower th,
 .calc-print-lower td {
-  border: 1px solid #000;
+  border: var(--line-thin);
   padding: 0 2px;
   height: 20px;
   overflow: hidden;
@@ -98,6 +99,15 @@
 
 .calc-print-lower td.num {
   text-align: right;
+}
+
+/* セットの上下は画面と同じく太線の区切り */
+.calc-print-lower tr.set-top td {
+  border-top: var(--line-thick);
+}
+
+.calc-print-lower tr.set-bottom td {
+  border-bottom: var(--line-thick);
 }
 
 .calc-print-lower tr.banner td {

@@ -63,14 +63,21 @@ function TitleRow({ title }: { title: string }): JSX.Element {
 }
 
 function DetailRow({ row }: { row: CalcPrintRow }): JSX.Element {
+  /** セットの上下は画面と同じく太線の区切りを引く */
+  const boundary = `${row.setTop ? " set-top" : ""}${
+    row.setBottom ? " set-bottom" : ""
+  }`;
   if (row.banner)
     return (
-      <tr className="banner" style={{ background: row.banner.color }}>
+      <tr
+        className={`banner${boundary}`}
+        style={{ background: row.banner.color }}
+      >
         <td colSpan={CALC_PRINT_COLUMNS.length}>{row.banner.text}</td>
       </tr>
     );
   return (
-    <tr>
+    <tr className={boundary === "" ? undefined : boundary.trim()}>
       <td>{row.setPart}</td>
       <td>{row.materialCategory}</td>
       <td className="num">{row.subjectId}</td>
