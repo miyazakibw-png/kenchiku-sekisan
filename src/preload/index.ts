@@ -11,6 +11,7 @@ import type {
   AssemblyMasterOptions,
   BackupInfo,
   BackupResult,
+  ProjectFileResult,
   BasicMasters,
   SaveBasicMasterRequest,
   SaveBasicMasterResult,
@@ -416,6 +417,12 @@ const api = {
   /** 保存した積算データから復元 */
   restoreBackup: (): Promise<BackupResult> =>
     ipcRenderer.invoke(IPC.backupRestore),
+  /** 選んだ1工事だけを1ファイルに掃き出す（パソコン間のデータ移動用） */
+  exportProjectFile: (projectId: number): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileExport, projectId),
+  /** 1物件の掃き出しファイルを読み込む */
+  importProjectFile: (): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileImport),
   /** 今の画面を選んだ用紙でプリンターへ */
   printPaper: (paper: PrintPaper): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.printPaper, paper),

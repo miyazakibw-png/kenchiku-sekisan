@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BackupInfo, LineStyleSettings } from "@shared/types";
+import type {
+  BackupInfo,
+  LineStyleSettings,
+  ProjectSummary,
+} from "@shared/types";
 import { imeAutoEnabled, setImeAutoEnabled } from "../../hooks/useImeMode";
 import {
   DEFAULT_LINE_STYLES,
@@ -31,9 +35,21 @@ export default function SettingsPage(): JSX.Element {
   /** 画面の罫線（細い線＝表のマス目、太い線＝まとまりの区切り） */
   const [lines, setLines] = useState<LineStyleSettings>(DEFAULT_LINE_STYLES);
   const [lineMessage, setLineMessage] = useState("");
+  /** 1物件だけの掃き出し・読み込み（パソコン2台でのデータ移動用） */
+  const [projectList, setProjectList] = useState<ProjectSummary[]>([]);
+  const [pickedProjectId, setPickedProjectId] = useState(0);
+  const [fileMessage, setFileMessage] = useState("");
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
+    void window.sekisan.getProjectLedger().then((ledger) => {
+      setProjectList(ledger.projects);
+      setPickedProjectId((current) =>
+        current !== 0 && ledger.projects.some((row) => row.id === current)
+          ? current
+          : (ledger.projects[0]?.id ?? 0),
+      );
+    });
   }, []);
 
   useEffect(reload, [reload]);
@@ -80,6 +96,37 @@ export default function SettingsPage(): JSX.Element {
       reload();
     } catch (error) {
       setMessage(`復元できませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 選んだ1工事だけをファイルに書き出す */
+  const exportOne = async (): Promise<void> => {
+    if (pickedProjectId === 0) {
+      setFileMessage("書き出す工事を選んでください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await window.sekisan.exportProjectFile(pickedProjectId);
+      setFileMessage(result.message);
+    } catch (error) {
+      setFileMessage(`書き出せませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 1物件のファイルを読み込む */
+  const importOne = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const result = await window.sekisan.importProjectFile();
+      setFileMessage(result.message);
+      reload();
+    } catch (error) {
+      setFileMessage(`読み込めませんでした：${String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -133,6 +180,51 @@ export default function SettingsPage(): JSX.Element {
           復元前のデータは自動で退避するので、間違えても元に戻せます。
         </p>
         {message !== "" && <p className="settings-message">{message}</p>}
+      </section>
+      <section className="settings-card">
+        <h3>物件ごとの掃き出し・読み込み（パソコン間のデータ移動）</h3>
+        <p className="settings-note">
+          パソコン2台で同じ工事を続けるときに使います。選んだ1工事分（工事概要・建具表・部位別入力表・各計算書・部位別雑・金物・家具・設備・耐火被覆・塗装・転記入力表・集計・内訳書・その工事専用のマスター）を1つのファイルに掃き出し、もう1台のパソコンで読み込みます。
+        </p>
+        <table className="settings-table">
+          <tbody>
+            <tr>
+              <th>掃き出す工事</th>
+              <td>
+                <select
+                  value={pickedProjectId}
+                  onChange={(e) => setPickedProjectId(Number(e.target.value))}
+                >
+                  {projectList.length === 0 && <option value={0}>—</option>}
+                  {projectList.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.managementNo} {row.name}
+                    </option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="settings-buttons">
+          <button
+            type="button"
+            className="settings-main"
+            disabled={busy || projectList.length === 0}
+            onClick={exportOne}
+          >
+            📤 この工事を掃き出す
+          </button>
+          <button type="button" disabled={busy} onClick={importOne}>
+            📥 物件を読み込む
+          </button>
+        </div>
+        <p className="settings-note">
+          読み込みは新しい工事として足します。同じ管理番号の工事がこのパソコンにあるときは、「置き換える」か「別の工事として足す」かを選べます（置き換えると、そのパソコン側のその工事は消えます）。他の工事・基本マスター・線の設定は変わりません。
+        </p>
+        {fileMessage !== "" && (
+          <p className="settings-message">{fileMessage}</p>
+        )}
       </section>
       <section className="settings-card">
         <h3>画面の線（線種・太さ・色）</h3>

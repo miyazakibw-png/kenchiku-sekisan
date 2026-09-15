@@ -987,6 +987,18 @@ export interface BackupResult {
   message: string;
 }
 
+/** 1物件だけの掃き出し・読み込みの結果 */
+export interface ProjectFileResult {
+  /** 取り消した場合は false */
+  done: boolean;
+  /** 書き出した／読み込んだファイル */
+  filePath: string | null;
+  /** 画面に出す説明 */
+  message: string;
+  /** 読み込んだ工事（書き出しのときは null） */
+  projectId: number | null;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;

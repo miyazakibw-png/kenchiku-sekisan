@@ -111,6 +111,10 @@ export const IPC = {
   backupInfo: "backup:info",
   backupCreate: "backup:create",
   backupRestore: "backup:restore",
+  /** 1物件だけの掃き出し（書き出し） */
+  projectFileExport: "projectFile:export",
+  /** 1物件だけの読み込み */
+  projectFileImport: "projectFile:import",
   printPaper: "print:paper",
   printPdf: "print:pdf",
   screenExcel: "print:excel",

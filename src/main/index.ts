@@ -27,6 +27,7 @@ import {
   closeDatabase,
   getDatabase,
   getDatabasePath,
+  getRawConnection,
   initDatabase,
   restoreDatabaseFrom,
   schema,
@@ -60,10 +61,16 @@ import {
   createProject,
   getProject,
   listProjectLedger,
+  nextManagementNo,
   reorderProjects,
   saveProject,
   saveProjectFields,
 } from "./services/projectService";
+import {
+  checkProjectFile,
+  exportProjectFile,
+  importProjectFile,
+} from "./services/projectFileService";
 import { listSubjects, saveSubjects } from "./services/subjectService";
 import {
   listBasicMasters,
@@ -180,6 +187,7 @@ import type {
   ImeMode,
   LineStyleSettings,
   BackupResult,
+  ProjectFileResult,
   PrintPaper,
   PrintResult,
   ScreenExcelRequest,
@@ -870,6 +878,131 @@ function registerIpcHandlers(): void {
       message: `復元しました（${checked.message}）。復元前のデータは ${rollbackPath} に退避しています。`,
     };
   });
+  ipcMain.handle(
+    IPC.projectFileExport,
+    async (event, projectId: number): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const project = getProject(getDatabase(), projectId);
+      const safeName = `${project.managementNo}_${project.name}`.replace(
+        /[\\/:*?"<>|]/g,
+        "_",
+      );
+      const options = {
+        title: "この工事の掃き出し先を選んでください",
+        defaultPath: join(app.getPath("documents"), `${safeName}.sekisan`),
+        filters: [{ name: "1物件の積算データ", extensions: ["sekisan"] }],
+      };
+      const picked = window
+        ? await dialog.showSaveDialog(window, options)
+        : await dialog.showSaveDialog(options);
+      recoverInput(window);
+      if (picked.canceled || !picked.filePath)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      exportProjectFile(getRawConnection(), projectId, picked.filePath);
+      return {
+        done: true,
+        filePath: picked.filePath,
+        message: `${project.managementNo} ${project.name} を書き出しました：${picked.filePath}`,
+        projectId: null,
+      };
+    },
+  );
+  ipcMain.handle(
+    IPC.projectFileImport,
+    async (event): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: "読み込む1物件のファイルを選んでください",
+        properties: ["openFile" as const],
+        filters: [
+          { name: "1物件の積算データ", extensions: ["sekisan", "db"] },
+          { name: "すべてのファイル", extensions: ["*"] },
+        ],
+      };
+      const picked = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options);
+      recoverInput(window);
+      if (picked.canceled || picked.filePaths.length === 0)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      const sourcePath = picked.filePaths[0];
+      const checked = checkProjectFile(getRawConnection(), sourcePath);
+      if (!checked.ok)
+        return {
+          done: false,
+          filePath: sourcePath,
+          message: checked.message,
+          projectId: null,
+        };
+      const fileName = `${checked.managementNo} ${checked.name}`;
+      // 同じ管理番号の工事があるときだけ、入れ方を選んでもらう
+      const confirmOptions = checked.sameManagementNo
+        ? {
+            type: "warning" as const,
+            buttons: ["置き換える", "別の工事として足す", "やめる"],
+            defaultId: 2,
+            cancelId: 2,
+            title: "1物件の読み込み",
+            message: `同じ管理番号（${checked.managementNo}）の工事がこのパソコンにあります。`,
+            detail:
+              "「置き換える」＝このパソコンのその工事を消して、ファイルの内容に入れ替えます（元に戻せません）。\n「別の工事として足す」＝新しい管理番号を付けて、別の工事として足します。",
+          }
+        : {
+            type: "question" as const,
+            buttons: ["読み込む", "やめる"],
+            defaultId: 0,
+            cancelId: 1,
+            title: "1物件の読み込み",
+            message: `${fileName} を読み込みます。`,
+            detail:
+              "新しい工事として足します（このパソコンの他の工事・マスターは変わりません）。",
+          };
+      const answer = window
+        ? await dialog.showMessageBox(window, confirmOptions)
+        : await dialog.showMessageBox(confirmOptions);
+      recoverInput(window);
+      const cancelled = checked.sameManagementNo
+        ? answer.response === 2
+        : answer.response === 1;
+      if (cancelled)
+        return {
+          done: false,
+          filePath: sourcePath,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      const mode =
+        checked.sameManagementNo && answer.response === 0 ? "replace" : "add";
+      const db = getDatabase();
+      const result = importProjectFile(
+        getRawConnection(),
+        sourcePath,
+        mode,
+        () => nextManagementNo(db),
+      );
+      for (const opened of BrowserWindow.getAllWindows()) {
+        opened.webContents.reload();
+      }
+      return {
+        done: true,
+        filePath: sourcePath,
+        message: result.replaced
+          ? `${result.managementNo} ${result.name} を置き換えました。`
+          : `${result.managementNo} ${result.name} を読み込みました。`,
+        projectId: result.projectId,
+      };
+    },
+  );
   ipcMain.handle(
     IPC.printPaper,
     async (event, paper: PrintPaper): Promise<PrintResult> => {
