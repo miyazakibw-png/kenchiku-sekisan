@@ -423,6 +423,9 @@ const api = {
   /** 1物件の掃き出しファイルを読み込む */
   importProjectFile: (): Promise<ProjectFileResult> =>
     ipcRenderer.invoke(IPC.projectFileImport),
+  /** 選んだ工事を消す（計算書・集計なども全部いっしょに消える） */
+  deleteProject: (projectId: number): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileDelete, projectId),
   /** 今の画面を選んだ用紙でプリンターへ */
   printPaper: (paper: PrintPaper): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.printPaper, paper),

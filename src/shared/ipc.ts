@@ -115,6 +115,8 @@ export const IPC = {
   projectFileExport: "projectFile:export",
   /** 1物件だけの読み込み */
   projectFileImport: "projectFile:import",
+  /** 工事を消す（計算書・集計なども全部いっしょに消える） */
+  projectFileDelete: "projectFile:delete",
   printPaper: "print:paper",
   printPdf: "print:pdf",
   screenExcel: "print:excel",

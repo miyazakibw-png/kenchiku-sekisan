@@ -68,6 +68,7 @@ import {
 } from "./services/projectService";
 import {
   checkProjectFile,
+  deleteProjectFully,
   exportProjectFile,
   importProjectFile,
 } from "./services/projectFileService";
@@ -1000,6 +1001,44 @@ function registerIpcHandlers(): void {
           ? `${result.managementNo} ${result.name} を置き換えました。`
           : `${result.managementNo} ${result.name} を読み込みました。`,
         projectId: result.projectId,
+      };
+    },
+  );
+  ipcMain.handle(
+    IPC.projectFileDelete,
+    async (event, projectId: number): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const project = getProject(getDatabase(), projectId);
+      const confirmOptions = {
+        type: "warning" as const,
+        buttons: ["消す", "やめる"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "工事の削除",
+        message: `${project.managementNo} ${project.name} を消します。`,
+        detail:
+          "この工事に入れた全部（工事概要・建具表・部位別入力表・各計算書・転記入力表・集計・内訳書・その工事専用のマスター）が消え、元には戻せません。",
+      };
+      const answer = window
+        ? await dialog.showMessageBox(window, confirmOptions)
+        : await dialog.showMessageBox(confirmOptions);
+      recoverInput(window);
+      if (answer.response !== 0)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      deleteProjectFully(getRawConnection(), projectId);
+      for (const opened of BrowserWindow.getAllWindows()) {
+        opened.webContents.reload();
+      }
+      return {
+        done: true,
+        filePath: null,
+        message: `${project.managementNo} ${project.name} を消しました。`,
+        projectId: null,
       };
     },
   );

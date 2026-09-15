@@ -283,6 +283,49 @@ export function checkProjectFile(
   }
 }
 
+/**
+ * 工事をまるごと消す。
+ * 工事にぶら下がる行は外部キーの決まりでいっしょに消えるが、
+ * 外部キーを持たない表（明細の変更履歴など）は個別に消す。
+ */
+const DELETE_ORDER: { table: string; where: string }[] = [
+  {
+    table: "project_breakdown_rows",
+    where:
+      "version_id IN (SELECT id FROM project_breakdown_versions WHERE project_id = ?)",
+  },
+  {
+    table: "project_aggregate_items",
+    where:
+      "run_id IN (SELECT id FROM project_aggregate_runs WHERE project_id = ?)",
+  },
+  {
+    table: "project_aggregate_details",
+    where:
+      "run_id IN (SELECT id FROM project_aggregate_runs WHERE project_id = ?)",
+  },
+  {
+    table: "m_finish_assembly_items",
+    where:
+      "assembly_id IN (SELECT id FROM m_finish_assemblies WHERE project_id = ?)",
+  },
+];
+
+export function deleteProjectFully(
+  conn: Database.Database,
+  projectId: number,
+): void {
+  conn.transaction(() => {
+    DELETE_ORDER.forEach(({ table, where }) => {
+      conn.prepare(`DELETE FROM ${table} WHERE ${where}`).run(projectId);
+    });
+    conn
+      .prepare("DELETE FROM detail_change_logs WHERE project_id = ?")
+      .run(projectId);
+    conn.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
+  })();
+}
+
 /** 同じ管理番号の工事があったときの入れ方 */
 export type ImportMode = "replace" | "add";
 
@@ -321,9 +364,7 @@ export function importProjectFile(
         .get(fileManagementNo) as { id: number } | undefined;
       let replaced = false;
       if (existing && mode === "replace") {
-        // 工事を消すと、ぶら下がる行もいっしょに消える（外部キーの決まり）
-        target.pragma("foreign_keys = ON");
-        target.prepare("DELETE FROM projects WHERE id = ?").run(existing.id);
+        deleteProjectFully(target, existing.id);
         replaced = true;
       }
       const managementNo =

@@ -21,6 +21,7 @@ import {
 import { runAggregation } from "../../src/main/services/aggregationService";
 import {
   checkProjectFile,
+  deleteProjectFully,
   exportProjectFile,
   importProjectFile,
 } from "../../src/main/services/projectFileService";
@@ -176,6 +177,37 @@ describe("1物件だけの掃き出しと読み込み", () => {
       12,
     );
     expect(runAggregation(from.db, projectId).items[0].quantity).toBe(12);
+  });
+
+  it("工事を消すと計算書・集計もいっしょに消え、他の工事は残る", () => {
+    const other = createProject(from.db, "残す工事").id;
+    deleteProjectFully(from.sqlite, projectId);
+
+    const ledger = listProjectLedger(from.db);
+    expect(ledger.projects).toHaveLength(1);
+    expect(ledger.projects[0].id).toBe(other);
+    // 消した工事の行が残っていない（計算書・集計・工事専用マスター）
+    const orphans = [
+      "project_estimate_rows",
+      "project_room_sheets",
+      "project_aggregate_runs",
+      "m_details",
+      "project_masters",
+      "detail_change_logs",
+    ].map((table) => {
+      const row = from.sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE project_id = ?`)
+        .get(projectId) as { n: number };
+      return row.n;
+    });
+    expect(orphans).toEqual([0, 0, 0, 0, 0, 0]);
+    // 工事専用仕上明細セットの中の明細も残っていない
+    const items = from.sqlite
+      .prepare(
+        "SELECT COUNT(*) AS n FROM m_finish_assembly_items WHERE assembly_id NOT IN (SELECT id FROM m_finish_assemblies)",
+      )
+      .get() as { n: number };
+    expect(items.n).toBe(0);
   });
 
   it("工事が2件以上入ったファイルは1物件の読み込みでは受け付けない", () => {

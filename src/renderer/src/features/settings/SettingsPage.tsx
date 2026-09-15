@@ -132,6 +132,24 @@ export default function SettingsPage(): JSX.Element {
     }
   };
 
+  /** 選んだ工事を消す */
+  const deleteOne = async (): Promise<void> => {
+    if (pickedProjectId === 0) {
+      setFileMessage("消す工事を選んでください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await window.sekisan.deleteProject(pickedProjectId);
+      setFileMessage(result.message);
+      reload();
+    } catch (error) {
+      setFileMessage(`消せませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="settings-page">
       <h2>⚙️ 設定</h2>
@@ -218,9 +236,17 @@ export default function SettingsPage(): JSX.Element {
           <button type="button" disabled={busy} onClick={importOne}>
             📥 物件を読み込む
           </button>
+          <button
+            type="button"
+            className="settings-warn"
+            disabled={busy || projectList.length === 0}
+            onClick={deleteOne}
+          >
+            🗑 この工事を消す
+          </button>
         </div>
         <p className="settings-note">
-          読み込みは新しい工事として足します。同じ管理番号の工事がこのパソコンにあるときは、「置き換える」か「別の工事として足す」かを選べます（置き換えると、そのパソコン側のその工事は消えます）。他の工事・基本マスター・線の設定は変わりません。
+          読み込みは新しい工事として足します。同じ管理番号の工事がこのパソコンにあるときは、「置き換える」か「別の工事として足す」かを選べます（置き換えると、そのパソコン側のその工事は消えます）。他の工事・基本マスター・線の設定は変わりません。消すときは確認画面が出ます。消した工事は計算書・集計も全部いっしょに消え、元には戻せません。
         </p>
         {fileMessage !== "" && (
           <p className="settings-message">{fileMessage}</p>
