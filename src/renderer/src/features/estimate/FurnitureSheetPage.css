@@ -266,13 +266,19 @@
   }
 }
 
-/** 一括印刷に入れるときの家具計算書（表だけを紙に出す） */
+/** 一括印刷に入れるときの家具計算書（表だけを紙に出す。A3横1枚の入れ物） */
 .furniture-page.furniture-print {
   display: block;
-  height: auto;
-  overflow: visible;
+  position: relative;
+  width: 1527px;
+  box-sizing: border-box;
+  overflow: hidden;
   background: #fff;
+  margin: 0 auto 12px;
+  break-before: page;
   page-break-before: always;
+  break-after: page;
+  page-break-after: always;
 }
 
 .furniture-page.furniture-print > .toolbar,
@@ -291,8 +297,6 @@
 .furniture-page.furniture-print .furniture-table th,
 .furniture-page.furniture-print .furniture-table td {
   border: 1px solid #000;
-  background: #fff;
-  color: #000;
 }
 
 /** 下が空く分は、手入力できるよう横罫線だけを引く */

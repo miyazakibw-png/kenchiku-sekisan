@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -451,6 +452,9 @@ export default function FurnitureSheetPage({
   );
   const widthRef = useRef(widths);
   widthRef.current = widths;
+  /** 紙に出すときの表（下の空白を横罫線で埋める本数を測るのに使う） */
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [printBlankRows, setPrintBlankRows] = useState(0);
 
   const { markSaved } = useSaveOnLeave({ rows, columns, settings }, () =>
     save(true),
@@ -1163,17 +1167,30 @@ export default function FurnitureSheetPage({
       0,
     );
 
-  /** 紙（A3横）の大きさに収まらないときの縮め方と、下の空白を埋める横罫線の本数 */
+  /** 紙（A3横）の幅に収まらないときの縮め方 */
   const printScale = Math.min(1, PRINT_WIDTH / Math.max(tableWidth, 1));
-  const printBlankRows = Math.max(
-    0,
-    Math.floor(
-      (PRINT_HEIGHT / printScale -
-        PRINT_TITLE_HEIGHT -
-        headRowCount * PRINT_ROW_HEIGHT) /
-        PRINT_ROW_HEIGHT,
-    ) - view.length,
-  );
+
+  /**
+   * 紙の下が空く分を埋める横罫線の本数。
+   * 見出しと1行の高さを実際に測ってから数えるので、1枚の下まで罫線が入る。
+   */
+  useLayoutEffect(() => {
+    if (!printing) {
+      if (printBlankRows !== 0) setPrintBlankRows(0);
+      return;
+    }
+    const table = tableRef.current;
+    if (!table) return;
+    const head = table.tHead?.offsetHeight ?? 0;
+    const body = table.tBodies[0];
+    const rowHeight = body?.rows[0]?.offsetHeight ?? PRINT_ROW_HEIGHT;
+    const room =
+      (PRINT_HEIGHT - PRINT_TITLE_HEIGHT) / printScale -
+      head -
+      rowHeight * view.length;
+    const next = Math.max(0, Math.floor(room / PRINT_ROW_HEIGHT));
+    if (next !== printBlankRows) setPrintBlankRows(next);
+  }, [printing, printScale, printBlankRows, view.length, columns.length]);
 
   /** タテの明細（列）の1マス分の入力欄 */
   const headCell = (
@@ -1273,6 +1290,12 @@ export default function FurnitureSheetPage({
   return (
     <div
       className={`estimate-page furniture-page${printMode ? " furniture-print" : ""}`}
+      // 1枚に収まる分はA3横1枚の高さに固定して、次の計算書が紙の頭から始まるようにする
+      style={
+        printMode && printBlankRows > 0
+          ? { height: `${PRINT_HEIGHT}px` }
+          : undefined
+      }
     >
       {printMode && (
         <div className="calc-print-title">
@@ -1889,7 +1912,11 @@ export default function FurnitureSheetPage({
             : undefined
         }
       >
-        <table className="furniture-table" style={{ width: tableWidth }}>
+        <table
+          className="furniture-table"
+          ref={tableRef}
+          style={{ width: tableWidth }}
+        >
           <colgroup>
             {!printing && (
               <col className="ops-col" style={{ width: OPS_WIDTH }} />
