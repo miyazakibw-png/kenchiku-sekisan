@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   MasterOptions,
   ProjectField,
@@ -109,6 +116,11 @@ export default function ProjectLedgerPage({
     () => applyColumnSettings(columns, columnSettings),
     [columns, columnSettings],
   );
+  /** 「工事を開く」の列は備考欄の手前に出す（備考が隠れているときはいちばん右） */
+  const openAt = useMemo(() => {
+    const at = shownColumns.findIndex((column) => column.key === "note");
+    return at < 0 ? shownColumns.length : at;
+  }, [shownColumns]);
   const shownProjects = useMemo(
     () => filterProjectsByMarks(projects, markFilter),
     [projects, markFilter],
@@ -399,44 +411,62 @@ export default function ProjectLedgerPage({
         <table className="grid project-list">
           <colgroup>
             <col style={{ width: "20px" }} />
-            {shownColumns.map((column) => (
-              <col
-                key={column.key}
-                style={{
-                  width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
-                }}
-              />
+            {shownColumns.map((column, index) => (
+              <Fragment key={column.key}>
+                {index === openAt && (
+                  <col className="open" style={{ width: "110px" }} />
+                )}
+                <col
+                  style={{
+                    width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
+                  }}
+                />
+              </Fragment>
             ))}
+            {openAt === shownColumns.length && (
+              <col className="open" style={{ width: "110px" }} />
+            )}
           </colgroup>
           <thead>
             <tr>
               <th className="handle" />
-              {shownColumns.map((column) => (
-                <th
-                  key={column.key}
-                  onClick={() => sortColumn(column)}
-                  title="クリックで並べ替え／右端のドラッグで列幅"
-                >
-                  {column.title}
-                  <span
-                    className="col-resize"
-                    onMouseDown={(e) => startResize(column.key, e)}
-                  />
-                </th>
+              {shownColumns.map((column, index) => (
+                <Fragment key={column.key}>
+                  {index === openAt && (
+                    <th className="open" title="この行の工事を開きます">
+                      開く
+                    </th>
+                  )}
+                  <th
+                    onClick={() => sortColumn(column)}
+                    title="クリックで並べ替え／右端のドラッグで列幅"
+                  >
+                    {column.title}
+                    <span
+                      className="col-resize"
+                      onMouseDown={(e) => startResize(column.key, e)}
+                    />
+                  </th>
+                </Fragment>
               ))}
+              {openAt === shownColumns.length && (
+                <th className="open" title="この行の工事を開きます">
+                  開く
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {projects.length === 0 && (
               <tr>
-                <td colSpan={1 + shownColumns.length} className="empty">
+                <td colSpan={2 + shownColumns.length} className="empty">
                   物件がまだありません。「新規作成」から追加してください。
                 </td>
               </tr>
             )}
             {projects.length > 0 && shownProjects.length === 0 && (
               <tr>
-                <td colSpan={1 + shownColumns.length} className="empty">
+                <td colSpan={2 + shownColumns.length} className="empty">
                   選んだチェックの工事はありません。「全表示」に戻せます。
                 </td>
               </tr>
@@ -469,69 +499,102 @@ export default function ProjectLedgerPage({
                   <td className="handle" title="ドラッグで並べ替え">
                     ⋮⋮
                   </td>
-                  {shownColumns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={
-                        column.key === "managementNo"
-                          ? "management-no"
-                          : undefined
-                      }
-                      title={
-                        column.key === "managementNo"
-                          ? "管理用の自動採番のため変更できません"
-                          : undefined
-                      }
-                    >
-                      {column.key === "managementNo" ? (
-                        project.managementNo
-                      ) : column.mark !== undefined ? (
-                        <input
-                          type="checkbox"
-                          checked={project.marks.includes(column.mark)}
-                          onChange={(e) =>
-                            column.mark !== undefined &&
-                            setMark(project, column.mark, e.target.checked)
-                          }
-                        />
-                      ) : column.key === "projectDate" ? (
-                        <input
-                          className="date"
-                          value={project.projectDate}
-                          onChange={(e) =>
-                            editRow(project.id, { projectDate: e.target.value })
-                          }
-                          onBlur={(e) => commitDate(project, e.target.value)}
-                        />
-                      ) : column.fieldId !== undefined ? (
-                        <input
-                          lang="ja"
-                          value={project.fieldValues[column.fieldId] ?? ""}
-                          onChange={(e) =>
-                            column.fieldId !== undefined &&
-                            editFieldValue(
-                              project,
-                              column.fieldId,
-                              e.target.value,
-                            )
-                          }
-                          onBlur={() => void saveProject(project)}
-                        />
-                      ) : (
-                        <input
-                          lang="ja"
-                          value={textValue(project, column.key)}
-                          onChange={(e) =>
-                            editRow(
-                              project.id,
-                              textPatch(column.key, e.target.value),
-                            )
-                          }
-                          onBlur={() => void saveProject(project)}
-                        />
+                  {shownColumns.map((column, index) => (
+                    <Fragment key={column.key}>
+                      {index === openAt && (
+                        <td className="open">
+                          <button
+                            type="button"
+                            title="この工事を別ウインドウで開きます"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void window.sekisan.openProjectWindow(project.id);
+                            }}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            🗔 工事を開く
+                          </button>
+                        </td>
                       )}
-                    </td>
+                      <td
+                        className={
+                          column.key === "managementNo"
+                            ? "management-no"
+                            : undefined
+                        }
+                        title={
+                          column.key === "managementNo"
+                            ? "管理用の自動採番のため変更できません"
+                            : undefined
+                        }
+                      >
+                        {column.key === "managementNo" ? (
+                          project.managementNo
+                        ) : column.mark !== undefined ? (
+                          <input
+                            type="checkbox"
+                            checked={project.marks.includes(column.mark)}
+                            onChange={(e) =>
+                              column.mark !== undefined &&
+                              setMark(project, column.mark, e.target.checked)
+                            }
+                          />
+                        ) : column.key === "projectDate" ? (
+                          <input
+                            className="date"
+                            value={project.projectDate}
+                            onChange={(e) =>
+                              editRow(project.id, {
+                                projectDate: e.target.value,
+                              })
+                            }
+                            onBlur={(e) => commitDate(project, e.target.value)}
+                          />
+                        ) : column.fieldId !== undefined ? (
+                          <input
+                            lang="ja"
+                            value={project.fieldValues[column.fieldId] ?? ""}
+                            onChange={(e) =>
+                              column.fieldId !== undefined &&
+                              editFieldValue(
+                                project,
+                                column.fieldId,
+                                e.target.value,
+                              )
+                            }
+                            onBlur={() => void saveProject(project)}
+                          />
+                        ) : (
+                          <input
+                            lang="ja"
+                            value={textValue(project, column.key)}
+                            onChange={(e) =>
+                              editRow(
+                                project.id,
+                                textPatch(column.key, e.target.value),
+                              )
+                            }
+                            onBlur={() => void saveProject(project)}
+                          />
+                        )}
+                      </td>
+                    </Fragment>
                   ))}
+                  {openAt === shownColumns.length && (
+                    <td className="open">
+                      <button
+                        type="button"
+                        title="この工事を別ウインドウで開きます"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void window.sekisan.openProjectWindow(project.id);
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                      >
+                        🗔 工事を開く
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
