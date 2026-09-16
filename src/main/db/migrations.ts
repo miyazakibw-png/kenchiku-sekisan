@@ -996,4 +996,8 @@ ALTER TABLE project_fireproof_sheets ADD COLUMN estimate_json TEXT NOT NULL DEFA
   `
 ALTER TABLE project_breakdown_versions ADD COLUMN new_subjects_json TEXT NOT NULL DEFAULT '[]';
 `,
+  // 内訳書の設定：基本部位のタイトル行（部位番号の範囲の始まり→出す文字）
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_json TEXT NOT NULL DEFAULT '[{"from":10,"title":"＜床＞"},{"from":20,"title":"＜巾木＞"},{"from":30,"title":"＜壁＞"},{"from":40,"title":"＜柱型＞"},{"from":50,"title":"＜梁型＞"},{"from":60,"title":"＜天井＞"},{"from":70,"title":"＜その他＞"}]';
+`,
 ];

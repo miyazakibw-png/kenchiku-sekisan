@@ -37,6 +37,7 @@ function item(patch: Partial<BreakdownSourceItem>): BreakdownSourceItem {
     masterKey: "k1",
     subjectId: 1,
     part1: "",
+    partNumber: null,
     partName: "基礎",
     name: "普通コンクリート",
     descriptionUpper: "FC21*18",
@@ -203,6 +204,63 @@ describe("内訳書の行づくり", () => {
       namePattern: NAME_PATTERN.withPartFullColon,
     });
     expect(fullColon[2].nameLower).toBe("基礎：普通コンクリート");
+  });
+
+  it("部位番号の範囲が変わるところに基本部位のタイトル行が出る", () => {
+    const rows = buildBreakdownRows(
+      [
+        item({ partNumber: 11 }),
+        item({ partNumber: 15 }),
+        item({ partNumber: 25 }),
+        item({ partNumber: 72 }),
+      ],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    expect(
+      rows.map((row) =>
+        row.rowKind === "subject" ? row.subjectName : row.nameLower,
+      ),
+    ).toEqual([
+      "コンクリート工事",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+      "普通コンクリート",
+      "",
+      "＜巾木＞",
+      "普通コンクリート",
+      "",
+      "＜その他＞",
+      "普通コンクリート",
+      "",
+    ]);
+  });
+
+  it("基本部位のタイトル行は部位Ⅰが変わると出し直す", () => {
+    const rows = buildBreakdownRows(
+      [
+        item({ part1: "内部", partNumber: 11 }),
+        item({ part1: "外部", partNumber: 12 }),
+      ],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    expect(
+      rows.map((row) =>
+        row.rowKind === "subject" ? row.subjectName : row.nameLower,
+      ),
+    ).toEqual([
+      "コンクリート工事",
+      "（内部）",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+      "（外部）",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+    ]);
   });
 
   it("名称パターンで部位：名称にできる（2段1行・1段とも）", () => {

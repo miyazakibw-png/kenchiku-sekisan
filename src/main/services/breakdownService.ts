@@ -43,6 +43,18 @@ function parseReplacements(json: string): TextReplacement[] {
   });
 }
 
+function parsePartTitles(json: string): { from: number; title: string }[] {
+  const parsed: unknown = JSON.parse(json);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const record = entry as { from?: unknown; title?: unknown };
+    if (typeof record.from !== "number" || typeof record.title !== "string")
+      return [];
+    return [{ from: record.from, title: record.title }];
+  });
+}
+
 function parseNumbers(json: string): number[] {
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) return [];
@@ -87,6 +99,7 @@ export function getBreakdownSettings(
       replacements: [],
       unitOrder: [],
       unitReplacements: [],
+      partTitles: DEFAULT_BREAKDOWN_SETTINGS.partTitles,
       detailsPerPage: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
       detailsPerPageLater: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
       workCategory: "建築主体工事",
@@ -106,6 +119,7 @@ export function getBreakdownSettings(
     replacements: parseReplacements(row.replacementsJson),
     unitOrder: parseStrings(row.unitOrderJson),
     unitReplacements: parseReplacements(row.unitReplacementsJson),
+    partTitles: parsePartTitles(row.partTitlesJson),
     detailsPerPage: pageCount(
       row.detailsPerPage,
       DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
@@ -137,6 +151,7 @@ export function saveBreakdownSettings(
       replacementsJson: JSON.stringify(settings.replacements),
       unitOrderJson: JSON.stringify(settings.unitOrder),
       unitReplacementsJson: JSON.stringify(settings.unitReplacements),
+      partTitlesJson: JSON.stringify(settings.partTitles),
       detailsPerPage: pageCount(
         settings.detailsPerPage,
         DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
@@ -166,6 +181,7 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
     replacements: record.replacements,
     unitOrder: record.unitOrder,
     unitReplacements: record.unitReplacements,
+    partTitles: record.partTitles,
     detailsPerPage: record.detailsPerPage,
     detailsPerPageLater: record.detailsPerPageLater,
   };
@@ -240,6 +256,7 @@ export function transferBreakdown(
       masterKey: item.masterKey,
       subjectId: item.subjectId,
       part1: item.part1,
+      partNumber: item.partNumber,
       partName: item.partName,
       name: item.name,
       descriptionUpper: item.descriptionUpper,

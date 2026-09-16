@@ -54,6 +54,7 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitles: [],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
   workCategory: "建築主体工事",
@@ -1078,6 +1079,55 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     ...settings.replacements,
                     { from: "", to: "" },
                   ],
+                })
+              }
+            >
+              ＋追加
+            </button>
+          </div>
+          <div className="replacements">
+            <span>
+              基本部位のタイトル行（部位番号が始まり以上・次の始まり未満の前に出す）
+            </span>
+            {settings.partTitles.map((rule, index) => (
+              <span key={`${rule.from}-${index}`} className="rule">
+                <input
+                  type="number"
+                  value={rule.from}
+                  onChange={(e) => {
+                    const next = [...settings.partTitles];
+                    next[index] = { ...rule, from: Number(e.target.value) };
+                    void saveSettings({ partTitles: next });
+                  }}
+                />
+                〜 →
+                <TextInput
+                  value={rule.title}
+                  onCommit={(value) => {
+                    const next = [...settings.partTitles];
+                    next[index] = { ...rule, title: value };
+                    void saveSettings({ partTitles: next });
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveSettings({
+                      partTitles: settings.partTitles.filter(
+                        (_, i) => i !== index,
+                      ),
+                    })
+                  }
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                void saveSettings({
+                  partTitles: [...settings.partTitles, { from: 0, title: "" }],
                 })
               }
             >

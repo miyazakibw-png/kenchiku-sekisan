@@ -864,6 +864,12 @@ export const projectBreakdownSettings = sqliteTable(
     unitReplacementsJson: text("unit_replacements_json")
       .notNull()
       .default("[]"),
+    /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字） */
+    partTitlesJson: text("part_titles_json")
+      .notNull()
+      .default(
+        '[{"from":10,"title":"＜床＞"},{"from":20,"title":"＜巾木＞"},{"from":30,"title":"＜壁＞"},{"from":40,"title":"＜柱型＞"},{"from":50,"title":"＜梁型＞"},{"from":60,"title":"＜天井＞"},{"from":70,"title":"＜その他＞"}]',
+      ),
     /** エクセル掃き出しの1ページの明細数（1ページ目はタイトル行を含む） */
     detailsPerPage: integer("details_per_page").notNull().default(17),
     detailsPerPageLater: integer("details_per_page_later")

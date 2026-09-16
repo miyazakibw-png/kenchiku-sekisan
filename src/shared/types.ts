@@ -878,6 +878,8 @@ export interface BreakdownSettingsRecord {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: { from: string; to: string }[];
+  /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字。空なら出さない） */
+  partTitles: { from: number; title: string }[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数 */

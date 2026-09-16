@@ -54,6 +54,14 @@ export interface TextReplacement {
   to: string;
 }
 
+/** 基本部位のタイトル行（部位番号が「始まり」以上の範囲の前へ出す文字） */
+export interface PartTitle {
+  /** 範囲の始まりの部位番号（次の始まり未満までがこの範囲） */
+  from: number;
+  /** 出す文字（「＜床＞」のようにそのまま出る） */
+  title: string;
+}
+
 export interface BreakdownSettings {
   layout: number;
   namePattern: number;
@@ -73,6 +81,8 @@ export interface BreakdownSettings {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: TextReplacement[];
+  /** 基本部位のタイトル行（部位番号の範囲→出す文字。空なら出さない） */
+  partTitles: PartTitle[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数（タイトル行が無い分） */
@@ -92,6 +102,15 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitles: [
+    { from: 10, title: "＜床＞" },
+    { from: 20, title: "＜巾木＞" },
+    { from: 30, title: "＜壁＞" },
+    { from: 40, title: "＜柱型＞" },
+    { from: 50, title: "＜梁型＞" },
+    { from: 60, title: "＜天井＞" },
+    { from: 70, title: "＜その他＞" },
+  ],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
 };
@@ -130,6 +149,8 @@ export interface BreakdownSourceItem {
   subjectId: number | null;
   /** 部位Ⅰ（集計書ではタイトル行になる） */
   part1: string;
+  /** 明細用部位の番号（基本部位のタイトル行を出す範囲の判断に使う） */
+  partNumber: number | null;
   partName: string;
   name: string;
   descriptionUpper: string;
@@ -425,6 +446,27 @@ export function withSubjectSubtotals(
 }
 
 /**
+ * 部位番号がどの範囲に入るか調べ、出すタイトル文字を返す。
+ * 範囲は「始まり以上・次の始まり未満」。部位番号が無い・どの範囲にも入らないときは null。
+ */
+export function partTitleOf(
+  partNumber: number | null,
+  partTitles: readonly PartTitle[],
+): string | null {
+  if (partNumber === null || !Number.isFinite(partNumber)) return null;
+  const whole = Math.floor(partNumber);
+  let title: string | null = null;
+  let best = Number.NEGATIVE_INFINITY;
+  partTitles.forEach((entry) => {
+    if (entry.from <= whole && entry.from > best && entry.title !== "") {
+      best = entry.from;
+      title = entry.title;
+    }
+  });
+  return title;
+}
+
+/**
  * 集計書兼工事マスターの明細を内訳書の行に変換する。
  * 工種科目ごとに見出し行を置き、明細を並べる。
  */
@@ -466,9 +508,12 @@ export function buildBreakdownRows(
 
     // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
     let part1: string | undefined;
+    // 基本部位のタイトル行は部位Ⅰごとに出し直す
+    let lastPartTitle: string | null = null;
     (groups.get(subjectId) ?? []).forEach((item) => {
       if (part1 !== item.part1) {
         part1 = item.part1;
+        lastPartTitle = null;
         if (part1 !== "") {
           const title = emptyRow("title");
           title.subjectId = subjectId;
@@ -477,6 +522,16 @@ export function buildBreakdownRows(
           title.nameLower = `（${part1}）`;
           rows.push(title);
         }
+      }
+      const partTitle = partTitleOf(item.partNumber, settings.partTitles);
+      if (partTitle !== null && partTitle !== lastPartTitle) {
+        lastPartTitle = partTitle;
+        const title = emptyRow("title");
+        title.subjectId = subjectId;
+        title.subjectName = heading.subjectName;
+        title.partName = partTitle;
+        title.nameLower = partTitle;
+        rows.push(title);
       }
       rows.push(...detailRows(item, subjectId, heading.subjectName, settings));
     });
