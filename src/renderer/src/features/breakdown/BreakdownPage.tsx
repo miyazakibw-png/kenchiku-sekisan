@@ -1069,7 +1069,21 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               <div key={subjectId ?? "none"} className="subject-row">
                 <button
                   type="button"
-                  className={selectedSubject === subjectId ? "selected" : ""}
+                  className={[
+                    selectedSubject === subjectId ? "selected" : "",
+                    subjectId !== null &&
+                    view.version?.newSubjects.includes(subjectId)
+                      ? "new"
+                      : "",
+                  ]
+                    .join(" ")
+                    .trim()}
+                  title={
+                    subjectId !== null &&
+                    view.version?.newSubjects.includes(subjectId)
+                      ? "この回で初めて出てきた科目"
+                      : undefined
+                  }
                   onClick={() => showSubject(subjectId)}
                 >
                   {name}

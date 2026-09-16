@@ -992,4 +992,8 @@ CREATE UNIQUE INDEX uq_fireproof_sheet_project ON project_fireproof_sheets(proje
   `
 ALTER TABLE project_fireproof_sheets ADD COLUMN estimate_json TEXT NOT NULL DEFAULT '[]';
 `,
+  // 内訳書の回：その回で初めて出てきた工種科目
+  `
+ALTER TABLE project_breakdown_versions ADD COLUMN new_subjects_json TEXT NOT NULL DEFAULT '[]';
+`,
 ];

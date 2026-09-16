@@ -896,6 +896,8 @@ export interface BreakdownVersion {
   confirmed: number;
   aggregateRunId: number | null;
   note: string;
+  /** この回で初めて出てきた工種科目（科目ID。前の回に無かったもの） */
+  newSubjects: number[];
 }
 
 /** 内訳書の1行 */

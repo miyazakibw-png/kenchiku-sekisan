@@ -154,6 +154,18 @@ describe("内訳書", () => {
     expect(second.settings.subjectOrder).toEqual([9, 5, 1]);
   });
 
+  it("その回で初めて出てきた科目を記録する（前の回にあった科目は新しくない）", () => {
+    const first = transferBreakdown(db, projectId);
+    expect(first.version?.newSubjects).toEqual([5]);
+    // 確定する前に作り直しても、この回の中では「新しい」まま
+    const again = transferBreakdown(db, projectId);
+    expect(again.version?.newSubjects).toEqual([5]);
+    confirmBreakdownVersion(db, first.version?.id ?? 0);
+    // 次の回では前の回にあった科目は「新しい」ではない
+    const second = transferBreakdown(db, projectId);
+    expect(second.version?.newSubjects).toEqual([]);
+  });
+
   it("作った回を削除すると行も消える", () => {
     const first = transferBreakdown(db, projectId);
     confirmBreakdownVersion(db, first.version?.id ?? 0);

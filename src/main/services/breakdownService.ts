@@ -171,6 +171,12 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
   };
 }
 
+function toBreakdownVersion(
+  row: typeof projectBreakdownVersions.$inferSelect,
+): BreakdownVersion {
+  return { ...row, newSubjects: parseNumbers(row.newSubjectsJson ?? "[]") };
+}
+
 export function listBreakdownVersions(
   db: AppDatabase,
   projectId: number,
@@ -180,7 +186,8 @@ export function listBreakdownVersions(
     .from(projectBreakdownVersions)
     .where(eq(projectBreakdownVersions.projectId, projectId))
     .orderBy(desc(projectBreakdownVersions.round))
-    .all();
+    .all()
+    .map(toBreakdownVersion);
 }
 
 function listRows(db: AppDatabase, versionId: number): BreakdownRowRecord[] {
@@ -263,6 +270,18 @@ export function transferBreakdown(
 
   const versions = listBreakdownVersions(db, projectId);
   const open = versions.find((version) => version.confirmed === 0);
+  // この回で初めて出てきた工種科目＝前の回に無かったもの
+  // （作り直す開いている回は数えない。確定した回の中にあれば「新しい」ではない）
+  const previousSubjects = new Set<number>();
+  versions
+    .filter((version) => version.id !== open?.id)
+    .forEach((version) => {
+      listRows(db, version.id).forEach((row) => {
+        if (row.rowKind === "subject" && row.subjectId !== null)
+          previousSubjects.add(row.subjectId);
+      });
+    });
+  const newSubjects = used.filter((id) => !previousSubjects.has(id));
   let versionId: number;
   if (open) {
     versionId = open.id;
@@ -270,14 +289,22 @@ export function transferBreakdown(
       .where(eq(projectBreakdownRows.versionId, versionId))
       .run();
     db.update(projectBreakdownVersions)
-      .set({ aggregateRunId: aggregate.run?.id ?? null })
+      .set({
+        aggregateRunId: aggregate.run?.id ?? null,
+        newSubjectsJson: JSON.stringify(newSubjects),
+      })
       .where(eq(projectBreakdownVersions.id, versionId))
       .run();
   } else {
     const round = versions.length === 0 ? 1 : versions[0].round + 1;
     const created = db
       .insert(projectBreakdownVersions)
-      .values({ projectId, round, aggregateRunId: aggregate.run?.id ?? null })
+      .values({
+        projectId,
+        round,
+        aggregateRunId: aggregate.run?.id ?? null,
+        newSubjectsJson: JSON.stringify(newSubjects),
+      })
       .returning()
       .get();
     versionId = created.id;
@@ -370,11 +397,10 @@ export function confirmBreakdownVersion(
     .set({ confirmed: 1 })
     .where(eq(projectBreakdownVersions.id, versionId))
     .run();
-  return (
-    db
-      .select()
-      .from(projectBreakdownVersions)
-      .where(eq(projectBreakdownVersions.id, versionId))
-      .get() ?? null
-  );
+  const row = db
+    .select()
+    .from(projectBreakdownVersions)
+    .where(eq(projectBreakdownVersions.id, versionId))
+    .get();
+  return row === undefined ? null : toBreakdownVersion(row);
 }
