@@ -7,6 +7,7 @@ import {
   buildBreakdownRows,
   collectSubjectOrder,
   collectUnits,
+  mergeSubjectOrder,
   roundQuantity,
   toFullWidth,
   toHalfWidth,
@@ -211,6 +212,24 @@ describe("内訳書の行づくり", () => {
     const items = [item({}), item({ id: 2, subjectId: 2, unit: "m2" })];
     expect(collectSubjectOrder(items, subjects)).toEqual([1, 2]);
     expect(collectUnits(items)).toEqual(["m3", "m2"]);
+  });
+
+  it("新しい科目は科目マスターの並びで直前の科目の直後に入る（後ろに並べない）", () => {
+    const list = [
+      { id: 1, name: "A", displayOrder: 1 },
+      { id: 2, name: "B", displayOrder: 2 },
+      { id: 3, name: "C", displayOrder: 3 },
+      { id: 4, name: "D", displayOrder: 4 },
+    ];
+    // 並びそのまま：1回目に無いD(4)はC(3)の直後
+    expect(mergeSubjectOrder([1, 3], [1, 3, 4], list)).toEqual([1, 3, 4]);
+    // 新しい科目どうしも科目マスターの順で入る
+    expect(mergeSubjectOrder([1, 3], [1, 2, 3, 4], list)).toEqual([1, 2, 3, 4]);
+    // 並びを動かしている場合：覚えた並び [3,1]（C→A）。新しいB(2)は
+    // 科目マスター順で直前のA(1)の直後（前後の科目から位置を決める）
+    expect(mergeSubjectOrder([3, 1], [2], list)).toEqual([3, 1, 2]);
+    // どの既存科目より前なら先頭
+    expect(mergeSubjectOrder([2, 3], [1, 2, 3], list)).toEqual([1, 2, 3]);
   });
 });
 

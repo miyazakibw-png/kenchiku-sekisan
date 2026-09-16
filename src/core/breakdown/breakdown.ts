@@ -538,3 +538,32 @@ export function collectSubjectOrder(
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .map((subject) => subject.id);
 }
+
+/**
+ * 工種科目の並びに新しい科目を入れる。
+ * 今までの並び（動かした分も含めて覚えたもの）を基準に、新しい科目は
+ * 科目マスターの並びで直前に来る科目の直後へ入れる（前後の科目から位置を決める。
+ * どの既存科目より前なら先頭）。
+ */
+export function mergeSubjectOrder(
+  storedOrder: readonly number[],
+  usedIds: readonly number[],
+  subjects: readonly BreakdownSubject[],
+): number[] {
+  const orderById = new Map(
+    subjects.map((subject) => [subject.id, subject.displayOrder]),
+  );
+  const order = [...storedOrder];
+  usedIds
+    .filter((id) => !order.includes(id))
+    .forEach((id) => {
+      const key = orderById.get(id) ?? Number.MAX_SAFE_INTEGER;
+      let insertAt = 0;
+      order.forEach((existing, index) => {
+        const existingKey = orderById.get(existing) ?? Number.MAX_SAFE_INTEGER;
+        if (existingKey < key) insertAt = index + 1;
+      });
+      order.splice(insertAt, 0, id);
+    });
+  return order;
+}

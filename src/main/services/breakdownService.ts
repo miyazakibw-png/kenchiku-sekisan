@@ -15,6 +15,7 @@ import {
   buildBreakdownRows,
   collectSubjectOrder,
   collectUnits,
+  mergeSubjectOrder,
   DEFAULT_BREAKDOWN_SETTINGS,
   type BreakdownSettings,
   type BreakdownSourceItem,
@@ -247,10 +248,8 @@ export function transferBreakdown(
   // （その回で使わなかった科目・単位も並びから消さない）。
   const stored = getBreakdownSettings(db, projectId);
   const used = collectSubjectOrder(items, subjects);
-  const subjectOrder = [
-    ...stored.subjectOrder,
-    ...used.filter((id) => !stored.subjectOrder.includes(id)),
-  ];
+  // 新しい科目は、科目マスターの並びで直前に来る科目の直後へ入れる（後ろに並べない）
+  const subjectOrder = mergeSubjectOrder(stored.subjectOrder, used, subjects);
   const units = collectUnits(items);
   const unitOrder = [
     ...stored.unitOrder,
