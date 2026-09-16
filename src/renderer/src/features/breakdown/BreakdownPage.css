@@ -112,6 +112,25 @@
   white-space: nowrap;
 }
 
+/* 通常の内訳書の入力欄も表のまま見せる（比較画面と同じ） */
+.breakdown-page table.breakdown td input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.breakdown-page table.breakdown td.qty input,
+.breakdown-page table.breakdown td.unit input {
+  text-align: right;
+}
+
+.breakdown-page table.breakdown td input:focus {
+  outline: 1px solid #4a90d9;
+}
+
 .breakdown-page table.breakdown tr.subject td {
   background: #eee;
   font-weight: bold;

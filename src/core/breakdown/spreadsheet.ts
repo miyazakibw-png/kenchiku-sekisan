@@ -9,7 +9,7 @@ import {
   type XlsxCell,
   type XlsxSheet,
 } from "../export/xlsx";
-import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
+import { amountOf, BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 
 export interface SheetData {
   name: string;
@@ -121,7 +121,7 @@ function detailBlocks(
       numberCell(lower === null ? null : lower.quantity),
       textCell(lower === null ? "" : lower.unit),
       numberCell(lower === null ? null : lower.unitPrice),
-      numberCell(lower === null ? null : lower.amount),
+      numberCell(lower === null ? null : amountOf(lower)),
       wrapCell(
         text(
           (row) => row.remarksLower,
@@ -183,7 +183,7 @@ function detailBlocks(
         numberCell(row.quantity, border),
         textCell(row.unit, border),
         numberCell(row.unitPrice, border),
-        numberCell(row.amount, border),
+        numberCell(amountOf(row), border),
         textCell(row.remarksLower, border),
       ]);
       if (layout === BREAKDOWN_LAYOUT.oneLine || row.rowKind !== "note")
@@ -207,7 +207,7 @@ function detailBlocks(
       numberCell(row.quantity, "lower"),
       textCell(row.unit, "lower"),
       numberCell(row.unitPrice, "lower"),
-      numberCell(row.amount, "lower"),
+      numberCell(amountOf(row), "lower"),
       textCell(row.remarksLower, "lower"),
     ]);
     flush();

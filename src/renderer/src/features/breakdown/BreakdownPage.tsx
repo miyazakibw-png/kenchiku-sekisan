@@ -16,6 +16,7 @@ import type {
   Subject,
 } from "@shared/types";
 import {
+  amountOf,
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
 } from "../../../../core/breakdown/breakdown";
@@ -562,8 +563,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         inSubject = true;
         return;
       }
-      if (inSubject && row.amount !== null) {
-        total += row.amount;
+      if (inSubject && amountOf(row) !== null) {
+        total += amountOf(row) ?? 0;
         has = true;
       }
     });
@@ -853,7 +854,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       numberCell("p", lower.unitPrice, (value) =>
         setLower({ unitPrice: value }),
       ),
-      numberCell("a", lower.amount, (value) => setLower({ amount: value })),
+      numberCell("a", amountOf(lower), (value) => setLower({ amount: value })),
       textCell("r", "remarks", "remarks", lower.remarksLower, (value) =>
         setLower({ remarksLower: value }),
       ),
@@ -1427,7 +1428,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                       </td>
                       <td className="qty">
                         <NumberInput
-                          value={row.amount}
+                          value={amountOf(row)}
                           onCommit={(value) =>
                             updateMain(index, { amount: value })
                           }
@@ -1518,7 +1519,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                         <div className="upper" />
                         <div className="lower">
                           <NumberInput
-                            value={row.amount}
+                            value={amountOf(row)}
                             onCommit={(value) =>
                               updateMain(index, { amount: value })
                             }

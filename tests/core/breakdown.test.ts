@@ -422,15 +422,14 @@ describe("回どうしの比較", () => {
       subjects,
       DEFAULT_BREAKDOWN_SETTINGS,
     );
-    const amounts = new Map([
-      ["k1", 100],
-      ["k2", 50],
-    ]);
-    const rows = built.map((row) => ({
-      ...row,
-      amount:
-        row.rowKind === "detail" ? (amounts.get(row.masterKey) ?? null) : null,
-    }));
+    const rows = built.map((row) => {
+      // k1は金額を直接入力、k2は数量×単価で出る（どちらも小計に足す）
+      if (row.rowKind === "detail" && row.masterKey === "k1")
+        return { ...row, amount: 100 };
+      if (row.rowKind === "detail" && row.masterKey === "k2")
+        return { ...row, quantity: 2, unitPrice: 25 };
+      return row;
+    });
     const next = withSubjectSubtotals(rows);
     const subtotals = next.filter((row) => row.nameLower === "小計");
     // 科目Aだけ小計150（科目Bは金額が無いので出さない）

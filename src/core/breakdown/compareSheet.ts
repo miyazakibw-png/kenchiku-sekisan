@@ -6,7 +6,7 @@
 
 import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
-import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
+import { amountOf, BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 import { DEFAULT_PAGE_LAYOUT, type PageLayout } from "./spreadsheet";
 import type { BreakdownField } from "./compare";
 import {
@@ -174,7 +174,7 @@ function sideLines(
       row.quantity,
       row.unit,
       row.unitPrice,
-      row.amount,
+      amountOf(row),
       textOf(layout, row.remarksUpper, row.remarksLower),
     ),
   ];

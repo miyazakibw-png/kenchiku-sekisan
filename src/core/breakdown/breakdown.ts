@@ -344,8 +344,24 @@ function subjectSortKey(
 }
 
 /**
+ * 金額欄に出す金額。
+ * 直接入力があればそれを使い、無ければ数量×単価を出す。
+ */
+export function amountOf(row: {
+  quantity: number | null;
+  unitPrice: number | null;
+  amount: number | null;
+}): number | null {
+  if (row.amount !== null) return row.amount;
+  if (row.quantity !== null && row.unitPrice !== null) {
+    return row.quantity * row.unitPrice;
+  }
+  return null;
+}
+
+/**
  * 金額が入った科目の終わりに「小計」行を足す。
- * 画面では直接入力した金額を使い、科目ごとの合計金額を次の科目の前へ出す。
+ * 画面では直接入力した金額か数量×単価を使い、科目ごとの合計金額を次の科目の前へ出す。
  */
 export function withSubjectSubtotals(
   rows: readonly BreakdownRow[],
@@ -371,8 +387,8 @@ export function withSubjectSubtotals(
       next.push(row);
       return;
     }
-    if (inSubject && row.amount !== null) {
-      total += row.amount;
+    if (inSubject && amountOf(row) !== null) {
+      total += amountOf(row) ?? 0;
       has = true;
     }
     next.push(row);
