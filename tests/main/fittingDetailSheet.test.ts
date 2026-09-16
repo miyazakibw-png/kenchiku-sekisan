@@ -235,7 +235,7 @@ describe("建具明細作成表", () => {
     expect(settings.widthLabel).toBe("W");
     expect(settings.heightLabel).toBe("*H");
     expect(settings.depthLabel).toBe("*見込");
-    expect(settings.partSymbols?.some((item) => item.symbol === "Y[]")).toBe(
+    expect(settings.partSymbols?.some((item) => item.symbol === "AW[]")).toBe(
       true,
     );
     expect(settings.nameSymbols?.some((item) => item.symbol === "KBD")).toBe(

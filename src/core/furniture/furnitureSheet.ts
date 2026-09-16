@@ -58,6 +58,8 @@ export interface FurnitureSettings {
   partSymbols: FurnitureSymbol[];
   /** 名称（記号入力）の対応表 */
   nameSymbols: FurnitureSymbol[];
+  /** 建具明細作成表用：単位（記号入力）の対応表（表に無い文字はそのまま。古い保存には無い） */
+  unitSymbols?: FurnitureSymbol[];
   /** ハンガーパイプ用：形状（番号入力）の対応表（計上設定。例：1→(L型)。古い保存には無い） */
   shapeSymbols?: FurnitureSymbol[];
   /** ユニットバス用：加工手間(梁欠き)・(窓)の前後に付ける文字（古い保存には無い） */
@@ -274,15 +276,12 @@ export const defaultFittingDetailNameSymbols: FurnitureSymbol[] = [
   { symbol: "SDR", text: "外倒し連" },
 ];
 
-/** 建具明細作成表の部位（アルファベット+[]+数字で登録。[]には数字が入る）の初めの並び */
+/** 建具明細作成表の部位（アルファベット+[]+数字以降で登録。[]には数字以降が入る）の初めの並び */
 export const defaultFittingDetailPartSymbols: FurnitureSymbol[] = [
-  { symbol: "G[]", text: "玄関[]" },
-  { symbol: "R[]", text: "廊下[]" },
-  { symbol: "S[]", text: "洗面脱衣室[]" },
-  { symbol: "T[]", text: "トイレ[]" },
-  { symbol: "Y[]", text: "洋間[]" },
-  { symbol: "N[]", text: "納戸[]" },
-  { symbol: "SR[]", text: "サービスルーム[]" },
+  { symbol: "AD[]", text: "アルミドア[]" },
+  { symbol: "AW[]", text: "アルミ窓[]" },
+  { symbol: "SD[]", text: "スチールドア[]" },
+  { symbol: "LSD[]", text: "軽量スチール製ドア[]" },
 ];
 
 /** システムキッチンの部位（部屋名）の記号の初めの並び */
@@ -446,6 +445,7 @@ export function furnitureSettingsFor(
       nameSymbols: defaultFittingDetailNameSymbols.map((item) => ({
         ...item,
       })),
+      unitSymbols: [],
       ...patch,
     });
   if (hasFittingSymbol(kind))
@@ -694,16 +694,19 @@ export function patternSymbolText(
   if (key === "") return "";
   const exact = symbols.find((item) => symbolKey(item.symbol) === key);
   if (exact !== undefined) return exact.text;
-  const matched = /^([A-Z]+)[^A-Z0-9]*([0-9]+)$/.exec(key);
+  // 部位の記号は「最初のアルファベット＋数字以降の残り全部」に分ける（間の「-」等は無視。AW3A→AW+3A）
+  const matched = /^([A-Z]+)[^A-Z0-9]*([0-9].*)$/.exec(key);
   if (matched === null) return text;
-  const [, prefix, digits] = matched;
+  const [, prefix, rest] = matched;
   const found = symbols.find(
     (item) => symbolKey(item.symbol) === `${prefix}[]`,
   );
-  if (found === undefined) return text;
-  return found.text.includes("[]")
-    ? found.text.replace("[]", digits)
-    : `${found.text}${digits}`;
+  if (found !== undefined)
+    return found.text.includes("[]")
+      ? found.text.replace("[]", rest)
+      : `${found.text}${rest}`;
+  // 表に無いときは分解した記号をそのまま部位にする（AW3A→AW-3A）
+  return `${prefix}-${rest}`;
 }
 
 /** 数字欄を読む（全角も受ける） */
@@ -763,7 +766,9 @@ export function resolveFurnitureRows(
     if (row.detailNumber !== null) carried.detailNumber = row.detailNumber;
     else if (carried.detailNumber !== null)
       carried.detailNumber = bump(carried.detailNumber);
-    if (row.part.trim() !== "") carried.part = row.part;
+    // 部位は建具明細作成表では引き継がない（未入力はそのまま空欄＝名称だけの見出し行に使える）
+    if (row.part.trim() !== "" || isFittingDetailSheet(kind))
+      carried.part = row.part;
     if (!carriesName || row.nameSymbol.trim() !== "")
       carried.nameSymbol = row.nameSymbol;
     if (row.quantity.trim() !== "") carried.quantity = row.quantity;
@@ -935,11 +940,14 @@ export function partText(
     parts.push(
       `${settings.partPrefix}${isFittingDetailSheet(kind) ? patternSymbolText(settings.partSymbols, part) : part}${settings.partSuffix}`,
     );
-  const add = row.partAdd.trim();
-  if (add !== "")
-    parts.push(`${settings.addPrefix}${add}${settings.addSuffix}`);
-  const symbol = symbolText(settings.partSymbols, row.partSymbol);
-  if (symbol !== "") parts.push(symbol);
+  // 建具明細作成表の部位欄は1つだけ（+部位・+部位の記号は無い）
+  if (!isFittingDetailSheet(kind)) {
+    const add = row.partAdd.trim();
+    if (add !== "")
+      parts.push(`${settings.addPrefix}${add}${settings.addSuffix}`);
+    const symbol = symbolText(settings.partSymbols, row.partSymbol);
+    if (symbol !== "") parts.push(symbol);
+  }
   return parts.join("");
 }
 
@@ -965,7 +973,9 @@ export function buildDetail(
       : row.descriptionUpper,
     descriptionLower: sizeText(row, settings, kind, fittings),
     floorFormula: hasModel(kind) ? floorFormulaOf(row, settings) : undefined,
-    unit: resolved.unit,
+    unit: isFittingDetailSheet(kind)
+      ? symbolText(settings.unitSymbols ?? [], resolved.unit)
+      : resolved.unit,
     remarksUpper: "",
     remarksLower: row.remarksLower,
   };

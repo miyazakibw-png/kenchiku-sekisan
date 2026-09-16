@@ -617,6 +617,10 @@ export default function FurnitureSheetPage({
           saved.nameSymbols === undefined || saved.nameSymbols.length === 0
             ? base.nameSymbols
             : saved.nameSymbols,
+        unitSymbols:
+          saved.unitSymbols === undefined || saved.unitSymbols.length === 0
+            ? base.unitSymbols
+            : saved.unitSymbols,
       };
       setSheet(loaded);
       setRows(nextRows);
@@ -1151,6 +1155,8 @@ export default function FurnitureSheetPage({
   };
 
   const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
+  // この種類の表に無い入力欄は出さない（表によって組み立てる列が違うので、列の一覧を正とする）
+  const inputKeys = new Set(allInputColumns.map((column) => column.key));
   const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
   const withShape = hasShape(sheet?.kind ?? "furniture");
   const withModel = hasModel(sheet?.kind ?? "furniture");
@@ -1166,7 +1172,8 @@ export default function FurnitureSheetPage({
     : allInputColumns.filter((column) => visible(column.key));
 
   /** 行入力部の欄を出すか（紙には出さない） */
-  const showInput = (key: string): boolean => !printing && visible(key);
+  const showInput = (key: string): boolean =>
+    !printing && visible(key) && inputKeys.has(key as keyof FurnitureRow);
 
   /** 行入力部の見出し文字（この表で直した文字が優先。無ければ基準の文字、それも無ければもとの見出し） */
   const labelText = (key: string): string =>
@@ -1711,24 +1718,34 @@ export default function FurnitureSheetPage({
           <table>
             <tbody>
               <tr>
-                <td>部位の前後付加文字</td>
                 <td>
-                  <input
-                    lang="ja"
-                    value={settings.partPrefix}
-                    onChange={(event) =>
-                      changeSettings({ partPrefix: event.target.value })
-                    }
-                  />
-                  ＋部位＋
-                  <input
-                    lang="ja"
-                    value={settings.partSuffix}
-                    onChange={(event) =>
-                      changeSettings({ partSuffix: event.target.value })
-                    }
-                  />
+                  {isFittingDetail ? "部位の分解文字" : "部位の前後付加文字"}
                 </td>
+                {isFittingDetail ? (
+                  <td>
+                    <span className="hint">
+                      下の「部位の記号」表で変換（例：AW3A→AW-3A。「AW[]→アルミ窓[]」ならアルミ窓3A）
+                    </span>
+                  </td>
+                ) : (
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.partPrefix}
+                      onChange={(event) =>
+                        changeSettings({ partPrefix: event.target.value })
+                      }
+                    />
+                    ＋部位＋
+                    <input
+                      lang="ja"
+                      value={settings.partSuffix}
+                      onChange={(event) =>
+                        changeSettings({ partSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                )}
                 {!isFittingDetail && (
                   <>
                     <td>+部位の前後付加文字</td>
@@ -2034,6 +2051,13 @@ export default function FurnitureSheetPage({
               symbols={settings.nameSymbols}
               onChange={(nameSymbols) => changeSettings({ nameSymbols })}
             />
+            {isFittingDetail && (
+              <SymbolTable
+                title="単位の記号（表に無い文字はそのまま出ます）"
+                symbols={settings.unitSymbols ?? []}
+                onChange={(unitSymbols) => changeSettings({ unitSymbols })}
+              />
+            )}
             {withShape && (
               <SymbolTable
                 title="形状の記号（計上設定）"

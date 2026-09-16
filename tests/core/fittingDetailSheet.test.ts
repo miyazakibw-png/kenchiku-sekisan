@@ -57,17 +57,68 @@ describe("建具明細作成表", () => {
     expect(composedSymbolText(nameSymbols, "アルミ")).toBe("アルミ");
   });
 
-  it("部位はアルファベット+[]+数字。アルファベットと数字の間は「-」等自由", () => {
+  it("部位はアルファベット+[]+数字以降。アルファベットと数字の間は「-」等自由", () => {
     expect(patternSymbolText(partSymbols, "Y-1")).toBe("洋間1");
     expect(patternSymbolText(partSymbols, "Y1")).toBe("洋間1");
-    // 表示文字に[]が無ければ数字をそのまま後ろへ
+    // 最初のアルファベット＋数字以降の残り全部に分ける（AW-3A→AW+3A）
+    expect(patternSymbolText(partSymbols, "AW-3A")).toBe("アルミ窓3A");
     expect(patternSymbolText(partSymbols, "AW-3")).toBe("アルミ窓3");
-    // 表に無い文字・数字が無い記号はそのまま
+    // 表に無いときは分解した記号をそのまま部位にする（RM5→RM-5）
+    expect(patternSymbolText(partSymbols, "RM5")).toBe("RM-5");
     expect(patternSymbolText(partSymbols, "X-1")).toBe("X-1");
+    // 数字が無い記号はそのまま（完全一致の登録があれば変換）
+    expect(patternSymbolText(partSymbols, "US")).toBe("US");
     expect(patternSymbolText(partSymbols, "Y")).toBe("Y");
     // 完全一致の登録は記号→文字のまま
-    const exact: FurnitureSymbol[] = [{ symbol: "P1", text: "ピット" }];
+    const exact: FurnitureSymbol[] = [
+      { symbol: "US", text: "ユニットシャッター" },
+      { symbol: "P1", text: "ピット" },
+    ];
+    expect(patternSymbolText(exact, "US")).toBe("ユニットシャッター");
     expect(patternSymbolText(exact, "P1")).toBe("ピット");
+  });
+
+  it("部位欄は上の行を引き継がない（未入力はそのまま空欄。名称だけの見出し行に使える）", () => {
+    const rows = [
+      furnitureRow({ part: "AD1" }),
+      furnitureRow({ part: "" }),
+      furnitureRow({ part: "AW2" }),
+    ];
+    const resolved = resolveFurnitureRows(rows, "fittingDetail");
+    expect(resolved.map((row) => row.part)).toEqual(["AD1", "", "AW2"]);
+    // 家具計算書はこれまでどおり引き継ぐ
+    const furniture = resolveFurnitureRows(rows, "furniture");
+    expect(furniture.map((row) => row.part)).toEqual(["AD1", "AD1", "AW2"]);
+  });
+
+  it("明細の部位は部位欄だけで作る（+部位に入った文字は含めない）", () => {
+    const settings = furnitureSettingsFor("fittingDetail", {
+      partSymbols: [{ symbol: "AD[]", text: "アルミドア[]" }],
+      nameSymbols,
+    });
+    const rows = applyFurnitureDetails(
+      [furnitureRow({ part: "AD1", partAdd: "KBD", nameSymbol: "KBD" })],
+      settings,
+      "fittingDetail",
+    );
+    expect(rows[0].detail.partName).toBe("アルミドア1");
+    expect(rows[0].detail.name).toBe("片開きドア");
+  });
+
+  it("単位は記号表で変換（2行目以降は上と同じ。表に無い文字はそのまま）", () => {
+    const settings = furnitureSettingsFor("fittingDetail", {
+      unitSymbols: [{ symbol: "B", text: "本" }],
+    });
+    const rows = applyFurnitureDetails(
+      [
+        furnitureRow({ unit: "B" }),
+        furnitureRow({ unit: "" }),
+        furnitureRow({ unit: "枚" }),
+      ],
+      settings,
+      "fittingDetail",
+    );
+    expect(rows.map((row) => row.detail.unit)).toEqual(["本", "本", "枚"]);
   });
 
   it("名称IDは2行目以降+1（家具計算書の+0.01とは違う）", () => {
