@@ -7,6 +7,7 @@
 import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
 import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
+import { DEFAULT_PAGE_LAYOUT, type PageLayout } from "./spreadsheet";
 import type { BreakdownField } from "./compare";
 import {
   compareBlocksBySubject,
@@ -207,6 +208,19 @@ function titleRow(): XlsxCell[] {
   return [...HEADER.map(head), gapCell(), ...HEADER.map(head)];
 }
 
+/** 1ページの明細数。空欄や壊れた値のときは既定の数に戻す（内訳書と同じ） */
+function pageDetails(value: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
+/** 罫線だけの行（左右どちらも空欄） */
+function blankSide(border: XlsxBorder): XlsxCell[] {
+  return HEADER.map(() => ({ value: "", kind: "text" as const, border }));
+}
+
 export interface CompareSheetInput {
   /** 左（新しい回）の行。画面で開けた空行もそのまま渡す */
   left: readonly BreakdownRow[];
@@ -215,6 +229,8 @@ export interface CompareSheetInput {
   layout: number;
   leftTitle: string;
   rightTitle: string;
+  /** 1ページに引く罫線の数。内訳書単体の掃き出しと同じ設定を使う */
+  page?: PageLayout;
 }
 
 /** 比較のシート（1枚）を作る */
@@ -227,29 +243,67 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
     headerRow(input.leftTitle, input.rightTitle),
     titleRow(),
   ];
-  diffs.forEach((diff) => {
-    // 左（新しい回）だけ色を付ける
-    const left = sideLines(
-      diff.leftIndex === null ? null : leftBlocks[diff.leftIndex],
-      input.layout,
-      diff.changed,
-      diff.onlyLeft,
-    );
-    const right = sideLines(
-      diff.rightIndex === null ? null : rightBlocks[diff.rightIndex],
-      input.layout,
-      null,
-      false,
-    );
-    const count = Math.max(left.length, right.length);
-    for (let line = 0; line < count; line += 1) {
-      rows.push([
-        ...(left[line] ?? sideLines(null, input.layout, null, false)[line]),
-        gapCell(),
-        ...(right[line] ?? sideLines(null, input.layout, null, false)[line]),
-      ]);
+  // 内訳書単体と同じ行数指定：1ページ目は見出し行を含めて detailsPerPage 明細分、
+  // 2ページ目以降は detailsPerPageLater 明細分の罫線を引き、
+  // 工種科目が変わるところでは残りを空行で埋めて次のページから書き出す。
+  const page = input.page ?? DEFAULT_PAGE_LAYOUT;
+  const unit = twoRowPairs(input.layout) ? 2 : 1;
+  const firstPage =
+    pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
+  const laterPage =
+    pageDetails(
+      page.detailsPerPageLater,
+      DEFAULT_PAGE_LAYOUT.detailsPerPageLater,
+    ) * unit;
+  let remaining = firstPage - rows.length;
+  const fillPage = (): void => {
+    for (let count = 0; count < remaining; count += 1) {
+      const border: XlsxBorder =
+        unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
+      rows.push([...blankSide(border), gapCell(), ...blankSide(border)]);
     }
+    remaining = laterPage;
+  };
+  // 工種科目ごとのかたまりに分ける（科目が変わるところでページを改める）
+  const groups: (typeof diffs)[number][][] = [];
+  diffs.forEach((diff) => {
+    const isSubject =
+      (diff.leftIndex !== null &&
+        leftBlocks[diff.leftIndex].lower.rowKind === "subject") ||
+      (diff.rightIndex !== null &&
+        rightBlocks[diff.rightIndex].lower.rowKind === "subject");
+    if (isSubject || groups.length === 0) groups.push([]);
+    groups[groups.length - 1].push(diff);
   });
+  groups.forEach((group, index) => {
+    if (index > 0) fillPage();
+    group.forEach((diff) => {
+      // 左（新しい回）だけ色を付ける
+      const left = sideLines(
+        diff.leftIndex === null ? null : leftBlocks[diff.leftIndex],
+        input.layout,
+        diff.changed,
+        diff.onlyLeft,
+      );
+      const right = sideLines(
+        diff.rightIndex === null ? null : rightBlocks[diff.rightIndex],
+        input.layout,
+        null,
+        false,
+      );
+      const count = Math.max(left.length, right.length);
+      if (count > remaining) fillPage();
+      for (let line = 0; line < count; line += 1) {
+        rows.push([
+          ...(left[line] ?? sideLines(null, input.layout, null, false)[line]),
+          gapCell(),
+          ...(right[line] ?? sideLines(null, input.layout, null, false)[line]),
+        ]);
+        remaining -= 1;
+      }
+    });
+  });
+  fillPage();
   return {
     name: "比較",
     columnWidths: [...WIDTHS, GAP_WIDTH, ...WIDTHS],

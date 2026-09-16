@@ -89,8 +89,8 @@ describe("比較のエクセル掃き出し", () => {
       leftTitle: "2回目",
       rightTitle: "1回目",
     });
-    // 見出し・明細ともに2行ずつ＝かたまりの数×2
-    expect(sheet.rows.length).toBe(2 + 2 * 2);
+    // 内訳書単体と同じく1ページの行数（17明細×2行）まで空行で埋める
+    expect(sheet.rows.length).toBe(17 * 2);
     // 見出しは下の行に出し、右の明細と高さがそろう
     expect(sheet.rows[2]?.[0]?.value).toBe("");
     expect(sheet.rows[3]?.[0]?.value).toBe("コンクリート工事");
@@ -109,7 +109,36 @@ describe("比較のエクセル掃き出し", () => {
       leftTitle: "2回目",
       rightTitle: "1回目",
     });
-    expect(sheet.rows.length).toBe(4);
+    // 1ページの行数（17明細）まで空行で埋める
+    expect(sheet.rows.length).toBe(17);
     expect(sheet.rows[3]?.[0]?.value).toBe("");
+  });
+
+  it("内訳書単体と同じく科目が変わるところでページを改める", () => {
+    const subject = (id: number, name: string): BreakdownRow =>
+      row({ rowKind: "subject", subjectId: id, subjectName: name });
+    const sheet = toCompareSheet({
+      left: [
+        subject(1, "A工事"),
+        row({}),
+        subject(2, "B工事"),
+        row({ subjectId: 2 }),
+      ],
+      right: [
+        subject(1, "A工事"),
+        row({}),
+        subject(2, "B工事"),
+        row({ subjectId: 2 }),
+      ],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+      page: { detailsPerPage: 17, detailsPerPageLater: 16 },
+    });
+    // 1ページ目17明細＋2ページ目16明細＝33行
+    expect(sheet.rows.length).toBe(17 + 16);
+    // B工事は次のページの先頭から
+    expect(sheet.rows[17]?.[0]?.value).toBe("B工事");
+    expect(sheet.rows[17]?.[8]?.value).toBe("B工事");
   });
 });

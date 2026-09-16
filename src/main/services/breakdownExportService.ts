@@ -69,6 +69,10 @@ export function buildExport(
         layout: settings.layout,
         leftTitle: compare?.leftTitle ?? "新しい内訳書",
         rightTitle: compare?.rightTitle ?? "前の内訳書",
+        page: {
+          detailsPerPage: settings.detailsPerPage,
+          detailsPerPageLater: settings.detailsPerPageLater,
+        },
       }),
       defaultName: `${projectName}_内訳書_比較.xlsx`,
     };

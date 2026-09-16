@@ -105,6 +105,38 @@ function unitsOf(
   return units;
 }
 
+/** 科目のかたまり（見出し＋明細）を科目順に並べ替える（確定した回を直接並べ替えるとき用） */
+function reorderBySubjectOrder(
+  rows: readonly BreakdownRowRecord[],
+  order: readonly number[],
+): BreakdownRowRecord[] {
+  const lead: BreakdownRowRecord[] = [];
+  const groups = new Map<number | null, BreakdownRowRecord[]>();
+  const sequence: (number | null)[] = [];
+  rows.forEach((row) => {
+    if (row.rowKind === "subject") {
+      if (!groups.has(row.subjectId)) {
+        groups.set(row.subjectId, []);
+        sequence.push(row.subjectId);
+      }
+      groups.get(row.subjectId)?.push(row);
+      return;
+    }
+    const last = sequence[sequence.length - 1];
+    if (last === undefined) lead.push(row);
+    else groups.get(last)?.push(row);
+  });
+  const rank = (id: number | null): number => {
+    if (id === null) return Number.MAX_SAFE_INTEGER;
+    const at = order.indexOf(id);
+    return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+  };
+  const sorted = [...sequence].sort((a, b) => rank(a) - rank(b));
+  const next: BreakdownRowRecord[] = [...lead];
+  sorted.forEach((id) => next.push(...(groups.get(id) ?? [])));
+  return next;
+}
+
 function blankRow(): BreakdownRowRecord {
   return {
     id: null,
@@ -361,11 +393,26 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         bodyRef.current.getBoundingClientRect().top;
   };
 
-  const moveSubject = (subjectId: number, step: number): Promise<void> => {
+  const moveSubject = async (
+    subjectId: number,
+    step: number,
+  ): Promise<void> => {
     const order = [...settings.subjectOrder];
     const index = order.indexOf(subjectId);
-    if (index < 0) return Promise.resolve();
-    return saveSettings({ subjectOrder: moveRow(order, index, step) });
+    if (index < 0) return;
+    const nextOrder = moveRow(order, index, step);
+    if (nextOrder[index] === subjectId) return;
+    await saveSettings({ subjectOrder: nextOrder });
+    // 確定した回は作り直さないので、科目のかたまりごと行を並べ替えて保存する
+    if (view.version && view.version.confirmed !== 0) {
+      const nextRows = reorderBySubjectOrder(view.rows, nextOrder);
+      setView((current) => ({ ...current, rows: nextRows }));
+      setLeftRows(nextRows);
+      await window.sekisan.saveBreakdownRows({
+        versionId: view.version.id,
+        rows: nextRows,
+      });
+    }
   };
 
   // 選んだ科目を続けて動かす（↑↓ボタンの場所は動かない）
