@@ -24,7 +24,30 @@ export const NAME_PATTERN = {
   withPart: 2,
   /** 部位＋半角「：」＋名称 */
   withPartColon: 3,
+  /** 部位＋全角「：」＋名称 */
+  withPartFullColon: 4,
 } as const;
+
+/**
+ * 名称欄の設定どおりに部位と名称をつなぐ。
+ * 「そのまま」のときは null（つなげず上下に分けて出す）。
+ */
+function joinPartAndName(
+  partName: string,
+  name: string,
+  namePattern: number,
+): string | null {
+  const separator =
+    namePattern === NAME_PATTERN.withPart
+      ? " "
+      : namePattern === NAME_PATTERN.withPartColon
+        ? ":"
+        : namePattern === NAME_PATTERN.withPartFullColon
+          ? "："
+          : null;
+  if (separator === null) return null;
+  return partName === "" ? name : `${partName}${separator}${name}`.trim();
+}
 
 export interface TextReplacement {
   from: string;
@@ -495,16 +518,11 @@ function detailRows(
   row.masterKey = item.masterKey;
   row.aggregateItemId = item.id;
   row.partName = item.partName;
-  if (
-    settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-    settings.namePattern === NAME_PATTERN.withPart ||
-    settings.namePattern === NAME_PATTERN.withPartColon
-  ) {
-    const separator =
-      settings.namePattern === NAME_PATTERN.withPartColon ? ":" : " ";
+  const joined = joinPartAndName(partName, name, settings.namePattern);
+  if (settings.layout === BREAKDOWN_LAYOUT.oneLine || joined !== null) {
     row.nameUpper = "";
     row.nameLower =
-      partName === "" ? name : `${partName}${separator}${name}`.trim();
+      joined ?? (partName === "" ? name : `${partName} ${name}`.trim());
   } else {
     row.nameUpper = partName;
     row.nameLower = name;
@@ -559,15 +577,10 @@ function twoRowDetail(
   upper.remarksLower = item.remarksUpper;
 
   const lower = line("detail");
-  if (
-    settings.namePattern === NAME_PATTERN.withPart ||
-    settings.namePattern === NAME_PATTERN.withPartColon
-  ) {
-    const separator =
-      settings.namePattern === NAME_PATTERN.withPartColon ? ":" : " ";
-    // 名称欄を「部位 名称」「部位：名称」にまとめる（部位は上段の名称欄には出さない）
-    lower.nameLower =
-      partName === "" ? name : `${partName}${separator}${name}`.trim();
+  // 名称欄を「部位 名称」「部位：名称」にまとめる（部位は上段の名称欄には出さない）
+  const joined = joinPartAndName(partName, name, settings.namePattern);
+  if (joined !== null) {
+    lower.nameLower = joined;
   } else {
     upper.nameLower = partName;
     lower.nameLower = name;
