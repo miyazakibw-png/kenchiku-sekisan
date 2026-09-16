@@ -91,6 +91,38 @@ describe("建具明細作成表", () => {
     expect(furniture.map((row) => row.part)).toEqual(["AD1", "AD1", "AW2"]);
   });
 
+  it("数量欄も上の行を引き継がない（全行入力）", () => {
+    const rows = [
+      furnitureRow({ quantity: "3" }),
+      furnitureRow({ quantity: "" }),
+      furnitureRow({ quantity: "1" }),
+    ];
+    const resolved = resolveFurnitureRows(rows, "fittingDetail");
+    expect(resolved.map((row) => row.quantity)).toEqual(["3", "", "1"]);
+    // 家具計算書はこれまでどおり引き継ぐ
+    const furniture = resolveFurnitureRows(rows, "furniture");
+    expect(furniture.map((row) => row.quantity)).toEqual(["3", "3", "1"]);
+  });
+
+  it("表に無い部位記号の間の文字は設定で変えられる（はじめは「-」）", () => {
+    const settings = furnitureSettingsFor("fittingDetail", {
+      partSeparator: "・",
+    });
+    const rows = applyFurnitureDetails(
+      [furnitureRow({ part: "RM5" })],
+      settings,
+      "fittingDetail",
+    );
+    expect(rows[0].detail.partName).toBe("RM・5");
+    const def = furnitureSettingsFor("fittingDetail");
+    const rows2 = applyFurnitureDetails(
+      [furnitureRow({ part: "RM5" })],
+      def,
+      "fittingDetail",
+    );
+    expect(rows2[0].detail.partName).toBe("RM-5");
+  });
+
   it("明細の部位は部位欄だけで作る（+部位に入った文字は含めない）", () => {
     const settings = furnitureSettingsFor("fittingDetail", {
       partSymbols: [{ symbol: "AD[]", text: "アルミドア[]" }],

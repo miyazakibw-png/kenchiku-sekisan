@@ -75,6 +75,8 @@ export interface FurnitureSettings {
   fittingPrefix?: string;
   fittingSeparator?: string;
   fittingSuffix?: string;
+  /** 建具明細作成表用：部位を分解して出すときアルファベットと数字以降の間に入れる文字（無いときは「-」。古い保存には無い） */
+  partSeparator?: string;
   /** 建具明細作成表用：計算書（積算入力）から建具表へ転記された分を変換するか（無いときは変換する） */
   convertEstimate?: boolean;
   /** 建具明細作成表用：建具入力部に入れた分を変換するか（無いときは変換する。家具計算書からの転記分は常に変換しない） */
@@ -446,6 +448,7 @@ export function furnitureSettingsFor(
         ...item,
       })),
       unitSymbols: [],
+      partSeparator: "-",
       ...patch,
     });
   if (hasFittingSymbol(kind))
@@ -689,6 +692,7 @@ export function composedSymbolText(
 export function patternSymbolText(
   symbols: FurnitureSymbol[],
   text: string,
+  separator = "-",
 ): string {
   const key = symbolKey(text);
   if (key === "") return "";
@@ -705,8 +709,8 @@ export function patternSymbolText(
     return found.text.includes("[]")
       ? found.text.replace("[]", rest)
       : `${found.text}${rest}`;
-  // 表に無いときは分解した記号をそのまま部位にする（AW3A→AW-3A）
-  return `${prefix}-${rest}`;
+  // 表に無いときは分解した記号をそのまま部位にする（AW3A→AW-3A。間の文字は設定で変えられる）
+  return `${prefix}${separator}${rest}`;
 }
 
 /** 数字欄を読む（全角も受ける） */
@@ -771,7 +775,9 @@ export function resolveFurnitureRows(
       carried.part = row.part;
     if (!carriesName || row.nameSymbol.trim() !== "")
       carried.nameSymbol = row.nameSymbol;
-    if (row.quantity.trim() !== "") carried.quantity = row.quantity;
+    // 数量も建具明細作成表では引き継がない（全行入力）
+    if (row.quantity.trim() !== "" || isFittingDetailSheet(kind))
+      carried.quantity = row.quantity;
     if (row.unit.trim() !== "") carried.unit = row.unit;
     if (row.detail.formula.trim() !== "") carried.formula = row.detail.formula;
     return { ...carried };
@@ -938,7 +944,7 @@ export function partText(
   const part = resolved.part.trim();
   if (part !== "")
     parts.push(
-      `${settings.partPrefix}${isFittingDetailSheet(kind) ? patternSymbolText(settings.partSymbols, part) : part}${settings.partSuffix}`,
+      `${settings.partPrefix}${isFittingDetailSheet(kind) ? patternSymbolText(settings.partSymbols, part, settings.partSeparator ?? "-") : part}${settings.partSuffix}`,
     );
   // 建具明細作成表の部位欄は1つだけ（+部位・+部位の記号は無い）
   if (!isFittingDetailSheet(kind)) {

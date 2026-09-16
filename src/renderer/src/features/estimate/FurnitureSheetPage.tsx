@@ -1724,7 +1724,19 @@ export default function FurnitureSheetPage({
                 {isFittingDetail ? (
                   <td>
                     <span className="hint">
-                      下の「部位の記号」表で変換（例：AW3A→AW-3A。「AW[]→アルミ窓[]」ならアルミ窓3A）
+                      アルファベットと数字以降の間に入れる文字＝
+                    </span>
+                    <input
+                      lang="ja"
+                      value={settings.partSeparator ?? "-"}
+                      onChange={(event) =>
+                        changeSettings({ partSeparator: event.target.value })
+                      }
+                    />
+                    <span className="hint">
+                      （入力は「-」等何でも同じ変換。下の「部位の記号」表に無い記号はこの文字で出す：AW3A→AW
+                      {settings.partSeparator ?? "-"}
+                      3A。「AW[]→アルミ窓[]」ならアルミ窓3A）
                     </span>
                   </td>
                 ) : (
