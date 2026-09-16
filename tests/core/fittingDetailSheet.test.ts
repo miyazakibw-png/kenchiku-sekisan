@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { aggregateItems } from "../../src/core/aggregate/aggregate";
 import {
   applyFurnitureDetails,
+  columnCellTexts,
   composedSymbolText,
   entriesFromFurnitureSheet,
+  furnitureCellQuantity,
   furnitureRow,
   furnitureSettingsFor,
   hasTripleWidth,
@@ -249,6 +251,26 @@ describe("建具明細作成表", () => {
       undefined,
       undefined,
     ]);
+  });
+
+  it("縦明細：「-」だけの欄は計算なし。引き継ぎも「-」から", () => {
+    const rows = [
+      furnitureRow({ values: { c1: "W*2" } }),
+      furnitureRow({ values: { c1: "-" } }),
+      furnitureRow({}),
+    ];
+    // 「-」も式と同じく上から引き継ぐ（その行は何も計算しない印）
+    expect(columnCellTexts(rows, "c1", "fittingDetail")).toEqual([
+      "W*2",
+      "-",
+      "-",
+    ]);
+    const resolved = resolveFurnitureRows(rows, "fittingDetail");
+    expect(furnitureCellQuantity(rows[1], resolved[1], "-")).toBeNull();
+    expect(furnitureCellQuantity(rows[2], resolved[2], "-")).toBeNull();
+    // 全角のダッシュも同じ
+    expect(furnitureCellQuantity(rows[1], resolved[1], "ー")).toBeNull();
+    expect(furnitureCellQuantity(rows[1], resolved[1], "－")).toBeNull();
   });
 
   it("W・H・Dは摘要下段へ「W*H*見込」の形で出る", () => {

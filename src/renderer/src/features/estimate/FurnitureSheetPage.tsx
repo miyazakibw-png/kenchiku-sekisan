@@ -34,6 +34,7 @@ import {
   floorAreaOf,
   isEmptyFurnitureColumn,
   isFittingDetailSheet,
+  NO_CALC_CELL,
   pasteFurnitureRows,
   resolveFurnitureRows,
   revertFurnitureDetail,
@@ -2669,7 +2670,9 @@ export default function FurnitureSheetPage({
                       <td
                         key={column.id}
                         className={
-                          text !== "" && value === null
+                          text !== "" &&
+                          value === null &&
+                          !NO_CALC_CELL.test(text.trim())
                             ? "num vcell error"
                             : "num vcell"
                         }
@@ -2684,7 +2687,7 @@ export default function FurnitureSheetPage({
                           placeholder={raw === "" ? text : ""}
                           title={
                             withFitting
-                              ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）"
+                              ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）「-」だけでその行は計算なし"
                               : withModel
                                 ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
                                 : tripleWidth

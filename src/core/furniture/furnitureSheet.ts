@@ -585,12 +585,17 @@ export function sizeFormula(text: string): string {
  * タテ方向の明細のマス1つ分の値。
  * 数字そのままでも計算式でもよく、計算式では行のW・H・D（mmをmに直したもの）が使える。
  */
+/** 「-」だけの欄は「計算なし」（半角の - ・全角の ー ― − － など） */
+export const NO_CALC_CELL = /^[-−－ー―‐‑‒–—]+$/u;
+
 export function furnitureCellValue(
   row: FurnitureRow,
   text: string,
 ): number | null {
   const trimmed = text.trim();
   if (trimmed === "") return null;
+  // 計算なし：何も計算しない。建具明細作成表では「-」が式の引き継ぎ元にもなる
+  if (NO_CALC_CELL.test(trimmed)) return null;
   if (!/[ＷｗwＨｈhＤｄdWHD]|[FfＦｆ][AaＡａ]/.test(trimmed))
     return cellValue(trimmed);
   const computed = evaluateFormula(sizeFormula(trimmed), sizeVariables(row));
