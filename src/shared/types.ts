@@ -450,6 +450,32 @@ export interface FurnitureSheetSummary {
   updatedAt: string;
 }
 
+/** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト。1工事に1つ） */
+export interface FireproofSheetRecord {
+  id: number;
+  projectId: number;
+  floorCount: number;
+  /** 柱リスト（FireproofFloorList） */
+  columnsJson: string;
+  /** 梁リスト（FireproofFloorList） */
+  beamsJson: string;
+  /** 階共通リスト（FireproofCommonRowの配列） */
+  commonJson: string;
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: string;
+  note: string;
+}
+
+export interface SaveFireproofSheetRequest {
+  id: number;
+  floorCount: number;
+  columnsJson: string;
+  beamsJson: string;
+  commonJson: string;
+  estimateJson: string;
+  note: string;
+}
+
 /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
 export interface PitSheet {
   id: number;
@@ -781,7 +807,10 @@ export interface SaveAggregateEditsRequest {
 export interface EstimateRowCheckCell {
   partName: string;
   name: string;
+  /** 倍率をかけた計上数量 */
   quantity: number;
+  /** 倍率をかける前の計算書そのままの数量 */
+  baseQuantity: number;
 }
 
 export interface EstimateRowCheck {
@@ -819,6 +848,12 @@ export interface FormworkTransferView {
 export interface SaveFormworkRulesRequest {
   projectId: number;
   rules: FormworkTransferRule[];
+}
+
+/** ④の表で並び替えた順を転記入力表へ反映する */
+export interface ReorderFormworkRowsRequest {
+  projectId: number;
+  rows: FormworkTransferRow[];
 }
 
 /** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
@@ -899,10 +934,7 @@ export interface SaveBreakdownRowsRequest {
 
 /** 掃き出しの種類 */
 export type BreakdownExportKind =
-  | "bcs"
-  | "excelAll"
-  | "excelBySubject"
-  | "excelCompare";
+  "bcs" | "excelAll" | "excelBySubject" | "excelCompare";
 
 export interface BreakdownExportRequest {
   projectId: number;
@@ -955,6 +987,18 @@ export interface BackupResult {
   message: string;
 }
 
+/** 1物件だけの掃き出し・読み込みの結果 */
+export interface ProjectFileResult {
+  /** 取り消した場合は false */
+  done: boolean;
+  /** 書き出した／読み込んだファイル */
+  filePath: string | null;
+  /** 画面に出す説明 */
+  message: string;
+  /** 読み込んだ工事（書き出しのときは null） */
+  projectId: number | null;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;
@@ -983,4 +1027,20 @@ export interface SaveBasicMasterResult {
   masters: BasicMasters;
   /** 番号・名称の不備。1件でもあれば保存しない */
   errors: string[];
+}
+
+/** 画面の罫線1種類分の形（設定画面で直せる） */
+export interface LineStyleSetting {
+  /** 太さ（px） */
+  width: number;
+  /** 線の形（solid=実線 dashed=破線 dotted=点線） */
+  style: string;
+  /** 線の色（#rrggbb） */
+  color: string;
+}
+
+/** 画面の罫線の設定（thin=細い線＝表のマス目、thick=太い線＝まとまりの区切り） */
+export interface LineStyleSettings {
+  thin: LineStyleSetting;
+  thick: LineStyleSetting;
 }

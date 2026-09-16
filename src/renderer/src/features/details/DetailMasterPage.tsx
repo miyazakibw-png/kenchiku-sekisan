@@ -23,7 +23,9 @@ import {
   updateRow,
   type DraftRow,
 } from "./rowOperations";
-import UnitInput, { UnitOptions } from "../../components/UnitInput";
+import { UnitOptions } from "../../components/UnitInput";
+import PickInput, { type PickEntry } from "../../components/PickInput";
+import { resolveMasterName } from "@shared/masters";
 import MasterCodeInput, {
   MasterCodeOptions,
 } from "../../components/MasterCodeInput";
@@ -144,6 +146,16 @@ export default function DetailMasterPage({
   const columns = useMemo(
     () => buildDetailColumns(options.materialCategories, options.units),
     [options.materialCategories, options.units],
+  );
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      options.units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [options.units],
   );
 
   /**
@@ -972,10 +984,18 @@ export default function DetailMasterPage({
                     {...cellProps(index, 7)}
                     className={`col-unit ${cellProps(index, 7).className}`}
                   >
-                    <UnitInput
-                      units={options.units}
+                    <PickInput
+                      entries={unitEntries}
+                      halfWidth
                       value={row.unit}
-                      onChange={(value) => handleChange(index, "unit", value)}
+                      title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                      onCommit={(text) =>
+                        handleChange(
+                          index,
+                          "unit",
+                          resolveMasterName(options.units, text),
+                        )
+                      }
                     />
                   </td>
                   <td {...cellProps(index, 9)}>

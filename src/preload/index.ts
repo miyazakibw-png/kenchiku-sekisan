@@ -11,6 +11,7 @@ import type {
   AssemblyMasterOptions,
   BackupInfo,
   BackupResult,
+  ProjectFileResult,
   BasicMasters,
   SaveBasicMasterRequest,
   SaveBasicMasterResult,
@@ -25,6 +26,7 @@ import type {
   DetailChangeLog,
   EstimateRow,
   ImeMode,
+  LineStyleSettings,
   FinishAssembly,
   Fitting,
   FittingSource,
@@ -51,12 +53,15 @@ import type {
   SaveFittingsRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
+  ReorderFormworkRowsRequest,
   SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
   SaveMiscSheetRequest,
   SaveFurnitureSheetRequest,
   SavePitSheetRequest,
+  FireproofSheetRecord,
+  SaveFireproofSheetRequest,
   RoomSheet,
   SaveProjectRequest,
   SaveRoomSheetRequest,
@@ -239,11 +244,7 @@ const api = {
     projectId: number,
     sourceIds: number[],
   ): Promise<FurnitureSheetSummary[]> =>
-    ipcRenderer.invoke(
-      IPC.furnitureSheetCopyFromProject,
-      projectId,
-      sourceIds,
-    ),
+    ipcRenderer.invoke(IPC.furnitureSheetCopyFromProject, projectId, sourceIds),
   saveFurnitureSheetList: (
     projectId: number,
     sheets: FurnitureSheetSummary[],
@@ -251,6 +252,9 @@ const api = {
     ipcRenderer.invoke(IPC.furnitureSheetListSave, projectId, sheets),
   getFurnitureSheet: (sheetId: number): Promise<FurnitureSheet> =>
     ipcRenderer.invoke(IPC.furnitureSheetGet, sheetId),
+  /** 建具明細作成表を取る（無ければ作る。1工事に1枚。建具表と取り合った状態で返る） */
+  ensureFittingDetailSheet: (projectId: number): Promise<FurnitureSheet> =>
+    ipcRenderer.invoke(IPC.fittingDetailSheetEnsure, projectId),
   saveFurnitureSheet: (
     request: SaveFurnitureSheetRequest,
   ): Promise<FurnitureSheet> =>
@@ -267,6 +271,13 @@ const api = {
     ipcRenderer.invoke(IPC.pitSheetGet, estimateRowId),
   savePitSheet: (request: SavePitSheetRequest): Promise<PitSheet> =>
     ipcRenderer.invoke(IPC.pitSheetSave, request),
+  /** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト） */
+  getFireproofSheet: (projectId: number): Promise<FireproofSheetRecord> =>
+    ipcRenderer.invoke(IPC.fireproofSheetGet, projectId),
+  saveFireproofSheet: (
+    request: SaveFireproofSheetRequest,
+  ): Promise<FireproofSheetRecord> =>
+    ipcRenderer.invoke(IPC.fireproofSheetSave, request),
   /** 転記入力表（集計書兼工事マスターへ直接計上する1明細入力） */
   listTransferRows: (projectId: number): Promise<TransferRow[]> =>
     ipcRenderer.invoke(IPC.transferRowsList, projectId),
@@ -304,6 +315,11 @@ const api = {
     ipcRenderer.invoke(IPC.formworkTransferSaveRules, request),
   runFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferRun, projectId),
+  /** ④の表で並び替えた順を転記入力表へ反映する */
+  reorderFormworkRows: (
+    request: ReorderFormworkRowsRequest,
+  ): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferReorder, request),
   /** 内訳書（集計書兼工事マスターからの変換転記） */
   getBreakdown: (
     projectId: number,
@@ -332,6 +348,31 @@ const api = {
     request: BreakdownExportRequest,
   ): Promise<BreakdownExportResult> =>
     ipcRenderer.invoke(IPC.breakdownExport, request),
+  /** 画面の罫線（細い線・太い線）の設定。未設定なら null */
+  getLineStyles: (): Promise<LineStyleSettings | null> =>
+    ipcRenderer.invoke(IPC.lineStylesGet),
+  saveLineStyles: (settings: LineStyleSettings): Promise<LineStyleSettings> =>
+    ipcRenderer.invoke(IPC.lineStylesSave, settings),
+  /** 罫線の設定が変わったとき（他ウィンドウで直した場合にも追従する） */
+  onLineStylesChanged: (
+    listener: (settings: LineStyleSettings) => void,
+  ): void => {
+    ipcRenderer.on(IPC.lineStylesChanged, (_event, settings) =>
+      listener(settings as LineStyleSettings),
+    );
+  },
+  /** チェック表：管理用部位の番号 → 計上する部位番号の並び（例 "10-19"） */
+  getCheckSheetPartMap: (): Promise<Record<string, string>> =>
+    ipcRenderer.invoke(IPC.checkSheetPartMapGet),
+  saveCheckSheetPartMap: (
+    map: Record<string, string>,
+  ): Promise<Record<string, string>> =>
+    ipcRenderer.invoke(IPC.checkSheetPartMapSave, map),
+  /** チェック表に出す列（管理用部位の番号）。未設定なら null＝使われた列だけ出す */
+  getCheckSheetShownParts: (): Promise<number[] | null> =>
+    ipcRenderer.invoke(IPC.checkSheetShownPartsGet),
+  saveCheckSheetShownParts: (partIds: number[]): Promise<number[]> =>
+    ipcRenderer.invoke(IPC.checkSheetShownPartsSave, partIds),
   /** 取り合いの欠除：この面積以下は差し引かない */
   getDeductionLimit: (): Promise<number> =>
     ipcRenderer.invoke(IPC.deductionLimitGet),
@@ -379,6 +420,15 @@ const api = {
   /** 保存した積算データから復元 */
   restoreBackup: (): Promise<BackupResult> =>
     ipcRenderer.invoke(IPC.backupRestore),
+  /** 選んだ1工事だけを1ファイルに掃き出す（パソコン間のデータ移動用） */
+  exportProjectFile: (projectId: number): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileExport, projectId),
+  /** 1物件の掃き出しファイルを読み込む */
+  importProjectFile: (): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileImport),
+  /** 選んだ工事を消す（計算書・集計なども全部いっしょに消える） */
+  deleteProject: (projectId: number): Promise<ProjectFileResult> =>
+    ipcRenderer.invoke(IPC.projectFileDelete, projectId),
   /** 今の画面を選んだ用紙でプリンターへ */
   printPaper: (paper: PrintPaper): Promise<PrintResult> =>
     ipcRenderer.invoke(IPC.printPaper, paper),

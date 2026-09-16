@@ -66,7 +66,7 @@ table.estimate {
 
 table.estimate th,
 table.estimate td {
-  border: 1px solid #c9ced6;
+  border: var(--line-thin);
   padding: 1px 4px;
   font-size: 12px;
 }

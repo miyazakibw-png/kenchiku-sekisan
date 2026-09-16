@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AggregateDetail,
   AggregateItem,
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  MasterOptions,
   ProjectSummary,
   Subject,
 } from "@shared/types";
-import { checkQuantityUnit } from "../../../../core/aggregate/aggregate";
+import {
+  aggregateQuantityText,
+  checkQuantityUnit,
+} from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
+import { resolveMasterName } from "@shared/masters";
+import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
@@ -18,6 +25,8 @@ import "./AggregatePage.css";
 interface Props {
   project: ProjectSummary;
   onBack: () => void;
+  /** 数量根拠の1件から、その拾いを書いた計算書（出所）を開く */
+  onOpenSource?: (detail: AggregateDetail) => void;
 }
 
 const COLUMNS = [
@@ -138,7 +147,11 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
  * 計算書（部屋別・軸組・汎用）と転記入力表から集計した明細を、科目→部位Ⅰ→部位Ⅱの順に並べる。
  * 行をクリックすると数量根拠（部屋別の内訳）を表示する。
  */
-export default function AggregatePage({ project, onBack }: Props): JSX.Element {
+export default function AggregatePage({
+  project,
+  onBack,
+  onOpenSource,
+}: Props): JSX.Element {
   const [view, setView] = useState<AggregateView>({
     run: null,
     items: [],
@@ -146,6 +159,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   });
   const [runs, setRuns] = useState<AggregateRun[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [units, setUnits] = useState<MasterOptions["units"]>([]);
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
@@ -176,6 +190,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   useEffect(() => {
     void (async () => {
       setSubjects(await window.sekisan.listSubjects(project.id));
+      setUnits((await window.sekisan.getMasterOptions(project.id)).units);
       await reload();
     })();
   }, [project.id, reload]);
@@ -251,6 +266,16 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   const lines = useMemo(
     () => buildLines(view.items, subjects),
     [subjects, view.items],
+  );
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [units],
   );
 
   /** 選んだ明細の数量根拠（合算前の1件ずつ） */
@@ -563,11 +588,20 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                       }
                     />
                   </td>
-                  <td className="number">{displayQuantity(item.quantity)}</td>
+                  <td className="number">
+                    {aggregateQuantityText(item.quantity, draft.unit)}
+                  </td>
                   <td>
-                    <input
+                    <PickInput
+                      entries={unitEntries}
+                      halfWidth
                       value={draft.unit}
-                      onChange={(e) => editItem(item, { unit: e.target.value })}
+                      title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                      onCommit={(text) =>
+                        editItem(item, {
+                          unit: resolveMasterName(units, text),
+                        })
+                      }
                     />
                   </td>
                   <td>
@@ -637,7 +671,20 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                 <tbody>
                   {basis.map((detail) => (
                     <tr key={detail.id}>
-                      <td>{sourceLabelOf(detail.sourceKind)}</td>
+                      <td className="source">
+                        {onOpenSource ? (
+                          <button
+                            type="button"
+                            className="link"
+                            title={`${sourceLabelOf(detail.sourceKind)} を開く`}
+                            onClick={() => onOpenSource(detail)}
+                          >
+                            📐 {sourceLabelOf(detail.sourceKind)}
+                          </button>
+                        ) : (
+                          sourceLabelOf(detail.sourceKind)
+                        )}
+                      </td>
                       <td>{`${detail.part2Raw} ${detail.part3}`.trim()}</td>
                       <td className="number">
                         {displayQuantity(detail.setTotal)}

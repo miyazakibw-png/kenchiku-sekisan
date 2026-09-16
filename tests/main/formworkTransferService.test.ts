@@ -18,6 +18,7 @@ import {
 import { runAggregation } from "../../src/main/services/aggregationService";
 import {
   getFormworkTransfer,
+  reorderFormworkTransfer,
   runFormworkTransfer,
   saveFormworkRules,
 } from "../../src/main/services/formworkTransferService";
@@ -176,10 +177,10 @@ describe("型枠転記", () => {
     const rows = listTransferRows(db, projectId);
     expect(rows).toHaveLength(3);
     expect(rows[0].name).toBe("手入力の明細");
-    // 型枠分類のタイトル行（部位Ⅰの代わり）
+    // 型枠分類のタイトル行（転記分は部位Ⅰ「仕上転記数量」ひとつにまとめる）
     expect(rows[1]).toMatchObject({
       name: "<打放型枠>",
-      part1: "打放型枠",
+      part1: "仕上転記数量",
       detailNumber: 1,
     });
     expect(rows[2]).toMatchObject({
@@ -235,5 +236,38 @@ describe("型枠転記", () => {
     expect(view.items.find((item) => item.name === "打放型枠")?.quantity).toBe(
       24,
     );
+  });
+
+  it("④で並び替えた順が転記入力表に反映され、作り直してもその並びを保つ", () => {
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    saveFormworkRules(db, {
+      projectId,
+      rules: [
+        rule([source]),
+        { ...rule([source]), key: "型枠2", name: "あとの型枠" },
+      ],
+    });
+    runFormworkTransfer(db, projectId);
+
+    const view = getFormworkTransfer(db, projectId);
+    // [タイトル, 打放型枠, あとの型枠] → あとの型枠を上へ
+    const moved = [view.rows[0], view.rows[2], view.rows[1]].map(
+      (row, index) => ({ ...row, detailNumber: index + 1 }),
+    );
+    reorderFormworkTransfer(db, projectId, moved);
+
+    const rows = listTransferRows(db, projectId);
+    expect(rows.map((row) => row.name)).toEqual([
+      "<打放型枠>",
+      "あとの型枠",
+      "打放型枠",
+    ]);
+    // 作り直しても（再集計でも）並び替えた順を保つ
+    runFormworkTransfer(db, projectId);
+    expect(listTransferRows(db, projectId).map((row) => row.name)).toEqual([
+      "<打放型枠>",
+      "あとの型枠",
+      "打放型枠",
+    ]);
   });
 });

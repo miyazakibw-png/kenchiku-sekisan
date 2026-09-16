@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EstimateRowCheck,
+  EstimateRowCheckCell,
   EstimateRowDraft,
   MasterOptions,
   ProjectSummary,
@@ -75,6 +76,8 @@ export default function EstimatePartsPage({
       ? "仕上"
       : (options.materialCategories[0]?.name ?? "仕上"),
   );
+  /** チェック列の数量に倍率をかけるか（なしなら計算書そのままの数量） */
+  const [applyMultiplier, setApplyMultiplier] = useState(true);
   const columns = useMemo(
     () => buildEstimateColumns(options.formworkCategories),
     [options.formworkCategories],
@@ -103,15 +106,20 @@ export default function EstimatePartsPage({
     },
     [checks],
   );
+  const checkQuantityOf = useCallback(
+    (cell: EstimateRowCheckCell) =>
+      applyMultiplier ? cell.quantity : cell.baseQuantity,
+    [applyMultiplier],
+  );
 
   /** 小計行に入れる部位ごとの数量合計（ひとつ上の小計行から下の分） */
   const partSums = useMemo(
     () =>
       subtotalSums(rows, checkColumns, (row, partName) => {
         const cell = checkOf(row.id, partName);
-        return cell === null ? null : cell.quantity;
+        return cell === null ? null : checkQuantityOf(cell);
       }),
-    [rows, checkColumns, checkOf],
+    [rows, checkColumns, checkOf, checkQuantityOf],
   );
 
   /** 行ごとに中身の入っている計算書の種類（種類を変える前の確認に使う） */
@@ -358,12 +366,26 @@ export default function EstimatePartsPage({
     );
   };
 
+  /** 計算書に出す部屋名。部位Ⅱは空欄なら上の行から引き継いだ内容を使う */
+  const openedRoomName =
+    openedSheet !== null && rows[openedSheet]
+      ? `${inherited[openedSheet]?.part2 ?? rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()
+      : "";
+
   if (openedSheet !== null && rows[openedSheet]?.calcType === "frame") {
     return (
       <FrameSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
+        onWorkHeightChange={(height) => {
+          if (openedSheet === null) return;
+          editRows(
+            updateRow(rowsRef.current, openedSheet, {
+              ceilingHeight: height,
+            }),
+          );
+        }}
         onBack={() => {
           setOpenedSheet(null);
           void reload();
@@ -387,7 +409,15 @@ export default function EstimatePartsPage({
       <GeneralSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
+        onCeilingHeightChange={(height) => {
+          if (openedSheet === null) return;
+          editRows(
+            updateRow(rowsRef.current, openedSheet, {
+              ceilingHeight: height,
+            }),
+          );
+        }}
         onBack={() => {
           setOpenedSheet(null);
           void reload();
@@ -396,12 +426,20 @@ export default function EstimatePartsPage({
     );
   }
 
-  if (openedSheet !== null && rows[openedSheet]?.calcType === "pit") {
+  // 面積計算書はピット計算書と同じもの（表の題名だけ変える）
+  if (
+    openedSheet !== null &&
+    (rows[openedSheet]?.calcType === "pit" ||
+      rows[openedSheet]?.calcType === "area")
+  ) {
     return (
       <PitSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
+        sheetName={
+          rows[openedSheet]?.calcType === "area" ? "面積計算書" : undefined
+        }
         onBack={() => {
           setOpenedSheet(null);
           void reload();
@@ -415,7 +453,7 @@ export default function EstimatePartsPage({
       <RoomSheetPage
         project={project}
         row={rows[openedSheet]}
-        roomName={`${rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()}
+        roomName={openedRoomName}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
@@ -445,7 +483,12 @@ export default function EstimatePartsPage({
             ← 工事管理画面へ
           </button>
           <div className="three">
-            <button type="button" onClick={() => void openCalcSheet(selected)}>
+            {/* 計算書は行ごとの「開く」欄から開く（上の帯のボタンは使わない） */}
+            <button
+              type="button"
+              disabled
+              title="計算書は行ごとの「📐 開く」から開いてください"
+            >
               📐 計算書を開く
             </button>
             <button type="button" onClick={() => void pasteFromExcel()}>
@@ -573,10 +616,18 @@ export default function EstimatePartsPage({
             </option>
           ))}
         </select>
+        <span>数量</span>
+        <select
+          value={applyMultiplier ? "on" : "off"}
+          onChange={(e) => setApplyMultiplier(e.target.value === "on")}
+        >
+          <option value="on">倍率あり</option>
+          <option value="off">倍率なし</option>
+        </select>
         <span className="note">
           部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
           {checkCategory}
-          だけを表示します（計算書の作成後に反映）。
+          だけを表示します（計算書の作成後に反映）。「倍率なし」は倍率をかける前の計算書そのままの数量です。
         </span>
       </div>
 
@@ -615,6 +666,7 @@ export default function EstimatePartsPage({
             <th className="num">天井高さ</th>
             <th className="num">倍率</th>
             <th className="calc-type">計算書</th>
+            <th className="open">開く</th>
             <th className="note">備考</th>
             {checkColumns.map((label) => (
               <th key={label} className="check" colSpan={2}>
@@ -623,13 +675,13 @@ export default function EstimatePartsPage({
             ))}
           </tr>
           <tr>
-            <th colSpan={10} />
+            <th colSpan={11} />
             {checkColumns.flatMap((label) => [
               <th key={`n-${label}`} className="check">
                 {checkCategory}名称
               </th>,
               <th key={`q-${label}`} className="check">
-                数量
+                {applyMultiplier ? "数量" : "数量(倍率なし)"}
               </th>,
             ])}
           </tr>
@@ -859,6 +911,19 @@ export default function EstimatePartsPage({
                     </select>
                   )}
                 </td>
+                <td className="open">
+                  {isSubtotal ? (
+                    ""
+                  ) : (
+                    <button
+                      type="button"
+                      title="選んだ計算書を開きます"
+                      onClick={() => void openCalcSheet(index)}
+                    >
+                      📐 開く
+                    </button>
+                  )}
+                </td>
                 <td>
                   {isSubtotal ? (
                     ""
@@ -888,7 +953,7 @@ export default function EstimatePartsPage({
                           ? ""
                           : sum.toFixed(2)
                         : cell
-                          ? cell.quantity.toFixed(2)
+                          ? checkQuantityOf(cell).toFixed(2)
                           : ""}
                     </td>,
                   ];

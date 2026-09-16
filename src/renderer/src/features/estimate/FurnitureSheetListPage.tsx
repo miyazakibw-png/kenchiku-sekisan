@@ -7,6 +7,7 @@ import type {
 import {
   FURNITURE_KINDS as KINDS,
   furnitureKindLabel,
+  isFittingDetailSheet,
 } from "../../../../core/furniture/furnitureSheet";
 import { ask } from "../common/askDialog";
 import OtherProjectSheetPicker from "./OtherProjectSheetPicker";
@@ -38,14 +39,24 @@ export default function FurnitureSheetListPage({
   const [pickingOther, setPickingOther] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
-    setSheets(await window.sekisan.listFurnitureSheets(project.id));
+    // 建具明細作成表は建具表の「建具明細作成」から開くので、ここの一覧には出さない
+    setSheets(
+      (await window.sekisan.listFurnitureSheets(project.id)).filter(
+        (sheet) => !isFittingDetailSheet(sheet.kind),
+      ),
+    );
     setEstimateRows(await window.sekisan.listEstimateRows(project.id));
   }, [project.id]);
 
   /** 他の物件の表をこの物件の末尾に写す */
   const copyFromOther = async (sheetIds: number[]): Promise<void> => {
     setSheets(
-      await window.sekisan.copyFurnitureSheetsFromProject(project.id, sheetIds),
+      (
+        await window.sekisan.copyFurnitureSheetsFromProject(
+          project.id,
+          sheetIds,
+        )
+      ).filter((sheet) => !isFittingDetailSheet(sheet.kind)),
     );
     setPickingOther(false);
     setMessage(
@@ -124,7 +135,9 @@ export default function FurnitureSheetListPage({
     if (clipboard.length === 0) return;
     const at = mode === "insert" ? selectionStart : sheets.length;
     setSheets(
-      await window.sekisan.pasteFurnitureSheets(project.id, clipboard, at),
+      (
+        await window.sekisan.pasteFurnitureSheets(project.id, clipboard, at)
+      ).filter((sheet) => !isFittingDetailSheet(sheet.kind)),
     );
     setMessage(`${clipboard.length} 枚を貼り付けました（中の入力も写します）`);
   };
@@ -192,8 +205,9 @@ export default function FurnitureSheetListPage({
           title="他の物件から表コピー（家具・設備入力表）"
           currentProjectId={project.id}
           listSheets={async (projectId) =>
-            (await window.sekisan.listFurnitureSheets(projectId)).map(
-              (sheet) => ({
+            (await window.sekisan.listFurnitureSheets(projectId))
+              .filter((sheet) => !isFittingDetailSheet(sheet.kind))
+              .map((sheet) => ({
                 id: sheet.id,
                 name: sheet.name,
                 detail: [
@@ -206,8 +220,7 @@ export default function FurnitureSheetListPage({
                   .filter((text) => text !== "")
                   .join("・"),
                 note: sheet.note,
-              }),
-            )
+              }))
           }
           onCopy={copyFromOther}
           onClose={() => setPickingOther(false)}

@@ -1,5 +1,13 @@
 :root {
   --border: #d5d9e0;
+  /* 画面の罫線。設定（⚙️設定→画面の線）で変えられる
+     細い線＝表のマス目、太い線＝セット明細などまとまりの区切り */
+  --line-thin: 1px solid #999999;
+  --line-thick: 2px solid #94a3b8;
+  --line-thin-color: #999999;
+  --line-thick-color: #94a3b8;
+  --line-thin-width: 1px;
+  --line-thick-width: 2px;
   --surface: #f5f6f8;
   --hover: #e8ebf0;
   --selected: #e3f0ff;
