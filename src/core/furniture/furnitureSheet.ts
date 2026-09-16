@@ -112,6 +112,8 @@ export interface FurnitureRow {
   partNumber: number | null;
   /** 名称ID */
   detailNumber: number | null;
+  /** 部位Ⅰ（集計書での置き場所。建具明細作成表用。空欄なら上の行と同じ。古い保存には無い） */
+  place?: string;
   /** 部位（英数字） */
   part: string;
   /** +部位（英数字） */
@@ -483,6 +485,7 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
     subjectId: null,
     partNumber: null,
     detailNumber: null,
+    place: "",
     part: "",
     partAdd: "",
     partSymbol: "",
@@ -736,6 +739,8 @@ export interface FurnitureResolved {
   subjectId: number | null;
   partNumber: number | null;
   detailNumber: number | null;
+  /** 部位Ⅰ（集計書での置き場所。建具明細作成表用。空欄なら上の行と同じ） */
+  place: string;
   part: string;
   /** 名称（部材名称）。カーテン・ブラインドだけ未入力なら上の行と同じ */
   nameSymbol: string;
@@ -759,6 +764,7 @@ export function resolveFurnitureRows(
     subjectId: null,
     partNumber: null,
     detailNumber: null,
+    place: "",
     part: "",
     nameSymbol: "",
     quantity: "",
@@ -775,6 +781,8 @@ export function resolveFurnitureRows(
     if (row.detailNumber !== null) carried.detailNumber = row.detailNumber;
     else if (carried.detailNumber !== null)
       carried.detailNumber = bump(carried.detailNumber);
+    // 部位Ⅰ（置き場所）は空欄なら上の行と同じ
+    if ((row.place ?? "").trim() !== "") carried.place = row.place ?? "";
     // 部位は建具明細作成表では引き継がない（未入力はそのまま空欄＝名称だけの見出し行に使える）
     if (row.part.trim() !== "" || isFittingDetailSheet(kind))
       carried.part = row.part;
@@ -1161,6 +1169,8 @@ export function entriesFromFurnitureSheet(
   );
   const resolved = resolveFurnitureRows(rows, data.kind);
   const multiplier = place.multiplier === 0 ? 1 : place.multiplier;
+  // 建具明細作成表：部位Ⅰ（置き場所）は行ごとの入力、根拠の部屋は行の記号（部位欄）
+  const fittingDetail = isFittingDetailSheet(data.kind ?? "furniture");
   const entries: AggregateEntry[] = [];
   rows.forEach((row, index) => {
     const quantity = rowQuantity(row, resolved[index]);
@@ -1183,12 +1193,12 @@ export function entriesFromFurnitureSheet(
       sourceKind: "furniture",
       estimateRowId: null,
       transferRowId: null,
-      part1: place.part1,
+      part1: fittingDetail ? resolved[index].place : place.part1,
       part2: place.part2Split ? place.part2 : "",
       part2Raw: place.part2,
       part2Split: place.part2Split,
       part2Order: part2Order.get(place.part2) ?? 0,
-      part3: place.part3,
+      part3: fittingDetail ? resolved[index].part : place.part3,
       formwork: "",
       multiplier,
       subjectId: row.detail.subjectId,
@@ -1207,6 +1217,7 @@ export function entriesFromFurnitureSheet(
       setTotal: value,
       quantity: displayedValue(value * multiplier),
       sourceDetailId: row.detail.sourceDetailId,
+      includeInRooms: fittingDetail ? true : undefined,
     });
   });
   // タテ方向の明細（部位別雑・金物入力表と同じ形。ヨコの自動明細とは別に拾う）
@@ -1228,12 +1239,12 @@ export function entriesFromFurnitureSheet(
         sourceKind: "furniture",
         estimateRowId: null,
         transferRowId: null,
-        part1: place.part1,
+        part1: fittingDetail ? resolved[index].place : place.part1,
         part2: place.part2Split ? place.part2 : "",
         part2Raw: place.part2,
         part2Split: place.part2Split,
         part2Order: part2Order.get(place.part2) ?? 0,
-        part3: place.part3,
+        part3: fittingDetail ? resolved[index].part : place.part3,
         formwork: "",
         multiplier,
         subjectId: column.subjectId,
@@ -1252,6 +1263,7 @@ export function entriesFromFurnitureSheet(
         setTotal: value,
         quantity: displayedValue(value * multiplier),
         sourceDetailId: column.sourceDetailId,
+        includeInRooms: fittingDetail ? true : undefined,
       });
     });
   });

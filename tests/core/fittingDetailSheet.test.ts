@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyFurnitureDetails,
   composedSymbolText,
+  entriesFromFurnitureSheet,
   furnitureRow,
   furnitureSettingsFor,
   hasTripleWidth,
@@ -178,6 +179,69 @@ describe("建具明細作成表", () => {
     );
     expect(rows[0].detail.partName).toBe("洋間1");
     expect(rows[0].detail.name).toBe("片開きドア");
+  });
+
+  it("部位Ⅰ（集計書での置き場所）は空欄なら上の行と同じ", () => {
+    const rows = [
+      furnitureRow({ place: "1階" }),
+      furnitureRow({}),
+      furnitureRow({ place: "2階" }),
+      furnitureRow({}),
+    ];
+    const resolved = resolveFurnitureRows(rows, "fittingDetail");
+    expect(resolved.map((row) => row.place)).toEqual([
+      "1階",
+      "1階",
+      "2階",
+      "2階",
+    ]);
+  });
+
+  it("集計：置き場所（部位Ⅰ）は行の入力・根拠は行の記号・根拠の部屋集計に入れる", () => {
+    const rows = [
+      furnitureRow({ place: "1階", part: "AD1", quantity: "4", unit: "ヶ所" }),
+      furnitureRow({ part: "AW1", quantity: "1" }),
+    ];
+    const entries = entriesFromFurnitureSheet(
+      {
+        sheetId: 1,
+        part1: "",
+        part2: "",
+        part2Split: false,
+        part3: "建具明細作成表",
+        multiplier: 1,
+      },
+      {
+        rows,
+        settings: furnitureSettingsFor("fittingDetail"),
+        kind: "fittingDetail",
+      },
+      new Map(),
+    );
+    // 部位Ⅰは行ごとの入力（2行目以降は上と同じ）
+    expect(entries.map((entry) => entry.part1)).toEqual(["1階", "1階"]);
+    // 根拠の部屋は行の記号（部位欄のまま）
+    expect(entries.map((entry) => entry.part3)).toEqual(["AD1", "AW1"]);
+    expect(entries.map((entry) => entry.includeInRooms)).toEqual([true, true]);
+    // 家具計算書の分は置き場所の設定・表の名前のまま（変えない）
+    const furniture = entriesFromFurnitureSheet(
+      {
+        sheetId: 2,
+        part1: "建築",
+        part2: "1階",
+        part2Split: true,
+        part3: "家具",
+        multiplier: 1,
+      },
+      { rows, settings: furnitureSettingsFor("furniture"), kind: "furniture" },
+      new Map(),
+    );
+    expect(furniture.map((entry) => entry.part1)).toEqual(["建築", "建築"]);
+    expect(furniture.map((entry) => entry.part3)).toEqual(["家具", "家具"]);
+    expect(furniture.map((entry) => entry.includeInRooms)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it("W・H・Dは摘要下段へ「W*H*見込」の形で出る", () => {

@@ -174,6 +174,7 @@ const CURTAIN_INPUT_COLUMNS: InputColumn[] = [
 
 /** 建具明細作成表の入力欄（部位欄は1つ。W・Hは建具表と取り合い、Dはこの表だけの入力） */
 const FITTING_DETAIL_INPUT_COLUMNS: InputColumn[] = [
+  { key: "place", label: "部位Ⅰ", forDetail: false },
   { key: "subjectId", label: "科目", forDetail: true },
   { key: "partNumber", label: "部位ID", forDetail: true },
   { key: "detailNumber", label: "名称ID", forDetail: true },
@@ -456,6 +457,7 @@ export default function FurnitureSheetPage({
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
   const [fittings, setFittings] = useState<Fitting[]>([]);
+  const [part1Options, setPart1Options] = useState<string[]>([]);
   /** 部位別入力表の部位Ⅲ（カーテン・ブラインドの+部位の候補） */
   const [part3Options, setPart3Options] = useState<string[]>([]);
   /** マスター呼出画面（部位別雑・金物入力表と同じ作り） */
@@ -638,21 +640,32 @@ export default function FurnitureSheetPage({
           note: loaded.note,
         },
       });
-      if (hasFittingSymbol(loaded.kind)) {
-        setFittings(await window.sekisan.listFittings(loaded.projectId));
+      if (hasFittingSymbol(loaded.kind) || isFittingDetailSheet(loaded.kind)) {
+        if (hasFittingSymbol(loaded.kind))
+          setFittings(await window.sekisan.listFittings(loaded.projectId));
         const estimateRows = await window.sekisan.listEstimateRows(
           loaded.projectId,
         );
-        setPart3Options(
+        setPart1Options(
           Array.from(
             new Set(
               estimateRows
-                .filter((row) => row.rowType === "room")
-                .map((row) => row.part3.trim())
+                .map((row) => row.part1.trim())
                 .filter((text) => text !== ""),
             ),
           ),
         );
+        if (hasFittingSymbol(loaded.kind))
+          setPart3Options(
+            Array.from(
+              new Set(
+                estimateRows
+                  .filter((row) => row.rowType === "room")
+                  .map((row) => row.part3.trim())
+                  .filter((text) => text !== ""),
+              ),
+            ),
+          );
       }
       const baseSettings = await window.sekisan.getFurnitureBaseSettings(
         loaded.kind,
@@ -776,6 +789,10 @@ export default function FurnitureSheetPage({
   const part3Entries = useMemo<PickEntry[]>(
     () => part3Options.map((text) => ({ value: text, label: text })),
     [part3Options],
+  );
+  const part1Entries = useMemo<PickEntry[]>(
+    () => part1Options.map((text) => ({ value: text, label: text })),
+    [part1Options],
   );
   const fittingEntries = useMemo<PickEntry[]>(
     () =>
@@ -2228,6 +2245,19 @@ export default function FurnitureSheetPage({
                     </td>
                   )}
                   <td className="num">{index + 1}</td>
+                  {showInput("place") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={part1Entries}
+                        japanese
+                        commitOnBlur
+                        value={rows[index].place ?? ""}
+                        placeholder={resolved[index].place}
+                        title="集計書での置き場所（部位Ⅰ）。文字を入れるか、部位別入力表の部位Ⅰから選びます。空欄のときは上の行と同じ"
+                        onCommit={(text) => editRow(index, { place: text })}
+                      />
+                    </td>
+                  )}
                   {showInput("subjectId") && (
                     <td className="no-print">
                       <PickInput
