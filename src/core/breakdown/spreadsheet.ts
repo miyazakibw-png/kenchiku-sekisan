@@ -164,16 +164,19 @@ function detailBlocks(
     }
     if (row.subtotal === true) {
       flushPending();
-      // 小計は1行だけの固まりにする（ページの最後の行へ出す）
+      // 小計はページの最後の明細分を使う。
+      // 2段の書式では明細と同じく2行で1つの小計行にする（上段は空行）。
+      const border: RowBorder = rowsPerDetail(layout) === 2 ? "lower" : "one";
+      if (rowsPerDetail(layout) === 2) lines.push(blankRow("upper"));
       lines.push([
-        markCell("one"),
-        textCell(row.nameLower, "one"),
-        textCell("", "one"),
-        textCell("", "one"),
-        textCell("", "one"),
-        textCell("", "one"),
-        numberCell(row.amount, "one"),
-        textCell("", "one"),
+        markCell(border),
+        textCell(row.nameLower, border),
+        textCell("", border),
+        textCell("", border),
+        textCell("", border),
+        textCell("", border),
+        numberCell(row.amount, border),
+        textCell("", border),
       ]);
       subtotal = true;
       flush();

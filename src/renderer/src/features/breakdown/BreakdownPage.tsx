@@ -1546,26 +1546,51 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                       </td>
                     </tr>
                   )}
-                  {subtotalAfter.has(index) && (
-                    <tr className="subtotal">
-                      <td className="mark" data-noexport />
-                      <td>
-                        {twoStage(settings.layout)
-                          ? subjectLines("小計")
-                          : "小計"}
-                      </td>
-                      <td />
-                      <td className="qty" />
-                      <td className="unit" />
-                      <td className="qty" />
-                      <td className="qty">
-                        {twoStage(settings.layout)
-                          ? subjectLines(String(subtotalAfter.get(index)))
-                          : subtotalAfter.get(index)}
-                      </td>
-                      <td />
-                    </tr>
-                  )}
+                  {subtotalAfter.has(index) &&
+                    (twoRowPairs(settings.layout) ? (
+                      <>
+                        {/* 2段2行の書式：小計も明細と同じく2行で1つの行にする */}
+                        <tr className="subtotal detail-upper">
+                          <td className="mark" data-noexport />
+                          <td />
+                          <td />
+                          <td className="qty" />
+                          <td className="unit" />
+                          <td className="qty" />
+                          <td className="qty" />
+                          <td />
+                        </tr>
+                        <tr className="subtotal detail-lower">
+                          <td className="mark" data-noexport />
+                          <td>小計</td>
+                          <td />
+                          <td className="qty" />
+                          <td className="unit" />
+                          <td className="qty" />
+                          <td className="qty">{subtotalAfter.get(index)}</td>
+                          <td />
+                        </tr>
+                      </>
+                    ) : (
+                      <tr className="subtotal">
+                        <td className="mark" data-noexport />
+                        <td>
+                          {twoStage(settings.layout)
+                            ? subjectLines("小計")
+                            : "小計"}
+                        </td>
+                        <td />
+                        <td className="qty" />
+                        <td className="unit" />
+                        <td className="qty" />
+                        <td className="qty">
+                          {twoStage(settings.layout)
+                            ? subjectLines(String(subtotalAfter.get(index)))
+                            : subtotalAfter.get(index)}
+                        </td>
+                        <td />
+                      </tr>
+                    ))}
                 </Fragment>
               ))}
             </tbody>

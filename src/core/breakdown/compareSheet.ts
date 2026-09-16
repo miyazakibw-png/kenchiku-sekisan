@@ -250,11 +250,13 @@ function subtotalTotals(rows: readonly BreakdownRow[]): {
   return { clean, totals };
 }
 
-/** 小計の1行（左・右それぞれの金額欄へ科目の合計を出す） */
-function subtotalLine(
+/** 小計の行（左・右それぞれの金額欄へ科目の合計を出す。2段書式は2行で1つの小計行） */
+function subtotalLines(
   leftTotal: number | null,
   rightTotal: number | null,
-): XlsxCell[] {
+  unit: number,
+): XlsxCell[][] {
+  const border: XlsxBorder = unit === 2 ? "lower" : "one";
   const side = (total: number | null): XlsxCell[] =>
     HEADER.map((_title, index) => {
       const value =
@@ -269,10 +271,14 @@ function subtotalLine(
         value,
         kind:
           typeof value === "number" ? ("number" as const) : ("text" as const),
-        border: "one" as const,
+        border,
       };
     });
-  return [...side(leftTotal), gapCell(), ...side(rightTotal)];
+  const content = [...side(leftTotal), gapCell(), ...side(rightTotal)];
+  if (unit === 2) {
+    return [[...blankSide("upper"), gapCell(), ...blankSide("upper")], content];
+  }
+  return [content];
 }
 
 /** 比較のシート（1枚）を作る */
@@ -365,13 +371,14 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
     const rightTotal =
       subjectId === null ? null : (rightSub.totals.get(subjectId) ?? null);
     if (leftTotal !== null || rightTotal !== null) {
-      if (remaining < 1) fillPage();
-      for (let count = 0; count < remaining - 1; count += 1) {
+      const sub = subtotalLines(leftTotal, rightTotal, unit);
+      if (sub.length > remaining) fillPage();
+      for (let count = 0; count < remaining - sub.length; count += 1) {
         const border: XlsxBorder =
           unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
         rows.push([...blankSide(border), gapCell(), ...blankSide(border)]);
       }
-      rows.push(subtotalLine(leftTotal, rightTotal));
+      rows.push(...sub);
       remaining = 0;
     }
   });
