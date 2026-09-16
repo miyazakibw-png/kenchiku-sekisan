@@ -189,6 +189,16 @@ describe("内訳書の行づくり", () => {
     expect(rows[1].nameLower).toBe("基礎 普通コンクリート");
   });
 
+  it("書式④でも名称パターンで部位：名称にできる", () => {
+    const rows = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(rows[1].nameLower).toBe("");
+    expect(rows[2].nameLower).toBe("基礎:普通コンクリート");
+  });
+
   it("名称パターンで部位：名称にできる（2段1行・1段とも）", () => {
     const twoLine = buildBreakdownRows([item({})], subjects, {
       ...DEFAULT_BREAKDOWN_SETTINGS,

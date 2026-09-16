@@ -552,7 +552,6 @@ function twoRowDetail(
   };
 
   const upper = line("note");
-  upper.nameLower = partName;
   upper.descriptionLower = applyReplacements(
     item.descriptionUpper,
     settings.replacements,
@@ -560,7 +559,19 @@ function twoRowDetail(
   upper.remarksLower = item.remarksUpper;
 
   const lower = line("detail");
-  lower.nameLower = name;
+  if (
+    settings.namePattern === NAME_PATTERN.withPart ||
+    settings.namePattern === NAME_PATTERN.withPartColon
+  ) {
+    const separator =
+      settings.namePattern === NAME_PATTERN.withPartColon ? ":" : " ";
+    // 名称欄を「部位 名称」「部位：名称」にまとめる（部位は上段の名称欄には出さない）
+    lower.nameLower =
+      partName === "" ? name : `${partName}${separator}${name}`.trim();
+  } else {
+    upper.nameLower = partName;
+    lower.nameLower = name;
+  }
   lower.descriptionLower = applyReplacements(
     item.descriptionLower,
     settings.replacements,
