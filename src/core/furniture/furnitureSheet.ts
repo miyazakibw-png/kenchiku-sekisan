@@ -58,8 +58,6 @@ export interface FurnitureSettings {
   partSymbols: FurnitureSymbol[];
   /** 名称（記号入力）の対応表 */
   nameSymbols: FurnitureSymbol[];
-  /** 建具明細作成表用：単位（記号入力）の対応表（表に無い文字はそのまま。古い保存には無い） */
-  unitSymbols?: FurnitureSymbol[];
   /** ハンガーパイプ用：形状（番号入力）の対応表（計上設定。例：1→(L型)。古い保存には無い） */
   shapeSymbols?: FurnitureSymbol[];
   /** ユニットバス用：加工手間(梁欠き)・(窓)の前後に付ける文字（古い保存には無い） */
@@ -437,7 +435,6 @@ export function furnitureSettingsFor(
       nameSymbols: defaultFittingDetailNameSymbols.map((item) => ({
         ...item,
       })),
-      unitSymbols: [],
       partSeparator: "-",
       ...patch,
     });
@@ -987,9 +984,7 @@ export function buildDetail(
       : row.descriptionUpper,
     descriptionLower: sizeText(row, settings, kind, fittings),
     floorFormula: hasModel(kind) ? floorFormulaOf(row, settings) : undefined,
-    unit: isFittingDetailSheet(kind)
-      ? symbolText(settings.unitSymbols ?? [], resolved.unit)
-      : resolved.unit,
+    unit: resolved.unit,
     remarksUpper: "",
     remarksLower: row.remarksLower,
   };

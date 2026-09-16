@@ -618,10 +618,6 @@ export default function FurnitureSheetPage({
           saved.nameSymbols === undefined || saved.nameSymbols.length === 0
             ? base.nameSymbols
             : saved.nameSymbols,
-        unitSymbols:
-          saved.unitSymbols === undefined || saved.unitSymbols.length === 0
-            ? base.unitSymbols
-            : saved.unitSymbols,
       };
       setSheet(loaded);
       setRows(nextRows);
@@ -2030,13 +2026,6 @@ export default function FurnitureSheetPage({
               symbols={settings.nameSymbols}
               onChange={(nameSymbols) => changeSettings({ nameSymbols })}
             />
-            {isFittingDetail && (
-              <SymbolTable
-                title="単位の記号（表に無い文字はそのまま出ます）"
-                symbols={settings.unitSymbols ?? []}
-                onChange={(unitSymbols) => changeSettings({ unitSymbols })}
-              />
-            )}
             {withShape && (
               <SymbolTable
                 title="形状の記号（計上設定）"

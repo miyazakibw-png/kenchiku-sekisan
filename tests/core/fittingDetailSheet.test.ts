@@ -137,13 +137,11 @@ describe("建具明細作成表", () => {
     expect(rows[0].detail.name).toBe("片開きドア");
   });
 
-  it("単位は記号表で変換（2行目以降は上と同じ。表に無い文字はそのまま）", () => {
-    const settings = furnitureSettingsFor("fittingDetail", {
-      unitSymbols: [{ symbol: "B", text: "本" }],
-    });
+  it("単位は入れたまま出る（2行目以降は上と同じ。基本マスターから選ぶ）", () => {
+    const settings = furnitureSettingsFor("fittingDetail");
     const rows = applyFurnitureDetails(
       [
-        furnitureRow({ unit: "B" }),
+        furnitureRow({ unit: "本" }),
         furnitureRow({ unit: "" }),
         furnitureRow({ unit: "枚" }),
       ],
