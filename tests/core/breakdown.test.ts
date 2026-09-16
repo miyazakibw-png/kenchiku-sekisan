@@ -11,6 +11,7 @@ import {
   roundQuantity,
   toFullWidth,
   toHalfWidth,
+  withSubjectSubtotals,
 } from "../../src/core/breakdown/breakdown";
 import { toBcsCsv } from "../../src/core/breakdown/bcs";
 import { compareBreakdown, moveRow } from "../../src/core/breakdown/compare";
@@ -409,6 +410,37 @@ describe("回どうしの比較", () => {
   it("行を上下に動かせる", () => {
     expect(moveRow([1, 2, 3], 0, 1)).toEqual([2, 1, 3]);
     expect(moveRow([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
+  });
+
+  it("金額が入った科目の終わりに小計行を足す", () => {
+    const built = buildBreakdownRows(
+      [
+        item({}),
+        item({ id: 2, masterKey: "k2" }),
+        item({ id: 3, masterKey: "k3", subjectId: 2 }),
+      ],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const amounts = new Map([
+      ["k1", 100],
+      ["k2", 50],
+    ]);
+    const rows = built.map((row) => ({
+      ...row,
+      amount:
+        row.rowKind === "detail" ? (amounts.get(row.masterKey) ?? null) : null,
+    }));
+    const next = withSubjectSubtotals(rows);
+    const subtotals = next.filter((row) => row.nameLower === "小計");
+    // 科目Aだけ小計150（科目Bは金額が無いので出さない）
+    expect(subtotals).toHaveLength(1);
+    expect(subtotals[0].amount).toBe(150);
+    // 小計は科目Aの明細の直後・科目Bの見出しの直前に入る
+    const headB = next.findIndex(
+      (row) => row.rowKind === "subject" && row.subjectId === 2,
+    );
+    expect(next.indexOf(subtotals[0])).toBe(headB - 1);
   });
 
   it("工種科目どうしで並びを合わせる（片方に無い科目は空欄。並びは多いほうが基準）", () => {

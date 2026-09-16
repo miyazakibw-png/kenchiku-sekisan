@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   BreakdownExportKind,
   BreakdownRowRecord,
@@ -78,6 +85,69 @@ function TextInput({
       }}
     />
   );
+}
+
+/** 数値の入力欄（空欄は null、数字でなければ null） */
+function NumberInput({
+  value,
+  onCommit,
+  className,
+}: {
+  value: number | null;
+  onCommit: (value: number | null) => void;
+  className?: string;
+}): JSX.Element {
+  return (
+    <TextInput
+      value={value === null ? "" : String(value)}
+      className={className}
+      onCommit={(text) => {
+        const parsed = Number.parseFloat(text);
+        onCommit(
+          text.trim() === "" || !Number.isFinite(parsed) ? null : parsed,
+        );
+      }}
+    />
+  );
+}
+
+/**
+ * 表の中の上下・Enterの移動。
+ * 同じ欄の上段→下段→次の明細の上段へ進み、上へも同じ順で戻る。
+ */
+function navKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (event.nativeEvent.isComposing) return;
+  const dir =
+    event.key === "ArrowDown" || event.key === "Enter"
+      ? 1
+      : event.key === "ArrowUp"
+        ? -1
+        : 0;
+  if (dir === 0) return;
+  const td = target.closest("td");
+  const tr = target.closest("tr");
+  if (!td || !tr) return;
+  event.preventDefault();
+  const inputs = Array.from(td.querySelectorAll("input"));
+  const within = inputs[inputs.indexOf(target) + dir];
+  if (within) {
+    within.focus();
+    return;
+  }
+  let row: Element | null = tr;
+  for (;;) {
+    row = dir > 0 ? row.nextElementSibling : row.previousElementSibling;
+    if (!row) return;
+    const cell = row.children[td.cellIndex];
+    const found = cell?.querySelectorAll("input");
+    const pick = dir > 0 ? found?.[0] : found?.[(found?.length ?? 0) - 1];
+    if (pick instanceof HTMLInputElement) {
+      pick.focus();
+      return;
+    }
+  }
 }
 
 /** 1ページの明細数。空欄や数字でないときは既定の数に戻す */
@@ -376,7 +446,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   }, [settings.subjectOrder, view.rows]);
 
   // 全部の科目を出したまま、選んだ科目の見出しへ移動する
-  const shownRows = view.rows;
+  // 入力は leftRows を直し、少し待つと自動で保存する（比較画面と同じ）
+  const shownRows = leftRows;
 
   const showSubject = (subjectId: number | null): void => {
     setSelectedSubject(subjectId);
@@ -450,9 +521,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // 比較画面で直したら少し待って自動で保存する（開けた空行もそのまま残す）
+  // 直したら少し待って自動で保存する（開けた空行もそのまま残す）
   useEffect(() => {
-    if (panel !== "compare" || compareDirty === 0) return;
+    if (compareDirty === 0) return;
     const timer = window.setTimeout(() => {
       void saveCompare(true);
     }, 800);
@@ -476,6 +547,42 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     () => compareBlocksBySubject(leftBlocks, rightBlocks),
     [leftBlocks, rightBlocks],
   );
+
+  /** 科目の終わりに出す小計（行の直後の位置 → 合計金額）。金額が入った科目だけ */
+  const subtotalAfter = useMemo(() => {
+    const map = new Map<number, number>();
+    let total = 0;
+    let has = false;
+    let inSubject = false;
+    shownRows.forEach((row, index) => {
+      if (row.rowKind === "subject") {
+        if (inSubject && has) map.set(index - 1, total);
+        total = 0;
+        has = false;
+        inSubject = true;
+        return;
+      }
+      if (inSubject && row.amount !== null) {
+        total += row.amount;
+        has = true;
+      }
+    });
+    if (inSubject && has) map.set(shownRows.length - 1, total);
+    return map;
+  }, [shownRows]);
+
+  /** 比較していない通常の内訳書で行の中身を書き換える */
+  const updateMain = (
+    index: number,
+    patch: Partial<BreakdownRowRecord>,
+  ): void => {
+    const next = leftRows.map((row, at) =>
+      at === index ? { ...row, ...patch } : row,
+    );
+    setLeftRows(next);
+    setView((current) => ({ ...current, rows: next }));
+    setCompareDirty((count) => count + 1);
+  };
 
   /** 空行を1行入れる（押した行の上） */
   const insertBlank = (side: "left" | "right", index: number) =>
@@ -702,10 +809,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         <td key="r" />,
       ];
     }
-    const numberCell = (key: string, value: number | null): JSX.Element => (
+    const numberCell = (
+      key: string,
+      value: number | null,
+      onCommit: (value: number | null) => void,
+    ): JSX.Element => (
       <td key={key} className="qty">
         {twoStageText && <div className="upper" />}
-        <div className={twoStageText ? "lower" : ""}>{value ?? ""}</div>
+        <div className={twoStageText ? "lower" : ""}>
+          <NumberInput value={value} onCommit={onCommit} />
+        </div>
       </td>
     );
     return [
@@ -722,17 +835,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       <td key="q" className={`qty ${mark("quantity")}`}>
         {twoStageText && <div className="upper" />}
         <div className={twoStageText ? "lower" : ""}>
-          <TextInput
-            value={lower.quantity === null ? "" : String(lower.quantity)}
-            onCommit={(value) => {
-              const parsed = Number.parseFloat(value);
-              setLower({
-                quantity:
-                  value.trim() === "" || !Number.isFinite(parsed)
-                    ? null
-                    : parsed,
-              });
-            }}
+          <NumberInput
+            value={lower.quantity}
+            onCommit={(value) => setLower({ quantity: value })}
           />
         </div>
       </td>,
@@ -745,8 +850,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           />
         </div>
       </td>,
-      numberCell("p", lower.unitPrice),
-      numberCell("a", lower.amount),
+      numberCell("p", lower.unitPrice, (value) =>
+        setLower({ unitPrice: value }),
+      ),
+      numberCell("a", lower.amount, (value) => setLower({ amount: value })),
       textCell("r", "remarks", "remarks", lower.remarksLower, (value) =>
         setLower({ remarksLower: value }),
       ),
@@ -1084,6 +1191,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           <table
             className={`parts compare${twoStage(settings.layout) ? " two-stage" : ""}`}
             ref={tableRef}
+            onKeyDown={navKeyDown}
           >
             <thead>
               <tr>
@@ -1218,6 +1326,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           <table
             className={`parts breakdown${twoStage(settings.layout) ? " two-stage" : ""}`}
             ref={tableRef1}
+            onKeyDown={navKeyDown}
           >
             <thead>
               <tr>
@@ -1234,91 +1343,230 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {shownRows.map((row, index) =>
-                row.rowKind === "subject" || row.rowKind === "title" ? (
-                  <tr
-                    key={`s-${index}`}
-                    className="subject"
-                    data-subject={
-                      row.rowKind === "subject" && row.subjectId !== null
-                        ? row.subjectId
-                        : undefined
-                    }
-                  >
-                    <td className="mark" data-noexport>
-                      {(() => {
-                        const mark =
-                          row.rowKind === "subject"
-                            ? `${row.subjectId ?? ""}`
-                            : "";
-                        // 番号も科目名と同じ下段に出す
-                        return twoStage(settings.layout)
-                          ? subjectLines(mark)
-                          : mark;
-                      })()}
-                    </td>
-                    <td>
-                      {twoStage(settings.layout)
-                        ? subjectLines(headingText(row))
-                        : headingText(row)}
-                    </td>
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                    <td />
-                  </tr>
-                ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-                  settings.layout === BREAKDOWN_LAYOUT.twoRow ||
-                  settings.layout === BREAKDOWN_LAYOUT.excel ? (
-                  <tr
-                    key={`d-${index}`}
-                    className={pairClass(shownRows, index, settings.layout)}
-                  >
-                    <td className="mark" data-noexport />
-                    <td>{row.nameLower}</td>
-                    <td>{row.descriptionLower}</td>
-                    <td className="qty">{row.quantity ?? ""}</td>
-                    <td className="unit">{row.unit}</td>
-                    <td className="qty">{row.unitPrice ?? ""}</td>
-                    <td className="qty">{row.amount ?? ""}</td>
-                    <td>{row.remarksLower}</td>
-                  </tr>
-                ) : (
-                  <tr key={`d-${index}`} className="two-line">
-                    <td className="mark" data-noexport />
-                    <td>
-                      <div className="upper">{row.nameUpper}</div>
-                      <div className="lower">{row.nameLower}</div>
-                    </td>
-                    <td>
-                      <div className="upper">{row.descriptionUpper}</div>
-                      <div className="lower">{row.descriptionLower}</div>
-                    </td>
-                    <td className="qty">
-                      <div className="upper" />
-                      <div className="lower">{row.quantity ?? ""}</div>
-                    </td>
-                    <td className="unit">
-                      <div className="upper" />
-                      <div className="lower">{row.unit}</div>
-                    </td>
-                    <td className="qty">
-                      <div className="upper" />
-                      <div className="lower">{row.unitPrice ?? ""}</div>
-                    </td>
-                    <td className="qty">
-                      <div className="upper" />
-                      <div className="lower">{row.amount ?? ""}</div>
-                    </td>
-                    <td>
-                      <div className="upper">{row.remarksUpper}</div>
-                      <div className="lower">{row.remarksLower}</div>
-                    </td>
-                  </tr>
-                ),
-              )}
+              {shownRows.map((row, index) => (
+                <Fragment key={`r-${index}`}>
+                  {row.rowKind === "subject" || row.rowKind === "title" ? (
+                    <tr
+                      className="subject"
+                      data-subject={
+                        row.rowKind === "subject" && row.subjectId !== null
+                          ? row.subjectId
+                          : undefined
+                      }
+                    >
+                      <td className="mark" data-noexport>
+                        {(() => {
+                          const mark =
+                            row.rowKind === "subject"
+                              ? `${row.subjectId ?? ""}`
+                              : "";
+                          // 番号も科目名と同じ下段に出す
+                          return twoStage(settings.layout)
+                            ? subjectLines(mark)
+                            : mark;
+                        })()}
+                      </td>
+                      <td>
+                        {twoStage(settings.layout)
+                          ? subjectLines(headingText(row))
+                          : headingText(row)}
+                      </td>
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                    </tr>
+                  ) : settings.layout === BREAKDOWN_LAYOUT.oneLine ||
+                    settings.layout === BREAKDOWN_LAYOUT.twoRow ||
+                    settings.layout === BREAKDOWN_LAYOUT.excel ? (
+                    <tr
+                      className={pairClass(shownRows, index, settings.layout)}
+                    >
+                      <td className="mark" data-noexport />
+                      <td>
+                        <TextInput
+                          value={row.nameLower}
+                          onCommit={(value) =>
+                            updateMain(index, { nameLower: value })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <TextInput
+                          value={row.descriptionLower}
+                          onCommit={(value) =>
+                            updateMain(index, { descriptionLower: value })
+                          }
+                        />
+                      </td>
+                      <td className="qty">
+                        <NumberInput
+                          value={row.quantity}
+                          onCommit={(value) =>
+                            updateMain(index, { quantity: value })
+                          }
+                        />
+                      </td>
+                      <td className="unit">
+                        <TextInput
+                          value={row.unit}
+                          onCommit={(value) =>
+                            updateMain(index, { unit: value })
+                          }
+                        />
+                      </td>
+                      <td className="qty">
+                        <NumberInput
+                          value={row.unitPrice}
+                          onCommit={(value) =>
+                            updateMain(index, { unitPrice: value })
+                          }
+                        />
+                      </td>
+                      <td className="qty">
+                        <NumberInput
+                          value={row.amount}
+                          onCommit={(value) =>
+                            updateMain(index, { amount: value })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <TextInput
+                          value={row.remarksLower}
+                          onCommit={(value) =>
+                            updateMain(index, { remarksLower: value })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr className="two-line">
+                      <td className="mark" data-noexport />
+                      <td>
+                        <div className="upper">
+                          <TextInput
+                            value={row.nameUpper}
+                            onCommit={(value) =>
+                              updateMain(index, { nameUpper: value })
+                            }
+                          />
+                        </div>
+                        <div className="lower">
+                          <TextInput
+                            value={row.nameLower}
+                            onCommit={(value) =>
+                              updateMain(index, { nameLower: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <div className="upper">
+                          <TextInput
+                            value={row.descriptionUpper}
+                            onCommit={(value) =>
+                              updateMain(index, { descriptionUpper: value })
+                            }
+                          />
+                        </div>
+                        <div className="lower">
+                          <TextInput
+                            value={row.descriptionLower}
+                            onCommit={(value) =>
+                              updateMain(index, { descriptionLower: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="qty">
+                        <div className="upper" />
+                        <div className="lower">
+                          <NumberInput
+                            value={row.quantity}
+                            onCommit={(value) =>
+                              updateMain(index, { quantity: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="unit">
+                        <div className="upper" />
+                        <div className="lower">
+                          <TextInput
+                            value={row.unit}
+                            onCommit={(value) =>
+                              updateMain(index, { unit: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="qty">
+                        <div className="upper" />
+                        <div className="lower">
+                          <NumberInput
+                            value={row.unitPrice}
+                            onCommit={(value) =>
+                              updateMain(index, { unitPrice: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="qty">
+                        <div className="upper" />
+                        <div className="lower">
+                          <NumberInput
+                            value={row.amount}
+                            onCommit={(value) =>
+                              updateMain(index, { amount: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <div className="upper">
+                          <TextInput
+                            value={row.remarksUpper}
+                            onCommit={(value) =>
+                              updateMain(index, { remarksUpper: value })
+                            }
+                          />
+                        </div>
+                        <div className="lower">
+                          <TextInput
+                            value={row.remarksLower}
+                            onCommit={(value) =>
+                              updateMain(index, { remarksLower: value })
+                            }
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {subtotalAfter.has(index) && (
+                    <tr className="subtotal">
+                      <td className="mark" data-noexport />
+                      <td>
+                        {twoStage(settings.layout)
+                          ? subjectLines("小計")
+                          : "小計"}
+                      </td>
+                      <td />
+                      <td className="qty" />
+                      <td className="unit" />
+                      <td className="qty" />
+                      <td className="qty">
+                        {twoStage(settings.layout)
+                          ? subjectLines(String(subtotalAfter.get(index)))
+                          : subtotalAfter.get(index)}
+                      </td>
+                      <td />
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>

@@ -344,6 +344,44 @@ function subjectSortKey(
 }
 
 /**
+ * 金額が入った科目の終わりに「小計」行を足す。
+ * 画面では直接入力した金額を使い、科目ごとの合計金額を次の科目の前へ出す。
+ */
+export function withSubjectSubtotals(
+  rows: readonly BreakdownRow[],
+): BreakdownRow[] {
+  const next: BreakdownRow[] = [];
+  let total = 0;
+  let has = false;
+  let inSubject = false;
+  const flush = (): void => {
+    if (inSubject && has) {
+      const subtotal = emptyRow("detail");
+      subtotal.nameLower = "小計";
+      subtotal.amount = total;
+      next.push(subtotal);
+    }
+    total = 0;
+    has = false;
+  };
+  rows.forEach((row) => {
+    if (row.rowKind === "subject") {
+      flush();
+      inSubject = true;
+      next.push(row);
+      return;
+    }
+    if (inSubject && row.amount !== null) {
+      total += row.amount;
+      has = true;
+    }
+    next.push(row);
+  });
+  flush();
+  return next;
+}
+
+/**
  * 集計書兼工事マスターの明細を内訳書の行に変換する。
  * 工種科目ごとに見出し行を置き、明細を並べる。
  */
