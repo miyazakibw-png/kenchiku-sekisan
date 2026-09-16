@@ -44,7 +44,7 @@ function remarksOf(row: ComparableRow): string {
   return `${row.remarksUpper}\u0001${row.remarksLower}`;
 }
 
-function changedFields(
+export function changedFields(
   left: ComparableRow,
   right: ComparableRow,
 ): BreakdownField[] {

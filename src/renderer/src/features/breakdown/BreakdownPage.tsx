@@ -13,9 +13,9 @@ import {
   NAME_PATTERN,
 } from "../../../../core/breakdown/breakdown";
 import type { BreakdownField } from "../../../../core/breakdown/compare";
-import { compareBreakdown, moveRow } from "../../../../core/breakdown/compare";
+import { moveRow } from "../../../../core/breakdown/compare";
 import {
-  blockValue,
+  compareBlocksBySubject,
   headingTextOf,
   toCompareBlocks,
   type CompareBlock,
@@ -424,9 +424,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     () => toCompareBlocks(rightRows, settings.layout),
     [rightRows, settings.layout],
   );
+  // 工種科目どうしで並びを合わせてから、明細どうしを突き合わせる
   const diffs = useMemo(
-    () =>
-      compareBreakdown(leftBlocks.map(blockValue), rightBlocks.map(blockValue)),
+    () => compareBlocksBySubject(leftBlocks, rightBlocks),
     [leftBlocks, rightBlocks],
   );
 
@@ -1056,8 +1056,12 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             <tbody>
               {diffs.map((diff) => {
                 // 左右それぞれ1明細（かたまり）ずつ並べる。行の高さは全部そろう
-                const left = leftBlocks[diff.index] ?? null;
-                const right = rightBlocks[diff.index] ?? null;
+                const left =
+                  diff.leftIndex === null ? null : leftBlocks[diff.leftIndex];
+                const right =
+                  diff.rightIndex === null
+                    ? null
+                    : rightBlocks[diff.rightIndex];
                 return (
                   <tr
                     key={diff.index}

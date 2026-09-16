@@ -15,6 +15,10 @@ import {
 import { toBcsCsv } from "../../src/core/breakdown/bcs";
 import { compareBreakdown, moveRow } from "../../src/core/breakdown/compare";
 import {
+  compareBlocksBySubject,
+  toCompareBlocks,
+} from "../../src/core/breakdown/compareBlocks";
+import {
   splitBySubject,
   toSpreadsheetSheets,
   toSpreadsheetWorkbook,
@@ -405,5 +409,51 @@ describe("回どうしの比較", () => {
   it("行を上下に動かせる", () => {
     expect(moveRow([1, 2, 3], 0, 1)).toEqual([2, 1, 3]);
     expect(moveRow([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
+  });
+
+  it("工種科目どうしで並びを合わせる（片方に無い科目は空欄。並びは多いほうが基準）", () => {
+    const more = [
+      { id: 1, name: "A", displayOrder: 1 },
+      { id: 2, name: "B", displayOrder: 2 },
+      { id: 3, name: "C", displayOrder: 3 },
+    ];
+    // 左（新しい回）：A・B。右（前の回）：A・C
+    const leftRows = buildBreakdownRows(
+      [
+        item({}),
+        item({ id: 2, masterKey: "k2", subjectId: 2 }),
+        item({ id: 3, masterKey: "k3", subjectId: 2 }),
+      ],
+      more,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const rightRows = buildBreakdownRows(
+      [item({}), item({ id: 4, masterKey: "k4", subjectId: 3 })],
+      more,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const leftBlocks = toCompareBlocks(leftRows, BREAKDOWN_LAYOUT.twoLine);
+    const rightBlocks = toCompareBlocks(rightRows, BREAKDOWN_LAYOUT.twoLine);
+    const diffs = compareBlocksBySubject(leftBlocks, rightBlocks);
+    const heads = diffs.filter(
+      (diff) =>
+        (diff.leftIndex !== null && leftBlocks[diff.leftIndex].heading) ||
+        (diff.rightIndex !== null && rightBlocks[diff.rightIndex].heading),
+    );
+    // 科目の見出しは同じ科目どうしで並ぶ。A・C（右だけ）→ B（左だけ）の順
+    // （左のほうがかたまりが多いので左の並びが基準。Cは前の回でAの直後だったのでその位置）
+    expect(heads.map((diff) => diff.left?.nameLower ?? "")).toEqual([
+      "A",
+      "",
+      "B",
+    ]);
+    expect(heads.map((diff) => diff.right?.nameLower ?? "")).toEqual([
+      "A",
+      "C",
+      "",
+    ]);
+    // Bの明細は左だけ・Cの明細は右だけになる（並びを追いかけてずれない）
+    expect(diffs.some((diff) => diff.onlyLeft)).toBe(true);
+    expect(diffs.some((diff) => diff.onlyRight)).toBe(true);
   });
 });

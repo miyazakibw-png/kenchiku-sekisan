@@ -7,9 +7,9 @@
 import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
 import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
-import { compareBreakdown, type BreakdownField } from "./compare";
+import type { BreakdownField } from "./compare";
 import {
-  blockValue,
+  compareBlocksBySubject,
   headingTextOf,
   toCompareBlocks,
   twoRowPairs,
@@ -221,24 +221,22 @@ export interface CompareSheetInput {
 export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
   const leftBlocks = toCompareBlocks(input.left, input.layout);
   const rightBlocks = toCompareBlocks(input.right, input.layout);
-  const diffs = compareBreakdown(
-    leftBlocks.map(blockValue),
-    rightBlocks.map(blockValue),
-  );
+  // 工種科目どうしで並びを合わせてから、明細どうしを突き合わせる（画面と同じ）
+  const diffs = compareBlocksBySubject(leftBlocks, rightBlocks);
   const rows: XlsxCell[][] = [
     headerRow(input.leftTitle, input.rightTitle),
     titleRow(),
   ];
-  diffs.forEach((diff, index) => {
+  diffs.forEach((diff) => {
     // 左（新しい回）だけ色を付ける
     const left = sideLines(
-      leftBlocks[index] ?? null,
+      diff.leftIndex === null ? null : leftBlocks[diff.leftIndex],
       input.layout,
       diff.changed,
       diff.onlyLeft,
     );
     const right = sideLines(
-      rightBlocks[index] ?? null,
+      diff.rightIndex === null ? null : rightBlocks[diff.rightIndex],
       input.layout,
       null,
       false,
