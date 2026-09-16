@@ -141,4 +141,31 @@ describe("比較のエクセル掃き出し", () => {
     expect(sheet.rows[17]?.[0]?.value).toBe("B工事");
     expect(sheet.rows[17]?.[8]?.value).toBe("B工事");
   });
+
+  it("小計は科目が終わるページの最後の行に出る（左右それぞれ）", () => {
+    const subject = (id: number, name: string): BreakdownRow =>
+      row({ rowKind: "subject", subjectId: id, subjectName: name });
+    const subtotal = (amount: number): BreakdownRow =>
+      row({
+        subtotal: true,
+        nameLower: "小計",
+        amount,
+        quantity: null,
+        unit: "",
+      });
+    const sheet = toCompareSheet({
+      left: [subject(1, "A工事"), row({ amount: 100 }), subtotal(100)],
+      right: [subject(1, "A工事"), row({})],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+      page: { detailsPerPage: 17, detailsPerPageLater: 16 },
+    });
+    // 1ページ目の最後の行（17行目）に左だけ小計
+    expect(sheet.rows[16]?.[0]?.value).toBe("小計");
+    expect(sheet.rows[16]?.[5]?.value).toBe(100);
+    expect(sheet.rows[16]?.[8]?.value).toBe("");
+    // 小計の行は明細のすぐ次には出ない
+    expect(sheet.rows[4]?.[0]?.value).not.toBe("小計");
+  });
 });

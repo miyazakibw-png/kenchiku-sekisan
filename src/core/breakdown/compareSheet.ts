@@ -233,10 +233,54 @@ export interface CompareSheetInput {
   page?: PageLayout;
 }
 
+/** 小計の行（比較では明細どうしの突き合わせに入れず、科目が終わるページの最後の行へ出す） */
+function subtotalTotals(rows: readonly BreakdownRow[]): {
+  clean: BreakdownRow[];
+  totals: Map<number, number>;
+} {
+  const totals = new Map<number, number>();
+  const clean: BreakdownRow[] = [];
+  rows.forEach((row) => {
+    if (row.subtotal === true) {
+      if (row.subjectId !== null) totals.set(row.subjectId, row.amount ?? 0);
+      return;
+    }
+    clean.push(row);
+  });
+  return { clean, totals };
+}
+
+/** 小計の1行（左・右それぞれの金額欄へ科目の合計を出す） */
+function subtotalLine(
+  leftTotal: number | null,
+  rightTotal: number | null,
+): XlsxCell[] {
+  const side = (total: number | null): XlsxCell[] =>
+    HEADER.map((_title, index) => {
+      const value =
+        index === 0
+          ? total === null
+            ? ""
+            : "小計"
+          : index === 5
+            ? (total ?? "")
+            : "";
+      return {
+        value,
+        kind:
+          typeof value === "number" ? ("number" as const) : ("text" as const),
+        border: "one" as const,
+      };
+    });
+  return [...side(leftTotal), gapCell(), ...side(rightTotal)];
+}
+
 /** 比較のシート（1枚）を作る */
 export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
-  const leftBlocks = toCompareBlocks(input.left, input.layout);
-  const rightBlocks = toCompareBlocks(input.right, input.layout);
+  const leftSub = subtotalTotals(input.left);
+  const rightSub = subtotalTotals(input.right);
+  const leftBlocks = toCompareBlocks(leftSub.clean, input.layout);
+  const rightBlocks = toCompareBlocks(rightSub.clean, input.layout);
   // 工種科目どうしで並びを合わせてから、明細どうしを突き合わせる（画面と同じ）
   const diffs = compareBlocksBySubject(leftBlocks, rightBlocks);
   const rows: XlsxCell[][] = [
@@ -277,6 +321,19 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
   });
   groups.forEach((group, index) => {
     if (index > 0) fillPage();
+    // このかたまりの工種科目（先頭の見出しが無い固まりは null）
+    const subjectId =
+      group
+        .map((diff) => {
+          const left =
+            diff.leftIndex === null ? null : leftBlocks[diff.leftIndex].lower;
+          const right =
+            diff.rightIndex === null
+              ? null
+              : rightBlocks[diff.rightIndex].lower;
+          return left?.subjectId ?? null ?? right?.subjectId ?? null;
+        })
+        .find((id): id is number => id !== null) ?? null;
     group.forEach((diff) => {
       // 左（新しい回）だけ色を付ける
       const left = sideLines(
@@ -302,6 +359,21 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
         remaining -= 1;
       }
     });
+    // 金額が入った科目は、かたまりが終わるページの最後の行に小計を出す
+    const leftTotal =
+      subjectId === null ? null : (leftSub.totals.get(subjectId) ?? null);
+    const rightTotal =
+      subjectId === null ? null : (rightSub.totals.get(subjectId) ?? null);
+    if (leftTotal !== null || rightTotal !== null) {
+      if (remaining < 1) fillPage();
+      for (let count = 0; count < remaining - 1; count += 1) {
+        const border: XlsxBorder =
+          unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
+        rows.push([...blankSide(border), gapCell(), ...blankSide(border)]);
+      }
+      rows.push(subtotalLine(leftTotal, rightTotal));
+      remaining = 0;
+    }
   });
   fillPage();
   return {

@@ -96,6 +96,8 @@ export interface BreakdownRow {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
+  subtotal?: boolean;
 }
 
 /** 内訳書へ転記する集計書兼工事マスターの明細 */
@@ -369,12 +371,14 @@ export function withSubjectSubtotals(
   const next: BreakdownRow[] = [];
   let total = 0;
   let has = false;
-  let inSubject = false;
+  let subjectId: number | null = null;
   const flush = (): void => {
-    if (inSubject && has) {
+    if (subjectId !== null && has) {
       const subtotal = emptyRow("detail");
       subtotal.nameLower = "小計";
       subtotal.amount = total;
+      subtotal.subtotal = true;
+      subtotal.subjectId = subjectId;
       next.push(subtotal);
     }
     total = 0;
@@ -383,11 +387,11 @@ export function withSubjectSubtotals(
   rows.forEach((row) => {
     if (row.rowKind === "subject") {
       flush();
-      inSubject = true;
+      subjectId = row.subjectId;
       next.push(row);
       return;
     }
-    if (inSubject && amountOf(row) !== null) {
+    if (subjectId !== null && amountOf(row) !== null) {
       total += amountOf(row) ?? 0;
       has = true;
     }

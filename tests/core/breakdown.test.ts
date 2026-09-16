@@ -442,6 +442,32 @@ describe("回どうしの比較", () => {
     expect(next.indexOf(subtotals[0])).toBe(headB - 1);
   });
 
+  it("エクセルでは小計を科目が終わるページの最後の行に出す", () => {
+    const built = buildBreakdownRows(
+      [item({}), item({ id: 2, masterKey: "k2", subjectId: 2 })],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const rows = withSubjectSubtotals(
+      built.map((row) =>
+        row.rowKind === "detail" && row.masterKey === "k1"
+          ? { ...row, amount: 100 }
+          : row,
+      ),
+    );
+    const book = toSpreadsheetSheets(
+      [{ name: "内訳書", rows }],
+      BREAKDOWN_LAYOUT.twoLine,
+      { detailsPerPage: 17, detailsPerPageLater: 16 },
+    );
+    // 1ページ目の最後の行（タイトル2行＋明細32行＝34行）に小計が来る
+    expect(book[0].rows[33][1].value).toBe("小計");
+    expect(book[0].rows[33][6].value).toBe(100);
+    // 明細の直後は小計ではなく空欄（小計は明細のすぐ下には出ない）
+    expect(book[0].rows.some((row) => row[1].value === "小計")).toBe(true);
+    expect(book[0].rows[6][1].value).not.toBe("小計");
+  });
+
   it("工種科目どうしで並びを合わせる（片方に無い科目は空欄。並びは多いほうが基準）", () => {
     const more = [
       { id: 1, name: "A", displayOrder: 1 },
