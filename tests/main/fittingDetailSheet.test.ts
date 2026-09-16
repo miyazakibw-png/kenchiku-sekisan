@@ -235,9 +235,8 @@ describe("建具明細作成表", () => {
     expect(settings.widthLabel).toBe("W");
     expect(settings.heightLabel).toBe("*H");
     expect(settings.depthLabel).toBe("*見込");
-    expect(settings.partSymbols?.some((item) => item.symbol === "AW[]")).toBe(
-      true,
-    );
+    // 部位の記号表は無い（記号は分解してそのまま出す：AW3A→AW-3A）
+    expect(settings.partSymbols).toEqual([]);
     expect(settings.nameSymbols?.some((item) => item.symbol === "KBD")).toBe(
       false,
     );

@@ -278,14 +278,6 @@ export const defaultFittingDetailNameSymbols: FurnitureSymbol[] = [
   { symbol: "SDR", text: "外倒し連" },
 ];
 
-/** 建具明細作成表の部位（アルファベット+[]+数字以降で登録。[]には数字以降が入る）の初めの並び */
-export const defaultFittingDetailPartSymbols: FurnitureSymbol[] = [
-  { symbol: "AD[]", text: "アルミドア[]" },
-  { symbol: "AW[]", text: "アルミ窓[]" },
-  { symbol: "SD[]", text: "スチールドア[]" },
-  { symbol: "LSD[]", text: "軽量スチール製ドア[]" },
-];
-
 /** システムキッチンの部位（部屋名）の記号の初めの並び */
 export const defaultKitchenPartSymbols: FurnitureSymbol[] = [
   { symbol: "K", text: "キッチン" },
@@ -441,9 +433,7 @@ export function furnitureSettingsFor(
       widthLabel: "W",
       heightLabel: "*H",
       depthLabel: "*見込",
-      partSymbols: defaultFittingDetailPartSymbols.map((item) => ({
-        ...item,
-      })),
+      partSymbols: [],
       nameSymbols: defaultFittingDetailNameSymbols.map((item) => ({
         ...item,
       })),
@@ -621,18 +611,36 @@ export function furnitureCellQuantity(
   return displayedValue(value * count);
 }
 
+/**
+ * タテ方向の明細（列）のマス1行分の式（上から順に）。
+ * 建具明細作成表は空欄の行を上の行と同じ式とみなす（未入力可）。
+ */
+export function columnCellTexts(
+  rows: FurnitureRow[],
+  columnId: string,
+  kind = "furniture",
+): string[] {
+  if (!isFittingDetailSheet(kind))
+    return rows.map((row) => row.values?.[columnId] ?? "");
+  let carried = "";
+  return rows.map((row) => {
+    const text = row.values?.[columnId] ?? "";
+    if (text.trim() === "") return carried;
+    carried = text;
+    return text;
+  });
+}
+
 /** タテ方向の明細（列）1本の合計（各行の値 × 数量を足したもの） */
 export function furnitureColumnTotal(
   rows: FurnitureRow[],
   columnId: string,
+  kind = "furniture",
 ): number {
-  const resolved = resolveFurnitureRows(rows);
+  const resolved = resolveFurnitureRows(rows, kind);
+  const texts = columnCellTexts(rows, columnId, kind);
   return rows.reduce((sum, row, index) => {
-    const value = furnitureCellQuantity(
-      row,
-      resolved[index],
-      row.values?.[columnId] ?? "",
-    );
+    const value = furnitureCellQuantity(row, resolved[index], texts[index]);
     return value === null ? sum : displayedValue(sum + value);
   }, 0);
 }
@@ -1207,13 +1215,17 @@ export function entriesFromFurnitureSheet(
     });
   });
   // タテ方向の明細（部位別雑・金物入力表と同じ形。ヨコの自動明細とは別に拾う）
+  const columnTexts = new Map<string, string[]>();
+  (data.columns ?? []).forEach((column) => {
+    columnTexts.set(column.id, columnCellTexts(rows, column.id, data.kind));
+  });
   rows.forEach((row, index) => {
     (data.columns ?? []).forEach((column) => {
       if (isEmptyColumn(column)) return;
       const value = furnitureCellQuantity(
         row,
         resolved[index],
-        row.values?.[column.id] ?? "",
+        columnTexts.get(column.id)?.[index] ?? "",
       );
       if (value === null) return;
       entries.push({

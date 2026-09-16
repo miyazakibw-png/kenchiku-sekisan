@@ -18,6 +18,7 @@ import type {
 } from "@shared/types";
 import {
   applyFurnitureDetails,
+  columnCellTexts,
   furnitureCellQuantity,
   furnitureCellValue,
   furnitureColumn,
@@ -743,6 +744,18 @@ export default function FurnitureSheetPage({
     () => resolveFurnitureRows(view, sheet?.kind ?? "furniture"),
     [sheet?.kind, view],
   );
+
+  /** タテ明細のマスごとの式。建具明細作成表は空欄の行を上の行と同じ式とみなす */
+  const columnTexts = useMemo(() => {
+    const map = new Map<string, string[]>();
+    columns.forEach((column) => {
+      map.set(
+        column.id,
+        columnCellTexts(view, column.id, sheet?.kind ?? "furniture"),
+      );
+    });
+    return map;
+  }, [columns, view, sheet?.kind]);
 
   const subjectEntries = useMemo<PickEntry[]>(
     () =>
@@ -1734,9 +1747,9 @@ export default function FurnitureSheetPage({
                       }
                     />
                     <span className="hint">
-                      （入力は「-」等何でも同じ変換。下の「部位の記号」表に無い記号はこの文字で出す：AW3A→AW
+                      （部位をアルファベット＋数字以降に分解して出す。入力は「-」等何でも同じ変換：AW3A→AW
                       {settings.partSeparator ?? "-"}
-                      3A。「AW[]→アルミ窓[]」ならアルミ窓3A）
+                      3A）
                     </span>
                   </td>
                 ) : (
@@ -1775,52 +1788,6 @@ export default function FurnitureSheetPage({
                         value={settings.addSuffix}
                         onChange={(event) =>
                           changeSettings({ addSuffix: event.target.value })
-                        }
-                      />
-                    </td>
-                  </>
-                )}
-                {isFittingDetail && (
-                  <>
-                    <td>集計書での置き場所（部位Ⅰ・部位Ⅱ・倍率）</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        value={sheet?.part1 ?? ""}
-                        title="集計書の部位Ⅰ（一覧の表と同じ置き場所に入ります）"
-                        onChange={(event) =>
-                          setSheet(
-                            sheet === null
-                              ? null
-                              : { ...sheet, part1: event.target.value },
-                          )
-                        }
-                      />
-                      <input
-                        lang="ja"
-                        value={sheet?.part2 ?? ""}
-                        title="集計書の部位Ⅱ"
-                        onChange={(event) =>
-                          setSheet(
-                            sheet === null
-                              ? null
-                              : { ...sheet, part2: event.target.value },
-                          )
-                        }
-                      />
-                      <input
-                        className="num"
-                        value={sheet?.multiplier ?? 1}
-                        title="倍率"
-                        onChange={(event) =>
-                          setSheet(
-                            sheet === null
-                              ? null
-                              : {
-                                  ...sheet,
-                                  multiplier: Number(event.target.value) || 1,
-                                },
-                          )
                         }
                       />
                     </td>
@@ -2041,17 +2008,17 @@ export default function FurnitureSheetPage({
             </tbody>
           </table>
           <div className="symbol-tables">
-            <SymbolTable
-              title={
-                isFittingDetail
-                  ? "部位の記号（アルファベット+[]+数字。[]に数字が入ります。入力はアルファベットと数字の間に「-」等を入れても同じ変換）"
-                  : withFitting
+            {!isFittingDetail && (
+              <SymbolTable
+                title={
+                  withFitting
                     ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
                     : "+部位の記号"
-              }
-              symbols={settings.partSymbols}
-              onChange={(partSymbols) => changeSettings({ partSymbols })}
-            />
+                }
+                symbols={settings.partSymbols}
+                onChange={(partSymbols) => changeSettings({ partSymbols })}
+              />
+            )}
             <SymbolTable
               title={
                 isFittingDetail
@@ -2215,7 +2182,11 @@ export default function FurnitureSheetPage({
                       (row) => (row.values?.[column.id] ?? "").trim() !== "",
                     )
                       ? ""
-                      : furnitureColumnTotal(view, column.id).toFixed(2)}
+                      : furnitureColumnTotal(
+                          view,
+                          column.id,
+                          sheet?.kind ?? "furniture",
+                        ).toFixed(2)}
                     <button
                       type="button"
                       className="drop"
@@ -2666,7 +2637,9 @@ export default function FurnitureSheetPage({
                   )}
                   <td className="vlabel" />
                   {columns.map((column) => {
-                    const text = rows[index].values?.[column.id] ?? "";
+                    const raw = rows[index].values?.[column.id] ?? "";
+                    // 建具明細作成表は空欄の行を上の行と同じ式とみなす（未入力可）
+                    const text = columnTexts.get(column.id)?.[index] ?? raw;
                     const value = furnitureCellValue(row, text);
                     const counted = furnitureCellQuantity(
                       row,
@@ -2688,7 +2661,8 @@ export default function FurnitureSheetPage({
                         }
                       >
                         <input
-                          value={text}
+                          value={raw}
+                          placeholder={raw === "" ? text : ""}
                           title={
                             withFitting
                               ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）"

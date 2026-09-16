@@ -672,12 +672,14 @@ function furnitureEntries(
       ...furnitureSettings(),
       ...parseJson<FurnitureSettings>(sheet.settingsJson, furnitureSettings()),
     };
+    // 建具明細作成表に置き場所（部位Ⅰ・部位Ⅱ）は無い：集計書での根拠は各明細の部位
+    const fittingDetail = isFittingDetailSheet(sheet.kind);
     return entriesFromFurnitureSheet(
       {
         sheetId: sheet.id,
-        part1: sheet.part1,
-        part2: sheet.part2,
-        part2Split: sheet.part2Split === 1,
+        part1: fittingDetail ? "" : sheet.part1,
+        part2: fittingDetail ? "" : sheet.part2,
+        part2Split: fittingDetail ? false : sheet.part2Split === 1,
         part3: sheet.name,
         multiplier: sheet.multiplier,
       },
