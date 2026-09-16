@@ -54,6 +54,7 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitlesOn: false,
   partTitles: [],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
@@ -1086,9 +1087,17 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </button>
           </div>
           <div className="replacements">
-            <span>
-              基本部位のタイトル行（部位番号が始まり以上・次の始まり未満の前に出す）
-            </span>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.partTitlesOn}
+                onChange={(e) =>
+                  void saveSettings({ partTitlesOn: e.target.checked })
+                }
+              />
+              基本部位のタイトル行を出す
+            </label>
+            <span>（部位番号が始まり以上・次の始まり未満の前に出す）</span>
             {settings.partTitles.map((rule, index) => (
               <span key={`${rule.from}-${index}`} className="rule">
                 <input

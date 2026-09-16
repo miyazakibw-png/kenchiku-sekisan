@@ -81,6 +81,8 @@ export interface BreakdownSettings {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: TextReplacement[];
+  /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
+  partTitlesOn: boolean;
   /** 基本部位のタイトル行（部位番号の範囲→出す文字。空なら出さない） */
   partTitles: PartTitle[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
@@ -102,6 +104,7 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitlesOn: false,
   partTitles: [
     { from: 10, title: "＜床＞" },
     { from: 20, title: "＜巾木＞" },
@@ -523,7 +526,9 @@ export function buildBreakdownRows(
           rows.push(title);
         }
       }
-      const partTitle = partTitleOf(item.partNumber, settings.partTitles);
+      const partTitle = settings.partTitlesOn
+        ? partTitleOf(item.partNumber, settings.partTitles)
+        : null;
       if (partTitle !== null && partTitle !== lastPartTitle) {
         lastPartTitle = partTitle;
         const title = emptyRow("title");

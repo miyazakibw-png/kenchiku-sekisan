@@ -215,7 +215,7 @@ describe("内訳書の行づくり", () => {
         item({ partNumber: 72 }),
       ],
       subjects,
-      DEFAULT_BREAKDOWN_SETTINGS,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, partTitlesOn: true },
     );
     expect(
       rows.map((row) =>
@@ -244,7 +244,7 @@ describe("内訳書の行づくり", () => {
         item({ part1: "外部", partNumber: 12 }),
       ],
       subjects,
-      DEFAULT_BREAKDOWN_SETTINGS,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, partTitlesOn: true },
     );
     expect(
       rows.map((row) =>
@@ -261,6 +261,16 @@ describe("内訳書の行づくり", () => {
       "普通コンクリート",
       "",
     ]);
+  });
+
+  it("部位タイトル行を出さない設定では出ない（表は残る）", () => {
+    const rows = buildBreakdownRows(
+      [item({ partNumber: 11 }), item({ partNumber: 25 })],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    expect(rows.some((row) => row.nameLower === "＜床＞")).toBe(false);
+    expect(rows.some((row) => row.nameLower === "＜巾木＞")).toBe(false);
   });
 
   it("名称パターンで部位：名称にできる（2段1行・1段とも）", () => {

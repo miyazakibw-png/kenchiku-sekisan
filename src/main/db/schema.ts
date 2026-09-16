@@ -864,6 +864,8 @@ export const projectBreakdownSettings = sqliteTable(
     unitReplacementsJson: text("unit_replacements_json")
       .notNull()
       .default("[]"),
+    /** 基本部位のタイトル行を出すかどうか（0:出さない 1:出す） */
+    partTitlesOn: integer("part_titles_on").notNull().default(0),
     /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字） */
     partTitlesJson: text("part_titles_json")
       .notNull()
