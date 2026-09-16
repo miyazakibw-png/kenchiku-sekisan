@@ -1572,7 +1572,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                         </tr>
                       </>
                     ) : (
-                      <tr className="subtotal">
+                      <tr
+                        className={`subtotal${twoStage(settings.layout) ? " two-line" : ""}`}
+                      >
                         <td className="mark" data-noexport />
                         <td>
                           {twoStage(settings.layout)
