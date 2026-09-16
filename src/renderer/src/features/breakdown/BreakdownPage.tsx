@@ -145,6 +145,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const [panel, setPanel] = useState<"none" | "settings" | "compare">("none");
   const [message, setMessage] = useState("");
   const [leftRows, setLeftRows] = useState<BreakdownRowRecord[]>([]);
@@ -360,12 +361,29 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         bodyRef.current.getBoundingClientRect().top;
   };
 
-  const moveSubject = (subjectId: number, step: number): void => {
+  const moveSubject = (subjectId: number, step: number): Promise<void> => {
     const order = [...settings.subjectOrder];
     const index = order.indexOf(subjectId);
-    if (index < 0) return;
-    void saveSettings({ subjectOrder: moveRow(order, index, step) });
+    if (index < 0) return Promise.resolve();
+    return saveSettings({ subjectOrder: moveRow(order, index, step) });
   };
+
+  // 選んだ科目を続けて動かす（↑↓ボタンの場所は動かない）
+  const moveSelectedSubject = (step: number): void => {
+    if (selectedSubject === null) return;
+    void moveSubject(selectedSubject, step).then(() => {
+      listRef.current
+        ?.querySelector(`[data-subject-btn="${selectedSubject}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  };
+
+  const selectedSubjectName =
+    usedSubjects.find(([id]) => id === selectedSubject)?.[1] ?? "";
+  const selectedSubjectIndex =
+    selectedSubject === null
+      ? -1
+      : settings.subjectOrder.indexOf(selectedSubject);
 
   // 比較画面では Ctrl+Z で戻る、Ctrl+Y（Ctrl+Shift+Z）で進む
   useEffect(() => {
@@ -1057,7 +1075,37 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         </div>
       ) : (
         <div className="breakdown-body" ref={bodyRef}>
-          <div className="subject-list">
+          <div className="subject-list" ref={listRef}>
+            <div className="subject-move">
+              {selectedSubject === null ? (
+                <span className="hint">動かす科目を下から選んでください</span>
+              ) : (
+                <>
+                  <span className="name" title="選んでいる科目">
+                    {selectedSubjectName}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={selectedSubjectIndex <= 0}
+                    title="上へ1つ（続けて押すと続けて動きます）"
+                    onClick={() => moveSelectedSubject(-1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      selectedSubjectIndex < 0 ||
+                      selectedSubjectIndex >= settings.subjectOrder.length - 1
+                    }
+                    title="下へ1つ（続けて押すと続けて動きます）"
+                    onClick={() => moveSelectedSubject(1)}
+                  >
+                    ↓
+                  </button>
+                </>
+              )}
+            </div>
             <button
               type="button"
               className={selectedSubject === null ? "selected" : ""}
@@ -1066,7 +1114,11 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               すべて
             </button>
             {usedSubjects.map(([subjectId, name]) => (
-              <div key={subjectId ?? "none"} className="subject-row">
+              <div
+                key={subjectId ?? "none"}
+                className="subject-row"
+                data-subject-btn={subjectId ?? "none"}
+              >
                 <button
                   type="button"
                   className={[
@@ -1092,13 +1144,13 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                   <span className="order">
                     <button
                       type="button"
-                      onClick={() => moveSubject(subjectId, -1)}
+                      onClick={() => void moveSubject(subjectId, -1)}
                     >
                       ↑
                     </button>
                     <button
                       type="button"
-                      onClick={() => moveSubject(subjectId, 1)}
+                      onClick={() => void moveSubject(subjectId, 1)}
                     >
                       ↓
                     </button>

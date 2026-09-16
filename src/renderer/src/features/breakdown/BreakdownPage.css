@@ -14,6 +14,35 @@
   top: 0;
 }
 
+/* 選んだ科目をその場から続けて動かすバー */
+.breakdown-page .subject-list .subject-move {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  min-height: 24px;
+}
+.breakdown-page .subject-list .subject-move .name {
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breakdown-page .subject-list .subject-move .hint {
+  flex: 1 1 auto;
+  font-size: 11px;
+  color: #666;
+}
+.breakdown-page .subject-list .subject-move button {
+  flex: 0 0 auto;
+  width: 24px;
+  text-align: center;
+}
+
 .breakdown-page .subject-list .subject-row {
   display: flex;
   align-items: center;
