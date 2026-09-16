@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aggregateItems } from "../../src/core/aggregate/aggregate";
 import {
   applyFurnitureDetails,
   composedSymbolText,
@@ -223,6 +224,12 @@ describe("建具明細作成表", () => {
     // 根拠の部屋は行の記号（部位欄のまま）
     expect(entries.map((entry) => entry.part3)).toEqual(["AD1", "AW1"]);
     expect(entries.map((entry) => entry.includeInRooms)).toEqual([true, true]);
+    // 数量2以上は「記号 × 数」を根拠の部屋に出す（部位別入力表の倍率と同じ考え方）
+    const items = aggregateItems(entries);
+    expect(items.map((item) => item.rooms[0]?.roomName)).toEqual([
+      "AD1 × 4",
+      "AW1",
+    ]);
     // 家具計算書の分は置き場所の設定・表の名前のまま（変えない）
     const furniture = entriesFromFurnitureSheet(
       {

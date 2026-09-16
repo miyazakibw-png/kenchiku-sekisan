@@ -1218,6 +1218,9 @@ export function entriesFromFurnitureSheet(
       quantity: displayedValue(value * multiplier),
       sourceDetailId: row.detail.sourceDetailId,
       includeInRooms: fittingDetail ? true : undefined,
+      roomCount: fittingDetail
+        ? (numberOf(resolved[index].quantity) ?? 1)
+        : undefined,
     });
   });
   // タテ方向の明細（部位別雑・金物入力表と同じ形。ヨコの自動明細とは別に拾う）
@@ -1264,6 +1267,9 @@ export function entriesFromFurnitureSheet(
         quantity: displayedValue(value * multiplier),
         sourceDetailId: column.sourceDetailId,
         includeInRooms: fittingDetail ? true : undefined,
+        roomCount: fittingDetail
+          ? (numberOf(resolved[index].quantity) ?? 1)
+          : undefined,
       });
     });
   });

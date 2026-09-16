@@ -63,6 +63,8 @@ export interface AggregateEntry {
   sourceDetailId: number | null;
   /** 家具系の詳細でも根拠の部屋集計に入れる（建具明細作成表＝行の記号ごとに根拠を出すため） */
   includeInRooms?: boolean;
+  /** 根拠の部屋名に「× N」を付ける数（建具明細作成表＝行の数量。無いときは倍率） */
+  roomCount?: number;
 }
 
 /** 集計後の1明細（集計書兼工事マスターの1行＝画面では上下2行） */
@@ -201,7 +203,9 @@ export function traceRoomName(entry: AggregateEntry): string {
       : entry.part3 === "" || entry.part3 === entry.part2Raw
         ? entry.part2Raw
         : `${entry.part2Raw}：${entry.part3}`;
-  return entry.multiplier === 1 ? base : `${base} × ${entry.multiplier}`;
+  // 建具明細作成表は行の数量（建具数）が2以上のとき「× N」を付ける（倍率と同じ考え方）
+  const times = entry.roomCount ?? entry.multiplier;
+  return times === 1 ? base : `${base} × ${times}`;
 }
 
 function numberOrder(value: number | null): string {
