@@ -12,6 +12,7 @@ import {
   roomNamesByRowId,
   toDrafts,
 } from "./estimateRows";
+import { isFittingDetailSheet } from "../../../../core/furniture/furnitureSheet";
 import RoomCalcPrintPage from "./RoomCalcPrintPage";
 import {
   normalizeManageRows,
@@ -330,7 +331,11 @@ export default function CalcPrintLauncher({
               <td>{sheet.part2}</td>
               <td>{sheet.name}</td>
               <td className="num" />
-              <td>家具・設備入力表</td>
+              <td>
+                {isFittingDetailSheet(sheet.kind)
+                  ? "建具明細作成表"
+                  : "家具・設備入力表"}
+              </td>
               <td>{sheet.note}</td>
             </tr>
           ))}

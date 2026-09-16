@@ -41,11 +41,13 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   furnitureSettings,
+  isFittingDetailSheet,
   type FittingSize,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
+import { syncFittingDetailSheet } from "./furnitureSheetService";
 import {
   entriesFromFireproofSheet,
   normalizeManageRows,
@@ -658,7 +660,11 @@ function furnitureEntries(
       asc(projectFurnitureSheets.id),
     )
     .all();
-  return sheets.flatMap((sheet) => {
+  return sheets.flatMap((raw) => {
+    // 建具明細作成表は集計のたびに建具表と取り合う（建具表側で寸法を直した分も拾う）
+    const sheet = isFittingDetailSheet(raw.kind)
+      ? syncFittingDetailSheet(db, raw)
+      : raw;
     if (!part2Order.has(sheet.part2))
       part2Order.set(sheet.part2, part2Order.size);
     const rows = parseJson<FurnitureRow[]>(sheet.rowsJson, []);

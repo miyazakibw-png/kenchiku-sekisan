@@ -32,6 +32,7 @@ import {
   hasShape,
   floorAreaOf,
   isEmptyFurnitureColumn,
+  isFittingDetailSheet,
   pasteFurnitureRows,
   resolveFurnitureRows,
   revertFurnitureDetail,
@@ -170,9 +171,26 @@ const CURTAIN_INPUT_COLUMNS: InputColumn[] = [
   { key: "unit", label: "単位", forDetail: false },
 ];
 
+/** 建具明細作成表の入力欄（部位欄は1つ。W・Hは建具表と取り合い、Dはこの表だけの入力） */
+const FITTING_DETAIL_INPUT_COLUMNS: InputColumn[] = [
+  { key: "subjectId", label: "科目", forDetail: true },
+  { key: "partNumber", label: "部位ID", forDetail: true },
+  { key: "detailNumber", label: "名称ID", forDetail: true },
+  { key: "part", label: "部位", forDetail: false },
+  { key: "nameSymbol", label: "名称", forDetail: false },
+  { key: "width", label: "W", forDetail: false },
+  { key: "height", label: "H", forDetail: false },
+  { key: "depth", label: "D", forDetail: false },
+  { key: "quantity", label: "数量", forDetail: false },
+  { key: "unit", label: "単位", forDetail: false },
+  { key: "descriptionUpper", label: "摘要(上段)", forDetail: false },
+  { key: "remarksLower", label: "備考(下段)", forDetail: false },
+];
+
 /** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台・棚・ハンガーパイプはW1・W2・W3。
  * ハンガーパイプはDの代わりに形状。カーテン・ブラインドはW・H・Dの代わりに建具記号） */
 function inputColumnsFor(kind: string): InputColumn[] {
+  if (isFittingDetailSheet(kind)) return FITTING_DETAIL_INPUT_COLUMNS;
   if (hasFittingSymbol(kind)) return CURTAIN_INPUT_COLUMNS;
   if (hasModel(kind))
     return INPUT_COLUMNS.flatMap((column) => {
@@ -456,8 +474,21 @@ export default function FurnitureSheetPage({
   const tableRef = useRef<HTMLTableElement>(null);
   const [printBlankRows, setPrintBlankRows] = useState(0);
 
-  const { markSaved } = useSaveOnLeave({ rows, columns, settings }, () =>
-    save(true),
+  // 表の名前・集計書での置き場所（部位Ⅰ・部位Ⅱ・倍率）など、行以外の直し分も画面を離れるとき自動保存する
+  const sheetMeta =
+    sheet === null
+      ? null
+      : {
+          name: sheet.name,
+          part1: sheet.part1,
+          part2: sheet.part2,
+          part2Split: sheet.part2Split,
+          multiplier: sheet.multiplier,
+          note: sheet.note,
+        };
+  const { markSaved } = useSaveOnLeave(
+    { rows, columns, settings, sheetMeta },
+    () => save(true),
   );
 
   /** ↶戻る・↷進む用の履歴（行・タテの明細列・表の設定をまとめて1つの履歴にする） */
@@ -535,10 +566,24 @@ export default function FurnitureSheetPage({
         note: sheet.note,
       });
       setSheet(saved);
-      markSaved({ rows, columns, settings });
+      markSaved({
+        rows,
+        columns,
+        settings,
+        sheetMeta: {
+          name: saved.name,
+          part1: saved.part1,
+          part2: saved.part2,
+          part2Split: saved.part2Split,
+          multiplier: saved.multiplier,
+          note: saved.note,
+        },
+      });
       if (!quiet)
         setMessage(
-          "保存しました（建具表へ転記し、集計実行で集計書に入ります）",
+          isFittingDetailSheet(sheet.kind)
+            ? "保存しました（W・Hを建具表へ返し、集計実行で集計書に入ります）"
+            : "保存しました（建具表へ転記し、集計実行で集計書に入ります）",
         );
     },
     [columns, markSaved, printMode, rows, settings, sheet],
@@ -583,6 +628,14 @@ export default function FurnitureSheetPage({
         rows: nextRows,
         columns: nextColumns,
         settings: nextSettings,
+        sheetMeta: {
+          name: loaded.name,
+          part1: loaded.part1,
+          part2: loaded.part2,
+          part2Split: loaded.part2Split,
+          multiplier: loaded.multiplier,
+          note: loaded.note,
+        },
       });
       if (hasFittingSymbol(loaded.kind)) {
         setFittings(await window.sekisan.listFittings(loaded.projectId));
@@ -1102,6 +1155,7 @@ export default function FurnitureSheetPage({
   const withShape = hasShape(sheet?.kind ?? "furniture");
   const withModel = hasModel(sheet?.kind ?? "furniture");
   const withFitting = hasFittingSymbol(sheet?.kind ?? "furniture");
+  const isFittingDetail = isFittingDetailSheet(sheet?.kind ?? "");
   const shapeHint = (settings.shapeSymbols ?? [])
     .map((item) => `${item.symbol}→${item.text}`)
     .join("　");
@@ -1299,7 +1353,8 @@ export default function FurnitureSheetPage({
     >
       {printMode && (
         <div className="calc-print-title">
-          家具計算書　{sheet.name}　{project.managementNo} {project.name}
+          {isFittingDetailSheet(sheet.kind) ? "建具明細作成表" : "家具計算書"}　
+          {sheet.name}　{project.managementNo} {project.name}
         </div>
       )}
       <div className="toolbar">
@@ -1309,9 +1364,13 @@ export default function FurnitureSheetPage({
             void save(true).then(onBack);
           }}
         >
-          ← 家具・設備入力表（一覧）へ
+          {isFittingDetailSheet(sheet.kind)
+            ? "← 建具表へ"
+            : "← 家具・設備入力表（一覧）へ"}
         </button>
-        <h2>家具計算書</h2>
+        <h2>
+          {isFittingDetailSheet(sheet.kind) ? "建具明細作成表" : "家具計算書"}
+        </h2>
         <span className="project">
           {sheet.name}／{project.managementNo} {project.name}
         </span>
@@ -1612,7 +1671,11 @@ export default function FurnitureSheetPage({
             onMouseDown={settingsDrag.onMouseDown}
             title="この見出しをドラッグすると設定の窓を動かせます"
           >
-            <b>家具計算書の設定</b>
+            <b>
+              {isFittingDetailSheet(sheet?.kind ?? "")
+                ? "建具明細作成表の設定"
+                : "家具計算書の設定"}
+            </b>
             <span>（この表だけの設定。見出しをドラッグで移動）</span>
             <button type="button" onClick={() => setShowSettings(false)}>
               ✕ 閉じる
@@ -1666,25 +1729,109 @@ export default function FurnitureSheetPage({
                     }
                   />
                 </td>
-                <td>+部位の前後付加文字</td>
-                <td>
-                  <input
-                    lang="ja"
-                    value={settings.addPrefix}
-                    onChange={(event) =>
-                      changeSettings({ addPrefix: event.target.value })
-                    }
-                  />
-                  ＋部位＋
-                  <input
-                    lang="ja"
-                    value={settings.addSuffix}
-                    onChange={(event) =>
-                      changeSettings({ addSuffix: event.target.value })
-                    }
-                  />
-                </td>
+                {!isFittingDetail && (
+                  <>
+                    <td>+部位の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.addPrefix}
+                        onChange={(event) =>
+                          changeSettings({ addPrefix: event.target.value })
+                        }
+                      />
+                      ＋部位＋
+                      <input
+                        lang="ja"
+                        value={settings.addSuffix}
+                        onChange={(event) =>
+                          changeSettings({ addSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                  </>
+                )}
+                {isFittingDetail && (
+                  <>
+                    <td>集計書での置き場所（部位Ⅰ・部位Ⅱ・倍率）</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={sheet?.part1 ?? ""}
+                        title="集計書の部位Ⅰ（一覧の表と同じ置き場所に入ります）"
+                        onChange={(event) =>
+                          setSheet(
+                            sheet === null
+                              ? null
+                              : { ...sheet, part1: event.target.value },
+                          )
+                        }
+                      />
+                      <input
+                        lang="ja"
+                        value={sheet?.part2 ?? ""}
+                        title="集計書の部位Ⅱ"
+                        onChange={(event) =>
+                          setSheet(
+                            sheet === null
+                              ? null
+                              : { ...sheet, part2: event.target.value },
+                          )
+                        }
+                      />
+                      <input
+                        className="num"
+                        value={sheet?.multiplier ?? 1}
+                        title="倍率"
+                        onChange={(event) =>
+                          setSheet(
+                            sheet === null
+                              ? null
+                              : {
+                                  ...sheet,
+                                  multiplier: Number(event.target.value) || 1,
+                                },
+                          )
+                        }
+                      />
+                    </td>
+                  </>
+                )}
               </tr>
+              {isFittingDetail && (
+                <tr>
+                  <td>建具明細作成表へ変換する行</td>
+                  <td colSpan={3}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={settings.convertEstimate ?? true}
+                        onChange={(event) =>
+                          changeSettings({
+                            convertEstimate: event.target.checked,
+                          })
+                        }
+                      />
+                      計算書からの転記分
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={settings.convertManual ?? true}
+                        onChange={(event) =>
+                          changeSettings({
+                            convertManual: event.target.checked,
+                          })
+                        }
+                      />
+                      建具入力部
+                    </label>
+                    <span className="hint">
+                      （家具計算書からの転記分は変換しません。外すとその出どころの行は取り合いを保ったまま新しく足されません）
+                    </span>
+                  </td>
+                </tr>
+              )}
               {withModel && (
                 <tr>
                   <td>加工手間(梁欠き)の前後付加文字</td>
@@ -1867,18 +2014,22 @@ export default function FurnitureSheetPage({
           <div className="symbol-tables">
             <SymbolTable
               title={
-                withFitting
-                  ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
-                  : "+部位の記号"
+                isFittingDetail
+                  ? "部位の記号（アルファベット+[]+数字。[]に数字が入ります。入力はアルファベットと数字の間に「-」等を入れても同じ変換）"
+                  : withFitting
+                    ? "2つ目の+部位の記号（表に無い文字はそのまま出ます）"
+                    : "+部位の記号"
               }
               symbols={settings.partSymbols}
               onChange={(partSymbols) => changeSettings({ partSymbols })}
             />
             <SymbolTable
               title={
-                withFitting
-                  ? "部材名称の記号（表に無い文字はそのまま出ます）"
-                  : "名称の記号"
+                isFittingDetail
+                  ? "名称の記号（組み合わせ可。例：KBD→片開きドア。組み合わせと同じ並びの登録記号があるときは登録記号が優先。表に無い文字はそのまま出ます）"
+                  : withFitting
+                    ? "部材名称の記号（表に無い文字はそのまま出ます）"
+                    : "名称の記号"
               }
               symbols={settings.nameSymbols}
               onChange={(nameSymbols) => changeSettings({ nameSymbols })}
@@ -2141,9 +2292,15 @@ export default function FurnitureSheetPage({
                         placeholder={
                           resolved[index].detailNumber === null
                             ? ""
-                            : resolved[index].detailNumber.toFixed(2)
+                            : isFittingDetail
+                              ? String(resolved[index].detailNumber)
+                              : resolved[index].detailNumber.toFixed(2)
                         }
-                        title="空欄のときは上の行に0.01を足します（科目を入れるとマスターの明細から選べます）"
+                        title={
+                          isFittingDetail
+                            ? "空欄のときは上の行に1を足します（科目を入れるとマスターの明細から選べます）"
+                            : "空欄のときは上の行に0.01を足します（科目を入れるとマスターの明細から選べます）"
+                        }
                         onFocus={() =>
                           void loadNumberOptions(
                             rows[index].subjectId ?? resolved[index].subjectId,

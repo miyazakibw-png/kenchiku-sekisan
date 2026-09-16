@@ -92,6 +92,10 @@ export default function ProjectWorkspacePage({
   const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
   /** 家具・設備入力表の一覧で選んで開いている表 */
   const [furnitureSheetId, setFurnitureSheetId] = useState<number | null>(null);
+  /** 建具表の「建具明細作成」で開いている建具明細作成表 */
+  const [fittingDetailSheetId, setFittingDetailSheetId] = useState<
+    number | null
+  >(null);
   /** 建具表の「計算書」から飛んできたときに開く部屋計算書（部位別入力表の行id） */
   const [jumpEstimateRowId, setJumpEstimateRowId] = useState<number | null>(
     null,
@@ -216,7 +220,16 @@ export default function ProjectWorkspacePage({
       return;
     }
     if (jump.kind === "furniture") {
+      // 建具明細作成表からの拾いは建具明細作成表へ（一覧には出ないので表を読んで分ける）
+      const furnitureSheet = await window.sekisan.getFurnitureSheet(
+        jump.sheetId,
+      );
       setBackToAggregate(from);
+      if (furnitureSheet.kind === "fittingDetail") {
+        setFittingDetailSheetId(jump.sheetId);
+        setOpenedMenu("fittingDetail");
+        return;
+      }
       setFurnitureSheetId(jump.sheetId);
       setOpenedMenu("furnitureInput");
       return;
@@ -326,6 +339,33 @@ export default function ProjectWorkspacePage({
         onOpenFurnitureSheet={(sheetId) => {
           setFurnitureSheetId(sheetId);
           setOpenedMenu("furnitureInput");
+        }}
+        onOpenFittingDetail={() => {
+          void window.sekisan
+            .ensureFittingDetailSheet(draft.id)
+            .then((sheet) => {
+              setFittingDetailSheetId(sheet.id);
+              setOpenedMenu("fittingDetail");
+            });
+        }}
+      />
+    );
+  }
+
+  if (openedMenu === "fittingDetail") {
+    if (fittingDetailSheetId === null) {
+      setOpenedMenu("fittings");
+      return <></>;
+    }
+    return (
+      <FurnitureSheetPage
+        project={draft}
+        options={options}
+        sheetId={fittingDetailSheetId}
+        onBack={() => {
+          setFittingDetailSheetId(null);
+          if (leaveSource()) return;
+          setOpenedMenu("fittings");
         }}
       />
     );

@@ -252,6 +252,9 @@ const api = {
     ipcRenderer.invoke(IPC.furnitureSheetListSave, projectId, sheets),
   getFurnitureSheet: (sheetId: number): Promise<FurnitureSheet> =>
     ipcRenderer.invoke(IPC.furnitureSheetGet, sheetId),
+  /** 建具明細作成表を取る（無ければ作る。1工事に1枚。建具表と取り合った状態で返る） */
+  ensureFittingDetailSheet: (projectId: number): Promise<FurnitureSheet> =>
+    ipcRenderer.invoke(IPC.fittingDetailSheetEnsure, projectId),
   saveFurnitureSheet: (
     request: SaveFurnitureSheetRequest,
   ): Promise<FurnitureSheet> =>

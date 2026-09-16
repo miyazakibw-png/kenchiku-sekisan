@@ -73,6 +73,10 @@ export interface FurnitureSettings {
   fittingPrefix?: string;
   fittingSeparator?: string;
   fittingSuffix?: string;
+  /** 建具明細作成表用：計算書（積算入力）から建具表へ転記された分を変換するか（無いときは変換する） */
+  convertEstimate?: boolean;
+  /** 建具明細作成表用：建具入力部に入れた分を変換するか（無いときは変換する。家具計算書からの転記分は常に変換しない） */
+  convertManual?: boolean;
 }
 
 /** 右の明細欄（自動で作り、手で直せる） */
@@ -132,6 +136,8 @@ export interface FurnitureRow {
   floorFormula?: string;
   /** カーテン・ブラインドの建具記号（建具表からW・Hを呼び出す。古い保存には無い） */
   fittingSymbol?: string;
+  /** 建具明細作成表：この行と取り合う建具表の行id（W・Hを相互に連動させる。古い保存には無い） */
+  fittingId?: number;
   /** 数量 */
   quantity: string;
   unit: string;
@@ -213,12 +219,18 @@ export const FURNITURE_KINDS: { key: string; label: string }[] = [
 ];
 
 export function furnitureKindLabel(kind: string): string {
+  if (isFittingDetailSheet(kind)) return "建具明細作成表";
   return FURNITURE_KINDS.find((item) => item.key === kind)?.label ?? kind;
 }
 
-/** 家具（システム収納）・ユニットバス・カーテン以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
+/** 家具（システム収納）・建具明細作成表・ユニットバス・カーテン以外（システムキッチン・洗面化粧台・棚・ハンガーパイプ・その他）はW欄がW1・W2・W3の3つ */
 export function hasTripleWidth(kind: string): boolean {
-  return kind !== "furniture" && kind !== "bath" && !hasFittingSymbol(kind);
+  return (
+    kind !== "furniture" &&
+    kind !== "bath" &&
+    !isFittingDetailSheet(kind) &&
+    !hasFittingSymbol(kind)
+  );
 }
 
 /** カーテン・ブラインドはW・H・Dの代わりに建具記号を入れ、W・Hは建具表から呼び出す。部材名称は上の行を引き継ぐ */
@@ -240,6 +252,38 @@ export function hasShape(kind: string): boolean {
 export function transfersToFittings(kind: string): boolean {
   return kind === "furniture";
 }
+
+/** 建具明細作成表の種類（建具表から作る1工事1枚の表。家具・設備入力表の一覧には出さない） */
+export const FITTING_DETAIL_KIND = "fittingDetail";
+
+/** 建具明細作成表か（1工事に1枚。建具表の行と取り合う） */
+export function isFittingDetailSheet(kind: string): boolean {
+  return kind === FITTING_DETAIL_KIND;
+}
+
+/** 建具明細作成表の名称（記号入力。組み合わせて使える）の初めの並び */
+export const defaultFittingDetailNameSymbols: FurnitureSymbol[] = [
+  { symbol: "D", text: "ドア" },
+  { symbol: "M", text: "窓" },
+  { symbol: "S", text: "シャッター" },
+  { symbol: "KB", text: "片開き" },
+  { symbol: "OB", text: "親子開き" },
+  { symbol: "RB", text: "両開き" },
+  { symbol: "HI", text: "引き違い" },
+  { symbol: "SD", text: "外倒し" },
+  { symbol: "SDR", text: "外倒し連" },
+];
+
+/** 建具明細作成表の部位（アルファベット+[]+数字で登録。[]には数字が入る）の初めの並び */
+export const defaultFittingDetailPartSymbols: FurnitureSymbol[] = [
+  { symbol: "G[]", text: "玄関[]" },
+  { symbol: "R[]", text: "廊下[]" },
+  { symbol: "S[]", text: "洗面脱衣室[]" },
+  { symbol: "T[]", text: "トイレ[]" },
+  { symbol: "Y[]", text: "洋間[]" },
+  { symbol: "N[]", text: "納戸[]" },
+  { symbol: "SR[]", text: "サービスルーム[]" },
+];
 
 /** システムキッチンの部位（部屋名）の記号の初めの並び */
 export const defaultKitchenPartSymbols: FurnitureSymbol[] = [
@@ -386,6 +430,22 @@ export function furnitureSettingsFor(
       partSymbols: defaultShelfPartSymbols.map((item) => ({ ...item })),
       nameSymbols: defaultHangerNameSymbols.map((item) => ({ ...item })),
       shapeSymbols: defaultHangerShapeSymbols.map((item) => ({ ...item })),
+      ...patch,
+    });
+  if (isFittingDetailSheet(kind))
+    return furnitureSettings({
+      partSuffix: "",
+      addPrefix: "",
+      addSuffix: "",
+      widthLabel: "W",
+      heightLabel: "*H",
+      depthLabel: "*見込",
+      partSymbols: defaultFittingDetailPartSymbols.map((item) => ({
+        ...item,
+      })),
+      nameSymbols: defaultFittingDetailNameSymbols.map((item) => ({
+        ...item,
+      })),
       ...patch,
     });
   if (hasFittingSymbol(kind))
@@ -587,6 +647,65 @@ export function symbolText(symbols: FurnitureSymbol[], text: string): string {
   return found ? found.text : text;
 }
 
+/**
+ * 名称の記号の置き換え（建具明細作成表）。
+ * 登録した記号そのままならその文字。記号を並べて入れたときは、頭からいちばん長い記号で
+ * 切って文字をつなげる（例：KB→片開き・D→ドアのとき、KBD→片開きドア）。
+ * 組み合わせと同じ並びの登録記号があるときは、登録記号が優先（完全一致だけ見る）。
+ */
+export function composedSymbolText(
+  symbols: FurnitureSymbol[],
+  text: string,
+): string {
+  const key = symbolKey(text);
+  if (key === "") return "";
+  const exact = symbols.find((item) => symbolKey(item.symbol) === key);
+  if (exact !== undefined) return exact.text;
+  const table = symbols
+    .map((item) => ({ key: symbolKey(item.symbol), text: item.text }))
+    .filter((item) => item.key !== "")
+    .sort((a, b) => b.key.length - a.key.length);
+  let rest = key;
+  let result = "";
+  while (rest.length > 0) {
+    const hit = table.find((item) => rest.startsWith(item.key));
+    if (hit === undefined) {
+      result += rest[0];
+      rest = rest.slice(1);
+      continue;
+    }
+    result += hit.text;
+    rest = rest.slice(hit.key.length);
+  }
+  return result;
+}
+
+/**
+ * 部位の記号の置き換え（建具明細作成表）。
+ * 登録は「アルファベット+[]+数字」（例：Y[]→洋間[]）。入力はアルファベットと数字の間に
+ * 「-」等を入れても同じ変換（Y-1・Y1どちらも→洋間1）。[]に数字が入る。
+ * 対応表に無いときは入れた文字のまま。
+ */
+export function patternSymbolText(
+  symbols: FurnitureSymbol[],
+  text: string,
+): string {
+  const key = symbolKey(text);
+  if (key === "") return "";
+  const exact = symbols.find((item) => symbolKey(item.symbol) === key);
+  if (exact !== undefined) return exact.text;
+  const matched = /^([A-Z]+)[^A-Z0-9]*([0-9]+)$/.exec(key);
+  if (matched === null) return text;
+  const [, prefix, digits] = matched;
+  const found = symbols.find(
+    (item) => symbolKey(item.symbol) === `${prefix}[]`,
+  );
+  if (found === undefined) return text;
+  return found.text.includes("[]")
+    ? found.text.replace("[]", digits)
+    : `${found.text}${digits}`;
+}
+
 /** 数字欄を読む（全角も受ける） */
 export function numberOf(text: string): number | null {
   const trimmed = text
@@ -634,12 +753,16 @@ export function resolveFurnitureRows(
     unit: "",
     formula: "",
   };
+  // 名称IDの自動増え方。建具明細作成表は+1、家具（システム収納）ほかは+0.01
+  const step = isFittingDetailSheet(kind) ? 1 : 0.01;
+  const bump = (value: number): number =>
+    step === 1 ? value + 1 : Math.round((value + step) * 100) / 100;
   return rows.map((row) => {
     if (row.subjectId !== null) carried.subjectId = row.subjectId;
     if (row.partNumber !== null) carried.partNumber = row.partNumber;
     if (row.detailNumber !== null) carried.detailNumber = row.detailNumber;
     else if (carried.detailNumber !== null)
-      carried.detailNumber = Math.round((carried.detailNumber + 0.01) * 100) / 100;
+      carried.detailNumber = bump(carried.detailNumber);
     if (row.part.trim() !== "") carried.part = row.part;
     if (!carriesName || row.nameSymbol.trim() !== "")
       carried.nameSymbol = row.nameSymbol;
@@ -683,7 +806,9 @@ export function fittingSizeText(
   if (found?.height !== null && found?.height !== undefined)
     size.push(`${settings.heightLabel}${mmText(found.height)}`);
   return `${settings.fittingPrefix ?? ""}${symbol}${
-    size.length === 0 ? "" : `${settings.fittingSeparator ?? ""}${size.join("")}`
+    size.length === 0
+      ? ""
+      : `${settings.fittingSeparator ?? ""}${size.join("")}`
   }${settings.fittingSuffix ?? ""}`;
 }
 
@@ -707,7 +832,9 @@ export function floorFormulaOfModel(
   if (key === "") return "";
   const table = settings.floorAreaTable ?? defaultFloorAreaTable;
   const lookup = (text: string): string | null => {
-    const found = table.find((item) => toHalfWidth(item.symbol).trim() === text);
+    const found = table.find(
+      (item) => toHalfWidth(item.symbol).trim() === text,
+    );
     return found ? found.text.trim() : null;
   };
   const exact = lookup(key);
@@ -795,18 +922,22 @@ export function sizeText(
   return parts.join("");
 }
 
-/** 部位欄の文字（部位＋設定文字／+部位＋設定文字／+部位の記号） */
+/** 部位欄の文字（部位＋設定文字／+部位＋設定文字／+部位の記号）。建具明細作成表は部位欄が1つ（アルファベット+[]+数字で変換） */
 export function partText(
   row: FurnitureRow,
   resolved: FurnitureResolved,
   settings: FurnitureSettings,
+  kind = "furniture",
 ): string {
   const parts: string[] = [];
   const part = resolved.part.trim();
   if (part !== "")
-    parts.push(`${settings.partPrefix}${part}${settings.partSuffix}`);
+    parts.push(
+      `${settings.partPrefix}${isFittingDetailSheet(kind) ? patternSymbolText(settings.partSymbols, part) : part}${settings.partSuffix}`,
+    );
   const add = row.partAdd.trim();
-  if (add !== "") parts.push(`${settings.addPrefix}${add}${settings.addSuffix}`);
+  if (add !== "")
+    parts.push(`${settings.addPrefix}${add}${settings.addSuffix}`);
   const symbol = symbolText(settings.partSymbols, row.partSymbol);
   if (symbol !== "") parts.push(symbol);
   return parts.join("");
@@ -825,8 +956,10 @@ export function buildDetail(
     subjectId: resolved.subjectId,
     partNumber: resolved.partNumber,
     detailNumber: resolved.detailNumber,
-    partName: partText(row, resolved, settings),
-    name: symbolText(settings.nameSymbols, resolved.nameSymbol),
+    partName: partText(row, resolved, settings, kind),
+    name: isFittingDetailSheet(kind)
+      ? composedSymbolText(settings.nameSymbols, resolved.nameSymbol)
+      : symbolText(settings.nameSymbols, resolved.nameSymbol),
     descriptionUpper: hasModel(kind)
       ? bathUpperText(row, settings)
       : row.descriptionUpper,
@@ -1154,4 +1287,89 @@ export function fittingsFromFurniture(
     });
   });
   return result;
+}
+
+/** 建具明細作成表の行が取り合う建具表の1行（W・Hはm。idで結び付ける） */
+export interface FittingLink {
+  id: number;
+  symbol: string;
+  name: string;
+  width: number | null;
+  height: number | null;
+  /** 1: 積算入力（計算書）から登録した行 */
+  fromEstimate: number;
+  /** 1: 家具計算書から自動転記した行（建具明細作成表の変換対象にしない） */
+  fromFurniture: number;
+}
+
+/** 建具明細作成表で変換する建具表の行（家具転記分は対象外。計算書転記分・建具入力部は設定で選ぶ） */
+export interface FittingConvertInclude {
+  estimate: boolean;
+  manual: boolean;
+}
+
+/** その建具表の行を建具明細作成表へ変換するか */
+export function isConvertibleFitting(
+  fitting: FittingLink,
+  include: FittingConvertInclude,
+): boolean {
+  if (fitting.fromFurniture !== 0) return false;
+  return fitting.fromEstimate !== 0 ? include.estimate : include.manual;
+}
+
+/** m→mmの文字（小数点以下は自由。例：1.15225m→1152.25mm） */
+export function mmPreciseText(value: number | null): string {
+  return value === null ? "" : String(Math.round(value * 1000 * 1000) / 1000);
+}
+
+/**
+ * 建具明細作成表の行を建具表と取り合う。
+ * ・変換対象（計算書転記分・建具入力部。家具転記分は対象外）に結び付いた行は、
+ *   建具表の記号・W・Hで更新（W・Hはmm表示＝建具のm×1000、小数点以下自由）。
+ * ・対象外になった行は取り合いを保ったままそのまま（再度対象にすると連動が戻る）。
+ * ・建具表に増えた分は新しい行として下へ足す（部位＝記号・名称＝名称欄・W・Hを転記）。
+ * ・建具表で消えた行は取り合いだけ外す（行は消さない）。
+ */
+export function syncFittingDetailRows(
+  rows: FurnitureRow[],
+  fittings: FittingLink[],
+  include: FittingConvertInclude = { estimate: true, manual: true },
+): FurnitureRow[] {
+  const allById = new Map(fittings.map((fitting) => [fitting.id, fitting]));
+  const byId = new Map(
+    fittings
+      .filter((fitting) => isConvertibleFitting(fitting, include))
+      .map((fitting) => [fitting.id, fitting]),
+  );
+  const linked = new Set(
+    rows
+      .map((row) => row.fittingId)
+      .filter((id): id is number => id !== undefined),
+  );
+  const next = rows.map((row) => {
+    if (row.fittingId === undefined) return row;
+    const fitting = byId.get(row.fittingId);
+    if (fitting !== undefined)
+      return {
+        ...row,
+        part: fitting.symbol,
+        width: mmPreciseText(fitting.width),
+        height: mmPreciseText(fitting.height),
+      };
+    if (allById.has(row.fittingId)) return row;
+    const { fittingId: _fittingId, ...rest } = row;
+    return rest as FurnitureRow;
+  });
+  const appended = [...byId.values()]
+    .filter((fitting) => !linked.has(fitting.id))
+    .map((fitting) =>
+      furnitureRow({
+        fittingId: fitting.id,
+        part: fitting.symbol,
+        nameSymbol: fitting.name,
+        width: mmPreciseText(fitting.width),
+        height: mmPreciseText(fitting.height),
+      }),
+    );
+  return [...next, ...appended];
 }

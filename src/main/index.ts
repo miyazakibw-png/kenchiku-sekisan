@@ -128,6 +128,7 @@ import {
 import {
   createFurnitureSheet,
   deleteFurnitureSheet,
+  ensureFittingDetailSheet,
   getFurnitureBaseSettings,
   getFurnitureSheet,
   listFurnitureSheets,
@@ -495,6 +496,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.furnitureSheetGet, (_event, sheetId: number) =>
     getFurnitureSheet(getDatabase(), sheetId),
+  );
+  ipcMain.handle(IPC.fittingDetailSheetEnsure, (_event, projectId: number) =>
+    ensureFittingDetailSheet(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.furnitureSheetSave,

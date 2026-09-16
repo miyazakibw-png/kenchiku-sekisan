@@ -45,6 +45,8 @@ export const IPC = {
   furnitureSheetListSave: "furnitureSheet:listSave",
   furnitureSheetGet: "furnitureSheet:get",
   furnitureSheetSave: "furnitureSheet:save",
+  /** 建具明細作成表を取る（無ければ作る。1工事に1枚） */
+  fittingDetailSheetEnsure: "fittingDetailSheet:ensure",
   furnitureBaseSettingsGet: "furnitureSheet:baseSettingsGet",
   furnitureBaseSettingsSave: "furnitureSheet:baseSettingsSave",
   pitSheetGet: "pitSheet:get",

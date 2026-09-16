@@ -44,6 +44,8 @@ interface Props {
   onOpenRoomSheet?: (estimateRowId: number) => void;
   /** 家具計算書から転記された建具の「計算書」を押したとき、その家具計算書を開く */
   onOpenFurnitureSheet?: (sheetId: number) => void;
+  /** 「建具明細作成」を押したとき、その表を開く */
+  onOpenFittingDetail?: () => void;
 }
 
 interface SeriesForm {
@@ -67,13 +69,12 @@ export default function FittingsPage({
   onBack,
   onOpenRoomSheet,
   onOpenFurnitureSheet,
+  onOpenFittingDetail,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-fittings-v1");
   const [rows, setRows] = useState<FittingDraft[]>([]);
   /** 計算書から追加された建具の出所（建具id→計算書） */
-  const [sources, setSources] = useState<Map<number, FittingSource>>(
-    new Map(),
-  );
+  const [sources, setSources] = useState<Map<number, FittingSource>>(new Map());
   const [selected, setSelected] = useState(0);
   /** Shift+クリックで広げた選択の終わりの行 */
   const [selectedEnd, setSelectedEnd] = useState(0);
@@ -382,6 +383,13 @@ export default function FittingsPage({
           onClick={() => setShowPartValues((current) => !current)}
         >
           ⚙ 部位ごとの採用値
+        </button>
+        <button
+          type="button"
+          title="この建具表から建具明細作成表を作ります（W・Hはどちらで変えても連動します）"
+          onClick={() => void save(true).then(() => onOpenFittingDetail?.())}
+        >
+          📋 建具明細作成
         </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
