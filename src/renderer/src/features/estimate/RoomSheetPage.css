@@ -117,9 +117,12 @@
   aspect-ratio: auto;
 }
 
+/* 大きく開いた右列は、表が列より広くても欄が縮んで中でスクロールするようにする
+   （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
 .room-sheet-page > .upper.expanded > .edges,
 .room-sheet-page > .upper.expanded > .ceiling {
   grid-column: 2;
+  min-width: 0;
 }
 
 .room-sheet-page > .upper.expanded > section {
@@ -743,6 +746,8 @@
 
 .room-sheet-page .ceiling {
   grid-column: span 4;
+  /* 表が列より広いとき欄が縮んで中でスクロールする（縮まないと右端の操作列が見えなくなる） */
+  min-width: 0;
 }
 
 .room-sheet-page .section-bar button.on {
