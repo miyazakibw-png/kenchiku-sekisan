@@ -2351,40 +2351,63 @@ export default function RoomSheetPage({
                   </td>
                   <td>
                     {isDiagonal(line.direction) ? (
-                      <span className="diagonal">
-                        <input
-                          className="num"
-                          defaultValue={formatNumber(line.dx ?? 0, 2)}
-                          key={`${line.id}-dx-${line.dx ?? 0}`}
-                          title="斜め辺の横移動（右がプラス）。計算式も入れられます"
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && e.currentTarget.blur()
-                          }
-                          onBlur={(e) =>
+                      <input
+                        className="num"
+                        defaultValue={formatNumber(line.resolved, 2)}
+                        key={`${line.id}-len-${line.dx ?? 0}-${line.dy ?? 0}`}
+                        title="斜め辺の長さ（有効長さ）。数字を入れると同じ向きのまま長さだけ変わります。「1.44 -1.16」のように横移動・縦移動の2つでも入れられます"
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          showAnswer(e.currentTarget);
+                          e.currentTarget.blur();
+                        }}
+                        onBlur={(e) => {
+                          const body = e.target.value.trim();
+                          // 「横 縦」の2つで入れれば移動量をそのまま直す
+                          const pair = body
+                            .split(/[\s,、]+/)
+                            .filter((part) => part !== "");
+                          if (pair.length === 2) {
                             applyShape(
                               updateEdge(shape, line.id, {
-                                dx: textToNumber(e.target.value) ?? 0,
+                                dx: textToNumber(pair[0]) ?? 0,
+                                dy: textToNumber(pair[1]) ?? 0,
                               }),
-                            )
+                            );
+                            return;
                           }
-                        />
-                        <input
-                          className="num"
-                          defaultValue={formatNumber(line.dy ?? 0, 2)}
-                          key={`${line.id}-dy-${line.dy ?? 0}`}
-                          title="斜め辺の縦移動（下がプラス）。計算式も入れられます"
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && e.currentTarget.blur()
+                          const value = textToNumber(body);
+                          if (value === null) return;
+                          if (value < 0) {
+                            setMessage(
+                              "長さは0以上で入れてください（マイナスを入れたいときは「横 縦」の2つの数字で入れてください）",
+                            );
+                            return;
                           }
-                          onBlur={(e) =>
+                          const dx = line.dx ?? 0;
+                          const dy = line.dy ?? 0;
+                          const current = Math.hypot(dx, dy);
+                          if (value === 0) {
                             applyShape(
-                              updateEdge(shape, line.id, {
-                                dy: textToNumber(e.target.value) ?? 0,
-                              }),
-                            )
+                              updateEdge(shape, line.id, { dx: 0, dy: 0 }),
+                            );
+                            return;
                           }
-                        />
-                      </span>
+                          if (current < 0.005) {
+                            setMessage(
+                              "この辺は向きが分からないので長さを変えられません（「横 縦」の2つの数字で入れてください）",
+                            );
+                            return;
+                          }
+                          const factor = value / current;
+                          applyShape(
+                            updateEdge(shape, line.id, {
+                              dx: round2(dx * factor),
+                              dy: round2(dy * factor),
+                            }),
+                          );
+                        }}
+                      />
                     ) : (
                       <input
                         className="num"
