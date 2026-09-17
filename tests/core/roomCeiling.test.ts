@@ -594,9 +594,9 @@ describe("天井伏図", () => {
     );
     // 空にすると元に戻る（0は「部屋と同じ高さ」として覚える）
     expect(noteRegionHeight(heights, noted[5], null)).toEqual([]);
-    expect(noteRegionHeight(heights, noted[5], 0).map((row) => row.drop)).toEqual(
-      [0],
-    );
+    expect(
+      noteRegionHeight(heights, noted[5], 0).map((row) => row.drop),
+    ).toEqual([0]);
     // 別の区画に入れても、その区画の分だけが足される
     const two = noteRegionHeight(heights, noted[0], 0.2);
     expect(two).toHaveLength(2);
@@ -607,9 +607,10 @@ describe("天井伏図", () => {
     ).toEqual([2.5, 2.7, 2.7, 2.7, 2.7, 2.4]);
 
     // 保存形式（ceilingCodesJson）は昔の「移動だけ」の形も読める
-    expect(parseCeilingCodes(JSON.stringify({ moves: {}, heights }))).toEqual(
-      { moves: {}, heights },
-    );
+    expect(parseCeilingCodes(JSON.stringify({ moves: {}, heights }))).toEqual({
+      moves: {},
+      heights,
+    });
     expect(parseCeilingCodes(JSON.stringify({ a: { x: 1, y: 2 } }))).toEqual({
       moves: { a: { x: 1, y: 2 } },
       heights: [],
@@ -628,7 +629,11 @@ describe("天井伏図", () => {
       height: 0.77,
     });
     const elements = [
-      element("ceilingBeam", left.id, { offset: 3.8, width: 0.4, height: 0.77 }),
+      element("ceilingBeam", left.id, {
+        offset: 3.8,
+        width: 0.4,
+        height: 0.77,
+      }),
       lowered,
     ];
     const regions = ceilingRegions(elements, solved, 3.77, false, true);
@@ -965,9 +970,17 @@ describe("区画の境目の線", () => {
     });
     const e = solved.edges;
     const elements: CeilingElement[] = [
-      element("ceilingBeam", e[1].id, { width: 0.8, height: 1.07, offset: 1.3 }),
+      element("ceilingBeam", e[1].id, {
+        width: 0.8,
+        height: 1.07,
+        offset: 1.3,
+      }),
       element("dropCeiling", e[0].id, { height: 0.67, offset: 0.91 }),
-      element("ceilingBeam", e[1].id, { width: 0.9, height: 0.62, offset: 5.55 }),
+      element("ceilingBeam", e[1].id, {
+        width: 0.9,
+        height: 0.62,
+        offset: 5.55,
+      }),
       element("wallBeam", e[16].id, { width: 0.84, height: 1.07, offset: 0 }),
       element("dropCeiling", e[16].id, { height: null, offset: 2.85 }),
       element("wallBeam", e[4].id, { width: 0.2, height: 1.07, offset: 0 }),
@@ -1000,7 +1013,101 @@ describe("区画の境目の線", () => {
       ["C7", 3.77],
     ]);
     // 通常表示（同じ高さの隣をまとめる）でも C3・C7 の値は残る
-    const merged = ceilingRegions(elements, solved, 3.77, false, false, heights);
+    const merged = ceilingRegions(
+      elements,
+      solved,
+      3.77,
+      false,
+      false,
+      heights,
+    );
     expect(merged.every((row) => row.height !== null)).toBe(true);
+  });
+
+  it("壁に沿わない自由線でも下がり天井を引き、区画を2つに分ける", () => {
+    const solved = shape();
+    const free = element("dropCeiling", null, {
+      height: 0.5,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0 }, // (0,0)
+        b: { edgeId: solved.edges[1].id, rate: 1 }, // (4,3)
+      },
+    });
+    // (0,0)→(4,3) の対角線が1本引ける
+    expect(
+      ceilingLines([free], solved, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length),
+    ).toEqual([5]);
+    const regions = ceilingRegions([free], solved, 2.7);
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    expect(regions.map((row) => row.drop).sort()).toEqual([0, 0.5]);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
+    // 下がる側は ①→② の左側（この対角線では左下の三角、面積6）
+    expect(regions.find((row) => row.drop === 0.5)?.area).toBeCloseTo(6, 6);
+    // 段差の長さ・面積も段差が出来た所で数える
+    const result = ceilingQuantities([free], solved, 2.7);
+    expect(result.totals.dropCeilingLength).toBe(5);
+    expect(result.totals.dropCeilingArea).toBe(2.5);
+  });
+
+  it("自由線の下がる側は「向き」で反対にできる", () => {
+    const solved = shape();
+    const free = {
+      a: { edgeId: solved.edges[0].id, rate: 0 }, // (0,0)
+      b: { edgeId: solved.edges[1].id, rate: 1 / 3 }, // (4,1)
+    };
+    const left = ceilingRegions(
+      [element("dropCeiling", null, { height: 0.3, free })],
+      solved,
+      2.7,
+    );
+    // ①→② の左側（下の大きい方、面積10）が下がる
+    expect(left.find((row) => row.drop === 0.3)?.area).toBeCloseTo(10, 6);
+    const right = ceilingRegions(
+      [
+        element("dropCeiling", null, {
+          height: 0.3,
+          inner: true,
+          free,
+        }),
+      ],
+      solved,
+      2.7,
+    );
+    // 反対側（右上の三角、面積2）が下がる
+    expect(right.find((row) => row.drop === 0.3)?.area).toBeCloseTo(2, 6);
+  });
+
+  it("凹形の部屋では、自由線は部屋の内側の区間だけ引く", () => {
+    const solved = solveShape(lShape(6, 5, 2, 2));
+    const free = element("dropCeiling", null, {
+      height: 0.5,
+      free: {
+        a: { edgeId: solved.edges[1].id, rate: 2 / 3 }, // (6,2)
+        b: { edgeId: solved.edges[4].id, rate: 0.5 }, // (2,5)
+      },
+    });
+    // 線は欠き取りの所で切れて、部屋の内側の2本になる（5/3 と 2.5）
+    expect(
+      ceilingLines([free], solved, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length),
+    ).toEqual([1.67, 2.5]);
+    // 下がる側（①→②の左側）の区画も分かれる
+    const regions = ceilingRegions([free], solved, 2.7);
+    expect(regions.some((row) => row.drop === 0.5)).toBe(true);
+  });
+
+  it("自由線は「分ける」対象にならない", () => {
+    const solved = shape();
+    const free = element("dropCeiling", null, {
+      height: 0.5,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0 },
+        b: { edgeId: solved.edges[2].id, rate: 0 },
+      },
+    });
+    expect(splitDropCeiling(free, [free], solved, 2.7)).toBeNull();
   });
 });

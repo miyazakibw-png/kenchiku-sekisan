@@ -572,6 +572,20 @@
   font-size: 10px;
 }
 
+/* 自由線の端点（辺と、辺の始まりの角からの位置） */
+.room-sheet-page .ceiling table.grid .ceiling-anchor {
+  display: block;
+  white-space: nowrap;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor select {
+  width: 4.5em;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor input {
+  width: 3.2em;
+}
+
 .room-sheet-page td.no,
 .room-sheet-page th.no {
   width: 32px;

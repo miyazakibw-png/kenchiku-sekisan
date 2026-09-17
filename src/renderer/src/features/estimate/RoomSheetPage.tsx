@@ -78,6 +78,7 @@ import {
   noteRegionHeight,
   parseCeilingCodes,
   splitDropCeiling,
+  type CeilingAnchor,
   type CeilingCodes,
   type CeilingElement,
   type CeilingElementKind,
@@ -735,6 +736,9 @@ export default function RoomSheetPage({
       }),
     ];
 
+    // 自由線の端点マーカー（①・②）はその線の1か所にだけ出す
+    const freeMarkDone = new Set<string>();
+
     return drawn.flatMap((line, lineIndex) => {
       const itemIndex = ceilingResult.items.findIndex(
         (row) => row.element.id === line.elementId,
@@ -744,6 +748,44 @@ export default function RoomSheetPage({
 
       // 同じ壁に何本も線を置いても天井高さの文字が重ならないように、線の上で位置をずらす
       const at = (itemIndex + 1) / (count + 1);
+
+      const marks: { key: string; x: number; y: number; label: string }[] = [];
+      const free = item.element.free ?? null;
+      if (free !== null && !freeMarkDone.has(item.element.id)) {
+        freeMarkDone.add(item.element.id);
+        const anchorAt = (anchor: CeilingAnchor) => {
+          const edgeIndex = solved.edges.findIndex(
+            (row) => row.id === anchor.edgeId,
+          );
+          if (edgeIndex < 0 || solved.points.length === 0) return null;
+          const from = solved.points[edgeIndex];
+          const to = solved.points[(edgeIndex + 1) % solved.points.length];
+          return {
+            x: from.x + (to.x - from.x) * anchor.rate,
+            y: from.y + (to.y - from.y) * anchor.rate,
+          };
+        };
+        const start = anchorAt(free.a);
+        const end = anchorAt(free.b);
+        // 線の内側へ少しずらして出す（角や辺の線と重ならないように）
+        if (start !== null && end !== null) {
+          const along = { x: end.x - start.x, y: end.y - start.y };
+          marks.push(
+            {
+              key: `${item.element.id}-mark-a`,
+              x: start.x + along.x * 0.03,
+              y: start.y + along.y * 0.03,
+              label: "①",
+            },
+            {
+              key: `${item.element.id}-mark-b`,
+              x: end.x - along.x * 0.03,
+              y: end.y - along.y * 0.03,
+              label: "②",
+            },
+          );
+        }
+      }
 
       return [
         {
@@ -762,6 +804,7 @@ export default function RoomSheetPage({
             line.no === 0 && item.element.ceilingHeight !== null
               ? formatNumber(item.element.ceilingHeight, 2)
               : "",
+          marks,
         },
       ];
     });
@@ -888,6 +931,34 @@ export default function RoomSheetPage({
         current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       ),
     [],
+  );
+
+  /** 自由線を選んだときの両端のたたき台（部屋をまたぐ対角線） */
+  const defaultFree = useCallback((): {
+    a: CeilingAnchor;
+    b: CeilingAnchor;
+  } => {
+    const first = solved.edges[0]?.id ?? "";
+    const last = solved.edges[Math.floor(solved.edges.length / 2)]?.id ?? "";
+    return {
+      a: { edgeId: first, rate: 0 },
+      b: { edgeId: last, rate: 1 },
+    };
+  }, [solved.edges]);
+
+  const setFreeAnchor = useCallback(
+    (
+      element: CeilingElement,
+      side: "a" | "b",
+      patch: Partial<CeilingAnchor>,
+    ): void => {
+      const free = element.free;
+      if (free === null || free === undefined) return;
+      updateCeiling(element.id, {
+        free: { ...free, [side]: { ...free[side], ...patch } },
+      });
+    },
+    [updateCeiling],
   );
 
   /**
@@ -2235,6 +2306,17 @@ export default function RoomSheetPage({
                         CH {line.label}
                       </text>
                     )}
+                    {line.marks.map((mark) => (
+                      <text
+                        key={mark.key}
+                        x={mark.x}
+                        y={mark.y}
+                        className="dim ceiling"
+                        fontSize={dimFontSize}
+                      >
+                        {mark.label}
+                      </text>
+                    ))}
                   </g>
                 ))}
               {showCeiling &&
@@ -2933,7 +3015,11 @@ export default function RoomSheetPage({
                 <button
                   key={kind}
                   type="button"
-                  disabled={wallEdges.length === 0}
+                  disabled={
+                    kind === "dropCeiling"
+                      ? solved.edges.length === 0
+                      : wallEdges.length === 0
+                  }
                   onClick={() =>
                     setCeiling((current) => [
                       ...current,
@@ -3017,15 +3103,31 @@ export default function RoomSheetPage({
                     </td>
                     <td>
                       <select
-                        value={element.edgeId ?? ""}
-                        onChange={(e) =>
+                        value={
+                          element.free !== null && element.free !== undefined
+                            ? "__free__"
+                            : (element.edgeId ?? "")
+                        }
+                        onChange={(e) => {
                           // 範囲は元の壁の角から測っているので、壁を変えたら壁から壁までに戻す
+                          if (
+                            e.target.value === "__free__" &&
+                            element.kind === "dropCeiling"
+                          ) {
+                            updateCeiling(element.id, {
+                              edgeId: null,
+                              range: null,
+                              free: defaultFree(),
+                            });
+                            return;
+                          }
                           updateCeiling(element.id, {
                             edgeId:
                               e.target.value === "" ? null : e.target.value,
                             range: null,
-                          })
-                        }
+                            free: null,
+                          });
+                        }}
                       >
                         <option value="">指定なし</option>
                         {wallEdges.map((line, wallIndex) => (
@@ -3034,7 +3136,65 @@ export default function RoomSheetPage({
                             ）
                           </option>
                         ))}
+                        {element.kind === "dropCeiling" && (
+                          <option value="__free__">
+                            自由線（辺の上の2点）
+                          </option>
+                        )}
                       </select>
+                      {element.kind === "dropCeiling" &&
+                      element.free !== null &&
+                      element.free !== undefined
+                        ? (["a", "b"] as const).map((side) => {
+                            const anchor = element.free?.[side];
+                            if (anchor === undefined) return null;
+                            const anchorEdge = solved.edges.find(
+                              (row) => row.id === anchor.edgeId,
+                            );
+                            const edgeLength = anchorEdge?.resolved ?? 0;
+                            return (
+                              <span key={side} className="ceiling-anchor">
+                                {side === "a" ? "①" : "②"}
+                                <select
+                                  value={anchor.edgeId}
+                                  onChange={(e) =>
+                                    setFreeAnchor(element, side, {
+                                      edgeId: e.target.value,
+                                    })
+                                  }
+                                >
+                                  {solved.edges.map((row, edgeIndex) => (
+                                    <option key={row.id} value={row.id}>
+                                      辺{edgeIndex + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                                の
+                                <input
+                                  className="num"
+                                  key={`${anchor.edgeId}-${anchor.rate}`}
+                                  defaultValue={formatNumber(
+                                    anchor.rate * edgeLength,
+                                    2,
+                                  )}
+                                  title="辺の始まりの角からの位置（m。0なら始まりの角）"
+                                  onBlur={(e) => {
+                                    const value = Number(e.target.value.trim());
+                                    if (Number.isNaN(value) || edgeLength <= 0)
+                                      return;
+                                    setFreeAnchor(element, side, {
+                                      rate: Math.max(
+                                        0,
+                                        Math.min(1, value / edgeLength),
+                                      ),
+                                    });
+                                  }}
+                                />
+                                m
+                              </span>
+                            );
+                          })
+                        : null}
                     </td>
                     <td>
                       {element.kind === "dropCeiling" ||
@@ -3112,20 +3272,31 @@ export default function RoomSheetPage({
                       />
                     </td>
                     <td>
-                      <input
-                        className="num"
-                        defaultValue={
-                          element.offset === null
-                            ? ""
-                            : formatNumber(element.offset, 2)
-                        }
-                        onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateCeiling(element.id, {
-                            offset: text === "" ? null : Number(text),
-                          });
-                        }}
-                      />
+                      {element.free !== null &&
+                      element.free !== undefined &&
+                      element.kind === "dropCeiling" ? (
+                        <span
+                          className="num"
+                          title="自由線は両端の位置で決まります（「沿う壁」で壁に戻すと離れが使えます）"
+                        >
+                          ―
+                        </span>
+                      ) : (
+                        <input
+                          className="num"
+                          defaultValue={
+                            element.offset === null
+                              ? ""
+                              : formatNumber(element.offset, 2)
+                          }
+                          onBlur={(e) => {
+                            const text = e.target.value.trim();
+                            updateCeiling(element.id, {
+                              offset: text === "" ? null : Number(text),
+                            });
+                          }}
+                        />
+                      )}
                     </td>
                     <td>
                       <input
@@ -3201,6 +3372,22 @@ export default function RoomSheetPage({
                       )}
                     </td>
                     <td className="ceiling-actions">
+                      {element.free !== null &&
+                      element.free !== undefined &&
+                      element.kind === "dropCeiling" ? (
+                        <button
+                          type="button"
+                          title="線で下がる側を反対にします（①→② の左側⇄右側）"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCeiling(element.id, {
+                              inner: !(element.inner === true),
+                            });
+                          }}
+                        >
+                          ⇄ {element.inner === true ? "右" : "左"}が下がる
+                        </button>
+                      ) : null}
                       {(() => {
                         const parts = splitCeiling.get(element.id) ?? null;
                         return parts === null ? null : (
@@ -3257,6 +3444,9 @@ export default function RoomSheetPage({
           <p className="note">
             梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線と梁型（壁付き・天井付）の梁底で分け（梁型で分断された天井は別々の区画。梁底そのものには番号を付けません）、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
             大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出します（区画一覧の天井高さに、その範囲の高さを入れてください）。境目の線（点線）は両側の高さが違う所だけに出て、両側が同じ高さになった所（区画に入れた高さで同じになった所も）は消えます。閉じた通常画面と印刷も同じです。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。高さが違う所に線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力でき、入れた区画だけが変わります（隣の区画や上の入力表のＨは変わりません。上の入力表の下がり天井のＨは、その線で下がる側の区画の既定の高さです）。区画に入れた高さは、その区画の場所で覚えます（線を足して区画が分かれても残ります）。空欄にすると既定（下がり天井のＨ、なければ部屋の天井高さ）に戻ります。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+          </p>
+          <p className="note">
+            下がり天井の「沿う壁」を「自由線（辺の上の2点）」にすると、壁に沿わない線を引けます。①と②の端点を「辺○の、始まりの角から○m」の形で入れます（線はその2点を結んだもので、部屋から出る所は部屋のふちで切れます）。線の下がる側は「⇄」ボタンで①→②の左側⇄右側に入れ替えます。
           </p>
           {ceilingCodes.length > 0 && (
             <table className="grid ceiling-regions">
