@@ -8,6 +8,7 @@ import type {
 import type { MiscRow } from "../../../../core/misc/miscSheet";
 import { sourceJumpOf } from "../aggregate/aggregateRows";
 import { normalizeDate } from "./projectLedger";
+import { loadColumnSettings, sortByLedgerOrder } from "./ledgerColumns";
 import {
   ALWAYS_VISIBLE,
   loadHiddenFields,
@@ -125,67 +126,72 @@ export default function ProjectWorkspacePage({
   useActiveProjectName(draft.name);
 
   const headerFields = useMemo<HeaderField[]>(
-    () => [
-      {
-        key: "managementNo",
-        label: "管理番号",
-        value: draft.managementNo,
-        fieldId: null,
-        readOnly: true,
-        set: keepAsIs,
-      },
-      {
-        key: "name",
-        label: "工事名称",
-        value: draft.name,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, name: value }),
-      },
-      {
-        key: "projectDate",
-        label: "日付",
-        value: draft.projectDate,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, projectDate: value }),
-      },
-      {
-        key: "builderName",
-        label: "施工会社名",
-        value: draft.builderName,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, builderName: value }),
-      },
-      {
-        key: "designerName",
-        label: "設計事務所名",
-        value: draft.designerName,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, designerName: value }),
-      },
-      {
-        key: "note",
-        label: "備考",
-        value: draft.note,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, note: value }),
-      },
-      ...fields.map((field) => ({
-        key: `field-${field.id}`,
-        label: field.title,
-        value: draft.fieldValues[field.id] ?? "",
-        fieldId: field.id,
-        readOnly: false,
-        set: (project: ProjectSummary, value: string): ProjectSummary => ({
-          ...project,
-          fieldValues: { ...project.fieldValues, [field.id]: value },
-        }),
-      })),
-    ],
+    // 物件管理台帳の「列の表示・並び」と同じ順で出す
+    () =>
+      sortByLedgerOrder(
+        [
+          {
+            key: "managementNo",
+            label: "管理番号",
+            value: draft.managementNo,
+            fieldId: null,
+            readOnly: true,
+            set: keepAsIs,
+          },
+          {
+            key: "name",
+            label: "工事名称",
+            value: draft.name,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, name: value }),
+          },
+          {
+            key: "projectDate",
+            label: "日付",
+            value: draft.projectDate,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, projectDate: value }),
+          },
+          {
+            key: "builderName",
+            label: "施工会社名",
+            value: draft.builderName,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, builderName: value }),
+          },
+          {
+            key: "designerName",
+            label: "設計事務所名",
+            value: draft.designerName,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, designerName: value }),
+          },
+          {
+            key: "note",
+            label: "備考",
+            value: draft.note,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, note: value }),
+          },
+          ...fields.map((field) => ({
+            key: `field-${field.id}`,
+            label: field.title,
+            value: draft.fieldValues[field.id] ?? "",
+            fieldId: field.id,
+            readOnly: false,
+            set: (project: ProjectSummary, value: string): ProjectSummary => ({
+              ...project,
+              fieldValues: { ...project.fieldValues, [field.id]: value },
+            }),
+          })),
+        ],
+        loadColumnSettings(),
+      ),
     [draft, fields],
   );
 

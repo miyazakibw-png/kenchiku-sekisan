@@ -608,7 +608,8 @@ export default function ProjectLedgerPage({
             <header>
               <h3>列の表示・並び</h3>
               <span className="hint">
-                日付・管理番号・工事名称はいつも先頭に表示します
+                日付・管理番号・工事名称はいつも先頭に表示します／
+                積算操作画面の項目もこの並びで出ます
               </span>
             </header>
             <div className="modal-body">
