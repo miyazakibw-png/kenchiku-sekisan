@@ -1225,6 +1225,100 @@ export function scaleShape(
   return { ...shape, edges, columns };
 }
 
+/** 図形を回す向き（選んだ辺を水平か垂直にそろえる） */
+export type ShapeRotation = "horizontal" | "vertical";
+
+export interface ShapeTurn {
+  shape: RoomShape;
+  /** 回した角度（ラジアン。下敷きの図面を同じ向きに回すときに使う） */
+  angle: number;
+  /** 回転の起点（選んだ辺の始点・回る前の位置） */
+  pivot: Point;
+  /** 回転の起点のあらたな位置（下敷きを同じ場所に留めるために使う） */
+  pivotTo: Point;
+}
+
+/**
+ * 選んだ辺が水平（右向きか左向きの近い方）または垂直（下向きか上向きの近い方）に
+ * なるように、辺の始点を起点に図形全体を回す。
+ * 全辺の移動量を同じ角度で回し、回ったあと水平・垂直にそろった辺は向きと寸法に直す
+ * （自動算出の辺は軸が変わらないときだけ自動のままにする）。独立柱の位置も回す
+ * （柱の大きさは縦横のまま残る）。向きが決まらない辺では null。
+ */
+export function rotateShape(
+  shape: RoomShape,
+  edgeId: string,
+  target: ShapeRotation,
+): ShapeTurn | null {
+  const solved = solveShape(shape);
+  const index = solved.edges.findIndex((row) => row.id === edgeId);
+  if (index < 0) return null;
+  const row = solved.edges[index];
+  const pivot = solved.points[index];
+  if (pivot === undefined || row.resolved === null || row.resolved <= 0)
+    return null;
+  const vector = edgeVector(row, row.resolved);
+  // 近い方の向きへそろえる角度
+  const goal =
+    target === "horizontal"
+      ? vector.x >= 0
+        ? 0
+        : Math.PI
+      : vector.y >= 0
+        ? Math.PI / 2
+        : -Math.PI / 2;
+  const angle = goal - Math.atan2(vector.y, vector.x);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const turn = (v: Point): Point => ({
+    x: v.x * cos - v.y * sin,
+    y: v.x * sin + v.y * cos,
+  });
+  // 回したあとの各辺の移動量。図形は原点から描き直すので、起点のあらたな位置は
+  // 前の辺の移動量を足した所になる（独立柱・下敷きを同じ関係に留めるために使う）
+  const rotated = solved.edges.map((item) =>
+    turn(edgeVector(item, item.resolved)),
+  );
+  // 起点のあらたな位置は、書き出す寸法（丸めた移動量）を足した所に合わせる
+  const pivotTo = rotated.slice(0, index).reduce<Point>(
+    (sum, v) => ({ x: sum.x + round2(v.x), y: sum.y + round2(v.y) }),
+    { x: 0, y: 0 },
+  );
+  const edges = solved.edges.map((item, i) => {
+    const v = rotated[i];
+    const dx = round2(v.x);
+    const dy = round2(v.y);
+    const base = { id: item.id, kind: item.kind, bulge: item.bulge };
+    const horizontal = Math.abs(dy) < 0.005 && Math.abs(dx) >= 0.005;
+    const vertical = Math.abs(dx) < 0.005 && Math.abs(dy) >= 0.005;
+    if (horizontal || vertical) {
+      const direction: EdgeDirection = horizontal
+        ? dx > 0
+          ? "E"
+          : "W"
+        : dy > 0
+          ? "S"
+          : "N";
+      // 自動算出の辺は、そろった軸が元と同じなら自動のままにする
+      const sameAxis =
+        (item.direction === "E" || item.direction === "W") === horizontal;
+      const length =
+        item.auto && sameAxis ? null : round2(Math.abs(horizontal ? dx : dy));
+      return { ...base, direction, length };
+    }
+    return { ...base, direction: "D" as const, length: null, dx, dy };
+  });
+  const columns = (shape.columns ?? []).map((col) => {
+    const p = turn({ x: col.x - pivot.x, y: col.y - pivot.y });
+    return {
+      ...col,
+      x: round2(pivotTo.x + p.x),
+      y: round2(pivotTo.y + p.y),
+    };
+  });
+  return { shape: { ...shape, edges, columns }, angle, pivot, pivotTo };
+}
+
 /** 辺を分割する（元の寸法を入れると残りは自動算出になる） */
 export function splitEdge(
   shape: RoomShape,

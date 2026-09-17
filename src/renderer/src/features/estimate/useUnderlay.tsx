@@ -342,7 +342,8 @@ export function useUnderlay({
     const start = dragRef.current;
     if (start === null) return;
     dragRef.current = null;
-    if (start.started) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (start.started)
+      event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
   return {
@@ -368,6 +369,70 @@ export function useUnderlay({
     onPointerMove,
     onPointerUp,
     svgClass: mode === "off" ? "" : `underlay-${mode}`,
+  };
+}
+
+/**
+ * 貼った図面を、図形と同じ角度・同じ起点（図の座標m）で回した下敷きに作り直す。
+ * 図形を辺起点で回したあとも図面とずれないようにするためのもの。
+ * 回転した画像は外接枠で貼り直すので、位置・縮尺は図形と揃ったままになる。
+ */
+export async function rotateUnderlay(
+  underlay: TraceUnderlay,
+  pivot: Point,
+  pivotTo: Point,
+  angle: number,
+): Promise<TraceUnderlay | null> {
+  if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("画像を読めませんでした"));
+    el.src = underlay.image;
+  }).catch(() => null);
+  if (img === null) return null;
+  const mpp = underlay.metersPerPixel;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // 図形と同じ変形：起点まわりに回して、起点のあらたな位置へ置く
+  const turn = (x: number, y: number): Point => {
+    const dx = x - pivot.x;
+    const dy = y - pivot.y;
+    return {
+      x: pivotTo.x + dx * cos - dy * sin,
+      y: pivotTo.y + dx * sin + dy * cos,
+    };
+  };
+  // 回った4隅の外接枠（図の座標m）を新しい置き場所にする
+  const corners = [
+    turn(underlay.x, underlay.y),
+    turn(underlay.x + w * mpp, underlay.y),
+    turn(underlay.x, underlay.y + h * mpp),
+    turn(underlay.x + w * mpp, underlay.y + h * mpp),
+  ];
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = (Math.max(...xs) - left) / mpp;
+  const height = (Math.max(...ys) - top) / mpp;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return null;
+  // 画像の中の起点（画素）を、新しい外接枠での「起点のあらたな位置」へ写す
+  ctx.translate((pivotTo.x - left) / mpp, (pivotTo.y - top) / mpp);
+  ctx.rotate(angle);
+  ctx.translate(-(pivot.x - underlay.x) / mpp, -(pivot.y - underlay.y) / mpp);
+  ctx.drawImage(img, 0, 0);
+  return {
+    ...underlay,
+    image: canvas.toDataURL("image/png"),
+    x: left,
+    y: top,
   };
 }
 

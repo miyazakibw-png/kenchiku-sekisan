@@ -18,6 +18,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  rotateShape,
   scaleShape,
   setEdgeKinds,
   shapeExtents,
@@ -506,6 +507,55 @@ describe("部屋形状（単線図）", () => {
     expect(next?.edges[2].length).toBe(8);
     expect(next?.edges[0].length).toBe(8);
     expect(solveShape(next!).edges[2].resolved).toBe(8);
+  });
+
+  it("回転：選んだ辺を水平・垂直にして図形全体を回し、柱も同じ関係に留める", () => {
+    const shape = {
+      ...rectangleShape(4, 3),
+      columns: [freeColumn(4, 3, 0.5, 0.5)],
+    };
+    // 辺2（↓下 3.00）を水平に → 全部 -90°回る
+    const turned = rotateShape(shape, shape.edges[1].id, "horizontal");
+    expect(turned).not.toBeNull();
+    const next = turned!.shape;
+    // S(0,3)→E(3,0)：辺2が水平になる
+    expect(next.edges[1]).toMatchObject({ direction: "E", length: 3 });
+    // E4→N4、W4→S4、N3→W3
+    expect(next.edges[0]).toMatchObject({ direction: "N", length: 4 });
+    expect(next.edges[2]).toMatchObject({ direction: "S", length: 4 });
+    expect(next.edges[3]).toMatchObject({ direction: "W", length: 3 });
+    // 形は閉じたまま・面積は回る前と同じ
+    const solvedNext = solveShape(next);
+    expect(solvedNext.error).toBeNull();
+    expect(floorArea(solvedNext)).toBe(floorArea(solveShape(shape)));
+    // 右下の角（4,3）にあった柱は、回ったあとの右下の角（3,-4）に来る
+    expect(next.columns?.[0].x).toBe(3);
+    expect(next.columns?.[0].y).toBe(-4);
+    // 起点（辺2の始点）は (4,0) → (0,-4) に移る
+    expect(turned!.pivot).toEqual({ x: 4, y: 0 });
+    expect(turned!.pivotTo).toEqual({ x: 0, y: -4 });
+  });
+
+  it("回転：45°に傾いた形は、1辺を水平にすると全部の辺が縦横にそろう", () => {
+    // 45°回った四角（斜め辺だけの形）
+    const shape = {
+      edges: [
+        { ...edge("D", null), dx: 1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: -1 },
+        { ...edge("D", null), dx: 1, dy: -1 },
+      ],
+    };
+    const turned = rotateShape(shape, shape.edges[0].id, "horizontal");
+    const next = turned!.shape;
+    // 辺1は水平（E）に、残りも縦横にそろう（面積も閉じたまま）
+    expect(next.edges[0]).toMatchObject({ direction: "E", length: 1.41 });
+    expect(next.edges[1]).toMatchObject({ direction: "S", length: 1.41 });
+    expect(next.edges[2]).toMatchObject({ direction: "W", length: 1.41 });
+    expect(next.edges[3]).toMatchObject({ direction: "N", length: 1.41 });
+    expect(solveShape(next).error).toBeNull();
+    // 斜め辺1.4142…を2桁に丸めた 1.41×1.41 の面積になる
+    expect(floorArea(solveShape(next))).toBe(1.99);
   });
 
   it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {

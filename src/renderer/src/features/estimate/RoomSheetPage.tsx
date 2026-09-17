@@ -24,6 +24,7 @@ import {
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
+  rotateUnderlay,
   UnderlayImage,
   UnderlayScaleMarks,
   UnderlayTools,
@@ -48,6 +49,7 @@ import {
   roomQuantities,
   roomSymbols,
   ROOM_FIXED_SYMBOLS,
+  rotateShape,
   round2,
   scaleShape,
   shapeExtents,
@@ -1352,6 +1354,44 @@ export default function RoomSheetPage({
     else addNotch(across, along, prompt.edgeKind);
   };
 
+  /**
+   * 選んだ辺を起点に図形全体を水平・垂直へ回す。
+   * 貼った図面があるときは、同じ角度・同じ起点で画像も回してずれないようにする。
+   */
+  const rotateAtEdge = async (
+    target: "horizontal" | "vertical",
+  ): Promise<void> => {
+    const row = solved.edges.find((item) => item.id === selectedEdge);
+    if (row === undefined) {
+      setMessage("回す起点にする辺を図か表で1本選んでから押してください");
+      return;
+    }
+    const turned = rotateShape(shape, row.id, target);
+    if (turned === null) {
+      setMessage("この辺は長さが決まっていないので回せません");
+      return;
+    }
+    applyShape(turned.shape);
+    setSelectedEdge(null);
+    setSelectedCorner(null);
+    let imageNote = "";
+    if (underlay.image !== "") {
+      const next = await rotateUnderlay(
+        underlay,
+        turned.pivot,
+        turned.pivotTo,
+        turned.angle,
+      );
+      if (next !== null) {
+        setUnderlay(next);
+        imageNote = "（貼った図面も一緒に回りました）";
+      }
+    }
+    setMessage(
+      `選んだ辺を${target === "horizontal" ? "水平" : "垂直"}にしました${imageNote}`,
+    );
+  };
+
   /** 種別をまとめて変える選び中に、辺を選ぶ／外す */
   const toggleKindPick = (edgeId: string): void => {
     const picked = kindPick ?? [];
@@ -1718,6 +1758,22 @@ export default function RoomSheetPage({
               }}
             >
               📏 縮尺を合わせる
+            </button>
+            <button
+              type="button"
+              disabled={solved.edges.length === 0}
+              title="選んだ辺が水平（右向き・左向きの近い方）になるよう、辺の起点に図形全体を回します（貼った図面も一緒に回ります）"
+              onClick={() => void rotateAtEdge("horizontal")}
+            >
+              ↔ 辺を水平に
+            </button>
+            <button
+              type="button"
+              disabled={solved.edges.length === 0}
+              title="選んだ辺が垂直（下向き・上向きの近い方）になるよう、辺の起点に図形全体を回します（貼った図面も一緒に回ります）"
+              onClick={() => void rotateAtEdge("vertical")}
+            >
+              ↕ 辺を垂直に
             </button>
             <button
               type="button"
