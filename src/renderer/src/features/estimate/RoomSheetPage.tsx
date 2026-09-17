@@ -357,6 +357,13 @@ export default function RoomSheetPage({
   const [mergeCeiling, setMergeCeiling] = useState(false);
   /** 図でクリックして選んだ天井伏図の線（入力表の行が光ります） */
   const [pickedCeiling, setPickedCeiling] = useState<string | null>(null);
+  /**
+   * 図の上で①→②と2か所クリックして自由線の下がり天井を引くモード。
+   * null＝引いていない、"idle"＝①を待っている、anchor＝②を待っている
+   */
+  const [freeDraw, setFreeDraw] = useState<CeilingAnchor | "idle" | null>(null);
+  /** ②を待っている間の、カーソルの所の端点（近い辺の上に付ける） */
+  const [freeCursor, setFreeCursor] = useState<CeilingAnchor | null>(null);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
   /**
@@ -693,7 +700,23 @@ export default function RoomSheetPage({
       );
   }, [symbols]);
 
-  /** 天井伏図の線を描く位置（壁や、自分より低くなる線で止まる） */
+  /** 端点（辺の上の位置）の座標 */
+  const anchorPos = useCallback(
+    (anchor: CeilingAnchor): { x: number; y: number } | null => {
+      const edgeIndex = solved.edges.findIndex(
+        (row) => row.id === anchor.edgeId,
+      );
+      if (edgeIndex < 0 || solved.points.length === 0) return null;
+      const from = solved.points[edgeIndex];
+      const to = solved.points[(edgeIndex + 1) % solved.points.length];
+      return {
+        x: from.x + (to.x - from.x) * anchor.rate,
+        y: from.y + (to.y - from.y) * anchor.rate,
+      };
+    },
+    [solved.edges, solved.points],
+  );
+
   const ceilingLines = useMemo(() => {
     if (solved.points.length === 0) return [];
     const count = ceilingResult.items.length;
@@ -753,20 +776,8 @@ export default function RoomSheetPage({
       const free = item.element.free ?? null;
       if (free !== null && !freeMarkDone.has(item.element.id)) {
         freeMarkDone.add(item.element.id);
-        const anchorAt = (anchor: CeilingAnchor) => {
-          const edgeIndex = solved.edges.findIndex(
-            (row) => row.id === anchor.edgeId,
-          );
-          if (edgeIndex < 0 || solved.points.length === 0) return null;
-          const from = solved.points[edgeIndex];
-          const to = solved.points[(edgeIndex + 1) % solved.points.length];
-          return {
-            x: from.x + (to.x - from.x) * anchor.rate,
-            y: from.y + (to.y - from.y) * anchor.rate,
-          };
-        };
-        const start = anchorAt(free.a);
-        const end = anchorAt(free.b);
+        const start = anchorPos(free.a);
+        const end = anchorPos(free.b);
         // 線の内側へ少しずらして出す（角や辺の線と重ならないように）
         if (start !== null && end !== null) {
           const along = { x: end.x - start.x, y: end.y - start.y };
@@ -809,6 +820,7 @@ export default function RoomSheetPage({
       ];
     });
   }, [
+    anchorPos,
     ceiling,
     ceilingHeight,
     ceilingResult.items,
@@ -960,6 +972,96 @@ export default function RoomSheetPage({
     },
     [updateCeiling],
   );
+
+  /** 図の上のクリック位置を図形の座標に直す */
+  const svgPoint = (
+    event: React.MouseEvent<SVGSVGElement>,
+  ): { x: number; y: number } | null => {
+    const svg = event.currentTarget;
+    const matrix = svg.getScreenCTM();
+    if (matrix === null) return null;
+    const origin = svg.createSVGPoint();
+    origin.x = event.clientX;
+    origin.y = event.clientY;
+    return origin.matrixTransform(matrix.inverse());
+  };
+
+  /** クリックした所に一番近い、辺の上の位置（線の端は必ず部屋のふちに付く） */
+  const nearestAnchor = useCallback(
+    (point: { x: number; y: number }): CeilingAnchor | null => {
+      let best: { edgeId: string; rate: number; gap: number } | null = null;
+      for (const [index, row] of solved.edges.entries()) {
+        const from = solved.points[index];
+        const to = solved.points[(index + 1) % solved.points.length];
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const span2 = dx * dx + dy * dy;
+        const rate =
+          span2 === 0
+            ? 0
+            : Math.max(
+                0,
+                Math.min(
+                  1,
+                  ((point.x - from.x) * dx + (point.y - from.y) * dy) / span2,
+                ),
+              );
+        const gap = Math.hypot(
+          point.x - (from.x + dx * rate),
+          point.y - (from.y + dy * rate),
+        );
+        if (best === null || gap < best.gap)
+          best = { edgeId: row.id, rate, gap };
+      }
+      return best === null ? null : { edgeId: best.edgeId, rate: best.rate };
+    },
+    [solved.edges, solved.points],
+  );
+
+  /**
+   * 自由線を引くモードでの図のクリック。
+   * 1か所目＝①、2か所目＝②（どちらも近い辺の上に付く）。2点を結ぶ下がり天井になる
+   */
+  const clickFreeDraw = (event: React.MouseEvent<SVGSVGElement>): void => {
+    const point = svgPoint(event);
+    if (point === null) return;
+    const anchor = nearestAnchor(point);
+    if (anchor === null) return;
+    if (freeDraw === "idle") {
+      setFreeDraw(anchor);
+      setMessage(
+        "①を置きました。②を置く場所をクリックしてください（線の端は近い辺の上に付きます）",
+      );
+      return;
+    }
+    if (freeDraw === null) return;
+    const added = ceilingElement("dropCeiling", null);
+    const next: CeilingElement = {
+      ...added,
+      edgeId: null,
+      free: { a: freeDraw, b: anchor },
+    };
+    setCeiling((current) => [...current, next]);
+    setPickedCeiling(next.id);
+    setFreeDraw(null);
+    setFreeCursor(null);
+    setMessage(
+      "自由線の下がり天井を引きました。線で下がる側は行の「⇄」で反対に、端点の位置は「辺○の○m」で直せます",
+    );
+  };
+
+  // 自由線を引いている間、Escでやめられる
+  useEffect(() => {
+    if (freeDraw === null) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setFreeDraw(null);
+        setFreeCursor(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [freeDraw]);
 
   /**
    * 区画一覧で入れた下がりは、その区画だけの高さとして覚える（隣の区画・下がり天井の行のＨは変えない）。
@@ -2111,10 +2213,20 @@ export default function RoomSheetPage({
               }
               onClick={(event) => {
                 if (!printMode && underlayTool.onSvgClick(event)) return;
+                if (freeDraw !== null) {
+                  clickFreeDraw(event);
+                  return;
+                }
                 if (columnMode) addFreeColumn(event);
               }}
               onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
-              onPointerMove={underlayTool.onPointerMove}
+              onPointerMove={(event) => {
+                underlayTool.onPointerMove(event);
+                if (freeDraw !== null && freeDraw !== "idle") {
+                  const point = svgPoint(event);
+                  setFreeCursor(point === null ? null : nearestAnchor(point));
+                }
+              }}
               onPointerUp={underlayTool.onPointerUp}
             >
               <UnderlayImage u={underlayTool} />
@@ -2152,8 +2264,9 @@ export default function RoomSheetPage({
                   <g
                     key={line.id}
                     onClick={(event) => {
-                      // 独立柱を置いている間は、辺を選ばずに柱を置く
+                      // 独立柱を置いている間・自由線を引いている間は、辺を選ばない
                       if (columnMode) return;
+                      if (freeDraw !== null) return;
                       if (kindPick !== null) {
                         toggleKindPick(line.id);
                         return;
@@ -2286,13 +2399,14 @@ export default function RoomSheetPage({
                       x2={line.x2}
                       y2={line.y2}
                       className="ceiling-line-hit"
-                      onClick={() =>
+                      onClick={() => {
+                        if (freeDraw !== null) return;
                         setPickedCeiling(
                           pickedCeiling === line.elementId
                             ? null
                             : line.elementId,
-                        )
-                      }
+                        );
+                      }}
                     >
                       <title>入力表の行を光らせます</title>
                     </line>
@@ -2319,6 +2433,45 @@ export default function RoomSheetPage({
                     ))}
                   </g>
                 ))}
+              {freeDraw !== null &&
+                freeDraw !== "idle" &&
+                (() => {
+                  const start = anchorPos(freeDraw);
+                  const end =
+                    freeCursor === null ? null : anchorPos(freeCursor);
+                  if (start === null) return null;
+                  return (
+                    <g className="ceiling-free-draw">
+                      {end !== null && (
+                        <line
+                          x1={start.x}
+                          y1={start.y}
+                          x2={end.x}
+                          y2={end.y}
+                          className="ceiling-line dropCeiling"
+                        />
+                      )}
+                      <text
+                        x={start.x}
+                        y={start.y}
+                        className="dim ceiling"
+                        fontSize={dimFontSize}
+                      >
+                        ①
+                      </text>
+                      {end !== null && (
+                        <text
+                          x={end.x}
+                          y={end.y}
+                          className="dim ceiling"
+                          fontSize={dimFontSize}
+                        >
+                          ②
+                        </text>
+                      )}
+                    </g>
+                  );
+                })()}
               {showCeiling &&
                 ceilingCodes.flatMap((region) =>
                   region.centers.map((center, no) => {
@@ -3034,6 +3187,26 @@ export default function RoomSheetPage({
                 </button>
               ),
             )}
+            <button
+              type="button"
+              className={freeDraw !== null ? "on" : ""}
+              disabled={solved.edges.length === 0}
+              title="壁に沿わない下がり天井を、図の上で2か所クリックして引きます（線の端は近い辺の上に付きます）"
+              onClick={() => {
+                if (freeDraw !== null) {
+                  setFreeDraw(null);
+                  setFreeCursor(null);
+                  return;
+                }
+                setFreeDraw("idle");
+                setFreeCursor(null);
+                setMessage(
+                  "①を置く場所を上の図でクリックしてください（線の端は近い辺の上に付きます。もう一度押すとやめます）",
+                );
+              }}
+            >
+              ✏ 自由線を引く
+            </button>
           </div>
           <table className="grid">
             <thead>
@@ -3068,7 +3241,7 @@ export default function RoomSheetPage({
                   下がり(m)
                 </th>
                 <th className="num">面積(㎡)</th>
-                <th />
+                <th className="ceiling-actions" />
               </tr>
             </thead>
             <tbody>

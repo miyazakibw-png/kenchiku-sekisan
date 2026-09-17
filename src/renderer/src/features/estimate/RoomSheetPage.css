@@ -558,8 +558,17 @@
   line-height: 1.1;
 }
 
-.room-sheet-page .ceiling table.grid td.ceiling-actions {
+/* 操作列（⇄・✂・🗑）を右端に張り付けて、表が横に長くてもいつも見えるようにする */
+.room-sheet-page .ceiling table.grid td.ceiling-actions,
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  position: sticky;
+  right: 0;
   white-space: nowrap;
+  background: #fff;
+}
+
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  background: #f6f8fb;
 }
 
 .room-sheet-page .ceiling table.grid td.ceiling-actions button + button {
