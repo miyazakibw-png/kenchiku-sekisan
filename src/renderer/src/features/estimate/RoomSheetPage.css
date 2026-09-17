@@ -377,6 +377,17 @@
   justify-content: center;
 }
 
+/* 下敷きの図面があるときは、なぞる画面と同じく左上づめ・画像原寸で出す */
+.room-sheet-page .canvas.has-underlay {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* 図の大きさを画素で指定するので、flex の縮みで画像が縮まないようにする */
+.room-sheet-page .canvas.has-underlay > svg {
+  flex: 0 0 auto;
+}
+
 /* 図の一番下に出す外形寸法（X＝横・Y＝縦の最大） */
 .room-sheet-page .canvas .extents {
   position: absolute;

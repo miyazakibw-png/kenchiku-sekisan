@@ -304,7 +304,8 @@ function viewBox(
   const width = Math.max(...xs) - Math.min(...xs);
   const height = Math.max(...ys) - Math.min(...ys);
   const size = Math.max(width, height, 0.001);
-  const margin = size * 0.18;
+  // 下敷きの図面はなぞる画面と同じ見え方（左上づめ・原寸）にするので余白を小さくする
+  const margin = size * (underlay === null ? 0.18 : 0.05);
   const left = Math.min(...xs) - (size - width) / 2 - margin;
   const top = Math.min(...ys) - (size - height) / 2 - margin;
   const span = size + margin * 2;
@@ -525,6 +526,21 @@ export default function RoomSheetPage({
     [solved, underlayTool.box],
   );
 
+  /**
+   * 下敷きの図面があるときは、なぞる画面と同じく画像を原寸（1画素＝1画面px）で出す。
+   * このとき図の1mは 1/mpp px なので、svg の大きさは view.span/mpp px になる
+   * （大きさが違うと貼る画面となぞる画面で画像の見え方がずれるため）。
+   */
+  const underlayScale =
+    !printMode && underlayTool.box !== null && underlay.metersPerPixel > 0
+      ? underlay.metersPerPixel
+      : null;
+  /** 図を実際に描いている大きさ（px。寸法文字やC番号のつかみ移動にも使う） */
+  const drawnSize =
+    underlayScale !== null
+      ? (view.span / underlayScale) * zoom
+      : Math.max(canvasSize * zoom, 1);
+
   useEffect(() => {
     const element = canvasRef.current;
     if (!element) return;
@@ -538,10 +554,10 @@ export default function RoomSheetPage({
   }, []);
 
   /** 寸法文字の大きさ（画面上で表と同じ12px相当になるようにする） */
-  const dimFontSize = useMemo(() => {
-    const drawnSize = Math.max(canvasSize * zoom, 1);
-    return (view.span / drawnSize) * 12;
-  }, [canvasSize, view.span, zoom]);
+  const dimFontSize = useMemo(
+    () => (view.span / drawnSize) * 12,
+    [view.span, drawnSize],
+  );
 
   /** 角の○印の大きさ（短い辺や寸法文字にかからないように小さくする） */
   const cornerRadius = useMemo(() => {
@@ -826,10 +842,7 @@ export default function RoomSheetPage({
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
-  const perPixel = useMemo(
-    () => view.span / Math.max(canvasSize * zoom, 1),
-    [canvasSize, view.span, zoom],
-  );
+  const perPixel = useMemo(() => view.span / drawnSize, [view.span, drawnSize]);
 
   /** C番号をつかんで好きな位置へ動かす */
   const startCodeDrag = useCallback(
@@ -1982,7 +1995,17 @@ export default function RoomSheetPage({
             >
               －
             </button>
-            <button type="button" onClick={() => setZoom(1)}>
+            <button
+              type="button"
+              title="下敷きの図面があるときは、全体が画面に入る大きさにします（＋−で原寸の何倍かにできます）"
+              onClick={() =>
+                setZoom(
+                  underlayScale !== null && canvasSize > 0
+                    ? Math.max((canvasSize * underlayScale) / view.span, 0.05)
+                    : 1,
+                )
+              }
+            >
               全体
             </button>
             <button
@@ -1999,11 +2022,20 @@ export default function RoomSheetPage({
               {showCorners ? "○角を消す" : "○角を出す"}
             </button>
           </div>
-          <div className="canvas" ref={canvasRef}>
+          <div
+            className={
+              underlayScale !== null ? "canvas has-underlay" : "canvas"
+            }
+            ref={canvasRef}
+          >
             <svg
               viewBox={view.box}
               className={underlayTool.svgClass}
-              style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
+              style={
+                underlayScale !== null
+                  ? { width: `${drawnSize}px`, height: `${drawnSize}px` }
+                  : { width: `${zoom * 100}%`, height: `${zoom * 100}%` }
+              }
               onClick={(event) => {
                 if (!printMode && underlayTool.onSvgClick(event)) return;
                 if (columnMode) addFreeColumn(event);
