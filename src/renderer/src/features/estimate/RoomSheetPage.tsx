@@ -20,6 +20,7 @@ import {
   parseTrace,
   parseUnderlay,
   traceFromUnderlay,
+  underlayForTrace,
   type RoomTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
@@ -1665,7 +1666,8 @@ export default function RoomSheetPage({
           >
             🖼 図面をなぞる
           </button>
-          <UnderlayTools u={underlayTool} />
+          {/* 画像の取り込みはなぞる画面にまとめ、ここでは調整（縮尺・位置・濃さ・外す）だけにする */}
+          <UnderlayTools u={underlayTool} canLoad={false} />
           <button
             type="button"
             className={expanded ? "on" : ""}
@@ -3602,8 +3604,36 @@ export default function RoomSheetPage({
         <RoomTracePanel
           trace={trace}
           onChange={setTrace}
-          onApply={(next) => {
+          onUnderlay={(perPixel) => {
+            // なぞらずに図面だけを図形の下敷きにする。縮尺がまだなら従来の貼る画面と同じ仮の縮尺で置く
+            const fallback =
+              Math.max(
+                extents === null ? 0 : Math.max(extents.x, extents.y),
+                10,
+              ) / 1000;
+            setUnderlay({
+              image: trace.image,
+              metersPerPixel: perPixel > 0 ? perPixel : fallback,
+              x: 0,
+              y: 0,
+              opacity: underlay.opacity,
+              ...(perPixel > 0 ? { scaled: true } : {}),
+            });
+            setShowTrace(false);
+            setMessage(
+              perPixel > 0
+                ? "図面を図形の下に敷きました（動かす・濃さは図の上のボタンで調整できます）"
+                : "図面を図形の下に敷きました（縮尺は仮です。「⤢ 縮尺合わせ」で図形に合わせてください）",
+            );
+          }}
+          onApply={(next, _meters, _pixels, perPixel) => {
             applyShape(next);
+            // なぞった図面と縮尺を図形の下敷きにそろえる（図形とずれないように）
+            const synced = underlayForTrace(
+              { ...trace, metersPerPixel: perPixel },
+              underlay,
+            );
+            if (synced !== null) setUnderlay(synced);
             setShowTrace(false);
             const madeSolved = solveShape(next);
             const madeSize = shapeExtents(madeSolved);

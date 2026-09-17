@@ -450,31 +450,45 @@ export function unionBox(
 }
 
 /** 図面取り込みのボタン列（図面を貼る／図面ファイル／縮尺合わせ／戻す／動かす／濃さ／外す） */
-export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
+export function UnderlayTools({
+  u,
+  canLoad = true,
+}: {
+  u: Underlay;
+  /**
+   * 画像の取り込み（貼る・ファイル・頁）のボタンを出すか。
+   * 取り込みをなぞる画面にまとめている画面では false にする（調整のボタンは残る）
+   */
+  canLoad?: boolean;
+}): JSX.Element {
   return (
     <span className="kind-pick underlay-tools">
-      <button
-        type="button"
-        title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（図形の位置・大きさを図面と見比べながら作れます）"
-        onClick={() => void u.pasteImage()}
-      >
-        📋 図面を貼る
-      </button>
-      <button
-        type="button"
-        title="PDF・画像のファイルを選んで、図の下敷きに貼ります"
-        onClick={() => void u.openFile()}
-      >
-        📄 図面ファイル
-      </button>
-      <label className="snap-field" title="PDFの何ページ目を使うか">
-        頁
-        <input
-          className="num"
-          value={u.pageText}
-          onChange={(e) => u.setPageText(e.target.value)}
-        />
-      </label>
+      {canLoad && (
+        <>
+          <button
+            type="button"
+            title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（図形の位置・大きさを図面と見比べながら作れます）"
+            onClick={() => void u.pasteImage()}
+          >
+            📋 図面を貼る
+          </button>
+          <button
+            type="button"
+            title="PDF・画像のファイルを選んで、図の下敷きに貼ります"
+            onClick={() => void u.openFile()}
+          >
+            📄 図面ファイル
+          </button>
+          <label className="snap-field" title="PDFの何ページ目を使うか">
+            頁
+            <input
+              className="num"
+              value={u.pageText}
+              onChange={(e) => u.setPageText(e.target.value)}
+            />
+          </label>
+        </>
+      )}
       {u.underlay.image !== "" && (
         <>
           <button

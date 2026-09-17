@@ -29,6 +29,11 @@ interface Props {
     pixels: Point[],
     perPixel: number,
   ) => void;
+  /**
+   * なぞらずに、読み込んだ図面を図形の下敷きにする（perPixel＝いまの縮尺。0は未設定）。
+   * 図面の取り込みをこの画面にまとめているときに渡す
+   */
+  onUnderlay?: (perPixel: number) => void;
   onClose: () => void;
   /** 見出しの名前（部屋・ピットなど） */
   targetName?: string;
@@ -63,6 +68,7 @@ export default function RoomTracePanel({
   trace,
   onChange,
   onApply,
+  onUnderlay,
   onClose,
   targetName = "部屋",
   done = [],
@@ -238,7 +244,9 @@ export default function RoomTracePanel({
       }
       const rect = rectFromCorners(points[0], point);
       if (rect === null) {
-        setMessage("同じ横位置・縦位置では四角になりません。斜め向かいの角をクリックしてください");
+        setMessage(
+          "同じ横位置・縦位置では四角になりません。斜め向かいの角をクリックしてください",
+        );
         return;
       }
       setPoints(rect);
@@ -393,6 +401,16 @@ export default function RoomTracePanel({
         >
           🗑 画像を消す
         </button>
+        {onUnderlay !== undefined && (
+          <button
+            type="button"
+            title="この図面を、なぞらずにそのまま図形の下敷きにします（図形はそのまま残ります。位置・縮尺・濃さは図の上のボタンで調整できます）"
+            disabled={trace.image === ""}
+            onClick={() => onUnderlay(perPixel)}
+          >
+            📥 図面を下に敷く
+          </button>
+        )}
         <button type="button" onClick={() => setZoom(Math.min(zoom * 1.25, 8))}>
           ＋
         </button>
@@ -474,7 +492,11 @@ export default function RoomTracePanel({
             <button
               type="button"
               onClick={() =>
-                keep(rectMode && points.length === 4 ? [points[0]] : points.slice(0, -1))
+                keep(
+                  rectMode && points.length === 4
+                    ? [points[0]]
+                    : points.slice(0, -1),
+                )
               }
               disabled={points.length === 0}
             >
