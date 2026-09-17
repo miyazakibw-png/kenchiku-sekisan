@@ -415,6 +415,55 @@ describe("部屋形状（単線図）", () => {
     expect(roomQuantities(solved, 2.5).wallLength).toBe(14.16);
   });
 
+  it("曲面壁の分はRHL・RWAに分けて出し、HL・WAからは引く", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    // 曲面の辺に建具（面積1.0・巾木減0.4）を置いた場合も曲面側で差し引く
+    const fittings = [
+      {
+        symbol: "AW1",
+        multiplier: 1,
+        area: 1,
+        baseboardDeduction: 0.4,
+        edgeId: solved.edges[2].id,
+      },
+    ];
+    const quantities = roomQuantities(solved, 2.5, fittings);
+    // 壁合計14.16のうち曲面分4.16。HLは直線の壁だけ（4+3+3=10）
+    expect(quantities.wallLength).toBe(14.16);
+    expect(quantities.baseboardLength).toBe(10);
+    // RHLは弧長から曲面の建具巾木減を引く（4.16-0.4）
+    expect(quantities.curveLength).toBe(3.76);
+    // WAは直線の壁×天井高さ（10×2.5）、RWAは弧長×天井高さ－建具（4.16×2.5-1.0）
+    expect(quantities.wallArea).toBe(25);
+    expect(quantities.curveArea).toBe(9.4);
+
+    const symbols = roomSymbols(solved, 2.5, fittings);
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "RHL")?.value).toBe(3.76);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+    expect(symbols.find((row) => row.symbol === "RWA")?.value).toBe(9.4);
+    // RHLはHLの直下、RWAはWAの直下に並ぶ
+    const order = symbols.map((row) => row.symbol);
+    expect(order.indexOf("RHL")).toBe(order.indexOf("HL") + 1);
+    expect(order.indexOf("RWA")).toBe(order.indexOf("WA") + 1);
+  });
+
+  it("曲面壁の無い部屋にはRHL・RWAを出さず、HL・WAは壁全体のまま", () => {
+    const symbols = roomSymbols(solveShape(rectangleShape(3, 2)), 2.5);
+    expect(symbols.find((row) => row.symbol === "RHL")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+  });
+
   it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {
     const shape = rectangleShape(4, 3);
     const moved = moveCorner(shape, 1, 1, 0);

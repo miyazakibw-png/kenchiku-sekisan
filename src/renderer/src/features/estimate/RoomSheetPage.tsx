@@ -645,6 +645,16 @@ export default function RoomSheetPage({
       ...head,
       ...shown.filter((item) => !headSymbols.has(item.symbol)),
     ];
+    // 曲面壁があるときは RHL を HL の直下、RWA を WA の直下に置く
+    const moveAfter = (symbol: string, after: string): void => {
+      const from = ordered.findIndex((item) => item.symbol === symbol);
+      if (from < 0) return;
+      const [item] = ordered.splice(from, 1);
+      const to = ordered.findIndex((each) => each.symbol === after);
+      ordered.splice(to < 0 ? ordered.length : to + 1, 0, item);
+    };
+    moveAfter("RHL", "HL");
+    moveAfter("RWA", "WA");
     const half = Math.ceil(ordered.length / 2);
     return ordered
       .slice(0, half)
@@ -1135,6 +1145,10 @@ export default function RoomSheetPage({
       { partName: "床", quantity: quantities.floorArea },
       { partName: "天井", quantity: quantities.ceilingArea },
       { partName: "壁", quantity: quantities.wallArea },
+      // 曲面壁がある部屋は、壁から分けた曲面分も見比べられるように出す
+      ...(solved.edges.some((row) => row.kind === "curve")
+        ? [{ partName: "曲面壁", quantity: quantities.curveArea }]
+        : []),
       { partName: "巾木", quantity: quantities.baseboardLength },
     ];
     return auto.map((item) => {

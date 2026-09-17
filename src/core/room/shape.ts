@@ -950,14 +950,18 @@ export interface RoomQuantities {
   floorArea: number | null;
   /** CA 天井面積（梁型が取る梁底の分は引く） */
   ceilingArea: number | null;
-  /** WL 壁長さ */
+  /** WL 壁長さ（曲面壁の弧長を含む合計） */
   wallLength: number;
   /** CL 柱長さ */
   columnLength: number;
-  /** HL 巾木長さ（壁＋柱－建具の巾木減） */
+  /** HL 巾木長さ（直線の壁＋柱－その建具の巾木減。曲面壁の分は除く） */
   baseboardLength: number;
-  /** WA 壁面積（建具面積を差し引いた計上面積） */
+  /** RHL 曲面壁の長さ（弧長－曲面にある建具の巾木減） */
+  curveLength: number;
+  /** WA 壁面積（直線の壁だけ。曲面壁の分は除く。建具面積を差し引いた計上面積） */
   wallArea: number | null;
+  /** RWA 曲面壁の面積（弧長×天井高さ－曲面にある建具面積） */
+  curveArea: number | null;
   /** HA 柱面積 */
   columnArea: number | null;
   /** ML 廻り縁長さ */
@@ -982,14 +986,40 @@ export function roomQuantities(
   const free = freeColumnTotals(solved.columns, height);
   // 部屋の中の独立柱は、周長を柱として数える（柱長さ・柱面積・巾木・廻り縁に足す）
   const column = round2(totals.column + free.perimeter);
+  // 曲面壁の分は直線の壁から分けて出す（WA/HL は直線の壁だけ、RWA/RHL が曲面）
+  let curveMeasured = 0;
+  const curveFitting: FittingTotals = { area: 0, baseboard: 0 };
+  for (const row of solved.edges) {
+    if (row.kind !== "curve" || row.measured === null) continue;
+    curveMeasured += row.measured;
+    const onCurve = fittingTotals(fittings, row.id);
+    curveFitting.area += onCurve.area;
+    curveFitting.baseboard += onCurve.baseboard;
+  }
+  curveMeasured = round2(curveMeasured);
   return {
     floorArea: area,
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
     wallLength: totals.wall,
     columnLength: column,
-    baseboardLength: round2(totals.wall + column - fitting.baseboard),
+    baseboardLength: round2(
+      totals.wall -
+        curveMeasured +
+        column -
+        (fitting.baseboard - curveFitting.baseboard),
+    ),
+    curveLength: round2(curveMeasured - curveFitting.baseboard),
     wallArea:
-      height === null ? null : round2(totals.wall * height - fitting.area),
+      height === null
+        ? null
+        : round2(
+            (totals.wall - curveMeasured) * height -
+              (fitting.area - curveFitting.area),
+          ),
+    curveArea:
+      height === null
+        ? null
+        : round2(curveMeasured * height - curveFitting.area),
     columnArea: height === null ? null : round2(column * height),
     moldingLength: round2(totals.wall + column),
     fittingArea: fitting.area,
@@ -1036,6 +1066,8 @@ export function withFixedRoomSymbols(
 /**
  * 計算式で使う記号表。
  * 合計の記号（FA/CA/CH/HL/WA/HA/ML）に加えて、辺ごとの記号（HL1・WA1…）を作る。
+ * 曲面壁がある部屋では RHL（曲面の長さ）を HL の直下、RWA（曲面の面積）を
+ * WA の直下に足す（HL/WA は直線の壁だけの合計になる）。
  */
 export function roomSymbols(
   solved: SolvedShape,
@@ -1051,6 +1083,7 @@ export function roomSymbols(
     limit,
     beamArea,
   );
+  const hasCurve = solved.edges.some((row) => row.kind === "curve");
   const symbols: RoomSymbol[] = [
     { symbol: "FA", label: "床面積", value: quantities.floorArea },
     { symbol: "CA", label: "天井面積", value: quantities.ceilingArea },
@@ -1058,7 +1091,25 @@ export function roomSymbols(
     { symbol: "WL", label: "壁長さ", value: quantities.wallLength },
     { symbol: "CL", label: "柱長さ", value: quantities.columnLength },
     { symbol: "HL", label: "巾木長さ", value: quantities.baseboardLength },
+    ...(hasCurve
+      ? [
+          {
+            symbol: "RHL",
+            label: "曲面壁 長さ",
+            value: quantities.curveLength,
+          },
+        ]
+      : []),
     { symbol: "WA", label: "壁面積", value: quantities.wallArea },
+    ...(hasCurve
+      ? [
+          {
+            symbol: "RWA",
+            label: "曲面壁 面積",
+            value: quantities.curveArea,
+          },
+        ]
+      : []),
     { symbol: "HA", label: "柱面積", value: quantities.columnArea },
     { symbol: "ML", label: "廻り縁", value: quantities.moldingLength },
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },
