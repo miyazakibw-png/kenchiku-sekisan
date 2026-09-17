@@ -18,6 +18,7 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  scaleShape,
   setEdgeKinds,
   shapeExtents,
   solveShape,
@@ -462,6 +463,49 @@ describe("部屋形状（単線図）", () => {
     expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
     expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
     expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+  });
+
+  it("縮尺合わせ：選んだ辺の実寸で図形全体を同じ比率にする", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+      columns: [freeColumn(2, 1, 0.5, 0.5)],
+    };
+    // 辺1（4.00）を実寸8.00に → 全体2倍
+    const next = scaleShape(shape, shape.edges[0].id, 8);
+    expect(next).not.toBeNull();
+    expect(next?.edges[0].length).toBe(8);
+    expect(next?.edges[1].length).toBe(6);
+    // 曲面壁は弦も矢も2倍
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[2].bulge).toBe(1);
+    // 独立柱の位置・大きさも2倍
+    expect(next?.columns?.[0].x).toBe(4);
+    expect(next?.columns?.[0].width).toBe(1);
+    // 弧長も2倍（丸めを含めた実値）
+    expect(solveShape(next!).edges[2].measured).toBe(8.33);
+  });
+
+  it("縮尺合わせ：斜め辺・自動算出の辺も基準にできる", () => {
+    // 斜め辺を基準にする（解決した長さ3.16を6.32へ → 2倍）
+    const moved = moveCorner(rectangleShape(4, 3), 1, 1, 0).shape;
+    const scaled = scaleShape(moved, moved.edges[1].id, 6.32);
+    expect(scaled?.edges[1].dx).toBe(-2);
+    expect(scaled?.edges[1].dy).toBe(6);
+    expect(solveShape(scaled!).edges[1].resolved).toBeCloseTo(6.32, 2);
+    expect(scaled?.edges[0].length).toBe(10);
+
+    // 自動算出（寸法なし）の辺を基準にすると、その辺に実寸が入る
+    const shape = rectangleShape(4, 3);
+    const withAuto = updateEdge(shape, shape.edges[2].id, { length: null });
+    const next = scaleShape(withAuto, shape.edges[2].id, 8);
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[0].length).toBe(8);
+    expect(solveShape(next!).edges[2].resolved).toBe(8);
   });
 
   it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {

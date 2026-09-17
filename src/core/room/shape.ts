@@ -1173,6 +1173,58 @@ export function setEdgeKinds(
   return changed ? { edges } : shape;
 }
 
+/**
+ * 出来た図形の縮尺を、1辺の実寸で合わせる。
+ * 選んだ辺のいまの長さ（曲面壁は弦）と入れた実寸の比で、全辺の寸法・斜め移動・
+ * 曲面壁の矢・独立柱の位置と大きさを同じ倍率にする。
+ * 選んだ辺が自動算出（寸法なし）なら、入れた実寸をその辺の寸法として確定する。
+ * 合わせられない場合（実寸が0以下・辺が無い・基準の長さが決まらない）は null。
+ */
+export function scaleShape(
+  shape: RoomShape,
+  edgeId: string,
+  length: number,
+): RoomShape | null {
+  if (!(length > 0)) return null;
+  const target = solveShape(shape).edges.find((row) => row.id === edgeId);
+  if (target === undefined || target.resolved === null || target.resolved <= 0)
+    return null;
+  const factor = length / target.resolved;
+  const scaled = (
+    value: number | null | undefined,
+  ): number | null | undefined =>
+    value === null || value === undefined ? value : round2(value * factor);
+  const edges = shape.edges.map((row) => {
+    if (row.id === edgeId) {
+      // 斜め辺は横・縦移動が倍率で伸びるので、そのまま実寸になる
+      if (isDiagonal(row.direction)) {
+        return {
+          ...row,
+          dx: scaled(row.dx),
+          dy: scaled(row.dy),
+          bulge: scaled(row.bulge),
+        };
+      }
+      return { ...row, length: round2(length), bulge: scaled(row.bulge) };
+    }
+    return {
+      ...row,
+      length: row.length === null ? null : round2(row.length * factor),
+      dx: scaled(row.dx),
+      dy: scaled(row.dy),
+      bulge: scaled(row.bulge),
+    };
+  });
+  const columns = (shape.columns ?? []).map((col) => ({
+    ...col,
+    x: round2(col.x * factor),
+    y: round2(col.y * factor),
+    width: round2(col.width * factor),
+    depth: round2(col.depth * factor),
+  }));
+  return { ...shape, edges, columns };
+}
+
 /** 辺を分割する（元の寸法を入れると残りは自動算出になる） */
 export function splitEdge(
   shape: RoomShape,

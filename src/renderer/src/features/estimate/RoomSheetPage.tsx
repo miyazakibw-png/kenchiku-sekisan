@@ -49,6 +49,7 @@ import {
   roomSymbols,
   ROOM_FIXED_SYMBOLS,
   round2,
+  scaleShape,
   shapeExtents,
   solveShape,
   setEdgeKinds,
@@ -268,13 +269,18 @@ type ShapePrompt =
       /** L型・コ型で足す辺の種別（小さいL・コは柱にすることが多い） */
       edgeKind: EdgeKind;
     }
-  | { kind: "split"; edgeId: string; span: number; first: string };
+  | { kind: "split"; edgeId: string; span: number; first: string }
+  | { kind: "scale"; edgeId: string; current: number; value: string };
 
-const PROMPT_TITLE: Record<"rect" | "cut" | "notch" | "split", string> = {
+const PROMPT_TITLE: Record<
+  "rect" | "cut" | "notch" | "split" | "scale",
+  string
+> = {
   rect: "四角を作る",
   cut: "L型を角に追加",
   notch: "コ型を辺に追加",
   split: "角を追加",
+  scale: "縮尺を合わせる",
 };
 
 /** 表示スペースいっぱいに、縦横の大きい方に合わせて描く（1m角も100m角も同じ大きさで見える） */
@@ -1310,6 +1316,22 @@ export default function RoomSheetPage({
       applySplit(prompt.edgeId, first);
       return;
     }
+    if (prompt.kind === "scale") {
+      const value = textToNumber(prompt.value) ?? 0;
+      const next = value > 0 ? scaleShape(shape, prompt.edgeId, value) : null;
+      if (next === null) {
+        setMessage("実寸は0より大きい値を入れてください");
+        return;
+      }
+      setPrompt(null);
+      applyShape(next);
+      setSelectedEdge(null);
+      setSelectedCorner(null);
+      setMessage(
+        `図形を${formatNumber(value / prompt.current, 2)}倍に合わせました（選んだ辺を ${formatNumber(value, 2)}m にしました）`,
+      );
+      return;
+    }
     const across = textToNumber(prompt.across) ?? 0;
     const along = textToNumber(prompt.along) ?? 0;
     if (!(across > 0) || !(along > 0)) {
@@ -1668,6 +1690,34 @@ export default function RoomSheetPage({
               }}
             >
               ○ 角を追加
+            </button>
+            <button
+              type="button"
+              disabled={solved.edges.length === 0}
+              title="出来た図形の辺を1本選んでから押すと、その辺の実寸を入れて図形全体を同じ比率で拡大・縮小します（図面をなぞってできた形の縮尺合わせに使えます）"
+              onClick={() => {
+                const row = solved.edges.find(
+                  (item) => item.id === selectedEdge,
+                );
+                if (
+                  row === undefined ||
+                  row.resolved === null ||
+                  row.resolved <= 0
+                ) {
+                  setMessage(
+                    "基準にする辺を図か表で1本選んでから押してください",
+                  );
+                  return;
+                }
+                setPrompt({
+                  kind: "scale",
+                  edgeId: row.id,
+                  current: row.resolved,
+                  value: formatNumber(row.resolved, 2),
+                });
+              }}
+            >
+              📏 縮尺を合わせる
             </button>
             <button
               type="button"
@@ -3190,6 +3240,26 @@ export default function RoomSheetPage({
                   />
                   <span className="hint">
                     （辺の長さ {formatNumber(prompt.span, 2)}）
+                  </span>
+                </label>
+              ) : prompt.kind === "scale" ? (
+                <label>
+                  選んだ辺の実寸
+                  <input
+                    className="num"
+                    ref={promptInputRef}
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onMouseDown={selectWholeOnFirstClick}
+                    value={prompt.value}
+                    onChange={(e) =>
+                      setPrompt({ ...prompt, value: e.target.value })
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                  />
+                  <span className="hint">
+                    （いま {formatNumber(prompt.current, 2)}
+                    m。全部の辺・独立柱が同じ比率で拡大・縮小します）
                   </span>
                 </label>
               ) : (
