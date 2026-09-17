@@ -49,6 +49,14 @@
   overflow: visible;
 }
 
+/* 寸法入力・天井伏図の表は列が多く紙の幅を超えることがあるので、
+   印刷プレビューの中では横にスクロールできるようにする
+   （右端の操作列が張り付いて見える。印刷される紙の見え方は変わらない） */
+.calc-print-upper .room-sheet-page > .upper > section.edges,
+.calc-print-upper .room-sheet-page > .upper > section.ceiling {
+  overflow-x: auto;
+}
+
 .calc-print-upper .room-sheet-page .canvas {
   max-height: 300px;
 }
