@@ -4366,7 +4366,12 @@ export default function RoomSheetPage({
             const matchIndex = underlays.findIndex(
               (item) => item.image === trace.image,
             );
-            const matched = matchIndex >= 0 ? underlays[matchIndex] : undefined;
+            // 画像データが別経路で貼られて一致しないときは、なぞる画面を開いた（いま選んでいる）図面をその対象にする
+            const slotIndex =
+              matchIndex >= 0
+                ? matchIndex
+                : Math.min(underlayTool.active, underlays.length - 1);
+            const matched = slotIndex >= 0 ? underlays[slotIndex] : undefined;
             const next = {
               image: trace.image,
               metersPerPixel:
@@ -4383,9 +4388,9 @@ export default function RoomSheetPage({
             } else {
               setUnderlays(
                 underlays.map((item, index) =>
-                  index === matchIndex ? next : item,
+                  index === slotIndex ? next : item,
                 ),
-                matchIndex,
+                slotIndex,
               );
             }
             setShowTrace(false);
@@ -4405,9 +4410,14 @@ export default function RoomSheetPage({
               const matchIndex = underlays.findIndex(
                 (item) => item.image === trace.image,
               );
-              const base =
+              // 画像データが別経路で貼られて一致しないときは、なぞる画面を開いた（いま選んでいる）図面をその対象にする
+              const slotIndex =
                 matchIndex >= 0
-                  ? underlays[matchIndex]
+                  ? matchIndex
+                  : Math.min(underlayTool.active, underlays.length - 1);
+              const base =
+                slotIndex >= 0
+                  ? underlays[slotIndex]
                   : {
                       image: trace.image,
                       metersPerPixel: 0,
@@ -4421,12 +4431,12 @@ export default function RoomSheetPage({
                   base,
                 ) ?? base;
               const placed = underlayAtTraceOrigin(synced, meters);
-              if (matchIndex >= 0) {
+              if (slotIndex >= 0) {
                 setUnderlays(
                   underlays.map((item, index) =>
-                    index === matchIndex ? placed : item,
+                    index === slotIndex ? placed : item,
                   ),
-                  matchIndex,
+                  slotIndex,
                 );
               } else {
                 setUnderlays([...underlays, placed], underlays.length);

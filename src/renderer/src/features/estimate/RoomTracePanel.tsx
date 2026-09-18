@@ -130,15 +130,17 @@ export default function RoomTracePanel({
           (item) => item.image !== "" && item.metersPerPixel > 0,
         )[activeIndex]
       : undefined);
+  // 基準の図面はなぞる図面がその場所を映すので、他の図面には入れない（同じ図面が2重に重ならないように）
   const others = useMemo(
     () =>
       (underlays ?? []).filter(
         (item) =>
           item.image !== "" &&
           item.image !== trace.image &&
-          item.metersPerPixel > 0,
+          item.metersPerPixel > 0 &&
+          item !== anchor,
       ),
-    [underlays, trace.image],
+    [anchor, underlays, trace.image],
   );
   useEffect(() => {
     others.forEach((item) => {
