@@ -181,6 +181,8 @@ export function useUnderlay({
     clientX: number;
     clientY: number;
     from: TraceUnderlay;
+    /** 動かし始めの全図面（まとめて動かすの基準。ここからずらすので加速しない） */
+    all: TraceUnderlay[];
     /** この距離（px）以上動いたら動かすと見なす。動かさないクリックは図形の選択にそのまま渡す */
     started: boolean;
   } | null>(null);
@@ -538,10 +540,11 @@ export function useUnderlay({
         clientX: event.clientX,
         clientY: event.clientY,
         from: underlay,
+        all: underlays,
         started: false,
       };
     },
-    [mode, underlay],
+    [mode, underlay, underlays],
   );
 
   const onPointerMove = useCallback(
@@ -572,9 +575,9 @@ export function useUnderlay({
       };
       if (drag) drag(start.from, moved);
       if (moveAllRef.current) {
-        // まとめて動かす中は全部の図面を同じだけずらす（重ね合わせた図面がばらけない）
-        setUnderlaysState((current) =>
-          current.map((item) =>
+        // まとめて動かす中は、動かし始めの全図面から同じだけずらす（重ね合わせた図面がばらけない）
+        setUnderlaysState(
+          start.all.map((item) =>
             item.image === ""
               ? item
               : { ...item, x: item.x + dx, y: item.y + dy },
