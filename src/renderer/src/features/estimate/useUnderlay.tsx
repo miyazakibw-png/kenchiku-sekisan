@@ -180,22 +180,26 @@ export function useUnderlay({
 
   const underlay = underlays[active] ?? EMPTY_UNDERLAY;
 
+  /** 選んでいる図面の番号。ドラッグ中などの古いcallbackからも常に今の番号を見るため参照で持つ */
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
   const setUnderlay: Dispatch<SetStateAction<TraceUnderlay>> = useCallback(
     (next) => {
       setUnderlaysState((current) => {
         const resolved =
           typeof next === "function"
-            ? next(current[active] ?? EMPTY_UNDERLAY)
+            ? next(current[activeRef.current] ?? EMPTY_UNDERLAY)
             : next;
         if (current.length === 0)
           return resolved.image === "" ? current : [resolved];
         const updated = current.map((item, index) =>
-          index === active ? resolved : item,
+          index === activeRef.current ? resolved : item,
         );
         return updated.filter((item) => item.image !== "");
       });
     },
-    [active],
+    [],
   );
 
   const setUnderlays = useCallback((list: TraceUnderlay[], activeIndex = 0) => {
