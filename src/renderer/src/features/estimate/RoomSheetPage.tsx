@@ -2091,8 +2091,8 @@ export default function RoomSheetPage({
           >
             🖼 図面をなぞる
           </button>
-          {/* 画像の取り込みはなぞる画面にまとめ、ここでは調整（縮尺・位置・濃さ・外す）だけにする */}
-          <UnderlayTools u={underlayTool} canLoad={false} />
+          {/* 下敷きが1枚以上あるときだけ貼る・開くを出す（1枚目はなぞる画面から。2枚目以降をここで足せる） */}
+          <UnderlayTools u={underlayTool} canLoad={underlayTool.count > 0} />
           <button
             type="button"
             className={expanded ? "on" : ""}
