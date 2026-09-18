@@ -4353,6 +4353,7 @@ export default function RoomSheetPage({
         <RoomTracePanel
           trace={trace}
           onChange={setTrace}
+          underlays={underlays}
           onUnderlay={(perPixel) => {
             // なぞらずに図面だけを図形の下敷きにする。同じ図面が既にあればその枚をそろえる（重複しない）。
             // 無ければ新しい1枚として足す（2枚目以降は今ある図面の右横。縮尺がまだなら仮の縮尺で置く）

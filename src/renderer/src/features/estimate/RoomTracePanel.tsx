@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { Point, RoomShape } from "../../../../core/room/shape";
 import {
@@ -11,6 +11,7 @@ import {
   toMeters,
   traceArea,
   type RoomTrace,
+  type TraceUnderlay,
 } from "../../../../core/room/trace";
 import { pdfPageImage } from "./pdfPage";
 import "./RoomTracePanel.css";
@@ -43,6 +44,8 @@ interface Props {
   subject?: string;
   /** 開いたときに「□なぞり（対角の2点）」を入れておく（ピットのように四角が基本のもの） */
   rectFirst?: boolean;
+  /** 図形欄に置いてある図面全部。なぞる図面以外も計算書で合わせた位置・縮尺・濃さで映して、2枚にまたがる部屋をなぞれるようにする */
+  underlays?: TraceUnderlay[];
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -74,6 +77,7 @@ export default function RoomTracePanel({
   done = [],
   subject,
   rectFirst = false,
+  underlays,
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
   const [mode, setMode] = useState<"scale" | "trace">(
@@ -110,6 +114,75 @@ export default function RoomTracePanel({
       setSize({ width: image.naturalWidth, height: image.naturalHeight });
     image.src = trace.image;
   }, [trace.image]);
+
+  // なぞる図面以外に計算書へ置いてある図面。なぞる図面（同じ画像の下敷き）を基準にして、置いた位置・縮尺のまま薄く映す
+  const [otherSizes, setOtherSizes] = useState<Record<string, ImageSize>>({});
+  const anchor = (underlays ?? []).find(
+    (item) => item.image === trace.image && item.metersPerPixel > 0,
+  );
+  const others = useMemo(
+    () =>
+      (underlays ?? []).filter(
+        (item) =>
+          item.image !== "" &&
+          item.image !== trace.image &&
+          item.metersPerPixel > 0,
+      ),
+    [underlays, trace.image],
+  );
+  useEffect(() => {
+    others.forEach((item) => {
+      if (otherSizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setOtherSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [others, otherSizes]);
+  /** 他の図面をなぞる画面の座標（なぞる図面の画素）に直したもの */
+  const otherImages =
+    anchor === undefined
+      ? []
+      : others
+          .map((item) => {
+            const natural = otherSizes[item.image];
+            if (natural === undefined) return null;
+            const scale = item.metersPerPixel / anchor.metersPerPixel;
+            return {
+              key: item.image,
+              image: item.image,
+              x: (item.x - anchor.x) / anchor.metersPerPixel,
+              y: (item.y - anchor.y) / anchor.metersPerPixel,
+              width: natural.width * scale,
+              height: natural.height * scale,
+              opacity: item.opacity,
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
+  /** なぞる図面と他の図面が全部入る範囲（他の図面が無いときはなぞる図面だけの範囲） */
+  const frame = useMemo(() => {
+    let left = 0;
+    let top = 0;
+    let right = size.width;
+    let bottom = size.height;
+    otherImages.forEach((item) => {
+      left = Math.min(left, item.x);
+      top = Math.min(top, item.y);
+      right = Math.max(right, item.x + item.width);
+      bottom = Math.max(bottom, item.y + item.height);
+    });
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }, [otherImages, size.height, size.width]);
 
   const setImage = useCallback(
     (dataUrl: string) => {
@@ -557,10 +630,21 @@ export default function RoomTracePanel({
           </p>
         ) : (
           <svg
-            viewBox={`0 0 ${size.width} ${size.height}`}
-            style={{ width: `${size.width * zoom}px` }}
+            viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`}
+            style={{ width: `${frame.width * zoom}px` }}
             onClick={click}
           >
+            {otherImages.map((item) => (
+              <image
+                key={item.key}
+                href={item.image}
+                x={item.x}
+                y={item.y}
+                width={item.width}
+                height={item.height}
+                opacity={item.opacity}
+              />
+            ))}
             <image href={trace.image} width={size.width} height={size.height} />
             {done.map((shape, index) =>
               shape.points.length < 3 ? null : (
