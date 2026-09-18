@@ -57,6 +57,59 @@ export const EMPTY_FRAME_TRACE: FrameTrace = {
   opacity: 0.75,
 };
 
+/** 軸組計算書の図面の読み込み結果（置いてある図面全部・選んだ番号・まとめて動かす） */
+export interface FrameTraceList {
+  traces: FrameTrace[];
+  active: number;
+  locked: boolean;
+}
+
+/**
+ * traceJson を読む。複数枚の図面を持つ版は {traces, active, locked}、
+ * 前の版（図面1枚だけ・FrameTrace がそのまま入っている）はその1枚として読み替える。
+ */
+export function parseFrameTraces(json: string): FrameTraceList {
+  const empty: FrameTraceList = { traces: [], active: 0, locked: false };
+  try {
+    const parsed = JSON.parse(json) as {
+      traces?: unknown;
+      active?: unknown;
+      locked?: unknown;
+    } | null;
+    if (parsed === null || typeof parsed !== "object") return empty;
+    const clean = (raw: unknown): FrameTrace | null => {
+      if (typeof raw !== "object" || raw === null) return null;
+      const item = raw as Partial<FrameTrace>;
+      if (typeof item.image !== "string" || item.image === "") return null;
+      return {
+        image: item.image,
+        metersPerPixel:
+          typeof item.metersPerPixel === "number" ? item.metersPerPixel : 0,
+        x: typeof item.x === "number" ? item.x : 0,
+        y: typeof item.y === "number" ? item.y : 0,
+        opacity: typeof item.opacity === "number" ? item.opacity : 0.75,
+      };
+    };
+    if (Array.isArray(parsed.traces)) {
+      const traces = parsed.traces
+        .map((item) => clean(item))
+        .filter((item): item is FrameTrace => item !== null);
+      const active = typeof parsed.active === "number" ? parsed.active : 0;
+      return {
+        traces,
+        active: Math.min(Math.max(active, 0), Math.max(traces.length - 1, 0)),
+        locked: parsed.locked === true,
+      };
+    }
+    const single = clean(parsed);
+    return single === null
+      ? empty
+      : { traces: [single], active: 0, locked: false };
+  } catch {
+    return empty;
+  }
+}
+
 /**
  * 軸組種類（引いた線の色分け。普通は5種類ほどだが、特殊な場合に備えて10種類まで持てる）。
  * たて・よこ（X・Y）に関係なく、この種類ごとにまとめて拾う。

@@ -66,7 +66,7 @@ table.estimate {
 
 table.estimate th,
 table.estimate td {
-  border: 1px solid #c9ced6;
+  border: var(--line-thin);
   padding: 1px 4px;
   font-size: 12px;
 }
@@ -189,5 +189,14 @@ table.estimate tr.subtotal .subtotal-label {
 .duplicate-mark {
   color: #c2410c;
   margin-right: 2px;
+  cursor: help;
+}
+
+/* 縮尺未調整の図面がある行の備考欄に出す印 */
+.scale-pending {
+  color: #c2410c;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-right: 4px;
   cursor: help;
 }

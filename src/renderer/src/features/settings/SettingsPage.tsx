@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BackupInfo } from "@shared/types";
+import type {
+  BackupInfo,
+  LineStyleSettings,
+  ProjectSummary,
+} from "@shared/types";
 import { imeAutoEnabled, setImeAutoEnabled } from "../../hooks/useImeMode";
+import {
+  DEFAULT_LINE_STYLES,
+  applyLineStyles,
+} from "../../hooks/useLineStyles";
 import "./SettingsPage.css";
+
+/** 線の形の選べる種類（エクセルの線種に合わせた言い方） */
+const LINE_SHAPES: { value: string; label: string }[] = [
+  { value: "solid", label: "実線" },
+  { value: "dashed", label: "破線" },
+  { value: "dotted", label: "点線" },
+  { value: "double", label: "二重線" },
+];
 
 function sizeText(size: number): string {
   if (size < 1024) return `${size} バイト`;
@@ -16,12 +32,48 @@ export default function SettingsPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [imeAuto, setImeAuto] = useState(imeAutoEnabled);
   const [imeReport, setImeReport] = useState("");
+  /** 画面の罫線（細い線＝表のマス目、太い線＝まとまりの区切り） */
+  const [lines, setLines] = useState<LineStyleSettings>(DEFAULT_LINE_STYLES);
+  const [lineMessage, setLineMessage] = useState("");
+  /** 1物件だけの掃き出し・読み込み（パソコン2台でのデータ移動用） */
+  const [projectList, setProjectList] = useState<ProjectSummary[]>([]);
+  const [pickedProjectId, setPickedProjectId] = useState(0);
+  const [fileMessage, setFileMessage] = useState("");
 
   const reload = useCallback(() => {
     void window.sekisan.getBackupInfo().then(setInfo);
+    void window.sekisan.getProjectLedger().then((ledger) => {
+      setProjectList(ledger.projects);
+      setPickedProjectId((current) =>
+        current !== 0 && ledger.projects.some((row) => row.id === current)
+          ? current
+          : (ledger.projects[0]?.id ?? 0),
+      );
+    });
   }, []);
 
   useEffect(reload, [reload]);
+
+  useEffect(() => {
+    void window.sekisan
+      .getLineStyles()
+      .then((saved) => setLines(saved ?? DEFAULT_LINE_STYLES));
+  }, []);
+
+  /** 直したらすぐ画面に当てて見せる（保存もする） */
+  const editLines = (next: LineStyleSettings): void => {
+    setLines(next);
+    applyLineStyles(next);
+    void window.sekisan.saveLineStyles(next);
+    setLineMessage(
+      "画面の線を変えました（すべての工事・すべての画面に効きます）",
+    );
+  };
+
+  const editLine = (
+    key: "thin" | "thick",
+    patch: Partial<LineStyleSettings["thin"]>,
+  ): void => editLines({ ...lines, [key]: { ...lines[key], ...patch } });
 
   const save = async (): Promise<void> => {
     setBusy(true);
@@ -44,6 +96,55 @@ export default function SettingsPage(): JSX.Element {
       reload();
     } catch (error) {
       setMessage(`復元できませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 選んだ1工事だけをファイルに書き出す */
+  const exportOne = async (): Promise<void> => {
+    if (pickedProjectId === 0) {
+      setFileMessage("書き出す工事を選んでください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await window.sekisan.exportProjectFile(pickedProjectId);
+      setFileMessage(result.message);
+    } catch (error) {
+      setFileMessage(`書き出せませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 1物件のファイルを読み込む */
+  const importOne = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const result = await window.sekisan.importProjectFile();
+      setFileMessage(result.message);
+      reload();
+    } catch (error) {
+      setFileMessage(`読み込めませんでした：${String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 選んだ工事を消す */
+  const deleteOne = async (): Promise<void> => {
+    if (pickedProjectId === 0) {
+      setFileMessage("消す工事を選んでください。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await window.sekisan.deleteProject(pickedProjectId);
+      setFileMessage(result.message);
+      reload();
+    } catch (error) {
+      setFileMessage(`消せませんでした：${String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -97,6 +198,133 @@ export default function SettingsPage(): JSX.Element {
           復元前のデータは自動で退避するので、間違えても元に戻せます。
         </p>
         {message !== "" && <p className="settings-message">{message}</p>}
+      </section>
+      <section className="settings-card">
+        <h3>物件ごとの掃き出し・読み込み（パソコン間のデータ移動）</h3>
+        <p className="settings-note">
+          パソコン2台で同じ工事を続けるときに使います。選んだ1工事分（工事概要・建具表・部位別入力表・各計算書・部位別雑・金物・家具・設備・耐火被覆・塗装・転記入力表・集計・内訳書・その工事専用のマスター）を1つのファイルに掃き出し、もう1台のパソコンで読み込みます。
+        </p>
+        <table className="settings-table">
+          <tbody>
+            <tr>
+              <th>掃き出す工事</th>
+              <td>
+                <select
+                  value={pickedProjectId}
+                  onChange={(e) => setPickedProjectId(Number(e.target.value))}
+                >
+                  {projectList.length === 0 && <option value={0}>—</option>}
+                  {projectList.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.managementNo} {row.name}
+                    </option>
+                  ))}
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="settings-buttons">
+          <button
+            type="button"
+            className="settings-main"
+            disabled={busy || projectList.length === 0}
+            onClick={exportOne}
+          >
+            📤 この工事を掃き出す
+          </button>
+          <button type="button" disabled={busy} onClick={importOne}>
+            📥 物件を読み込む
+          </button>
+          <button
+            type="button"
+            className="settings-warn"
+            disabled={busy || projectList.length === 0}
+            onClick={deleteOne}
+          >
+            🗑 この工事を消す
+          </button>
+        </div>
+        <p className="settings-note">
+          読み込みは新しい工事として足します。同じ管理番号の工事がこのパソコンにあるときは、「置き換える」か「別の工事として足す」かを選べます（置き換えると、そのパソコン側のその工事は消えます）。他の工事・基本マスター・線の設定は変わりません。消すときは確認画面が出ます。消した工事は計算書・集計も全部いっしょに消え、元には戻せません。
+        </p>
+        {fileMessage !== "" && (
+          <p className="settings-message">{fileMessage}</p>
+        )}
+      </section>
+      <section className="settings-card">
+        <h3>画面の線（線種・太さ・色）</h3>
+        <p className="settings-note">
+          表の罫線は2種類あります。「細い線」は表のマス目（部位別入力表・各計算書の下段・部位別雑・金物入力表・家具・設備入力表・チェック表）、「太い線」は計算書のセット明細の区切りです。直すとすぐ画面に反映し、すべての工事で同じ線になります。
+        </p>
+        <table className="settings-table">
+          <thead>
+            <tr>
+              <th>線</th>
+              <th>太さ</th>
+              <th>線種</th>
+              <th>色</th>
+              <th>見本</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(["thin", "thick"] as const).map((key) => (
+              <tr key={key}>
+                <th>
+                  {key === "thin" ? "細い線（マス目）" : "太い線（区切り）"}
+                </th>
+                <td>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={lines[key].width}
+                    onChange={(e) =>
+                      editLine(key, { width: Number(e.target.value) })
+                    }
+                  />
+                  px
+                </td>
+                <td>
+                  <select
+                    value={lines[key].style}
+                    onChange={(e) => editLine(key, { style: e.target.value })}
+                  >
+                    {LINE_SHAPES.map((shape) => (
+                      <option key={shape.value} value={shape.value}>
+                        {shape.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="color"
+                    value={lines[key].color}
+                    onChange={(e) => editLine(key, { color: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <span
+                    className="line-sample"
+                    style={{
+                      borderTop: `${lines[key].width}px ${lines[key].style} ${lines[key].color}`,
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="settings-buttons">
+          <button type="button" onClick={() => editLines(DEFAULT_LINE_STYLES)}>
+            ↺ もとの線に戻す
+          </button>
+        </div>
+        {lineMessage !== "" && (
+          <p className="settings-message">{lineMessage}</p>
+        )}
       </section>
       <section className="settings-card">
         <h3>文字の入力</h3>

@@ -93,17 +93,20 @@ describe("下段セット明細計算表", () => {
     expect(result.lines.get(brace.lines[0].id)?.text).toBe("5.40");
   });
 
-  it("分からない記号・誤った式は理由を返す", () => {
+  it("表に無い記号は0として計算し、誤った式は理由を返す", () => {
     const set = sheet([
       ["XX*2", ""],
       ["1*", ""],
+      ["SL1+2", ""],
     ]);
     const result = evaluateCalcSheet([set], {});
-    expect(result.lines.get(set.lines[0].id)?.error).toContain("XX");
+    expect(result.lines.get(set.lines[0].id)?.error).toBe("");
+    expect(result.lines.get(set.lines[0].id)?.text).toBe("0.00");
     expect(result.lines.get(set.lines[1].id)?.error).toBe(
       "計算式が正しくありません",
     );
-    expect(result.errors).toHaveLength(2);
+    expect(result.lines.get(set.lines[2].id)?.text).toBe("2.00");
+    expect(result.errors).toHaveLength(1);
   });
 
   it("B記号は他のセットの累計として使える", () => {

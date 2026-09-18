@@ -10,6 +10,10 @@ import {
 export interface CalcPrintRow {
   /** 見出し（※行）のときは色付きの1行として出す */
   banner: { text: string; color: string } | null;
+  /** そのセットのいちばん上の行（画面と同じく太線の区切りを入れる） */
+  setTop: boolean;
+  /** そのセットのいちばん下の行 */
+  setBottom: boolean;
   setPart: string;
   materialCategory: string;
   subjectId: string;
@@ -59,6 +63,8 @@ export const CALC_PRINT_COLUMNS: { label: string; width: number }[] = [
 function emptyRow(): CalcPrintRow {
   return {
     banner: null,
+    setTop: false,
+    setBottom: false,
     setPart: "",
     materialCategory: "",
     subjectId: "",
@@ -89,6 +95,8 @@ export function calcPrintRows(
 ): CalcPrintRow[] {
   const rows: CalcPrintRow[] = [];
   sets.forEach((set) => {
+    /** このセットの先頭の行（見出し行があれば見出し行）を覚えて太線を引く */
+    const start = rows.length;
     if (set.banner) {
       rows.push({
         ...emptyRow(),
@@ -138,6 +146,10 @@ export function calcPrintRows(
         remarksLower: detail?.remarksLower ?? "",
         remarksUpper: detail?.remarksUpper ?? "",
       });
+    }
+    if (rows.length > start) {
+      rows[start].setTop = true;
+      rows[rows.length - 1].setBottom = true;
     }
   });
   return rows;

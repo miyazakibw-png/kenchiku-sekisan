@@ -1,4 +1,5 @@
 import { displayQuantity } from "../room/calcSheet";
+import { aggregateQuantityText } from "../aggregate/aggregate";
 
 /** 集計書の印刷に使う明細（画面の集計書兼工事マスターの1明細） */
 export interface AggregatePrintItem {
@@ -121,7 +122,7 @@ export function aggregatePrintRows(
         .filter((text) => text.trim() !== "")
         .join(" / "),
       description,
-      quantity: displayQuantity(item.quantity),
+      quantity: aggregateQuantityText(item.quantity, item.unit),
       unit: item.unit,
       remarks,
     });

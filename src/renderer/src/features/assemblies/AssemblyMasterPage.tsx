@@ -8,7 +8,9 @@ import type {
 import { formatDetailNumber } from "@shared/detailNumber";
 import { assemblySignature } from "@shared/assemblySignature";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
-import UnitInput, { UnitOptions } from "../../components/UnitInput";
+import { UnitOptions } from "../../components/UnitInput";
+import PickInput, { type PickEntry } from "../../components/PickInput";
+import { resolveMasterName } from "@shared/masters";
 import MasterCodeInput, {
   MasterCodeOptions,
 } from "../../components/MasterCodeInput";
@@ -100,6 +102,16 @@ export default function AssemblyMasterPage({
   const subjectOrderById = useMemo(
     () => new Map(options.subjects.map((s) => [s.id, s.displayOrder])),
     [options.subjects],
+  );
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      options.units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [options.units],
   );
 
   /** 科目で絞り込んだうえで、共通ソートキーによる昇順（切替なし） */
@@ -490,12 +502,16 @@ export default function AssemblyMasterPage({
                         />
                       </td>
                       <td rowSpan={2}>
-                        <UnitInput
-                          units={options.units}
+                        <PickInput
+                          entries={unitEntries}
+                          halfWidth
                           value={item.unit}
-                          onChange={(value) =>
+                          title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                          onCommit={(text) =>
                             editItems(
-                              updateItem(editor.items, index, { unit: value }),
+                              updateItem(editor.items, index, {
+                                unit: resolveMasterName(options.units, text),
+                              }),
                             )
                           }
                         />

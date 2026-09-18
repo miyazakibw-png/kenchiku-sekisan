@@ -70,14 +70,17 @@ import {
 } from "../../../../core/pit/pit";
 import {
   EMPTY_TRACE,
+  EMPTY_UNDERLAY,
   parseTrace,
   parseTracedShapes,
-  parseUnderlay,
+  parseUnderlayLocked,
+  parseUnderlays,
   type RoomTrace,
   type TracedShape,
   type TraceUnderlay,
   traceAfterUnderlay,
   traceFromUnderlay,
+  underlayAtTraceOrigin,
   underlayForTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
@@ -88,6 +91,7 @@ import {
   svgPoint,
   unionBox,
   useUnderlay,
+  type UnderlayBox,
 } from "./useUnderlay";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
@@ -103,7 +107,8 @@ interface PlanSnapshot {
   beams: PitBeam[];
   walls: PitWall[];
   sleeves: PitSleeve[];
-  underlay: TraceUnderlay;
+  underlays: TraceUnderlay[];
+  underlayLocked: boolean;
   trace: RoomTrace;
   traced: TracedShape[];
 }
@@ -115,6 +120,8 @@ interface Props {
   onBack: () => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
+  /** 表の題名（面積計算書など。省略はピット計算書） */
+  sheetName?: string;
 }
 
 const ALIGNS_SIDE: { key: PitAlign; label: string }[] = [
@@ -179,7 +186,10 @@ export default function PitSheetPage({
   roomName,
   onBack,
   printMode = false,
+  sheetName = "ピット計算書",
 }: Props): JSX.Element {
+  /** 画面の言葉（面積計算書では「ピット」を「各面積」と読み替える） */
+  const pitWord = sheetName === "面積計算書" ? "各面積" : "ピット";
   const [sheet, setSheet] = useState<PitSheet | null>(null);
   const [pits, setPits] = useState<PitShape[]>([]);
   const [beams, setBeams] = useState<PitBeam[]>([]);
@@ -268,6 +278,9 @@ export default function PitSheetPage({
 
   /** 図面を動かし始めたときのピット（動かしている間はこれを元に置き直す） */
   const dragPitsRef = useRef<PitShape[]>([]);
+  /** いま置いてある図面と「まとめて動かす」の状態（履歴・ピット追従の判断に使う。下敷きフックの値を毎回ここへ写す） */
+  const underlaysRef = useRef<TraceUnderlay[]>([]);
+  const moveAllRef = useRef(false);
 
   /**
    * 下敷きを置き替える（貼る・縮尺合わせ・縮尺を戻す・外す）。
@@ -281,11 +294,18 @@ export default function PitSheetPage({
         beams,
         walls,
         sleeves,
-        underlay: before,
+        underlays: underlaysRef.current,
+        underlayLocked: moveAllRef.current,
         trace,
         traced,
       });
-      if (before.image !== "" && before.image === after.image)
+      // なぞったピットは「なぞりに使った図面」が伸び縮みしたときだけ付いていく
+      // （別の図面を合わせても、その図面の上でなぞったピットは動かさない）
+      if (
+        before.image !== "" &&
+        before.image === after.image &&
+        (underlaysRef.current.length <= 1 || before.image === trace.image)
+      )
         setPits(followUnderlay(pits, before, after));
       const nextTrace = traceAfterUnderlay(trace, after);
       if (nextTrace !== trace) {
@@ -297,14 +317,15 @@ export default function PitSheetPage({
   );
 
   const dragUnderlayStart = useCallback(
-    (before: TraceUnderlay) => {
+    (_before: TraceUnderlay) => {
       dragPitsRef.current = pits;
       planHistory.push({
         pits,
         beams,
         walls,
         sleeves,
-        underlay: before,
+        underlays: underlaysRef.current,
+        underlayLocked: moveAllRef.current,
         trace,
         traced,
       });
@@ -314,24 +335,86 @@ export default function PitSheetPage({
 
   const dragUnderlay = useCallback(
     (from: TraceUnderlay, to: TraceUnderlay) => {
-      setPits(followUnderlay(dragPitsRef.current, from, to));
+      const list = underlaysRef.current;
+      // なぞったピットは「なぞりに使った図面」を動かしたとき付いていく��
+      // まとめて動かす中は全図面が同じだけずれるので、なぞり図面を含んでいれば付いていく
+      const follows =
+        list.length <= 1 ||
+        (moveAllRef.current
+          ? trace.image !== "" &&
+            list.some((item) => item.image === trace.image)
+          : from.image === trace.image);
+      if (follows) setPits(followUnderlay(dragPitsRef.current, from, to));
     },
-    [],
+    [trace.image],
   );
 
   const underlayTool = useUnderlay({
     setMessage,
     planSize: Math.max(plan.width, plan.height),
+    multi: true,
+    homeSpot: { x: plan.left, y: plan.top },
     commit: commitUnderlay,
     dragStart: dragUnderlayStart,
     drag: dragUnderlay,
   });
-  const { underlay, setUnderlay, box: underlayBox } = underlayTool;
+  const { underlay, setUnderlay, underlays, setUnderlays, setMoveAll } =
+    underlayTool;
+  underlaysRef.current = underlays;
+  moveAllRef.current = underlayTool.moveAll;
+
+  // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
+  // （選んだ図面の1枚として残り、別の図面が増えない）
+  useEffect(() => {
+    if (!showTrace) return;
+    const slotIndex = Math.min(underlayTool.active, underlays.length - 1);
+    const current = slotIndex >= 0 ? underlays[slotIndex] : undefined;
+    if (current === undefined || trace.image === "") return;
+    if (
+      current.image !== trace.image ||
+      (trace.metersPerPixel > 0 &&
+        current.metersPerPixel !== trace.metersPerPixel)
+    ) {
+      setUnderlays(
+        underlays.map((item, index) =>
+          index === slotIndex
+            ? {
+                ...item,
+                image: trace.image,
+                ...(trace.metersPerPixel > 0
+                  ? { metersPerPixel: trace.metersPerPixel, scaled: true }
+                  : {}),
+              }
+            : item,
+        ),
+        slotIndex,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTrace, trace, underlayTool.active]);
 
   /** 図のいまの状態（戻る／やり直しの履歴に積む形） */
   const planNow = useMemo<PlanSnapshot>(
-    () => ({ pits, beams, walls, sleeves, underlay, trace, traced }),
-    [beams, pits, sleeves, trace, traced, underlay, walls],
+    () => ({
+      pits,
+      beams,
+      walls,
+      sleeves,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
+      trace,
+      traced,
+    }),
+    [
+      beams,
+      pits,
+      sleeves,
+      trace,
+      traced,
+      underlayTool.moveAll,
+      underlays,
+      walls,
+    ],
   );
 
   const { markSaved } = useSaveOnLeave(
@@ -346,7 +429,8 @@ export default function PitSheetPage({
       note,
       trace,
       traced,
-      underlay,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
     },
     () => save(),
   );
@@ -390,12 +474,13 @@ export default function PitSheetPage({
       setBeams(snapshot.beams);
       setWalls(snapshot.walls);
       setSleeves(snapshot.sleeves);
-      setUnderlay(snapshot.underlay);
+      setUnderlays(snapshot.underlays);
+      setMoveAll(snapshot.underlayLocked);
       setTrace(snapshot.trace);
       setTraced(snapshot.traced);
       setCorners([]);
     },
-    [setUnderlay],
+    [setMoveAll, setUnderlays],
   );
 
   const undoPlan = useCallback(() => {
@@ -439,16 +524,38 @@ export default function PitSheetPage({
       setLower(sets);
       setNote(loaded.note);
       const loadedTrace = parseTrace(loaded.traceJson);
-      const loadedUnderlay = parseUnderlay(loaded.traceJson);
+      const loadedUnderlays = parseUnderlays(loaded.traceJson);
+      // なぞった図形があるときは、なぞりに使った図面（同じ画像。無ければ1枚目）をなぞりの縮尺にそろえる
+      const tracedUnderlay =
+        loadedUnderlays.find(
+          (item) => item.image !== "" && item.image === loadedTrace.image,
+        ) ??
+        loadedUnderlays[0] ??
+        EMPTY_UNDERLAY;
       const synced = loadedPits.some((pit) => pit.traceX !== undefined)
-        ? underlayForTrace(loadedTrace, loadedUnderlay)
+        ? underlayForTrace(loadedTrace, tracedUnderlay)
         : null;
+      const nextUnderlays =
+        synced === null
+          ? loadedUnderlays
+          : (() => {
+              const index = loadedUnderlays.findIndex(
+                (item) => item.image === tracedUnderlay.image,
+              );
+              return index >= 0
+                ? loadedUnderlays.map((item, at) =>
+                    at === index ? synced : item,
+                  )
+                : [synced];
+            })();
+      const underlayLocked = parseUnderlayLocked(loaded.traceJson);
       setTrace(loadedTrace);
       setTraced(parseTracedShapes(loaded.traceJson));
-      setUnderlay(synced ?? loadedUnderlay);
+      setUnderlays(nextUnderlays);
+      setMoveAll(underlayLocked);
       if (synced)
         setMessage(
-          "図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いたピットが元の図面に重なります。保存すると残ります）",
+          `図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いた${pitWord}が元の図面に重なります。保存すると残ります）`,
         );
       markSaved({
         pits: loadedPits,
@@ -461,12 +568,13 @@ export default function PitSheetPage({
         note: loaded.note,
         trace: loadedTrace,
         traced: parseTracedShapes(loaded.traceJson),
-        underlay: loadedUnderlay,
+        underlays: nextUnderlays,
+        underlayLocked,
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
-  }, [markSaved, project.id, row.id]);
+  }, [markSaved, pitWord, project.id, row.id, setMoveAll, setUnderlays]);
 
   const quantities = useMemo(() => pitQuantities(pits, beams), [beams, pits]);
 
@@ -476,16 +584,16 @@ export default function PitSheetPage({
   /** 図の表示範囲（ピット全体＋下敷きの図面が入る大きさ） */
   const view = useMemo(
     () =>
-      unionBox(
+      underlayTool.boxes.reduce<UnderlayBox>(
+        (base, box) => unionBox(base, box),
         {
           x: plan.left - 1,
           y: plan.top - 1,
           width: plan.width + 2,
           height: plan.height + 2,
         },
-        underlayBox,
       ),
-    [plan.height, plan.left, plan.top, plan.width, underlayBox],
+    [plan.height, plan.left, plan.top, plan.width, underlayTool.boxes],
   );
 
   /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
@@ -553,7 +661,8 @@ export default function PitSheetPage({
       lower: trimmed,
       note,
       trace,
-      underlay,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
     });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
@@ -564,7 +673,13 @@ export default function PitSheetPage({
       sleeveKindsJson: JSON.stringify(sleeveKinds),
       wallStep,
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify({ ...trace, traced, underlay }),
+      traceJson: JSON.stringify({
+        ...trace,
+        traced,
+        underlay: underlays[0] ?? EMPTY_UNDERLAY,
+        underlays,
+        underlayLocked: underlayTool.moveAll,
+      }),
       note,
     });
     setSheet(saved);
@@ -581,7 +696,8 @@ export default function PitSheetPage({
     sleeves,
     trace,
     traced,
-    underlay,
+    underlayTool.moveAll,
+    underlays,
     wallStep,
     walls,
   ]);
@@ -722,7 +838,7 @@ export default function PitSheetPage({
         ]);
       });
       setMessage(
-        `欠いた所に□のピットを足しました（すき間 ${formatNumber(notchGap, 2)}m・Ｌ型は2方・コ型は3方）`,
+        `欠いた所に□の${pitWord}を足しました（すき間 ${formatNumber(notchGap, 2)}m・Ｌ型は2方・コ型は3方）`,
       );
     },
     [changePits, notchGap],
@@ -820,7 +936,9 @@ export default function PitSheetPage({
     (at: { x: number; y: number }) => {
       const link = pitGapLink(plan.rects, pits, at);
       if (link === null) {
-        setMessage("ピットとピットの間（すき間）をクリックしてください");
+        setMessage(
+          `${pitWord}と${pitWord}の間（すき間）をクリックしてください`,
+        );
         return;
       }
       const length = Math.hypot(
@@ -828,7 +946,9 @@ export default function PitSheetPage({
         link.to.y - link.from.y,
       );
       if (length < 0.01) {
-        setMessage("ピットのすき間がありません（ピットの間をあけてください）");
+        setMessage(
+          `${pitWord}のすき間がありません（${pitWord}の間をあけてください）`,
+        );
         return;
       }
       changeWalls((current) => [
@@ -844,7 +964,7 @@ export default function PitSheetPage({
         },
       ]);
       setMessage(
-        `ピット間に印を付けました（長さ ${Math.round(length * 1000)}mm → 集計は ${groupLengthMm(
+        `${pitWord}間に印を付けました（長さ ${Math.round(length * 1000)}mm → 集計は ${groupLengthMm(
           length * 1000,
           wallStep,
         )}mm）`,
@@ -1095,7 +1215,7 @@ export default function PitSheetPage({
   const alignPicked = useCallback(
     (side: PitAlignSide) => {
       if (picked.length < 2) {
-        setMessage("そろえるピットを「選」で2つ以上選んでください");
+        setMessage(`そろえる${pitWord}を「選」で2つ以上選んでください`);
         return;
       }
       planHistory.push(planNow);
@@ -1110,7 +1230,7 @@ export default function PitSheetPage({
               ? "上の辺"
               : "下の辺";
       setMessage(
-        `選んだ ${picked.length} つのピットを、はじめのＰの${label}にそろえました`,
+        `選んだ ${picked.length} つの${pitWord}を、はじめのＰの${label}にそろえました`,
       );
     },
     [picked, pits, planHistory, planNow],
@@ -1118,9 +1238,10 @@ export default function PitSheetPage({
 
   const drawing = (
     <div className="pit-drawing">
-      {plan.rects.length === 0 && underlayBox === null ? (
+      {plan.rects.length === 0 &&
+      underlayTool.boxes.every((box) => box === null) ? (
         <p className="empty">
-          「＋ ピット追加」でＰ1から順に四角を作ります（1個目が基準）
+          「＋ ${pitWord}追加」でＰ1から順に四角を作ります（1個目が基準）
         </p>
       ) : (
         <svg
@@ -1248,7 +1369,9 @@ export default function PitSheetPage({
                 if (printMode || planMode !== "wall") return;
                 event.stopPropagation();
                 removeWall(wall.id);
-                setMessage("ピット間の印を消しました（［↶ 戻る］で戻せます）");
+                setMessage(
+                  `${pitWord}間の印を消しました（［↶ 戻る］で戻せます）`,
+                );
               }}
             >
               <line
@@ -1372,7 +1495,8 @@ export default function PitSheetPage({
           <tr>
             <td colSpan={2}>
               「＝
-              ピット間」でピットのすき間をクリックすると、ここに種類（線色）＋A・B別×長さ別の本数が出ます
+              {pitWord}間」で{pitWord}
+              のすき間をクリックすると、ここに種類（線色）＋A・B別×長さ別の本数が出ます
             </td>
           </tr>
         ) : (
@@ -1464,7 +1588,7 @@ export default function PitSheetPage({
                     removeWall(wall.id);
                     setHoverWallId(null);
                     setMessage(
-                      `ピット間 No.${index + 1} を消しました（［↶ 戻る］で戻せます）`,
+                      `${pitWord}間 No.${index + 1} を消しました（［↶ 戻る］で戻せます）`,
                     );
                   }}
                 >
@@ -1528,7 +1652,7 @@ export default function PitSheetPage({
   if (printMode)
     return (
       <CalcPrintSheet
-        title={`ピット計算書　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
+        title={`${sheetName}　${project.managementNo} ${project.name}　${roomName || "（名称なし）"}`}
         upper={
           <div className="pit-print-upper">
             {drawing}
@@ -1547,7 +1671,7 @@ export default function PitSheetPage({
         <button type="button" onClick={closePage}>
           ← 部位別入力表へ
         </button>
-        <h2>ピット計算書</h2>
+        <h2>{sheetName}</h2>
         <span className="project">
           {project.managementNo} {roomName || "（名称なし）"}
         </span>
@@ -1569,7 +1693,7 @@ export default function PitSheetPage({
       <div className={expanded ? "pit-upper expanded" : "pit-upper"}>
         <section className="pit-list">
           <div className="section-bar">
-            <h3>ピット（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
+            <h3>{pitWord}（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
             <label title="「□を作る」で、欠いた所の内側に空けるすき間（Ｌ型は2方・コ型は3方）">
               □のすき間（m）
               <input
@@ -1580,7 +1704,7 @@ export default function PitSheetPage({
               />
             </label>
             <button type="button" onClick={addPit}>
-              ＋ ピット追加
+              ＋ {pitWord}追加
             </button>
             <span className="status">
               そろえ（「選」を2つ以上・はじめのＰに合わせます）
@@ -1628,7 +1752,7 @@ export default function PitSheetPage({
           <table className="grid">
             <thead>
               <tr>
-                <th title="まとめてそろえるピットを選びます">選</th>
+                <th title={`まとめてそろえる${pitWord}を選びます`}>選</th>
                 <th>記号</th>
                 <th className="num">X（m）</th>
                 <th className="num">Y（m）</th>
@@ -1658,11 +1782,11 @@ export default function PitSheetPage({
                 <td
                   className="symbol"
                   onClick={() => useSymbol("PA")}
-                  title="全部のピットの合計。クリックで計算式へ（部位で中身が変わります）"
+                  title={`全部の${pitWord}の合計。クリックで計算式へ（部位で中身が変わります）`}
                 >
                   ＰＡ
                 </td>
-                <td colSpan={12}>合計（全ピット）</td>
+                <td colSpan={12}>合計（全{pitWord}）</td>
                 <td className="num">{formatNumber(total.floorArea, 2)}</td>
                 <td className="num">{formatNumber(total.wallLength, 2)}</td>
                 <td className="num">{formatNumber(total.columnLength, 2)}</td>
@@ -1891,7 +2015,7 @@ export default function PitSheetPage({
                         className="num"
                         key={`oy-${pit.id}-${pit.offsetY ?? 0}`}
                         defaultValue={pit.offsetY ?? 0}
-                        title="基準ピットの上からの位置（m）"
+                        title={`基準${pitWord}の上からの位置（m）`}
                         onBlur={(e) =>
                           editPit(pit.id, {
                             offsetY: parseNumber(e.target.value) ?? 0,
@@ -1927,7 +2051,7 @@ export default function PitSheetPage({
                         className="num"
                         key={`ox-${pit.id}-${pit.offsetX ?? 0}`}
                         defaultValue={pit.offsetX ?? 0}
-                        title="基準ピットの左からの位置（m）"
+                        title={`基準${pitWord}の左からの位置（m）`}
                         onBlur={(e) =>
                           editPit(pit.id, {
                             offsetX: parseNumber(e.target.value) ?? 0,
@@ -1973,7 +2097,7 @@ export default function PitSheetPage({
                     {pitNotch(pit) && (
                       <button
                         type="button"
-                        title="欠いた所に四角のピットを足します（囲まれる側は「すき間」欄の分だけ離します）"
+                        title={`欠いた所に四角の${pitWord}を足します（囲まれる側は「すき間」欄の分だけ離します）`}
                         onClick={() => addNotchPit(pit.id)}
                       >
                         □を作る
@@ -1996,7 +2120,7 @@ export default function PitSheetPage({
           <table className="grid pit-beams">
             <thead>
               <tr>
-                <th>ピット</th>
+                <th>{pitWord}</th>
                 <th>向き</th>
                 <th className="num">梁W（m）</th>
                 <th className="num">梁H（m）</th>
@@ -2119,15 +2243,15 @@ export default function PitSheetPage({
                 : planMode === "column"
                   ? "壁⇄柱中：図の壁をまとめてクリックし、「✓ 柱にする」を押す"
                   : planMode === "wall"
-                    ? "ピット間中：ピットのすき間をクリックで印を付ける／印をクリックで消す"
+                    ? `${pitWord}間中：${pitWord}のすき間をクリックで印を付ける／印をクリックで消す`
                     : planMode === "shape"
                       ? "形を直す中：○角を選んで↑↓→←で動かす／辺をクリックで角を足す（梁は置けません）"
-                      : "ボタンを押して入力に入ります（▭ 梁型入力／＝ ピット間 など）"}
+                      : `ボタンを押して入力に入ります（▭ 梁型入力／＝ ${pitWord}間 など）`}
               ）／全体 {pitCornerCount(pits)}角
             </h3>
             <button
               type="button"
-              title="図（ピット・梁）の直前の変更を取り消します"
+              title={`図（${pitWord}・梁）の直前の変更を取り消します`}
               disabled={!planHistory.canUndo}
               onClick={undoPlan}
             >
@@ -2228,7 +2352,7 @@ export default function PitSheetPage({
             <button
               type="button"
               className={planMode === "wall" ? "on" : ""}
-              title="ピットとピットの間（基礎梁）に印を付けます。始めと終わりの2回クリックで1本引きます"
+              title={`${pitWord}と${pitWord}の間（基礎梁）に印を付けます。始めと終わりの2回クリックで1本引きます`}
               onClick={() => {
                 const next = planMode === "wall" ? "none" : "wall";
                 setPlanMode(next);
@@ -2236,12 +2360,12 @@ export default function PitSheetPage({
                 setPickedEdges([]);
                 setMessage(
                   next === "wall"
-                    ? "ピットとピットの間（すき間）をクリックすると、向かいのピット壁まで垂直に印を付けます（印をクリックで消せます）"
-                    : "ピット間の入力をやめました",
+                    ? `${pitWord}と${pitWord}の間（すき間）をクリックすると、向かいの${pitWord}壁まで垂直に印を付けます（印をクリックで消せます）`
+                    : `${pitWord}間の入力をやめました`,
                 );
               }}
             >
-              ＝ ピット間
+              ＝ {pitWord}間
             </button>
             {planMode === "wall" && (
               <span className="kind-pick">
@@ -2297,14 +2421,14 @@ export default function PitSheetPage({
             <button
               type="button"
               className={showTrace ? "on" : ""}
-              title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け（PDF・画像ファイルも可）、なぞってピットの形にします。「選」を1つだけ付けているとそのピットの形を直し、付けていないときは新しいピットを足します"
+              title={`Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け（PDF・画像ファイルも可）、なぞって${pitWord}の形にします。「選」を1つだけ付けているとその${pitWord}の形を直し、付けていないときは新しい${pitWord}を足します`}
               onClick={() => {
                 setTrace(traceFromUnderlay(trace, underlay));
                 setShowTrace(true);
               }}
             >
               🖼 図面をなぞる（
-              {tracePick ? `${tracePick.symbol}を直す` : "新しいピット"}）
+              {tracePick ? `${tracePick.symbol}を直す` : `新しい${pitWord}`}）
             </button>
             <UnderlayTools u={underlayTool} />
             <button
@@ -2501,7 +2625,7 @@ export default function PitSheetPage({
             <div className="pit-beam-popup pit-sleeve-kinds-popup">
               <strong>色の種類名（10色）</strong>
               <span className="status">
-                名前を打ち替えると、ピット間の「種類（線色）」に出ます
+                名前を打ち替えると、{pitWord}間の「種類（線色）」に出ます
               </span>
               <table className="grid pit-sleeve-kinds">
                 <thead>
@@ -2553,7 +2677,7 @@ export default function PitSheetPage({
 
         <section className="pit-walls">
           <div className="section-bar">
-            <h3>ピット間（種類＝線の色）</h3>
+            <h3>{pitWord}間（種類＝線の色）</h3>
             <label title="表の長さをまとめる単位を選びます">
               長さのまとめ
               <select
@@ -2594,31 +2718,108 @@ export default function PitSheetPage({
             }
             setTrace(next);
           }}
-          targetName="ピット"
+          underlays={underlays}
+          activeIndex={underlayTool.active}
+          onUnderlay={(perPixel) => {
+            // なぞらずに図面だけを図形の下敷きにする。同じ図面が既にあればその枚をそろえる（重複しない）。
+            // 無ければ選んでいる図面を置き替え、全部無ければ新しい1枚として足す
+            const fallback = Math.max(plan.width, plan.height, 10) / 1000;
+            const matchIndex = underlays.findIndex(
+              (item) => item.image === trace.image,
+            );
+            const slotIndex =
+              matchIndex >= 0
+                ? matchIndex
+                : Math.min(underlayTool.active, underlays.length - 1);
+            const matched = slotIndex >= 0 ? underlays[slotIndex] : undefined;
+            const next = {
+              image: trace.image,
+              metersPerPixel:
+                perPixel > 0 ? perPixel : (matched?.metersPerPixel ?? fallback),
+              x: matched?.x ?? underlayTool.nextSpot.x,
+              y: matched?.y ?? underlayTool.nextSpot.y,
+              opacity: matched?.opacity ?? underlay.opacity,
+              ...(perPixel > 0 || matched?.scaled === true
+                ? { scaled: true }
+                : {}),
+            };
+            if (matched === undefined) {
+              setUnderlays([...underlays, next], underlays.length);
+            } else {
+              setUnderlays(
+                underlays.map((item, index) =>
+                  index === slotIndex ? next : item,
+                ),
+                slotIndex,
+              );
+            }
+            setShowTrace(false);
+            setMessage(
+              perPixel > 0
+                ? "図面を図形の下に敷きました（動かす・濃さは図の上のボタンで調整できます）"
+                : "図面を図形の下に敷きました（縮尺は仮です。「⤢ 縮尺合わせ」で図形に合わせてください）",
+            );
+          }}
+          targetName={pitWord}
           rectFirst
           subject={
             tracePick
-              ? `${tracePick.symbol} の形を直す（「選」を外すと新しいピットになります）`
-              : `新しいピット ${pitSymbol(pits.length)} を作る（「選」を1つ付けるとそのピットを直します）`
+              ? `${tracePick.symbol} の形を直す（「選」を外すと新しい${pitWord}になります）`
+              : `新しい${pitWord} ${pitSymbol(pits.length)} を作る（「選」を1つ付けるとその${pitWord}を直します）`
           }
           done={traced.flatMap((shape) => {
             const pit = pits.find((each) => each.id === shape.id);
             return pit ? [{ label: pit.symbol, points: shape.points }] : [];
           })}
           onApply={(_shape, meters, pixels, perPixel) => {
-            const synced = underlayForTrace(
-              { ...trace, metersPerPixel: perPixel },
-              underlay,
-            );
-            const placed = synced ?? underlay;
-            applyTrace(meters, pixels, { x: placed.x, y: placed.y });
-            if (synced) setUnderlay(synced);
+            // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く。
+            // 同じ図面が既にあればその枚だけを書き替え、無ければ選んだ図面を置き替え（全部無ければ新しい1枚を足す）
+            if (trace.image === "") {
+              const placed = underlayAtTraceOrigin(underlay, meters);
+              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
+              setUnderlay(placed);
+            } else {
+              const matchIndex = underlays.findIndex(
+                (item) => item.image === trace.image,
+              );
+              const slotIndex =
+                matchIndex >= 0
+                  ? matchIndex
+                  : Math.min(underlayTool.active, underlays.length - 1);
+              const base =
+                slotIndex >= 0
+                  ? underlays[slotIndex]
+                  : {
+                      image: trace.image,
+                      metersPerPixel: 0,
+                      x: 0,
+                      y: 0,
+                      opacity: underlay.opacity,
+                    };
+              const synced =
+                underlayForTrace(
+                  { ...trace, metersPerPixel: perPixel },
+                  base,
+                ) ?? base;
+              const placed = underlayAtTraceOrigin(synced, meters);
+              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
+              if (slotIndex >= 0) {
+                setUnderlays(
+                  underlays.map((item, index) =>
+                    index === slotIndex ? placed : item,
+                  ),
+                  slotIndex,
+                );
+              } else {
+                setUnderlays([...underlays, placed], underlays.length);
+              }
+            }
             // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする
             if (picked.length === 1) setPicked([]);
             setMessage(
               picked.length === 1
-                ? "なぞった形をそのピットに入れました（寸法は表・「○ 形を直す」で直せます）。続けてなぞると新しいピットになります"
-                : "なぞった形で新しいピットを作りました。そのまま次をなぞると図面どおりの位置に置きます（終わるときは［✕ 閉じる］）",
+                ? `なぞった形をその${pitWord}に入れました（寸法は表・「○ 形を直す」で直せます）。続けてなぞると新しい${pitWord}になります`
+                : `なぞった形で新しい${pitWord}を作りました。そのまま次をなぞると図面どおりの位置に置きます（終わるときは［✕ 閉じる］）`,
             );
           }}
           onClose={() => setShowTrace(false)}
@@ -2637,7 +2838,7 @@ export default function PitSheetPage({
         result={calcResult}
         onMessage={setMessage}
         hasUpper
-        windowTitle={`ピット計算書　${project.managementNo}`}
+        windowTitle={`${sheetName}　${project.managementNo}`}
       />
 
       <p className="hint">
@@ -2648,11 +2849,12 @@ export default function PitSheetPage({
         ○角を消して梁入力に戻る」を押してください（○角が出ている間は梁型を置けません）。
         ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
         1つ選ぶと「角のX・角のY」の欄で位置を数字で決められ、2つ以上選ぶと「たてにそろえる」「よこにそろえる」で一直線になります。
-        Ｌ型のあとに□を入れるときは、ピットを追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
+        Ｌ型のあとに□を入れるときは、{pitWord}
+        を追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
         FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積
-        は全部の合計、FA1・WA1・CA1・DP1 …はピットごとです。
+        は全部の合計、FA1・WA1・CA1・DP1 …は{pitWord}ごとです。
       </p>
     </div>
   );

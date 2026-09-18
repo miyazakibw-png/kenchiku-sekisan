@@ -7,12 +7,18 @@ import {
   buildBreakdownRows,
   collectSubjectOrder,
   collectUnits,
+  mergeSubjectOrder,
   roundQuantity,
   toFullWidth,
   toHalfWidth,
+  withSubjectSubtotals,
 } from "../../src/core/breakdown/breakdown";
 import { toBcsCsv } from "../../src/core/breakdown/bcs";
 import { compareBreakdown, moveRow } from "../../src/core/breakdown/compare";
+import {
+  compareBlocksBySubject,
+  toCompareBlocks,
+} from "../../src/core/breakdown/compareBlocks";
 import {
   splitBySubject,
   toSpreadsheetSheets,
@@ -31,6 +37,7 @@ function item(patch: Partial<BreakdownSourceItem>): BreakdownSourceItem {
     masterKey: "k1",
     subjectId: 1,
     part1: "",
+    partNumber: null,
     partName: "基礎",
     name: "普通コンクリート",
     descriptionUpper: "FC21*18",
@@ -183,6 +190,104 @@ describe("内訳書の行づくり", () => {
     expect(rows[1].nameLower).toBe("基礎 普通コンクリート");
   });
 
+  it("書式④でも名称パターンで部位：名称にできる", () => {
+    const rows = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(rows[1].nameLower).toBe("");
+    expect(rows[2].nameLower).toBe("基礎:普通コンクリート");
+    const fullColon = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPartFullColon,
+    });
+    expect(fullColon[2].nameLower).toBe("基礎：普通コンクリート");
+  });
+
+  it("部位番号の範囲が変わるところに基本部位のタイトル行が出る", () => {
+    const rows = buildBreakdownRows(
+      [
+        item({ partNumber: 11 }),
+        item({ partNumber: 15 }),
+        item({ partNumber: 25 }),
+        item({ partNumber: 72 }),
+      ],
+      subjects,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, partTitlesOn: true },
+    );
+    expect(
+      rows.map((row) =>
+        row.rowKind === "subject" ? row.subjectName : row.nameLower,
+      ),
+    ).toEqual([
+      "コンクリート工事",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+      "普通コンクリート",
+      "",
+      "＜巾木＞",
+      "普通コンクリート",
+      "",
+      "＜その他＞",
+      "普通コンクリート",
+      "",
+    ]);
+  });
+
+  it("基本部位のタイトル行は部位Ⅰが変わると出し直す", () => {
+    const rows = buildBreakdownRows(
+      [
+        item({ part1: "内部", partNumber: 11 }),
+        item({ part1: "外部", partNumber: 12 }),
+      ],
+      subjects,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, partTitlesOn: true },
+    );
+    expect(
+      rows.map((row) =>
+        row.rowKind === "subject" ? row.subjectName : row.nameLower,
+      ),
+    ).toEqual([
+      "コンクリート工事",
+      "（内部）",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+      "（外部）",
+      "＜床＞",
+      "普通コンクリート",
+      "",
+    ]);
+  });
+
+  it("部位タイトル行を出さない設定では出ない（表は残る）", () => {
+    const rows = buildBreakdownRows(
+      [item({ partNumber: 11 }), item({ partNumber: 25 })],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    expect(rows.some((row) => row.nameLower === "＜床＞")).toBe(false);
+    expect(rows.some((row) => row.nameLower === "＜巾木＞")).toBe(false);
+  });
+
+  it("名称パターンで部位：名称にできる（2段1行・1段とも）", () => {
+    const twoLine = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(twoLine[1].nameUpper).toBe("");
+    expect(twoLine[1].nameLower).toBe("基礎:普通コンクリート");
+    const oneLine = buildBreakdownRows([item({})], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.oneLine,
+      namePattern: NAME_PATTERN.withPartColon,
+    });
+    expect(oneLine[1].nameLower).toBe("基礎:普通コンクリート");
+  });
+
   it("工種科目の並びを設定どおりにする", () => {
     const rows = buildBreakdownRows(
       [item({}), item({ id: 2, masterKey: "k2", subjectId: 2 })],
@@ -196,6 +301,24 @@ describe("内訳書の行づくり", () => {
     const items = [item({}), item({ id: 2, subjectId: 2, unit: "m2" })];
     expect(collectSubjectOrder(items, subjects)).toEqual([1, 2]);
     expect(collectUnits(items)).toEqual(["m3", "m2"]);
+  });
+
+  it("新しい科目は科目マスターの並びで直前の科目の直後に入る（後ろに並べない）", () => {
+    const list = [
+      { id: 1, name: "A", displayOrder: 1 },
+      { id: 2, name: "B", displayOrder: 2 },
+      { id: 3, name: "C", displayOrder: 3 },
+      { id: 4, name: "D", displayOrder: 4 },
+    ];
+    // 並びそのまま：1回目に無いD(4)はC(3)の直後
+    expect(mergeSubjectOrder([1, 3], [1, 3, 4], list)).toEqual([1, 3, 4]);
+    // 新しい科目どうしも科目マスターの順で入る
+    expect(mergeSubjectOrder([1, 3], [1, 2, 3, 4], list)).toEqual([1, 2, 3, 4]);
+    // 並びを動かしている場合：覚えた並び [3,1]（C→A）。新しいB(2)は
+    // 科目マスター順で直前のA(1)の直後（前後の科目から位置を決める）
+    expect(mergeSubjectOrder([3, 1], [2], list)).toEqual([3, 1, 2]);
+    // どの既存科目より前なら先頭
+    expect(mergeSubjectOrder([2, 3], [1, 2, 3], list)).toEqual([1, 2, 3]);
   });
 });
 
@@ -371,5 +494,107 @@ describe("回どうしの比較", () => {
   it("行を上下に動かせる", () => {
     expect(moveRow([1, 2, 3], 0, 1)).toEqual([2, 1, 3]);
     expect(moveRow([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
+  });
+
+  it("金額が入った科目の終わりに小計行を足す", () => {
+    const built = buildBreakdownRows(
+      [
+        item({}),
+        item({ id: 2, masterKey: "k2" }),
+        item({ id: 3, masterKey: "k3", subjectId: 2 }),
+      ],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const rows = built.map((row) => {
+      // k1は金額を直接入力、k2は数量×単価で出る（どちらも小計に足す）
+      if (row.rowKind === "detail" && row.masterKey === "k1")
+        return { ...row, amount: 100 };
+      if (row.rowKind === "detail" && row.masterKey === "k2")
+        return { ...row, quantity: 2, unitPrice: 25 };
+      return row;
+    });
+    const next = withSubjectSubtotals(rows);
+    const subtotals = next.filter((row) => row.nameLower === "小計");
+    // 科目Aだけ小計150（科目Bは金額が無いので出さない）
+    expect(subtotals).toHaveLength(1);
+    expect(subtotals[0].amount).toBe(150);
+    // 小計は科目Aの明細の直後・科目Bの見出しの直前に入る
+    const headB = next.findIndex(
+      (row) => row.rowKind === "subject" && row.subjectId === 2,
+    );
+    expect(next.indexOf(subtotals[0])).toBe(headB - 1);
+  });
+
+  it("エクセルでは小計を科目が終わるページの最後の行に出す", () => {
+    const built = buildBreakdownRows(
+      [item({}), item({ id: 2, masterKey: "k2", subjectId: 2 })],
+      subjects,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const rows = withSubjectSubtotals(
+      built.map((row) =>
+        row.rowKind === "detail" && row.masterKey === "k1"
+          ? { ...row, amount: 100 }
+          : row,
+      ),
+    );
+    const book = toSpreadsheetSheets(
+      [{ name: "内訳書", rows }],
+      BREAKDOWN_LAYOUT.twoLine,
+      { detailsPerPage: 17, detailsPerPageLater: 16 },
+    );
+    // 1ページ目の最後の行（タイトル2行＋明細32行＝34行）に小計が来る
+    expect(book[0].rows[33][1].value).toBe("小計");
+    expect(book[0].rows[33][6].value).toBe(100);
+    // 明細の直後は小計ではなく空欄（小計は明細のすぐ下には出ない）
+    expect(book[0].rows.some((row) => row[1].value === "小計")).toBe(true);
+    expect(book[0].rows[6][1].value).not.toBe("小計");
+  });
+
+  it("工種科目どうしで並びを合わせる（片方に無い科目は空欄。並びは多いほうが基準）", () => {
+    const more = [
+      { id: 1, name: "A", displayOrder: 1 },
+      { id: 2, name: "B", displayOrder: 2 },
+      { id: 3, name: "C", displayOrder: 3 },
+    ];
+    // 左（新しい回）：A・B。右（前の回）：A・C
+    const leftRows = buildBreakdownRows(
+      [
+        item({}),
+        item({ id: 2, masterKey: "k2", subjectId: 2 }),
+        item({ id: 3, masterKey: "k3", subjectId: 2 }),
+      ],
+      more,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const rightRows = buildBreakdownRows(
+      [item({}), item({ id: 4, masterKey: "k4", subjectId: 3 })],
+      more,
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const leftBlocks = toCompareBlocks(leftRows, BREAKDOWN_LAYOUT.twoLine);
+    const rightBlocks = toCompareBlocks(rightRows, BREAKDOWN_LAYOUT.twoLine);
+    const diffs = compareBlocksBySubject(leftBlocks, rightBlocks);
+    const heads = diffs.filter(
+      (diff) =>
+        (diff.leftIndex !== null && leftBlocks[diff.leftIndex].heading) ||
+        (diff.rightIndex !== null && rightBlocks[diff.rightIndex].heading),
+    );
+    // 科目の見出しは同じ科目どうしで並ぶ。A・C（右だけ）→ B（左だけ）の順
+    // （左のほうがかたまりが多いので左の並びが基準。Cは前の回でAの直後だったのでその位置）
+    expect(heads.map((diff) => diff.left?.nameLower ?? "")).toEqual([
+      "A",
+      "",
+      "B",
+    ]);
+    expect(heads.map((diff) => diff.right?.nameLower ?? "")).toEqual([
+      "A",
+      "C",
+      "",
+    ]);
+    // Bの明細は左だけ・Cの明細は右だけになる（並びを追いかけてずれない）
+    expect(diffs.some((diff) => diff.onlyLeft)).toBe(true);
+    expect(diffs.some((diff) => diff.onlyRight)).toBe(true);
   });
 });

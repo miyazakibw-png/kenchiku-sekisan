@@ -18,6 +18,8 @@ import {
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  rotateShape,
+  scaleShape,
   setEdgeKinds,
   shapeExtents,
   solveShape,
@@ -25,6 +27,7 @@ import {
   trimEdges,
   updateEdge,
   uShape,
+  withFixedRoomSymbols,
 } from "../../src/core/room/shape";
 
 /** 形の向きを見るために、左上を原点にそろえた頂点の並び */
@@ -414,6 +417,147 @@ describe("部屋形状（単線図）", () => {
     expect(roomQuantities(solved, 2.5).wallLength).toBe(14.16);
   });
 
+  it("曲面壁の分はRHL・RWAに分けて出し、HL・WAからは引く", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    // 曲面の辺に建具（面積1.0・巾木減0.4）を置いた場合も曲面側で差し引く
+    const fittings = [
+      {
+        symbol: "AW1",
+        multiplier: 1,
+        area: 1,
+        baseboardDeduction: 0.4,
+        edgeId: solved.edges[2].id,
+      },
+    ];
+    const quantities = roomQuantities(solved, 2.5, fittings);
+    // 壁合計14.16のうち曲面分4.16。HLは直線の壁だけ（4+3+3=10）
+    expect(quantities.wallLength).toBe(14.16);
+    expect(quantities.baseboardLength).toBe(10);
+    // RHLは弧長から曲面の建具巾木減を引く（4.16-0.4）
+    expect(quantities.curveLength).toBe(3.76);
+    // WAは直線の壁×天井高さ（10×2.5）、RWAは弧長×天井高さ－建具（4.16×2.5-1.0）
+    expect(quantities.wallArea).toBe(25);
+    expect(quantities.curveArea).toBe(9.4);
+
+    const symbols = roomSymbols(solved, 2.5, fittings);
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "RHL")?.value).toBe(3.76);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+    expect(symbols.find((row) => row.symbol === "RWA")?.value).toBe(9.4);
+    // RHLはHLの直下、RWAはWAの直下に並ぶ
+    const order = symbols.map((row) => row.symbol);
+    expect(order.indexOf("RHL")).toBe(order.indexOf("HL") + 1);
+    expect(order.indexOf("RWA")).toBe(order.indexOf("WA") + 1);
+  });
+
+  it("曲面壁の無い部屋にはRHL・RWAを出さず、HL・WAは壁全体のまま", () => {
+    const symbols = roomSymbols(solveShape(rectangleShape(3, 2)), 2.5);
+    expect(symbols.find((row) => row.symbol === "RHL")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+  });
+
+  it("縮尺合わせ：選んだ辺の実寸で図形全体を同じ比率にする", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+      columns: [freeColumn(2, 1, 0.5, 0.5)],
+    };
+    // 辺1（4.00）を実寸8.00に → 全体2倍
+    const next = scaleShape(shape, shape.edges[0].id, 8);
+    expect(next).not.toBeNull();
+    expect(next?.edges[0].length).toBe(8);
+    expect(next?.edges[1].length).toBe(6);
+    // 曲面壁は弦も矢も2倍
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[2].bulge).toBe(1);
+    // 独立柱の位置・大きさも2倍
+    expect(next?.columns?.[0].x).toBe(4);
+    expect(next?.columns?.[0].width).toBe(1);
+    // 弧長も2倍（丸めを含めた実値）
+    expect(solveShape(next!).edges[2].measured).toBe(8.33);
+  });
+
+  it("縮尺合わせ：斜め辺・自動算出の辺も基準にできる", () => {
+    // 斜め辺を基準にする（解決した長さ3.16を6.32へ → 2倍）
+    const moved = moveCorner(rectangleShape(4, 3), 1, 1, 0).shape;
+    const scaled = scaleShape(moved, moved.edges[1].id, 6.32);
+    expect(scaled?.edges[1].dx).toBe(-2);
+    expect(scaled?.edges[1].dy).toBe(6);
+    expect(solveShape(scaled!).edges[1].resolved).toBeCloseTo(6.32, 2);
+    expect(scaled?.edges[0].length).toBe(10);
+
+    // 自動算出（寸法なし）の辺を基準にすると、その辺に実寸が入る
+    const shape = rectangleShape(4, 3);
+    const withAuto = updateEdge(shape, shape.edges[2].id, { length: null });
+    const next = scaleShape(withAuto, shape.edges[2].id, 8);
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[0].length).toBe(8);
+    expect(solveShape(next!).edges[2].resolved).toBe(8);
+  });
+
+  it("回転：選んだ辺を水平・垂直にして図形全体を回し、柱も同じ関係に留める", () => {
+    const shape = {
+      ...rectangleShape(4, 3),
+      columns: [freeColumn(4, 3, 0.5, 0.5)],
+    };
+    // 辺2（↓下 3.00）を水平に → 全部 -90°回る
+    const turned = rotateShape(shape, shape.edges[1].id, "horizontal");
+    expect(turned).not.toBeNull();
+    const next = turned!.shape;
+    // S(0,3)→E(3,0)：辺2が水平になる
+    expect(next.edges[1]).toMatchObject({ direction: "E", length: 3 });
+    // E4→N4、W4→S4、N3→W3
+    expect(next.edges[0]).toMatchObject({ direction: "N", length: 4 });
+    expect(next.edges[2]).toMatchObject({ direction: "S", length: 4 });
+    expect(next.edges[3]).toMatchObject({ direction: "W", length: 3 });
+    // 形は閉じたまま・面積は回る前と同じ
+    const solvedNext = solveShape(next);
+    expect(solvedNext.error).toBeNull();
+    expect(floorArea(solvedNext)).toBe(floorArea(solveShape(shape)));
+    // 右下の角（4,3）にあった柱は、回ったあとの右下の角（3,-4）に来る
+    expect(next.columns?.[0].x).toBe(3);
+    expect(next.columns?.[0].y).toBe(-4);
+    // 起点（辺2の始点）は (4,0) → (0,-4) に移る
+    expect(turned!.pivot).toEqual({ x: 4, y: 0 });
+    expect(turned!.pivotTo).toEqual({ x: 0, y: -4 });
+  });
+
+  it("回転：45°に傾いた形は、1辺を水平にすると全部の辺が縦横にそろう", () => {
+    // 45°回った四角（斜め辺だけの形）
+    const shape = {
+      edges: [
+        { ...edge("D", null), dx: 1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: -1 },
+        { ...edge("D", null), dx: 1, dy: -1 },
+      ],
+    };
+    const turned = rotateShape(shape, shape.edges[0].id, "horizontal");
+    const next = turned!.shape;
+    // 辺1は水平（E）に、残りも縦横にそろう（面積も閉じたまま）
+    expect(next.edges[0]).toMatchObject({ direction: "E", length: 1.41 });
+    expect(next.edges[1]).toMatchObject({ direction: "S", length: 1.41 });
+    expect(next.edges[2]).toMatchObject({ direction: "W", length: 1.41 });
+    expect(next.edges[3]).toMatchObject({ direction: "N", length: 1.41 });
+    expect(solveShape(next).error).toBeNull();
+    // 斜め辺1.4142…を2桁に丸めた 1.41×1.41 の面積になる
+    expect(floorArea(solveShape(next))).toBe(1.99);
+  });
+
   it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {
     const shape = rectangleShape(4, 3);
     const moved = moveCorner(shape, 1, 1, 0);
@@ -567,6 +711,16 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     // 独立柱だけの記号は作らない
     const symbols = roomSymbols(solved, 2.5);
     expect(symbols.some((row) => row.symbol.startsWith("I"))).toBe(false);
+  });
+
+  it("記号表にいつも出す記号は、無いときも0で計算式に使える", () => {
+    const values = withFixedRoomSymbols({ FA: 24 });
+    // 天井伏図を描いていない部屋でも BA・GA を式に書ける
+    expect(values.BA).toBe(0);
+    expect(values.GA).toBe(0);
+    expect(values.CH).toBe(0);
+    // すでにある値は書き換えない
+    expect(values.FA).toBe(24);
   });
 
   it("独立柱が無い今までの図形は数量が変わらない", () => {

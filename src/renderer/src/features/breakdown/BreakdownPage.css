@@ -14,6 +14,35 @@
   top: 0;
 }
 
+/* 選んだ科目をその場から続けて動かすバー */
+.breakdown-page .subject-list .subject-move {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  min-height: 24px;
+}
+.breakdown-page .subject-list .subject-move .name {
+  flex: 1 1 auto;
+  font-size: 12px;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breakdown-page .subject-list .subject-move .hint {
+  flex: 1 1 auto;
+  font-size: 11px;
+  color: #666;
+}
+.breakdown-page .subject-list .subject-move button {
+  flex: 0 0 auto;
+  width: 24px;
+  text-align: center;
+}
+
 .breakdown-page .subject-list .subject-row {
   display: flex;
   align-items: center;
@@ -30,6 +59,14 @@
 .breakdown-page .subject-list button.selected {
   background: #cde3ff;
   font-weight: bold;
+}
+
+/* この回で初めて出てきた科目 */
+.breakdown-page .subject-list button.new {
+  background: #ffd9a0;
+}
+.breakdown-page .subject-list button.new.selected {
+  background: #f0b86c;
 }
 
 .breakdown-page .subject-list .order button {
@@ -73,6 +110,25 @@
 .breakdown-page table.breakdown td.unit {
   text-align: right;
   white-space: nowrap;
+}
+
+/* 通常の内訳書の入力欄も表のまま見せる（比較画面と同じ） */
+.breakdown-page table.breakdown td input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+
+.breakdown-page table.breakdown td.qty input,
+.breakdown-page table.breakdown td.unit input {
+  text-align: right;
+}
+
+.breakdown-page table.breakdown td input:focus {
+  outline: 1px solid #4a90d9;
 }
 
 .breakdown-page table.breakdown tr.subject td {

@@ -11,7 +11,10 @@ import {
   toSpreadsheetWorkbook,
 } from "../../core/breakdown/spreadsheet";
 import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
-import type { BreakdownRow } from "../../core/breakdown/breakdown";
+import {
+  withSubjectSubtotals,
+  type BreakdownRow,
+} from "../../core/breakdown/breakdown";
 import type {
   BreakdownExportKind,
   BreakdownRowRecord,
@@ -64,11 +67,15 @@ export function buildExport(
   if (kind === "excelCompare") {
     return {
       content: toCompareWorkbook({
-        left: coreRows,
-        right: (compare?.rows ?? []).map(toCoreRow),
+        left: withSubjectSubtotals(coreRows),
+        right: withSubjectSubtotals((compare?.rows ?? []).map(toCoreRow)),
         layout: settings.layout,
         leftTitle: compare?.leftTitle ?? "新しい内訳書",
         rightTitle: compare?.rightTitle ?? "前の内訳書",
+        page: {
+          detailsPerPage: settings.detailsPerPage,
+          detailsPerPageLater: settings.detailsPerPageLater,
+        },
       }),
       defaultName: `${projectName}_内訳書_比較.xlsx`,
     };
@@ -83,10 +90,11 @@ export function buildExport(
       defaultName: `${projectName}_BCS.CSV`,
     };
   }
+  const withTotals = withSubjectSubtotals(coreRows);
   const sheets =
     kind === "excelBySubject"
-      ? splitBySubject(coreRows)
-      : [{ name: "内訳書", rows: coreRows }];
+      ? splitBySubject(withTotals)
+      : [{ name: "内訳書", rows: withTotals }];
   return {
     content: toSpreadsheetWorkbook(sheets, settings.layout, {
       detailsPerPage: settings.detailsPerPage,

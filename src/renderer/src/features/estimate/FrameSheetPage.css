@@ -1,8 +1,9 @@
 /* 軸組計算書は部屋計算書と同じ見た目にする（RoomSheetPage.css を土台に足すだけ） */
+/* 図を少し絞って、その分を右の壁測定表（種類欄）へ回す */
 .frame-sheet-page > .upper {
-  grid-template-columns: minmax(240px, 1.1fr) minmax(200px, 0.8fr) minmax(
-      240px,
-      1fr
+  grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 0.95fr) minmax(
+      320px,
+      1.05fr
     );
 }
 
@@ -320,8 +321,9 @@
   width: 32px;
 }
 
+/* 種類（軸組種類を選ぶ欄）。名前が読めるよう、まわりより広めに取る */
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(3) {
-  width: 52px;
+  width: 156px;
 }
 
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(4),

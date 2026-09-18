@@ -12,6 +12,15 @@ import "./MiscSheetPrintSheet.css";
 /** A3横1枚に入る明細（タテ列）の数と部屋（ヨコ行）の数 */
 const COLUMNS_PER_PAGE = 12;
 const ROWS_PER_PAGE = 33;
+/** A3横の印刷できる大きさ・1行の高さ（計算書印刷と同じ） */
+const PAGE_WIDTH = 1527;
+const PAGE_HEIGHT = 1062;
+const TITLE_HEIGHT = 24;
+const ROW_HEIGHT = 22;
+/** 左の1欄（科目〜合計の見出し／部位Ⅰ・Ⅱ・Ⅲ×倍率）の幅 */
+const HEAD_WIDTH = 210;
+/** 明細欄の既定の幅（画面と同じ） */
+const COLUMN_DEFAULT = 221;
 
 /** 明細の見出し（上から順に1行ずつ） */
 const HEADS: { key: keyof MiscColumn; label: string }[] = [
@@ -77,6 +86,24 @@ export default function MiscSheetPrintSheet({
   const [name, setName] = useState("");
   const [columns, setColumns] = useState<MiscColumn[]>([]);
   const [rows, setRows] = useState<MiscRow[]>([]);
+  /** 画面で動かした列幅（画面と同じ置き場 misc-widths）。無い列は既定幅 */
+  const widths = useMemo<Record<string, number>>(() => {
+    try {
+      const raw = window.localStorage.getItem(`misc-widths:${project.id}`);
+      const parsed: unknown = raw === null ? {} : JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null) return {};
+      const map: Record<string, number> = {};
+      Object.entries(parsed as Record<string, unknown>).forEach(
+        ([key, value]) => {
+          if (typeof value === "number" && Number.isFinite(value))
+            map[key] = value;
+        },
+      );
+      return map;
+    } catch {
+      return {};
+    }
+  }, [project.id]);
 
   useEffect(() => {
     void (async () => {
@@ -120,6 +147,23 @@ export default function MiscSheetPrintSheet({
     })),
   );
 
+  /** 明細欄は画面の列幅と同じ幅で出す（広すぎるときだけA3横の幅へ縮める） */
+  const columnWidthOf = (column: MiscColumn): number =>
+    widths[column.id] ?? COLUMN_DEFAULT;
+  const tableWidthOf = (pageColumns: MiscColumn[]): number =>
+    HEAD_WIDTH +
+    pageColumns.reduce((total, column) => total + columnWidthOf(column), 0);
+  const scaleOf = (pageColumns: MiscColumn[]): number =>
+    Math.min(1, PAGE_WIDTH / tableWidthOf(pageColumns));
+  /** 表のうしろの空白を埋める横罫線の本数（見出し12行＝タテ明細の見出し＋部屋見出し） */
+  const blankCountOf = (pageRows: MiscRow[]): number =>
+    Math.max(
+      0,
+      Math.floor((PAGE_HEIGHT - TITLE_HEIGHT) / ROW_HEIGHT) -
+        12 -
+        pageRows.length,
+    );
+
   return (
     <div className="calc-print-sheet misc-print-sheet">
       {pages.map((page) => (
@@ -136,7 +180,25 @@ export default function MiscSheetPrintSheet({
                 }／${rowPages.length}）`
               : ""}
           </div>
-          <table className="misc-print">
+          <table
+            className="misc-print"
+            style={{
+              width: `${tableWidthOf(page.columns) * scaleOf(page.columns)}px`,
+            }}
+          >
+            <colgroup>
+              <col
+                style={{ width: `${HEAD_WIDTH * scaleOf(page.columns)}px` }}
+              />
+              {page.columns.map((column) => (
+                <col
+                  key={column.id}
+                  style={{
+                    width: `${columnWidthOf(column) * scaleOf(page.columns)}px`,
+                  }}
+                />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th className="head">科目</th>
@@ -183,17 +245,15 @@ export default function MiscSheetPrintSheet({
                   })}
                 </tr>
               ))}
-              {Array.from({
-                length: Math.max(0, ROWS_PER_PAGE - page.rows.length),
-              }).map((_unused, blank) => (
-                <tr className="blank" key={`blank-${blank}`}>
-                  {Array.from({ length: 1 + page.columns.length }).map(
-                    (_cell, cell) => (
-                      <td key={cell} />
-                    ),
-                  )}
-                </tr>
-              ))}
+              {/* 入力が少なく下が空く分は、手入力できるよう横罫線だけを引く */}
+              {Array.from(
+                { length: blankCountOf(page.rows) },
+                (_unused, blank) => (
+                  <tr className="blank" key={`blank-${blank}`}>
+                    <td colSpan={1 + page.columns.length} />
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>

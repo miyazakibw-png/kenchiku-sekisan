@@ -483,32 +483,29 @@ export const projectMiscSheets = sqliteTable("project_misc_sheets", {
  * 1工事に何枚でも作れる（一覧から開く）。左の入力欄から右の明細欄を自動で作り、
  * 数量はその部位Ⅰ〜Ⅲの計算書に入れたのと同じ扱いで集計する。
  */
-export const projectFurnitureSheets = sqliteTable(
-  "project_furniture_sheets",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    projectId: integer("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    /** 一覧に出す表の名前（部位Ⅲ） */
-    name: text("name").notNull().default("家具計算書"),
-    part1: text("part1").notNull().default(""),
-    part2: text("part2").notNull().default(""),
-    part2Split: integer("part2_split").notNull().default(0),
-    multiplier: real("multiplier").notNull().default(1),
-    /** 計算書の種類（今は家具計算書＝furniture） */
-    kind: text("kind").notNull().default("furniture"),
-    displayOrder: integer("display_order").notNull().default(0),
-    /** 入力欄と明細欄（FurnitureRowの配列） */
-    rowsJson: text("rows_json").notNull().default("[]"),
-    /** タテ方向の明細（FurnitureColumnの配列） */
-    columnsJson: text("columns_json").notNull().default("[]"),
-    /** 付け加える文字・記号の対応表（FurnitureSettings） */
-    settingsJson: text("settings_json").notNull().default("{}"),
-    note: text("note").notNull().default(""),
-    updatedAt: text("updated_at").notNull().default(now),
-  },
-);
+export const projectFurnitureSheets = sqliteTable("project_furniture_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  /** 一覧に出す表の名前（部位Ⅲ） */
+  name: text("name").notNull().default("家具計算書"),
+  part1: text("part1").notNull().default(""),
+  part2: text("part2").notNull().default(""),
+  part2Split: integer("part2_split").notNull().default(0),
+  multiplier: real("multiplier").notNull().default(1),
+  /** 計算書の種類（今は家具計算書＝furniture） */
+  kind: text("kind").notNull().default("furniture"),
+  displayOrder: integer("display_order").notNull().default(0),
+  /** 入力欄と明細欄（FurnitureRowの配列） */
+  rowsJson: text("rows_json").notNull().default("[]"),
+  /** タテ方向の明細（FurnitureColumnの配列） */
+  columnsJson: text("columns_json").notNull().default("[]"),
+  /** 付け加える文字・記号の対応表（FurnitureSettings） */
+  settingsJson: text("settings_json").notNull().default("{}"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
 
 /**
  * 転記入力表の1行（1明細）。
@@ -604,6 +601,29 @@ export const calcSheetEntries = sqliteTable(
     ),
   }),
 );
+
+/**
+ * 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト）。
+ * 1工事に1つ。中身は core/fireproof/fireproofList の形でJSONに入れる。
+ */
+export const projectFireproofSheets = sqliteTable("project_fireproof_sheets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  /** 階数（階別リストの行を作る元。中2階・塔屋は行を足して入れる） */
+  floorCount: integer("floor_count").notNull().default(0),
+  /** 柱リスト（FireproofFloorList） */
+  columnsJson: text("columns_json").notNull().default("{}"),
+  /** 梁リスト（FireproofFloorList） */
+  beamsJson: text("beams_json").notNull().default("{}"),
+  /** 階共通リスト（FireproofCommonRowの配列） */
+  commonJson: text("common_json").notNull().default("[]"),
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: text("estimate_json").notNull().default("[]"),
+  note: text("note").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
 
 /** アプリ設定（内訳書フォーマット設定・テーマ等） */
 export const appSettings = sqliteTable("app_settings", {
@@ -844,6 +864,14 @@ export const projectBreakdownSettings = sqliteTable(
     unitReplacementsJson: text("unit_replacements_json")
       .notNull()
       .default("[]"),
+    /** 基本部位のタイトル行を出すかどうか（0:出さない 1:出す） */
+    partTitlesOn: integer("part_titles_on").notNull().default(0),
+    /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字） */
+    partTitlesJson: text("part_titles_json")
+      .notNull()
+      .default(
+        '[{"from":10,"title":"＜床＞"},{"from":20,"title":"＜巾木＞"},{"from":30,"title":"＜壁＞"},{"from":40,"title":"＜柱型＞"},{"from":50,"title":"＜梁型＞"},{"from":60,"title":"＜天井＞"},{"from":70,"title":"＜その他＞"}]',
+      ),
     /** エクセル掃き出しの1ページの明細数（1ページ目はタイトル行を含む） */
     detailsPerPage: integer("details_per_page").notNull().default(17),
     detailsPerPageLater: integer("details_per_page_later")
@@ -871,6 +899,8 @@ export const projectBreakdownVersions = sqliteTable(
       { onDelete: "set null" },
     ),
     note: text("note").notNull().default(""),
+    /** この回で初めて出てきた工種科目（科目IDのJSON。前の回に無かったもの） */
+    newSubjectsJson: text("new_subjects_json").notNull().default("[]"),
   },
   (t) => ({
     roundUq: uniqueIndex("uq_breakdown_versions_round").on(

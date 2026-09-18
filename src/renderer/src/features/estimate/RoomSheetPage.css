@@ -79,6 +79,9 @@
 
 .room-sheet-page > .upper > section {
   min-height: 0;
+  /* 表が欄より広いときは欄は列の広さに縮んで中でスクロールする
+     （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
+  min-width: 0;
   overflow: auto;
 }
 
@@ -117,9 +120,12 @@
   aspect-ratio: auto;
 }
 
+/* 大きく開いた右列は、表が列より広くても欄が縮んで中でスクロールするようにする
+   （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
 .room-sheet-page > .upper.expanded > .edges,
 .room-sheet-page > .upper.expanded > .ceiling {
   grid-column: 2;
+  min-width: 0;
 }
 
 .room-sheet-page > .upper.expanded > section {
@@ -377,6 +383,17 @@
   justify-content: center;
 }
 
+/* 下敷きの図面があるときは、なぞる画面と同じく左上づめ・画像原寸で出す */
+.room-sheet-page .canvas.has-underlay {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* 図の大きさを画素で指定するので、flex の縮みで画像が縮まないようにする */
+.room-sheet-page .canvas.has-underlay > svg {
+  flex: 0 0 auto;
+}
+
 /* 図の一番下に出す外形寸法（X＝横・Y＝縦の最大） */
 .room-sheet-page .canvas .extents {
   position: absolute;
@@ -547,8 +564,25 @@
   line-height: 1.1;
 }
 
-.room-sheet-page .ceiling table.grid td.ceiling-actions {
+/* 操作列（⇄・✂・🗑）を先頭列にして左端に張り付ける。
+   画面幅が狭いとき欄の右端は画面外に出るので、左ならいつでも見える */
+.room-sheet-page .ceiling table.grid td.ceiling-actions,
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   white-space: nowrap;
+  background: #fff;
+  /* 表が狭くて列が潰れてもボタン（⇄✂↔🗑）が全部入るだけの幅は確保する */
+  min-width: 190px;
+}
+
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  background: #f6f8fb;
+}
+
+.room-sheet-page .ceiling tr.picked > td.ceiling-actions {
+  background: #fff7ed;
 }
 
 .room-sheet-page .ceiling table.grid td.ceiling-actions button + button {
@@ -559,6 +593,20 @@
 .room-sheet-page .ceiling table.grid small.ceiling-range {
   color: #2563eb;
   font-size: 10px;
+}
+
+/* 自由線の端点（辺と、辺の始まりの角からの位置） */
+.room-sheet-page .ceiling table.grid .ceiling-anchor {
+  display: block;
+  white-space: nowrap;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor select {
+  width: 4.5em;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor input {
+  width: 3.2em;
 }
 
 .room-sheet-page td.no,
@@ -709,6 +757,8 @@
 
 .room-sheet-page .ceiling {
   grid-column: span 4;
+  /* 表が列より広いとき欄が縮んで中でスクロールする（縮まないと右端の操作列が見えなくなる） */
+  min-width: 0;
 }
 
 .room-sheet-page .section-bar button.on {
@@ -802,4 +852,45 @@
   text-align: center;
   cursor: pointer;
   color: #1e3a8a;
+}
+
+/* 図を見ながら計算書に数字を入れるための小窓 */
+.room-sheet-page .mini-drawing {
+  position: fixed;
+  z-index: 60;
+  width: 540px;
+  height: 400px;
+  min-width: 200px;
+  min-height: 140px;
+  background: #fff;
+  border: 1.5px solid #748ba6;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  resize: both;
+  overflow: hidden;
+}
+
+.room-sheet-page .mini-drawing-head {
+  cursor: move;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  background: #eef2f8;
+  font-size: 11px;
+  color: #33415c;
+  border-bottom: 1px solid #d5d9e0;
+  user-select: none;
+  touch-action: none;
+}
+
+.room-sheet-page .mini-drawing-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.room-sheet-page .mini-drawing-body {
+  cursor: grab;
+  touch-action: none;
 }

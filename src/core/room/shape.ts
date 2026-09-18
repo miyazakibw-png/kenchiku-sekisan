@@ -950,14 +950,18 @@ export interface RoomQuantities {
   floorArea: number | null;
   /** CA 天井面積（梁型が取る梁底の分は引く） */
   ceilingArea: number | null;
-  /** WL 壁長さ */
+  /** WL 壁長さ（曲面壁の弧長を含む合計） */
   wallLength: number;
   /** CL 柱長さ */
   columnLength: number;
-  /** HL 巾木長さ（壁＋柱－建具の巾木減） */
+  /** HL 巾木長さ（直線の壁＋柱－その建具の巾木減。曲面壁の分は除く） */
   baseboardLength: number;
-  /** WA 壁面積（建具面積を差し引いた計上面積） */
+  /** RHL 曲面壁の長さ（弧長－曲面にある建具の巾木減） */
+  curveLength: number;
+  /** WA 壁面積（直線の壁だけ。曲面壁の分は除く。建具面積を差し引いた計上面積） */
   wallArea: number | null;
+  /** RWA 曲面壁の面積（弧長×天井高さ－曲面にある建具面積） */
+  curveArea: number | null;
   /** HA 柱面積 */
   columnArea: number | null;
   /** ML 廻り縁長さ */
@@ -968,12 +972,30 @@ export interface RoomQuantities {
   fittingBaseboard: number;
 }
 
+/** 壁・曲面壁の長さ×高さの合計（辺ごとの壁高さがあればそれを使う） */
+function edgeArea(
+  solved: SolvedShape,
+  kind: "wall" | "curve",
+  height: number,
+  edgeHeights?: ReadonlyMap<string, number>,
+): number {
+  return solved.edges.reduce(
+    (sum, row) =>
+      row.kind === kind && row.measured !== null
+        ? sum + row.measured * (edgeHeights?.get(row.id) ?? height)
+        : sum,
+    0,
+  );
+}
+
 export function roomQuantities(
   solved: SolvedShape,
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
   beamArea = 0,
+  /** 辺ごとの壁高さ（まるごと低い天井の区画に面する壁はその区画の高さ） */
+  edgeHeights?: ReadonlyMap<string, number>,
 ): RoomQuantities {
   const totals = edgeTotals(solved);
   const area = floorArea(solved, limit);
@@ -982,14 +1004,42 @@ export function roomQuantities(
   const free = freeColumnTotals(solved.columns, height);
   // 部屋の中の独立柱は、周長を柱として数える（柱長さ・柱面積・巾木・廻り縁に足す）
   const column = round2(totals.column + free.perimeter);
+  // 曲面壁の分は直線の壁から分けて出す（WA/HL は直線の壁だけ、RWA/RHL が曲面）
+  let curveMeasured = 0;
+  const curveFitting: FittingTotals = { area: 0, baseboard: 0 };
+  for (const row of solved.edges) {
+    if (row.kind !== "curve" || row.measured === null) continue;
+    curveMeasured += row.measured;
+    const onCurve = fittingTotals(fittings, row.id);
+    curveFitting.area += onCurve.area;
+    curveFitting.baseboard += onCurve.baseboard;
+  }
+  curveMeasured = round2(curveMeasured);
   return {
     floorArea: area,
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
     wallLength: totals.wall,
     columnLength: column,
-    baseboardLength: round2(totals.wall + column - fitting.baseboard),
+    baseboardLength: round2(
+      totals.wall -
+        curveMeasured +
+        column -
+        (fitting.baseboard - curveFitting.baseboard),
+    ),
+    curveLength: round2(curveMeasured - curveFitting.baseboard),
     wallArea:
-      height === null ? null : round2(totals.wall * height - fitting.area),
+      height === null
+        ? null
+        : round2(
+            edgeArea(solved, "wall", height, edgeHeights) -
+              (fitting.area - curveFitting.area),
+          ),
+    curveArea:
+      height === null
+        ? null
+        : round2(
+            edgeArea(solved, "curve", height, edgeHeights) - curveFitting.area,
+          ),
     columnArea: height === null ? null : round2(column * height),
     moldingLength: round2(totals.wall + column),
     fittingArea: fitting.area,
@@ -1007,8 +1057,37 @@ export interface RoomSymbol {
 }
 
 /**
+ * 部屋計算書でいつも出す記号（左上からの並び）。
+ * その部屋に無くても0で残し、計算式でも0として使える。
+ */
+export const ROOM_FIXED_SYMBOLS: { symbol: string; label: string }[] = [
+  { symbol: "FA", label: "床面積" },
+  { symbol: "HL", label: "巾木長さ" },
+  { symbol: "WA", label: "壁面積" },
+  { symbol: "HA", label: "柱面積" },
+  { symbol: "GA", label: "壁付き梁型 面積" },
+  { symbol: "BA", label: "天井付梁型 面積" },
+  { symbol: "CA", label: "天井面積" },
+  { symbol: "ML", label: "廻り縁" },
+  { symbol: "CH", label: "天井高さ" },
+];
+
+/** 固定表示の記号のうち、その部屋に無いものを0で足す */
+export function withFixedRoomSymbols(
+  values: Record<string, number>,
+): Record<string, number> {
+  const filled = { ...values };
+  ROOM_FIXED_SYMBOLS.forEach(({ symbol }) => {
+    if (filled[symbol] === undefined) filled[symbol] = 0;
+  });
+  return filled;
+}
+
+/**
  * 計算式で使う記号表。
  * 合計の記号（FA/CA/CH/HL/WA/HA/ML）に加えて、辺ごとの記号（HL1・WA1…）を作る。
+ * 曲面壁がある部屋では RHL（曲面の長さ）を HL の直下、RWA（曲面の面積）を
+ * WA の直下に足す（HL/WA は直線の壁だけの合計になる）。
  */
 export function roomSymbols(
   solved: SolvedShape,
@@ -1016,6 +1095,8 @@ export function roomSymbols(
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
   beamArea = 0,
+  /** 辺ごとの壁高さ（まるごと低い天井の区画に面する壁はその区画の高さ） */
+  edgeHeights?: ReadonlyMap<string, number>,
 ): RoomSymbol[] {
   const quantities = roomQuantities(
     solved,
@@ -1023,7 +1104,9 @@ export function roomSymbols(
     fittings,
     limit,
     beamArea,
+    edgeHeights,
   );
+  const hasCurve = solved.edges.some((row) => row.kind === "curve");
   const symbols: RoomSymbol[] = [
     { symbol: "FA", label: "床面積", value: quantities.floorArea },
     { symbol: "CA", label: "天井面積", value: quantities.ceilingArea },
@@ -1031,7 +1114,25 @@ export function roomSymbols(
     { symbol: "WL", label: "壁長さ", value: quantities.wallLength },
     { symbol: "CL", label: "柱長さ", value: quantities.columnLength },
     { symbol: "HL", label: "巾木長さ", value: quantities.baseboardLength },
+    ...(hasCurve
+      ? [
+          {
+            symbol: "RHL",
+            label: "曲面壁 長さ",
+            value: quantities.curveLength,
+          },
+        ]
+      : []),
     { symbol: "WA", label: "壁面積", value: quantities.wallArea },
+    ...(hasCurve
+      ? [
+          {
+            symbol: "RWA",
+            label: "曲面壁 面積",
+            value: quantities.curveArea,
+          },
+        ]
+      : []),
     { symbol: "HA", label: "柱面積", value: quantities.columnArea },
     { symbol: "ML", label: "廻り縁", value: quantities.moldingLength },
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },
@@ -1057,7 +1158,10 @@ export function roomSymbols(
         value:
           ceilingHeight === null
             ? null
-            : round2(row.measured * ceilingHeight - onWall.area),
+            : round2(
+                row.measured * (edgeHeights?.get(row.id) ?? ceilingHeight) -
+                  onWall.area,
+              ),
         edgeId: row.id,
       });
     } else if (row.kind === "column") {
@@ -1093,6 +1197,154 @@ export function setEdgeKinds(
     return { ...row, kind };
   });
   return changed ? { edges } : shape;
+}
+
+/**
+ * 出来た図形の縮尺を、1辺の実寸で合わせる。
+ * 選んだ辺のいまの長さ（曲面壁は弦）と入れた実寸の比で、全辺の寸法・斜め移動・
+ * 曲面壁の矢・独立柱の位置と大きさを同じ倍率にする。
+ * 選んだ辺が自動算出（寸法なし）なら、入れた実寸をその辺の寸法として確定する。
+ * 合わせられない場合（実寸が0以下・辺が無い・基準の長さが決まらない）は null。
+ */
+export function scaleShape(
+  shape: RoomShape,
+  edgeId: string,
+  length: number,
+): RoomShape | null {
+  if (!(length > 0)) return null;
+  const target = solveShape(shape).edges.find((row) => row.id === edgeId);
+  if (target === undefined || target.resolved === null || target.resolved <= 0)
+    return null;
+  const factor = length / target.resolved;
+  const scaled = (
+    value: number | null | undefined,
+  ): number | null | undefined =>
+    value === null || value === undefined ? value : round2(value * factor);
+  const edges = shape.edges.map((row) => {
+    if (row.id === edgeId) {
+      // 斜め辺は横・縦移動が倍率で伸びるので、そのまま実寸になる
+      if (isDiagonal(row.direction)) {
+        return {
+          ...row,
+          dx: scaled(row.dx),
+          dy: scaled(row.dy),
+          bulge: scaled(row.bulge),
+        };
+      }
+      return { ...row, length: round2(length), bulge: scaled(row.bulge) };
+    }
+    return {
+      ...row,
+      length: row.length === null ? null : round2(row.length * factor),
+      dx: scaled(row.dx),
+      dy: scaled(row.dy),
+      bulge: scaled(row.bulge),
+    };
+  });
+  const columns = (shape.columns ?? []).map((col) => ({
+    ...col,
+    x: round2(col.x * factor),
+    y: round2(col.y * factor),
+    width: round2(col.width * factor),
+    depth: round2(col.depth * factor),
+  }));
+  return { ...shape, edges, columns };
+}
+
+/** 図形を回す向き（選んだ辺を水平か垂直にそろえる） */
+export type ShapeRotation = "horizontal" | "vertical";
+
+export interface ShapeTurn {
+  shape: RoomShape;
+  /** 回した角度（ラジアン。下敷きの図面を同じ向きに回すときに使う） */
+  angle: number;
+  /** 回転の起点（選んだ辺の始点・回る前の位置） */
+  pivot: Point;
+  /** 回転の起点のあらたな位置（下敷きを同じ場所に留めるために使う） */
+  pivotTo: Point;
+}
+
+/**
+ * 選んだ辺が水平（右向きか左向きの近い方）または垂直（下向きか上向きの近い方）に
+ * なるように、辺の始点を起点に図形全体を回す。
+ * 全辺の移動量を同じ角度で回し、回ったあと水平・垂直にそろった辺は向きと寸法に直す
+ * （自動算出の辺は軸が変わらないときだけ自動のままにする）。独立柱の位置も回す
+ * （柱の大きさは縦横のまま残る）。向きが決まらない辺では null。
+ */
+export function rotateShape(
+  shape: RoomShape,
+  edgeId: string,
+  target: ShapeRotation,
+): ShapeTurn | null {
+  const solved = solveShape(shape);
+  const index = solved.edges.findIndex((row) => row.id === edgeId);
+  if (index < 0) return null;
+  const row = solved.edges[index];
+  const pivot = solved.points[index];
+  if (pivot === undefined || row.resolved === null || row.resolved <= 0)
+    return null;
+  const vector = edgeVector(row, row.resolved);
+  // 近い方の向きへそろえる角度
+  const goal =
+    target === "horizontal"
+      ? vector.x >= 0
+        ? 0
+        : Math.PI
+      : vector.y >= 0
+        ? Math.PI / 2
+        : -Math.PI / 2;
+  const angle = goal - Math.atan2(vector.y, vector.x);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const turn = (v: Point): Point => ({
+    x: v.x * cos - v.y * sin,
+    y: v.x * sin + v.y * cos,
+  });
+  // 回したあとの各辺の移動量。図形は原点から描き直すので、起点のあらたな位置は
+  // 前の辺の移動量を足した所になる（独立柱・下敷きを同じ関係に留めるために使う）
+  const rotated = solved.edges.map((item) =>
+    turn(edgeVector(item, item.resolved)),
+  );
+  // 起点のあらたな位置は、書き出す寸法（丸めた移動量）を足した所に合わせる
+  const pivotTo = rotated
+    .slice(0, index)
+    .reduce<Point>(
+      (sum, v) => ({ x: sum.x + round2(v.x), y: sum.y + round2(v.y) }),
+      { x: 0, y: 0 },
+    );
+  const edges = solved.edges.map((item, i) => {
+    const v = rotated[i];
+    const dx = round2(v.x);
+    const dy = round2(v.y);
+    const base = { id: item.id, kind: item.kind, bulge: item.bulge };
+    const horizontal = Math.abs(dy) < 0.005 && Math.abs(dx) >= 0.005;
+    const vertical = Math.abs(dx) < 0.005 && Math.abs(dy) >= 0.005;
+    if (horizontal || vertical) {
+      const direction: EdgeDirection = horizontal
+        ? dx > 0
+          ? "E"
+          : "W"
+        : dy > 0
+          ? "S"
+          : "N";
+      // 自動算出の辺は、そろった軸が元と同じなら自動のままにする
+      const sameAxis =
+        (item.direction === "E" || item.direction === "W") === horizontal;
+      const length =
+        item.auto && sameAxis ? null : round2(Math.abs(horizontal ? dx : dy));
+      return { ...base, direction, length };
+    }
+    return { ...base, direction: "D" as const, length: null, dx, dy };
+  });
+  const columns = (shape.columns ?? []).map((col) => {
+    const p = turn({ x: col.x - pivot.x, y: col.y - pivot.y });
+    return {
+      ...col,
+      x: round2(pivotTo.x + p.x),
+      y: round2(pivotTo.y + p.y),
+    };
+  });
+  return { shape: { ...shape, edges, columns }, angle, pivot, pivotTo };
 }
 
 /** 辺を分割する（元の寸法を入れると残りは自動算出になる） */

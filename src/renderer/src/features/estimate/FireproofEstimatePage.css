@@ -1,0 +1,213 @@
+/* 耐火被覆・塗装入力表（入力管理表・柱入力表） */
+.fireproof-estimate-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fireproof-estimate-page .section-scroll {
+  flex: 1 1 0;
+  overflow: auto;
+  min-height: 60px;
+  /* 柱入力表と右側の取合記号表を横に並べる */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* 計算書の欄（種類を選ぶ欄）と、その右の「開く」の欄 */
+.fireproof-estimate-page table.fireproof-manage td.sheet select,
+.fireproof-estimate-page table.fireproof-manage td.open button {
+  display: block;
+  width: 100%;
+}
+
+/* 取合記号表（資料どおりの対応表。柱入力表の右に独立して出す） */
+.fireproof-estimate-page table.mark-table {
+  flex: none;
+}
+.fireproof-estimate-page table.mark-table td,
+.fireproof-estimate-page table.mark-table th {
+  white-space: nowrap;
+}
+.fireproof-estimate-page table.mark-table td.code {
+  text-align: center;
+  min-width: 32px;
+}
+
+.fireproof-estimate-page table.grid {
+  border-collapse: collapse;
+  width: auto;
+}
+
+.fireproof-estimate-page table.grid th,
+.fireproof-estimate-page table.grid td {
+  border: var(--line-thin);
+  padding: 1px 2px;
+  font-size: 12px;
+  white-space: nowrap;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fireproof-estimate-page table.grid th {
+  background: #1f4e79;
+  color: #fff;
+  font-weight: normal;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.fireproof-estimate-page table.grid input,
+.fireproof-estimate-page table.grid select {
+  border: none;
+  width: 100%;
+  font-size: 12px;
+  background: transparent;
+}
+
+.fireproof-estimate-page table.grid input.num,
+.fireproof-estimate-page table.grid td.number {
+  text-align: right;
+}
+
+.fireproof-estimate-page table.grid tr.selected td {
+  background: #dbeafe;
+}
+
+/* 見出しの右端。ドラッグで列幅を変える（計算書と同じつまみ） */
+.fireproof-estimate-page table.grid th .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.fireproof-estimate-page table.grid th .col-resize:hover {
+  background: #94a3b8;
+}
+
+/* 列の並びだけ（幅は見出しで変えられる） */
+.fireproof-estimate-page table.fireproof-manage td.no,
+.fireproof-estimate-page table.fireproof-manage th.no {
+  text-align: center;
+}
+
+/* 柱入力表の先頭（管理表と同じ明細）はスクロールしない固定の表 */
+.fireproof-estimate-page table.fireproof-manage.head {
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+}
+
+/* 耐火被覆厚み・合計の行 */
+.fireproof-estimate-page .fireproof-thickness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #eef1f6;
+  font-size: 12px;
+}
+
+.fireproof-estimate-page .fireproof-thickness input {
+  width: 6ch;
+  text-align: right;
+}
+
+/* 汎用計算書の記号（WA〜WC・SA〜SD）と合計数量の帯 */
+.fireproof-estimate-page .toolbar .adjacency-symbols {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.fireproof-estimate-page .toolbar .adjacency-symbols .sum b {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
+  background: #fde3c8;
+  padding: 0 4px;
+}
+
+/* 厚みが未入力のときの案内 */
+.fireproof-estimate-page .fireproof-thickness .thickness-note {
+  color: #b2452b;
+}
+
+.fireproof-estimate-page .fireproof-thickness .sum b {
+  display: inline-block;
+  min-width: 8ch;
+  text-align: right;
+  background: #fde3c8;
+  padding: 0 4px;
+}
+
+/* 柱入力表：断面必要計算式は薄い黄色（自動で出る欄の目印） */
+.fireproof-estimate-page table.fireproof-column td.section {
+  background: #fbfbd0;
+}
+
+/* 階が空欄の行は上の階を薄いグレーで出す（上の行と同じ扱い） */
+.fireproof-estimate-page table.fireproof-column td.floor input::placeholder {
+  color: #94a3b8;
+}
+
+/* 柱入力表は行を詰めて多くの行が見えるようにする */
+.fireproof-estimate-page table.fireproof-column td {
+  padding: 0 2px;
+  line-height: 1.2;
+  height: 16px;
+}
+
+.fireproof-estimate-page table.fireproof-column td input {
+  padding: 0;
+  line-height: 1.2;
+}
+
+/* 記号の右横に出す寸法・出ない理由の小さな案内 */
+.fireproof-estimate-page table.fireproof-column td.symbol input {
+  width: 6ch;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.fireproof-estimate-page table.fireproof-column td.symbol .size-hint {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* 壁取合mを分けるＡ・Ｂ・Ｃの✔欄 */
+.fireproof-estimate-page table.fireproof-column td.mark,
+.fireproof-estimate-page table.fireproof-column th.mark {
+  text-align: center;
+}
+
+.fireproof-estimate-page table.fireproof-column th.mark .mark-label {
+  width: 90%;
+  background: #fff;
+  color: #111;
+  text-align: center;
+  border: var(--line-thin);
+  font-size: 12px;
+}
+
+.fireproof-estimate-page table.fireproof-column td.num,
+.fireproof-estimate-page table.fireproof-column td.num input {
+  text-align: right;
+}
+
+.fireproof-estimate-page .hint {
+  margin: 4px 8px;
+  font-size: 12px;
+  color: #374151;
+}

@@ -35,6 +35,7 @@ import {
   type FrameManualLine,
   type FramePlacement,
   type FrameTrace,
+  parseFrameTraces,
 } from "../../../../core/frame/frame";
 import {
   floorArea,
@@ -58,11 +59,17 @@ import {
 } from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { pdfPageImage } from "./pdfPage";
+import {
+  loadImageSize,
+  spotBesideBoxes,
+  type UnderlayBox,
+} from "./useUnderlay";
 import CalcPrintSheet from "../print/CalcPrintSheet";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import "./FrameSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { ask } from "../common/askDialog";
 
 interface Props {
@@ -72,6 +79,8 @@ interface Props {
   onBack: () => void;
   /** 置ける部屋の名前を押したとき、その部屋の計算書を開く */
   onOpenRoomSheet?: (estimateRowId: number) => void;
+  /** 施工高さを直したときに部位別入力表の行（天井高さ）へも伝える */
+  onWorkHeightChange?: (height: number | null) => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
 }
@@ -144,12 +153,32 @@ function viewBox(points: { x: number; y: number }[]): {
   return { box: `${left} ${top} ${span} ${span}`, span };
 }
 
+/** ↶戻る・↷進むで戻す図の中身（置いた部屋・引いた線・線の設定・建具・下敷き図面・軸組種類をまとめて1つにする） */
+interface FrameDiagramContent {
+  placements: FramePlacement[];
+  manualLines: FrameManualLine[];
+  attributes: Record<string, FrameLineAttribute>;
+  frameFittings: {
+    id: string;
+    symbol: string;
+    multiplier: number;
+    lineId: string | null;
+  }[];
+  traces: FrameTrace[];
+  /** 動かす・合わせる・外すの対象にしている図面の番号 */
+  activeTrace: number;
+  /** 「🔗 まとめて動かす」がONか */
+  traceLocked: boolean;
+  kinds: FrameKind[];
+}
+
 export default function FrameSheetPage({
   project,
   row,
   roomName,
   onBack,
   onOpenRoomSheet,
+  onWorkHeightChange,
   printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FrameSheet | null>(null);
@@ -165,10 +194,47 @@ export default function FrameSheetPage({
   >([]);
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [workHeight, setWorkHeight] = useState<number | null>(null);
-  /** 下敷きにする図面画像（なぞって線を引く） */
-  const [trace, setTrace] = useState<FrameTrace>(EMPTY_FRAME_TRACE);
-  /** 図面画像の大きさ（画素） */
-  const [traceSize, setTraceSize] = useState({ width: 1000, height: 700 });
+  /** 下敷きに置いてある図面画像（なぞって線を引く。複数枚を重ねられる） */
+  const [traces, setTraces] = useState<FrameTrace[]>([]);
+  /** 動かす・合わせる・外すの対象にしている図面の番号 */
+  const [activeTrace, setActiveTrace] = useState(0);
+  /** 「🔗 まとめて動かす」：ONの間は「✥ 図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
+  const [traceLocked, setTraceLocked] = useState(false);
+  /** 図面画像の大きさ（画素。画像データごとに覚える） */
+  const [traceSizes, setTraceSizes] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
+  /** いま選んでいる図面（無ければ空）。縮尺合わせ・濃さ・外すはこの1枚に効く */
+  const trace =
+    traces[Math.min(activeTrace, Math.max(traces.length - 1, 0))] ??
+    EMPTY_FRAME_TRACE;
+  /** 選んでいる図面の大きさ（画素。読み込むまでは仮の大きさ） */
+  const traceSize = traceSizes[trace.image] ?? { width: 1000, height: 700 };
+  /** 選んだ図面の番号をドラッグ中の古いcallbackからも見るため参照で持つ */
+  const activeTraceRef = useRef(activeTrace);
+  activeTraceRef.current = activeTrace;
+  /** いま選んでいる図面だけを書き替える（image="" にするとその図面が外れる） */
+  const setTrace = useCallback(
+    (next: FrameTrace | ((current: FrameTrace) => FrameTrace)) => {
+      setTraces((current) => {
+        const index = Math.min(activeTraceRef.current, current.length - 1);
+        const resolved =
+          typeof next === "function"
+            ? next(current[index] ?? EMPTY_FRAME_TRACE)
+            : next;
+        if (index < 0) return resolved.image === "" ? current : [resolved];
+        return current
+          .map((item, at) => (at === index ? resolved : item))
+          .filter((item) => item.image !== "");
+      });
+    },
+    [],
+  );
+  // 図面を外して枚数が減ったら、選んだ番号を最後の図面に合わせる
+  useEffect(() => {
+    if (activeTrace > traces.length - 1)
+      setActiveTrace(Math.max(traces.length - 1, 0));
+  }, [activeTrace, traces.length]);
   /** 図面の使い方：off＝ふつう／scale＝縮尺合わせ／move＝図面を動かす */
   const [traceMode, setTraceMode] = useState<"off" | "scale" | "move">("off");
   /** 縮尺合わせで押した2点（図の座標m） */
@@ -231,8 +297,10 @@ export default function FrameSheetPage({
   const traceDragRef = useRef<{
     clientX: number;
     clientY: number;
-    x: number;
-    y: number;
+    /** つかんだ図面の番号（まとめて動かすでないとき、この1枚だけ動く） */
+    index: number;
+    /** 動かし始めの全図面（ここからずらすので加速しない。まとめて動かすの基準にもなる） */
+    all: FrameTrace[];
   } | null>(null);
   const dragRef = useRef<{
     placementId: string;
@@ -241,6 +309,10 @@ export default function FrameSheetPage({
     x: number;
     y: number;
   } | null>(null);
+
+  /** 部位別入力表の行の天井高さ（読み込みのときだけ見る） */
+  const rowHeightRef = useRef(row.ceilingHeight);
+  rowHeightRef.current = row.ceilingHeight;
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
@@ -251,16 +323,109 @@ export default function FrameSheetPage({
       frameFittings,
       lower,
       workHeight,
-      trace,
+      traces,
+      activeTrace,
+      traceLocked,
       kinds,
     },
     () => save(),
   );
 
+  /** 図の履歴（↶戻る・↷進む用） */
+  const diagramHistory = useUndoRedo<FrameDiagramContent>();
+  const diagramRef = useRef<FrameDiagramContent>({
+    placements: [],
+    manualLines: [],
+    attributes: {},
+    frameFittings: [],
+    traces: [],
+    activeTrace: 0,
+    traceLocked: false,
+    kinds: defaultFrameKinds(),
+  });
+  useEffect(() => {
+    diagramRef.current = {
+      placements,
+      manualLines,
+      attributes,
+      frameFittings,
+      traces,
+      activeTrace,
+      traceLocked,
+      kinds,
+    };
+  }, [
+    placements,
+    manualLines,
+    attributes,
+    frameFittings,
+    traces,
+    activeTrace,
+    traceLocked,
+    kinds,
+  ]);
+
+  /** 図を直す直前に、今の形を履歴へ積む */
+  const pushDiagram = useCallback((): void => {
+    diagramHistory.push(diagramRef.current);
+  }, [diagramHistory]);
+
+  /** 図を1つ前の形に戻す */
+  const undoDiagram = (): void => {
+    const previous = diagramHistory.undo(diagramRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    panDragRef.current = null;
+    traceDragRef.current = null;
+    dragRef.current = null;
+    endRef.current = null;
+    setDrawStart(null);
+    setScalePoints([]);
+    setHeldView(null);
+    setPlacements(previous.placements);
+    setManualLines(previous.manualLines);
+    setAttributes(previous.attributes);
+    setFrameFittings(previous.frameFittings);
+    setTraces(previous.traces);
+    setActiveTrace(previous.activeTrace);
+    setTraceLocked(previous.traceLocked);
+    setKinds(previous.kinds);
+    setMessage("図を1つ前に戻しました（保存すると確定します）");
+  };
+
+  /** 戻した図を1つ先へ進める */
+  const redoDiagram = (): void => {
+    const next = diagramHistory.redo(diagramRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    panDragRef.current = null;
+    traceDragRef.current = null;
+    dragRef.current = null;
+    endRef.current = null;
+    setDrawStart(null);
+    setScalePoints([]);
+    setHeldView(null);
+    setPlacements(next.placements);
+    setManualLines(next.manualLines);
+    setAttributes(next.attributes);
+    setFrameFittings(next.frameFittings);
+    setTraces(next.traces);
+    setActiveTrace(next.activeTrace);
+    setTraceLocked(next.traceLocked);
+    setKinds(next.kinds);
+    setMessage("図を1つ先へ進めました（保存すると確定します）");
+  };
+
   useEffect(() => {
     if (row.id === null) return;
     void (async () => {
       const loaded = await window.sekisan.getFrameSheet(row.id as number);
+      // 施工高さは部位別入力表の天井高さを優先（部位別入力表で直した高さを引き継ぐ）
+      const height = rowHeightRef.current ?? loaded.workHeight;
       setSheet(loaded);
       setPlacements(parseJson<FramePlacement[]>(loaded.layoutJson, []));
       setManualLines(parseJson<FrameManualLine[]>(loaded.linesJson, []));
@@ -281,13 +446,12 @@ export default function FrameSheetPage({
         >(loaded.fittingsJson, []),
       );
       setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
-      setWorkHeight(loaded.workHeight);
-      const loadedTrace = parseJson<FrameTrace>(
-        loaded.traceJson,
-        EMPTY_FRAME_TRACE,
-      );
+      setWorkHeight(height);
+      const loadedTrace = parseFrameTraces(loaded.traceJson);
       const loadedKinds = parseJson<FrameKind[]>(loaded.kindsJson, []);
-      setTrace(loadedTrace);
+      setTraces(loadedTrace.traces);
+      setActiveTrace(loadedTrace.active);
+      setTraceLocked(loadedTrace.locked);
       setKinds(loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds());
       markSaved({
         placements: parseJson<FramePlacement[]>(loaded.layoutJson, []),
@@ -305,16 +469,32 @@ export default function FrameSheetPage({
           }[]
         >(loaded.fittingsJson, []),
         lower: trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
+        // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
         workHeight: loaded.workHeight,
-        trace: loadedTrace,
+        traces: loadedTrace.traces,
+        activeTrace: loadedTrace.active,
+        traceLocked: loadedTrace.locked,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
       });
+      diagramHistory.clear();
       setRooms(await window.sekisan.listFrameRooms(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
       setPartValues(await window.sekisan.getFittingPartValues());
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [markSaved, project.id, row.id]);
+
+  /** 施工高さを直す（部位別入力表の天井高さへも伝える） */
+  const changeWorkHeight = useCallback(
+    (text: string): void => {
+      const trimmed = text.trim();
+      const value = trimmed === "" ? null : Number(trimmed);
+      if (value !== null && Number.isNaN(value)) return;
+      setWorkHeight(value);
+      onWorkHeightChange?.(value);
+    },
+    [onWorkHeightChange],
+  );
 
   // 図で選んだ「引いた線」は Delete（BackSpace）で消せるようにする
   useEffect(() => {
@@ -327,6 +507,7 @@ export default function FrameSheetPage({
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (target?.isContentEditable === true) return;
       event.preventDefault();
+      pushDiagram();
       setManualLines((current) =>
         current.filter((line) => line.id !== selectedLineId),
       );
@@ -447,21 +628,31 @@ export default function FrameSheetPage({
       );
   }, [symbols]);
 
-  /** 図面画像を置く大きさ（m） */
-  const traceBox = useMemo(() => {
-    if (trace.image === "" || trace.metersPerPixel <= 0) return null;
-    return {
-      x: trace.x,
-      y: trace.y,
-      width: traceSize.width * trace.metersPerPixel,
-      height: traceSize.height * trace.metersPerPixel,
-    };
-  }, [trace, traceSize]);
+  /** 置いてある図面の大きさ（m）。traces と同じ並び、画像の無い所は null */
+  const traceBoxes = useMemo<(UnderlayBox | null)[]>(
+    () =>
+      traces.map((item) => {
+        const size = traceSizes[item.image];
+        if (item.image === "" || item.metersPerPixel <= 0 || size === undefined)
+          return null;
+        return {
+          x: item.x,
+          y: item.y,
+          width: size.width * item.metersPerPixel,
+          height: size.height * item.metersPerPixel,
+        };
+      }),
+    [traceSizes, traces],
+  );
+  /** いま選んでいる図面を置く大きさ（m） */
+  const traceBox =
+    traceBoxes[Math.min(activeTrace, Math.max(traces.length - 1, 0))] ?? null;
 
   /** 図面だけを大きく／小さくする（真ん中を動かさず、引いた線はそのまま） */
   const resizeTrace = useCallback(
     (factor: number) => {
       if (traceBox === null) return;
+      pushDiagram();
       setTrace((current) => ({
         ...current,
         metersPerPixel: current.metersPerPixel * factor,
@@ -469,7 +660,7 @@ export default function FrameSheetPage({
         y: current.y + (traceBox.height * (1 - factor)) / 2,
       }));
     },
-    [traceBox],
+    [pushDiagram, traceBox],
   );
 
   const points = useMemo(
@@ -478,17 +669,16 @@ export default function FrameSheetPage({
         { x: line.x1, y: line.y1 },
         { x: line.x2, y: line.y2 },
       ]),
-      ...(traceBox === null || (!fitTrace && lines.length > 0)
+      ...(!fitTrace && lines.length > 0
         ? []
-        : [
-            { x: traceBox.x, y: traceBox.y },
-            {
-              x: traceBox.x + traceBox.width,
-              y: traceBox.y + traceBox.height,
-            },
-          ]),
+        : traceBoxes
+            .filter((box): box is UnderlayBox => box !== null)
+            .flatMap((box) => [
+              { x: box.x, y: box.y },
+              { x: box.x + box.width, y: box.y + box.height },
+            ])),
     ],
-    [fitTrace, lines, traceBox],
+    [fitTrace, lines, traceBoxes],
   );
   const autoView = useMemo(() => viewBox(points), [points]);
   /** 表示範囲を止めているとき（線を引く間は図面が動かないようにする） */
@@ -576,7 +766,9 @@ export default function FrameSheetPage({
       frameFittings,
       lower: trimmed,
       workHeight,
-      trace,
+      traces,
+      activeTrace,
+      traceLocked,
       kinds,
     });
     const saved = await window.sekisan.saveFrameSheet({
@@ -587,7 +779,11 @@ export default function FrameSheetPage({
       fittingsJson: JSON.stringify(frameFittings),
       lowerJson: JSON.stringify(trimmed),
       workHeight,
-      traceJson: JSON.stringify(trace),
+      traceJson: JSON.stringify({
+        traces,
+        active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
+        locked: traceLocked,
+      }),
       kindsJson: JSON.stringify(kinds),
       note: sheet.note,
     });
@@ -603,42 +799,73 @@ export default function FrameSheetPage({
     placements,
     printMode,
     sheet,
-    trace,
+    traces,
+    activeTrace,
+    traceLocked,
     workHeight,
   ]);
 
   const updateAttribute = useCallback(
-    (lineId: string, patch: Partial<FrameLineAttribute>) =>
+    (lineId: string, patch: Partial<FrameLineAttribute>, quiet = false) => {
+      if (!quiet) pushDiagram();
       setAttributes((current) => ({
         ...current,
         [lineId]: { ...frameLineAttribute(current[lineId]), ...patch },
-      })),
-    [],
+      }));
+    },
+    [pushDiagram],
   );
 
-  // 図面画像の大きさ（画素）を測る
+  // 図面画像の大きさ（画素）を測る（置いてある図面を全部）
   useEffect(() => {
-    if (trace.image === "") return;
-    const image = new Image();
-    image.onload = () =>
-      setTraceSize({ width: image.naturalWidth, height: image.naturalHeight });
-    image.src = trace.image;
-  }, [trace.image]);
+    traces.forEach((item) => {
+      if (item.image === "" || traceSizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setTraceSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [traceSizes, traces]);
 
-  /** 取り込んだ図面を置く（縮尺はいったん仮に決めて、あとで合わせる） */
-  const putTraceImage = useCallback((dataUrl: string) => {
-    setHeldView(null);
-    setFitTrace(true);
-    setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
-    setScalePoints([]);
-    setTraceMode("scale");
-    // 縮尺合わせの間は線を引けないので、線引きは止めておく
-    setDrawing(false);
-    setDrawStart(null);
-    setMessage(
-      "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
-    );
-  }, []);
+  /** 取り込んだ図面を足す（縮尺はいったん仮に決めて、あとで合わせる）。2枚目以降は今ある図面の右横に置く */
+  const putTraceImage = useCallback(
+    (dataUrl: string) => {
+      pushDiagram();
+      setHeldView(null);
+      setFitTrace(true);
+      const spot = spotBesideBoxes(traceBoxes);
+      setTraces((current) => [
+        ...current,
+        {
+          image: dataUrl,
+          metersPerPixel: 0.01,
+          x: spot.x,
+          y: spot.y,
+          opacity: 0.75,
+        },
+      ]);
+      setActiveTrace(traces.length);
+      setScalePoints([]);
+      setTraceMode("scale");
+      // 縮尺合わせの間は線を引けないので、線引きは止めておく
+      setDrawing(false);
+      setDrawStart(null);
+      setMessage(
+        "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
+      );
+    },
+    [pushDiagram, traceBoxes, traces.length],
+  );
 
   /** クリップボードの画像（Shift+Windows+S の切り取り）を図面にする */
   const pasteTraceImage = useCallback(async () => {
@@ -668,30 +895,70 @@ export default function FrameSheetPage({
     setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
   }, [putTraceImage]);
 
-  /** PDF・画像のファイルを選んで図面にする */
-  const openTraceFile = useCallback(async () => {
+  /** PDF・画像のファイルを選んで図面にする（まとめて複数選ぶと横に並べて置く） */
+  const openTraceFiles = useCallback(async () => {
     const page = Number(pageText);
     setMessage("ファイルを読んでいます…");
-    const got = await window.sekisan.openDrawingFile(page > 0 ? page : 1);
-    if (got.pdf !== "") {
-      const made = await pdfPageImage(got.pdf, page > 0 ? page : 1);
-      if (made.image === "") {
-        setMessage("PDFを画像にできませんでした");
-        return;
+    const got = await window.sekisan.openDrawingFiles(page > 0 ? page : 1);
+    if (got.items.length === 0) {
+      setMessage(got.note === "" ? "取り込みをやめました" : got.note);
+      return;
+    }
+    pushDiagram();
+    setHeldView(null);
+    setFitTrace(true);
+    // 縮尺合わせの間は線を引けないので、線引きは止めておく
+    setDrawing(false);
+    setDrawStart(null);
+    let cursor = spotBesideBoxes(traceBoxes);
+    let placed = 0;
+    for (const item of got.items) {
+      let dataUrl = item.image;
+      if (item.pdf !== "") {
+        const made = await pdfPageImage(item.pdf, page > 0 ? page : 1);
+        dataUrl = made.image;
+        if (dataUrl === "") {
+          setMessage("PDFを画像にできませんでした");
+          continue;
+        }
       }
-      putTraceImage(made.image);
-      return;
+      if (dataUrl === "") continue;
+      // 先に大きさを読み、次の図面をこの図面の右横へずらして置く
+      const size = await loadImageSize(dataUrl);
+      if (size !== null)
+        setTraceSizes((current) =>
+          current[dataUrl] !== undefined
+            ? current
+            : { ...current, [dataUrl]: size },
+        );
+      setTraces((current) => [
+        ...current,
+        {
+          image: dataUrl,
+          metersPerPixel: 0.01,
+          x: cursor.x,
+          y: cursor.y,
+          opacity: 0.75,
+        },
+      ]);
+      cursor = {
+        x: cursor.x + (size !== null ? size.width * 0.01 : 10) + 0.5,
+        y: cursor.y,
+      };
+      placed += 1;
     }
-    if (got.image !== "") {
-      putTraceImage(got.image);
-      return;
-    }
-    setMessage(got.note === "" ? "取り込みをやめました" : got.note);
-  }, [pageText, putTraceImage]);
+    if (placed === 0) return;
+    setActiveTrace(traces.length + placed - 1);
+    setScalePoints([]);
+    setTraceMode("scale");
+    setMessage(
+      `${placed}枚の図面を置きました。図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください`,
+    );
+  }, [pageText, pushDiagram, traceBoxes, traces.length]);
 
   /** 縮尺合わせの前の形（「↶ 縮尺を戻す」で元に戻せるように取っておく） */
   const [scaleUndo, setScaleUndo] = useState<
-    { trace: FrameTrace; lines: FrameManualLine[] }[]
+    { traces: FrameTrace[]; active: number; lines: FrameManualLine[] }[]
   >([]);
 
   /** 縮尺合わせ：2点の間、または選んだ線の実寸を入れて、図面と引いた線を伸び縮みさせる */
@@ -716,9 +983,14 @@ export default function FrameSheetPage({
       return;
     }
     const factor = meters / now;
+    pushDiagram();
     setScaleUndo((current) => [
       ...current.slice(-9),
-      { trace, lines: manualLines },
+      {
+        traces,
+        active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
+        lines: manualLines,
+      },
     ]);
     setTrace((current) => ({
       ...current,
@@ -740,14 +1012,72 @@ export default function FrameSheetPage({
     setHeldView(null);
     setTraceMode("off");
     setMessage("縮尺を合わせました（図面も引いた線も一緒に伸び縮みしました）");
-  }, [manualLines, scalePoints, scaleText, selectedLineId, trace]);
+  }, [
+    activeTrace,
+    manualLines,
+    pushDiagram,
+    scalePoints,
+    scaleText,
+    selectedLineId,
+    traces,
+  ]);
+
+  /** 「📍 近くへ戻す」で図面を置き直す場所（置いた部屋・引いた線の左上の角。無ければ原点） */
+  const traceHomeSpot = useMemo(() => {
+    const xs = [
+      ...placements.map((placement) => placement.x),
+      ...manualLines.flatMap((line) => [line.x1, line.x2]),
+    ];
+    const ys = [
+      ...placements.map((placement) => placement.y),
+      ...manualLines.flatMap((line) => [line.y1, line.y2]),
+    ];
+    if (xs.length === 0) return { x: 0, y: 0 };
+    return { x: Math.min(...xs), y: Math.min(...ys) };
+  }, [manualLines, placements]);
+
+  /** 選んでいる図面をいちばん上に出す（後に置いた図面が上に重なるので、いちばん後ろへ移す） */
+  const bringTraceFront = useCallback(() => {
+    const index = Math.min(activeTraceRef.current, traces.length - 1);
+    const picked = traces[index];
+    if (picked === undefined || traces.length < 2) return;
+    pushDiagram();
+    setTraces([...traces.filter((_, at) => at !== index), picked]);
+    setActiveTrace(traces.length - 1);
+    setMessage("選んでいる図面をいちばん上に出しました");
+  }, [pushDiagram, traces]);
+
+  /** 選んでいる図面を線・部屋の近くへ戻す（まとめて動かす中は全員まとめて戻る） */
+  const goHomeTrace = useCallback(() => {
+    const index = Math.min(activeTraceRef.current, traces.length - 1);
+    const picked = traces[index];
+    if (picked === undefined) return;
+    pushDiagram();
+    if (traceLocked && traces.length > 1) {
+      const dx = traceHomeSpot.x - picked.x;
+      const dy = traceHomeSpot.y - picked.y;
+      setTraces(
+        traces.map((item) =>
+          item.image === ""
+            ? item
+            : { ...item, x: item.x + dx, y: item.y + dy },
+        ),
+      );
+    } else {
+      setTrace({ ...picked, x: traceHomeSpot.x, y: traceHomeSpot.y });
+    }
+    setMessage("図面を図形の近くへ戻しました");
+  }, [pushDiagram, setTrace, traceHomeSpot, traceLocked, traces]);
 
   /** 縮尺合わせを1回分もとに戻す */
   const undoScale = useCallback(() => {
     setScaleUndo((current) => {
       const last = current[current.length - 1];
       if (last === undefined) return current;
-      setTrace(last.trace);
+      setTraces(last.traces);
+      setActiveTrace(
+        Math.min(last.active, Math.max(last.traces.length - 1, 0)),
+      );
       setManualLines(last.lines);
       setHeldView(null);
       setMessage("縮尺合わせを元に戻しました");
@@ -797,19 +1127,21 @@ export default function FrameSheetPage({
         setMessage("先に表の左のチェックで線を選んでください");
         return;
       }
-      checkedIds.forEach((id) => updateAttribute(id, { kindId }));
+      pushDiagram();
+      checkedIds.forEach((id) => updateAttribute(id, { kindId }, true));
       setMessage(
         `${checkedIds.length}本を「${kindOf(kindId)?.name ?? "種類なし"}」にしました`,
       );
       setCheckedIds([]);
     },
-    [checkedIds, kindOf, updateAttribute],
+    [checkedIds, kindOf, pushDiagram, updateAttribute],
   );
 
   /** レイアウトへ部屋を置く（重ならないように少しずらして置く） */
   const addPlacement = useCallback(
     (room: FrameRoomOption) => {
       const offset = placements.length * 0.5;
+      pushDiagram();
       setPlacements((current) => [
         ...current,
         {
@@ -823,7 +1155,7 @@ export default function FrameSheetPage({
       ]);
       setMessage(`${room.roomName} を置きました（ドラッグで移動できます）`);
     },
-    [placements.length],
+    [placements.length, pushDiagram],
   );
 
   /** 画面の位置を図の座標（m）に直す */
@@ -946,24 +1278,28 @@ export default function FrameSheetPage({
   const showRoomTables = expanded && !manualOnly && showRoomList;
 
   /** 表に入れた長さに合わせて、引いた線の終わりの端だけを動かす */
-  const setManualLength = useCallback((id: string, length: number): void => {
-    if (!Number.isFinite(length) || length <= 0) return;
-    setManualLines((current) =>
-      current.map((line) => {
-        if (line.id !== id) return line;
-        const dx = line.x2 - line.x1;
-        const dy = line.y2 - line.y1;
-        const now = Math.hypot(dx, dy);
-        if (now < 1e-6) return line;
-        const at = (value: number): number => Math.round(value * 1000) / 1000;
-        return {
-          ...line,
-          x2: at(line.x1 + (dx / now) * length),
-          y2: at(line.y1 + (dy / now) * length),
-        };
-      }),
-    );
-  }, []);
+  const setManualLength = useCallback(
+    (id: string, length: number): void => {
+      if (!Number.isFinite(length) || length <= 0) return;
+      pushDiagram();
+      setManualLines((current) =>
+        current.map((line) => {
+          if (line.id !== id) return line;
+          const dx = line.x2 - line.x1;
+          const dy = line.y2 - line.y1;
+          const now = Math.hypot(dx, dy);
+          if (now < 1e-6) return line;
+          const at = (value: number): number => Math.round(value * 1000) / 1000;
+          return {
+            ...line,
+            x2: at(line.x1 + (dx / now) * length),
+            y2: at(line.y1 + (dy / now) * length),
+          };
+        }),
+      );
+    },
+    [pushDiagram],
+  );
 
   /** 引いた線の端をつまんで伸び縮みさせるときの、つかんでいる端 */
   const endRef = useRef<{
@@ -1038,11 +1374,26 @@ export default function FrameSheetPage({
         const rect = svg.getBoundingClientRect();
         const size = Math.min(rect.width, rect.height) || 1;
         const scale = view.span / size;
-        setTrace((current) => ({
-          ...current,
-          x: moveTrace.x + (event.clientX - moveTrace.clientX) * scale,
-          y: moveTrace.y + (event.clientY - moveTrace.clientY) * scale,
-        }));
+        // 動かし始めの位置からの差を全図面（またはつかんだ1枚）に足す
+        const dx = (event.clientX - moveTrace.clientX) * scale;
+        const dy = (event.clientY - moveTrace.clientY) * scale;
+        if (traceLocked) {
+          setTraces(
+            moveTrace.all.map((item) => ({
+              ...item,
+              x: item.x + dx,
+              y: item.y + dy,
+            })),
+          );
+        } else {
+          setTraces(
+            moveTrace.all.map((item, at) =>
+              at === moveTrace.index
+                ? { ...item, x: item.x + dx, y: item.y + dy }
+                : item,
+            ),
+          );
+        }
         return;
       }
       const grabbed = endRef.current;
@@ -1095,10 +1446,10 @@ export default function FrameSheetPage({
         ),
       );
     },
-    [toModel, view.span],
+    [toModel, traceLocked, view.span],
   );
 
-  /** 始点クリック → 終点クリックで1本引く（軸組モード／レイアウトの「線を引く」） */
+  /** 始点クリック → 終点ク���ックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
       if (panMode) return;
@@ -1130,6 +1481,7 @@ export default function FrameSheetPage({
       const snap = (value: number): number => Math.round(value * 20) / 20;
       const next = snapPoint({ x: snap(point.x), y: snap(point.y) });
       if (drawStart === null) {
+        pushDiagram();
         setDrawStart(next);
         setMessage("終点をクリックしてください");
         return;
@@ -1150,7 +1502,7 @@ export default function FrameSheetPage({
         ...current,
         { id, x1: drawStart.x, y1: drawStart.y, x2: end.x, y2: end.y },
       ]);
-      if (drawKindId !== "") updateAttribute(id, { kindId: drawKindId });
+      if (drawKindId !== "") updateAttribute(id, { kindId: drawKindId }, true);
       setDrawStart(null);
       setMessage(
         drawKindId === ""
@@ -1167,6 +1519,7 @@ export default function FrameSheetPage({
       scalePoints.length,
       snapPoint,
       toModel,
+      pushDiagram,
       traceMode,
       updateAttribute,
     ],
@@ -1266,283 +1619,246 @@ export default function FrameSheetPage({
 
   /** 軸組の表の見出し（種類別でも、まとめて1つの表でも同じ） */
   const kindTableHead = (
-            <thead>
-              <tr>
-                <th className="no" />
-                <th className="no">番号</th>
-                <th>種類</th>
-                <th className="num">長さ</th>
-                <th className="num">高さ</th>
-                <th>建具</th>
-                <th className="num">面積</th>
-                <th className="num">補強</th>
-                <th />
-              </tr>
-            </thead>
+    <thead>
+      <tr>
+        <th className="no" />
+        <th className="no">番号</th>
+        <th>種類</th>
+        <th className="num">長さ</th>
+        <th className="num">高さ</th>
+        <th>建具</th>
+        <th className="num">面積</th>
+        <th className="num">補強</th>
+        <th />
+      </tr>
+    </thead>
   );
 
   /** 種類ごとの合計行 */
   const kindTotalRow = (group: FrameKindGroup): ReactElement => (
-              <tr className="kind-total">
-                <td className="no" />
-                <td
-                  className="symbol"
-                  title="クリックで計算式に入ります（面積計）"
-                  onClick={() => group.symbol && useSymbol(group.symbol)}
-                >
-                  {group.symbol}
-                </td>
-                <td>合計</td>
-                <td
-                  className="num"
-                  title="クリックで長さ計を計算式に入れます"
-                  onClick={() =>
-                    group.symbol && useSymbol(`WSL${group.symbol.slice(2)}`)
-                  }
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + each.line.length,
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">
-                    {`WSL${group.symbol.slice(2)}`}
-                  </span>
-                </td>
-                <td className="num" />
-                <td />
-                <td
-                  className="num"
-                  title="クリックで面積計を計算式に入れます"
-                  onClick={() => group.symbol && useSymbol(group.symbol)}
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + (each.area ?? 0),
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">{group.symbol}</span>
-                </td>
-                <td
-                  className="num"
-                  title="クリックで補強計を計算式に入れます"
-                  onClick={() =>
-                    group.symbol && useSymbol(`WSR${group.symbol.slice(2)}`)
-                  }
-                >
-                  {formatNumber(
-                    group.results.reduce(
-                      (total, each) => total + each.reinforcement,
-                      0,
-                    ),
-                    2,
-                  )}
-                  <span className="total-symbol">
-                    {`WSR${group.symbol.slice(2)}`}
-                  </span>
-                </td>
-                <td />
-              </tr>
+    <tr className="kind-total">
+      <td className="no" />
+      <td
+        className="symbol"
+        title="クリックで計算式に入ります（面積計）"
+        onClick={() => group.symbol && useSymbol(group.symbol)}
+      >
+        {group.symbol}
+      </td>
+      <td>合計</td>
+      <td
+        className="num"
+        title="クリックで長さ計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(`WSL${group.symbol.slice(2)}`)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + each.line.length, 0),
+          2,
+        )}
+        <span className="total-symbol">{`WSL${group.symbol.slice(2)}`}</span>
+      </td>
+      <td className="num" />
+      <td />
+      <td
+        className="num"
+        title="クリックで面積計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(group.symbol)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + (each.area ?? 0), 0),
+          2,
+        )}
+        <span className="total-symbol">{group.symbol}</span>
+      </td>
+      <td
+        className="num"
+        title="クリックで補強計を計算式に入れます"
+        onClick={() => group.symbol && useSymbol(`WSR${group.symbol.slice(2)}`)}
+      >
+        {formatNumber(
+          group.results.reduce((total, each) => total + each.reinforcement, 0),
+          2,
+        )}
+        <span className="total-symbol">{`WSR${group.symbol.slice(2)}`}</span>
+      </td>
+      <td />
+    </tr>
   );
 
   /** 種類の中の線を1本ずつ */
   const kindLineRows = (group: FrameKindGroup): ReactElement[] =>
     group.results.map((result) => {
-                const manual = result.line;
-                return (
-                  <tr
-                    key={manual.id}
-                    className={selectedLineId === manual.id ? "selected" : ""}
-                    onClick={() => setSelectedLineId(manual.id)}
-                  >
-                    <td className="no">
-                      <input
-                        type="checkbox"
-                        title="まとめて軸組種類を付ける線を選びます"
-                        checked={checkedIds.includes(manual.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          setCheckedIds((current) =>
-                            e.target.checked
-                              ? [...current, manual.id]
-                              : current.filter((id) => id !== manual.id),
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="no" style={{ color: group.color }}>
-                      {manual.label}
-                      {doubled.ids.has(manual.id) && (
-                        <span
-                          className="doubled-mark"
-                          title="同じ位置に他の線があります"
-                        >
-                          重
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <select
-                        value={manual.kindId}
-                        style={{ color: group.color, fontWeight: 700 }}
-                        title="この線の軸組種類（図の色になります）"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) =>
-                          updateAttribute(manual.id, {
-                            kindId: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">（種類なし）</option>
-                        {kinds.map((kind) => (
-                          <option key={kind.id} value={kind.id}>
-                            {kind.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`l-${manual.id}-${manual.length}`}
-                        defaultValue={formatNumber(manual.length, 2)}
-                        title="長さを入れると、始めの端はそのままで終わりの端が動きます"
-                        onBlur={(e) =>
-                          setManualLength(manual.id, Number(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="num"
-                        key={`h-${manual.id}-${manual.workHeight ?? ""}`}
-                        defaultValue={
-                          manual.workHeight === null
-                            ? ""
-                            : formatNumber(manual.workHeight, 2)
-                        }
-                        placeholder={formatNumber(workHeight, 2)}
-                        title="空欄なら上の施工高さを使います"
-                        onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateAttribute(manual.id, {
-                            workHeight: text === "" ? null : Number(text),
-                          });
-                        }}
-                      />
-                    </td>
-                    <td className="fitting-cell">
-                      {frameFittings
-                        .filter((item) => item.lineId === manual.id)
-                        .map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="chip"
-                            title="押すとこの線から建具を外します"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFrameFittings((current) =>
-                                current.filter((each) => each.id !== item.id),
-                              );
-                            }}
-                          >
-                            {item.symbol}
-                            {item.multiplier > 1 ? `×${item.multiplier}` : ""}
-                          </button>
-                        ))}
-                      <select
-                        value=""
-                        title="この番号の線に付く建具を選びます"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const symbol = e.target.value;
-                          if (symbol === "") return;
-                          setFrameFittings((current) => [
-                            ...current,
-                            {
-                              id: newId("ff"),
-                              symbol,
-                              multiplier: 1,
-                              lineId: manual.id,
-                            },
-                          ]);
-                        }}
-                      >
-                        <option value="">＋建具</option>
-                        {fittings.map((fitting) => (
-                          <option key={fitting.id} value={fitting.symbol}>
-                            {fitting.symbol}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="num">{formatNumber(result.area, 2)}</td>
-                    <td className="num">
-                      {formatNumber(result.reinforcement, 2)}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        title="この線を消します"
-                        onClick={() => {
-                          setManualLines((current) =>
-                            current.filter((each) => each.id !== manual.id),
-                          );
-                          setSelectedLineId(null);
-                          setMessage("引いた線を消しました");
-                        }}
-                      >
-                        🗑
-                      </button>
-                    </td>
-                  </tr>
+      const manual = result.line;
+      return (
+        <tr
+          key={manual.id}
+          className={selectedLineId === manual.id ? "selected" : ""}
+          onClick={() => setSelectedLineId(manual.id)}
+        >
+          <td className="no">
+            <input
+              type="checkbox"
+              title="まとめて軸組種類を付ける線を選びます"
+              checked={checkedIds.includes(manual.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) =>
+                setCheckedIds((current) =>
+                  e.target.checked
+                    ? [...current, manual.id]
+                    : current.filter((id) => id !== manual.id),
+                )
+              }
+            />
+          </td>
+          <td className="no" style={{ color: group.color }}>
+            {manual.label}
+            {doubled.ids.has(manual.id) && (
+              <span className="doubled-mark" title="同じ位置に他の線があります">
+                重
+              </span>
+            )}
+          </td>
+          <td>
+            <select
+              value={manual.kindId}
+              style={{ color: group.color, fontWeight: 700 }}
+              title="この線の軸組種類（図の色になります）"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) =>
+                updateAttribute(manual.id, {
+                  kindId: e.target.value,
+                })
+              }
+            >
+              <option value="">（種類なし）</option>
+              {kinds.map((kind) => (
+                <option key={kind.id} value={kind.id}>
+                  {kind.name}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td>
+            <input
+              className="num"
+              key={`l-${manual.id}-${manual.length}`}
+              defaultValue={formatNumber(manual.length, 2)}
+              title="長さを入れると、始めの端はそのままで終わりの端が動きます"
+              onBlur={(e) => setManualLength(manual.id, Number(e.target.value))}
+            />
+          </td>
+          <td>
+            <input
+              className="num"
+              key={`h-${manual.id}-${manual.workHeight ?? ""}`}
+              defaultValue={
+                manual.workHeight === null
+                  ? ""
+                  : formatNumber(manual.workHeight, 2)
+              }
+              placeholder={formatNumber(workHeight, 2)}
+              title="空欄なら上の施工高さを使います"
+              onBlur={(e) => {
+                const text = e.target.value.trim();
+                updateAttribute(manual.id, {
+                  workHeight: text === "" ? null : Number(text),
+                });
+              }}
+            />
+          </td>
+          <td className="fitting-cell">
+            {frameFittings
+              .filter((item) => item.lineId === manual.id)
+              .map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="chip"
+                  title="押すとこの線から建具を外します"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    pushDiagram();
+                    setFrameFittings((current) =>
+                      current.filter((each) => each.id !== item.id),
+                    );
+                  }}
+                >
+                  {item.symbol}
+                  {item.multiplier > 1 ? `×${item.multiplier}` : ""}
+                </button>
+              ))}
+            <select
+              value=""
+              title="この番号の線に付く建具を選びます"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const symbol = e.target.value;
+                if (symbol === "") return;
+                pushDiagram();
+                setFrameFittings((current) => [
+                  ...current,
+                  {
+                    id: newId("ff"),
+                    symbol,
+                    multiplier: 1,
+                    lineId: manual.id,
+                  },
+                ]);
+              }}
+            >
+              <option value="">＋建具</option>
+              {fittings.map((fitting) => (
+                <option key={fitting.id} value={fitting.symbol}>
+                  {fitting.symbol}
+                </option>
+              ))}
+            </select>
+          </td>
+          <td className="num">{formatNumber(result.area, 2)}</td>
+          <td className="num">{formatNumber(result.reinforcement, 2)}</td>
+          <td>
+            <button
+              type="button"
+              title="この線を消します"
+              onClick={() => {
+                pushDiagram();
+                setManualLines((current) =>
+                  current.filter((each) => each.id !== manual.id),
                 );
-              });
+                setSelectedLineId(null);
+                setMessage("引いた線を消しました");
+              }}
+            >
+              🗑
+            </button>
+          </td>
+        </tr>
+      );
+    });
 
   /** 種類ごとの合計（表の下の注記） */
   const kindTotalsNote = (group: FrameKindGroup): ReactElement => (
-          <p className="totals">
-            長さ計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + each.line.length,
-                0,
-              ),
-              2,
-            )}
-            ／面積計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + (each.area ?? 0),
-                0,
-              ),
-              2,
-            )}
-            ／補強計{" "}
-            {formatNumber(
-              group.results.reduce(
-                (total, each) => total + each.reinforcement,
-                0,
-              ),
-              2,
-            )}
-            ／たて{" "}
-            {
-              group.results.filter((each) => each.line.label.startsWith("Y"))
-                .length
-            }
-            本・よこ{" "}
-            {
-              group.results.filter((each) => each.line.label.startsWith("X"))
-                .length
-            }
-            本
-          </p>
+    <p className="totals">
+      長さ計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + each.line.length, 0),
+        2,
+      )}
+      ／面積計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + (each.area ?? 0), 0),
+        2,
+      )}
+      ／補強計{" "}
+      {formatNumber(
+        group.results.reduce((total, each) => total + each.reinforcement, 0),
+        2,
+      )}
+      ／たて{" "}
+      {group.results.filter((each) => each.line.label.startsWith("Y")).length}
+      本・よこ{" "}
+      {group.results.filter((each) => each.line.label.startsWith("X")).length}本
+    </p>
   );
 
   /** 上段（レイアウト図・軸組の表）。印刷では紙の1枚目に入れる */
@@ -1560,6 +1876,26 @@ export default function FrameSheetPage({
       <section className="drawing">
         <div className="section-bar">
           <span>建物レイアウト（{MODE_LABEL[mode]}）</span>
+          {!printMode && (
+            <>
+              <button
+                type="button"
+                title="図の直しを1つ前に戻します"
+                onClick={undoDiagram}
+                disabled={!diagramHistory.canUndo}
+              >
+                ↶ 戻る
+              </button>
+              <button
+                type="button"
+                title="戻した図を1つ先へ進めます"
+                onClick={redoDiagram}
+                disabled={!diagramHistory.canRedo}
+              >
+                ↷ 進む
+              </button>
+            </>
+          )}
           <button
             type="button"
             title={
@@ -1591,7 +1927,7 @@ export default function FrameSheetPage({
               setZoom(1);
               setPanMode(false);
               // 図面も入れて、中身ぜんぶが入る大きさに戻す
-              if (trace.image !== "") setFitTrace(true);
+              if (traces.length > 0) setFitTrace(true);
               setHeldView(null);
             }}
           >
@@ -1610,7 +1946,7 @@ export default function FrameSheetPage({
           >
             ✋ 図を動かす
           </button>
-          {trace.image !== "" && (
+          {traces.length > 0 && (
             <button
               type="button"
               className={fitTrace ? "on" : ""}
@@ -1674,6 +2010,7 @@ export default function FrameSheetPage({
               type="button"
               title="最後に引いた線を1本消します（図の上の線をダブルクリックでも消せます）"
               onClick={() => {
+                pushDiagram();
                 setManualLines((current) => current.slice(0, -1));
                 setDrawStart(null);
                 setMessage("引いた線を1本消しました");
@@ -1693,6 +2030,7 @@ export default function FrameSheetPage({
                   ))
                 )
                   return;
+                pushDiagram();
                 setManualLines([]);
                 setDrawStart(null);
                 setSelectedLineId(null);
@@ -1710,28 +2048,77 @@ export default function FrameSheetPage({
               onClick={async () => {
                 if (!(await ask("下敷きの図面を外します。よろしいですか")))
                   return;
+                pushDiagram();
                 setTrace(EMPTY_FRAME_TRACE);
                 setTraceMode("off");
                 setScalePoints([]);
-                setMessage("下敷きの図面を外しました");
+                setMessage(
+                  traces.length > 1
+                    ? "選んでいる図面を外しました（他の図面は残ります）"
+                    : "下敷きの図面を外しました",
+                );
               }}
             >
               🗑 図面を外す
+            </button>
+          )}
+          {!printMode && traces.length > 1 && (
+            <>
+              <label
+                className="snap-field"
+                title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
+              >
+                図面を選ぶ
+                <select
+                  value={Math.min(activeTrace, Math.max(traces.length - 1, 0))}
+                  onChange={(e) => setActiveTrace(Number(e.target.value))}
+                >
+                  {traces.map((_, index) => (
+                    <option key={index} value={index}>
+                      図面{index + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
+                onClick={bringTraceFront}
+              >
+                ⬆ 上に出す
+              </button>
+              <button
+                type="button"
+                className={traceLocked ? "on" : ""}
+                title="ONの間「✥ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
+                onClick={() => setTraceLocked(!traceLocked)}
+              >
+                🔗 まとめて動かす
+              </button>
+            </>
+          )}
+          {!printMode && trace.image !== "" && (
+            <button
+              type="button"
+              title="選んでいる図面（橙枠）を線や部屋の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
+              onClick={goHomeTrace}
+            >
+              📍 近くへ戻す
             </button>
           )}
           {!printMode && (
             <>
               <button
                 type="button"
-                title="Shift+Windows+S で切り取った図面を下敷きにします（なぞって線を引けます）"
+                title="Shift+Windows+S で切り取った図面を下敷きに足します（なぞって線を引けます。2枚目以降は右横に置きます）"
                 onClick={() => void pasteTraceImage()}
               >
                 📋 図面を貼る
               </button>
               <button
                 type="button"
-                title="PDF・画像のファイルを選んで下敷きにします"
-                onClick={() => void openTraceFile()}
+                title="PDF・画像のファイルを選んで下敷きに足します（複数まとめて選ぶと横に並べて置きます）"
+                onClick={() => void openTraceFiles()}
               >
                 📄 図面ファイル
               </button>
@@ -1831,12 +2218,13 @@ export default function FrameSheetPage({
                 図面の濃さ
                 <select
                   value={String(trace.opacity ?? 0.75)}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    pushDiagram();
                     setTrace((current) => ({
                       ...current,
                       opacity: Number(e.target.value),
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <option value="1">濃い</option>
                   <option value="0.75">ふつう</option>
@@ -1991,30 +2379,56 @@ export default function FrameSheetPage({
               setMessage("取り消しました（もう一度1点目からどうぞ）");
             }}
           >
-            {traceBox !== null && (
-              <image
-                href={trace.image}
-                x={traceBox.x}
-                y={traceBox.y}
-                width={traceBox.width}
-                height={traceBox.height}
-                opacity={manualOnly ? 0.12 : (trace.opacity ?? 0.75)}
-                style={{
-                  cursor: traceMode === "move" ? "move" : "default",
-                  pointerEvents: traceMode === "move" ? "auto" : "none",
-                }}
-                onPointerDown={(event) => {
-                  if (traceMode !== "move") return;
-                  event.stopPropagation();
-                  traceDragRef.current = {
-                    clientX: event.clientX,
-                    clientY: event.clientY,
-                    x: trace.x,
-                    y: trace.y,
-                  };
-                }}
-              />
-            )}
+            {traces.map((item, index) => {
+              const box = traceBoxes[index];
+              if (box === null || box === undefined) return null;
+              return (
+                <g key={index}>
+                  <image
+                    href={item.image}
+                    x={box.x}
+                    y={box.y}
+                    width={box.width}
+                    height={box.height}
+                    opacity={manualOnly ? 0.12 : (item.opacity ?? 0.75)}
+                    style={{
+                      cursor: traceMode === "move" ? "move" : "default",
+                      pointerEvents: traceMode === "move" ? "auto" : "none",
+                    }}
+                    onPointerDown={(event) => {
+                      if (traceMode !== "move") return;
+                      event.stopPropagation();
+                      pushDiagram();
+                      // つかんだ図面を操作対象にして動かす（まとめて動かす中は全員が動く）
+                      setActiveTrace(index);
+                      traceDragRef.current = {
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        index,
+                        all: traces,
+                      };
+                    }}
+                  />
+                  {/* 図面が2枚以上あるときは、ボタンが効く図面に橙の枠を出す */}
+                  {traces.length > 1 &&
+                    index ===
+                      Math.min(activeTrace, Math.max(traces.length - 1, 0)) && (
+                      <rect
+                        x={box.x}
+                        y={box.y}
+                        width={box.width}
+                        height={box.height}
+                        fill="none"
+                        stroke="#e8590c"
+                        strokeWidth="2"
+                        strokeDasharray="8 4"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="none"
+                      />
+                    )}
+                </g>
+              );
+            })}
             {scalePoints.map((point, index) => (
               <circle
                 key={`sp-${index}`}
@@ -2056,6 +2470,7 @@ export default function FrameSheetPage({
                       onPointerDown={(event) => {
                         setSelectedPlacementId(placement.id);
                         if (drawing) return;
+                        pushDiagram();
                         dragRef.current = {
                           placementId: placement.id,
                           clientX: event.clientX,
@@ -2112,6 +2527,7 @@ export default function FrameSheetPage({
                   onDoubleClick={(event) => {
                     if (line.source !== "manual") return;
                     event.stopPropagation();
+                    pushDiagram();
                     setManualLines((current) =>
                       current.filter((each) => each.id !== line.id),
                     );
@@ -2140,6 +2556,7 @@ export default function FrameSheetPage({
                     }
                     if (mode !== "layout" || drawing || !placement) return;
                     setSelectedPlacementId(placement.id);
+                    pushDiagram();
                     dragRef.current = {
                       placementId: placement.id,
                       clientX: event.clientX,
@@ -2190,6 +2607,7 @@ export default function FrameSheetPage({
                       event.stopPropagation();
                       // つまんでいる間に表示範囲が変わって図面が動かないよう止める
                       setHeldView(baseView);
+                      pushDiagram();
                       endRef.current = {
                         lineId: line.id,
                         end,
@@ -2225,6 +2643,7 @@ export default function FrameSheetPage({
               type="button"
               title="重なっている線を、1つの位置につき1本だけ残します"
               onClick={() => {
+                pushDiagram();
                 setManualLines((current) =>
                   current.filter((line) => !doubled.extras.has(line.id)),
                 );
@@ -2320,6 +2739,7 @@ export default function FrameSheetPage({
                           onBlur={(e) => {
                             const value = Number(e.target.value);
                             if (!Number.isFinite(value)) return;
+                            pushDiagram();
                             setPlacements((current) =>
                               current.map((each) =>
                                 each.id === placement.id
@@ -2335,11 +2755,12 @@ export default function FrameSheetPage({
                       <button
                         type="button"
                         title="レイアウトから外します（部屋計算書は消えません）"
-                        onClick={() =>
+                        onClick={() => {
+                          pushDiagram();
                           setPlacements((current) =>
                             current.filter((each) => each.id !== placement.id),
-                          )
-                        }
+                          );
+                        }}
                       >
                         🗑
                       </button>
@@ -2369,6 +2790,7 @@ export default function FrameSheetPage({
                   <td>
                     <input
                       value={kind.name}
+                      onFocus={pushDiagram}
                       onChange={(e) =>
                         setKinds((current) =>
                           current.map((each) =>
@@ -2385,6 +2807,7 @@ export default function FrameSheetPage({
                       type="color"
                       className="kind-color"
                       value={kind.color}
+                      onFocus={pushDiagram}
                       onChange={(e) =>
                         setKinds((current) =>
                           current.map((each) =>
@@ -2645,11 +3068,12 @@ export default function FrameSheetPage({
                       {line.source === "manual" && (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            pushDiagram();
                             setManualLines((current) =>
                               current.filter((each) => each.id !== line.id),
-                            )
-                          }
+                            );
+                          }}
                         >
                           🗑
                         </button>
@@ -2698,6 +3122,7 @@ export default function FrameSheetPage({
                       <input
                         list="frame-fitting-symbols"
                         defaultValue={item.symbol}
+                        onFocus={pushDiagram}
                         onBlur={(e) =>
                           setFrameFittings((current) =>
                             current.map((each) =>
@@ -2713,6 +3138,7 @@ export default function FrameSheetPage({
                       <input
                         className="num"
                         defaultValue={String(item.multiplier)}
+                        onFocus={pushDiagram}
                         onBlur={(e) => {
                           const value = Number(e.target.value);
                           if (!Number.isFinite(value)) return;
@@ -2729,7 +3155,8 @@ export default function FrameSheetPage({
                     <td>
                       <select
                         value={item.lineId ?? ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          pushDiagram();
                           setFrameFittings((current) =>
                             current.map((each) =>
                               each.id === item.id
@@ -2742,8 +3169,8 @@ export default function FrameSheetPage({
                                   }
                                 : each,
                             ),
-                          )
-                        }
+                          );
+                        }}
                       >
                         <option value="">指定なし（合計から減）</option>
                         {lines.map((line) => (
@@ -2770,11 +3197,12 @@ export default function FrameSheetPage({
                     <td>
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          pushDiagram();
                           setFrameFittings((current) =>
                             current.filter((each) => each.id !== item.id),
-                          )
-                        }
+                          );
+                        }}
                       >
                         🗑
                       </button>
@@ -2849,6 +3277,7 @@ export default function FrameSheetPage({
                         title="この軸組の建具へ加える"
                         onClick={(e) => {
                           e.stopPropagation();
+                          pushDiagram();
                           setFrameFittings((current) => [
                             ...current,
                             {
@@ -3000,11 +3429,10 @@ export default function FrameSheetPage({
           <input
             className="num"
             defaultValue={formatNumber(workHeight, 2)}
-            key={`wh-${sheet?.id ?? "new"}`}
+            key={`wh-${sheet?.id ?? "new"}-${formatNumber(workHeight, 2)}`}
             title="軸組の施工高さ。ここを直すと全体が再計算されます"
             onBlur={(e) => {
-              const value = e.target.value.trim();
-              setWorkHeight(value === "" ? null : Number(value));
+              changeWorkHeight(e.target.value);
             }}
           />
         </label>

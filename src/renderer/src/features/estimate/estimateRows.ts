@@ -150,6 +150,22 @@ export function resolveInherited(
   });
 }
 
+/**
+ * 計算書に出す部屋名（部位Ⅱ＋部位Ⅲ）を行IDごとに作る。
+ * 部位Ⅱが空欄の行は、入力のある上の行から引き継いだ内容を使う。
+ */
+export function roomNamesByRowId(
+  rows: EstimateRowDraft[],
+): Map<number, string> {
+  const inherited = resolveInherited(rows);
+  const names = new Map<number, string>();
+  rows.forEach((row, index) => {
+    if (row.id === null) return;
+    names.set(row.id, `${inherited[index].part2} ${row.part3}`.trim());
+  });
+  return names;
+}
+
 export function insertRow(
   rows: EstimateRowDraft[],
   index: number,

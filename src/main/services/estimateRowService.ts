@@ -14,22 +14,75 @@ import type {
 } from "../../shared/types";
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
+import { hasUnscaledUnderlay } from "../../core/room/trace";
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
+}
+
+/** 計算書に縮尺未調整の図面（下敷き）が残っている行。備考欄の「縮尺調整（未）」表示に使う */
+function listUnscaledUnderlayRows(
+  db: AppDatabase,
+  projectId: number,
+): Set<number> {
+  const pending = new Set<number>();
+  const collect = (
+    sheets: { estimateRowId: number; traceJson: string }[],
+  ): void => {
+    for (const sheet of sheets) {
+      if (hasUnscaledUnderlay(sheet.traceJson)) {
+        pending.add(sheet.estimateRowId);
+      }
+    }
+  };
+  collect(
+    db
+      .select({
+        estimateRowId: projectRoomSheets.estimateRowId,
+        traceJson: projectRoomSheets.traceJson,
+      })
+      .from(projectRoomSheets)
+      .where(eq(projectRoomSheets.projectId, projectId))
+      .all(),
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectFrameSheets.estimateRowId,
+        traceJson: projectFrameSheets.traceJson,
+      })
+      .from(projectFrameSheets)
+      .where(eq(projectFrameSheets.projectId, projectId))
+      .all(),
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectPitSheets.estimateRowId,
+        traceJson: projectPitSheets.traceJson,
+      })
+      .from(projectPitSheets)
+      .where(eq(projectPitSheets.projectId, projectId))
+      .all(),
+  );
+  return pending;
 }
 
 export function listEstimateRows(
   db: AppDatabase,
   projectId: number,
 ): EstimateRow[] {
+  const unscaled = listUnscaledUnderlayRows(db, projectId);
   return db
     .select()
     .from(projectEstimateRows)
     .where(eq(projectEstimateRows.projectId, projectId))
     .orderBy(asc(projectEstimateRows.displayOrder), asc(projectEstimateRows.id))
     .all()
-    .map(toRow);
+    .map((row) => ({
+      ...toRow(row),
+      ...(unscaled.has(row.id) ? { scalePending: true } : {}),
+    }));
 }
 
 /** 部位別入力表の一括保存。画面の行順をそのまま display_order にする */
@@ -184,7 +237,9 @@ export function listFilledCalcSheets(
     .all()
     .forEach((sheet) => {
       if (hasContent(sheet.pitsJson, sheet.beamsJson, sheet.lowerJson)) {
+        // 面積計算書はピット計算書と同じ表に入るので、どちらの種類にも内容がある扱いにする
         add(sheet.estimateRowId, "pit");
+        add(sheet.estimateRowId, "area");
       }
     });
 

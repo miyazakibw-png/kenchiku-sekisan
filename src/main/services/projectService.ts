@@ -27,7 +27,7 @@ import { copyBasicDetailsToProject } from "./detailService";
 import { copyBasicMastersToProject } from "./projectMasterService";
 
 /** 管理番号は連番で自動採番し、以後変更しない */
-function nextManagementNo(db: AppDatabase): string {
+export function nextManagementNo(db: AppDatabase): string {
   const rows = db
     .select({ managementNo: projects.managementNo })
     .from(projects)
@@ -148,7 +148,7 @@ export function createProject(db: AppDatabase, name: string): ProjectSummary {
 }
 
 /** 軸組計算書に置いた部屋の参照（部位別入力表の行ID）をコピー先の行に付け替える */
-function remapLayout(
+export function remapLayout(
   layoutJson: string,
   rowIdMap: Map<number, number>,
 ): string {

@@ -93,6 +93,30 @@ export function optionalColumnSettings(
   return result;
 }
 
+/**
+ * 台帳の「列の表示・並び」で決めた並びに {key} の一覧をそろえる
+ * （積算操作画面の項目を台帳と同じ順に出すため）。
+ * 台帳の列キー field:◯ は積算操作側のキー field-◯ に対応づける。
+ * 固定列（日付・管理番号・工事名称）はいつも先頭、
+ * 設定に無いキーは末尾に元の順のまま足す。
+ */
+export function sortByLedgerOrder<T extends { key: string }>(
+  items: readonly T[],
+  settings: readonly LedgerColumnSetting[],
+): T[] {
+  const rank = new Map<string, number>();
+  for (const column of FIXED_COLUMNS) rank.set(column.key, rank.size);
+  for (const setting of settings) {
+    const key = setting.key.startsWith("field:")
+      ? `field-${setting.key.slice("field:".length)}`
+      : setting.key;
+    if (!rank.has(key)) rank.set(key, rank.size);
+  }
+  const rankOf = (key: string): number =>
+    rank.get(key) ?? Number.MAX_SAFE_INTEGER;
+  return [...items].sort((a, b) => rankOf(a.key) - rankOf(b.key));
+}
+
 /** 一覧の並べ替え（上下移動） */
 export function moveSetting(
   settings: LedgerColumnSetting[],

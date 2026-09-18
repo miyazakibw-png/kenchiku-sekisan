@@ -163,7 +163,7 @@ describe("数量", () => {
 });
 
 describe("集計と建具転記", () => {
-  it("空の明細と数量0の行は集計しない", () => {
+  it("空の明細は集計せず、科目等だけの行は見出し用に数量0で計上する", () => {
     const entries = entriesFromFurnitureSheet(
       {
         sheetId: 3,
@@ -173,13 +173,17 @@ describe("集計と建具転記", () => {
         part3: "システム収納",
         multiplier: 2,
       },
-      { rows: sample(), settings },
+      // なにも入っていない行（数量も0）は集計しない
+      { rows: [...sample(), furnitureRow({ id: "r9", quantity: "0" })], settings },
       new Map(),
     );
-    expect(entries).toHaveLength(2);
-    expect(entries[0].traceId).toBe("furniture:3:r2");
-    expect(entries[0].quantity).toBe(2);
-    expect(entries[0].part3).toBe("システム収納");
+    expect(entries).toHaveLength(3);
+    // 科目・部位ID・名称ID・部材名称だけの行（数量0・単位なし）は見出しとして計上
+    expect(entries[0].traceId).toBe("furniture:3:r1");
+    expect(entries[0].quantity).toBe(0);
+    expect(entries[1].traceId).toBe("furniture:3:r2");
+    expect(entries[1].quantity).toBe(2);
+    expect(entries[1].part3).toBe("システム収納");
   });
 
   it("名称の記号は明細側で設定の文字に変わる（表に無い文字はそのまま）", () => {

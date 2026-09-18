@@ -25,6 +25,7 @@ import {
 } from "../../../../core/misc/miscSheet";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import "./RoomCalcSheet.css";
 import "./EstimatePartsPage.css";
 import "./MiscSheetPage.css";
@@ -92,7 +93,8 @@ const LEFT_LABELS = [
   "倍率",
 ];
 const LEFT_DEFAULTS = [90, 90, 80, 150, 56];
-const COLUMN_DEFAULT = 130;
+/** タテの明細（列）の標準の幅 */
+const COLUMN_DEFAULT = 221;
 /** 列幅は文字が見えなくなるほど細くできる */
 const MIN_WIDTH = 8;
 
@@ -159,6 +161,53 @@ export default function MiscSheetPage({
 
   const { markSaved } = useSaveOnLeave({ columns, rows }, () => save(true));
 
+  /** ↶戻る・↷進む用の履歴（部屋の行と明細の列をまとめて1つの履歴にする） */
+  const history = useUndoRedo<{ columns: MiscColumn[]; rows: MiscRow[] }>();
+  const contentRef = useRef({ columns, rows });
+  useEffect(() => {
+    contentRef.current = { columns, rows };
+  });
+
+  /** 部屋の行を直す（直す前の中身を履歴へ積む） */
+  const changeRows = useCallback(
+    (next: React.SetStateAction<MiscRow[]>): void => {
+      history.push(contentRef.current);
+      setRows(next);
+    },
+    [history],
+  );
+
+  /** 明細の列を直す（直す前の中身を履歴へ積む） */
+  const changeColumns = useCallback(
+    (next: React.SetStateAction<MiscColumn[]>): void => {
+      history.push(contentRef.current);
+      setColumns(next);
+    },
+    [history],
+  );
+
+  const undo = useCallback((): void => {
+    const previous = history.undo(contentRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    setColumns(previous.columns);
+    setRows(previous.rows);
+    setMessage("1つ前に戻しました（保存すると確定します）");
+  }, [history]);
+
+  const redo = useCallback((): void => {
+    const next = history.redo(contentRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    setColumns(next.columns);
+    setRows(next.rows);
+    setMessage("1つ先へ進めました（保存すると確定します）");
+  }, [history]);
+
   const save = useCallback(
     async (quiet = false): Promise<void> => {
       if (!sheet) return;
@@ -187,7 +236,9 @@ export default function MiscSheetPage({
       setColumns(columnsOrOne);
       setRows(nextRows);
       markSaved({ columns: columnsOrOne, rows: nextRows });
+      history.clear();
     })();
+    // historyは毎回作り直すので入れない（入れると明細を足すたびに読み直して消えてしまう）
   }, [markSaved, sheetId]);
 
   useEffect(() => {
@@ -249,7 +300,11 @@ export default function MiscSheetPage({
     LEFT_DEFAULTS.reduce(
       (sum, value, index) => sum + widthOf(`left${index}`, value),
       0,
-    ) + columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+    ) +
+    columns.reduce(
+      (sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT),
+      0,
+    );
 
   useLayoutEffect(() => {
     const tops: number[] = [];
@@ -269,41 +324,41 @@ export default function MiscSheetPage({
   /** 部位別入力表の部屋を取り込む（入れてある数量はそのまま残す） */
   const loadRooms = useCallback(async (): Promise<void> => {
     const estimateRows = await window.sekisan.listEstimateRows(project.id);
-    setRows((current) => {
+    changeRows((current) => {
       const next = syncRowsFromEstimate(current, estimateRows);
       setMessage(`部位別入力表から ${next.length} 行を出しました`);
       return next;
     });
-  }, [project.id]);
+  }, [project.id, changeRows]);
 
   const editColumn = useCallback(
     (id: string, patch: Partial<MiscColumn>): void =>
-      setColumns((current) =>
+      changeColumns((current) =>
         current.map((column) =>
           column.id === id ? { ...column, ...patch } : column,
         ),
       ),
-    [],
+    [changeColumns],
   );
 
   const editRow = useCallback(
     (id: string, patch: Partial<MiscRow>): void =>
-      setRows((current) =>
+      changeRows((current) =>
         current.map((row) => (row.id === id ? { ...row, ...patch } : row)),
       ),
-    [],
+    [changeRows],
   );
 
   const editCell = useCallback(
     (rowId: string, columnId: string, text: string): void =>
-      setRows((current) =>
+      changeRows((current) =>
         current.map((row) =>
           row.id === rowId
             ? { ...row, values: { ...row.values, [columnId]: text } }
             : row,
         ),
       ),
-    [],
+    [changeRows],
   );
 
   /**
@@ -318,7 +373,7 @@ export default function MiscSheetPage({
       const created = miscRow({
         anchorRowId: above === null ? null : above.id,
       });
-      setRows([...rows.slice(0, place), created, ...rows.slice(place)]);
+      changeRows([...rows.slice(0, place), created, ...rows.slice(place)]);
       setPickedRow(created.id);
       setMessage(
         insert
@@ -326,14 +381,14 @@ export default function MiscSheetPage({
           : "行を足しました（転記し直しても残ります）",
       );
     },
-    [pickedRow, rows],
+    [pickedRow, rows, changeRows],
   );
 
   /** 明細（列）を足す（カーソルの列の左／いちばん右） */
   const addColumn = useCallback(
     (insert: boolean): void => {
       const created = miscColumn();
-      setColumns((current) => {
+      changeColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
         if (!insert || at < 0) return [...current, created];
         return [...current.slice(0, at), created, ...current.slice(at)];
@@ -341,13 +396,13 @@ export default function MiscSheetPage({
       setPickedColumn(created.id);
       setMessage(insert ? "明細を挿入しました" : "明細を足しました");
     },
-    [pickedColumn],
+    [pickedColumn, changeColumns],
   );
 
   /** 選んだ明細（列）を左右へ動かす */
   const moveColumn = useCallback(
     (step: number): void =>
-      setColumns((current) => {
+      changeColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
         const to = at + step;
         if (at < 0 || to < 0 || to >= current.length) return current;
@@ -356,7 +411,7 @@ export default function MiscSheetPage({
         next.splice(to, 0, moved);
         return next;
       }),
-    [pickedColumn],
+    [pickedColumn, changeColumns],
   );
 
   /** 名称ID欄に入ったとき、その科目の明細を候補として読み込む */
@@ -465,10 +520,9 @@ export default function MiscSheetPage({
         remarksLower: detail.remarksLower,
         sourceDetailId: detail.id,
       };
-      setColumns((current) => {
+      changeColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
-        // 挿入呼出は左へ、上書き呼出は空の列へ。
-        // すでに入っている列にいるときは、その右へ新しい明細を作る
+        // 挿入呼出は左へ。上書き呼出は選んでいる列の中身をそのまま入れ替える
         if (at < 0) {
           const created = miscColumn(patch);
           setPickedColumn(created.id);
@@ -479,14 +533,9 @@ export default function MiscSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        if (isEmptyColumn(current[at])) {
-          return current.map((column, index) =>
-            index === at ? { ...column, ...patch } : column,
-          );
-        }
-        const created = miscColumn(patch);
-        setPickedColumn(created.id);
-        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+        return current.map((column, index) =>
+          index === at ? { ...column, ...patch } : column,
+        );
       });
       setMessage(`${detail.name} を呼び出しました`);
     },
@@ -649,6 +698,22 @@ export default function MiscSheetPage({
         <span className="project">
           {project.managementNo} {project.name}
         </span>
+        <button
+          type="button"
+          disabled={!history.canUndo}
+          title="1つ前の内容に戻します"
+          onClick={undo}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={!history.canRedo}
+          title="戻した内容を1つ先へ進めます"
+          onClick={redo}
+        >
+          ↷ 進む
+        </button>
         <button type="button" onClick={() => void loadRooms()}>
           📄 部位別入力表から転記
         </button>
@@ -902,7 +967,7 @@ export default function MiscSheetPage({
                     className="drop"
                     title="この明細（列）を消します"
                     onClick={() =>
-                      setColumns((current) =>
+                      changeColumns((current) =>
                         current.filter((each) => each.id !== column.id),
                       )
                     }
@@ -975,7 +1040,7 @@ export default function MiscSheetPage({
                       className="drop"
                       title="この行を消します"
                       onClick={() =>
-                        setRows((current) =>
+                        changeRows((current) =>
                           current.filter((each) => each.id !== row.id),
                         )
                       }
