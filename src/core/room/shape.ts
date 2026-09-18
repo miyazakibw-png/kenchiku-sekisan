@@ -972,12 +972,30 @@ export interface RoomQuantities {
   fittingBaseboard: number;
 }
 
+/** 壁・曲面壁の長さ×高さの合計（辺ごとの壁高さがあればそれを使う） */
+function edgeArea(
+  solved: SolvedShape,
+  kind: "wall" | "curve",
+  height: number,
+  edgeHeights?: ReadonlyMap<string, number>,
+): number {
+  return solved.edges.reduce(
+    (sum, row) =>
+      row.kind === kind && row.measured !== null
+        ? sum + row.measured * (edgeHeights?.get(row.id) ?? height)
+        : sum,
+    0,
+  );
+}
+
 export function roomQuantities(
   solved: SolvedShape,
   ceilingHeight: number | null,
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
   beamArea = 0,
+  /** 辺ごとの壁高さ（まるごと低い天井の区画に面する壁はその区画の高さ） */
+  edgeHeights?: ReadonlyMap<string, number>,
 ): RoomQuantities {
   const totals = edgeTotals(solved);
   const area = floorArea(solved, limit);
@@ -1013,13 +1031,15 @@ export function roomQuantities(
       height === null
         ? null
         : round2(
-            (totals.wall - curveMeasured) * height -
+            edgeArea(solved, "wall", height, edgeHeights) -
               (fitting.area - curveFitting.area),
           ),
     curveArea:
       height === null
         ? null
-        : round2(curveMeasured * height - curveFitting.area),
+        : round2(
+            edgeArea(solved, "curve", height, edgeHeights) - curveFitting.area,
+          ),
     columnArea: height === null ? null : round2(column * height),
     moldingLength: round2(totals.wall + column),
     fittingArea: fitting.area,
@@ -1075,6 +1095,8 @@ export function roomSymbols(
   fittings: RoomFitting[] = [],
   limit = DEFAULT_DEDUCTION_LIMIT,
   beamArea = 0,
+  /** 辺ごとの壁高さ（まるごと低い天井の区画に面する壁はその区画の高さ） */
+  edgeHeights?: ReadonlyMap<string, number>,
 ): RoomSymbol[] {
   const quantities = roomQuantities(
     solved,
@@ -1082,6 +1104,7 @@ export function roomSymbols(
     fittings,
     limit,
     beamArea,
+    edgeHeights,
   );
   const hasCurve = solved.edges.some((row) => row.kind === "curve");
   const symbols: RoomSymbol[] = [
@@ -1135,7 +1158,10 @@ export function roomSymbols(
         value:
           ceilingHeight === null
             ? null
-            : round2(row.measured * ceilingHeight - onWall.area),
+            : round2(
+                row.measured * (edgeHeights?.get(row.id) ?? ceilingHeight) -
+                  onWall.area,
+              ),
         edgeId: row.id,
       });
     } else if (row.kind === "column") {
@@ -1280,10 +1306,12 @@ export function rotateShape(
     turn(edgeVector(item, item.resolved)),
   );
   // 起点のあらたな位置は、書き出す寸法（丸めた移動量）を足した所に合わせる
-  const pivotTo = rotated.slice(0, index).reduce<Point>(
-    (sum, v) => ({ x: sum.x + round2(v.x), y: sum.y + round2(v.y) }),
-    { x: 0, y: 0 },
-  );
+  const pivotTo = rotated
+    .slice(0, index)
+    .reduce<Point>(
+      (sum, v) => ({ x: sum.x + round2(v.x), y: sum.y + round2(v.y) }),
+      { x: 0, y: 0 },
+    );
   const edges = solved.edges.map((item, i) => {
     const v = rotated[i];
     const dx = round2(v.x);

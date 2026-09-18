@@ -91,6 +91,7 @@ import {
   ceilingSymbols,
   normalizeCeilingHeights,
   parseCeilingCodes,
+  wallEdgeHeights,
   type CeilingElement,
 } from "../../core/room/ceiling";
 import {
@@ -556,14 +557,22 @@ export function collectEntries(
       parseJson<CeilingElement[]>(sheet.ceilingJson, []),
       ceilingHeight,
     );
+    const ceilingCodesParsed = parseCeilingCodes(sheet.ceilingCodesJson);
     const ceilingResult = ceilingQuantities(
       ceiling,
       solved,
       ceilingHeight,
-      parseCeilingCodes(sheet.ceilingCodesJson).heights,
+      ceilingCodesParsed.heights,
     );
     // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
     const beamArea = beamFootprintArea(ceiling, solved, ceilingHeight);
+    // まるごと低い天井の区画に面している壁は、その区画の高さで壁面積を計算する
+    const edgeHeights = wallEdgeHeights(
+      ceiling,
+      solved,
+      ceilingHeight,
+      ceilingCodesParsed.heights,
+    );
     const symbols = [
       ...roomSymbols(
         solved,
@@ -571,6 +580,7 @@ export function collectEntries(
         sheetFittings,
         deductionLimit,
         beamArea,
+        edgeHeights,
       ),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];

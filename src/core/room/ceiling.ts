@@ -1469,6 +1469,62 @@ function regionPieces(
     );
 }
 
+/**
+ * まるごと1つの天井区画に面している壁・曲面壁の壁高さ（その区画の天井高さ）。
+ * 低い天井の区画にまるごと入っている壁は、その区画の高さで壁面積を計算する。
+ * 高さが違う区画に分かれて面している壁（下がり天井が壁に直角に付くとき）や、
+ * 高さが決まっていない区画に面する壁は部屋の天井高さのまま（この表には載せない）。
+ */
+export function wallEdgeHeights(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+  heights: CeilingRegionHeight[] = [],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  const points = solved.points;
+  if (
+    roomCeilingHeight === null ||
+    points.length < 3 ||
+    elements.length === 0
+  ) {
+    return result;
+  }
+  const regions = ceilingRegions(
+    elements,
+    solved,
+    roomCeilingHeight,
+    false,
+    false,
+    heights,
+  );
+  for (const [index, edge] of solved.edges.entries()) {
+    if (edge.kind !== "wall" && edge.kind !== "curve") continue;
+    const from = points[index];
+    const to = points[(index + 1) % points.length];
+    const normal = inwardNormal(points, index);
+    // 壁の内側がまるごと同じ高さの区画に面しているか、少し内側に入った点で見る
+    const faced = new Set<number | null>();
+    for (let i = 0; i < 32 && faced.size <= 1; i += 1) {
+      const rate = (i + 0.5) / 32;
+      const probe = {
+        x: from.x + (to.x - from.x) * rate + normal.x * 0.005,
+        y: from.y + (to.y - from.y) * rate + normal.y * 0.005,
+      };
+      const region = regions.find((row) =>
+        row.parts.some((part) => inside(part, probe)),
+      );
+      faced.add(region?.height ?? null);
+    }
+    if (faced.size !== 1) continue;
+    const height = [...faced][0];
+    // 低い区画にまるごと入る壁だけ下げる（高い区画・高さ未定はそのまま）
+    if (height === null || height >= roomCeilingHeight) continue;
+    result.set(edge.id, height);
+  }
+  return result;
+}
+
 /** 天井の区画どうしの境目に引く線 */
 export interface CeilingBoundary extends CeilingSegment {
   elementId: string;

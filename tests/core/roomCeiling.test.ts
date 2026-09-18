@@ -11,6 +11,7 @@ import {
   noteRegionHeight,
   parseCeilingCodes,
   splitDropCeiling,
+  wallEdgeHeights,
   type CeilingElement,
 } from "../../src/core/room/ceiling";
 import {
@@ -18,6 +19,7 @@ import {
   lShape,
   rectangleShape,
   roomQuantities,
+  roomSymbols,
   solveShape,
 } from "../../src/core/room/shape";
 
@@ -1109,5 +1111,37 @@ describe("区画の境目の線", () => {
       },
     });
     expect(splitDropCeiling(free, [free], solved, 2.7)).toBeNull();
+  });
+});
+
+describe("低い天井の区画にまるごと面している壁の壁高さ", () => {
+  it("まるごと低い区画に面する壁だけ区画の高さ、分かれる壁は部屋の高さのまま", () => {
+    const solved = shape();
+    // 右の壁(e2)に沿って2mの所に下がり天井 → 右側2×3の区画が2.0に下がる
+    const elements = [
+      element("dropCeiling", solved.edges[1].id, { offset: 2, height: 1.0 }),
+    ];
+    const heights = wallEdgeHeights(elements, solved, 3.0);
+    // 右の壁はまるごと低い区画に面するので2.0
+    expect(heights.get(solved.edges[1].id)).toBe(2.0);
+    // 上・下の壁は高さが違う区画に分かれて面するので部屋の天井高さのまま
+    expect(heights.has(solved.edges[0].id)).toBe(false);
+    expect(heights.has(solved.edges[2].id)).toBe(false);
+    // 左の壁は高い区画にまるごと面するので部屋の天井高さのまま
+    expect(heights.has(solved.edges[3].id)).toBe(false);
+    // 壁面積はまるごと低い区画に面する壁だけ低い高さで計算
+    const quantities = roomQuantities(solved, 3.0, [], undefined, 0, heights);
+    // 上4×3.0＋右3×2.0＋下4×3.0＋左3×3.0 = 39
+    expect(quantities.wallArea).toBe(39);
+    // 壁ごとの記号も同じ高さ（WA2は右の壁）
+    const symbols = roomSymbols(solved, 3.0, [], undefined, 0, heights);
+    expect(symbols.find((row) => row.symbol === "WA2")?.value).toBe(6);
+    expect(symbols.find((row) => row.symbol === "WA1")?.value).toBe(12);
+  });
+
+  it("下がり天井が無い部屋ではいつもどおり", () => {
+    const solved = shape();
+    const heights = wallEdgeHeights([], solved, 3.0);
+    expect(heights.size).toBe(0);
   });
 });

@@ -78,6 +78,7 @@ import {
   noteRegionHeight,
   parseCeilingCodes,
   splitDropCeiling,
+  wallEdgeHeights,
   type CeilingAnchor,
   type CeilingCodes,
   type CeilingElement,
@@ -623,6 +624,14 @@ export default function RoomSheetPage({
     () => beamFootprintArea(ceiling, solved, ceilingHeight),
     [ceiling, solved, ceilingHeight],
   );
+  /**
+   * まるごと低い天井の区画に面している壁の壁高さ（その区画の高さで壁面積を計算）。
+   * 高さが違う区画に分かれて面する壁は部屋の天井高さのまま
+   */
+  const edgeHeights = useMemo(
+    () => wallEdgeHeights(ceiling, solved, ceilingHeight, codes.heights),
+    [ceiling, solved, ceilingHeight, codes.heights],
+  );
   const quantities = useMemo(
     () =>
       roomQuantities(
@@ -631,8 +640,16 @@ export default function RoomSheetPage({
         resolvedFittings,
         deductionLimit,
         beamArea,
+        edgeHeights,
       ),
-    [solved, ceilingHeight, resolvedFittings, deductionLimit, beamArea],
+    [
+      solved,
+      ceilingHeight,
+      resolvedFittings,
+      deductionLimit,
+      beamArea,
+      edgeHeights,
+    ],
   );
   const symbols = useMemo(
     () => [
@@ -642,6 +659,7 @@ export default function RoomSheetPage({
         resolvedFittings,
         deductionLimit,
         beamArea,
+        edgeHeights,
       ),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ],
@@ -653,6 +671,7 @@ export default function RoomSheetPage({
       ceilingResult,
       deductionLimit,
       beamArea,
+      edgeHeights,
     ],
   );
 
