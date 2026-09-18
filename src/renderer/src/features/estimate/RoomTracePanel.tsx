@@ -46,6 +46,8 @@ interface Props {
   rectFirst?: boolean;
   /** 図形欄に置いてある図面全部。なぞる図面以外も計算書で合わせた位置・縮尺・濃さで映して、2枚にまたがる部屋をなぞれるようにする */
   underlays?: TraceUnderlay[];
+  /** 開いたときに図形欄で選んでいた図面の番号（他の図面を映す基準にする） */
+  activeIndex?: number;
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -78,6 +80,7 @@ export default function RoomTracePanel({
   subject,
   rectFirst = false,
   underlays,
+  activeIndex,
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
   const [mode, setMode] = useState<"scale" | "trace">(
@@ -117,9 +120,16 @@ export default function RoomTracePanel({
 
   // なぞる図面以外に計算書へ置いてある図面。なぞる図面（同じ画像の下敷き）を基準にして、置いた位置・縮尺のまま薄く映す
   const [otherSizes, setOtherSizes] = useState<Record<string, ImageSize>>({});
-  const anchor = (underlays ?? []).find(
-    (item) => item.image === trace.image && item.metersPerPixel > 0,
-  );
+  // 基準は「いま選んでいる図面」。画像データが違う経路で貼られて一致しないときも、その図面を基準にする
+  const anchor =
+    (underlays ?? []).find(
+      (item) => item.image === trace.image && item.metersPerPixel > 0,
+    ) ??
+    (activeIndex !== undefined
+      ? (underlays ?? []).filter(
+          (item) => item.image !== "" && item.metersPerPixel > 0,
+        )[activeIndex]
+      : undefined);
   const others = useMemo(
     () =>
       (underlays ?? []).filter(
