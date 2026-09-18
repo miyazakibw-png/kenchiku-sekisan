@@ -573,6 +573,8 @@
   z-index: 1;
   white-space: nowrap;
   background: #fff;
+  /* 表が狭くて列が潰れてもボタン（⇄✂↔🗑）が全部入るだけの幅は確保する */
+  min-width: 190px;
 }
 
 .room-sheet-page .ceiling table.grid th.ceiling-actions {
