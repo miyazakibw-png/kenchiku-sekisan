@@ -79,6 +79,9 @@
 
 .room-sheet-page > .upper > section {
   min-height: 0;
+  /* 表が欄より広いときは欄は列の広さに縮んで中でスクロールする
+     （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
+  min-width: 0;
   overflow: auto;
 }
 
@@ -561,17 +564,23 @@
   line-height: 1.1;
 }
 
-/* 操作列（⇄・✂・🗑）を右端に張り付けて、表が横に長くてもいつも見えるようにする */
+/* 操作列（⇄・✂・🗑）を先頭列にして左端に張り付ける。
+   画面幅が狭いとき欄の右端は画面外に出るので、左ならいつでも見える */
 .room-sheet-page .ceiling table.grid td.ceiling-actions,
 .room-sheet-page .ceiling table.grid th.ceiling-actions {
   position: sticky;
-  right: 0;
+  left: 0;
+  z-index: 1;
   white-space: nowrap;
   background: #fff;
 }
 
 .room-sheet-page .ceiling table.grid th.ceiling-actions {
   background: #f6f8fb;
+}
+
+.room-sheet-page .ceiling tr.picked > td.ceiling-actions {
+  background: #fff7ed;
 }
 
 .room-sheet-page .ceiling table.grid td.ceiling-actions button + button {

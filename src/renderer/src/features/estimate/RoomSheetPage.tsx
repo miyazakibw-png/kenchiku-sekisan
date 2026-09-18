@@ -3482,6 +3482,7 @@ export default function RoomSheetPage({
           <table className="grid">
             <thead>
               <tr>
+                <th className="ceiling-actions" />
                 <th className="no">番号</th>
                 <th>種別</th>
                 <th>沿う壁</th>
@@ -3512,7 +3513,6 @@ export default function RoomSheetPage({
                   下がり(m)
                 </th>
                 <th className="num">面積(㎡)</th>
-                <th className="ceiling-actions" />
               </tr>
             </thead>
             <tbody>
@@ -3524,6 +3524,71 @@ export default function RoomSheetPage({
                     className={pickedCeiling === element.id ? "picked" : ""}
                     onClick={() => setPickedCeiling(element.id)}
                   >
+                    <td className="ceiling-actions">
+                      {element.free !== null &&
+                      element.free !== undefined &&
+                      element.kind === "dropCeiling" ? (
+                        <button
+                          type="button"
+                          title="線で下がる側を反対にします（①→② の左側⇄右側）"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCeiling(element.id, {
+                              inner: !(element.inner === true),
+                            });
+                          }}
+                        >
+                          ⇄ {element.inner === true ? "右" : "左"}が下がる
+                        </button>
+                      ) : null}
+                      {(() => {
+                        const parts = splitCeiling.get(element.id) ?? null;
+                        return parts === null ? null : (
+                          <button
+                            type="button"
+                            title={`梁型・下がり壁で分かれている${parts.length}本を別々の下がり天井の行にします（片側だけ消す・高さを変えるとき）`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              changeCeiling((current) =>
+                                current.flatMap((each) =>
+                                  each.id === element.id ? parts : [each],
+                                ),
+                              );
+                              setPickedCeiling(parts[0].id);
+                            }}
+                          >
+                            ✂ {parts.length}本に分ける
+                          </button>
+                        );
+                      })()}
+                      {element.range ? (
+                        <button
+                          type="button"
+                          title="範囲を外して壁から壁までの下がり天井に戻します"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateCeiling(element.id, { range: null });
+                          }}
+                        >
+                          ↔ 壁まで
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        title={
+                          element.range
+                            ? "この範囲の下がり天井だけ消す"
+                            : "この行を消す"
+                        }
+                        onClick={() =>
+                          changeCeiling((current) =>
+                            current.filter((each) => each.id !== element.id),
+                          )
+                        }
+                      >
+                        🗑
+                      </button>
+                    </td>
                     <td className="no">{itemNo + 1}</td>
                     <td>
                       <select
@@ -3814,71 +3879,6 @@ export default function RoomSheetPage({
                       ) : (
                         formatNumber(item.area, 2)
                       )}
-                    </td>
-                    <td className="ceiling-actions">
-                      {element.free !== null &&
-                      element.free !== undefined &&
-                      element.kind === "dropCeiling" ? (
-                        <button
-                          type="button"
-                          title="線で下がる側を反対にします（①→② の左側⇄右側）"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateCeiling(element.id, {
-                              inner: !(element.inner === true),
-                            });
-                          }}
-                        >
-                          ⇄ {element.inner === true ? "右" : "左"}が下がる
-                        </button>
-                      ) : null}
-                      {(() => {
-                        const parts = splitCeiling.get(element.id) ?? null;
-                        return parts === null ? null : (
-                          <button
-                            type="button"
-                            title={`梁型・下がり壁で分かれている${parts.length}本を別々の下がり天井の行にします（片側だけ消す・高さを変えるとき）`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              changeCeiling((current) =>
-                                current.flatMap((each) =>
-                                  each.id === element.id ? parts : [each],
-                                ),
-                              );
-                              setPickedCeiling(parts[0].id);
-                            }}
-                          >
-                            ✂ {parts.length}本に分ける
-                          </button>
-                        );
-                      })()}
-                      {element.range ? (
-                        <button
-                          type="button"
-                          title="範囲を外して壁から壁までの下がり天井に戻します"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateCeiling(element.id, { range: null });
-                          }}
-                        >
-                          ↔ 壁まで
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        title={
-                          element.range
-                            ? "この範囲の下がり天井だけ消す"
-                            : "この行を消す"
-                        }
-                        onClick={() =>
-                          changeCeiling((current) =>
-                            current.filter((each) => each.id !== element.id),
-                          )
-                        }
-                      >
-                        🗑
-                      </button>
                     </td>
                   </tr>
                 );
