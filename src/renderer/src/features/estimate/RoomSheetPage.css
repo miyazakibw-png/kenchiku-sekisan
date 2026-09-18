@@ -853,3 +853,39 @@
   cursor: pointer;
   color: #1e3a8a;
 }
+
+/* 図を見ながら計算書に数字を入れるための小窓 */
+.room-sheet-page .mini-drawing {
+  position: fixed;
+  z-index: 60;
+  width: 540px;
+  height: 400px;
+  min-width: 200px;
+  min-height: 140px;
+  background: #fff;
+  border: 1.5px solid #748ba6;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  resize: both;
+  overflow: hidden;
+}
+
+.room-sheet-page .mini-drawing-head {
+  cursor: move;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  background: #eef2f8;
+  font-size: 11px;
+  color: #33415c;
+  border-bottom: 1px solid #d5d9e0;
+  user-select: none;
+  touch-action: none;
+}
+
+.room-sheet-page .mini-drawing-body {
+  flex: 1;
+  min-height: 0;
+}
