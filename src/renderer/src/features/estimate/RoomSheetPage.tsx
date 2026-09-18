@@ -605,19 +605,22 @@ export default function RoomSheetPage({
     [onCeilingHeightChange],
   );
 
-  const view = useMemo(
-    // 図面を動かしている間はその図面の位置を見え方の範囲に含めない（含めると図形がずれて見えて合わせにくい）
+  const liveView = useMemo(
     () =>
       viewBox(
         solved,
-        underlayTool.boxes.filter(
-          (box, index) =>
-            box !== null &&
-            !(underlayTool.mode === "move" && index === underlayTool.active),
-        ),
+        underlayTool.boxes.filter((box) => box !== null),
       ),
-    [solved, underlayTool.boxes, underlayTool.mode, underlayTool.active],
+    [solved, underlayTool.boxes],
   );
+  /** 「図面を動かす」の間は見え方を動かし始めのまま固定する（図形も他の図面もその場に残り、画面が跳ねない） */
+  const frozenViewRef = useRef(liveView);
+  let view = liveView;
+  if (underlayTool.mode === "move") {
+    view = frozenViewRef.current;
+  } else {
+    frozenViewRef.current = liveView;
+  }
 
   /**
    * 下敷きの図面があるときは、なぞる画面と同じく画像を原寸（1画素＝1画面px）で出す。
