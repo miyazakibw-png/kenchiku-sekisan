@@ -140,6 +140,12 @@ export function parseUnderlay(json: string): TraceUnderlay {
   }
 }
 
+/** traceJson の中に、縮尺がまだ合わせられていない下敷きの図面があるか（一覧の「縮尺調整（未）」表示に使う） */
+export function hasUnscaledUnderlay(json: string): boolean {
+  const underlay = parseUnderlay(json);
+  return underlay.image !== "" && underlay.scaled !== true;
+}
+
 /**
  * 下敷きの縮尺合わせ：図の上で押した2点の間の実寸（m）から縮尺を直す。
  * 1点目の位置が動かないように、画像の置き場所も一緒に伸び縮みさせる。
@@ -250,7 +256,8 @@ export function traceAfterUnderlay(
   trace: RoomTrace,
   after: TraceUnderlay,
 ): RoomTrace {
-  if (after.image === "") return trace.image === "" ? trace : { ...EMPTY_TRACE };
+  if (after.image === "")
+    return trace.image === "" ? trace : { ...EMPTY_TRACE };
   const perPixel =
     after.scaled === true && after.metersPerPixel > 0
       ? after.metersPerPixel

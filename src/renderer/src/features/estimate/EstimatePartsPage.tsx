@@ -928,15 +928,25 @@ export default function EstimatePartsPage({
                   {isSubtotal ? (
                     ""
                   ) : (
-                    <input
-                      lang="ja"
-                      value={row.note}
-                      onChange={(e) =>
-                        editRows(
-                          updateRow(rows, index, { note: e.target.value }),
-                        )
-                      }
-                    />
+                    <>
+                      {row.scalePending === true && (
+                        <span
+                          className="scale-pending"
+                          title="この行の計算書に縮尺をまだ合わせていない図面があります。計算書の「⤢ 縮尺合わせ」で合わせると消えます"
+                        >
+                          縮尺調整（未）
+                        </span>
+                      )}
+                      <input
+                        lang="ja"
+                        value={row.note}
+                        onChange={(e) =>
+                          editRows(
+                            updateRow(rows, index, { note: e.target.value }),
+                          )
+                        }
+                      />
+                    </>
                   )}
                 </td>
                 {checkColumns.flatMap((label) => {

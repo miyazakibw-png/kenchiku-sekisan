@@ -191,3 +191,12 @@ table.estimate tr.subtotal .subtotal-label {
   margin-right: 2px;
   cursor: help;
 }
+
+/* 縮尺未調整の図面がある行の備考欄に出す印 */
+.scale-pending {
+  color: #c2410c;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-right: 4px;
+  cursor: help;
+}

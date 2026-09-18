@@ -8,6 +8,7 @@ import {
   traceArea,
   parseTrace,
   parseUnderlay,
+  hasUnscaledUnderlay,
   parseTracedShapes,
   rectFromCorners,
   traceFromUnderlay,
@@ -203,9 +204,15 @@ describe("rectFromCorners（□なぞり：対角の2点から四角）", () => 
       { x: 50, y: 60 },
       { x: 10, y: 60 },
     ];
-    expect(rectFromCorners({ x: 10, y: 20 }, { x: 50, y: 60 })).toEqual(expected);
-    expect(rectFromCorners({ x: 50, y: 60 }, { x: 10, y: 20 })).toEqual(expected);
-    expect(rectFromCorners({ x: 50, y: 20 }, { x: 10, y: 60 })).toEqual(expected);
+    expect(rectFromCorners({ x: 10, y: 20 }, { x: 50, y: 60 })).toEqual(
+      expected,
+    );
+    expect(rectFromCorners({ x: 50, y: 60 }, { x: 10, y: 20 })).toEqual(
+      expected,
+    );
+    expect(rectFromCorners({ x: 50, y: 20 }, { x: 10, y: 60 })).toEqual(
+      expected,
+    );
   });
 
   it("同じ横位置・縦位置なら四角にならないので null", () => {
@@ -258,7 +265,9 @@ describe("traceFromUnderlay（図形欄に貼った図面をなぞり画面で�
   it("縮尺合わせ（scaleUnderlay）をすると済みの印が付き、保存→読込でも残る", () => {
     const scaled = scaleUnderlay(underlay, { x: 0, y: 0 }, { x: 1, y: 0 }, 2);
     expect(scaled?.scaled).toBe(true);
-    expect(parseUnderlay(JSON.stringify({ underlay: scaled })).scaled).toBe(true);
+    expect(parseUnderlay(JSON.stringify({ underlay: scaled })).scaled).toBe(
+      true,
+    );
     expect(parseUnderlay(JSON.stringify({ underlay })).scaled).toBeUndefined();
   });
 });
@@ -349,10 +358,18 @@ describe("traceAfterUnderlay（下敷きを置き替えたら、なぞりに使�
   it("同じ図面で縮尺が同じ・縮尺合わせ前なら何も変えない（同じものを返す）", () => {
     const same = { image: "data:plan", x: 0, y: 0, opacity: 0.75 };
     expect(
-      traceAfterUnderlay(trace, { ...same, metersPerPixel: 0.02, scaled: true }),
+      traceAfterUnderlay(trace, {
+        ...same,
+        metersPerPixel: 0.02,
+        scaled: true,
+      }),
     ).toBe(trace);
     expect(
-      traceAfterUnderlay(trace, { ...same, metersPerPixel: 0.09, scaled: false }),
+      traceAfterUnderlay(trace, {
+        ...same,
+        metersPerPixel: 0.09,
+        scaled: false,
+      }),
     ).toBe(trace);
   });
 
@@ -371,5 +388,32 @@ describe("traceAfterUnderlay（下敷きを置き替えたら、なぞりに使�
   it("下敷きを外したら、なぞりの図面も外す。元から無ければそのまま", () => {
     expect(traceAfterUnderlay(trace, EMPTY_UNDERLAY)).toEqual(EMPTY_TRACE);
     expect(traceAfterUnderlay(EMPTY_TRACE, EMPTY_UNDERLAY)).toBe(EMPTY_TRACE);
+  });
+});
+
+describe("縮尺未調整の図面の判定", () => {
+  it("図面が無い・外したあとは false", () => {
+    expect(hasUnscaledUnderlay("{}")).toBe(false);
+    expect(hasUnscaledUnderlay("not json")).toBe(false);
+    expect(
+      hasUnscaledUnderlay(JSON.stringify({ underlay: EMPTY_UNDERLAY })),
+    ).toBe(false);
+  });
+
+  it("図面があって縮尺合わせが済んでいないと true、済んでいれば false", () => {
+    const unscaled = {
+      image: "data:plan",
+      metersPerPixel: 0.01,
+      x: 0,
+      y: 0,
+      opacity: 0.75,
+    };
+    const scaled = { ...unscaled, scaled: true };
+    expect(hasUnscaledUnderlay(JSON.stringify({ underlay: unscaled }))).toBe(
+      true,
+    );
+    expect(hasUnscaledUnderlay(JSON.stringify({ underlay: scaled }))).toBe(
+      false,
+    );
   });
 });

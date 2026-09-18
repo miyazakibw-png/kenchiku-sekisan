@@ -267,6 +267,8 @@ export interface EstimateRow {
   note: string;
   calcType: CalcType;
   displayOrder: number;
+  /** 計算書に縮尺未調整の図面（下敷き）があるとき true。備考欄に「縮尺調整（未）」を出す目印で、行には保存しない */
+  scalePending?: boolean;
 }
 
 export type EstimateRowDraft = Omit<
