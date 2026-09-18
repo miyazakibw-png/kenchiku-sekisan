@@ -2095,8 +2095,8 @@ export default function RoomSheetPage({
           >
             🖼 図面をなぞる
           </button>
-          {/* 下敷きが1枚以上あるときだけ貼る・開くを出す（1枚目はなぞる画面から。2枚目以降をここで足せる） */}
-          <UnderlayTools u={underlayTool} canLoad={underlayTool.count > 0} />
+          {/* 図面はこの画面でそのまま貼る・開く（ファイルは複数まとめて選べる）。なぞる画面からも入れられる */}
+          <UnderlayTools u={underlayTool} />
           <button
             type="button"
             className={expanded ? "on" : ""}

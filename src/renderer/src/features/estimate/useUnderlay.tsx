@@ -57,6 +57,19 @@ export interface UnderlayBox {
   height: number;
 }
 
+/** 画像の大きさ（画素数）を読む。読めないときは null */
+function loadImageSize(
+  dataUrl: string,
+): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () =>
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+}
+
 /** 画面の座標を svg の座標（図の座標m）にする */
 export function svgPoint(
   svg: SVGSVGElement,
@@ -122,6 +135,8 @@ export interface Underlay {
   canUndoScale: boolean;
   pasteImage: () => Promise<void>;
   openFile: () => Promise<void>;
+  /** 図面ファイルをまとめて複数選んで置く（複数置ける画面だけ。1枚の画面は openFile と同じ動き） */
+  openFiles: () => Promise<void>;
   applyScale: () => void;
   undoScale: () => void;
   toggleScale: () => void;
@@ -323,6 +338,71 @@ export function useUnderlay({
     setMessage(got.note === "" ? "取り込みをやめました" : got.note);
   }, [pageText, putImage, setMessage]);
 
+  const openFiles = useCallback(async () => {
+    // 1枚だけ置ける画面は今までどおり（複数選びは出さない）
+    if (!multi) {
+      await openFile();
+      return;
+    }
+    const page = Number(pageText);
+    setMessage("ファイルを読んでいます…");
+    const got = await window.sekisan.openDrawingFiles(page > 0 ? page : 1);
+    if (got.items.length === 0) {
+      setMessage(got.note === "" ? "取り込みをやめました" : got.note);
+      return;
+    }
+    const metersPerPixel = Math.max(planSize, 10) / 1000;
+    let cursor = nextSpot;
+    let placed = 0;
+    for (const item of got.items) {
+      let dataUrl = item.image;
+      if (item.pdf !== "") {
+        const made = await pdfPageImage(item.pdf, page > 0 ? page : 1);
+        dataUrl = made.image;
+        if (dataUrl === "") {
+          setMessage("PDFを画像にできませんでした");
+          continue;
+        }
+      }
+      if (dataUrl === "") continue;
+      // 先に大きさを読み、次の図面をこの図面の右横へずらして置く
+      const size = await loadImageSize(dataUrl);
+      if (size !== null)
+        setSizes((current) =>
+          current[dataUrl] !== undefined
+            ? current
+            : { ...current, [dataUrl]: size },
+        );
+      const next: TraceUnderlay = {
+        image: dataUrl,
+        metersPerPixel,
+        x: cursor.x,
+        y: cursor.y,
+        opacity: 0.75,
+        scaled: false,
+      };
+      setUnderlaysState((current) => [
+        ...current.filter((entry) => entry.image !== ""),
+        next,
+      ]);
+      cursor = {
+        x:
+          cursor.x +
+          (size !== null
+            ? size.width * metersPerPixel
+            : Math.max(planSize, 10)) +
+          0.5,
+        y: cursor.y,
+      };
+      placed += 1;
+    }
+    if (placed === 0) return;
+    setActiveState(count + placed - 1);
+    setScalePoints([]);
+    setMode("scale");
+    setMessage(`${placed}枚の図面を置きました。${SCALE_HINT}`);
+  }, [count, multi, nextSpot, openFile, pageText, planSize, setMessage]);
+
   const applyScale = useCallback(() => {
     const meters = Number(scaleText);
     if (!Number.isFinite(meters) || meters <= 0) {
@@ -481,6 +561,7 @@ export function useUnderlay({
     canUndoScale: scaleUndo.length > 0,
     pasteImage,
     openFile,
+    openFiles,
     applyScale,
     undoScale,
     toggleScale,
@@ -572,17 +653,7 @@ export function unionBox(
 }
 
 /** 図面取り込みのボタン列（図面を貼る／図面ファイル／縮尺合わせ／戻す／動かす／濃さ／外す） */
-export function UnderlayTools({
-  u,
-  canLoad = true,
-}: {
-  u: Underlay;
-  /**
-   * 画像の取り込み（貼る・ファイル・頁）のボタンを出すか。
-   * 取り込みをなぞる画面にまとめている画面では false にする（調整のボタンは残る）
-   */
-  canLoad?: boolean;
-}): JSX.Element {
+export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
   return (
     <span className="kind-pick underlay-tools">
       {u.count > 1 && (
@@ -603,32 +674,28 @@ export function UnderlayTools({
           </select>
         </label>
       )}
-      {canLoad && (
-        <>
-          <button
-            type="button"
-            title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（図形の位置・大きさを図面と見比べながら作れます）"
-            onClick={() => void u.pasteImage()}
-          >
-            📋 図面を貼る
-          </button>
-          <button
-            type="button"
-            title="PDF・画像のファイルを選んで、図の下敷きに貼ります"
-            onClick={() => void u.openFile()}
-          >
-            📄 図面ファイル
-          </button>
-          <label className="snap-field" title="PDFの何ページ目を使うか">
-            頁
-            <input
-              className="num"
-              value={u.pageText}
-              onChange={(e) => u.setPageText(e.target.value)}
-            />
-          </label>
-        </>
-      )}
+      <button
+        type="button"
+        title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（図形の位置・大きさを図面と見比べながら作れます）"
+        onClick={() => void u.pasteImage()}
+      >
+        📋 図面を貼る
+      </button>
+      <button
+        type="button"
+        title="PDF・画像のファイルを選んで、図の下敷きに貼ります（複数まとめて選ぶと横に並べて置きます）"
+        onClick={() => void u.openFiles()}
+      >
+        📄 図面ファイル
+      </button>
+      <label className="snap-field" title="PDFの何ページ目を使うか">
+        頁
+        <input
+          className="num"
+          value={u.pageText}
+          onChange={(e) => u.setPageText(e.target.value)}
+        />
+      </label>
       {u.underlay.image !== "" && (
         <>
           <button

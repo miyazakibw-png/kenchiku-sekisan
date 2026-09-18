@@ -451,6 +451,16 @@ const api = {
   ): Promise<{ image: string; pdf: string; note: string }> =>
     ipcRenderer.invoke(IPC.drawingOpen, page),
 
+  /** 図面のPDF・画像ファイルをまとめて複数選んで取り込む（items は選んだ順） */
+  openDrawingFiles: (
+    page: number,
+  ): Promise<{
+    image: string;
+    pdf: string;
+    note: string;
+    items: { image: string; pdf: string; note: string }[];
+  }> => ipcRenderer.invoke(IPC.drawingOpen, page, true),
+
   /** 欄に入ったときにWindowsの日本語入力を切り替える（戻り値は調べるための記録） */
   setImeMode: (mode: ImeMode): Promise<string> =>
     ipcRenderer.invoke(IPC.imeMode, mode),
