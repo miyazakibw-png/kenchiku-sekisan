@@ -4351,21 +4351,38 @@ export default function RoomSheetPage({
           trace={trace}
           onChange={setTrace}
           onUnderlay={(perPixel) => {
-            // なぞらずに図面だけを図形の下敷きに足す（2枚目以降は今ある図面の右横に追加。縮尺がまだなら仮の縮尺で置く）
+            // なぞらずに図面だけを図形の下敷きにする。同じ図面が既にあればその枚をそろえる（重複しない）。
+            // 無ければ新しい1枚として足す（2枚目以降は今ある図面の右横。縮尺がまだなら仮の縮尺で置く）
             const fallback =
               Math.max(
                 extents === null ? 0 : Math.max(extents.x, extents.y),
                 10,
               ) / 1000;
+            const matchIndex = underlays.findIndex(
+              (item) => item.image === trace.image,
+            );
+            const matched = matchIndex >= 0 ? underlays[matchIndex] : undefined;
             const next = {
               image: trace.image,
-              metersPerPixel: perPixel > 0 ? perPixel : fallback,
-              x: underlayTool.nextSpot.x,
-              y: underlayTool.nextSpot.y,
-              opacity: underlay.opacity,
-              ...(perPixel > 0 ? { scaled: true } : {}),
+              metersPerPixel:
+                perPixel > 0 ? perPixel : (matched?.metersPerPixel ?? fallback),
+              x: matched?.x ?? underlayTool.nextSpot.x,
+              y: matched?.y ?? underlayTool.nextSpot.y,
+              opacity: matched?.opacity ?? underlay.opacity,
+              ...(perPixel > 0 || matched?.scaled === true
+                ? { scaled: true }
+                : {}),
             };
-            setUnderlays([...underlays, next], underlays.length);
+            if (matched === undefined) {
+              setUnderlays([...underlays, next], underlays.length);
+            } else {
+              setUnderlays(
+                underlays.map((item, index) =>
+                  index === matchIndex ? next : item,
+                ),
+                matchIndex,
+              );
+            }
             setShowTrace(false);
             setMessage(
               perPixel > 0
@@ -4375,13 +4392,41 @@ export default function RoomSheetPage({
           }}
           onApply={(next, meters, _pixels, perPixel) => {
             applyShape(next);
-            // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く
-            const synced =
-              underlayForTrace(
-                { ...trace, metersPerPixel: perPixel },
-                underlay,
-              ) ?? underlay;
-            setUnderlay(underlayAtTraceOrigin(synced, meters));
+            // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く。
+            // 同じ図面が既にあればその枚だけを書き替え、無ければ新しい1枚として足す（他の図面は変えない）
+            if (trace.image === "") {
+              setUnderlay(underlayAtTraceOrigin(underlay, meters));
+            } else {
+              const matchIndex = underlays.findIndex(
+                (item) => item.image === trace.image,
+              );
+              const base =
+                matchIndex >= 0
+                  ? underlays[matchIndex]
+                  : {
+                      image: trace.image,
+                      metersPerPixel: 0,
+                      x: 0,
+                      y: 0,
+                      opacity: underlay.opacity,
+                    };
+              const synced =
+                underlayForTrace(
+                  { ...trace, metersPerPixel: perPixel },
+                  base,
+                ) ?? base;
+              const placed = underlayAtTraceOrigin(synced, meters);
+              if (matchIndex >= 0) {
+                setUnderlays(
+                  underlays.map((item, index) =>
+                    index === matchIndex ? placed : item,
+                  ),
+                  matchIndex,
+                );
+              } else {
+                setUnderlays([...underlays, placed], underlays.length);
+              }
+            }
             setShowTrace(false);
             const madeSolved = solveShape(next);
             const madeSize = shapeExtents(madeSolved);
