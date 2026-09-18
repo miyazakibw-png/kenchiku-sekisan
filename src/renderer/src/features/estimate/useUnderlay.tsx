@@ -126,6 +126,8 @@ export interface Underlay {
   boxes: (UnderlayBox | null)[];
   /** 次に足す図面を置く場所（今ある図面の右横。無いときは原点） */
   nextSpot: { x: number; y: number };
+  /** 選んでいる図面をいちばん上に出す（重なっている所で見える図面を変える。複数置ける画面だけ） */
+  bringFront: () => void;
   mode: UnderlayMode;
   scalePoints: Point[];
   scaleText: string;
@@ -464,6 +466,20 @@ export function useUnderlay({
     );
   }, [mode, setMessage]);
 
+  const bringFront = useCallback(() => {
+    if (!multi || underlays.length < 2) return;
+    const index = Math.min(
+      Math.max(activeRef.current, 0),
+      underlays.length - 1,
+    );
+    const picked = underlays[index];
+    if (picked === undefined) return;
+    // 後に置いた図面が上に重なるので、選んだ図面をいちばん後ろへ移す
+    setUnderlaysState([...underlays.filter((_, i) => i !== index), picked]);
+    setActiveState(underlays.length - 1);
+    setMessage("選んでいる図面をいちばん上に出しました");
+  }, [multi, setMessage, underlays]);
+
   const remove = useCallback(async () => {
     if (!(await ask("下敷きの図面を外します。よろしいですか"))) return;
     if (multi) {
@@ -556,6 +572,7 @@ export function useUnderlay({
     box,
     boxes,
     nextSpot,
+    bringFront,
     mode,
     scalePoints,
     scaleText,
@@ -677,6 +694,15 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
             ))}
           </select>
         </label>
+      )}
+      {u.count > 1 && u.underlay.image !== "" && (
+        <button
+          type="button"
+          title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
+          onClick={u.bringFront}
+        >
+          ⬆ 上に出す
+        </button>
       )}
       <button
         type="button"
