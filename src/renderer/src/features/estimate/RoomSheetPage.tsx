@@ -83,6 +83,7 @@ import {
   type CeilingCodes,
   type CeilingElement,
   type CeilingElementKind,
+  type CeilingPoint,
   type CeilingRegion,
 } from "../../../../core/room/ceiling";
 import {
@@ -105,6 +106,7 @@ import {
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import CalcPrintSheet from "../print/CalcPrintSheet";
 import { ask } from "../common/askDialog";
 
@@ -353,18 +355,64 @@ export default function RoomSheetPage({
     baseX: number;
     baseY: number;
   } | null>(null);
+  /** 選んだ自由線の持ち手（①・折れ点・②）をつかんでいる間の持ち手 */
+  const freePointDragRef = useRef<{
+    elementId: string;
+    key: "a" | "b" | number;
+  } | null>(null);
+  /** 天井伏図（線・区画の高さ・C番号の位置）を1つの履歴にして戻る・進む */
+  const ceilingHistory = useUndoRedo<{
+    ceiling: CeilingElement[];
+    codes: CeilingCodes;
+  }>();
+  const ceilingContentRef = useRef({ ceiling, codes });
+  useEffect(() => {
+    ceilingContentRef.current = { ceiling, codes };
+  });
+  const changeCeiling = (
+    next: React.SetStateAction<CeilingElement[]>,
+  ): void => {
+    ceilingHistory.push(ceilingContentRef.current);
+    setCeiling(next);
+  };
+  const changeCodes = (next: React.SetStateAction<CeilingCodes>): void => {
+    ceilingHistory.push(ceilingContentRef.current);
+    setCodes(next);
+  };
+  const undoCeiling = (): void => {
+    const previous = ceilingHistory.undo(ceilingContentRef.current);
+    if (previous === null) return;
+    setCeiling(previous.ceiling);
+    setCodes(previous.codes);
+    setPickedCeiling(null);
+    setMessage("1つ前に戻しました（保存すると確定します）");
+  };
+  const redoCeiling = (): void => {
+    const next = ceilingHistory.redo(ceilingContentRef.current);
+    if (next === null) return;
+    setCeiling(next.ceiling);
+    setCodes(next.codes);
+    setPickedCeiling(null);
+    setMessage("戻した内容を1つ先へ進めました（保存すると確定します）");
+  };
   const [showCeiling, setShowCeiling] = useState(printMode);
   /** 同じ高さの区画を、離れていても1つの番号にまとめるか */
   const [mergeCeiling, setMergeCeiling] = useState(false);
   /** 図でクリックして選んだ天井伏図の線（入力表の行が光ります） */
   const [pickedCeiling, setPickedCeiling] = useState<string | null>(null);
   /**
-   * 図の上で①→②と2か所クリックして自由線の下がり天井を引くモード。
-   * null＝引いていない、"idle"＝①を待っている、anchor＝②を待っている
+   * 図の上でクリックして自由線の下がり天井を引くモード。
+   * null＝引いていない、"idle"＝①を待っている。
+   * a が入っていれば①は済みで、部屋の中をクリックすると折れ点を足し、
+   * 辺の近くをクリックすると②になって線ができる（L字・コの字にできる）
    */
-  const [freeDraw, setFreeDraw] = useState<CeilingAnchor | "idle" | null>(null);
-  /** ②を待っている間の、カーソルの所の端点（近い辺の上に付ける） */
-  const [freeCursor, setFreeCursor] = useState<CeilingAnchor | null>(null);
+  const [freeDraw, setFreeDraw] = useState<
+    { a: CeilingAnchor; via: CeilingPoint[] } | "idle" | null
+  >(null);
+  /** ②や折れ点を待っている間の、カーソルの所の位置（辺に近いと辺の上に付く） */
+  const [freeCursor, setFreeCursor] = useState<
+    (CeilingPoint & { onEdge: boolean }) | null
+  >(null);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
   /**
@@ -481,6 +529,7 @@ export default function RoomSheetPage({
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       setCeiling(parseCeiling(loaded.ceilingJson, height));
       setCodes(parseCeilingCodes(loaded.ceilingCodesJson));
+      ceilingHistory.clear();
       setLower(parseLower(loaded.lowerJson));
       setTrace(parseTrace(loaded.traceJson));
       setUnderlay(parseUnderlay(loaded.traceJson));
@@ -922,6 +971,7 @@ export default function RoomSheetPage({
   /** C番号をつかんで好きな位置へ動かす */
   const startCodeDrag = useCallback(
     (code: string, event: ReactPointerEvent<SVGTextElement>): void => {
+      ceilingHistory.push(ceilingContentRef.current);
       const base = codes.moves[code] ?? { x: 0, y: 0 };
       codeDragRef.current = {
         code,
@@ -958,9 +1008,10 @@ export default function RoomSheetPage({
 
   const updateCeiling = useCallback(
     (id: string, patch: Partial<CeilingElement>): void =>
-      setCeiling((current) =>
+      changeCeiling((current) =>
         current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -993,21 +1044,31 @@ export default function RoomSheetPage({
   );
 
   /** 図の上のクリック位置を図形の座標に直す */
-  const svgPoint = (
-    event: React.MouseEvent<SVGSVGElement>,
+  const svgPointAt = (
+    svg: SVGSVGElement | null,
+    clientX: number,
+    clientY: number,
   ): { x: number; y: number } | null => {
-    const svg = event.currentTarget;
+    if (svg === null) return null;
     const matrix = svg.getScreenCTM();
     if (matrix === null) return null;
     const origin = svg.createSVGPoint();
-    origin.x = event.clientX;
-    origin.y = event.clientY;
+    origin.x = clientX;
+    origin.y = clientY;
     return origin.matrixTransform(matrix.inverse());
   };
 
-  /** クリックした所に一番近い、辺の上の位置（線の端は必ず部屋のふちに付く） */
+  const svgPoint = (
+    event: React.MouseEvent<SVGSVGElement>,
+  ): { x: number; y: number } | null =>
+    svgPointAt(event.currentTarget, event.clientX, event.clientY);
+
+  /** クリックした所に一番近い、辺の上の位置（線の端は必ず部屋のふちに付く。gap＝クリックから辺への離れ） */
   const nearestAnchor = useCallback(
-    (point: { x: number; y: number }): CeilingAnchor | null => {
+    (point: {
+      x: number;
+      y: number;
+    }): (CeilingAnchor & { gap: number }) | null => {
       let best: { edgeId: string; rate: number; gap: number } | null = null;
       for (const [index, row] of solved.edges.entries()) {
         const from = solved.points[index];
@@ -1032,41 +1093,121 @@ export default function RoomSheetPage({
         if (best === null || gap < best.gap)
           best = { edgeId: row.id, rate, gap };
       }
-      return best === null ? null : { edgeId: best.edgeId, rate: best.rate };
+      return best === null
+        ? null
+        : { edgeId: best.edgeId, rate: best.rate, gap: best.gap };
     },
     [solved.edges, solved.points],
   );
 
+  /** 自由線の端が付く、辺への近さ（部屋の中のクリックは折れ点になる） */
+  const freeSnap = view.span * 0.03;
+
   /**
    * 自由線を引くモードでの図のクリック。
-   * 1か所目＝①、2か所目＝②（どちらも近い辺の上に付く）。2点を結ぶ下がり天井になる
+   * 1か所目＝①（近い辺の上に付く）。次に部屋の中をクリックすると折れ点を足し、
+   * 辺の近くをクリックすると②になって線ができる（折れ点でL字・コの字になる）
    */
   const clickFreeDraw = (event: React.MouseEvent<SVGSVGElement>): void => {
     const point = svgPoint(event);
     if (point === null) return;
-    const anchor = nearestAnchor(point);
-    if (anchor === null) return;
+    const near = nearestAnchor(point);
+    if (near === null) return;
     if (freeDraw === "idle") {
-      setFreeDraw(anchor);
+      setFreeDraw({ a: { edgeId: near.edgeId, rate: near.rate }, via: [] });
       setMessage(
-        "①を置きました。②を置く場所をクリックしてください（線の端は近い辺の上に付きます）",
+        "①を置きました。部屋の中をクリックすると折れ点を足せます。辺の近くをクリックすると②になって線ができます",
       );
       return;
     }
     if (freeDraw === null) return;
+    if (near.gap > freeSnap) {
+      setFreeDraw({ ...freeDraw, via: [...freeDraw.via, point] });
+      setMessage(
+        `折れ点を足しました（${freeDraw.via.length + 1}か所）。部屋の中＝折れ点、辺の近く＝②です`,
+      );
+      return;
+    }
     const added = ceilingElement("dropCeiling", null);
     const next: CeilingElement = {
       ...added,
       edgeId: null,
-      free: { a: freeDraw, b: anchor },
+      free: {
+        a: freeDraw.a,
+        b: { edgeId: near.edgeId, rate: near.rate },
+        ...(freeDraw.via.length > 0 ? { via: freeDraw.via } : {}),
+      },
     };
-    setCeiling((current) => [...current, next]);
+    changeCeiling((current) => [...current, next]);
     setPickedCeiling(next.id);
     setFreeDraw(null);
     setFreeCursor(null);
     setMessage(
-      "自由線の下がり天井を引きました。線で下がる側は行の「⇄」で反対に、端点の位置は「辺○の○m」で直せます",
+      "自由線の下がり天井を引きました。線をクリックすると①・折れ点・②の持ち手が出て、つかんで動かせます",
     );
+  };
+
+  /** 選んだ自由線の①・折れ点・②をつかんで動かす */
+  const startFreePointDrag = (
+    elementId: string,
+    key: "a" | "b" | number,
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    if (freeDraw !== null) return;
+    const element = ceiling.find((row) => row.id === elementId);
+    if (element === undefined || element.free === undefined) return;
+    if (element.free === null) return;
+    ceilingHistory.push(ceilingContentRef.current);
+    freePointDragRef.current = { elementId, key };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  };
+
+  const moveFreePointDrag = (
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    const drag = freePointDragRef.current;
+    if (drag === null) return;
+    const point = svgPointAt(
+      event.currentTarget.ownerSVGElement,
+      event.clientX,
+      event.clientY,
+    );
+    if (point === null) return;
+    setCeiling((current) =>
+      current.map((row) => {
+        if (
+          row.id !== drag.elementId ||
+          row.free === null ||
+          row.free === undefined
+        )
+          return row;
+        if (typeof drag.key === "number")
+          return {
+            ...row,
+            free: {
+              ...row.free,
+              via: (row.free.via ?? []).map((each, index) =>
+                index === drag.key ? { x: point.x, y: point.y } : each,
+              ),
+            },
+          };
+        const near = nearestAnchor(point);
+        if (near === null) return row;
+        return {
+          ...row,
+          free: {
+            ...row.free,
+            [drag.key]: { edgeId: near.edgeId, rate: near.rate },
+          },
+        };
+      }),
+    );
+    event.stopPropagation();
+  };
+
+  const endFreePointDrag = (): void => {
+    freePointDragRef.current = null;
   };
 
   // 自由線を引いている間、Escでやめられる
@@ -1097,7 +1238,7 @@ export default function RoomSheetPage({
         Math.abs(drop - region.drop) < 1e-6
       )
         return;
-      setCodes((current) => ({
+      changeCodes((current) => ({
         ...current,
         heights: noteRegionHeight(current.heights, region, drop),
       }));
@@ -2241,9 +2382,26 @@ export default function RoomSheetPage({
               onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
               onPointerMove={(event) => {
                 underlayTool.onPointerMove(event);
+                if (freePointDragRef.current !== null) return;
                 if (freeDraw !== null && freeDraw !== "idle") {
                   const point = svgPoint(event);
-                  setFreeCursor(point === null ? null : nearestAnchor(point));
+                  if (point === null) {
+                    setFreeCursor(null);
+                    return;
+                  }
+                  const near = nearestAnchor(point);
+                  const snapped =
+                    near !== null && near.gap <= freeSnap
+                      ? anchorPos({
+                          edgeId: near.edgeId,
+                          rate: near.rate,
+                        })
+                      : null;
+                  setFreeCursor(
+                    snapped !== null
+                      ? { ...snapped, onEdge: true }
+                      : { ...point, onEdge: false },
+                  );
                 }
               }}
               onPointerUp={underlayTool.onPointerUp}
@@ -2452,22 +2610,82 @@ export default function RoomSheetPage({
                     ))}
                   </g>
                 ))}
+              {showCeiling &&
+                !printMode &&
+                freeDraw === null &&
+                pickedCeiling !== null &&
+                (() => {
+                  const element = ceiling.find(
+                    (row) => row.id === pickedCeiling,
+                  );
+                  const free = element?.free ?? null;
+                  if (element === undefined || free === null) return null;
+                  const handles: {
+                    key: "a" | "b" | number;
+                    at: CeilingPoint | null;
+                  }[] = [
+                    { key: "a", at: anchorPos(free.a) },
+                    ...(free.via ?? []).map((point, index) => ({
+                      key: index as number,
+                      at: point,
+                    })),
+                    { key: "b", at: anchorPos(free.b) },
+                  ];
+                  return (
+                    <g>
+                      {handles.map((item) =>
+                        item.at === null ? null : (
+                          <g
+                            key={`${element.id}-handle-${item.key}`}
+                            style={{ cursor: "grab" }}
+                            onPointerDown={(event) =>
+                              startFreePointDrag(element.id, item.key, event)
+                            }
+                            onPointerMove={moveFreePointDrag}
+                            onPointerUp={endFreePointDrag}
+                          >
+                            <circle
+                              cx={item.at.x}
+                              cy={item.at.y}
+                              r={cornerRadius * 2.6}
+                              className="corner-hit"
+                            >
+                              <title>
+                                {item.key === "a"
+                                  ? "①をつかんで動かす（近い辺の上に付きます）"
+                                  : item.key === "b"
+                                    ? "②をつかんで動かす（近い辺の上に付きます）"
+                                    : "折れ点をつかんで動かす"}
+                              </title>
+                            </circle>
+                            <circle
+                              cx={item.at.x}
+                              cy={item.at.y}
+                              r={cornerRadius}
+                              className="corner selected"
+                            />
+                          </g>
+                        ),
+                      )}
+                    </g>
+                  );
+                })()}
               {freeDraw !== null &&
                 freeDraw !== "idle" &&
                 (() => {
-                  const start = anchorPos(freeDraw);
-                  const end =
-                    freeCursor === null ? null : anchorPos(freeCursor);
+                  const start = anchorPos(freeDraw.a);
                   if (start === null) return null;
+                  const path = [start, ...freeDraw.via];
+                  if (freeCursor !== null) path.push(freeCursor);
                   return (
                     <g className="ceiling-free-draw">
-                      {end !== null && (
-                        <line
-                          x1={start.x}
-                          y1={start.y}
-                          x2={end.x}
-                          y2={end.y}
+                      {path.length >= 2 && (
+                        <polyline
+                          points={path
+                            .map((point) => `${point.x},${point.y}`)
+                            .join(" ")}
                           className="ceiling-line dropCeiling"
+                          fill="none"
                         />
                       )}
                       <text
@@ -2478,10 +2696,19 @@ export default function RoomSheetPage({
                       >
                         ①
                       </text>
-                      {end !== null && (
+                      {freeDraw.via.map((point, index) => (
+                        <circle
+                          key={index}
+                          cx={point.x}
+                          cy={point.y}
+                          r={cornerRadius}
+                          className="corner"
+                        />
+                      ))}
+                      {freeCursor !== null && freeCursor.onEdge && (
                         <text
-                          x={end.x}
-                          y={end.y}
+                          x={freeCursor.x}
+                          y={freeCursor.y}
                           className="dim ceiling"
                           fontSize={dimFontSize}
                         >
@@ -2509,7 +2736,7 @@ export default function RoomSheetPage({
                         onPointerMove={moveCodeDrag}
                         onPointerUp={endCodeDrag}
                         onDoubleClick={() =>
-                          setCodes((current) => {
+                          changeCodes((current) => {
                             const moves = { ...current.moves };
                             delete moves[region.code];
                             return { ...current, moves };
@@ -3182,6 +3409,22 @@ export default function RoomSheetPage({
               />
               同じ高さをまとめる
             </label>
+            <button
+              type="button"
+              disabled={!ceilingHistory.canUndo}
+              title="1つ前の内容に戻します"
+              onClick={undoCeiling}
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              disabled={!ceilingHistory.canRedo}
+              title="戻した内容を1つ先へ進めます"
+              onClick={redoCeiling}
+            >
+              ↷ 進む
+            </button>
             {(Object.keys(CEILING_KIND_LABEL) as CeilingElementKind[]).map(
               (kind) => (
                 <button
@@ -3193,7 +3436,7 @@ export default function RoomSheetPage({
                       : wallEdges.length === 0
                   }
                   onClick={() =>
-                    setCeiling((current) => [
+                    changeCeiling((current) => [
                       ...current,
                       ceilingElement(
                         kind,
@@ -3210,7 +3453,7 @@ export default function RoomSheetPage({
               type="button"
               className={freeDraw !== null ? "on" : ""}
               disabled={solved.edges.length === 0}
-              title="壁に沿わない下がり天井を、図の上で2か所クリックして引きます（線の端は近い辺の上に付きます）"
+              title="壁に沿わない下がり天井を、図の上でクリックして引きます（①→部屋の中で折れ点→辺の近くで②。折れ点でL字・コの字になります）"
               onClick={() => {
                 if (freeDraw !== null) {
                   setFreeDraw(null);
@@ -3220,7 +3463,7 @@ export default function RoomSheetPage({
                 setFreeDraw("idle");
                 setFreeCursor(null);
                 setMessage(
-                  "①を置く場所を上の図でクリックしてください（線の端は近い辺の上に付きます。もう一度押すとやめます）",
+                  "①を置く場所を上の図でクリックしてください（線の端は近い辺の上に付きます。部屋の中をクリックすると折れ点、辺の近くで②。もう一度押すとやめます）",
                 );
               }}
             >
@@ -3588,7 +3831,7 @@ export default function RoomSheetPage({
                             title={`梁型・下がり壁で分かれている${parts.length}本を別々の下がり天井の行にします（片側だけ消す・高さを変えるとき）`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCeiling((current) =>
+                              changeCeiling((current) =>
                                 current.flatMap((each) =>
                                   each.id === element.id ? parts : [each],
                                 ),
@@ -3620,7 +3863,7 @@ export default function RoomSheetPage({
                             : "この行を消す"
                         }
                         onClick={() =>
-                          setCeiling((current) =>
+                          changeCeiling((current) =>
                             current.filter((each) => each.id !== element.id),
                           )
                         }

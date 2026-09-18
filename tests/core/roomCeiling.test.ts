@@ -1101,6 +1101,60 @@ describe("区画の境目の線", () => {
     expect(regions.some((row) => row.drop === 0.5)).toBe(true);
   });
 
+  it("折れ点を付けた自由線はL字で引けて、下がる側の区画が1つに分かれる", () => {
+    const solved = shape();
+    const free = element("dropCeiling", null, {
+      height: 0.3,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.5 }, // (2,0)
+        via: [{ x: 2, y: 1.5 }],
+        b: { edgeId: solved.edges[1].id, rate: 0.5 }, // (4,1.5)
+      },
+    });
+    // L字が (2,0)→(2,1.5)→(4,1.5) の2本の線分（1.5m＋2m）で引ける
+    expect(
+      ceilingLines([free], solved, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length)
+        .sort((left, right) => left - right),
+    ).toEqual([1.5, 2]);
+    const regions = ceilingRegions([free], solved, 2.7);
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    // 下がる側は最初の線分 (2,0)→(2,1.5) の左側（①→② の左側＝直線と同じルール）＝大きい方の区画
+    expect(regions.find((row) => row.drop === 0.3)?.area).toBeCloseTo(9, 6);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(12, 6);
+    // 下がり天井の長さ・見付面積はL字まるごと（3.5m）で数える
+    const result = ceilingQuantities([free], solved, 2.7);
+    expect(result.totals.dropCeilingLength).toBe(3.5);
+    expect(result.totals.dropCeilingArea).toBeCloseTo(1.05, 6);
+  });
+
+  it("折れ点を2つ付けた自由線はコの字でも1本になる", () => {
+    const solved = shape();
+    const free = element("dropCeiling", null, {
+      height: 0.3,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.25 }, // (1,0)
+        via: [
+          { x: 1, y: 2 },
+          { x: 3, y: 2 },
+        ],
+        b: { edgeId: solved.edges[0].id, rate: 0.75 }, // (3,0)
+      },
+    });
+    // コの字は3本の線分（2mずつ）
+    expect(
+      ceilingLines([free], solved, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length),
+    ).toEqual([2, 2, 2]);
+    const regions = ceilingRegions([free], solved, 2.7);
+    // 下がる側は最初の線分 (1,0)→(1,2) の左側＝コの字の外側（残り8㎡）
+    expect(regions.find((row) => row.drop === 0.3)?.area).toBeCloseTo(8, 6);
+    const result = ceilingQuantities([free], solved, 2.7);
+    expect(result.totals.dropCeilingLength).toBe(6);
+  });
+
   it("自由線は「分ける」対象にならない", () => {
     const solved = shape();
     const free = element("dropCeiling", null, {
