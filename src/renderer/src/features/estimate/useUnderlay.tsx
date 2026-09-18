@@ -588,9 +588,9 @@ export function UnderlayTools({
       {u.count > 1 && (
         <label
           className="snap-field"
-          title="動かす・合わせる・外すの対象にする図面を選びます"
+          title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
         >
-          図面
+          図面を選ぶ
           <select
             value={u.active}
             onChange={(e) => u.setActive(Number(e.target.value))}
@@ -714,24 +714,40 @@ export function UnderlayTools({
 /** svg の中に置く下敷きの画像（いちばん下に描く）。置いた図面は全部重ねて出す */
 export function UnderlayImage({ u }: { u: Underlay }): JSX.Element | null {
   const drawn = u.underlays
-    .map((item, index) => ({ item, box: u.boxes[index] ?? null }))
+    .map((item, index) => ({ item, index, box: u.boxes[index] ?? null }))
     .filter(({ box }) => box !== null);
   if (drawn.length === 0) return null;
   return (
     <>
-      {drawn.map(({ item, box }, index) => (
-        <image
-          key={index}
-          href={item.image}
-          x={box!.x}
-          y={box!.y}
-          width={box!.width}
-          height={box!.height}
-          preserveAspectRatio="none"
-          opacity={item.opacity}
-          className="underlay-image"
-          style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
-        />
+      {drawn.map(({ item, index, box }) => (
+        <g key={index}>
+          <image
+            href={item.image}
+            x={box!.x}
+            y={box!.y}
+            width={box!.width}
+            height={box!.height}
+            preserveAspectRatio="none"
+            opacity={item.opacity}
+            className="underlay-image"
+            style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
+          />
+          {/* 図面が2枚以上あるときは、ボタンが効く図面に橙の枠を出す */}
+          {u.count > 1 && index === u.active && (
+            <rect
+              x={box!.x}
+              y={box!.y}
+              width={box!.width}
+              height={box!.height}
+              fill="none"
+              stroke="#e8590c"
+              strokeWidth="2"
+              strokeDasharray="8 4"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          )}
+        </g>
       ))}
     </>
   );
