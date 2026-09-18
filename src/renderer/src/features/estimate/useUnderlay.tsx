@@ -70,13 +70,31 @@ interface Options {
   dragStart?: (before: TraceUnderlay) => void;
   /** 図面を動かしている途中（from＝動かし始めの下敷き、to＝いまの下敷き）。図形を一緒に動かすときに渡す */
   drag?: (from: TraceUnderlay, to: TraceUnderlay) => void;
+  /**
+   * 下敷きを2枚以上置けるようにする（大きい部屋で図面が複数枚になるとき）。
+   * true のとき貼る・開くは追加になり、選んだ1枚（active）を動かす・合わせる・外す。
+   * 指定しないときは今までどおり1枚だけ（貼る・開くは置き替え）
+   */
+  multi?: boolean;
 }
 
 export interface Underlay {
+  /** いま選んでいる図面（無ければ空）。操作ボタンは全部この1枚に効く */
   underlay: TraceUnderlay;
   setUnderlay: Dispatch<SetStateAction<TraceUnderlay>>;
-  /** 画像を置く範囲（m）。図面が無い・縮尺が無いときは null */
+  /** 置いてある図面を全部（画像のあるものだけ）。複数置ける画面で使う */
+  underlays: TraceUnderlay[];
+  /** 置き替え用（読み込み・戻る）。画像の無いものは除いて並びをそのまま使う */
+  setUnderlays: (list: TraceUnderlay[]) => void;
+  /** いま選んでいる図面の番号（underlays の何枚目か） */
+  active: number;
+  setActive: (index: number) => void;
+  /** 図面が何枚置いてあるか */
+  count: number;
+  /** 選んでいる図面の画像を置く範囲（m）。図面が無い・縮尺が無いときは null */
   box: UnderlayBox | null;
+  /** 全図面の画像を置く範囲（m）。underlays と同じ並び、無い所は null */
+  boxes: (UnderlayBox | null)[];
   mode: UnderlayMode;
   scalePoints: Point[];
   scaleText: string;
@@ -106,9 +124,14 @@ export function useUnderlay({
   commit,
   dragStart,
   drag,
+  multi = false,
 }: Options): Underlay {
-  const [underlay, setUnderlay] = useState<TraceUnderlay>(EMPTY_UNDERLAY);
-  const [size, setSize] = useState({ width: 1000, height: 700 });
+  /** 置いてある図面。画像のあるものだけ持つ */
+  const [underlays, setUnderlaysState] = useState<TraceUnderlay[]>([]);
+  const [active, setActiveState] = useState(0);
+  const [sizes, setSizes] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
   const [mode, setMode] = useState<UnderlayMode>("off");
   const [scalePoints, setScalePoints] = useState<Point[]>([]);
   const [scaleText, setScaleText] = useState("3.640");
@@ -122,50 +145,112 @@ export function useUnderlay({
     started: boolean;
   } | null>(null);
 
+  const underlay = underlays[active] ?? EMPTY_UNDERLAY;
+
+  const setUnderlay: Dispatch<SetStateAction<TraceUnderlay>> = useCallback(
+    (next) => {
+      setUnderlaysState((current) => {
+        const resolved =
+          typeof next === "function"
+            ? next(current[active] ?? EMPTY_UNDERLAY)
+            : next;
+        if (current.length === 0)
+          return resolved.image === "" ? current : [resolved];
+        const updated = current.map((item, index) =>
+          index === active ? resolved : item,
+        );
+        return updated.filter((item) => item.image !== "");
+      });
+    },
+    [active],
+  );
+
+  const setUnderlays = useCallback((list: TraceUnderlay[]) => {
+    setUnderlaysState(list.filter((item) => item.image !== ""));
+    setActiveState(0);
+  }, []);
+
+  const setActive = useCallback(
+    (index: number) => {
+      setActiveState(Math.min(Math.max(index, 0), underlays.length - 1));
+    },
+    [underlays.length],
+  );
+
   const replace = useCallback(
     (before: TraceUnderlay, after: TraceUnderlay) => {
       if (commit) commit(before, after);
       setUnderlay(after);
     },
-    [commit],
+    [commit, setUnderlay],
   );
 
   useEffect(() => {
-    if (underlay.image === "") return;
-    const image = new Image();
-    image.onload = () =>
-      setSize({ width: image.naturalWidth, height: image.naturalHeight });
-    image.src = underlay.image;
-  }, [underlay.image]);
+    underlays.forEach((item) => {
+      if (item.image === "" || sizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [sizes, underlays]);
 
-  const box = useMemo<UnderlayBox | null>(() => {
-    if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
-    return {
-      x: underlay.x,
-      y: underlay.y,
-      width: size.width * underlay.metersPerPixel,
-      height: size.height * underlay.metersPerPixel,
-    };
-  }, [size, underlay]);
+  const boxes = useMemo<(UnderlayBox | null)[]>(
+    () =>
+      underlays.map((item) => {
+        const size = sizes[item.image];
+        if (item.image === "" || item.metersPerPixel <= 0 || size === undefined)
+          return null;
+        return {
+          x: item.x,
+          y: item.y,
+          width: size.width * item.metersPerPixel,
+          height: size.height * item.metersPerPixel,
+        };
+      }),
+    [sizes, underlays],
+  );
+  const box = boxes[active] ?? null;
+  const count = underlays.length;
 
   const SCALE_HINT =
     "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れて［合わせる］を押してください";
 
   const putImage = useCallback(
     (dataUrl: string) => {
-      replace(underlay, {
+      const next: TraceUnderlay = {
         image: dataUrl,
         metersPerPixel: Math.max(planSize, 10) / 1000,
         x: 0,
         y: 0,
         opacity: 0.75,
         scaled: false,
-      });
+      };
+      if (multi) {
+        // 2枚目以降は追加になる（選ぶ図面は足した方にする）
+        setUnderlaysState((current) => {
+          const kept = current.filter((item) => item.image !== "");
+          return [...kept, next];
+        });
+        setActiveState(count);
+      } else {
+        replace(underlay, next);
+      }
       setScalePoints([]);
       setMode("scale");
       setMessage(SCALE_HINT);
     },
-    [planSize, replace, setMessage, underlay],
+    [count, multi, planSize, replace, setMessage, underlay],
   );
 
   const pasteImage = useCallback(async () => {
@@ -274,12 +359,19 @@ export function useUnderlay({
 
   const remove = useCallback(async () => {
     if (!(await ask("下敷きの図面を外します。よろしいですか"))) return;
-    replace(underlay, EMPTY_UNDERLAY);
+    if (multi) {
+      setUnderlaysState((current) =>
+        current.filter((_, index) => index !== active),
+      );
+      setActiveState((current) => Math.min(current, underlays.length - 2));
+    } else {
+      replace(underlay, EMPTY_UNDERLAY);
+    }
     setMode("off");
     setScalePoints([]);
     setScaleUndo([]);
     setMessage("下敷きの図面を外しました");
-  }, [replace, setMessage, underlay]);
+  }, [active, multi, replace, setMessage, underlay, underlays.length]);
 
   const onSvgClick = useCallback(
     (event: MouseEvent<SVGSVGElement>): boolean => {
@@ -349,7 +441,13 @@ export function useUnderlay({
   return {
     underlay,
     setUnderlay,
+    underlays,
+    setUnderlays,
+    active,
+    setActive,
+    count,
     box,
+    boxes,
     mode,
     scalePoints,
     scaleText,
@@ -463,6 +561,24 @@ export function UnderlayTools({
 }): JSX.Element {
   return (
     <span className="kind-pick underlay-tools">
+      {u.count > 1 && (
+        <label
+          className="snap-field"
+          title="動かす・合わせる・外すの対象にする図面を選びます"
+        >
+          図面
+          <select
+            value={u.active}
+            onChange={(e) => u.setActive(Number(e.target.value))}
+          >
+            {u.underlays.map((_, index) => (
+              <option key={index} value={index}>
+                図面{index + 1}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {canLoad && (
         <>
           <button
@@ -571,21 +687,29 @@ export function UnderlayTools({
   );
 }
 
-/** svg の中に置く下敷きの画像（いちばん下に描く） */
+/** svg の中に置く下敷きの画像（いちばん下に描く）。置いた図面は全部重ねて出す */
 export function UnderlayImage({ u }: { u: Underlay }): JSX.Element | null {
-  if (u.box === null) return null;
+  const drawn = u.underlays
+    .map((item, index) => ({ item, box: u.boxes[index] ?? null }))
+    .filter(({ box }) => box !== null);
+  if (drawn.length === 0) return null;
   return (
-    <image
-      href={u.underlay.image}
-      x={u.box.x}
-      y={u.box.y}
-      width={u.box.width}
-      height={u.box.height}
-      preserveAspectRatio="none"
-      opacity={u.underlay.opacity}
-      className="underlay-image"
-      style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
-    />
+    <>
+      {drawn.map(({ item, box }, index) => (
+        <image
+          key={index}
+          href={item.image}
+          x={box!.x}
+          y={box!.y}
+          width={box!.width}
+          height={box!.height}
+          preserveAspectRatio="none"
+          opacity={item.opacity}
+          className="underlay-image"
+          style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
+        />
+      ))}
+    </>
   );
 }
 

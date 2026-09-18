@@ -118,32 +118,59 @@ export const EMPTY_UNDERLAY: TraceUnderlay = {
   opacity: 0.75,
 };
 
+function normalizeUnderlay(
+  raw: Partial<TraceUnderlay> | null | undefined,
+): TraceUnderlay {
+  if (raw === undefined || raw === null || typeof raw !== "object")
+    return { ...EMPTY_UNDERLAY };
+  const number = (value: unknown, fallback: number): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return {
+    image: typeof raw.image === "string" ? raw.image : "",
+    metersPerPixel: number(raw.metersPerPixel, 0),
+    x: number(raw.x, 0),
+    y: number(raw.y, 0),
+    opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
+    ...(raw.scaled === true ? { scaled: true } : {}),
+  };
+}
+
 /** 保存した trace の JSON に一緒に入れた下敷き（underlay）を読む */
 export function parseUnderlay(json: string): TraceUnderlay {
   try {
     const parsed = JSON.parse(json) as { underlay?: Partial<TraceUnderlay> };
-    const raw = parsed.underlay;
-    if (raw === undefined || raw === null || typeof raw !== "object")
-      return { ...EMPTY_UNDERLAY };
-    const number = (value: unknown, fallback: number): number =>
-      typeof value === "number" && Number.isFinite(value) ? value : fallback;
-    return {
-      image: typeof raw.image === "string" ? raw.image : "",
-      metersPerPixel: number(raw.metersPerPixel, 0),
-      x: number(raw.x, 0),
-      y: number(raw.y, 0),
-      opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
-      ...(raw.scaled === true ? { scaled: true } : {}),
-    };
+    return normalizeUnderlay(parsed.underlay);
   } catch {
     return { ...EMPTY_UNDERLAY };
   }
 }
 
+/**
+ * 保存した trace の JSON に入れた下敷きを全部読む（複数置ける画面は underlays 配列。
+ * 1枚だけの古いデータは underlay 単体なので、その1枚を返す）
+ */
+export function parseUnderlays(json: string): TraceUnderlay[] {
+  try {
+    const parsed = JSON.parse(json) as {
+      underlays?: unknown;
+      underlay?: unknown;
+    };
+    const list = Array.isArray(parsed.underlays)
+      ? parsed.underlays
+      : parsed.underlay !== undefined
+        ? [parsed.underlay]
+        : [];
+    return list.map((raw) => normalizeUnderlay(raw as Partial<TraceUnderlay>));
+  } catch {
+    return [];
+  }
+}
+
 /** traceJson の中に、縮尺がまだ合わせられていない下敷きの図面があるか（一覧の「縮尺調整（未）」表示に使う） */
 export function hasUnscaledUnderlay(json: string): boolean {
-  const underlay = parseUnderlay(json);
-  return underlay.image !== "" && underlay.scaled !== true;
+  return parseUnderlays(json).some(
+    (underlay) => underlay.image !== "" && underlay.scaled !== true,
+  );
 }
 
 /**

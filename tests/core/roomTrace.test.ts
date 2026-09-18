@@ -8,6 +8,7 @@ import {
   traceArea,
   parseTrace,
   parseUnderlay,
+  parseUnderlays,
   hasUnscaledUnderlay,
   parseTracedShapes,
   rectFromCorners,
@@ -455,5 +456,35 @@ describe("underlayAtTraceOrigin（なぞった位置に元図を重ねる置き�
 
   it("点が無ければ位置を変えない", () => {
     expect(underlayAtTraceOrigin(underlay, [])).toBe(underlay);
+  });
+});
+
+describe("parseUnderlays（複数枚の下敷きを読む）", () => {
+  const one = {
+    image: "data:a",
+    metersPerPixel: 0.01,
+    x: 0,
+    y: 0,
+    opacity: 0.75,
+  };
+  const two = { ...one, image: "data:b", scaled: true };
+
+  it("underlays 配列をそのまま読む。古い underlay 単体は1枚として読む", () => {
+    expect(parseUnderlays(JSON.stringify({ underlays: [one, two] }))).toEqual([
+      one,
+      two,
+    ]);
+    expect(parseUnderlays(JSON.stringify({ underlay: two }))).toEqual([two]);
+    expect(parseUnderlays("{}")).toEqual([]);
+    expect(parseUnderlays("not json")).toEqual([]);
+  });
+
+  it("縮尺未調整の判定はどれか1枚でも未調整なら true", () => {
+    expect(hasUnscaledUnderlay(JSON.stringify({ underlays: [two, one] }))).toBe(
+      true,
+    );
+    expect(hasUnscaledUnderlay(JSON.stringify({ underlays: [two] }))).toBe(
+      false,
+    );
   });
 });

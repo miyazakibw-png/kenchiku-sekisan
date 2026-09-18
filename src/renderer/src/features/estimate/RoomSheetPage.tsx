@@ -17,8 +17,9 @@ import type {
 } from "@shared/types";
 import {
   EMPTY_TRACE,
+  EMPTY_UNDERLAY,
   parseTrace,
-  parseUnderlay,
+  parseUnderlays,
   traceFromUnderlay,
   underlayAtTraceOrigin,
   underlayForTrace,
@@ -298,13 +299,16 @@ const CORNERS_KEY = "roomSheet.showCorners";
 
 function viewBox(
   solved: SolvedShape,
-  underlay: UnderlayBox | null,
+  underlays: (UnderlayBox | null)[],
 ): { box: string; span: number } {
-  if (solved.points.length === 0 && underlay === null)
+  const underlayBoxes = underlays.filter(
+    (box): box is UnderlayBox => box !== null,
+  );
+  if (solved.points.length === 0 && underlayBoxes.length === 0)
     return { box: "0 0 100 100", span: 100 };
   const xs = solved.points.map((point) => point.x);
   const ys = solved.points.map((point) => point.y);
-  if (underlay !== null) {
+  for (const underlay of underlayBoxes) {
     xs.push(underlay.x, underlay.x + underlay.width);
     ys.push(underlay.y, underlay.y + underlay.height);
   }
@@ -312,7 +316,7 @@ function viewBox(
   const height = Math.max(...ys) - Math.min(...ys);
   const size = Math.max(width, height, 0.001);
   // 下敷きの図面はなぞる画面と同じ見え方（左上づめ・原寸）にするので余白を小さくする
-  const margin = size * (underlay === null ? 0.18 : 0.05);
+  const margin = size * (underlayBoxes.length === 0 ? 0.18 : 0.05);
   const left = Math.min(...xs) - (size - width) / 2 - margin;
   const top = Math.min(...ys) - (size - height) / 2 - margin;
   const span = size + margin * 2;
@@ -513,8 +517,9 @@ export default function RoomSheetPage({
   const underlayTool = useUnderlay({
     setMessage,
     planSize: extents === null ? 0 : Math.max(extents.x, extents.y),
+    multi: true,
   });
-  const { underlay, setUnderlay } = underlayTool;
+  const { underlay, setUnderlay, underlays, setUnderlays } = underlayTool;
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
@@ -526,7 +531,7 @@ export default function RoomSheetPage({
       lower,
       ceilingHeight,
       trace,
-      underlay,
+      underlays,
     },
     () => save(),
   );
@@ -552,10 +557,10 @@ export default function RoomSheetPage({
       ceilingHistory.clear();
       setLower(parseLower(loaded.lowerJson));
       setTrace(parseTrace(loaded.traceJson));
-      setUnderlay(parseUnderlay(loaded.traceJson));
+      setUnderlays(parseUnderlays(loaded.traceJson));
       markSaved({
         trace: parseTrace(loaded.traceJson),
-        underlay: parseUnderlay(loaded.traceJson),
+        underlays: parseUnderlays(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
@@ -601,10 +606,17 @@ export default function RoomSheetPage({
   );
 
   const view = useMemo(
-    // 図面を動かしている間は図面の位置を見え方の範囲に含めない（含めると図形がずれて見えて合わせにくい）
+    // 図面を動かしている間はその図面の位置を見え方の範囲に含めない（含めると図形がずれて見えて合わせにくい）
     () =>
-      viewBox(solved, underlayTool.mode === "move" ? null : underlayTool.box),
-    [solved, underlayTool.box, underlayTool.mode],
+      viewBox(
+        solved,
+        underlayTool.boxes.filter(
+          (box, index) =>
+            box !== null &&
+            !(underlayTool.mode === "move" && index === underlayTool.active),
+        ),
+      ),
+    [solved, underlayTool.boxes, underlayTool.mode, underlayTool.active],
   );
 
   /**
@@ -613,7 +625,9 @@ export default function RoomSheetPage({
    * （大きさが違うと貼る画面となぞる画面で画像の見え方がずれるため）。
    */
   const underlayScale =
-    !printMode && underlayTool.box !== null && underlay.metersPerPixel > 0
+    !printMode &&
+    underlayTool.boxes.some((box) => box !== null) &&
+    underlay.metersPerPixel > 0
       ? underlay.metersPerPixel
       : null;
   /** 図を実際に描いている大きさ（px。寸法文字やC番号のつかみ移動にも使う） */
@@ -959,6 +973,7 @@ export default function RoomSheetPage({
       lower: trimmed,
       ceilingHeight,
       trace,
+      underlays,
     });
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
@@ -967,7 +982,11 @@ export default function RoomSheetPage({
       ceilingJson: JSON.stringify(ceiling),
       ceilingCodesJson: JSON.stringify(codes),
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify({ ...trace, underlay }),
+      traceJson: JSON.stringify({
+        ...trace,
+        underlay: underlays[0] ?? EMPTY_UNDERLAY,
+        underlays,
+      }),
       ceilingHeight,
       note: sheet.note,
     });
@@ -984,7 +1003,7 @@ export default function RoomSheetPage({
     shape,
     sheet,
     trace,
-    underlay,
+    underlays,
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
@@ -1794,15 +1813,16 @@ export default function RoomSheetPage({
     setSelectedEdge(null);
     setSelectedCorner(null);
     let imageNote = "";
-    if (underlay.image !== "") {
-      const next = await rotateUnderlay(
-        underlay,
-        turned.pivot,
-        turned.pivotTo,
-        turned.angle,
+    if (underlays.length > 0) {
+      const turnedUnderlays = await Promise.all(
+        underlays.map((item) =>
+          rotateUnderlay(item, turned.pivot, turned.pivotTo, turned.angle),
+        ),
       );
-      if (next !== null) {
-        setUnderlay(next);
+      if (turnedUnderlays.some((item) => item !== null)) {
+        setUnderlays(
+          underlays.map((item, index) => turnedUnderlays[index] ?? item),
+        );
         imageNote = "（貼った図面も一緒に回りました）";
       }
     }
@@ -4330,20 +4350,22 @@ export default function RoomSheetPage({
           trace={trace}
           onChange={setTrace}
           onUnderlay={(perPixel) => {
-            // なぞらずに図面だけを図形の下敷きにする。縮尺がまだなら従来の貼る画面と同じ仮の縮尺で置く
+            // なぞらずに図面だけを図形の下敷きに足す（2枚目以降は追加。縮尺がまだなら仮の縮尺で置く）
             const fallback =
               Math.max(
                 extents === null ? 0 : Math.max(extents.x, extents.y),
                 10,
               ) / 1000;
-            setUnderlay({
+            const next = {
               image: trace.image,
               metersPerPixel: perPixel > 0 ? perPixel : fallback,
               x: 0,
               y: 0,
               opacity: underlay.opacity,
               ...(perPixel > 0 ? { scaled: true } : {}),
-            });
+            };
+            setUnderlays([...underlays, next]);
+            underlayTool.setActive(underlays.length);
             setShowTrace(false);
             setMessage(
               perPixel > 0
