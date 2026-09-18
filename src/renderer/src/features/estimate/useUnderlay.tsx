@@ -34,6 +34,22 @@ export interface Point {
   y: number;
 }
 
+/**
+ * 2枚目以降の図面を置く場所。今ある図面の右横に並べる（上に重ねると前の図面が隠れて見えないため）
+ * 置いてある図面が無いときは {x:0, y:0}
+ */
+export function spotBesideBoxes(boxes: (UnderlayBox | null)[]): {
+  x: number;
+  y: number;
+} {
+  const drawn = boxes.filter((box): box is UnderlayBox => box !== null);
+  if (drawn.length === 0) return { x: 0, y: 0 };
+  return {
+    x: Math.max(...drawn.map((box) => box.x + box.width)) + 0.5,
+    y: Math.min(...drawn.map((box) => box.y)),
+  };
+}
+
 export interface UnderlayBox {
   x: number;
   y: number;
@@ -84,8 +100,8 @@ export interface Underlay {
   setUnderlay: Dispatch<SetStateAction<TraceUnderlay>>;
   /** 置いてある図面を全部（画像のあるものだけ）。複数置ける画面で使う */
   underlays: TraceUnderlay[];
-  /** 置き替え用（読み込み・戻る）。画像の無いものは除いて並びをそのまま使う */
-  setUnderlays: (list: TraceUnderlay[]) => void;
+  /** 置き替え用（読み込み・戻る）。画像の無いものは除いて並びをそのまま使う。何枚目を選ぶかは activeIndex（省略時は1枚目） */
+  setUnderlays: (list: TraceUnderlay[], activeIndex?: number) => void;
   /** いま選んでいる図面の番号（underlays の何枚目か） */
   active: number;
   setActive: (index: number) => void;
@@ -95,6 +111,8 @@ export interface Underlay {
   box: UnderlayBox | null;
   /** 全図面の画像を置く範囲（m）。underlays と同じ並び、無い所は null */
   boxes: (UnderlayBox | null)[];
+  /** 次に足す図面を置く場所（今ある図面の右横。無いときは原点） */
+  nextSpot: { x: number; y: number };
   mode: UnderlayMode;
   scalePoints: Point[];
   scaleText: string;
@@ -165,9 +183,10 @@ export function useUnderlay({
     [active],
   );
 
-  const setUnderlays = useCallback((list: TraceUnderlay[]) => {
-    setUnderlaysState(list.filter((item) => item.image !== ""));
-    setActiveState(0);
+  const setUnderlays = useCallback((list: TraceUnderlay[], activeIndex = 0) => {
+    const kept = list.filter((item) => item.image !== "");
+    setUnderlaysState(kept);
+    setActiveState(Math.min(Math.max(activeIndex, 0), kept.length - 1));
   }, []);
 
   const setActive = useCallback(
@@ -222,17 +241,21 @@ export function useUnderlay({
   );
   const box = boxes[active] ?? null;
   const count = underlays.length;
+  /** 追加する図面の置き場所（今ある図面の右横。無いときは原点） */
+  const nextSpot = useMemo(() => spotBesideBoxes(boxes), [boxes]);
 
   const SCALE_HINT =
     "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れて［合わせる］を押してください";
 
   const putImage = useCallback(
     (dataUrl: string) => {
+      // 複数置ける画面では、今ある図面の右横に置く（重ねると前の図面が隠れる）。1枚だけの画面は今までどおり原点
+      const spot = multi ? nextSpot : { x: 0, y: 0 };
       const next: TraceUnderlay = {
         image: dataUrl,
         metersPerPixel: Math.max(planSize, 10) / 1000,
-        x: 0,
-        y: 0,
+        x: spot.x,
+        y: spot.y,
         opacity: 0.75,
         scaled: false,
       };
@@ -250,7 +273,7 @@ export function useUnderlay({
       setMode("scale");
       setMessage(SCALE_HINT);
     },
-    [count, multi, planSize, replace, setMessage, underlay],
+    [count, multi, nextSpot, planSize, replace, setMessage, underlay],
   );
 
   const pasteImage = useCallback(async () => {
@@ -448,6 +471,7 @@ export function useUnderlay({
     count,
     box,
     boxes,
+    nextSpot,
     mode,
     scalePoints,
     scaleText,

@@ -1822,6 +1822,7 @@ export default function RoomSheetPage({
       if (turnedUnderlays.some((item) => item !== null)) {
         setUnderlays(
           underlays.map((item, index) => turnedUnderlays[index] ?? item),
+          underlayTool.active,
         );
         imageNote = "（貼った図面も一緒に回りました）";
       }
@@ -4350,7 +4351,7 @@ export default function RoomSheetPage({
           trace={trace}
           onChange={setTrace}
           onUnderlay={(perPixel) => {
-            // なぞらずに図面だけを図形の下敷きに足す（2枚目以降は追加。縮尺がまだなら仮の縮尺で置く）
+            // なぞらずに図面だけを図形の下敷きに足す（2枚目以降は今ある図面の右横に追加。縮尺がまだなら仮の縮尺で置く）
             const fallback =
               Math.max(
                 extents === null ? 0 : Math.max(extents.x, extents.y),
@@ -4359,13 +4360,12 @@ export default function RoomSheetPage({
             const next = {
               image: trace.image,
               metersPerPixel: perPixel > 0 ? perPixel : fallback,
-              x: 0,
-              y: 0,
+              x: underlayTool.nextSpot.x,
+              y: underlayTool.nextSpot.y,
               opacity: underlay.opacity,
               ...(perPixel > 0 ? { scaled: true } : {}),
             };
-            setUnderlays([...underlays, next]);
-            underlayTool.setActive(underlays.length);
+            setUnderlays([...underlays, next], underlays.length);
             setShowTrace(false);
             setMessage(
               perPixel > 0
