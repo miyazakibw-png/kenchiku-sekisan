@@ -622,6 +622,36 @@ export default function RoomSheetPage({
     frozenViewRef.current = liveView;
   }
 
+  // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
+  // （選んだ図面の1枚として残り、3枚目が増えない）
+  useEffect(() => {
+    if (!showTrace) return;
+    const slotIndex = Math.min(underlayTool.active, underlays.length - 1);
+    const current = slotIndex >= 0 ? underlays[slotIndex] : undefined;
+    if (current === undefined || trace.image === "") return;
+    if (
+      current.image !== trace.image ||
+      (trace.metersPerPixel > 0 &&
+        current.metersPerPixel !== trace.metersPerPixel)
+    ) {
+      setUnderlays(
+        underlays.map((item, index) =>
+          index === slotIndex
+            ? {
+                ...item,
+                image: trace.image,
+                ...(trace.metersPerPixel > 0
+                  ? { metersPerPixel: trace.metersPerPixel, scaled: true }
+                  : {}),
+              }
+            : item,
+        ),
+        slotIndex,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTrace, trace, underlayTool.active]);
+
   /**
    * 下敷きの図面があるときは、なぞる画面と同じく画像を原寸（1画素＝1画面px）で出す。
    * このとき図の1mは 1/mpp px なので、svg の大きさは view.span/mpp px になる
@@ -2089,7 +2119,19 @@ export default function RoomSheetPage({
             className={showTrace ? "on" : ""}
             title="Shift+Windows+S で切り取った図面を Ctrl+V で貼り付け、なぞって部屋形状にします"
             onClick={() => {
-              setTrace(traceFromUnderlay(trace, underlay));
+              // 複数の図面があるときは「いま選んでいる図面」をそのままなぞる画面に映す
+              // （別の画像データが混ざって重なって出るのを防ぐ）
+              const picked =
+                underlays[Math.min(underlayTool.active, underlays.length - 1)];
+              if (picked !== undefined && picked.image !== "") {
+                setTrace({
+                  ...trace,
+                  image: picked.image,
+                  metersPerPixel: picked.metersPerPixel,
+                });
+              } else {
+                setTrace(traceFromUnderlay(trace, underlay));
+              }
               setShowTrace(true);
             }}
           >

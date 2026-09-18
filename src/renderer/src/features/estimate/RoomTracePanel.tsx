@@ -121,14 +121,26 @@ export default function RoomTracePanel({
   // なぞる図面以外に計算書へ置いてある図面。なぞる図面（同じ画像の下敷き）を基準にして、置いた位置・縮尺のまま薄く映す
   const [otherSizes, setOtherSizes] = useState<Record<string, ImageSize>>({});
   // 基準は「いま選んでいる図面」。画像データが違う経路で貼られて一致しないときも、その図面を基準にする
+  const anchorList = underlays ?? [];
   const anchor =
-    (underlays ?? []).find(
+    anchorList.find(
       (item) => item.image === trace.image && item.metersPerPixel > 0,
     ) ??
     (activeIndex !== undefined
-      ? (underlays ?? []).filter(
-          (item) => item.image !== "" && item.metersPerPixel > 0,
-        )[activeIndex]
+      ? (() => {
+          const picked =
+            anchorList[
+              Math.min(
+                Math.max(activeIndex, 0),
+                Math.max(anchorList.length - 1, 0),
+              )
+            ];
+          return picked !== undefined &&
+            picked.image !== "" &&
+            picked.metersPerPixel > 0
+            ? picked
+            : undefined;
+        })()
       : undefined);
   // 基準の図面はなぞる図面がその場所を映すので、他の図面には入れない（同じ図面が2重に重ならないように）
   const others = useMemo(
