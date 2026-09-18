@@ -12,6 +12,7 @@ import {
   parseTracedShapes,
   rectFromCorners,
   traceFromUnderlay,
+  underlayAtTraceOrigin,
   underlayForTrace,
   traceAfterUnderlay,
   EMPTY_TRACE,
@@ -415,5 +416,44 @@ describe("縮尺未調整の図面の判定", () => {
     expect(hasUnscaledUnderlay(JSON.stringify({ underlay: scaled }))).toBe(
       false,
     );
+  });
+});
+
+describe("underlayAtTraceOrigin（なぞった位置に元図を重ねる置き場所）", () => {
+  const underlay = {
+    image: "data:plan",
+    metersPerPixel: 0.02,
+    x: 0,
+    y: 0,
+    opacity: 0.75,
+    scaled: true,
+  };
+
+  it("図形の原点は最初になぞった点なので、画像の左上はその分だけ左上に置く", () => {
+    const meters = [
+      { x: 3.2, y: 5.6 },
+      { x: 6.0, y: 5.6 },
+      { x: 6.0, y: 8.0 },
+      { x: 3.2, y: 8.0 },
+    ];
+    expect(underlayAtTraceOrigin(underlay, meters)).toEqual({
+      ...underlay,
+      x: -3.2,
+      y: -5.6,
+    });
+  });
+
+  it("同じ点が続くときは最初の辺の始点に合わせる", () => {
+    const meters = [
+      { x: 1.0, y: 1.0 },
+      { x: 1.0, y: 1.0 },
+      { x: 2.0, y: 1.0 },
+      { x: 1.0, y: 2.0 },
+    ];
+    expect(underlayAtTraceOrigin(underlay, meters).x).toBe(-1.0);
+  });
+
+  it("点が無ければ位置を変えない", () => {
+    expect(underlayAtTraceOrigin(underlay, [])).toBe(underlay);
   });
 });

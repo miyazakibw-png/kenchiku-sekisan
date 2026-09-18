@@ -147,6 +147,25 @@ export function hasUnscaledUnderlay(json: string): boolean {
 }
 
 /**
+ * なぞってできた図形に元図を重ねる下敷きの置き場所。
+ * 図形は最初になぞった点が原点になるので、画像の左上はその点の分だけ左上に置くと
+ * なぞった位置に重なる。meters は toMeters で実寸に直したなぞりの点の並び。
+ */
+export function underlayAtTraceOrigin(
+  underlay: TraceUnderlay,
+  meters: Point[],
+): TraceUnderlay {
+  // 図形の原点＝最初の辺の始点。同じ点が続くときはずれた先の点が始点になる
+  const start =
+    meters.find((point, index) => {
+      const next = meters[(index + 1) % meters.length];
+      return next !== undefined && (next.x !== point.x || next.y !== point.y);
+    }) ?? meters[0];
+  if (start === undefined) return underlay;
+  return { ...underlay, x: -start.x, y: -start.y };
+}
+
+/**
  * 下敷きの縮尺合わせ：図の上で押した2点の間の実寸（m）から縮尺を直す。
  * 1点目の位置が動かないように、画像の置き場所も一緒に伸び縮みさせる。
  */

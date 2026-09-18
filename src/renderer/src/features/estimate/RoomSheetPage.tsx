@@ -20,6 +20,7 @@ import {
   parseTrace,
   parseUnderlay,
   traceFromUnderlay,
+  underlayAtTraceOrigin,
   underlayForTrace,
   type RoomTrace,
 } from "../../../../core/room/trace";
@@ -600,8 +601,10 @@ export default function RoomSheetPage({
   );
 
   const view = useMemo(
-    () => viewBox(solved, underlayTool.box),
-    [solved, underlayTool.box],
+    // 図面を動かしている間は図面の位置を見え方の範囲に含めない（含めると図形がずれて見えて合わせにくい）
+    () =>
+      viewBox(solved, underlayTool.mode === "move" ? null : underlayTool.box),
+    [solved, underlayTool.box, underlayTool.mode],
   );
 
   /**
@@ -4348,14 +4351,15 @@ export default function RoomSheetPage({
                 : "図面を図形の下に敷きました（縮尺は仮です。「⤢ 縮尺合わせ」で図形に合わせてください）",
             );
           }}
-          onApply={(next, _meters, _pixels, perPixel) => {
+          onApply={(next, meters, _pixels, perPixel) => {
             applyShape(next);
-            // なぞった図面と縮尺を図形の下敷きにそろえる（図形とずれないように）
-            const synced = underlayForTrace(
-              { ...trace, metersPerPixel: perPixel },
-              underlay,
-            );
-            if (synced !== null) setUnderlay(synced);
+            // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く
+            const synced =
+              underlayForTrace(
+                { ...trace, metersPerPixel: perPixel },
+                underlay,
+              ) ?? underlay;
+            setUnderlay(underlayAtTraceOrigin(synced, meters));
             setShowTrace(false);
             const madeSolved = solveShape(next);
             const madeSize = shapeExtents(madeSolved);
