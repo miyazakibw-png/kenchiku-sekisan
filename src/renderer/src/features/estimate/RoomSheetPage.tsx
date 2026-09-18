@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -512,6 +513,14 @@ export default function RoomSheetPage({
     y: Math.max(8, window.innerHeight - 420),
   }));
   const miniDragRef = useRef<{ dx: number; dy: number } | null>(null);
+  /** 小窓の拡大率と見えている場所（＋で図だけ大きくし、数字の大きさは変えない） */
+  const [miniZoom, setMiniZoom] = useState(1);
+  const [miniPan, setMiniPan] = useState<{ x: number; y: number } | null>(null);
+  const miniPanRef = useRef<{
+    clientX: number;
+    clientY: number;
+    from: { x: number; y: number };
+  } | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const promptInputRef = useRef<HTMLInputElement | null>(null);
   const promptBoxRef = useRef<HTMLDivElement | null>(null);
@@ -641,6 +650,24 @@ export default function RoomSheetPage({
   } else {
     frozenViewRef.current = liveView;
   }
+
+  /** 小窓の見え方：拡大率と動かした場所だけずらした図。数字は画面で同じ大きさに保つ */
+  const [viewBoxX, viewBoxY] = useMemo(() => {
+    const parts = view.box.split(" ").map(Number);
+    return [parts[0] ?? 0, parts[1] ?? 0];
+  }, [view.box]);
+  const miniSpan = view.span / miniZoom;
+  const miniOrigin = miniPan ?? { x: viewBoxX, y: viewBoxY };
+  const miniBox = `${miniOrigin.x} ${miniOrigin.y} ${miniSpan} ${miniSpan}`;
+  /** 小窓の幅を540pxとみなしたとき、文字が約11pxに見える図の中の大きさ（拡大しても画面での大きさは変わらない） */
+  const miniFont = (miniSpan / 540) * 11;
+  const miniZoomTo = (next: number) => {
+    const span = view.span / next;
+    const cx = miniOrigin.x + miniSpan / 2;
+    const cy = miniOrigin.y + miniSpan / 2;
+    setMiniZoom(next);
+    setMiniPan(next <= 1 ? null : { x: cx - span / 2, y: cy - span / 2 });
+  };
 
   // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
   // （選んだ図面の1枚として残り、3枚目が増えない）
@@ -4579,11 +4606,18 @@ export default function RoomSheetPage({
       {showMini && !printMode && (
         <div
           className="mini-drawing"
-          style={{ left: miniPos.x, top: miniPos.y }}
+          style={
+            {
+              left: miniPos.x,
+              top: miniPos.y,
+              "--mf": `${miniFont}px`,
+            } as CSSProperties
+          }
         >
           <div
             className="mini-drawing-head"
             onPointerDown={(event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
               miniDragRef.current = {
                 dx: event.clientX - miniPos.x,
                 dy: event.clientY - miniPos.y,
@@ -4603,14 +4637,69 @@ export default function RoomSheetPage({
               event.currentTarget.releasePointerCapture(event.pointerId);
             }}
           >
-            図（見ながら入力できます）
-            <button type="button" onClick={() => setShowMini(false)}>
-              ×
-            </button>
+            <span>図（見ながら入力できます）</span>
+            <span className="mini-drawing-btns">
+              <button
+                type="button"
+                title="図を大きくする（数字の大きさは変わりません）"
+                onClick={() => miniZoomTo(Math.min(miniZoom * 1.6, 40))}
+              >
+                ＋
+              </button>
+              <button
+                type="button"
+                title="図を小さくする"
+                onClick={() => miniZoomTo(Math.max(miniZoom / 1.6, 1))}
+              >
+                －
+              </button>
+              <button
+                type="button"
+                title="全体に戻す"
+                onClick={() => {
+                  setMiniZoom(1);
+                  setMiniPan(null);
+                }}
+              >
+                全体
+              </button>
+              <button
+                type="button"
+                title="小窓を閉じる"
+                onClick={() => setShowMini(false)}
+              >
+                ×
+              </button>
+            </span>
           </div>
-          <div className="mini-drawing-body">
+          <div
+            className="mini-drawing-body"
+            title="つかんで動かすと見る場所をずらせます"
+            onPointerDown={(event) => {
+              miniPanRef.current = {
+                clientX: event.clientX,
+                clientY: event.clientY,
+                from: miniOrigin,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const start = miniPanRef.current;
+              if (start === null) return;
+              const unit =
+                miniSpan / Math.max(1, event.currentTarget.clientWidth);
+              setMiniPan({
+                x: start.from.x - (event.clientX - start.clientX) * unit,
+                y: start.from.y - (event.clientY - start.clientY) * unit,
+              });
+            }}
+            onPointerUp={(event) => {
+              miniPanRef.current = null;
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+          >
             <svg
-              viewBox={view.box}
+              viewBox={miniBox}
               preserveAspectRatio="xMidYMid meet"
               style={{ width: "100%", height: "100%" }}
             >
