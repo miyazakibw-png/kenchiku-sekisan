@@ -455,6 +455,17 @@ export default function RoomSheetPage({
   const [moveY, setMoveY] = useState("0.00");
   /** 建具表はボタンでポップアップ表示する */
   const [showFittings, setShowFittings] = useState(false);
+  /** 建具表の小窓をつかんで動かした位置（null＝既定の右上） */
+  const [fittingsPos, setFittingsPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const fittingsDragRef = useRef<{
+    fromX: number;
+    fromY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
   const [zoom, setZoom] = useState(1);
   /**
    * 角の○印を出すか（形が決まったら消して寸法を見やすくできます）。
@@ -1163,9 +1174,7 @@ export default function RoomSheetPage({
     event.stopPropagation();
   };
 
-  const moveFreePointDrag = (
-    event: ReactPointerEvent<SVGElement>,
-  ): void => {
+  const moveFreePointDrag = (event: ReactPointerEvent<SVGElement>): void => {
     const drag = freePointDragRef.current;
     if (drag === null) return;
     const point = svgPointAt(
@@ -4065,8 +4074,49 @@ export default function RoomSheetPage({
       )}
 
       {showFittings && (
-        <section className="fittings popup">
-          <div className="section-bar">
+        <section
+          className="fittings popup"
+          style={
+            fittingsPos === null
+              ? undefined
+              : { left: fittingsPos.x, top: fittingsPos.y, right: "auto" }
+          }
+        >
+          <div
+            className="section-bar"
+            style={{ cursor: "move" }}
+            title="この帯をつかんで動かせます"
+            onPointerDown={(event) => {
+              // ボタン・入力欄を押したときは動かさない
+              if (
+                (event.target as HTMLElement).closest(
+                  "button,input,select,textarea",
+                )
+              )
+                return;
+              const section = event.currentTarget.parentElement;
+              if (section === null) return;
+              const rect = section.getBoundingClientRect();
+              fittingsDragRef.current = {
+                fromX: event.clientX,
+                fromY: event.clientY,
+                baseX: rect.left,
+                baseY: rect.top,
+              };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = fittingsDragRef.current;
+              if (drag === null) return;
+              setFittingsPos({
+                x: Math.max(0, drag.baseX + event.clientX - drag.fromX),
+                y: Math.max(0, drag.baseY + event.clientY - drag.fromY),
+              });
+            }}
+            onPointerUp={() => {
+              fittingsDragRef.current = null;
+            }}
+          >
             <span>
               建具表（クリックで計算式へ。部位に合わせて面積／巾木減／横補強を採ります＝建具表画面の「部位ごとの採用値」）
             </span>
