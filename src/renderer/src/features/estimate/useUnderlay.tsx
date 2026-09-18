@@ -105,6 +105,8 @@ interface Options {
    * 指定しないときは今までどおり1枚だけ（貼る・開くは置き替え）
    */
   multi?: boolean;
+  /** 「近くへ戻す」で図面を置き直す場所（図形の左上。無いときは原点） */
+  homeSpot?: { x: number; y: number };
 }
 
 export interface Underlay {
@@ -128,12 +130,15 @@ export interface Underlay {
   nextSpot: { x: number; y: number };
   /** 選んでいる図面をいちばん上に出す（重なっている所で見える図面を変える。複数置ける画面だけ） */
   bringFront: () => void;
+  /** 選んでいる図面を図形の近くへ戻す（遠くへ動いて見えなくなったときに。まとめて動かす中は全員まとめて戻る） */
+  goHome: () => void;
   /** ONの間は「図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
   moveAll: boolean;
   /** 読み込みのときの「まとめて動かす」の状態を戻す */
   setMoveAll: (on: boolean) => void;
   toggleMoveAll: () => void;
   mode: UnderlayMode;
+
   scalePoints: Point[];
   scaleText: string;
   setScaleText: (text: string) => void;
@@ -165,6 +170,7 @@ export function useUnderlay({
   dragStart,
   drag,
   multi = false,
+  homeSpot,
 }: Options): Underlay {
   /** 置いてある図面。画像のあるものだけ持つ */
   const [underlays, setUnderlaysState] = useState<TraceUnderlay[]>([]);
@@ -489,6 +495,31 @@ export function useUnderlay({
     );
   }, [moveAll, setMessage]);
 
+  const goHome = useCallback(() => {
+    const home = homeSpot ?? { x: 0, y: 0 };
+    const index = Math.min(
+      Math.max(activeRef.current, 0),
+      underlays.length - 1,
+    );
+    const picked = underlays[index];
+    if (picked === undefined) return;
+    if (moveAllRef.current && underlays.length > 1) {
+      // まとめて動かす中は、選んだ図面が戻る分だけ全員をずらす（重ね合わせはそのまま）
+      const dx = home.x - picked.x;
+      const dy = home.y - picked.y;
+      setUnderlaysState(
+        underlays.map((item) =>
+          item.image === ""
+            ? item
+            : { ...item, x: item.x + dx, y: item.y + dy },
+        ),
+      );
+    } else {
+      setUnderlay({ ...picked, x: home.x, y: home.y });
+    }
+    setMessage("図面を図形の近くへ戻しました");
+  }, [homeSpot, setUnderlay, setMessage, underlays]);
+
   const bringFront = useCallback(() => {
     if (!multi || underlays.length < 2) return;
     const index = Math.min(
@@ -610,6 +641,7 @@ export function useUnderlay({
     boxes,
     nextSpot,
     bringFront,
+    goHome,
     moveAll,
     setMoveAll,
     toggleMoveAll,
@@ -752,6 +784,15 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
           onClick={u.toggleMoveAll}
         >
           🔗 まとめて動かす
+        </button>
+      )}
+      {u.underlay.image !== "" && (
+        <button
+          type="button"
+          title="選んでいる図面（橙枠）を図形の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
+          onClick={u.goHome}
+        >
+          📍 近くへ戻す
         </button>
       )}
       <button

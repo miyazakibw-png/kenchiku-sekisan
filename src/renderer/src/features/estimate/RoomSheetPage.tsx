@@ -514,11 +514,20 @@ export default function RoomSheetPage({
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const extents = useMemo(() => shapeExtents(solved), [solved]);
+  /** 「📍 近くへ戻す」で図面を置き直す場所（図形の左上の角） */
+  const homeSpot = useMemo(() => {
+    if (solved.points.length === 0) return { x: 0, y: 0 };
+    return {
+      x: Math.min(...solved.points.map((point) => point.x)),
+      y: Math.min(...solved.points.map((point) => point.y)),
+    };
+  }, [solved.points]);
   /** 図の下敷きにする図面（部屋の形と見比べるために置く。traceJson に一緒に保存する） */
   const underlayTool = useUnderlay({
     setMessage,
     planSize: extents === null ? 0 : Math.max(extents.x, extents.y),
     multi: true,
+    homeSpot,
   });
   const { underlay, setUnderlay, underlays, setUnderlays } = underlayTool;
 
