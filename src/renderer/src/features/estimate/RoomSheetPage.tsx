@@ -61,6 +61,7 @@ import {
   updateEdge,
   type EdgeDirection,
   type EdgeKind,
+  type Point,
   type RoomFitting,
   type RoomShape,
   type SolvedShape,
@@ -359,6 +360,13 @@ export default function RoomSheetPage({
   const freePointDragRef = useRef<{
     elementId: string;
     key: "a" | "b" | number;
+  } | null>(null);
+  /** 図形の角（○印）をつかんでいる間の持ち手。base はつかみ始めた時の形 */
+  const cornerDragRef = useRef<{
+    index: number;
+    base: RoomShape;
+    origin: Point;
+    moved: boolean;
   } | null>(null);
   /** 天井伏図（線・区画の高さ・C番号の位置）を1つの履歴にして戻る・進む */
   const ceilingHistory = useUndoRedo<{
@@ -1217,6 +1225,58 @@ export default function RoomSheetPage({
 
   const endFreePointDrag = (): void => {
     freePointDragRef.current = null;
+  };
+
+  /** 図形の角（○印）をつかみ始める */
+  const startCornerDrag = (
+    index: number,
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    if (freeDraw !== null) return;
+    const origin = solved.points[index];
+    if (origin === undefined) return;
+    setSelectedCorner(index);
+    setSelectedEdge(null);
+    setAddCornerMode(false);
+    cornerDragRef.current = { index, base: shape, origin, moved: false };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  };
+
+  /** 角をつかんで動かす。動き始めた時点で1つ前の形を履歴に入れ、あとは連続更新 */
+  const moveCornerDrag = (
+    index: number,
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    const drag = cornerDragRef.current;
+    if (drag === null || drag.index !== index) return;
+    const point = svgPointAt(
+      event.currentTarget.ownerSVGElement,
+      event.clientX,
+      event.clientY,
+    );
+    if (point === null) return;
+    const result = moveCorner(
+      drag.base,
+      index,
+      point.x - drag.origin.x,
+      point.y - drag.origin.y,
+    );
+    if (result.error !== null) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      setShapePast((past) => [...past.slice(-49), drag.base]);
+      setShapeFuture([]);
+    }
+    setShape(result.shape);
+    event.stopPropagation();
+  };
+
+  const endCornerDrag = (index: number): void => {
+    const drag = cornerDragRef.current;
+    if (drag === null || drag.index !== index) return;
+    cornerDragRef.current = null;
+    if (drag.moved) setMessage("角をつかんで動かしました");
   };
 
   // 自由線を引いている間、Escでやめられる
@@ -2546,6 +2606,9 @@ export default function RoomSheetPage({
                 solved.points.map((point, index) => (
                   <g
                     key={`corner-${solved.edges[index].id}`}
+                    onPointerDown={(event) => startCornerDrag(index, event)}
+                    onPointerMove={(event) => moveCornerDrag(index, event)}
+                    onPointerUp={() => endCornerDrag(index)}
                     onClick={() => {
                       setSelectedCorner(index);
                       setSelectedEdge(null);
