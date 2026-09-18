@@ -166,6 +166,16 @@ export function parseUnderlays(json: string): TraceUnderlay[] {
   }
 }
 
+/** traceJson に保存した「図面をまとめて動かす」の印（重ね合わせたあと1枚の絵として固定する切替） */
+export function parseUnderlayLocked(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { underlayLocked?: unknown };
+    return parsed.underlayLocked === true;
+  } catch {
+    return false;
+  }
+}
+
 /** traceJson の中に、縮尺がまだ合わせられていない下敷きの図面があるか（一覧の「縮尺調整（未）」表示に使う） */
 export function hasUnscaledUnderlay(json: string): boolean {
   return parseUnderlays(json).some(

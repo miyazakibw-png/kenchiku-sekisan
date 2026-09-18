@@ -128,6 +128,11 @@ export interface Underlay {
   nextSpot: { x: number; y: number };
   /** 選んでいる図面をいちばん上に出す（重なっている所で見える図面を変える。複数置ける画面だけ） */
   bringFront: () => void;
+  /** ONの間は「図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
+  moveAll: boolean;
+  /** 読み込みのときの「まとめて動かす」の状態を戻す */
+  setMoveAll: (on: boolean) => void;
+  toggleMoveAll: () => void;
   mode: UnderlayMode;
   scalePoints: Point[];
   scaleText: string;
@@ -185,6 +190,10 @@ export function useUnderlay({
   /** 選んでいる図面の番号。ドラッグ中などの古いcallbackからも常に今の番号を見るため参照で持つ */
   const activeRef = useRef(active);
   activeRef.current = active;
+  /** ONの間は全部の図面が一緒に動く。ドラッグ中の古いcallbackからも今の状態を見るため参照で持つ */
+  const [moveAll, setMoveAllState] = useState(false);
+  const moveAllRef = useRef(moveAll);
+  moveAllRef.current = moveAll;
 
   const setUnderlay: Dispatch<SetStateAction<TraceUnderlay>> = useCallback(
     (next) => {
@@ -466,6 +475,18 @@ export function useUnderlay({
     );
   }, [mode, setMessage]);
 
+  const setMoveAll = useCallback((on: boolean) => setMoveAllState(on), []);
+
+  const toggleMoveAll = useCallback(() => {
+    const next = !moveAll;
+    setMoveAllState(next);
+    setMessage(
+      next
+        ? "図面をまとめて動かします（「✋ 図面を動かす」で全部の図面が一緒に動きます）"
+        : "図面を1枚ずつ動かすに戻しました",
+    );
+  }, [moveAll, setMessage]);
+
   const bringFront = useCallback(() => {
     if (!multi || underlays.length < 2) return;
     const index = Math.min(
@@ -542,13 +563,26 @@ export function useUnderlay({
       }
       const from = svgPoint(svg, start.clientX, start.clientY);
       const to = svgPoint(svg, event.clientX, event.clientY);
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
       const moved: TraceUnderlay = {
         ...start.from,
-        x: start.from.x + (to.x - from.x),
-        y: start.from.y + (to.y - from.y),
+        x: start.from.x + dx,
+        y: start.from.y + dy,
       };
       if (drag) drag(start.from, moved);
-      setUnderlay(moved);
+      if (moveAllRef.current) {
+        // まとめて動かす中は全部の図面を同じだけずらす（重ね合わせた図面がばらけない）
+        setUnderlaysState((current) =>
+          current.map((item) =>
+            item.image === ""
+              ? item
+              : { ...item, x: item.x + dx, y: item.y + dy },
+          ),
+        );
+      } else {
+        setUnderlay(moved);
+      }
     },
     [drag, dragStart],
   );
@@ -573,6 +607,9 @@ export function useUnderlay({
     boxes,
     nextSpot,
     bringFront,
+    moveAll,
+    setMoveAll,
+    toggleMoveAll,
     mode,
     scalePoints,
     scaleText,
@@ -702,6 +739,16 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
           onClick={u.bringFront}
         >
           ⬆ 上に出す
+        </button>
+      )}
+      {u.count > 1 && (
+        <button
+          type="button"
+          className={u.moveAll ? "on" : ""}
+          title="ONの間「✋ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
+          onClick={u.toggleMoveAll}
+        >
+          🔗 まとめて動かす
         </button>
       )}
       <button

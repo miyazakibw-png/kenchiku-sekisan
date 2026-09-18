@@ -19,6 +19,7 @@ import {
   EMPTY_TRACE,
   EMPTY_UNDERLAY,
   parseTrace,
+  parseUnderlayLocked,
   parseUnderlays,
   traceFromUnderlay,
   underlayAtTraceOrigin,
@@ -532,6 +533,7 @@ export default function RoomSheetPage({
       ceilingHeight,
       trace,
       underlays,
+      underlayLocked: underlayTool.moveAll,
     },
     () => save(),
   );
@@ -558,9 +560,11 @@ export default function RoomSheetPage({
       setLower(parseLower(loaded.lowerJson));
       setTrace(parseTrace(loaded.traceJson));
       setUnderlays(parseUnderlays(loaded.traceJson));
+      underlayTool.setMoveAll(parseUnderlayLocked(loaded.traceJson));
       markSaved({
         trace: parseTrace(loaded.traceJson),
         underlays: parseUnderlays(loaded.traceJson),
+        underlayLocked: parseUnderlayLocked(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
@@ -1007,6 +1011,7 @@ export default function RoomSheetPage({
       ceilingHeight,
       trace,
       underlays,
+      underlayLocked: underlayTool.moveAll,
     });
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
@@ -1019,6 +1024,7 @@ export default function RoomSheetPage({
         ...trace,
         underlay: underlays[0] ?? EMPTY_UNDERLAY,
         underlays,
+        underlayLocked: underlayTool.moveAll,
       }),
       ceilingHeight,
       note: sheet.note,
@@ -1037,6 +1043,7 @@ export default function RoomSheetPage({
     sheet,
     trace,
     underlays,
+    underlayTool.moveAll,
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */
