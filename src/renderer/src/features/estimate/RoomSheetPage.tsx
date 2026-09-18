@@ -1468,7 +1468,7 @@ export default function RoomSheetPage({
     const height = textToNumber(newFitting.height);
     const sill = textToNumber(newFitting.sill);
     const master = fittings.find((fitting) => fitting.symbol === symbol);
-    const sized = width !== null || height !== null || sill !== null;
+    // 建具表に無い記号だけここで入れた寸法を登録する。ある記号の寸法は建具表で直す
     setFittings(
       await window.sekisan.registerRoomFitting(
         project.id,
@@ -1478,7 +1478,7 @@ export default function RoomSheetPage({
           height: height ?? master?.height ?? null,
           sillHeight: sill ?? master?.sillHeight ?? null,
         },
-        sized,
+        master === undefined,
         row.id,
       ),
     );
@@ -1490,43 +1490,6 @@ export default function RoomSheetPage({
         : `${symbol} を建具表へ登録してこの部屋へ足しました`,
     );
   }, [addRoomFitting, fittings, newFitting, project.id, row.id]);
-
-  /** この部屋の建具の表で、寸法（W・H・腰高）を直接打ち替えて建具表へ反映する */
-  const writeFittingSize = useCallback(
-    async (
-      symbol: string,
-      patch: {
-        width?: number | null;
-        height?: number | null;
-        sill?: number | null;
-      },
-    ) => {
-      const name = symbol.trim();
-      if (name === "") return;
-      const master = fittings.find((fitting) => fitting.symbol === name);
-      setFittings(
-        await window.sekisan.registerRoomFitting(
-          project.id,
-          {
-            symbol: name,
-            width:
-              patch.width === undefined ? (master?.width ?? null) : patch.width,
-            height:
-              patch.height === undefined
-                ? (master?.height ?? null)
-                : patch.height,
-            sillHeight:
-              patch.sill === undefined
-                ? (master?.sillHeight ?? null)
-                : patch.sill,
-          },
-          true,
-          row.id,
-        ),
-      );
-    },
-    [fittings, project.id, row.id],
-  );
 
   /** 記号は計算式にそのまま入力できる。クリックでコピーする */
   const copySymbol = useCallback(async (symbol: string) => {
@@ -3417,47 +3380,15 @@ export default function RoomSheetPage({
                       }
                     />
                   </td>
-                  <td>
-                    <input
-                      className="num"
-                      key={`w-${item.id}-${master?.width ?? ""}`}
-                      defaultValue={formatNumber(master?.width ?? null, 2)}
-                      onMouseDown={selectWholeOnFirstClick}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onBlur={(e) =>
-                        void writeFittingSize(item.symbol, {
-                          width: textToNumber(e.target.value),
-                        })
-                      }
-                    />
+                  {/* W・H・腰高は建具表の値を見るだけ（寸法の直しは建具表で行う） */}
+                  <td className="num">
+                    {formatNumber(master?.width ?? null, 2)}
                   </td>
-                  <td>
-                    <input
-                      className="num"
-                      key={`h-${item.id}-${master?.height ?? ""}`}
-                      defaultValue={formatNumber(master?.height ?? null, 2)}
-                      onMouseDown={selectWholeOnFirstClick}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onBlur={(e) =>
-                        void writeFittingSize(item.symbol, {
-                          height: textToNumber(e.target.value),
-                        })
-                      }
-                    />
+                  <td className="num">
+                    {formatNumber(master?.height ?? null, 2)}
                   </td>
-                  <td>
-                    <input
-                      className="num"
-                      key={`s-${item.id}-${master?.sillHeight ?? ""}`}
-                      defaultValue={formatNumber(master?.sillHeight ?? null, 2)}
-                      onMouseDown={selectWholeOnFirstClick}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onBlur={(e) =>
-                        void writeFittingSize(item.symbol, {
-                          sill: textToNumber(e.target.value),
-                        })
-                      }
-                    />
+                  <td className="num">
+                    {formatNumber(master?.sillHeight ?? null, 2)}
                   </td>
                   <td className="num">
                     {formatNumber(resolved?.area ?? null, 2)}
