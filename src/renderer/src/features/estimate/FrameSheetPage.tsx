@@ -35,6 +35,7 @@ import {
   type FrameManualLine,
   type FramePlacement,
   type FrameTrace,
+  parseFrameTraces,
 } from "../../../../core/frame/frame";
 import {
   floorArea,
@@ -58,6 +59,11 @@ import {
 } from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { pdfPageImage } from "./pdfPage";
+import {
+  loadImageSize,
+  spotBesideBoxes,
+  type UnderlayBox,
+} from "./useUnderlay";
 import CalcPrintSheet from "../print/CalcPrintSheet";
 import { formatNumber } from "./estimateRows";
 import "./RoomSheetPage.css";
@@ -158,7 +164,11 @@ interface FrameDiagramContent {
     multiplier: number;
     lineId: string | null;
   }[];
-  trace: FrameTrace;
+  traces: FrameTrace[];
+  /** 動かす・合わせる・外すの対象にしている図面の番号 */
+  activeTrace: number;
+  /** 「🔗 まとめて動かす」がONか */
+  traceLocked: boolean;
   kinds: FrameKind[];
 }
 
@@ -184,10 +194,47 @@ export default function FrameSheetPage({
   >([]);
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [workHeight, setWorkHeight] = useState<number | null>(null);
-  /** 下敷きにする図面画像（なぞって線を引く） */
-  const [trace, setTrace] = useState<FrameTrace>(EMPTY_FRAME_TRACE);
-  /** 図面画像の大きさ（画素） */
-  const [traceSize, setTraceSize] = useState({ width: 1000, height: 700 });
+  /** 下敷きに置いてある図面画像（なぞって線を引く。複数枚を重ねられる） */
+  const [traces, setTraces] = useState<FrameTrace[]>([]);
+  /** 動かす・合わせる・外すの対象にしている図面の番号 */
+  const [activeTrace, setActiveTrace] = useState(0);
+  /** 「🔗 まとめて動かす」：ONの間は「✥ 図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
+  const [traceLocked, setTraceLocked] = useState(false);
+  /** 図面画像の大きさ（画素。画像データごとに覚える） */
+  const [traceSizes, setTraceSizes] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
+  /** いま選んでいる図面（無ければ空）。縮尺合わせ・濃さ・外すはこの1枚に効く */
+  const trace =
+    traces[Math.min(activeTrace, Math.max(traces.length - 1, 0))] ??
+    EMPTY_FRAME_TRACE;
+  /** 選んでいる図面の大きさ（画素。読み込むまでは仮の大きさ） */
+  const traceSize = traceSizes[trace.image] ?? { width: 1000, height: 700 };
+  /** 選んだ図面の番号をドラッグ中の古いcallbackからも見るため参照で持つ */
+  const activeTraceRef = useRef(activeTrace);
+  activeTraceRef.current = activeTrace;
+  /** いま選んでいる図面だけを書き替える（image="" にするとその図面が外れる） */
+  const setTrace = useCallback(
+    (next: FrameTrace | ((current: FrameTrace) => FrameTrace)) => {
+      setTraces((current) => {
+        const index = Math.min(activeTraceRef.current, current.length - 1);
+        const resolved =
+          typeof next === "function"
+            ? next(current[index] ?? EMPTY_FRAME_TRACE)
+            : next;
+        if (index < 0) return resolved.image === "" ? current : [resolved];
+        return current
+          .map((item, at) => (at === index ? resolved : item))
+          .filter((item) => item.image !== "");
+      });
+    },
+    [],
+  );
+  // 図面を外して枚数が減ったら、選んだ番号を最後の図面に合わせる
+  useEffect(() => {
+    if (activeTrace > traces.length - 1)
+      setActiveTrace(Math.max(traces.length - 1, 0));
+  }, [activeTrace, traces.length]);
   /** 図面の使い方：off＝ふつう／scale＝縮尺合わせ／move＝図面を動かす */
   const [traceMode, setTraceMode] = useState<"off" | "scale" | "move">("off");
   /** 縮尺合わせで押した2点（図の座標m） */
@@ -250,8 +297,10 @@ export default function FrameSheetPage({
   const traceDragRef = useRef<{
     clientX: number;
     clientY: number;
-    x: number;
-    y: number;
+    /** つかんだ図面の番号（まとめて動かすでないとき、この1枚だけ動く） */
+    index: number;
+    /** 動かし始めの全図面（ここからずらすので加速しない。まとめて動かすの基準にもなる） */
+    all: FrameTrace[];
   } | null>(null);
   const dragRef = useRef<{
     placementId: string;
@@ -274,7 +323,9 @@ export default function FrameSheetPage({
       frameFittings,
       lower,
       workHeight,
-      trace,
+      traces,
+      activeTrace,
+      traceLocked,
       kinds,
     },
     () => save(),
@@ -287,7 +338,9 @@ export default function FrameSheetPage({
     manualLines: [],
     attributes: {},
     frameFittings: [],
-    trace: EMPTY_FRAME_TRACE,
+    traces: [],
+    activeTrace: 0,
+    traceLocked: false,
     kinds: defaultFrameKinds(),
   });
   useEffect(() => {
@@ -296,10 +349,21 @@ export default function FrameSheetPage({
       manualLines,
       attributes,
       frameFittings,
-      trace,
+      traces,
+      activeTrace,
+      traceLocked,
       kinds,
     };
-  }, [placements, manualLines, attributes, frameFittings, trace, kinds]);
+  }, [
+    placements,
+    manualLines,
+    attributes,
+    frameFittings,
+    traces,
+    activeTrace,
+    traceLocked,
+    kinds,
+  ]);
 
   /** 図を直す直前に、今の形を履歴へ積む */
   const pushDiagram = useCallback((): void => {
@@ -324,7 +388,9 @@ export default function FrameSheetPage({
     setManualLines(previous.manualLines);
     setAttributes(previous.attributes);
     setFrameFittings(previous.frameFittings);
-    setTrace(previous.trace);
+    setTraces(previous.traces);
+    setActiveTrace(previous.activeTrace);
+    setTraceLocked(previous.traceLocked);
     setKinds(previous.kinds);
     setMessage("図を1つ前に戻しました（保存すると確定します）");
   };
@@ -347,7 +413,9 @@ export default function FrameSheetPage({
     setManualLines(next.manualLines);
     setAttributes(next.attributes);
     setFrameFittings(next.frameFittings);
-    setTrace(next.trace);
+    setTraces(next.traces);
+    setActiveTrace(next.activeTrace);
+    setTraceLocked(next.traceLocked);
     setKinds(next.kinds);
     setMessage("図を1つ先へ進めました（保存すると確定します）");
   };
@@ -379,12 +447,11 @@ export default function FrameSheetPage({
       );
       setLower(trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])));
       setWorkHeight(height);
-      const loadedTrace = parseJson<FrameTrace>(
-        loaded.traceJson,
-        EMPTY_FRAME_TRACE,
-      );
+      const loadedTrace = parseFrameTraces(loaded.traceJson);
       const loadedKinds = parseJson<FrameKind[]>(loaded.kindsJson, []);
-      setTrace(loadedTrace);
+      setTraces(loadedTrace.traces);
+      setActiveTrace(loadedTrace.active);
+      setTraceLocked(loadedTrace.locked);
       setKinds(loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds());
       markSaved({
         placements: parseJson<FramePlacement[]>(loaded.layoutJson, []),
@@ -404,7 +471,9 @@ export default function FrameSheetPage({
         lower: trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
         // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
         workHeight: loaded.workHeight,
-        trace: loadedTrace,
+        traces: loadedTrace.traces,
+        activeTrace: loadedTrace.active,
+        traceLocked: loadedTrace.locked,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
       });
       diagramHistory.clear();
@@ -559,16 +628,25 @@ export default function FrameSheetPage({
       );
   }, [symbols]);
 
-  /** 図面画像を置く大きさ（m） */
-  const traceBox = useMemo(() => {
-    if (trace.image === "" || trace.metersPerPixel <= 0) return null;
-    return {
-      x: trace.x,
-      y: trace.y,
-      width: traceSize.width * trace.metersPerPixel,
-      height: traceSize.height * trace.metersPerPixel,
-    };
-  }, [trace, traceSize]);
+  /** 置いてある図面の大きさ（m）。traces と同じ並び、画像の無い所は null */
+  const traceBoxes = useMemo<(UnderlayBox | null)[]>(
+    () =>
+      traces.map((item) => {
+        const size = traceSizes[item.image];
+        if (item.image === "" || item.metersPerPixel <= 0 || size === undefined)
+          return null;
+        return {
+          x: item.x,
+          y: item.y,
+          width: size.width * item.metersPerPixel,
+          height: size.height * item.metersPerPixel,
+        };
+      }),
+    [traceSizes, traces],
+  );
+  /** いま選んでいる図面を置く大きさ（m） */
+  const traceBox =
+    traceBoxes[Math.min(activeTrace, Math.max(traces.length - 1, 0))] ?? null;
 
   /** 図面だけを大きく／小さくする（真ん中を動かさず、引いた線はそのまま） */
   const resizeTrace = useCallback(
@@ -591,17 +669,16 @@ export default function FrameSheetPage({
         { x: line.x1, y: line.y1 },
         { x: line.x2, y: line.y2 },
       ]),
-      ...(traceBox === null || (!fitTrace && lines.length > 0)
+      ...(!fitTrace && lines.length > 0
         ? []
-        : [
-            { x: traceBox.x, y: traceBox.y },
-            {
-              x: traceBox.x + traceBox.width,
-              y: traceBox.y + traceBox.height,
-            },
-          ]),
+        : traceBoxes
+            .filter((box): box is UnderlayBox => box !== null)
+            .flatMap((box) => [
+              { x: box.x, y: box.y },
+              { x: box.x + box.width, y: box.y + box.height },
+            ])),
     ],
-    [fitTrace, lines, traceBox],
+    [fitTrace, lines, traceBoxes],
   );
   const autoView = useMemo(() => viewBox(points), [points]);
   /** 表示範囲を止めているとき（線を引く間は図面が動かないようにする） */
@@ -689,7 +766,9 @@ export default function FrameSheetPage({
       frameFittings,
       lower: trimmed,
       workHeight,
-      trace,
+      traces,
+      activeTrace,
+      traceLocked,
       kinds,
     });
     const saved = await window.sekisan.saveFrameSheet({
@@ -700,7 +779,11 @@ export default function FrameSheetPage({
       fittingsJson: JSON.stringify(frameFittings),
       lowerJson: JSON.stringify(trimmed),
       workHeight,
-      traceJson: JSON.stringify(trace),
+      traceJson: JSON.stringify({
+        traces,
+        active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
+        locked: traceLocked,
+      }),
       kindsJson: JSON.stringify(kinds),
       note: sheet.note,
     });
@@ -716,7 +799,9 @@ export default function FrameSheetPage({
     placements,
     printMode,
     sheet,
-    trace,
+    traces,
+    activeTrace,
+    traceLocked,
     workHeight,
   ]);
 
@@ -731,22 +816,45 @@ export default function FrameSheetPage({
     [pushDiagram],
   );
 
-  // 図面画像の大きさ（画素）を測る
+  // 図面画像の大きさ（画素）を測る（置いてある図面を全部）
   useEffect(() => {
-    if (trace.image === "") return;
-    const image = new Image();
-    image.onload = () =>
-      setTraceSize({ width: image.naturalWidth, height: image.naturalHeight });
-    image.src = trace.image;
-  }, [trace.image]);
+    traces.forEach((item) => {
+      if (item.image === "" || traceSizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setTraceSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [traceSizes, traces]);
 
-  /** 取り込んだ図面を置く（縮尺はいったん仮に決めて、あとで合わせる） */
+  /** 取り込んだ図面を足す（縮尺はいったん仮に決めて、あとで合わせる）。2枚目以降は今ある図面の右横に置く */
   const putTraceImage = useCallback(
     (dataUrl: string) => {
       pushDiagram();
       setHeldView(null);
       setFitTrace(true);
-      setTrace({ image: dataUrl, metersPerPixel: 0.01, x: 0, y: 0 });
+      const spot = spotBesideBoxes(traceBoxes);
+      setTraces((current) => [
+        ...current,
+        {
+          image: dataUrl,
+          metersPerPixel: 0.01,
+          x: spot.x,
+          y: spot.y,
+          opacity: 0.75,
+        },
+      ]);
+      setActiveTrace(traces.length);
       setScalePoints([]);
       setTraceMode("scale");
       // 縮尺合わせの間は線を引けないので、線引きは止めておく
@@ -756,7 +864,7 @@ export default function FrameSheetPage({
         "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください",
       );
     },
-    [pushDiagram],
+    [pushDiagram, traceBoxes, traces.length],
   );
 
   /** クリップボードの画像（Shift+Windows+S の切り取り）を図面にする */
@@ -787,30 +895,70 @@ export default function FrameSheetPage({
     setMessage(`クリップボードに画像がありません（中身：${fromApp.note}）`);
   }, [putTraceImage]);
 
-  /** PDF・画像のファイルを選んで図面にする */
-  const openTraceFile = useCallback(async () => {
+  /** PDF・画像のファイルを選んで図面にする（まとめて複数選ぶと横に並べて置く） */
+  const openTraceFiles = useCallback(async () => {
     const page = Number(pageText);
     setMessage("ファイルを読んでいます…");
-    const got = await window.sekisan.openDrawingFile(page > 0 ? page : 1);
-    if (got.pdf !== "") {
-      const made = await pdfPageImage(got.pdf, page > 0 ? page : 1);
-      if (made.image === "") {
-        setMessage("PDFを画像にできませんでした");
-        return;
+    const got = await window.sekisan.openDrawingFiles(page > 0 ? page : 1);
+    if (got.items.length === 0) {
+      setMessage(got.note === "" ? "取り込みをやめました" : got.note);
+      return;
+    }
+    pushDiagram();
+    setHeldView(null);
+    setFitTrace(true);
+    // 縮尺合わせの間は線を引けないので、線引きは止めておく
+    setDrawing(false);
+    setDrawStart(null);
+    let cursor = spotBesideBoxes(traceBoxes);
+    let placed = 0;
+    for (const item of got.items) {
+      let dataUrl = item.image;
+      if (item.pdf !== "") {
+        const made = await pdfPageImage(item.pdf, page > 0 ? page : 1);
+        dataUrl = made.image;
+        if (dataUrl === "") {
+          setMessage("PDFを画像にできませんでした");
+          continue;
+        }
       }
-      putTraceImage(made.image);
-      return;
+      if (dataUrl === "") continue;
+      // 先に大きさを読み、次の図面をこの図面の右横へずらして置く
+      const size = await loadImageSize(dataUrl);
+      if (size !== null)
+        setTraceSizes((current) =>
+          current[dataUrl] !== undefined
+            ? current
+            : { ...current, [dataUrl]: size },
+        );
+      setTraces((current) => [
+        ...current,
+        {
+          image: dataUrl,
+          metersPerPixel: 0.01,
+          x: cursor.x,
+          y: cursor.y,
+          opacity: 0.75,
+        },
+      ]);
+      cursor = {
+        x: cursor.x + (size !== null ? size.width * 0.01 : 10) + 0.5,
+        y: cursor.y,
+      };
+      placed += 1;
     }
-    if (got.image !== "") {
-      putTraceImage(got.image);
-      return;
-    }
-    setMessage(got.note === "" ? "取り込みをやめました" : got.note);
-  }, [pageText, putTraceImage]);
+    if (placed === 0) return;
+    setActiveTrace(traces.length + placed - 1);
+    setScalePoints([]);
+    setTraceMode("scale");
+    setMessage(
+      `${placed}枚の図面を置きました。図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください`,
+    );
+  }, [pageText, pushDiagram, traceBoxes, traces.length]);
 
   /** 縮尺合わせの前の形（「↶ 縮尺を戻す」で元に戻せるように取っておく） */
   const [scaleUndo, setScaleUndo] = useState<
-    { trace: FrameTrace; lines: FrameManualLine[] }[]
+    { traces: FrameTrace[]; active: number; lines: FrameManualLine[] }[]
   >([]);
 
   /** 縮尺合わせ：2点の間、または選んだ線の実寸を入れて、図面と引いた線を伸び縮みさせる */
@@ -838,7 +986,11 @@ export default function FrameSheetPage({
     pushDiagram();
     setScaleUndo((current) => [
       ...current.slice(-9),
-      { trace, lines: manualLines },
+      {
+        traces,
+        active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
+        lines: manualLines,
+      },
     ]);
     setTrace((current) => ({
       ...current,
@@ -860,14 +1012,72 @@ export default function FrameSheetPage({
     setHeldView(null);
     setTraceMode("off");
     setMessage("縮尺を合わせました（図面も引いた線も一緒に伸び縮みしました）");
-  }, [manualLines, pushDiagram, scalePoints, scaleText, selectedLineId, trace]);
+  }, [
+    activeTrace,
+    manualLines,
+    pushDiagram,
+    scalePoints,
+    scaleText,
+    selectedLineId,
+    traces,
+  ]);
+
+  /** 「📍 近くへ戻す」で図面を置き直す場所（置いた部屋・引いた線の左上の角。無ければ原点） */
+  const traceHomeSpot = useMemo(() => {
+    const xs = [
+      ...placements.map((placement) => placement.x),
+      ...manualLines.flatMap((line) => [line.x1, line.x2]),
+    ];
+    const ys = [
+      ...placements.map((placement) => placement.y),
+      ...manualLines.flatMap((line) => [line.y1, line.y2]),
+    ];
+    if (xs.length === 0) return { x: 0, y: 0 };
+    return { x: Math.min(...xs), y: Math.min(...ys) };
+  }, [manualLines, placements]);
+
+  /** 選んでいる図面をいちばん上に出す（後に置いた図面が上に重なるので、いちばん後ろへ移す） */
+  const bringTraceFront = useCallback(() => {
+    const index = Math.min(activeTraceRef.current, traces.length - 1);
+    const picked = traces[index];
+    if (picked === undefined || traces.length < 2) return;
+    pushDiagram();
+    setTraces([...traces.filter((_, at) => at !== index), picked]);
+    setActiveTrace(traces.length - 1);
+    setMessage("選んでいる図面をいちばん上に出しました");
+  }, [pushDiagram, traces]);
+
+  /** 選んでいる図面を線・部屋の近くへ戻す（まとめて動かす中は全員まとめて戻る） */
+  const goHomeTrace = useCallback(() => {
+    const index = Math.min(activeTraceRef.current, traces.length - 1);
+    const picked = traces[index];
+    if (picked === undefined) return;
+    pushDiagram();
+    if (traceLocked && traces.length > 1) {
+      const dx = traceHomeSpot.x - picked.x;
+      const dy = traceHomeSpot.y - picked.y;
+      setTraces(
+        traces.map((item) =>
+          item.image === ""
+            ? item
+            : { ...item, x: item.x + dx, y: item.y + dy },
+        ),
+      );
+    } else {
+      setTrace({ ...picked, x: traceHomeSpot.x, y: traceHomeSpot.y });
+    }
+    setMessage("図面を図形の近くへ戻しました");
+  }, [pushDiagram, setTrace, traceHomeSpot, traceLocked, traces]);
 
   /** 縮尺合わせを1回分もとに戻す */
   const undoScale = useCallback(() => {
     setScaleUndo((current) => {
       const last = current[current.length - 1];
       if (last === undefined) return current;
-      setTrace(last.trace);
+      setTraces(last.traces);
+      setActiveTrace(
+        Math.min(last.active, Math.max(last.traces.length - 1, 0)),
+      );
       setManualLines(last.lines);
       setHeldView(null);
       setMessage("縮尺合わせを元に戻しました");
@@ -1164,11 +1374,26 @@ export default function FrameSheetPage({
         const rect = svg.getBoundingClientRect();
         const size = Math.min(rect.width, rect.height) || 1;
         const scale = view.span / size;
-        setTrace((current) => ({
-          ...current,
-          x: moveTrace.x + (event.clientX - moveTrace.clientX) * scale,
-          y: moveTrace.y + (event.clientY - moveTrace.clientY) * scale,
-        }));
+        // 動かし始めの位置からの差を全図面（またはつかんだ1枚）に足す
+        const dx = (event.clientX - moveTrace.clientX) * scale;
+        const dy = (event.clientY - moveTrace.clientY) * scale;
+        if (traceLocked) {
+          setTraces(
+            moveTrace.all.map((item) => ({
+              ...item,
+              x: item.x + dx,
+              y: item.y + dy,
+            })),
+          );
+        } else {
+          setTraces(
+            moveTrace.all.map((item, at) =>
+              at === moveTrace.index
+                ? { ...item, x: item.x + dx, y: item.y + dy }
+                : item,
+            ),
+          );
+        }
         return;
       }
       const grabbed = endRef.current;
@@ -1221,10 +1446,10 @@ export default function FrameSheetPage({
         ),
       );
     },
-    [toModel, view.span],
+    [toModel, traceLocked, view.span],
   );
 
-  /** 始点クリック → 終点クリックで1本引く（軸組モード／レイアウトの「線を引く」） */
+  /** 始点クリック → 終点ク���ックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
       if (panMode) return;
@@ -1702,7 +1927,7 @@ export default function FrameSheetPage({
               setZoom(1);
               setPanMode(false);
               // 図面も入れて、中身ぜんぶが入る大きさに戻す
-              if (trace.image !== "") setFitTrace(true);
+              if (traces.length > 0) setFitTrace(true);
               setHeldView(null);
             }}
           >
@@ -1721,7 +1946,7 @@ export default function FrameSheetPage({
           >
             ✋ 図を動かす
           </button>
-          {trace.image !== "" && (
+          {traces.length > 0 && (
             <button
               type="button"
               className={fitTrace ? "on" : ""}
@@ -1827,25 +2052,73 @@ export default function FrameSheetPage({
                 setTrace(EMPTY_FRAME_TRACE);
                 setTraceMode("off");
                 setScalePoints([]);
-                setMessage("下敷きの図面を外しました");
+                setMessage(
+                  traces.length > 1
+                    ? "選んでいる図面を外しました（他の図面は残ります）"
+                    : "下敷きの図面を外しました",
+                );
               }}
             >
               🗑 図面を外す
+            </button>
+          )}
+          {!printMode && traces.length > 1 && (
+            <>
+              <label
+                className="snap-field"
+                title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
+              >
+                図面を選ぶ
+                <select
+                  value={Math.min(activeTrace, Math.max(traces.length - 1, 0))}
+                  onChange={(e) => setActiveTrace(Number(e.target.value))}
+                >
+                  {traces.map((_, index) => (
+                    <option key={index} value={index}>
+                      図面{index + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
+                onClick={bringTraceFront}
+              >
+                ⬆ 上に出す
+              </button>
+              <button
+                type="button"
+                className={traceLocked ? "on" : ""}
+                title="ONの間「✥ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
+                onClick={() => setTraceLocked(!traceLocked)}
+              >
+                🔗 まとめて動かす
+              </button>
+            </>
+          )}
+          {!printMode && trace.image !== "" && (
+            <button
+              type="button"
+              title="選んでいる図面（橙枠）を線や部屋の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
+              onClick={goHomeTrace}
+            >
+              📍 近くへ戻す
             </button>
           )}
           {!printMode && (
             <>
               <button
                 type="button"
-                title="Shift+Windows+S で切り取った図面を下敷きにします（なぞって線を引けます）"
+                title="Shift+Windows+S で切り取った図面を下敷きに足します（なぞって線を引けます。2枚目以降は右横に置きます）"
                 onClick={() => void pasteTraceImage()}
               >
                 📋 図面を貼る
               </button>
               <button
                 type="button"
-                title="PDF・画像のファイルを選んで下敷きにします"
-                onClick={() => void openTraceFile()}
+                title="PDF・画像のファイルを選んで下敷きに足します（複数まとめて選ぶと横に並べて置きます）"
+                onClick={() => void openTraceFiles()}
               >
                 📄 図面ファイル
               </button>
@@ -2106,31 +2379,56 @@ export default function FrameSheetPage({
               setMessage("取り消しました（もう一度1点目からどうぞ）");
             }}
           >
-            {traceBox !== null && (
-              <image
-                href={trace.image}
-                x={traceBox.x}
-                y={traceBox.y}
-                width={traceBox.width}
-                height={traceBox.height}
-                opacity={manualOnly ? 0.12 : (trace.opacity ?? 0.75)}
-                style={{
-                  cursor: traceMode === "move" ? "move" : "default",
-                  pointerEvents: traceMode === "move" ? "auto" : "none",
-                }}
-                onPointerDown={(event) => {
-                  if (traceMode !== "move") return;
-                  event.stopPropagation();
-                  pushDiagram();
-                  traceDragRef.current = {
-                    clientX: event.clientX,
-                    clientY: event.clientY,
-                    x: trace.x,
-                    y: trace.y,
-                  };
-                }}
-              />
-            )}
+            {traces.map((item, index) => {
+              const box = traceBoxes[index];
+              if (box === null || box === undefined) return null;
+              return (
+                <g key={index}>
+                  <image
+                    href={item.image}
+                    x={box.x}
+                    y={box.y}
+                    width={box.width}
+                    height={box.height}
+                    opacity={manualOnly ? 0.12 : (item.opacity ?? 0.75)}
+                    style={{
+                      cursor: traceMode === "move" ? "move" : "default",
+                      pointerEvents: traceMode === "move" ? "auto" : "none",
+                    }}
+                    onPointerDown={(event) => {
+                      if (traceMode !== "move") return;
+                      event.stopPropagation();
+                      pushDiagram();
+                      // つかんだ図面を操作対象にして動かす（まとめて動かす中は全員が動く）
+                      setActiveTrace(index);
+                      traceDragRef.current = {
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        index,
+                        all: traces,
+                      };
+                    }}
+                  />
+                  {/* 図面が2枚以上あるときは、ボタンが効く図面に橙の枠を出す */}
+                  {traces.length > 1 &&
+                    index ===
+                      Math.min(activeTrace, Math.max(traces.length - 1, 0)) && (
+                      <rect
+                        x={box.x}
+                        y={box.y}
+                        width={box.width}
+                        height={box.height}
+                        fill="none"
+                        stroke="#e8590c"
+                        strokeWidth="2"
+                        strokeDasharray="8 4"
+                        vectorEffect="non-scaling-stroke"
+                        pointerEvents="none"
+                      />
+                    )}
+                </g>
+              );
+            })}
             {scalePoints.map((point, index) => (
               <circle
                 key={`sp-${index}`}

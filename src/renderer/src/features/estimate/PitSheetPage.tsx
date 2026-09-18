@@ -70,14 +70,17 @@ import {
 } from "../../../../core/pit/pit";
 import {
   EMPTY_TRACE,
+  EMPTY_UNDERLAY,
   parseTrace,
   parseTracedShapes,
-  parseUnderlay,
+  parseUnderlayLocked,
+  parseUnderlays,
   type RoomTrace,
   type TracedShape,
   type TraceUnderlay,
   traceAfterUnderlay,
   traceFromUnderlay,
+  underlayAtTraceOrigin,
   underlayForTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
@@ -88,6 +91,7 @@ import {
   svgPoint,
   unionBox,
   useUnderlay,
+  type UnderlayBox,
 } from "./useUnderlay";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
@@ -103,7 +107,8 @@ interface PlanSnapshot {
   beams: PitBeam[];
   walls: PitWall[];
   sleeves: PitSleeve[];
-  underlay: TraceUnderlay;
+  underlays: TraceUnderlay[];
+  underlayLocked: boolean;
   trace: RoomTrace;
   traced: TracedShape[];
 }
@@ -273,6 +278,9 @@ export default function PitSheetPage({
 
   /** 図面を動かし始めたときのピット（動かしている間はこれを元に置き直す） */
   const dragPitsRef = useRef<PitShape[]>([]);
+  /** いま置いてある図面と「まとめて動かす」の状態（履歴・ピット追従の判断に使う。下敷きフックの値を毎回ここへ写す） */
+  const underlaysRef = useRef<TraceUnderlay[]>([]);
+  const moveAllRef = useRef(false);
 
   /**
    * 下敷きを置き替える（貼る・縮尺合わせ・縮尺を戻す・外す）。
@@ -286,11 +294,18 @@ export default function PitSheetPage({
         beams,
         walls,
         sleeves,
-        underlay: before,
+        underlays: underlaysRef.current,
+        underlayLocked: moveAllRef.current,
         trace,
         traced,
       });
-      if (before.image !== "" && before.image === after.image)
+      // なぞったピットは「なぞりに使った図面」が伸び縮みしたときだけ付いていく
+      // （別の図面を合わせても、その図面の上でなぞったピットは動かさない）
+      if (
+        before.image !== "" &&
+        before.image === after.image &&
+        (underlaysRef.current.length <= 1 || before.image === trace.image)
+      )
         setPits(followUnderlay(pits, before, after));
       const nextTrace = traceAfterUnderlay(trace, after);
       if (nextTrace !== trace) {
@@ -302,14 +317,15 @@ export default function PitSheetPage({
   );
 
   const dragUnderlayStart = useCallback(
-    (before: TraceUnderlay) => {
+    (_before: TraceUnderlay) => {
       dragPitsRef.current = pits;
       planHistory.push({
         pits,
         beams,
         walls,
         sleeves,
-        underlay: before,
+        underlays: underlaysRef.current,
+        underlayLocked: moveAllRef.current,
         trace,
         traced,
       });
@@ -317,23 +333,88 @@ export default function PitSheetPage({
     [beams, pits, planHistory, sleeves, trace, traced, walls],
   );
 
-  const dragUnderlay = useCallback((from: TraceUnderlay, to: TraceUnderlay) => {
-    setPits(followUnderlay(dragPitsRef.current, from, to));
-  }, []);
+  const dragUnderlay = useCallback(
+    (from: TraceUnderlay, to: TraceUnderlay) => {
+      const list = underlaysRef.current;
+      // なぞったピットは「なぞりに使った図面」を動かしたとき付いていく��
+      // まとめて動かす中は全図面が同じだけずれるので、なぞり図面を含んでいれば付いていく
+      const follows =
+        list.length <= 1 ||
+        (moveAllRef.current
+          ? trace.image !== "" &&
+            list.some((item) => item.image === trace.image)
+          : from.image === trace.image);
+      if (follows) setPits(followUnderlay(dragPitsRef.current, from, to));
+    },
+    [trace.image],
+  );
 
   const underlayTool = useUnderlay({
     setMessage,
     planSize: Math.max(plan.width, plan.height),
+    multi: true,
+    homeSpot: { x: plan.left, y: plan.top },
     commit: commitUnderlay,
     dragStart: dragUnderlayStart,
     drag: dragUnderlay,
   });
-  const { underlay, setUnderlay, box: underlayBox } = underlayTool;
+  const { underlay, setUnderlay, underlays, setUnderlays, setMoveAll } =
+    underlayTool;
+  underlaysRef.current = underlays;
+  moveAllRef.current = underlayTool.moveAll;
+
+  // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
+  // （選んだ図面の1枚として残り、別の図面が増えない）
+  useEffect(() => {
+    if (!showTrace) return;
+    const slotIndex = Math.min(underlayTool.active, underlays.length - 1);
+    const current = slotIndex >= 0 ? underlays[slotIndex] : undefined;
+    if (current === undefined || trace.image === "") return;
+    if (
+      current.image !== trace.image ||
+      (trace.metersPerPixel > 0 &&
+        current.metersPerPixel !== trace.metersPerPixel)
+    ) {
+      setUnderlays(
+        underlays.map((item, index) =>
+          index === slotIndex
+            ? {
+                ...item,
+                image: trace.image,
+                ...(trace.metersPerPixel > 0
+                  ? { metersPerPixel: trace.metersPerPixel, scaled: true }
+                  : {}),
+              }
+            : item,
+        ),
+        slotIndex,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showTrace, trace, underlayTool.active]);
 
   /** 図のいまの状態（戻る／やり直しの履歴に積む形） */
   const planNow = useMemo<PlanSnapshot>(
-    () => ({ pits, beams, walls, sleeves, underlay, trace, traced }),
-    [beams, pits, sleeves, trace, traced, underlay, walls],
+    () => ({
+      pits,
+      beams,
+      walls,
+      sleeves,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
+      trace,
+      traced,
+    }),
+    [
+      beams,
+      pits,
+      sleeves,
+      trace,
+      traced,
+      underlayTool.moveAll,
+      underlays,
+      walls,
+    ],
   );
 
   const { markSaved } = useSaveOnLeave(
@@ -348,7 +429,8 @@ export default function PitSheetPage({
       note,
       trace,
       traced,
-      underlay,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
     },
     () => save(),
   );
@@ -392,12 +474,13 @@ export default function PitSheetPage({
       setBeams(snapshot.beams);
       setWalls(snapshot.walls);
       setSleeves(snapshot.sleeves);
-      setUnderlay(snapshot.underlay);
+      setUnderlays(snapshot.underlays);
+      setMoveAll(snapshot.underlayLocked);
       setTrace(snapshot.trace);
       setTraced(snapshot.traced);
       setCorners([]);
     },
-    [setUnderlay],
+    [setMoveAll, setUnderlays],
   );
 
   const undoPlan = useCallback(() => {
@@ -441,13 +524,35 @@ export default function PitSheetPage({
       setLower(sets);
       setNote(loaded.note);
       const loadedTrace = parseTrace(loaded.traceJson);
-      const loadedUnderlay = parseUnderlay(loaded.traceJson);
+      const loadedUnderlays = parseUnderlays(loaded.traceJson);
+      // なぞった図形があるときは、なぞりに使った図面（同じ画像。無ければ1枚目）をなぞりの縮尺にそろえる
+      const tracedUnderlay =
+        loadedUnderlays.find(
+          (item) => item.image !== "" && item.image === loadedTrace.image,
+        ) ??
+        loadedUnderlays[0] ??
+        EMPTY_UNDERLAY;
       const synced = loadedPits.some((pit) => pit.traceX !== undefined)
-        ? underlayForTrace(loadedTrace, loadedUnderlay)
+        ? underlayForTrace(loadedTrace, tracedUnderlay)
         : null;
+      const nextUnderlays =
+        synced === null
+          ? loadedUnderlays
+          : (() => {
+              const index = loadedUnderlays.findIndex(
+                (item) => item.image === tracedUnderlay.image,
+              );
+              return index >= 0
+                ? loadedUnderlays.map((item, at) =>
+                    at === index ? synced : item,
+                  )
+                : [synced];
+            })();
+      const underlayLocked = parseUnderlayLocked(loaded.traceJson);
       setTrace(loadedTrace);
       setTraced(parseTracedShapes(loaded.traceJson));
-      setUnderlay(synced ?? loadedUnderlay);
+      setUnderlays(nextUnderlays);
+      setMoveAll(underlayLocked);
       if (synced)
         setMessage(
           `図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いた${pitWord}が元の図面に重なります。保存すると残ります）`,
@@ -463,12 +568,13 @@ export default function PitSheetPage({
         note: loaded.note,
         trace: loadedTrace,
         traced: parseTracedShapes(loaded.traceJson),
-        underlay: loadedUnderlay,
+        underlays: nextUnderlays,
+        underlayLocked,
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
-  }, [markSaved, project.id, row.id]);
+  }, [markSaved, pitWord, project.id, row.id, setMoveAll, setUnderlays]);
 
   const quantities = useMemo(() => pitQuantities(pits, beams), [beams, pits]);
 
@@ -478,16 +584,16 @@ export default function PitSheetPage({
   /** 図の表示範囲（ピット全体＋下敷きの図面が入る大きさ） */
   const view = useMemo(
     () =>
-      unionBox(
+      underlayTool.boxes.reduce<UnderlayBox>(
+        (base, box) => unionBox(base, box),
         {
           x: plan.left - 1,
           y: plan.top - 1,
           width: plan.width + 2,
           height: plan.height + 2,
         },
-        underlayBox,
       ),
-    [plan.height, plan.left, plan.top, plan.width, underlayBox],
+    [plan.height, plan.left, plan.top, plan.width, underlayTool.boxes],
   );
 
   /** ピット間の幅・長さ別の集計（長さは50mmごとにまとめる） */
@@ -555,7 +661,8 @@ export default function PitSheetPage({
       lower: trimmed,
       note,
       trace,
-      underlay,
+      underlays,
+      underlayLocked: underlayTool.moveAll,
     });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
@@ -566,7 +673,13 @@ export default function PitSheetPage({
       sleeveKindsJson: JSON.stringify(sleeveKinds),
       wallStep,
       lowerJson: JSON.stringify(trimmed),
-      traceJson: JSON.stringify({ ...trace, traced, underlay }),
+      traceJson: JSON.stringify({
+        ...trace,
+        traced,
+        underlay: underlays[0] ?? EMPTY_UNDERLAY,
+        underlays,
+        underlayLocked: underlayTool.moveAll,
+      }),
       note,
     });
     setSheet(saved);
@@ -583,7 +696,8 @@ export default function PitSheetPage({
     sleeves,
     trace,
     traced,
-    underlay,
+    underlayTool.moveAll,
+    underlays,
     wallStep,
     walls,
   ]);
@@ -822,7 +936,9 @@ export default function PitSheetPage({
     (at: { x: number; y: number }) => {
       const link = pitGapLink(plan.rects, pits, at);
       if (link === null) {
-        setMessage(`${pitWord}と${pitWord}の間（すき間）をクリックしてください`);
+        setMessage(
+          `${pitWord}と${pitWord}の間（すき間）をクリックしてください`,
+        );
         return;
       }
       const length = Math.hypot(
@@ -830,7 +946,9 @@ export default function PitSheetPage({
         link.to.y - link.from.y,
       );
       if (length < 0.01) {
-        setMessage(`${pitWord}のすき間がありません（${pitWord}の間をあけてください）`);
+        setMessage(
+          `${pitWord}のすき間がありません（${pitWord}の間をあけてください）`,
+        );
         return;
       }
       changeWalls((current) => [
@@ -1120,7 +1238,8 @@ export default function PitSheetPage({
 
   const drawing = (
     <div className="pit-drawing">
-      {plan.rects.length === 0 && underlayBox === null ? (
+      {plan.rects.length === 0 &&
+      underlayTool.boxes.every((box) => box === null) ? (
         <p className="empty">
           「＋ ${pitWord}追加」でＰ1から順に四角を作ります（1個目が基準）
         </p>
@@ -1250,7 +1369,9 @@ export default function PitSheetPage({
                 if (printMode || planMode !== "wall") return;
                 event.stopPropagation();
                 removeWall(wall.id);
-                setMessage(`${pitWord}間の印を消しました（［↶ 戻る］で戻せます）`);
+                setMessage(
+                  `${pitWord}間の印を消しました（［↶ 戻る］で戻せます）`,
+                );
               }}
             >
               <line
@@ -1374,7 +1495,8 @@ export default function PitSheetPage({
           <tr>
             <td colSpan={2}>
               「＝
-              {pitWord}間」で{pitWord}のすき間をクリックすると、ここに種類（線色）＋A・B別×長さ別の本数が出ます
+              {pitWord}間」で{pitWord}
+              のすき間をクリックすると、ここに種類（線色）＋A・B別×長さ別の本数が出ます
             </td>
           </tr>
         ) : (
@@ -2596,6 +2718,48 @@ export default function PitSheetPage({
             }
             setTrace(next);
           }}
+          underlays={underlays}
+          activeIndex={underlayTool.active}
+          onUnderlay={(perPixel) => {
+            // なぞらずに図面だけを図形の下敷きにする。同じ図面が既にあればその枚をそろえる（重複しない）。
+            // 無ければ選んでいる図面を置き替え、全部無ければ新しい1枚として足す
+            const fallback = Math.max(plan.width, plan.height, 10) / 1000;
+            const matchIndex = underlays.findIndex(
+              (item) => item.image === trace.image,
+            );
+            const slotIndex =
+              matchIndex >= 0
+                ? matchIndex
+                : Math.min(underlayTool.active, underlays.length - 1);
+            const matched = slotIndex >= 0 ? underlays[slotIndex] : undefined;
+            const next = {
+              image: trace.image,
+              metersPerPixel:
+                perPixel > 0 ? perPixel : (matched?.metersPerPixel ?? fallback),
+              x: matched?.x ?? underlayTool.nextSpot.x,
+              y: matched?.y ?? underlayTool.nextSpot.y,
+              opacity: matched?.opacity ?? underlay.opacity,
+              ...(perPixel > 0 || matched?.scaled === true
+                ? { scaled: true }
+                : {}),
+            };
+            if (matched === undefined) {
+              setUnderlays([...underlays, next], underlays.length);
+            } else {
+              setUnderlays(
+                underlays.map((item, index) =>
+                  index === slotIndex ? next : item,
+                ),
+                slotIndex,
+              );
+            }
+            setShowTrace(false);
+            setMessage(
+              perPixel > 0
+                ? "図面を図形の下に敷きました（動かす・濃さは図の上のボタンで調整できます）"
+                : "図面を図形の下に敷きました（縮尺は仮です。「⤢ 縮尺合わせ」で図形に合わせてください）",
+            );
+          }}
           targetName={pitWord}
           rectFirst
           subject={
@@ -2608,13 +2772,48 @@ export default function PitSheetPage({
             return pit ? [{ label: pit.symbol, points: shape.points }] : [];
           })}
           onApply={(_shape, meters, pixels, perPixel) => {
-            const synced = underlayForTrace(
-              { ...trace, metersPerPixel: perPixel },
-              underlay,
-            );
-            const placed = synced ?? underlay;
-            applyTrace(meters, pixels, { x: placed.x, y: placed.y });
-            if (synced) setUnderlay(synced);
+            // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く。
+            // 同じ図面が既にあればその枚だけを書き替え、無ければ選んだ図面を置き替え（全部無ければ新しい1枚を足す）
+            if (trace.image === "") {
+              const placed = underlayAtTraceOrigin(underlay, meters);
+              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
+              setUnderlay(placed);
+            } else {
+              const matchIndex = underlays.findIndex(
+                (item) => item.image === trace.image,
+              );
+              const slotIndex =
+                matchIndex >= 0
+                  ? matchIndex
+                  : Math.min(underlayTool.active, underlays.length - 1);
+              const base =
+                slotIndex >= 0
+                  ? underlays[slotIndex]
+                  : {
+                      image: trace.image,
+                      metersPerPixel: 0,
+                      x: 0,
+                      y: 0,
+                      opacity: underlay.opacity,
+                    };
+              const synced =
+                underlayForTrace(
+                  { ...trace, metersPerPixel: perPixel },
+                  base,
+                ) ?? base;
+              const placed = underlayAtTraceOrigin(synced, meters);
+              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
+              if (slotIndex >= 0) {
+                setUnderlays(
+                  underlays.map((item, index) =>
+                    index === slotIndex ? placed : item,
+                  ),
+                  slotIndex,
+                );
+              } else {
+                setUnderlays([...underlays, placed], underlays.length);
+              }
+            }
             // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする
             if (picked.length === 1) setPicked([]);
             setMessage(
@@ -2650,7 +2849,8 @@ export default function PitSheetPage({
         ○角を消して梁入力に戻る」を押してください（○角が出ている間は梁型を置けません）。
         ○角は続けてクリックすると何か所でも選べ（別のＰの角も可・もう一度押すと外れる）、↑↓→←でまとめて動きます。
         1つ選ぶと「角のX・角のY」の欄で位置を数字で決められ、2つ以上選ぶと「たてにそろえる」「よこにそろえる」で一直線になります。
-        Ｌ型のあとに□を入れるときは、{pitWord}を追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
+        Ｌ型のあとに□を入れるときは、{pitWord}
+        を追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
         FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積

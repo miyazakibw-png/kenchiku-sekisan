@@ -58,7 +58,7 @@ export interface UnderlayBox {
 }
 
 /** 画像の大きさ（画素数）を読む。読めないときは null */
-function loadImageSize(
+export function loadImageSize(
   dataUrl: string,
 ): Promise<{ width: number; height: number } | null> {
   return new Promise((resolve) => {

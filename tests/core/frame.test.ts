@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calcVariables } from "../../src/core/aggregate/variables";
 import {
+  parseFrameTraces,
   buildFrameLines,
   defaultFrameKinds,
   findSharedWalls,
@@ -433,5 +434,67 @@ describe("軸組種類（線の色分け）", () => {
       attributes: {},
     });
     expect(frameQuantities(lines, [], 3).byKind).toEqual([]);
+  });
+});
+
+describe("parseFrameTraces", () => {
+  it("図面1枚だけの古い形（FrameTraceそのまま）をその1枚として読む", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      }),
+    );
+    expect(got.traces).toEqual([
+      {
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      },
+    ]);
+    expect(got.active).toBe(0);
+    expect(got.locked).toBe(false);
+  });
+
+  it("複数枚の形をそのまま読む（選んだ番号・まとめて動かすも戻る）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "data:a", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 1,
+        locked: true,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(1);
+    expect(got.locked).toBe(true);
+  });
+
+  it("画像の無い図面は除き、選んだ番号は範囲内に収める", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 9,
+        locked: false,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:b"]);
+    expect(got.active).toBe(0);
+  });
+
+  it("壊れたJSON・空は図面なしで読む", () => {
+    expect(parseFrameTraces("").traces).toEqual([]);
+    expect(parseFrameTraces("null").traces).toEqual([]);
+    expect(parseFrameTraces("{}").traces).toEqual([]);
   });
 });
