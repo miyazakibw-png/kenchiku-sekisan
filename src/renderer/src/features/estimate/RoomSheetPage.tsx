@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -2151,6 +2150,349 @@ export default function RoomSheetPage({
     );
   };
 
+  /** 図の中身を描く（小窓でももう一度描く。fontFix を渡すと文字だけその大きさにする） */
+  const renderDrawingContent = (fontFix: number | null): JSX.Element => (
+    <>
+      <UnderlayImage u={underlayTool} />
+      {solved.points.map((point, index) => {
+        const line = solved.edges[index];
+        const next = solved.points[(index + 1) % solved.points.length];
+        const middle = {
+          x: (point.x + next.x) / 2,
+          y: (point.y + next.y) / 2,
+        };
+        const vertical = point.x === next.x;
+        const className = [
+          "edge",
+          line.kind,
+          (kindPick ?? []).includes(line.id) ? "picked" : "",
+          selectedEdgeIds.includes(line.id) ? "selected" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
+        const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
+        const span = Math.hypot(next.x - point.x, next.y - point.y);
+        const normal =
+          span === 0
+            ? { x: 0, y: 0 }
+            : {
+                x: -(next.y - point.y) / span,
+                y: (next.x - point.x) / span,
+              };
+        const control = {
+          x: middle.x - normal.x * bulge * 2,
+          y: middle.y - normal.y * bulge * 2,
+        };
+        return (
+          <g
+            key={line.id}
+            onClick={(event) => {
+              // 独立柱を置いている間・自由線を引いている間は、辺を選ばない
+              if (columnMode) return;
+              if (freeDraw !== null) return;
+              if (kindPick !== null) {
+                toggleKindPick(line.id);
+                return;
+              }
+              if (addCornerMode) {
+                splitEdgeAt(line.id, point, next, event);
+                return;
+              }
+              selectEdge(line.id, event.shiftKey);
+              setSelectedCorner(null);
+              // 閉じていないときは、押した辺の寸法で合わせる
+              if (!event.shiftKey && solved.error !== null) fitEdge(line.id);
+            }}
+          >
+            {/* 線は細いので、当たり判定用の太い線を重ねる */}
+            <line
+              x1={point.x}
+              y1={point.y}
+              x2={next.x}
+              y2={next.y}
+              className="edge-hit"
+              strokeWidth={cornerRadius * 1.6}
+            />
+            {bulge !== 0 ? (
+              <path
+                d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
+                className={className}
+                fill="none"
+              />
+            ) : (
+              <line
+                x1={point.x}
+                y1={point.y}
+                x2={next.x}
+                y2={next.y}
+                className={className}
+              />
+            )}
+            <text
+              x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
+              y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
+              className={line.auto ? "dim auto" : "dim"}
+              fontSize={fontFix ?? dimFontSize}
+              transform={
+                vertical
+                  ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
+                  : undefined
+              }
+            >
+              {formatNumber(line.resolved, 2)}
+            </text>
+          </g>
+        );
+      })}
+      {solved.columns.map((column, index) => (
+        <g
+          key={column.id}
+          onClick={(event) => {
+            if (columnMode) return;
+            event.stopPropagation();
+            setSelectedColumn(selectedColumn === column.id ? null : column.id);
+            setColumnWidth(formatNumber(column.width, 2));
+            setColumnDepth(formatNumber(column.depth, 2));
+          }}
+        >
+          <rect
+            x={column.x - column.width / 2}
+            y={column.y - column.depth / 2}
+            width={column.width}
+            height={column.depth}
+            className={`free-column ${
+              selectedColumn === column.id ? "selected" : ""
+            }`}
+          />
+          <text
+            x={column.x}
+            y={column.y - column.depth / 2 - dimFontSize * 0.3}
+            className="dim"
+            textAnchor="middle"
+            fontSize={fontFix ?? dimFontSize}
+          >
+            {`C${index + 1} ${formatNumber(column.width, 2)}×${formatNumber(column.depth, 2)}`}
+          </text>
+        </g>
+      ))}
+      {showCorners &&
+        !printMode &&
+        solved.points.map((point, index) => (
+          <g
+            key={`corner-${solved.edges[index].id}`}
+            onPointerDown={(event) => startCornerDrag(index, event)}
+            onPointerMove={(event) => moveCornerDrag(index, event)}
+            onPointerUp={() => endCornerDrag(index)}
+            onClick={() => {
+              setSelectedCorner(index);
+              setSelectedEdge(null);
+              setAddCornerMode(false);
+            }}
+          >
+            {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r={cornerRadius * 2.6}
+              className="corner-hit"
+            />
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r={cornerRadius}
+              className={`corner ${selectedCorner === index ? "selected" : ""}`}
+            />
+          </g>
+        ))}
+      {showCeiling &&
+        ceilingLines.map((line) => (
+          <g key={line.key}>
+            <line
+              x1={line.x1}
+              y1={line.y1}
+              x2={line.x2}
+              y2={line.y2}
+              className={`ceiling-line ${line.kind}${line.same ? " same" : ""}${
+                pickedCeiling === line.elementId ? " picked" : ""
+              }`}
+            />
+            <line
+              x1={line.x1}
+              y1={line.y1}
+              x2={line.x2}
+              y2={line.y2}
+              className="ceiling-line-hit"
+              onClick={() => {
+                if (freeDraw !== null) return;
+                setPickedCeiling(
+                  pickedCeiling === line.elementId ? null : line.elementId,
+                );
+              }}
+            >
+              <title>入力表の行を光らせます</title>
+            </line>
+            {line.label !== "" && (
+              <text
+                x={line.labelX}
+                y={line.labelY + dimFontSize * 0.9}
+                className="dim ceiling"
+                fontSize={fontFix ?? dimFontSize}
+              >
+                CH {line.label}
+              </text>
+            )}
+            {line.marks.map((mark) => (
+              <text
+                key={mark.key}
+                x={mark.x}
+                y={mark.y}
+                className="dim ceiling"
+                fontSize={fontFix ?? dimFontSize}
+              >
+                {mark.label}
+              </text>
+            ))}
+          </g>
+        ))}
+      {showCeiling &&
+        !printMode &&
+        freeDraw === null &&
+        pickedCeiling !== null &&
+        (() => {
+          const element = ceiling.find((row) => row.id === pickedCeiling);
+          const free = element?.free ?? null;
+          if (element === undefined || free === null) return null;
+          const handles: {
+            key: "a" | "b" | number;
+            at: CeilingPoint | null;
+          }[] = [
+            { key: "a", at: anchorPos(free.a) },
+            ...(free.via ?? []).map((point, index) => ({
+              key: index as number,
+              at: point,
+            })),
+            { key: "b", at: anchorPos(free.b) },
+          ];
+          return (
+            <g>
+              {handles.map((item) =>
+                item.at === null ? null : (
+                  <g
+                    key={`${element.id}-handle-${item.key}`}
+                    style={{ cursor: "grab" }}
+                    onPointerDown={(event) =>
+                      startFreePointDrag(element.id, item.key, event)
+                    }
+                    onPointerMove={moveFreePointDrag}
+                    onPointerUp={endFreePointDrag}
+                  >
+                    <circle
+                      cx={item.at.x}
+                      cy={item.at.y}
+                      r={cornerRadius * 2.6}
+                      className="corner-hit"
+                    >
+                      <title>
+                        {item.key === "a"
+                          ? "①をつかんで動かす（近い辺の上に付きます）"
+                          : item.key === "b"
+                            ? "②をつかんで動かす（近い辺の上に付きます）"
+                            : "折れ点をつかんで動かす"}
+                      </title>
+                    </circle>
+                    <circle
+                      cx={item.at.x}
+                      cy={item.at.y}
+                      r={cornerRadius}
+                      className="corner selected"
+                    />
+                  </g>
+                ),
+              )}
+            </g>
+          );
+        })()}
+      {freeDraw !== null &&
+        freeDraw !== "idle" &&
+        (() => {
+          const start = anchorPos(freeDraw.a);
+          if (start === null) return null;
+          const path = [start, ...freeDraw.via];
+          if (freeCursor !== null) path.push(freeCursor);
+          return (
+            <g className="ceiling-free-draw">
+              {path.length >= 2 && (
+                <polyline
+                  points={path
+                    .map((point) => `${point.x},${point.y}`)
+                    .join(" ")}
+                  className="ceiling-line dropCeiling"
+                  fill="none"
+                />
+              )}
+              <text
+                x={start.x}
+                y={start.y}
+                className="dim ceiling"
+                fontSize={fontFix ?? dimFontSize}
+              >
+                ①
+              </text>
+              {freeDraw.via.map((point, index) => (
+                <circle
+                  key={index}
+                  cx={point.x}
+                  cy={point.y}
+                  r={cornerRadius}
+                  className="corner"
+                />
+              ))}
+              {freeCursor !== null && freeCursor.onEdge && (
+                <text
+                  x={freeCursor.x}
+                  y={freeCursor.y}
+                  className="dim ceiling"
+                  fontSize={fontFix ?? dimFontSize}
+                >
+                  ②
+                </text>
+              )}
+            </g>
+          );
+        })()}
+      {showCeiling &&
+        ceilingCodes.flatMap((region) =>
+          region.centers.map((center, no) => {
+            const moved = codes.moves[region.code] ?? { x: 0, y: 0 };
+            return (
+              <text
+                key={`${region.code}-${no}`}
+                x={center.x + moved.x}
+                y={center.y + moved.y}
+                className="ceiling-code"
+                textAnchor="middle"
+                fontSize={fontFix ?? dimFontSize * 1.3}
+                onPointerDown={(event) => startCodeDrag(region.code, event)}
+                onPointerMove={moveCodeDrag}
+                onPointerUp={endCodeDrag}
+                onDoubleClick={() =>
+                  changeCodes((current) => {
+                    const moves = { ...current.moves };
+                    delete moves[region.code];
+                    return { ...current, moves };
+                  })
+                }
+              >
+                {region.code}
+              </text>
+            );
+          }),
+        )}
+      {!printMode && <UnderlayScaleMarks u={underlayTool} span={view.span} />}
+    </>
+  );
+
   /** 上段（図・寸法入力・記号・建具・天井伏図）。印刷では紙の1枚目に入れる */
   const upperArea = (
     <div className={expanded ? "upper expanded" : "upper"}>
@@ -2602,357 +2944,7 @@ export default function RoomSheetPage({
               }}
               onPointerUp={underlayTool.onPointerUp}
             >
-              <g id="room-drawing">
-                <UnderlayImage u={underlayTool} />
-                {solved.points.map((point, index) => {
-                  const line = solved.edges[index];
-                  const next =
-                    solved.points[(index + 1) % solved.points.length];
-                  const middle = {
-                    x: (point.x + next.x) / 2,
-                    y: (point.y + next.y) / 2,
-                  };
-                  const vertical = point.x === next.x;
-                  const className = [
-                    "edge",
-                    line.kind,
-                    (kindPick ?? []).includes(line.id) ? "picked" : "",
-                    selectedEdgeIds.includes(line.id) ? "selected" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ");
-                  // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
-                  const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
-                  const span = Math.hypot(next.x - point.x, next.y - point.y);
-                  const normal =
-                    span === 0
-                      ? { x: 0, y: 0 }
-                      : {
-                          x: -(next.y - point.y) / span,
-                          y: (next.x - point.x) / span,
-                        };
-                  const control = {
-                    x: middle.x - normal.x * bulge * 2,
-                    y: middle.y - normal.y * bulge * 2,
-                  };
-                  return (
-                    <g
-                      key={line.id}
-                      onClick={(event) => {
-                        // 独立柱を置いている間・自由線を引いている間は、辺を選ばない
-                        if (columnMode) return;
-                        if (freeDraw !== null) return;
-                        if (kindPick !== null) {
-                          toggleKindPick(line.id);
-                          return;
-                        }
-                        if (addCornerMode) {
-                          splitEdgeAt(line.id, point, next, event);
-                          return;
-                        }
-                        selectEdge(line.id, event.shiftKey);
-                        setSelectedCorner(null);
-                        // 閉じていないときは、押した辺の寸法で合わせる
-                        if (!event.shiftKey && solved.error !== null)
-                          fitEdge(line.id);
-                      }}
-                    >
-                      {/* 線は細いので、当たり判定用の太い線を重ねる */}
-                      <line
-                        x1={point.x}
-                        y1={point.y}
-                        x2={next.x}
-                        y2={next.y}
-                        className="edge-hit"
-                        strokeWidth={cornerRadius * 1.6}
-                      />
-                      {bulge !== 0 ? (
-                        <path
-                          d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
-                          className={className}
-                          fill="none"
-                        />
-                      ) : (
-                        <line
-                          x1={point.x}
-                          y1={point.y}
-                          x2={next.x}
-                          y2={next.y}
-                          className={className}
-                        />
-                      )}
-                      <text
-                        x={vertical ? middle.x + dimFontSize * 0.8 : middle.x}
-                        y={vertical ? middle.y : middle.y - dimFontSize * 0.6}
-                        className={line.auto ? "dim auto" : "dim"}
-                        fontSize={dimFontSize}
-                        transform={
-                          vertical
-                            ? `rotate(-90 ${middle.x + dimFontSize * 0.8} ${middle.y})`
-                            : undefined
-                        }
-                      >
-                        {formatNumber(line.resolved, 2)}
-                      </text>
-                    </g>
-                  );
-                })}
-                {solved.columns.map((column, index) => (
-                  <g
-                    key={column.id}
-                    onClick={(event) => {
-                      if (columnMode) return;
-                      event.stopPropagation();
-                      setSelectedColumn(
-                        selectedColumn === column.id ? null : column.id,
-                      );
-                      setColumnWidth(formatNumber(column.width, 2));
-                      setColumnDepth(formatNumber(column.depth, 2));
-                    }}
-                  >
-                    <rect
-                      x={column.x - column.width / 2}
-                      y={column.y - column.depth / 2}
-                      width={column.width}
-                      height={column.depth}
-                      className={`free-column ${
-                        selectedColumn === column.id ? "selected" : ""
-                      }`}
-                    />
-                    <text
-                      x={column.x}
-                      y={column.y - column.depth / 2 - dimFontSize * 0.3}
-                      className="dim"
-                      textAnchor="middle"
-                      fontSize={dimFontSize}
-                    >
-                      {`C${index + 1} ${formatNumber(column.width, 2)}×${formatNumber(column.depth, 2)}`}
-                    </text>
-                  </g>
-                ))}
-                {showCorners &&
-                  !printMode &&
-                  solved.points.map((point, index) => (
-                    <g
-                      key={`corner-${solved.edges[index].id}`}
-                      onPointerDown={(event) => startCornerDrag(index, event)}
-                      onPointerMove={(event) => moveCornerDrag(index, event)}
-                      onPointerUp={() => endCornerDrag(index)}
-                      onClick={() => {
-                        setSelectedCorner(index);
-                        setSelectedEdge(null);
-                        setAddCornerMode(false);
-                      }}
-                    >
-                      {/* ○印は小さいので、まわりに広い当たり判定を置いて選びやすくする */}
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={cornerRadius * 2.6}
-                        className="corner-hit"
-                      />
-                      <circle
-                        cx={point.x}
-                        cy={point.y}
-                        r={cornerRadius}
-                        className={`corner ${selectedCorner === index ? "selected" : ""}`}
-                      />
-                    </g>
-                  ))}
-                {showCeiling &&
-                  ceilingLines.map((line) => (
-                    <g key={line.key}>
-                      <line
-                        x1={line.x1}
-                        y1={line.y1}
-                        x2={line.x2}
-                        y2={line.y2}
-                        className={`ceiling-line ${line.kind}${line.same ? " same" : ""}${
-                          pickedCeiling === line.elementId ? " picked" : ""
-                        }`}
-                      />
-                      <line
-                        x1={line.x1}
-                        y1={line.y1}
-                        x2={line.x2}
-                        y2={line.y2}
-                        className="ceiling-line-hit"
-                        onClick={() => {
-                          if (freeDraw !== null) return;
-                          setPickedCeiling(
-                            pickedCeiling === line.elementId
-                              ? null
-                              : line.elementId,
-                          );
-                        }}
-                      >
-                        <title>入力表の行を光らせます</title>
-                      </line>
-                      {line.label !== "" && (
-                        <text
-                          x={line.labelX}
-                          y={line.labelY + dimFontSize * 0.9}
-                          className="dim ceiling"
-                          fontSize={dimFontSize}
-                        >
-                          CH {line.label}
-                        </text>
-                      )}
-                      {line.marks.map((mark) => (
-                        <text
-                          key={mark.key}
-                          x={mark.x}
-                          y={mark.y}
-                          className="dim ceiling"
-                          fontSize={dimFontSize}
-                        >
-                          {mark.label}
-                        </text>
-                      ))}
-                    </g>
-                  ))}
-                {showCeiling &&
-                  !printMode &&
-                  freeDraw === null &&
-                  pickedCeiling !== null &&
-                  (() => {
-                    const element = ceiling.find(
-                      (row) => row.id === pickedCeiling,
-                    );
-                    const free = element?.free ?? null;
-                    if (element === undefined || free === null) return null;
-                    const handles: {
-                      key: "a" | "b" | number;
-                      at: CeilingPoint | null;
-                    }[] = [
-                      { key: "a", at: anchorPos(free.a) },
-                      ...(free.via ?? []).map((point, index) => ({
-                        key: index as number,
-                        at: point,
-                      })),
-                      { key: "b", at: anchorPos(free.b) },
-                    ];
-                    return (
-                      <g>
-                        {handles.map((item) =>
-                          item.at === null ? null : (
-                            <g
-                              key={`${element.id}-handle-${item.key}`}
-                              style={{ cursor: "grab" }}
-                              onPointerDown={(event) =>
-                                startFreePointDrag(element.id, item.key, event)
-                              }
-                              onPointerMove={moveFreePointDrag}
-                              onPointerUp={endFreePointDrag}
-                            >
-                              <circle
-                                cx={item.at.x}
-                                cy={item.at.y}
-                                r={cornerRadius * 2.6}
-                                className="corner-hit"
-                              >
-                                <title>
-                                  {item.key === "a"
-                                    ? "①をつかんで動かす（近い辺の上に付きます）"
-                                    : item.key === "b"
-                                      ? "②をつかんで動かす（近い辺の上に付きます）"
-                                      : "折れ点をつかんで動かす"}
-                                </title>
-                              </circle>
-                              <circle
-                                cx={item.at.x}
-                                cy={item.at.y}
-                                r={cornerRadius}
-                                className="corner selected"
-                              />
-                            </g>
-                          ),
-                        )}
-                      </g>
-                    );
-                  })()}
-                {freeDraw !== null &&
-                  freeDraw !== "idle" &&
-                  (() => {
-                    const start = anchorPos(freeDraw.a);
-                    if (start === null) return null;
-                    const path = [start, ...freeDraw.via];
-                    if (freeCursor !== null) path.push(freeCursor);
-                    return (
-                      <g className="ceiling-free-draw">
-                        {path.length >= 2 && (
-                          <polyline
-                            points={path
-                              .map((point) => `${point.x},${point.y}`)
-                              .join(" ")}
-                            className="ceiling-line dropCeiling"
-                            fill="none"
-                          />
-                        )}
-                        <text
-                          x={start.x}
-                          y={start.y}
-                          className="dim ceiling"
-                          fontSize={dimFontSize}
-                        >
-                          ①
-                        </text>
-                        {freeDraw.via.map((point, index) => (
-                          <circle
-                            key={index}
-                            cx={point.x}
-                            cy={point.y}
-                            r={cornerRadius}
-                            className="corner"
-                          />
-                        ))}
-                        {freeCursor !== null && freeCursor.onEdge && (
-                          <text
-                            x={freeCursor.x}
-                            y={freeCursor.y}
-                            className="dim ceiling"
-                            fontSize={dimFontSize}
-                          >
-                            ②
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })()}
-                {showCeiling &&
-                  ceilingCodes.flatMap((region) =>
-                    region.centers.map((center, no) => {
-                      const moved = codes.moves[region.code] ?? { x: 0, y: 0 };
-                      return (
-                        <text
-                          key={`${region.code}-${no}`}
-                          x={center.x + moved.x}
-                          y={center.y + moved.y}
-                          className="ceiling-code"
-                          textAnchor="middle"
-                          fontSize={dimFontSize * 1.3}
-                          onPointerDown={(event) =>
-                            startCodeDrag(region.code, event)
-                          }
-                          onPointerMove={moveCodeDrag}
-                          onPointerUp={endCodeDrag}
-                          onDoubleClick={() =>
-                            changeCodes((current) => {
-                              const moves = { ...current.moves };
-                              delete moves[region.code];
-                              return { ...current, moves };
-                            })
-                          }
-                        >
-                          {region.code}
-                        </text>
-                      );
-                    }),
-                  )}
-                {!printMode && (
-                  <UnderlayScaleMarks u={underlayTool} span={view.span} />
-                )}
-              </g>
+              <g id="room-drawing">{renderDrawingContent(null)}</g>
             </svg>
             {solved.points.length === 0 && (
               <p className="empty">
@@ -4606,13 +4598,7 @@ export default function RoomSheetPage({
       {showMini && !printMode && (
         <div
           className="mini-drawing"
-          style={
-            {
-              left: miniPos.x,
-              top: miniPos.y,
-              "--mf": `${miniFont}px`,
-            } as CSSProperties
-          }
+          style={{ left: miniPos.x, top: miniPos.y }}
         >
           <div
             className="mini-drawing-head"
@@ -4703,7 +4689,7 @@ export default function RoomSheetPage({
               preserveAspectRatio="xMidYMid meet"
               style={{ width: "100%", height: "100%" }}
             >
-              <use href="#room-drawing" />
+              {renderDrawingContent(miniFont)}
             </svg>
           </div>
         </div>

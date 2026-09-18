@@ -894,8 +894,3 @@
   cursor: grab;
   touch-action: none;
 }
-
-/* 小窓では図だけを拡大し、寸法などの数字は読める大きさのままにする */
-.room-sheet-page .mini-drawing-body svg text {
-  font-size: var(--mf);
-}
