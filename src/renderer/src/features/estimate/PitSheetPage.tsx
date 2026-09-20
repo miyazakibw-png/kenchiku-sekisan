@@ -45,7 +45,7 @@ import {
   pitSymbol,
   pitVariables,
   PIT_LENGTH_STEPS,
-  pitWallLength,
+  pitWallSpan,
   pitWallSizeLabel,
   pitWallTable,
   refitPitWalls,
@@ -1579,7 +1579,68 @@ export default function PitSheetPage({
                 {kind?.name ?? "線色"}
               </td>
               <td>{pitWallSizeLabel(wall.width)}</td>
-              <td className="num">{formatNumber(pitWallLength(wall), 2)}</td>
+              <td className="num">
+                <input
+                  key={`${wall.id}:${wall.length ?? "auto"}`}
+                  className={`num${typeof wall.length === "number" ? " manual" : ""}`}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={
+                    typeof wall.length === "number"
+                      ? formatNumber(wall.length / 1000, 2)
+                      : ""
+                  }
+                  placeholder={formatNumber(pitWallSpan(wall), 2)}
+                  title={`長さを数字で直せます（まとめ表にだけ反映。空欄にすると図の間隔 ${formatNumber(
+                    pitWallSpan(wall),
+                    2,
+                  )}m に戻ります）`}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      (event.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  onBlur={(event) => {
+                    const text = event.target.value.trim();
+                    if (text === "") {
+                      if (typeof wall.length === "number") {
+                        changeWalls((current) =>
+                          current.map((each) => {
+                            if (each.id !== wall.id) return each;
+                            const { length: _manual, ...rest } = each;
+                            return rest;
+                          }),
+                        );
+                        setMessage(
+                          `${pitWord}間 No.${index + 1} の長さを図の間隔（${formatNumber(
+                            pitWallSpan(wall),
+                            2,
+                          )}m）に戻しました`,
+                        );
+                      }
+                      return;
+                    }
+                    const mm = Math.round(Number(text) * 1000);
+                    if (!(mm > 0)) {
+                      setMessage("長さは0より大きい数字で入れてください");
+                      return;
+                    }
+                    if (wall.length === mm) return;
+                    changeWalls((current) =>
+                      current.map((each) =>
+                        each.id === wall.id ? { ...each, length: mm } : each,
+                      ),
+                    );
+                    setMessage(
+                      `${pitWord}間 No.${index + 1} の長さを ${formatNumber(
+                        mm / 1000,
+                        2,
+                      )}m に直しました（まとめ表にだけ反映。空欄で自動に戻ります）`,
+                    );
+                  }}
+                />
+              </td>
               <td>
                 <button
                   type="button"

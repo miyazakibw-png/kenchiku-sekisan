@@ -426,6 +426,19 @@
   font-size: 12px;
 }
 
+.pit-walls table.grid.pit-wall-list input.num {
+  width: 64px;
+  padding: 0 4px;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 手で直した長さは橙字にして、自動（図の間隔）と区別する */
+.pit-walls table.grid.pit-wall-list input.num.manual {
+  color: #c2410c;
+  font-weight: 600;
+}
+
 .pit-plan g.pit-wall.hover line {
   filter: drop-shadow(0 0 0.08px #000);
 }

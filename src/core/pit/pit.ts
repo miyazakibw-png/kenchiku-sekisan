@@ -1495,6 +1495,8 @@ export interface PitWall {
   width: number;
   /** 図の印の色 */
   color: string;
+  /** 表の長さを手で直した値（mm）。無いときは図の間隔を使う */
+  length?: number;
 }
 
 /** 図に出す印の太さ（500mm・200mmの2種類） */
@@ -1544,9 +1546,17 @@ export interface PitSleeve {
   length: number | null;
 }
 
-/** ピット間1本の長さ（m） */
-export function pitWallLength(wall: PitWall): number {
+/** ピット間1本の図の間隔（m）。手で直した長さではなく常に座標から出す */
+export function pitWallSpan(wall: PitWall): number {
   return round4(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
+}
+
+/** ピット間1本の長さ（m）。手で直した長さがあればそれを使う */
+export function pitWallLength(wall: PitWall): number {
+  if (typeof wall.length === "number" && wall.length > 0) {
+    return round4(wall.length / 1000);
+  }
+  return pitWallSpan(wall);
 }
 
 /** 集計でまとめる長さの単位（mm）。表の上で選べる */
