@@ -234,6 +234,36 @@ describe("部屋形状（単線図）", () => {
     );
   });
 
+  it("斜め辺のコ型は辺と直角に部屋の内側へ凹む", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const index = moved.shape.edges.findIndex((row) => row.direction === "D");
+    const before = floorArea(solveShape(moved.shape)) ?? 0;
+    const notched = notchEdge(moved.shape, index, 1, 0.5);
+    expect(notched.error).toBeNull();
+    const solved = solveShape(notched.shape);
+    // 内側へ凹むので床面積が幅×深さぶん減る
+    expect(floorArea(solved)).toBeCloseTo(before - 1 * 0.5, 2);
+    // 凹みの両わきの壁は斜め辺と直角（内積が0）
+    const points = solved.points;
+    const vec = (i: number): { x: number; y: number } => ({
+      x: points[(i + 1) % points.length].x - points[i].x,
+      y: points[(i + 1) % points.length].y - points[i].y,
+    });
+    const diag = vec(index);
+    for (const armIndex of [index + 1, index + 3]) {
+      const arm = vec(armIndex);
+      // 寸法はcm単位で丸めるので、内積は丸め誤差（数mmぶん）以内で0になる
+      expect(Math.abs(diag.x * arm.x + diag.y * arm.y)).toBeLessThan(0.02);
+    }
+    // 凹みの奥の辺は斜め辺と平行（内積の大きさが辺同士の長さの積）
+    const back = vec(index + 2);
+    const diagLen = Math.hypot(diag.x, diag.y);
+    const backLen = Math.hypot(back.x, back.y);
+    expect(Math.abs(diag.x * back.x + diag.y * back.y)).toBeGreaterThan(
+      diagLen * backLen - 0.05,
+    );
+  });
+
   it("斜め辺も途中で分けて角を足せる", () => {
     const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
     const diagonal = moved.shape.edges.find((row) => row.direction === "D");
