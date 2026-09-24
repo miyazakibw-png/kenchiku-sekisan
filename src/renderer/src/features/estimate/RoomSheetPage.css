@@ -235,6 +235,12 @@
 .room-sheet-page .edges table.grid.print td:nth-child(3) {
   width: 108px;
 }
+/* 画面では3列目＝向き欄向けの「入力は幅いっぱい」が、印刷では3列目＝寸法欄に当たる。
+   そこに当てると2分割の入力が全体幅になって開口の長さが右寄りに出るので、半分に戻す */
+.room-sheet-page .edges table.grid.print td:nth-child(3) input.num {
+  width: 50%;
+  min-width: 0;
+}
 .room-sheet-page .edges table.grid.print th:nth-child(4),
 .room-sheet-page .edges table.grid.print td:nth-child(4) {
   width: 56px;
