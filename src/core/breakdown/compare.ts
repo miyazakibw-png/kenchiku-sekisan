@@ -20,6 +20,17 @@ export interface ComparableRow {
 export type BreakdownField =
   "name" | "description" | "quantity" | "unit" | "remarks";
 
+/** 2段の明細で上段・下段を別にした色付けの項目 */
+export type BreakdownHalfField =
+  | "nameUpper"
+  | "nameLower"
+  | "descriptionUpper"
+  | "descriptionLower"
+  | "quantity"
+  | "unit"
+  | "remarksUpper"
+  | "remarksLower";
+
 export interface BreakdownDiff<T extends ComparableRow = ComparableRow> {
   /** 行位置（0始まり） */
   index: number;
@@ -30,6 +41,8 @@ export interface BreakdownDiff<T extends ComparableRow = ComparableRow> {
   onlyRight: boolean;
   /** 中身が違う項目 */
   changed: BreakdownField[];
+  /** 中身が違う項目（上段・下段を別にしたもの） */
+  changedHalves: BreakdownHalfField[];
 }
 
 function nameOf(row: ComparableRow): string {
@@ -57,6 +70,25 @@ export function changedFields(
   return changed;
 }
 
+/** 中身が違う項目を上段・下段に分けて返す（2段の明細を行ごとに色付けするため） */
+export function changedHalfFields(
+  left: ComparableRow,
+  right: ComparableRow,
+): BreakdownHalfField[] {
+  const changed: BreakdownHalfField[] = [];
+  if (left.nameUpper !== right.nameUpper) changed.push("nameUpper");
+  if (left.nameLower !== right.nameLower) changed.push("nameLower");
+  if (left.descriptionUpper !== right.descriptionUpper)
+    changed.push("descriptionUpper");
+  if (left.descriptionLower !== right.descriptionLower)
+    changed.push("descriptionLower");
+  if (left.quantity !== right.quantity) changed.push("quantity");
+  if (left.unit !== right.unit) changed.push("unit");
+  if (left.remarksUpper !== right.remarksUpper) changed.push("remarksUpper");
+  if (left.remarksLower !== right.remarksLower) changed.push("remarksLower");
+  return changed;
+}
+
 /** 左（新しい回）と右（確定した回）を行位置で突き合わせる */
 export function compareBreakdown<T extends ComparableRow>(
   left: readonly T[],
@@ -76,6 +108,10 @@ export function compareBreakdown<T extends ComparableRow>(
       changed:
         leftRow !== null && rightRow !== null
           ? changedFields(leftRow, rightRow)
+          : [],
+      changedHalves:
+        leftRow !== null && rightRow !== null
+          ? changedHalfFields(leftRow, rightRow)
           : [],
     });
   }

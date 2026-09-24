@@ -20,7 +20,7 @@ import {
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
 } from "../../../../core/breakdown/breakdown";
-import type { BreakdownField } from "../../../../core/breakdown/compare";
+import type { BreakdownHalfField } from "../../../../core/breakdown/compare";
 import { moveRow } from "../../../../core/breakdown/compare";
 import {
   compareBlocksBySubject,
@@ -726,14 +726,23 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const compareCells = (
     side: "left" | "right",
     block: CompareBlock<BreakdownRowRecord> | null,
-    changed: BreakdownField[],
+    changedHalves: BreakdownHalfField[],
     onlySide: boolean,
   ): JSX.Element[] => {
-    const mark = (field: BreakdownField): string => {
+    const mark = (field: BreakdownHalfField): string => {
       if (side === "right") return "";
       if (onlySide) return "only";
-      return changed.includes(field) ? "changed" : "";
+      return changedHalves.includes(field) ? "changed" : "";
     };
+    /** 上段・下段の行につける色（片方にしか無い行はかたまり全体につけるのでここでは付けない） */
+    const partMark = (field: BreakdownHalfField): string =>
+      side === "right" || onlySide
+        ? ""
+        : changedHalves.includes(field)
+          ? "changed"
+          : "";
+    /** 片方にしか無い行の色（かたまり全体につける） */
+    const tdOnly = side === "right" ? "" : onlySide ? "only" : "";
     if (block === null) {
       return ["n", "d", "q", "u", "p", "a", "r"].map((key) => (
         <td key={key} className={side === "left" ? "only" : ""} />
@@ -789,21 +798,24 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     /** 上段・下段の文字欄。2段の書式では上下2つ、そうでなければ下段だけ */
     const textCell = (
       key: string,
-      field: BreakdownField,
       part: "name" | "description" | "remarks",
       lowerValue: string,
       onLower: (value: string) => void,
     ): JSX.Element => (
-      <td key={key} className={mark(field)}>
+      <td key={key} className={twoStageText ? tdOnly : mark(`${part}Lower`)}>
         {twoStageText && (
-          <div className="upper">
+          <div className={`upper ${partMark(`${part}Upper`)}`}>
             <TextInput
               value={upperText(part)}
               onCommit={(value) => setUpper(part, value)}
             />
           </div>
         )}
-        <div className={twoStageText ? "lower" : ""}>
+        <div
+          className={
+            twoStageText ? `lower ${partMark(`${part}Lower`)}` : undefined
+          }
+        >
           <TextInput value={lowerValue} onCommit={onLower} />
         </div>
       </td>
@@ -811,7 +823,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     if (block.heading) {
       // 工種科目・タイトルの見出しは文字だけ出す（高さは1明細分そろえる）
       return [
-        <td key="n" className={mark("name")}>
+        <td key="n" className={mark("nameLower")}>
           {twoStageText
             ? subjectLines(headingTextOf(lower))
             : headingTextOf(lower)}
@@ -837,15 +849,11 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       </td>
     );
     return [
-      textCell("n", "name", "name", lower.nameLower, (value) =>
+      textCell("n", "name", lower.nameLower, (value) =>
         setLower({ nameLower: value }),
       ),
-      textCell(
-        "d",
-        "description",
-        "description",
-        lower.descriptionLower,
-        (value) => setLower({ descriptionLower: value }),
+      textCell("d", "description", lower.descriptionLower, (value) =>
+        setLower({ descriptionLower: value }),
       ),
       <td key="q" className={`qty ${mark("quantity")}`}>
         {twoStageText && <div className="upper" />}
@@ -869,7 +877,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         setLower({ unitPrice: value }),
       ),
       numberCell("a", amountOf(lower), (value) => setLower({ amount: value })),
-      textCell("r", "remarks", "remarks", lower.remarksLower, (value) =>
+      textCell("r", "remarks", lower.remarksLower, (value) =>
         setLower({ remarksLower: value }),
       ),
     ];
@@ -1296,9 +1304,19 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     className={twoStage(settings.layout) ? "two-line" : ""}
                   >
                     {opsCell("left", left)}
-                    {compareCells("left", left, diff.changed, diff.onlyLeft)}
+                    {compareCells(
+                      "left",
+                      left,
+                      diff.changedHalves,
+                      diff.onlyLeft,
+                    )}
                     {opsCell("right", right)}
-                    {compareCells("right", right, diff.changed, diff.onlyRight)}
+                    {compareCells(
+                      "right",
+                      right,
+                      diff.changedHalves,
+                      diff.onlyRight,
+                    )}
                   </tr>
                 );
               })}

@@ -8,6 +8,7 @@
 import { BREAKDOWN_LAYOUT } from "./breakdown";
 import {
   changedFields,
+  changedHalfFields,
   type BreakdownDiff,
   type ComparableRow,
 } from "./compare";
@@ -234,6 +235,10 @@ export function compareBlocksBySubject<T extends BlockSourceRow>(
       changed:
         leftValue !== null && rightValue !== null
           ? changedFields(leftValue, rightValue)
+          : [],
+      changedHalves:
+        leftValue !== null && rightValue !== null
+          ? changedHalfFields(leftValue, rightValue)
           : [],
       leftIndex: pair.left,
       rightIndex: pair.right,

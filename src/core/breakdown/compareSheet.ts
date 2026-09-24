@@ -8,7 +8,7 @@ import type { XlsxBorder, XlsxCell, XlsxSheet } from "../export/xlsx";
 import { toXlsx } from "../export/xlsx";
 import { amountOf, BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 import { DEFAULT_PAGE_LAYOUT, type PageLayout } from "./spreadsheet";
-import type { BreakdownField } from "./compare";
+import type { BreakdownHalfField } from "./compare";
 import {
   compareBlocksBySubject,
   headingTextOf,
@@ -55,17 +55,31 @@ function textOf(
 function sideLines(
   block: CompareBlock<BreakdownRow> | null,
   layout: number,
-  changed: readonly BreakdownField[] | null,
+  changed: readonly BreakdownHalfField[] | null,
   onlySide: boolean,
 ): XlsxCell[][] {
-  const mark = (field: BreakdownField): "plain" | "diff" => {
+  const mark = (field: BreakdownHalfField): "plain" | "diff" => {
     if (changed === null) return "plain";
     if (onlySide) return "diff";
     return changed.includes(field) ? "diff" : "plain";
   };
+  /** 文字欄の色。上段・下段を別に見て、1行にまとめる書式はどちらか違えば付ける */
+  const textMark = (
+    field: "name" | "description" | "remarks",
+    half: "Upper" | "Lower" | "Both",
+  ): "plain" | "diff" => {
+    if (half === "Both") {
+      return mark(`${field}Upper`) === "diff" ||
+        mark(`${field}Lower`) === "diff"
+        ? "diff"
+        : "plain";
+    }
+    return mark(`${field}${half}`);
+  };
   const heading = block !== null && block.heading;
   const line = (
     border: XlsxBorder,
+    half: "Upper" | "Lower" | "Both",
     name: { value: string; wrap: boolean },
     description: { value: string; wrap: boolean },
     quantity: number | null,
@@ -76,27 +90,33 @@ function sideLines(
   ): XlsxCell[] => {
     const text = (
       part: { value: string; wrap: boolean },
-      field: BreakdownField,
+      field: "name" | "description" | "remarks",
     ): XlsxCell => ({
       value: part.value,
       kind: heading ? "header" : part.wrap ? "wrap" : "text",
       border,
-      mark: heading ? "plain" : mark(field),
+      mark: heading ? "plain" : textMark(field, half),
     });
+    /** 数量・単位は下段の行にだけあるので、上段の行は色を付けない */
+    const numMark = (field: "quantity" | "unit" | null): "plain" | "diff" => {
+      if (field === null) return "plain";
+      if (half === "Upper" && !onlySide) return "plain";
+      return mark(field);
+    };
     const number = (
       value: number | null,
-      field: BreakdownField | null,
+      field: "quantity" | "unit" | null,
     ): XlsxCell => ({
       value,
       kind: value === null ? "text" : "number",
       border,
-      mark: field === null ? "plain" : mark(field),
+      mark: numMark(field),
     });
     return [
       text(name, "name"),
       text(description, "description"),
       number(quantity, "quantity"),
-      { value: unit, kind: "text", border, mark: mark("unit") },
+      { value: unit, kind: "text", border, mark: numMark("unit") },
       number(unitPrice, null),
       number(amount, null),
       text(remarks, "remarks"),
@@ -105,6 +125,7 @@ function sideLines(
   const blank = (border: XlsxBorder): XlsxCell[] =>
     line(
       border,
+      "Both",
       { value: "", wrap: false },
       { value: "", wrap: false },
       null,
@@ -123,6 +144,7 @@ function sideLines(
         ? blank("upper")
         : line(
             "upper",
+            "Upper",
             { value: upper.nameLower, wrap: false },
             { value: upper.descriptionLower, wrap: false },
             null,
@@ -133,6 +155,7 @@ function sideLines(
           );
     const lowerLine = line(
       "lower",
+      "Lower",
       {
         value: block.heading ? headingTextOf(lower) : lower.nameLower,
         wrap: false,
@@ -156,6 +179,7 @@ function sideLines(
     return [
       line(
         "one",
+        "Both",
         { value: headingTextOf(row), wrap: false },
         { value: "", wrap: false },
         null,
@@ -169,6 +193,7 @@ function sideLines(
   return [
     line(
       "one",
+      "Both",
       textOf(layout, row.nameUpper, row.nameLower),
       textOf(layout, row.descriptionUpper, row.descriptionLower),
       row.quantity,
@@ -345,7 +370,7 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
       const left = sideLines(
         diff.leftIndex === null ? null : leftBlocks[diff.leftIndex],
         input.layout,
-        diff.changed,
+        diff.changedHalves,
         diff.onlyLeft,
       );
       const right = sideLines(

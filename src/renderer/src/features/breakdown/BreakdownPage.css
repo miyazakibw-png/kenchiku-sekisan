@@ -261,7 +261,9 @@
 }
 
 /* 違うところだけ色を付ける（行を合わせ直すと色が消える） */
-.breakdown-page table.compare td.changed {
+.breakdown-page table.compare td.changed,
+.breakdown-page table.compare td .upper.changed,
+.breakdown-page table.compare td .lower.changed {
   background: #ffe08a;
   color: #a03000;
   font-weight: bold;

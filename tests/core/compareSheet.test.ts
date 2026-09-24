@@ -101,6 +101,44 @@ describe("比較のエクセル掃き出し", () => {
     expect(sheet.rows[5]?.[10]?.mark).toBe("plain");
   });
 
+  it("2段2行の明細は上段・下段を行ごとに色を付ける", () => {
+    const pair = (detail: string): BreakdownRow[] => [
+      row({ rowKind: "note", nameLower: "基礎", quantity: null, unit: "" }),
+      row({ rowKind: "detail", nameLower: detail }),
+    ];
+    const sheet = toCompareSheet({
+      // 上段（note）は同じで下段（detail）だけ違う
+      left: pair("普通コンクリート"),
+      right: pair("型枠コンクリート"),
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+    // 上段の行は同じなので色なし、下段の行は違うので色あり
+    expect(sheet.rows[2]?.[0]?.value).toBe("基礎");
+    expect(sheet.rows[2]?.[0]?.mark).toBe("plain");
+    expect(sheet.rows[3]?.[0]?.value).toBe("普通コンクリート");
+    expect(sheet.rows[3]?.[0]?.mark).toBe("diff");
+  });
+
+  it("2段2行で上段だけ違うときは上段の行にだけ色が付く", () => {
+    const pair = (note: string): BreakdownRow[] => [
+      row({ rowKind: "note", nameLower: note, quantity: null, unit: "" }),
+      row({ rowKind: "detail" }),
+    ];
+    const sheet = toCompareSheet({
+      // 下段（detail）は同じで上段（note）だけ違う
+      left: pair("基礎スラブ"),
+      right: pair("基礎"),
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+    // 上段の行は違うので色あり、下段の行は同じなので色なし
+    expect(sheet.rows[2]?.[0]?.mark).toBe("diff");
+    expect(sheet.rows[3]?.[0]?.mark).toBe("plain");
+  });
+
   it("画面で開けた空行もそのまま出す", () => {
     const sheet = toCompareSheet({
       left: [row({}), row({ rowKind: "blank", nameLower: "", quantity: null })],
