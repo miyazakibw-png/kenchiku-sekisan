@@ -107,6 +107,8 @@
 
 .room-sheet-page > .upper.expanded > .drawing {
   grid-column: 1;
+  /* 右列を上（寸法入力表）・下（天井伏図入力表）に分けても、図は全行分の高さを使う */
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
