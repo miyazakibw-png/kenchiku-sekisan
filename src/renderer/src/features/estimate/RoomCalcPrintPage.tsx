@@ -116,6 +116,27 @@ export default function RoomCalcPrintPage({
         >
           📄 PDF
         </button>
+        <button
+          type="button"
+          title="同じ内容を白黒のPDFで保存します"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              // PDFを取っている間だけ白黒にする（画面の見え方は変わりません）
+              document.body.classList.add("pdf-mono");
+              try {
+                await window.sekisan.printPdf(`${name}_白黒`, {
+                  pageSize: "A3",
+                  landscape: true,
+                });
+              } finally {
+                document.body.classList.remove("pdf-mono");
+              }
+            })
+          }
+        >
+          📄 PDF白黒
+        </button>
       </div>
       <div className="sheets">
         {coverRows !== null && (

@@ -237,6 +237,11 @@ body.print-a3-landscape .app {
 }
 
 @media print {
+  /* 白黒PDFのとき：紙に出る範囲すべて（図面の下敷きも含む）をグレーにする */
+  body.pdf-mono .app {
+    filter: grayscale(1);
+  }
+
   html,
   body,
   #root {
