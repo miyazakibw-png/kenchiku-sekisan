@@ -1736,10 +1736,10 @@ function regionPieces(
 }
 
 /**
- * まるごと1つの天井区画に面している壁・曲面壁の壁高さ（その区画の天井高さ）。
- * 低い天井の区画にまるごと入っている壁は、その区画の高さで壁面積を計算する。
- * 高さが違う区画に分かれて面している壁（下がり天井が壁に直角に付くとき）や、
- * 高さが決まっていない区画に面する壁は部屋の天井高さのまま（この表には載せない）。
+ * 壁・曲面壁ごとの壁高さ（その辺が面する天井区画の高さで重み付けした実効値）。
+ * 低い天井の区画に面する部分はその区画の高さ、残りは部屋の天井高さで壁面積を計算する。
+ * 区画の境目で分かれる壁（下がり天井が壁に直角に付くとき）は長さの割合で合わせる。
+ * 高さが決まっていない区画・部屋の天井より高い区画に面する部分は部屋の天井高さのまま。
  */
 export function wallEdgeHeights(
   elements: CeilingElement[],
@@ -1768,25 +1768,57 @@ export function wallEdgeHeights(
     if (edge.kind !== "wall" && edge.kind !== "curve") continue;
     const from = points[index];
     const to = points[(index + 1) % points.length];
+    const span = { x: to.x - from.x, y: to.y - from.y };
+    if (Math.hypot(span.x, span.y) < 1e-9) continue;
     const normal = inwardNormal(points, index);
-    // 壁の内側がまるごと同じ高さの区画に面しているか、少し内側に入った点で見る
-    const faced = new Set<number | null>();
-    for (let i = 0; i < 32 && faced.size <= 1; i += 1) {
-      const rate = (i + 0.5) / 32;
+    // 辺と区画の境目が交わる位置（0〜1）で区切り、区間ごとの高さを長さで重み付けする
+    const cuts: number[] = [];
+    for (const region of regions) {
+      for (const part of region.parts) {
+        for (let i = 0; i < part.length; i += 1) {
+          const a = part[i];
+          const b = part[(i + 1) % part.length];
+          const leg = { x: b.x - a.x, y: b.y - a.y };
+          const denom = cross(span, leg);
+          if (Math.abs(denom) < 1e-9) continue;
+          const gap = { x: a.x - from.x, y: a.y - from.y };
+          const t = cross(gap, leg) / denom;
+          const u = cross(gap, span) / denom;
+          if (
+            t > 1e-6 &&
+            t < 1 - 1e-6 &&
+            u >= -1e-9 &&
+            u <= 1 + 1e-9 &&
+            !cuts.some((value) => Math.abs(value - t) < 1e-6)
+          ) {
+            cuts.push(t);
+          }
+        }
+      }
+    }
+    cuts.sort((left, right) => left - right);
+    const bounds = [0, ...cuts, 1];
+    let weighted = 0;
+    for (let i = 0; i < bounds.length - 1; i += 1) {
+      const rate = (bounds[i] + bounds[i + 1]) / 2;
       const probe = {
-        x: from.x + (to.x - from.x) * rate + normal.x * 0.005,
-        y: from.y + (to.y - from.y) * rate + normal.y * 0.005,
+        x: from.x + span.x * rate + normal.x * 0.005,
+        y: from.y + span.y * rate + normal.y * 0.005,
       };
       const region = regions.find((row) =>
         row.parts.some((part) => inside(part, probe)),
       );
-      faced.add(region?.height ?? null);
+      const height = region?.height ?? null;
+      // 低い区画に面する部分だけ下げる（高い区画・高さ未定・区画の外はそのまま）
+      const effective =
+        height === null || height >= roomCeilingHeight
+          ? roomCeilingHeight
+          : height;
+      weighted += (bounds[i + 1] - bounds[i]) * effective;
     }
-    if (faced.size !== 1) continue;
-    const height = [...faced][0];
-    // 低い区画にまるごと入る壁だけ下げる（高い区画・高さ未定はそのまま）
-    if (height === null || height >= roomCeilingHeight) continue;
-    result.set(edge.id, height);
+    if (weighted < roomCeilingHeight - 1e-6) {
+      result.set(edge.id, round2(weighted));
+    }
   }
   return result;
 }

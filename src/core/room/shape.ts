@@ -27,6 +27,8 @@ export interface RoomEdge {
   dy?: number | null;
   /** 曲面壁の矢（ふくらみ）。プラスは外側へ、マイナスは内側へ。0・未入力なら直線 */
   bulge?: number | null;
+  /** 壁高さの手入力（m）。空欄なら面する天井区画から自動算出。壁面積だけに効く */
+  height?: number | null;
 }
 
 /**

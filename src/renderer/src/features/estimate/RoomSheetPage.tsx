@@ -789,13 +789,18 @@ export default function RoomSheetPage({
     [ceiling, solved, ceilingHeight],
   );
   /**
-   * まるごと低い天井の区画に面している壁の壁高さ（その区画の高さで壁面積を計算）。
-   * 高さが違う区画に分かれて面する壁は部屋の天井高さのまま
+   * 低い天井の区画に面している壁の壁高さ（面する区画の高さを長さで重み付けした実効値）。
+   * 高さの欄に手で入れた辺はその値が優先
    */
-  const edgeHeights = useMemo(
-    () => wallEdgeHeights(ceiling, solved, ceilingHeight, codes.heights),
-    [ceiling, solved, ceilingHeight, codes.heights],
-  );
+  const edgeHeights = useMemo(() => {
+    const auto = wallEdgeHeights(ceiling, solved, ceilingHeight, codes.heights);
+    for (const row of solved.edges) {
+      if (typeof row.height === "number" && row.height > 0) {
+        auto.set(row.id, row.height);
+      }
+    }
+    return auto;
+  }, [ceiling, solved, ceilingHeight, codes.heights]);
   const quantities = useMemo(
     () =>
       roomQuantities(
@@ -2941,143 +2946,150 @@ export default function RoomSheetPage({
         )}
       </section>
 
-      {!(expanded && showCeiling) && (
-        <section className="edges">
-          <div className="section-bar">
-            <span>寸法入力（空欄は自動算出）</span>
-            <label className="ceiling-height">
-              天井高さ
-              <input
-                className="num"
-                key={`ech-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
-                defaultValue={formatNumber(ceilingHeight, 2)}
-                title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
-                onBlur={(e) => applyCeilingHeight(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
-              onClick={() =>
-                applyShape({
-                  edges: [...shape.edges, edge(nextEdgeDirection(shape), null)],
-                })
+      <section className="edges">
+        <div className="section-bar">
+          <span>寸法入力（空欄は自動算出）</span>
+          <label className="ceiling-height">
+            天井高さ
+            <input
+              className="num"
+              key={`ech-${sheet?.id ?? "new"}-${formatNumber(ceilingHeight, 2)}`}
+              defaultValue={formatNumber(ceilingHeight, 2)}
+              title="この部屋の天井高さ（記号CH）。直すと部位別入力表の天井高さも変わります"
+              onBlur={(e) => applyCeilingHeight(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            title="形が閉じていない方向へ戻る向きで辺を足します（向きは後から直せます）"
+            onClick={() =>
+              applyShape({
+                edges: [...shape.edges, edge(nextEdgeDirection(shape), null)],
+              })
+            }
+          >
+            ＋ 辺追加
+          </button>
+          <button
+            type="button"
+            disabled={selectedEdge === null}
+            onClick={() => {
+              if (selectedEdge === null) return;
+              const target = shape.edges.find(
+                (item) => item.id === selectedEdge,
+              );
+              const half =
+                target?.length === null ? 1 : (target?.length ?? 2) / 2;
+              applyShape(
+                splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
+              );
+            }}
+          >
+            ✂ 線分割
+          </button>
+          <button
+            type="button"
+            disabled={selectedEdge === null}
+            onClick={() =>
+              selectedEdge !== null &&
+              applyShape({
+                edges: shape.edges.filter((item) => item.id !== selectedEdge),
+              })
+            }
+          >
+            🗑 辺削除
+          </button>
+          <button
+            type="button"
+            disabled={selectedEdge === null || rangeEdge === null}
+            title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺（表の並び順に進みます。一周をまたいでも選べます）をまとめて消し、まっすぐな壁でそろえます"
+            onClick={() => {
+              if (selectedEdge === null || rangeEdge === null) return;
+              const result = trimEdges(shape, selectedEdge, rangeEdge);
+              if (result.error !== null) {
+                setMessage(result.error);
+                return;
               }
-            >
-              ＋ 辺追加
-            </button>
-            <button
-              type="button"
-              disabled={selectedEdge === null}
-              onClick={() => {
-                if (selectedEdge === null) return;
-                const target = shape.edges.find(
-                  (item) => item.id === selectedEdge,
-                );
-                const half =
-                  target?.length === null ? 1 : (target?.length ?? 2) / 2;
-                applyShape(
-                  splitEdge(shape, selectedEdge, Number(half.toFixed(2))),
-                );
-              }}
-            >
-              ✂ 線分割
-            </button>
-            <button
-              type="button"
-              disabled={selectedEdge === null}
-              onClick={() =>
-                selectedEdge !== null &&
-                applyShape({
-                  edges: shape.edges.filter((item) => item.id !== selectedEdge),
-                })
-              }
-            >
-              🗑 辺削除
-            </button>
-            <button
-              type="button"
-              disabled={selectedEdge === null || rangeEdge === null}
-              title="始めの辺をクリックし、終わりの辺をShift＋クリックで選んでから押すと、その間の辺（表の並び順に進みます。一周をまたいでも選べます）をまとめて消し、まっすぐな壁でそろえます"
-              onClick={() => {
-                if (selectedEdge === null || rangeEdge === null) return;
-                const result = trimEdges(shape, selectedEdge, rangeEdge);
-                if (result.error !== null) {
-                  setMessage(result.error);
-                  return;
-                }
-                applyShape(result.shape);
-                setSelectedEdge(null);
-                setRangeEdge(null);
-              }}
-            >
-              ▭ 範囲をまとめる
-            </button>
-          </div>
-          <table className="grid">
-            <thead>
-              <tr>
-                {!printMode && (
-                  <th
-                    className="no"
-                    title="選んでいる辺（行か図の線をクリック。終わりの辺はShift＋クリック）"
-                  >
-                    選
-                  </th>
-                )}
-                <th className="no">No</th>
-                <th>向き</th>
-                <th className="num">寸法</th>
-                <th className="num" title="曲面壁のふくらみ（矢）">
-                  Ｒ向き
-                </th>
-                <th>種別</th>
-              </tr>
-            </thead>
-            <tbody>
-              {solved.edges.map((line, index) => (
-                <tr
-                  key={line.id}
-                  className={[
-                    (kindPick ?? []).includes(line.id) ? "picked" : "",
-                    selectedEdgeIds.includes(line.id) ? "selected" : "",
-                    solved.missing.includes(line.id) ? "missing" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={(event) =>
-                    kindPick !== null
-                      ? toggleKindPick(line.id)
-                      : selectEdge(line.id, event.shiftKey)
-                  }
+              applyShape(result.shape);
+              setSelectedEdge(null);
+              setRangeEdge(null);
+            }}
+          >
+            ▭ 範囲をまとめる
+          </button>
+        </div>
+        <table className="grid">
+          <thead>
+            <tr>
+              {!printMode && (
+                <th
+                  className="no"
+                  title="選んでいる辺（行か図の線をクリック。終わりの辺はShift＋クリック）"
                 >
-                  {!printMode && (
-                    <td className="no edge-pick">
-                      {selectedEdgeIds.includes(line.id) ? "☑" : "☐"}
-                    </td>
-                  )}
-                  <td className="no">{index + 1}</td>
-                  <td>
-                    <select
-                      value={line.direction}
-                      onChange={(e) =>
-                        applyShape(
-                          updateEdge(shape, line.id, {
-                            direction: e.target.value as EdgeDirection,
-                          }),
-                        )
-                      }
-                    >
-                      {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
-                        (key) => (
-                          <option key={key} value={key}>
-                            {DIRECTION_LABEL[key]}
-                          </option>
-                        ),
-                      )}
-                    </select>
+                  選
+                </th>
+              )}
+              <th className="no">No</th>
+              <th>向き</th>
+              <th className="num">
+                <span className="dim-split">
+                  <span>寸法</span>
+                  <span title="壁高さ（壁面積WAに効く。空欄は面する天井区画から自動算出）">
+                    高さ
+                  </span>
+                </span>
+              </th>
+              <th className="num" title="曲面壁のふくらみ（矢）">
+                Ｒ向き
+              </th>
+              <th>種別</th>
+            </tr>
+          </thead>
+          <tbody>
+            {solved.edges.map((line, index) => (
+              <tr
+                key={line.id}
+                className={[
+                  (kindPick ?? []).includes(line.id) ? "picked" : "",
+                  selectedEdgeIds.includes(line.id) ? "selected" : "",
+                  solved.missing.includes(line.id) ? "missing" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={(event) =>
+                  kindPick !== null
+                    ? toggleKindPick(line.id)
+                    : selectEdge(line.id, event.shiftKey)
+                }
+              >
+                {!printMode && (
+                  <td className="no edge-pick">
+                    {selectedEdgeIds.includes(line.id) ? "☑" : "☐"}
                   </td>
-                  <td>
+                )}
+                <td className="no">{index + 1}</td>
+                <td>
+                  <select
+                    value={line.direction}
+                    onChange={(e) =>
+                      applyShape(
+                        updateEdge(shape, line.id, {
+                          direction: e.target.value as EdgeDirection,
+                        }),
+                      )
+                    }
+                  >
+                    {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
+                      (key) => (
+                        <option key={key} value={key}>
+                          {DIRECTION_LABEL[key]}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </td>
+                <td>
+                  <span className="dim-split">
                     {isDiagonal(line.direction) ? (
                       <input
                         className="num"
@@ -3167,93 +3179,149 @@ export default function RoomSheetPage({
                         }}
                       />
                     )}
-                  </td>
-                  <td>
-                    {line.kind === "curve" ? (
-                      <span className="curve">
-                        <input
-                          className="num"
-                          defaultValue={
-                            line.bulge === null || line.bulge === undefined
-                              ? ""
-                              : formatNumber(Math.abs(line.bulge), 2)
+                    {line.kind === "wall" || line.kind === "curve" ? (
+                      <input
+                        className={`num height${typeof line.height === "number" ? " manual" : ""}`}
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        defaultValue={
+                          typeof line.height === "number"
+                            ? formatNumber(line.height, 2)
+                            : ""
+                        }
+                        key={`${line.id}-h-${line.height ?? "auto"}`}
+                        placeholder={
+                          ceilingHeight === null
+                            ? ""
+                            : formatNumber(
+                                edgeHeights.get(line.id) ?? ceilingHeight,
+                                2,
+                              )
+                        }
+                        title="この壁の壁高さ（壁面積WAにだけ効きます）。空欄にすると面する天井区画から自動算出します"
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.currentTarget.blur();
+                        }}
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          if (text === "") {
+                            if (typeof line.height === "number") {
+                              applyShape(
+                                updateEdge(shape, line.id, { height: null }),
+                              );
+                            }
+                            return;
                           }
-                          key={`${line.id}-bulge-${line.bulge ?? "none"}`}
-                          title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
-                          onKeyDown={(e) => {
-                            if (e.key !== "Enter") return;
-                            showAnswer(e.currentTarget);
-                            e.currentTarget.blur();
-                          }}
-                          onBlur={(e) => {
-                            const value = textToNumber(e.target.value);
-                            const size =
-                              value === null ? null : Math.abs(value);
-                            applyShape(
-                              updateEdge(shape, line.id, {
-                                bulge:
-                                  size === null
-                                    ? null
-                                    : (line.bulge ?? 0) < 0
-                                      ? -size
-                                      : size,
-                              }),
+                          const value = textToNumber(text);
+                          if (value === null || value <= 0) {
+                            setMessage(
+                              "壁高さは0より大きい数字で入れてください（空欄で自動に戻ります）",
                             );
-                          }}
-                        />
-                        <select
-                          value={(line.bulge ?? 0) < 0 ? "in" : "out"}
-                          title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
-                          onChange={(e) => {
-                            const size = Math.abs(line.bulge ?? 0);
-                            applyShape(
-                              updateEdge(shape, line.id, {
-                                bulge:
-                                  size === 0
-                                    ? line.bulge
-                                    : e.target.value === "in"
-                                      ? -size
-                                      : size,
-                              }),
-                            );
-                          }}
-                        >
-                          <option value="out">外</option>
-                          <option value="in">内</option>
-                        </select>
-                      </span>
+                            return;
+                          }
+                          if (line.height === value) return;
+                          applyShape(
+                            updateEdge(shape, line.id, { height: value }),
+                          );
+                          setMessage(
+                            `No.${index + 1} の壁高さを ${formatNumber(
+                              value,
+                              2,
+                            )}m に直しました（壁面積WAにだけ効きます。空欄で自動に戻ります）`,
+                          );
+                        }}
+                      />
                     ) : (
                       <span className="none">－</span>
                     )}
-                  </td>
-                  <td>
-                    <select
-                      value={line.kind}
-                      onChange={(e) =>
-                        applyShape(
-                          updateEdge(shape, line.id, {
-                            kind: e.target.value as EdgeKind,
-                          }),
-                        )
-                      }
-                    >
-                      {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
-                        <option key={key} value={key}>
-                          {KIND_LABEL[key]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="note">
-            辺は表の行でも図の線でもクリックで選べます（選んだ辺は「選」に☑が付き、図では太く光ります）。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
-            範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
-          </p>
-        </section>
-      )}
+                  </span>
+                </td>
+                <td>
+                  {line.kind === "curve" ? (
+                    <span className="curve">
+                      <input
+                        className="num"
+                        defaultValue={
+                          line.bulge === null || line.bulge === undefined
+                            ? ""
+                            : formatNumber(Math.abs(line.bulge), 2)
+                        }
+                        key={`${line.id}-bulge-${line.bulge ?? "none"}`}
+                        title={`Ｒ向き（矢＝ふくらみ）を入れると弧長で数えます。いまの弧長 ${formatNumber(line.measured, 2)}`}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          showAnswer(e.currentTarget);
+                          e.currentTarget.blur();
+                        }}
+                        onBlur={(e) => {
+                          const value = textToNumber(e.target.value);
+                          const size = value === null ? null : Math.abs(value);
+                          applyShape(
+                            updateEdge(shape, line.id, {
+                              bulge:
+                                size === null
+                                  ? null
+                                  : (line.bulge ?? 0) < 0
+                                    ? -size
+                                    : size,
+                            }),
+                          );
+                        }}
+                      />
+                      <select
+                        value={(line.bulge ?? 0) < 0 ? "in" : "out"}
+                        title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
+                        onChange={(e) => {
+                          const size = Math.abs(line.bulge ?? 0);
+                          applyShape(
+                            updateEdge(shape, line.id, {
+                              bulge:
+                                size === 0
+                                  ? line.bulge
+                                  : e.target.value === "in"
+                                    ? -size
+                                    : size,
+                            }),
+                          );
+                        }}
+                      >
+                        <option value="out">外</option>
+                        <option value="in">内</option>
+                      </select>
+                    </span>
+                  ) : (
+                    <span className="none">－</span>
+                  )}
+                </td>
+                <td>
+                  <select
+                    value={line.kind}
+                    onChange={(e) =>
+                      applyShape(
+                        updateEdge(shape, line.id, {
+                          kind: e.target.value as EdgeKind,
+                        }),
+                      )
+                    }
+                  >
+                    {(Object.keys(KIND_LABEL) as EdgeKind[]).map((key) => (
+                      <option key={key} value={key}>
+                        {KIND_LABEL[key]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="note">
+          辺は表の行でも図の線でもクリックで選べます（選んだ辺は「選」に☑が付き、図では太く光ります）。始めの辺を選んでから終わりの辺をShift＋クリックすると「ここからここまで」を選べ（表の並び順に進みます。17番→1番のように一周をまたぐ範囲も選べます）、「▭
+          範囲をまとめる」でその間の辺をまとめて消し、始点と終点を結ぶまっすぐな壁（縦横がずれていれば2本）に置き換えます。形は閉じたままなので、1本ずつ消したときのように崩れません。
+        </p>
+      </section>
 
       <section className="symbols">
         <div className="section-bar">
@@ -3985,13 +4053,6 @@ export default function RoomSheetPage({
               })}
             </tbody>
           </table>
-          <p className="note">
-            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線と梁型（壁付き・天井付）の梁底で分け（梁型で分断された天井は別々の区画。梁底そのものには番号を付けません）、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
-            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出します（区画一覧の天井高さに、その範囲の高さを入れてください）。境目の線（点線）は両側の高さが違う所だけに出て、両側が同じ高さになった所（区画に入れた高さで同じになった所も）は消えます。閉じた通常画面と印刷も同じです。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。高さが違う所に線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力でき、入れた区画だけが変わります（隣の区画や上の入力表のＨは変わりません。上の入力表の下がり天井のＨは、その線で下がる側の区画の既定の高さです）。区画に入れた高さは、その区画の場所で覚えます（線を足して区画が分かれても残ります）。空欄にすると既定（下がり天井のＨ、なければ部屋の天井高さ）に戻ります。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
-          </p>
-          <p className="note">
-            下がり天井の「沿う壁」を「自由線（辺の上の2点）」にすると、壁に沿わない線を引けます。①と②の端点を「辺○の、始まりの角から○m」の形で入れます（線はその2点を結んだもので、部屋から出る所は部屋のふちで切れます）。線の下がる側は①→②の左側です。反対側に下げたいときは①と②を入れ替えてください（線を選ぶと出る○の持ち手をつかんで動かすか、欄で位置を直します）。
-          </p>
           {ceilingCodes.length > 0 && (
             <table className="grid ceiling-regions">
               <thead>
@@ -4026,6 +4087,13 @@ export default function RoomSheetPage({
               </tbody>
             </table>
           )}
+          <p className="note">
+            梁型・下がり壁はＷ（幅）とＨ（梁せい）を入れれば、壁高さは「取りつく天井高さ−Ｈ」で自動で決まります。取りつく天井は自動で見ます（梁の前に下がり天井があればその下がった天井。違うときは「取りつく天井」欄に入れれば上書きできます）。壁高さの欄を直すとＨが自動で合います。壁付き梁型・下がり壁は壁の長さのまま。下がり天井は、突き当たる壁か、梁型・下がり壁の線、自分より低い下がり天井のところまで自動で伸びます（梁型は天井より低く見えるときだけ入れる線なので、下がり天井の端部は壁か梁になります）。天井付梁型は、突き当たる壁か、自分より低くなる線のところまで伸びます。天井の区画は下がり天井の線と梁型（壁付き・天井付）の梁底で分け（梁型で分断された天井は別々の区画。梁底そのものには番号を付けません）、すべての区画にC1・C2…の番号を中央に出します（左上からの順）。隣り合っていて高さが同じ区画は1つにまとめます。離れた所も1つにまとめたいときは「同じ高さをまとめる」を入れてください（離れた所にも同じ番号を出します）。線は区画のふちから引くので、高さが違う区画の境目だけが点線で途切れずに出ます（同じ高さの所の線は消えます。1本の線でも、高さが違う所だけが点線になります）。Ｈ高さが空の下がり天井は「高さがまだ決まっていない」ものとして線を残し、区画も分けます。Ｈ高さに0を入れると、そこは「部屋と同じ高さ」に戻ります（同じ所が重なっているときは後の行が優先なので、下がり天井の中に0の帯を入れると、その帯だけ元の高さに戻り、境目に点線が出ます）。「⤡
+            大きく開く」で天井伏図を開いているときは入力用の表示になり、線で区切られた範囲すべてにＣ記号を出します（区画一覧の天井高さに、その範囲の高さを入れてください）。境目の線（点線）は両側の高さが違う所だけに出て、両側が同じ高さになった所（区画に入れた高さで同じになった所も）は消えます。閉じた通常画面と印刷も同じです。図の線をクリックすると、上の入力表のその行が光ります（表の行をクリックしても線が光ります）。下がり天井の高さは、上の入力表のＨ高さ（または壁高さ）に入れてください。高さが違う所に線が出ます。番号はつかんで好きな位置へ動かせます（ダブルクリックで元の位置に戻ります）。部屋の天井高さとの差（下がり）から面積を自動算出します。梁型面積は仕上げる面で、壁付き梁型は長さ×（Ｗ幅＋Ｈ）（梁底＋見付1面）、天井付梁型は長さ×（Ｗ幅＋Ｈ×2）（梁底＋見付2面）、下がり壁は見付で長さ×Ｈ（下がり）です。下がり天井の面積（SA）は段差の見付で、段差になっている長さ×その所の段差の高さ（両側の天井高さの差）です（Ｈが0の線でも、反対側と高さが違えば面積が出ます）。範囲の天井面積は下の区画一覧の「区画の面積」で見てください。SLH1…は段差の高さごとの長さです。区画の面積と天井面積（CA）は、梁型の梁底（長さ×Ｗ幅）の分を引いた面積です。区画一覧の天井高さ・下がりはどの区画でもそのまま入力でき、入れた区画だけが変わります（隣の区画や上の入力表のＨは変わりません。上の入力表の下がり天井のＨは、その線で下がる側の区画の既定の高さです）。区画に入れた高さは、その区画の場所で覚えます（線を足して区画が分かれても残ります）。空欄にすると既定（下がり天井のＨ、なければ部屋の天井高さ）に戻ります。記号はGL/GA・BL/BA・DWL/DWA・SL/SA（下がり天井は高さごとにSLH1…）。
+          </p>
+          <p className="note">
+            下がり天井の「沿う壁」を「自由線（辺の上の2点）」にすると、壁に沿わない線を引けます。①と②の端点を「辺○の、始まりの角から○m」の形で入れます（線はその2点を結んだもので、部屋から出る所は部屋のふちで切れます）。線の下がる側は①→②の左側です。反対側に下げたいときは①と②を入れ替えてください（線を選ぶと出る○の持ち手をつかんで動かすか、欄で位置を直します）。
+          </p>
         </section>
       )}
 
