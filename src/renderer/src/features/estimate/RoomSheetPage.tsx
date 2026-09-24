@@ -280,6 +280,8 @@ type ShapePrompt =
       kind: "rect" | "cut" | "notch";
       across: string;
       along: string;
+      /** コ型を凹ませる位置（辺のはじからの寸法。空欄＝中央。斜めの辺で柱の位置を決めるときに使う） */
+      offset?: string;
       /** L型・コ型で足す辺の種別（小さいL・コは柱にすることが多い） */
       edgeKind: EdgeKind;
     }
@@ -1870,8 +1872,18 @@ export default function RoomSheetPage({
     }
     setCutAcross(formatNumber(across, 2));
     setCutAlong(formatNumber(along, 2));
-    if (prompt.kind === "cut") addCorner(across, along, prompt.edgeKind);
-    else addNotch(across, along, prompt.edgeKind);
+    if (prompt.kind === "cut") {
+      addCorner(across, along, prompt.edgeKind);
+      return;
+    }
+    const offsetText = prompt.offset?.trim() ?? "";
+    const offset =
+      offsetText === "" ? undefined : (textToNumber(offsetText) ?? undefined);
+    if (offsetText !== "" && offset === undefined) {
+      setMessage("位置は数字で入れてください（空欄は中央）");
+      return;
+    }
+    addNotch(across, along, prompt.edgeKind, offset);
   };
 
   /**
@@ -2202,6 +2214,7 @@ export default function RoomSheetPage({
     across: number,
     along: number,
     edgeKind: EdgeKind,
+    offset?: number,
   ): void => {
     const index = shape.edges.findIndex((item) => item.id === selectedEdge);
     if (index < 0) {
@@ -2218,6 +2231,7 @@ export default function RoomSheetPage({
       index,
       vertical ? along : across,
       vertical ? across : along,
+      offset,
     );
     if (result.error) {
       setMessage(result.error);
@@ -2227,7 +2241,7 @@ export default function RoomSheetPage({
     setSelectedEdge(null);
     setSelectedCorner(null);
     setMessage(
-      `選んだ辺をコ型に凹ませました（足した辺は${KIND_LABEL[edgeKind]}）${base.note}`,
+      `選んだ辺をコ型に凹ませました${offset !== undefined ? `（辺のはじから ${formatNumber(offset, 2)} の位置）` : ""}（足した辺は${KIND_LABEL[edgeKind]}）${base.note}`,
     );
   };
 
@@ -2682,7 +2696,7 @@ export default function RoomSheetPage({
             </button>
             <button
               type="button"
-              title="辺を選んでから押すと、小窓で寸法を入れてその辺の中央を凹ませます（何度でも使えます）"
+              title="辺を選んでから押すと、小窓で寸法を入れてその辺を凹ませます（斜めの辺も直角に凹みます。位置は辺のはじからの寸法で決められ、何度でも使えます）"
               onClick={() => {
                 if (!shape.edges.some((item) => item.id === selectedEdge)) {
                   setMessage("凹ませる辺を選んでからコ型を押してください");
@@ -2692,6 +2706,7 @@ export default function RoomSheetPage({
                   kind: "notch",
                   across: cutAcross,
                   along: cutAlong,
+                  offset: "",
                   edgeKind: promptEdgeKind,
                 });
               }}
@@ -4398,6 +4413,25 @@ export default function RoomSheetPage({
                       onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
                     />
                   </label>
+                  {prompt.kind === "notch" && (
+                    <label>
+                      位置
+                      <input
+                        className="num"
+                        placeholder="中央"
+                        onFocus={(e) => e.currentTarget.select()}
+                        onMouseDown={selectWholeOnFirstClick}
+                        value={prompt.offset ?? ""}
+                        onChange={(e) =>
+                          setPrompt({ ...prompt, offset: e.target.value })
+                        }
+                        onKeyDown={(e) => e.key === "Enter" && submitPrompt()}
+                      />
+                      <span className="hint">
+                        （辺のはじからの寸法。空欄は中央）
+                      </span>
+                    </label>
+                  )}
                   {prompt.kind !== "rect" && (
                     <label>
                       種別
