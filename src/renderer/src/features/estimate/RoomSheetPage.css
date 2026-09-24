@@ -96,8 +96,16 @@
   border-radius: 6px;
   box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
   grid-template-columns: minmax(0, 1.9fr) minmax(320px, 0.9fr);
-  grid-auto-rows: minmax(0, 1fr);
+  /* 行は明示する（暗黙行だけだと図の grid-row:1/-1 が「最後の行」に効かず高さが半分に止まる）。
+     右列は寸法入力だけ＝1行、天井伏図も出すとき＝2行（.has-ceiling で切替） */
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: min-content;
   overflow: hidden;
+}
+
+/* 天井伏図も出すときは右列を2行にし、図は全行分の高さを使う */
+.room-sheet-page > .upper.expanded.has-ceiling {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
 .room-sheet-page > .upper.expanded > .symbols,

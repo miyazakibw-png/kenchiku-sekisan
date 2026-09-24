@@ -2603,7 +2603,15 @@ export default function RoomSheetPage({
 
   /** 上段（図・寸法入力・記号・建具・天井伏図）。印刷では紙の1枚目に入れる */
   const upperArea = (
-    <div className={expanded ? "upper expanded" : "upper"}>
+    <div
+      className={
+        expanded
+          ? showCeiling
+            ? "upper expanded has-ceiling"
+            : "upper expanded"
+          : "upper"
+      }
+    >
       <section className="drawing">
         <div className="section-bar">
           <span>部屋形状イメージ</span>
