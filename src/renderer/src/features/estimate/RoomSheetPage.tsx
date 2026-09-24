@@ -3386,8 +3386,8 @@ export default function RoomSheetPage({
                       />
                     ) : (
                       // 開口・Ｒ開口は高さ入力の対象外だが、壁があったとしたらの
-                      // 自動の高さ（面する天井区画から算出）を薄い字で出す
-                      <span className="none height-auto">
+                      // 自動の高さ（面する天井区画から算出）を表示だけ出す
+                      <span className="num height-auto">
                         {ceilingHeight === null
                           ? "－"
                           : formatNumber(
