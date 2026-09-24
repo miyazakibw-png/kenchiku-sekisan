@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  EstimateRow,
   EstimateRowCheck,
   EstimateRowCheckCell,
   EstimateRowDraft,
@@ -30,6 +31,7 @@ import {
 } from "./estimateRows";
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
+import OtherProjectPartsPicker from "./OtherProjectPartsPicker";
 import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import "./EstimatePartsPage.css";
@@ -65,7 +67,8 @@ export default function EstimatePartsPage({
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [message, setMessage] = useState("");
   const [clipboard, setClipboard] = useState<EstimateRowDraft[]>([]);
-  const [others, setOthers] = useState<ProjectSummary[] | null>(null);
+  /** 他物件の部位別入力表から部位を選んでコピーする窓を出しているか */
+  const [others, setOthers] = useState(false);
   /** 計算書を開いている行（部位別入力表の行が1部屋＝1計算書） */
   const [openedSheet, setOpenedSheet] = useState<number | null>(null);
   /** 軸組の「置ける部屋」から部屋計算書へ飛んだとき、戻り先の軸組計算書 */
@@ -91,6 +94,11 @@ export default function EstimatePartsPage({
   const pastRef = useRef<EstimateRowDraft[][]>([]);
   const futureRef = useRef<EstimateRowDraft[][]>([]);
   const [historyTick, setHistoryTick] = useState(0);
+  /** 計算書の種類 → 表示名（他物件コピー窓の一覧で使う） */
+  const calcSheetNameMap = useMemo(
+    () => new Map(options.calcSheets.map((sheet) => [sheet.key, sheet.name])),
+    [options.calcSheets],
+  );
   const checkColumns = useMemo(
     () =>
       options.aggregationParts.length > 0
@@ -285,19 +293,15 @@ export default function EstimatePartsPage({
     setMessage(`貼り付けました（${notes.join("／")}）`);
   }, [columns, rows, selected]);
 
-  const copyFromOtherProject = useCallback(async (source: ProjectSummary) => {
-    const copied = toDrafts(await window.sekisan.listEstimateRows(source.id));
+  /** 他物件の部位別入力表から選んだ行を控えに入れる（あとは挿入貼付・追加貼付で入れる） */
+  const copyFromOtherProject = useCallback((picked: EstimateRow[]) => {
+    const copied = toDrafts(picked);
     setClipboard(copied);
-    setOthers(null);
+    setOthers(false);
     setMessage(
-      `${source.managementNo} から ${copied.length} 行を控えました（行貼り込みで挿入）`,
+      `${copied.length} 行を控えました（挿入貼付・追加貼付で入ります）`,
     );
   }, []);
-
-  const openOtherProjects = useCallback(async () => {
-    const ledger = await window.sekisan.getProjectLedger();
-    setOthers(ledger.projects.filter((row) => row.id !== project.id));
-  }, [project.id]);
 
   // 計算書から戻ったときは、開く前に見ていた位置へ戻す（下の方の部屋でも探し直さずに済む）
   useEffect(() => {
@@ -598,7 +602,11 @@ export default function EstimatePartsPage({
         >
           📋 追加貼付
         </button>
-        <button type="button" onClick={() => void openOtherProjects()}>
+        <button
+          type="button"
+          title="他の物件の部位別入力表を開き、コピーしたい部位の行を選んで控えに入れます"
+          onClick={() => setOthers(true)}
+        >
           🏢 他物件から
         </button>
         <span className="status">{message}</span>
@@ -632,21 +640,12 @@ export default function EstimatePartsPage({
       </div>
 
       {others && (
-        <div className="other-projects">
-          <span>コピー元の物件</span>
-          {others.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => void copyFromOtherProject(row)}
-            >
-              {row.managementNo} {row.name}
-            </button>
-          ))}
-          <button type="button" onClick={() => setOthers(null)}>
-            取消
-          </button>
-        </div>
+        <OtherProjectPartsPicker
+          currentProjectId={project.id}
+          calcSheetNames={calcSheetNameMap}
+          onPick={copyFromOtherProject}
+          onClose={() => setOthers(false)}
+        />
       )}
 
       <MasterCodeOptions
