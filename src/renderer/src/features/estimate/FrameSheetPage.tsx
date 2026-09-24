@@ -291,6 +291,8 @@ export default function FrameSheetPage({
     left: number;
     top: number;
   } | null>(null);
+  /** つまんで実際に動かしたか（ドラッグ後のクリックで点を打たないための印） */
+  const panMovedRef = useRef(false);
   /** 図の枠（拡大したときはこの中をスクロールする） */
   const canvasRef = useRef<HTMLDivElement | null>(null);
   /** 図面画像をつまんで動かしているときの位置 */
@@ -1367,6 +1369,13 @@ export default function FrameSheetPage({
         if (!canvas) return;
         canvas.scrollLeft = movePan.left - (event.clientX - movePan.clientX);
         canvas.scrollTop = movePan.top - (event.clientY - movePan.clientY);
+        if (
+          Math.abs(event.clientX - movePan.clientX) +
+            Math.abs(event.clientY - movePan.clientY) >
+          4
+        ) {
+          panMovedRef.current = true;
+        }
         return;
       }
       const moveTrace = traceDragRef.current;
@@ -1454,7 +1463,12 @@ export default function FrameSheetPage({
   /** 始点クリック → 終点ク���ックで1本引く（軸組モード／レイアウトの「線を引く」） */
   const onCanvasClick = useCallback(
     (event: React.MouseEvent<SVGSVGElement>) => {
-      if (panMode) return;
+      // 画面を動かす（パン）はドラッグだけの動き。つまんで動かした後のクリックだけは無効、
+      // 普通のクリックは線引き・縮尺合わせなどに通す（線を引きながら画面を動かせる）
+      if (panMode && panMovedRef.current) {
+        panMovedRef.current = false;
+        return;
+      }
       if (endMovedRef.current) {
         endMovedRef.current = false;
         return;
@@ -1945,15 +1959,12 @@ export default function FrameSheetPage({
             onClick={() => {
               const next = !panMode;
               setPanMode(next);
-              if (next) {
-                // 画面を動かす中は縮尺合わせ・図面を動かす・線を引くのクリックが効かないので切る
-                setTraceMode("off");
-                setScalePoints([]);
-                setDrawing(false);
-                setDrawStart(null);
-              }
+              panDragRef.current = null;
+              panMovedRef.current = false;
               setMessage(
-                next ? "図をつまんだまま動かすと見る所を変えられます" : "",
+                next
+                  ? "図をつまんだまま動かすと見る所を変えられます（線引き・縮尺合わせのクリックはそのまま使えます）"
+                  : "",
               );
             }}
           >
@@ -2388,6 +2399,7 @@ export default function FrameSheetPage({
               if (!panMode) return;
               const canvas = canvasRef.current;
               if (!canvas) return;
+              panMovedRef.current = false;
               panDragRef.current = {
                 clientX: event.clientX,
                 clientY: event.clientY,
