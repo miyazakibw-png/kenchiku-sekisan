@@ -2875,7 +2875,7 @@ export default function FrameSheetPage({
         </section>
       )}
 
-      {!printMode && checkedIds.length > 0 && (
+      {!printMode && !drawing && checkedIds.length > 0 && (
         <section className="rooms kind-apply">
           <div className="section-bar">
             <span>選んだ線 {checkedIds.length} 本</span>
