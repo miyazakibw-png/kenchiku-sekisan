@@ -1462,6 +1462,8 @@ export default function FrameSheetPage({
     if (grabbed) {
       endRef.current = null;
       endMovedRef.current = true;
+      // 端のドラッグ中に固定した表示をやめて、中身に合わせ直せるようにする
+      setHeldView(null);
       if (grabbed.free) return;
       setManualLines((current) =>
         current.map((line) => {
