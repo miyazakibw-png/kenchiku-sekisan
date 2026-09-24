@@ -857,6 +857,7 @@ export default function FrameSheetPage({
       setActiveTrace(traces.length);
       setScalePoints([]);
       setTraceMode("scale");
+      setPanMode(false);
       // 縮尺合わせの間は線を引けないので、線引きは止めておく
       setDrawing(false);
       setDrawStart(null);
@@ -951,6 +952,7 @@ export default function FrameSheetPage({
     setActiveTrace(traces.length + placed - 1);
     setScalePoints([]);
     setTraceMode("scale");
+    setPanMode(false);
     setMessage(
       `${placed}枚の図面を置きました。図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れてください`,
     );
@@ -1938,9 +1940,15 @@ export default function FrameSheetPage({
             className={panMode ? "on" : ""}
             title="図をつまんで動かします（大きくしたときに端まで見られます）"
             onClick={() => {
-              setPanMode(!panMode);
+              const next = !panMode;
+              setPanMode(next);
+              if (next) {
+                // 図を動かす中は縮尺合わせ・図面を動かすのクリックが効かないので切る
+                setTraceMode("off");
+                setScalePoints([]);
+              }
               setMessage(
-                panMode ? "" : "図をつまんだまま動かすと見る所を変えられます",
+                next ? "図をつまんだまま動かすと見る所を変えられます" : "",
               );
             }}
           >
@@ -2071,7 +2079,11 @@ export default function FrameSheetPage({
                 図面を選ぶ
                 <select
                   value={Math.min(activeTrace, Math.max(traces.length - 1, 0))}
-                  onChange={(e) => setActiveTrace(Number(e.target.value))}
+                  onChange={(e) => {
+                    setActiveTrace(Number(e.target.value));
+                    // 選んだ図面が表示範囲の外にあっても見えるようにする
+                    setFitTrace(true);
+                  }}
                 >
                   {traces.map((_, index) => (
                     <option key={index} value={index}>
@@ -2144,6 +2156,10 @@ export default function FrameSheetPage({
                   if (traceMode !== "scale") {
                     setDrawing(false);
                     setDrawStart(null);
+                    // 図を動かす（パン）中はクリックが効かないので切り、対象の図面が見えるよう表示範囲に入れる
+                    setPanMode(false);
+                    panDragRef.current = null;
+                    setFitTrace(true);
                   }
                   setMessage(
                     traceMode === "scale"
@@ -2192,6 +2208,10 @@ export default function FrameSheetPage({
                   if (traceMode !== "move") {
                     setDrawing(false);
                     setDrawStart(null);
+                    // 図を動かす（パン）中は図面をつかめないので切り、対象の図面が見えるよう表示範囲に入れる
+                    setPanMode(false);
+                    panDragRef.current = null;
+                    setFitTrace(true);
                   }
                 }}
               >
