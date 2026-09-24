@@ -3,7 +3,8 @@
  * BCS.CSV（Shift_JIS）と、エクセル（全明細1シート／工種科目ごとに1シート）を作る。
  */
 
-import { writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
 import iconv from "iconv-lite";
 import { toBcsCsv } from "../../core/breakdown/bcs";
 import {
@@ -105,5 +106,7 @@ export function buildExport(
 }
 
 export function writeExport(filePath: string, content: Buffer): void {
+  // 保存先のフォルダが無いとき（OneDriveに移された「ドキュメント」など）も保存できるよう、無ければ作る
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content);
 }

@@ -643,7 +643,13 @@ function registerIpcHandlers(): void {
         : await dialog.showSaveDialog({ defaultPath: defaultName });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
-      writeExport(result.filePath, content);
+      try {
+        writeExport(result.filePath, content);
+      } catch {
+        throw new Error(
+          "ファイルを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );
@@ -1089,7 +1095,13 @@ function registerIpcHandlers(): void {
         printBackground: true,
         preferCSSPageSize: true,
       });
-      writeExport(result.filePath, pdf);
+      try {
+        writeExport(result.filePath, pdf);
+      } catch {
+        throw new Error(
+          "PDFを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );
@@ -1103,7 +1115,13 @@ function registerIpcHandlers(): void {
         : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
-      writeExport(result.filePath, toScreenWorkbook(request.sheets));
+      try {
+        writeExport(result.filePath, toScreenWorkbook(request.sheets));
+      } catch {
+        throw new Error(
+          "エクセルを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );

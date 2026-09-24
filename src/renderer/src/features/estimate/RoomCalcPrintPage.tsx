@@ -67,6 +67,10 @@ export default function RoomCalcPrintPage({
         if (area instanceof HTMLElement)
           area.style.setProperty("--print-scale", "1");
         await job();
+      } catch (error) {
+        window.alert(
+          error instanceof Error ? error.message : "保存できませんでした",
+        );
       } finally {
         setBusy(false);
       }
