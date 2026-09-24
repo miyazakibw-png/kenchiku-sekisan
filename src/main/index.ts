@@ -585,8 +585,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.breakdownVersions, (_event, projectId: number) =>
     listBreakdownVersions(getDatabase(), projectId),
   );
-  ipcMain.handle(IPC.breakdownTransfer, (_event, projectId: number) =>
-    transferBreakdown(getDatabase(), projectId),
+  ipcMain.handle(
+    IPC.breakdownTransfer,
+    (_event, projectId: number, newRound?: boolean) =>
+      transferBreakdown(getDatabase(), projectId, newRound === true),
   );
   ipcMain.handle(
     IPC.breakdownSaveRows,

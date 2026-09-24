@@ -33,7 +33,7 @@ import "../aggregate/AggregatePage.css";
 import "./BreakdownPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
-import { ask } from "../common/askDialog";
+import { ask, pick } from "../common/askDialog";
 
 interface Props {
   project: ProjectSummary;
@@ -317,7 +317,19 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   );
 
   const transfer = async (): Promise<void> => {
-    const next = await window.sekisan.transferBreakdown(project.id);
+    // 確定していない回があるまま転記するときは、作り直しか新しい回か選ぶ
+    // （確定を押し忘れて転記すると、今の回が上書きされるため）
+    const open = versions.find((version) => version.confirmed === 0);
+    let newRound = false;
+    if (open !== undefined) {
+      const choice = await pick(`${open.round}回目はまだ確定していません。`, [
+        `${open.round}回目を作り直す`,
+        "次の回として新しく作る",
+      ]);
+      if (choice === -1) return;
+      newRound = choice === 1;
+    }
+    const next = await window.sekisan.transferBreakdown(project.id, newRound);
     setView(next);
     setLeftRows(next.rows);
     setVersions(await window.sekisan.listBreakdownVersions(project.id));

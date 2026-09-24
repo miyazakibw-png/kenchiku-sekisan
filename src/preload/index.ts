@@ -328,8 +328,11 @@ const api = {
     ipcRenderer.invoke(IPC.breakdownGet, projectId, versionId),
   listBreakdownVersions: (projectId: number): Promise<BreakdownVersion[]> =>
     ipcRenderer.invoke(IPC.breakdownVersions, projectId),
-  transferBreakdown: (projectId: number): Promise<BreakdownView> =>
-    ipcRenderer.invoke(IPC.breakdownTransfer, projectId),
+  transferBreakdown: (
+    projectId: number,
+    newRound?: boolean,
+  ): Promise<BreakdownView> =>
+    ipcRenderer.invoke(IPC.breakdownTransfer, projectId, newRound),
   saveBreakdownRows: (
     request: SaveBreakdownRowsRequest,
   ): Promise<BreakdownRowRecord[]> =>

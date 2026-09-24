@@ -245,10 +245,13 @@ function subjectList(db: AppDatabase, projectId: number): BreakdownSubject[] {
 /**
  * 集計書兼工事マスターから内訳書へ変換転記する。
  * 未確定の回があればその回を作り直し、無ければ次の回を作る。
+ * newRound が true のときは、開いている回を確定してから次の回を作る
+ * （確定を押し忘れて転記したとき、上書きではなく新しい回にできる）。
  */
 export function transferBreakdown(
   db: AppDatabase,
   projectId: number,
+  newRound = false,
 ): BreakdownView {
   const aggregate = getAggregate(db, projectId);
   const subjects = subjectList(db, projectId);
@@ -290,7 +293,15 @@ export function transferBreakdown(
   });
 
   const versions = listBreakdownVersions(db, projectId);
-  const open = versions.find((version) => version.confirmed === 0);
+  const openStored = versions.find((version) => version.confirmed === 0);
+  // 新しい回を選んだときは、開いている回を確定して次の回へ進む
+  if (newRound && openStored !== undefined) {
+    db.update(projectBreakdownVersions)
+      .set({ confirmed: 1 })
+      .where(eq(projectBreakdownVersions.id, openStored.id))
+      .run();
+  }
+  const open = newRound ? undefined : openStored;
   // この回で初めて出てきた工種科目＝前の回に無かったもの
   // （作り直す開いている回は数えない。確定した回の中にあれば「新しい」ではない）
   const previousSubjects = new Set<number>();
