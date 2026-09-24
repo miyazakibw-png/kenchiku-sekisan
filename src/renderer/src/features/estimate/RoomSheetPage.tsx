@@ -3056,6 +3056,7 @@ export default function RoomSheetPage({
                       }
                       className="dim"
                       textAnchor="middle"
+                      fontSize={dimFontSize}
                     >
                       {`${formatNumber(Number(columnWidth), 2)}×${formatNumber(Number(columnDepth), 2)}`}
                     </text>
