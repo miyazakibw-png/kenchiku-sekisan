@@ -3386,15 +3386,20 @@ export default function RoomSheetPage({
                       />
                     ) : (
                       // 開口・Ｒ開口は高さ入力の対象外だが、壁があったとしたらの
-                      // 自動の高さ（面する天井区画から算出）を読み取り専用で出す
+                      // 自動の高さ（面する天井区画から算出）を、壁の自動値と同じ
+                      // 空欄＋プレースホルダで出す（読み取り専用）
                       <input
                         className="num height"
+                        type="number"
+                        step="0.05"
+                        min="0"
                         readOnly
                         tabIndex={-1}
                         title="開口の高さは表示だけです（計算には使われません）"
-                        value={
+                        value=""
+                        placeholder={
                           ceilingHeight === null
-                            ? "－"
+                            ? ""
                             : formatNumber(
                                 edgeHeights.get(line.id) ?? ceilingHeight,
                                 2,
