@@ -226,6 +226,24 @@
   width: 48px;
 }
 
+/* 印刷（選の列が無い）ときは列が1つずれるので、各欄の幅を1つずらして同じ幅にする */
+.room-sheet-page .edges table.grid.print th:nth-child(2),
+.room-sheet-page .edges table.grid.print td:nth-child(2) {
+  width: 48px;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(3),
+.room-sheet-page .edges table.grid.print td:nth-child(3) {
+  width: 108px;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(4),
+.room-sheet-page .edges table.grid.print td:nth-child(4) {
+  width: 56px;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(5),
+.room-sheet-page .edges table.grid.print td:nth-child(5) {
+  width: 48px;
+}
+
 .room-sheet-page .edges span.diagonal {
   display: inline-flex;
   gap: 2px;

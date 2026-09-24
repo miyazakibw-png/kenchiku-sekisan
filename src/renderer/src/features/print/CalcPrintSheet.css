@@ -67,6 +67,17 @@
   display: none;
 }
 
+/* 入力の手引き（表の下の説明文 note・行内の補足 hint）も紙には出さない */
+.calc-print-upper .room-sheet-page .note,
+.calc-print-upper .room-sheet-page .hint {
+  display: none;
+}
+
+/* 天井伏図の表の操作列（✂・🗑など紙では押せないボタン）も紙には出さない */
+.calc-print-upper .room-sheet-page .ceiling-actions {
+  display: none;
+}
+
 /* 下段の計算書。画面の設定幅のままA3横の幅へ縮める */
 .calc-print-lower {
   transform-origin: top left;

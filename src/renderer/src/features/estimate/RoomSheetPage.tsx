@@ -3167,7 +3167,7 @@ export default function RoomSheetPage({
             ▭ 範囲をまとめる
           </button>
         </div>
-        <table className="grid">
+        <table className={printMode ? "grid print" : "grid"}>
           <thead>
             <tr>
               {!printMode && (
