@@ -1202,13 +1202,36 @@ describe("低い天井の区画に面している壁の壁高さ", () => {
   it("壁高さを手で入れた辺は形の計算でもその値を持つ", () => {
     const solved = solveShape({
       edges: [
-        edge("R", 4),
-        { ...edge("D", 3), height: 2.0 },
-        edge("L", 4),
-        edge("U", 3),
+        edge("E", 4),
+        { ...edge("S", 3), height: 2.0 },
+        edge("W", 4),
+        edge("N", 3),
       ],
     });
     expect(solved.edges[1].height).toBe(2.0);
     expect(solved.edges[0].height).toBeUndefined();
+  });
+
+  it("柱の辺も区画の高さを拾い、手入力の高さは柱面積HAに効く", () => {
+    // 下の辺を柱にした4×3。右の壁に沿って2mの所に下がり天井
+    const solved = solveShape({
+      edges: [edge("E", 4), edge("S", 3), edge("W", 4, "column"), edge("N", 3)],
+    });
+    const elements = [
+      element("dropCeiling", solved.edges[1].id, { offset: 2, height: 1.0 }),
+    ];
+    const heights = wallEdgeHeights(elements, solved, 3.0);
+    // 柱の辺は4mのうち2mが低い区画に面するので重み付けで2.5
+    expect(heights.get(solved.edges[2].id)).toBe(2.5);
+    const quantities = roomQuantities(solved, 3.0, [], undefined, 0, heights);
+    expect(quantities.columnArea).toBe(10);
+    const symbols = roomSymbols(solved, 3.0, [], undefined, 0, heights);
+    expect(symbols.find((row) => row.symbol === "HA1")?.value).toBe(10);
+    // 手で入れた高さはそのまま柱面積に効く
+    const manual = new Map(heights);
+    manual.set(solved.edges[2].id, 2.2);
+    expect(
+      roomQuantities(solved, 3.0, [], undefined, 0, manual).columnArea,
+    ).toBe(8.8);
   });
 });

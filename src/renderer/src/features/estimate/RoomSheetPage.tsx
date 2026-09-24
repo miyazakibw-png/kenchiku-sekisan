@@ -3034,8 +3034,8 @@ export default function RoomSheetPage({
               <th className="num">
                 <span className="dim-split">
                   <span>寸法</span>
-                  <span title="壁高さ（壁面積WAに効く。空欄は面する天井区画から自動算出）">
-                    高さ
+                  <span title="壁・柱の高さ（空欄は面する天井区画から自動算出。壁面積WA・柱面積HAに効く）">
+                    平均高さ
                   </span>
                 </span>
               </th>
@@ -3179,7 +3179,9 @@ export default function RoomSheetPage({
                         }}
                       />
                     )}
-                    {line.kind === "wall" || line.kind === "curve" ? (
+                    {line.kind === "wall" ||
+                    line.kind === "curve" ||
+                    line.kind === "column" ? (
                       <input
                         className={`num height${typeof line.height === "number" ? " manual" : ""}`}
                         type="number"
@@ -3199,7 +3201,7 @@ export default function RoomSheetPage({
                                 2,
                               )
                         }
-                        title="この壁の壁高さ（壁面積WAにだけ効きます）。空欄にすると面する天井区画から自動算出します"
+                        title="この辺の高さ（壁面積WA・柱面積HAにだけ効きます）。空欄にすると面する天井区画から自動算出します"
                         onKeyDown={(e) => {
                           if (e.key !== "Enter") return;
                           e.currentTarget.blur();
@@ -3217,7 +3219,7 @@ export default function RoomSheetPage({
                           const value = textToNumber(text);
                           if (value === null || value <= 0) {
                             setMessage(
-                              "壁高さは0より大きい数字で入れてください（空欄で自動に戻ります）",
+                              "高さは0より大きい数字で入れてください（空欄で自動に戻ります）",
                             );
                             return;
                           }
@@ -3226,10 +3228,10 @@ export default function RoomSheetPage({
                             updateEdge(shape, line.id, { height: value }),
                           );
                           setMessage(
-                            `No.${index + 1} の壁高さを ${formatNumber(
+                            `No.${index + 1} の高さを ${formatNumber(
                               value,
                               2,
-                            )}m に直しました（壁面積WAにだけ効きます。空欄で自動に戻ります）`,
+                            )}m に直しました（壁面積WA・柱面積HAにだけ効きます。空欄で自動に戻ります）`,
                           );
                         }}
                       />

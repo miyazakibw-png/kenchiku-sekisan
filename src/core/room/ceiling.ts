@@ -1736,9 +1736,9 @@ function regionPieces(
 }
 
 /**
- * 壁・曲面壁ごとの壁高さ（その辺が面する天井区画の高さで重み付けした実効値）。
- * 低い天井の区画に面する部分はその区画の高さ、残りは部屋の天井高さで壁面積を計算する。
- * 区画の境目で分かれる壁（下がり天井が壁に直角に付くとき）は長さの割合で合わせる。
+ * 壁・曲面壁・柱ごとの高さ（その辺が面する天井区画の高さで重み付けした実効値）。
+ * 低い天井の区画に面する部分はその区画の高さ、残りは部屋の天井高さで壁面積・柱面積を計算する。
+ * 区画の境目で分かれる辺（下がり天井が壁に直角に付くとき）は長さの割合で合わせる。
  * 高さが決まっていない区画・部屋の天井より高い区画に面する部分は部屋の天井高さのまま。
  */
 export function wallEdgeHeights(
@@ -1765,7 +1765,8 @@ export function wallEdgeHeights(
     heights,
   );
   for (const [index, edge] of solved.edges.entries()) {
-    if (edge.kind !== "wall" && edge.kind !== "curve") continue;
+    if (edge.kind !== "wall" && edge.kind !== "curve" && edge.kind !== "column")
+      continue;
     const from = points[index];
     const to = points[(index + 1) % points.length];
     const span = { x: to.x - from.x, y: to.y - from.y };

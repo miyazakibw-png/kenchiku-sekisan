@@ -974,10 +974,10 @@ export interface RoomQuantities {
   fittingBaseboard: number;
 }
 
-/** 壁・曲面壁の長さ×高さの合計（辺ごとの壁高さがあればそれを使う） */
+/** 辺の長さ×高さの合計（辺ごとの高さがあればそれを使う） */
 function edgeArea(
   solved: SolvedShape,
-  kind: "wall" | "curve",
+  kind: EdgeKind,
   height: number,
   edgeHeights?: ReadonlyMap<string, number>,
 ): number {
@@ -1042,7 +1042,13 @@ export function roomQuantities(
         : round2(
             edgeArea(solved, "curve", height, edgeHeights) - curveFitting.area,
           ),
-    columnArea: height === null ? null : round2(column * height),
+    columnArea:
+      height === null
+        ? null
+        : round2(
+            edgeArea(solved, "column", height, edgeHeights) +
+              free.perimeter * height,
+          ),
     moldingLength: round2(totals.wall + column),
     fittingArea: fitting.area,
     fittingBaseboard: fitting.baseboard,
@@ -1172,7 +1178,11 @@ export function roomSymbols(
         symbol: `HA${columnIndex}`,
         label: `柱${columnIndex} 面積`,
         value:
-          ceilingHeight === null ? null : round2(row.measured * ceilingHeight),
+          ceilingHeight === null
+            ? null
+            : round2(
+                row.measured * (edgeHeights?.get(row.id) ?? ceilingHeight),
+              ),
         edgeId: row.id,
       });
     }
