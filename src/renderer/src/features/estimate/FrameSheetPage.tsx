@@ -20,7 +20,9 @@ import {
   defaultFrameKinds,
   EMPTY_FRAME_TRACE,
   findSharedWalls,
+  frameArcApex,
   frameLineAttribute,
+  frameLinePath,
   frameQuantities,
   frameSymbols,
   linePartVariables,
@@ -274,6 +276,14 @@ export default function FrameSheetPage({
   const [fittingTargetId, setFittingTargetId] = useState<string | null>(null);
   const [fittingSymbolText, setFittingSymbolText] = useState("");
   const [fittingCountText, setFittingCountText] = useState("1");
+  /** 線をクリックして曲面（Ｒ壁）にする入力モード */
+  const [curveMode, setCurveMode] = useState(false);
+  /** 曲面にする対象の線 */
+  const [curveTargetId, setCurveTargetId] = useState<string | null>(null);
+  /** 離れ寸法（弦から弧のいちばん外側までのふくらみ。m） */
+  const [curveText, setCurveText] = useState("");
+  /** ふくらむ向きを反対側にする */
+  const [curveFlip, setCurveFlip] = useState(false);
   /** 自分で引いた線だけを見る（部屋の図は薄くする） */
   const [manualOnly, setManualOnly] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -534,7 +544,8 @@ export default function FrameSheetPage({
       drawStart === null &&
       scalePoints.length === 0 &&
       selectedLineId === null &&
-      fittingTargetId === null
+      fittingTargetId === null &&
+      curveTargetId === null
     )
       return;
     const onKey = (event: KeyboardEvent): void => {
@@ -543,11 +554,12 @@ export default function FrameSheetPage({
       setScalePoints([]);
       setSelectedLineId(null);
       setFittingTargetId(null);
+      setCurveTargetId(null);
       setMessage("取り消しました（選んだ線の丸印も外しました）");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawStart, scalePoints, selectedLineId, fittingTargetId]);
+  }, [drawStart, scalePoints, selectedLineId, fittingTargetId, curveTargetId]);
 
   // 別窓で開いているときは Esc で閉じられるようにする
   useEffect(() => {
@@ -679,6 +691,8 @@ export default function FrameSheetPage({
       ...lines.flatMap((line) => [
         { x: line.x1, y: line.y1 },
         { x: line.x2, y: line.y2 },
+        // 曲面壁は弦の外側に弧が出るので、弧の先端も表示範囲に入れる
+        ...(line.bulge ? [frameArcApex(line)] : []),
       ]),
       ...(!fitTrace && lines.length > 0
         ? []
@@ -1191,6 +1205,54 @@ export default function FrameSheetPage({
     );
   }, [fittingSymbolText, fittings]);
 
+  /** 曲面壁モード：対象の線に離れ寸法の弧を付ける */
+  const applyCurve = useCallback(() => {
+    if (curveTargetId === null) {
+      setMessage("先に曲面にする線をクリックしてください");
+      return;
+    }
+    const value = Number(curveText);
+    if (!Number.isFinite(value) || value <= 0) {
+      setMessage("離れ寸法を入れてください（例 0.30）");
+      return;
+    }
+    const bulge = Math.round((curveFlip ? -value : value) * 1000) / 1000;
+    pushDiagram();
+    setManualLines((current) =>
+      current.map((each) =>
+        each.id === curveTargetId ? { ...each, bulge } : each,
+      ),
+    );
+    const label = lines.find((line) => line.id === curveTargetId)?.label;
+    setMessage(
+      `${label ?? "線"} を曲面にしました（離れ ${formatNumber(value, 2)}・長さは弧長になります）`,
+    );
+  }, [curveFlip, curveTargetId, curveText, lines, pushDiagram]);
+
+  /** 曲面壁モード：対象の線を直線に戻す */
+  const clearCurve = useCallback(() => {
+    if (curveTargetId === null) return;
+    pushDiagram();
+    setManualLines((current) =>
+      current.map((each) =>
+        each.id === curveTargetId ? { ...each, bulge: null } : each,
+      ),
+    );
+    setCurveText("");
+    setCurveFlip(false);
+    setMessage("直線に戻しました");
+  }, [curveTargetId, pushDiagram]);
+
+  /** 入力中の離れ寸法と向きで出す予定の弧（オレンジの点線） */
+  const curvePreview = useMemo(() => {
+    if (!curveMode || curveTargetId === null) return null;
+    const target = manualLines.find((line) => line.id === curveTargetId);
+    const value = Number(curveText);
+    if (target === undefined || !Number.isFinite(value) || value <= 0)
+      return null;
+    return { ...target, bulge: curveFlip ? -value : value };
+  }, [curveFlip, curveMode, curveTargetId, curveText, manualLines]);
+
   /** レイアウトへ部屋を置く（重ならないように少しずらして置く） */
   const addPlacement = useCallback(
     (room: FrameRoomOption) => {
@@ -1288,8 +1350,8 @@ export default function FrameSheetPage({
     const step = view.span * 0.022;
     const used = new Map<string, number>();
     return manualLines.map((line) => {
-      const mx = (line.x1 + line.x2) / 2;
-      const my = (line.y1 + line.y2) / 2;
+      // 曲面壁は番号も弧の先端側へ出す
+      const { x: mx, y: my } = frameArcApex(line);
       const key = `${Math.round(mx * 20)}/${Math.round(my * 20)}`;
       const order = used.get(key) ?? 0;
       used.set(key, order + 1);
@@ -1538,6 +1600,7 @@ export default function FrameSheetPage({
       }
       if (traceMode === "move") return;
       if (fittingMode) return;
+      if (curveMode) return;
       if (mode !== "frame" && !(mode === "layout" && drawing)) {
         // 何も無い所をクリックしたら、選んだ線（両端の丸印）を外す
         if (event.target === event.currentTarget) setSelectedLineId(null);
@@ -1581,9 +1644,11 @@ export default function FrameSheetPage({
       );
     },
     [
+      curveMode,
       drawKindId,
       drawStart,
       drawing,
+      fittingMode,
       kindOf,
       mode,
       scalePoints.length,
@@ -2087,6 +2152,32 @@ export default function FrameSheetPage({
               🚪 建具入力
             </button>
           )}
+          {mode === "layout" && manualLines.length > 0 && !printMode && (
+            <button
+              type="button"
+              className={curveMode ? "on" : ""}
+              title="引いた線をクリックして、離れ寸法と向きを入れて弧（曲面壁）にします"
+              onClick={() => {
+                const next = !curveMode;
+                setCurveMode(next);
+                setCurveTargetId(null);
+                setCurveText("");
+                setCurveFlip(false);
+                if (next) {
+                  // 線引き中はクリックが点になるのでやめる
+                  setDrawing(false);
+                  setDrawStart(null);
+                  setTraceMode("off");
+                  setScalePoints([]);
+                  setFittingMode(false);
+                  setFittingTargetId(null);
+                }
+                setMessage(next ? "曲面にする線をクリックしてください" : "");
+              }}
+            >
+              ⌒ 曲面壁
+            </button>
+          )}
           {manualLines.length > 0 && (
             <button
               type="button"
@@ -2538,6 +2629,46 @@ export default function FrameSheetPage({
               ))}
           </div>
         )}
+        {curveMode && !printMode && (
+          <div className="frame-draw-bar">
+            <strong>曲面壁</strong>
+            <span>
+              {curveTargetId === null
+                ? "曲面にする線をクリックしてください"
+                : `曲面にする線：${lines.find((line) => line.id === curveTargetId)?.label ?? ""}`}
+            </span>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                applyCurve();
+              }}
+            >
+              <input
+                className="num"
+                style={{ width: "5em" }}
+                placeholder="離れ 例0.30"
+                title="弦から弧のいちばん外側までの離れ寸法（m）"
+                value={curveText}
+                onChange={(e) => setCurveText(e.target.value)}
+              />
+              <button
+                type="button"
+                title="弧がふくらむ向きを反対側に替えます（オレンジの点線が予定の弧です）"
+                onClick={() => setCurveFlip((flip) => !flip)}
+              >
+                ⟲ 向きを替える
+              </button>
+              <button type="submit" disabled={curveTargetId === null}>
+                曲面にする
+              </button>
+            </form>
+            {manualLines.find((line) => line.id === curveTargetId)?.bulge ? (
+              <button type="button" onClick={clearCurve}>
+                直線に戻す
+              </button>
+            ) : null}
+          </div>
+        )}
         <div className="canvas" ref={canvasRef}>
           <svg
             ref={svgRef}
@@ -2695,12 +2826,10 @@ export default function FrameSheetPage({
                 (each) => each.id === line.placementId,
               );
               return (
-                <line
+                <path
                   key={line.id}
-                  x1={line.x1}
-                  y1={line.y1}
-                  x2={line.x2}
-                  y2={line.y2}
+                  d={frameLinePath(line)}
+                  fill="none"
                   stroke={
                     line.sharedWithId !== null
                       ? "#ea580c"
@@ -2745,6 +2874,21 @@ export default function FrameSheetPage({
                       );
                       return;
                     }
+                    // 曲面壁のときは、引いた線をクリックで「曲面にする先」に選ぶ
+                    if (curveMode && line.source === "manual") {
+                      event.stopPropagation();
+                      setSelectedLineId(line.id);
+                      setCurveTargetId(line.id);
+                      const bulge = line.bulge ?? 0;
+                      setCurveText(
+                        bulge === 0 ? "" : formatNumber(Math.abs(bulge), 2),
+                      );
+                      setCurveFlip(bulge < 0);
+                      setMessage(
+                        `${line.label} の離れ寸法と向きを入れて「曲面にする」を押してください`,
+                      );
+                      return;
+                    }
                     // Ctrl（Shift）を押しながらだと、まとめて色を付ける線に足す
                     if (
                       line.source === "manual" &&
@@ -2780,16 +2924,21 @@ export default function FrameSheetPage({
               const line = lines.find((each) => each.id === pair.dropId);
               if (!line) return null;
               return (
-                <line
+                <path
                   key={`s-${pair.keepId}-${pair.dropId}`}
-                  x1={line.x1}
-                  y1={line.y1}
-                  x2={line.x2}
-                  y2={line.y2}
+                  d={frameLinePath(line)}
+                  fill="none"
                   className="frame-line shared-mark"
                 />
               );
             })}
+            {curvePreview !== null && (
+              <path
+                d={frameLinePath(curvePreview)}
+                fill="none"
+                className="curve-preview"
+              />
+            )}
             {manualNumbers.map((mark) => (
               <text
                 key={`n-${mark.id}`}

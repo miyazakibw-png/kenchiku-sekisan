@@ -7,6 +7,7 @@
  */
 
 import {
+  arcLength,
   round2,
   solveShape,
   type RoomShape,
@@ -30,6 +31,8 @@ export interface FramePlacement {
 /** レイアウトを使わずに直接引いた軸組ライン（始点クリック→終点クリック） */
 export interface FrameManualLine {
   id: string;
+  /** 曲面壁の矢（ふくらみ・m）。＋は始点→終点の左側にふくらむ。未設定は直線 */
+  bulge?: number | null;
   x1: number;
   y1: number;
   x2: number;
@@ -188,6 +191,8 @@ export interface FrameLine extends FrameLineAttribute {
   x2: number;
   y2: number;
   length: number;
+  /** 曲面壁の矢（ふくらみ・m）。設定すると length は弦ではなく弧長になる */
+  bulge?: number | null;
   /** 外周（建物の外側）の線。既定では拾わない */
   perimeter: boolean;
 }
@@ -344,12 +349,59 @@ export function buildFrameLines(input: BuildLinesInput): FrameLine[] {
       y1: line.y1,
       x2: line.x2,
       y2: line.y2,
-      length: round2(Math.hypot(line.x2 - line.x1, line.y2 - line.y1)),
+      // 曲面壁は弦ではなく弧長を拾う長さにする
+      length: arcLength(
+        round2(Math.hypot(line.x2 - line.x1, line.y2 - line.y1)),
+        line.bulge ?? null,
+      ),
+      bulge: line.bulge ?? null,
       perimeter: false,
     });
   });
 
   return markPerimeter(lines);
+}
+
+/**
+ * 軸組ラインを描くSVGパス。直線は M-L、曲面壁（bulgeあり）は M-A の弧になる。
+ * bulge の符号がSVGの sweep-flag と同じ向き（＋は進行方向の左側にふくらむ）。
+ */
+export function frameLinePath(line: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  bulge?: number | null;
+}): string {
+  const bulge = line.bulge ?? 0;
+  const chord = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  if (bulge === 0 || chord <= 0) {
+    return `M ${line.x1} ${line.y1} L ${line.x2} ${line.y2}`;
+  }
+  const h = Math.abs(bulge);
+  const radius = (chord * chord) / (8 * h) + h / 2;
+  const largeArc = h > chord / 2 ? 1 : 0;
+  const sweep = bulge > 0 ? 1 : 0;
+  return `M ${line.x1} ${line.y1} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${line.x2} ${line.y2}`;
+}
+
+/** 曲面壁の弧のいちばん外側の点（ラベルの位置や表示範囲に使う）。直線なら弦の中点 */
+export function frameArcApex(line: {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  bulge?: number | null;
+}): { x: number; y: number } {
+  const mx = (line.x1 + line.x2) / 2;
+  const my = (line.y1 + line.y2) / 2;
+  const bulge = line.bulge ?? 0;
+  const chord = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  if (bulge === 0 || chord <= 0) return { x: mx, y: my };
+  // 弧がふくらむ側の法線（＋のbulge＝SVG sweep=1＝進行方向の左側）
+  const nx = (line.y2 - line.y1) / chord;
+  const ny = -(line.x2 - line.x1) / chord;
+  return { x: mx + nx * bulge, y: my + ny * bulge };
 }
 
 /** 全体の外形に乗っている線に印を付ける（外周は軸組として拾わないことが多い） */

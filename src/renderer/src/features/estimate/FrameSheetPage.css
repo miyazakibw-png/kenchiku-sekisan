@@ -435,6 +435,15 @@
   stroke-width: 5;
 }
 
+/* 曲面壁にする前に出す予定の弧（オレンジの点線。クリックはできない） */
+.frame-sheet-page .curve-preview {
+  stroke: #ea580c;
+  stroke-width: 4;
+  stroke-dasharray: 10 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 /* 別窓では図を左に上下いっぱいで置き、表は右側に上から続けて並べる
    （種類の表が増えても図の大きさは変わりません。多いときは右へスクロール） */
 .frame-sheet-page > .upper.layout-popup {
