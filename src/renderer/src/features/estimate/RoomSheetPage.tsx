@@ -43,6 +43,7 @@ import {
   cutCorner,
   edge,
   edgeRange,
+  edgeVector,
   floorArea,
   freeColumn,
   incomingIsVertical,
@@ -67,6 +68,7 @@ import {
   type EdgeDirection,
   type EdgeKind,
   type Point,
+  type RoomEdge,
   type RoomFitting,
   type RoomShape,
   type SolvedShape,
@@ -3255,13 +3257,28 @@ export default function RoomSheetPage({
                 <td>
                   <select
                     value={line.direction}
-                    onChange={(e) =>
-                      applyShape(
-                        updateEdge(shape, line.id, {
-                          direction: e.target.value as EdgeDirection,
-                        }),
-                      )
-                    }
+                    onChange={(e) => {
+                      const direction = e.target.value as EdgeDirection;
+                      const patch: Partial<RoomEdge> = { direction };
+                      // 斜めに変えたとき横・縦の移動量が無いと形が閉じなくなるので、
+                      // 残りの辺の開きをこの辺が引き受ける移動量を自動で入れておく
+                      if (
+                        isDiagonal(direction) &&
+                        Math.abs(line.dx ?? 0) < 0.005 &&
+                        Math.abs(line.dy ?? 0) < 0.005
+                      ) {
+                        const gap = { x: 0, y: 0 };
+                        solved.edges.forEach((row) => {
+                          if (row.id === line.id) return;
+                          const vector = edgeVector(row, row.resolved);
+                          gap.x += vector.x;
+                          gap.y += vector.y;
+                        });
+                        patch.dx = round2(-gap.x);
+                        patch.dy = round2(-gap.y);
+                      }
+                      applyShape(updateEdge(shape, line.id, patch));
+                    }}
                   >
                     {(Object.keys(DIRECTION_LABEL) as EdgeDirection[]).map(
                       (key) => (
