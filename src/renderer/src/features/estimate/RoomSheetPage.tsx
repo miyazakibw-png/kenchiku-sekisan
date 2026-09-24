@@ -503,6 +503,20 @@ export default function RoomSheetPage({
   const [columnDepth, setColumnDepth] = useState("0.60");
   /** 選んでいる独立柱（消すときに使う） */
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  /** 置く前に柱の形を見せるカーソル（置くモード中だけ） */
+  const [columnGhost, setColumnGhost] = useState<Point | null>(null);
+  /** 置いた柱をつかんで動かしている間の持ち手。base はつかみ始めた時の形 */
+  const columnDragRef = useRef<{
+    id: string;
+    base: RoomShape;
+    /** つかみ始めた柱の中心（m） */
+    from: Point;
+    /** つかみ始めたポインタの図内座標（m） */
+    start: Point;
+    moved: boolean;
+  } | null>(null);
+  /** つかんで動かした直後のクリックを打ち消す（選択の切替え・再配置を防ぐ） */
+  const columnClickSuppressRef = useRef(false);
   /** 図面画像となぞった点（数量根拠として一緒に保存する） */
   const [trace, setTrace] = useState<RoomTrace>(EMPTY_TRACE);
   const [showTrace, setShowTrace] = useState(false);
@@ -2024,6 +2038,87 @@ export default function RoomSheetPage({
     setMessage("独立柱を消しました");
   };
 
+  /** 置いた柱をつかみ始める（置くモード中は置く操作を優先する） */
+  const startColumnDrag = (
+    column: SolvedShape["columns"][number],
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    if (columnMode) return;
+    const point = svgPointAt(
+      event.currentTarget.ownerSVGElement,
+      event.clientX,
+      event.clientY,
+    );
+    if (point === null) return;
+    columnDragRef.current = {
+      id: column.id,
+      base: shape,
+      from: { x: column.x, y: column.y },
+      start: point,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.stopPropagation();
+  };
+
+  /** 柱をつかんで動かす。動き始めた時点で1つ前の形を履歴に入れ、あとは連続更新 */
+  const moveColumnDrag = (
+    id: string,
+    event: ReactPointerEvent<SVGElement>,
+  ): void => {
+    const drag = columnDragRef.current;
+    if (drag === null || drag.id !== id) return;
+    const point = svgPointAt(
+      event.currentTarget.ownerSVGElement,
+      event.clientX,
+      event.clientY,
+    );
+    if (point === null) return;
+    const x = round2(drag.from.x + point.x - drag.start.x);
+    const y = round2(drag.from.y + point.y - drag.start.y);
+    if (!drag.moved) {
+      drag.moved = true;
+      setShapePast((past) => [...past.slice(-49), drag.base]);
+      setShapeFuture([]);
+    }
+    setShape({
+      ...shape,
+      columns: (shape.columns ?? []).map((column) =>
+        column.id === id ? { ...column, x, y } : column,
+      ),
+    });
+    event.stopPropagation();
+  };
+
+  const endColumnDrag = (id: string): void => {
+    const drag = columnDragRef.current;
+    if (drag === null || drag.id !== id) return;
+    columnDragRef.current = null;
+    if (drag.moved) {
+      columnClickSuppressRef.current = true;
+      setMessage("柱をつかんで動かしました");
+    }
+  };
+
+  /** 選んでいる柱を壁⇔柱の数え方に変える */
+  const toggleFreeColumnKind = (): void => {
+    const columns = shape.columns ?? [];
+    const target = columns.find((column) => column.id === selectedColumn);
+    if (target === undefined) return;
+    const next = target.kind === "wall" ? "column" : "wall";
+    applyShape({
+      ...shape,
+      columns: columns.map((column) =>
+        column.id === selectedColumn ? { ...column, kind: next } : column,
+      ),
+    });
+    setMessage(
+      next === "wall"
+        ? "壁として数えます（周長を壁長ＷＬ・壁面積ＷＡ・巾木ＨＬ・廻り縁ＭＬへ足します）"
+        : "柱として数えます（周長を柱長ＣＬ・柱面積ＨＡ・巾木ＨＬ・廻り縁ＭＬへ足します）",
+    );
+  };
+
   /** 選んでいる独立柱の大きさを直す */
   const resizeFreeColumn = (width: number, depth: number): void => {
     const columns = shape.columns ?? [];
@@ -2221,21 +2316,29 @@ export default function RoomSheetPage({
         <g
           key={column.id}
           onClick={(event) => {
+            if (columnClickSuppressRef.current) {
+              columnClickSuppressRef.current = false;
+              event.stopPropagation();
+              return;
+            }
             if (columnMode) return;
             event.stopPropagation();
             setSelectedColumn(selectedColumn === column.id ? null : column.id);
             setColumnWidth(formatNumber(column.width, 2));
             setColumnDepth(formatNumber(column.depth, 2));
           }}
+          onPointerDown={(event) => startColumnDrag(column, event)}
+          onPointerMove={(event) => moveColumnDrag(column.id, event)}
+          onPointerUp={() => endColumnDrag(column.id)}
         >
           <rect
             x={column.x - column.width / 2}
             y={column.y - column.depth / 2}
             width={column.width}
             height={column.depth}
-            className={`free-column ${
-              selectedColumn === column.id ? "selected" : ""
-            }`}
+            className={`free-column${
+              column.kind === "wall" ? " wall" : ""
+            }${selectedColumn === column.id ? " selected" : ""}`}
           />
           <text
             x={column.x}
@@ -2244,7 +2347,7 @@ export default function RoomSheetPage({
             textAnchor="middle"
             fontSize={fontFix ?? dimFontSize}
           >
-            {`C${index + 1} ${formatNumber(column.width, 2)}×${formatNumber(column.depth, 2)}`}
+            {`${column.kind === "wall" ? "壁" : "C"}${index + 1} ${formatNumber(column.width, 2)}×${formatNumber(column.depth, 2)}`}
           </text>
         </g>
       ))}
@@ -2690,13 +2793,14 @@ export default function RoomSheetPage({
               onClick={() => {
                 const next = !columnMode;
                 setColumnMode(next);
+                setColumnGhost(null);
                 if (next) {
                   setKindPick(null);
                   setAddCornerMode(false);
                 }
                 setMessage(
                   next
-                    ? "Ｗ・Ｄを決めて、柱を置く所を図でクリックしてください"
+                    ? "Ｗ・Ｄを決めて、柱を置く所を図でクリックしてください（カーソルに柱の形がついていきます）"
                     : "独立柱を置くのをやめました",
                 );
               }}
@@ -2728,6 +2832,18 @@ export default function RoomSheetPage({
                   }}
                 />
                 <span>{(shape.columns ?? []).length}本</span>
+                <button
+                  type="button"
+                  disabled={selectedColumn === null}
+                  title="選んでいる柱を、壁として数えるか柱として数えるかを切替えます"
+                  onClick={toggleFreeColumnKind}
+                >
+                  {(shape.columns ?? []).find(
+                    (column) => column.id === selectedColumn,
+                  )?.kind === "wall"
+                    ? "▦ 柱に戻す"
+                    : "▦ 壁にする"}
+                </button>
                 <button
                   type="button"
                   disabled={selectedColumn === null}
@@ -2892,6 +3008,7 @@ export default function RoomSheetPage({
               onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
               onPointerMove={(event) => {
                 underlayTool.onPointerMove(event);
+                if (columnMode) setColumnGhost(svgPoint(event));
                 if (freePointDragRef.current !== null) return;
                 if (freeDraw !== null && freeDraw !== "idle") {
                   const point = svgPoint(event);
@@ -2915,8 +3032,35 @@ export default function RoomSheetPage({
                 }
               }}
               onPointerUp={underlayTool.onPointerUp}
+              onPointerLeave={() => setColumnGhost(null)}
             >
               <g id="room-drawing">{renderDrawingContent(null)}</g>
+              {columnMode &&
+                columnGhost !== null &&
+                Number(columnWidth) > 0 &&
+                Number(columnDepth) > 0 && (
+                  <g pointerEvents="none">
+                    <rect
+                      x={columnGhost.x - Number(columnWidth) / 2}
+                      y={columnGhost.y - Number(columnDepth) / 2}
+                      width={Number(columnWidth)}
+                      height={Number(columnDepth)}
+                      className="free-column-ghost"
+                    />
+                    <text
+                      x={columnGhost.x}
+                      y={
+                        columnGhost.y -
+                        Number(columnDepth) / 2 -
+                        dimFontSize * 0.3
+                      }
+                      className="dim"
+                      textAnchor="middle"
+                    >
+                      {`${formatNumber(Number(columnWidth), 2)}×${formatNumber(Number(columnDepth), 2)}`}
+                    </text>
+                  </g>
+                )}
             </svg>
             {solved.points.length === 0 && (
               <p className="empty">

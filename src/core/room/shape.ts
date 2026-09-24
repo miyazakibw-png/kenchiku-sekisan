@@ -45,6 +45,8 @@ export interface FreeColumn {
   width: number;
   /** 奥行Ｄ（m） */
   depth: number;
+  /** 数え方：柱（既定）は柱長ＣＬ・柱面積ＨＡへ、壁は壁長ＷＬ・壁面積ＷＡへ周長と見付を足す */
+  kind?: "column" | "wall";
 }
 
 export interface RoomShape {
@@ -160,8 +162,9 @@ export function freeColumn(
   y: number,
   width: number,
   depth: number,
+  kind: "column" | "wall" = "column",
 ): FreeColumn {
-  return { id: freeColumnId(), x, y, width, depth };
+  return { id: freeColumnId(), x, y, width, depth, kind };
 }
 
 export function edge(
@@ -1005,7 +1008,15 @@ export function roomQuantities(
   const area = floorArea(solved, limit);
   const height = ceilingHeight ?? null;
   const fitting = fittingTotals(fittings);
-  const free = freeColumnTotals(solved.columns, height);
+  // 壁に変更した独立柱は壁側、それ以外は柱側に周長・見付を足す
+  const free = freeColumnTotals(
+    solved.columns.filter((c) => c.kind !== "wall"),
+    height,
+  );
+  const freeWall = freeColumnTotals(
+    solved.columns.filter((c) => c.kind === "wall"),
+    height,
+  );
   // 部屋の中の独立柱は、周長を柱として数える（柱長さ・柱面積・巾木・廻り縁に足す）
   const column = round2(totals.column + free.perimeter);
   // 曲面壁の分は直線の壁から分けて出す（WA/HL は直線の壁だけ、RWA/RHL が曲面）
@@ -1022,10 +1033,11 @@ export function roomQuantities(
   return {
     floorArea: area,
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
-    wallLength: totals.wall,
+    wallLength: round2(totals.wall + freeWall.perimeter),
     columnLength: column,
     baseboardLength: round2(
-      totals.wall -
+      totals.wall +
+        freeWall.perimeter -
         curveMeasured +
         column -
         (fitting.baseboard - curveFitting.baseboard),
@@ -1035,7 +1047,8 @@ export function roomQuantities(
       height === null
         ? null
         : round2(
-            edgeArea(solved, "wall", height, edgeHeights) -
+            edgeArea(solved, "wall", height, edgeHeights) +
+              freeWall.perimeter * height -
               (fitting.area - curveFitting.area),
           ),
     curveArea:
@@ -1051,7 +1064,7 @@ export function roomQuantities(
             edgeArea(solved, "column", height, edgeHeights) +
               free.perimeter * height,
           ),
-    moldingLength: round2(totals.wall + column),
+    moldingLength: round2(totals.wall + freeWall.perimeter + column),
     fittingArea: fitting.area,
     fittingBaseboard: fitting.baseboard,
   };

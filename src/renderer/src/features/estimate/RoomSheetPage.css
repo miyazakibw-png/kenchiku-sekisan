@@ -481,10 +481,25 @@
   cursor: pointer;
 }
 
+/* 壁として数える独立柱は色を変える */
+.room-sheet-page .free-column.wall {
+  fill: #e2e8f0;
+  stroke: #475569;
+}
+
 .room-sheet-page .free-column.selected {
   fill: #bfdbfe;
   stroke: #2563eb;
   stroke-width: 4;
+}
+
+/* 置く前にカーソルについていく柱の形 */
+.room-sheet-page .free-column-ghost {
+  fill: rgba(191, 219, 254, 0.45);
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
 }
 
 .room-sheet-page .edge.selected {

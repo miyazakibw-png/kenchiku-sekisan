@@ -740,6 +740,24 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(symbols.some((row) => row.symbol.startsWith("I"))).toBe(false);
   });
 
+  it("壁にした独立柱は周長・見付を壁側（ＷＬ・ＷＡ・ＨＬ・ＭＬ）に数える", () => {
+    const shape = {
+      ...rectangleShape(6, 4),
+      columns: [freeColumn(2, 2, 0.6, 0.6), freeColumn(4, 2, 0.5, 0.4, "wall")],
+    };
+    const solved = solveShape(shape);
+    const quantities = roomQuantities(solved, 2.5);
+    // 床・天井は柱・壁どちらの平面の面積も減る
+    expect(quantities.floorArea).toBe(23.44);
+    // 壁種の周長1.8は壁長・壁面積へ、柱種の2.4だけが柱長・柱面積へ
+    expect(quantities.wallLength).toBe(21.8);
+    expect(quantities.wallArea).toBe(54.5);
+    expect(quantities.columnLength).toBe(2.4);
+    expect(quantities.columnArea).toBe(6);
+    expect(quantities.baseboardLength).toBe(24.2);
+    expect(quantities.moldingLength).toBe(24.2);
+  });
+
   it("記号表にいつも出す記号は、無いときも0で計算式に使える", () => {
     const values = withFixedRoomSymbols({ FA: 24 });
     // 天井伏図を描いていない部屋でも BA・GA を式に書ける
