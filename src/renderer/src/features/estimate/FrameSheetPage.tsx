@@ -268,6 +268,12 @@ export default function FrameSheetPage({
   );
   /** レイアウトの上から線を引く（すき間をつなぐ） */
   const [drawing, setDrawing] = useState(false);
+  /** 線をクリックして建具を付ける入力モード */
+  const [fittingMode, setFittingMode] = useState(false);
+  /** 建具を付ける対象の線 */
+  const [fittingTargetId, setFittingTargetId] = useState<string | null>(null);
+  const [fittingSymbolText, setFittingSymbolText] = useState("");
+  const [fittingCountText, setFittingCountText] = useState("1");
   /** 自分で引いた線だけを見る（部屋の図は薄くする） */
   const [manualOnly, setManualOnly] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -526,7 +532,8 @@ export default function FrameSheetPage({
     if (
       drawStart === null &&
       scalePoints.length === 0 &&
-      selectedLineId === null
+      selectedLineId === null &&
+      fittingTargetId === null
     )
       return;
     const onKey = (event: KeyboardEvent): void => {
@@ -534,11 +541,12 @@ export default function FrameSheetPage({
       setDrawStart(null);
       setScalePoints([]);
       setSelectedLineId(null);
+      setFittingTargetId(null);
       setMessage("取り消しました（選んだ線の丸印も外しました）");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drawStart, scalePoints, selectedLineId]);
+  }, [drawStart, scalePoints, selectedLineId, fittingTargetId]);
 
   // 別窓で開いているときは Esc で閉じられるようにする
   useEffect(() => {
@@ -1141,6 +1149,41 @@ export default function FrameSheetPage({
     [checkedIds, kindOf, pushDiagram, updateAttribute],
   );
 
+  /** 建具入力モード：対象の線に記号で建具を付ける */
+  const addFittingToTarget = useCallback(() => {
+    if (fittingTargetId === null) {
+      setMessage("先に建具を付ける線をクリックしてください");
+      return;
+    }
+    const symbol = fittingSymbolText.trim();
+    if (symbol === "") {
+      setMessage("建具の記号を入れてください");
+      return;
+    }
+    const count = Number(fittingCountText);
+    pushDiagram();
+    setFrameFittings((current) => [
+      ...current,
+      {
+        id: newId("ff"),
+        symbol,
+        multiplier: Number.isFinite(count) && count > 0 ? count : 1,
+        lineId: fittingTargetId,
+      },
+    ]);
+    const label = lines.find((line) => line.id === fittingTargetId)?.label;
+    setMessage(
+      `${symbol}${Number.isFinite(count) && count > 1 ? `×${count}` : ""}を${label ?? "線"}に付けました`,
+    );
+    setFittingSymbolText("");
+  }, [
+    fittingCountText,
+    fittingSymbolText,
+    fittingTargetId,
+    lines,
+    pushDiagram,
+  ]);
+
   /** レイアウトへ部屋を置く（重ならないように少しずらして置く） */
   const addPlacement = useCallback(
     (room: FrameRoomOption) => {
@@ -1487,6 +1530,7 @@ export default function FrameSheetPage({
         return;
       }
       if (traceMode === "move") return;
+      if (fittingMode) return;
       if (mode !== "frame" && !(mode === "layout" && drawing)) {
         // 何も無い所をクリックしたら、選んだ線（両端の丸印）を外す
         if (event.target === event.currentTarget) setSelectedLineId(null);
@@ -1998,6 +2042,8 @@ export default function FrameSheetPage({
                 if (!drawing) {
                   setTraceMode("off");
                   setScalePoints([]);
+                  setFittingMode(false);
+                  setFittingTargetId(null);
                   // 画面を動かす（パン）中はクリックが効かないので切る
                   setPanMode(false);
                   panDragRef.current = null;
@@ -2010,6 +2056,28 @@ export default function FrameSheetPage({
               }}
             >
               ✎ 線を引く
+            </button>
+          )}
+          {mode === "layout" && manualLines.length > 0 && !printMode && (
+            <button
+              type="button"
+              className={fittingMode ? "on" : ""}
+              title="引いた線をクリックして、その線に付く建具を記号で入れます"
+              onClick={() => {
+                const next = !fittingMode;
+                setFittingMode(next);
+                setFittingTargetId(null);
+                if (next) {
+                  // 線引き中はクリックが点になるのでやめる
+                  setDrawing(false);
+                  setDrawStart(null);
+                  setTraceMode("off");
+                  setScalePoints([]);
+                }
+                setMessage(next ? "建具を付ける線をクリックしてください" : "");
+              }}
+            >
+              🚪 建具入力
             </button>
           )}
           {manualLines.length > 0 && (
@@ -2386,6 +2454,65 @@ export default function FrameSheetPage({
             )}
           </div>
         )}
+        {fittingMode && !printMode && (
+          <div className="frame-draw-bar">
+            <strong>建具入力</strong>
+            <span>
+              {fittingTargetId === null
+                ? "付ける線をクリックしてください"
+                : `付ける線：${lines.find((line) => line.id === fittingTargetId)?.label ?? ""}`}
+            </span>
+            {fittingTargetId !== null &&
+              frameFittings
+                .filter((item) => item.lineId === fittingTargetId)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="chip"
+                    title="押すとこの線から建具を外します"
+                    onClick={() => {
+                      pushDiagram();
+                      setFrameFittings((current) =>
+                        current.filter((each) => each.id !== item.id),
+                      );
+                    }}
+                  >
+                    {item.symbol}
+                    {item.multiplier > 1 ? `×${item.multiplier}` : ""}
+                  </button>
+                ))}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addFittingToTarget();
+              }}
+            >
+              <input
+                list="frame-fitting-symbols-bar"
+                placeholder="記号（例 SD2）"
+                value={fittingSymbolText}
+                title="建具表の記号を入れて Enter か「付ける」を押します"
+                onChange={(e) => setFittingSymbolText(e.target.value)}
+              />
+              <input
+                className="num"
+                style={{ width: "3em" }}
+                title="数（1なら空欄のまま）"
+                value={fittingCountText}
+                onChange={(e) => setFittingCountText(e.target.value)}
+              />
+              <button type="submit" disabled={fittingTargetId === null}>
+                付ける
+              </button>
+            </form>
+            <datalist id="frame-fitting-symbols-bar">
+              {fittings.map((fitting) => (
+                <option key={fitting.id} value={fitting.symbol} />
+              ))}
+            </datalist>
+          </div>
+        )}
         <div className="canvas" ref={canvasRef}>
           <svg
             ref={svgRef}
@@ -2577,6 +2704,16 @@ export default function FrameSheetPage({
                   onPointerDown={(event) => {
                     // 線を引いている間は、他の線に触れても選ばない（同じ所にも点が打てる）
                     if (drawing && !event.ctrlKey && !event.shiftKey) return;
+                    // 建具入力のときは、引いた線をクリックで「付ける先」に選ぶ
+                    if (fittingMode && line.source === "manual") {
+                      event.stopPropagation();
+                      setSelectedLineId(line.id);
+                      setFittingTargetId(line.id);
+                      setMessage(
+                        `${line.label} に付ける建具の記号を入れてください`,
+                      );
+                      return;
+                    }
                     // Ctrl（Shift）を押しながらだと、まとめて色を付ける線に足す
                     if (
                       line.source === "manual" &&
