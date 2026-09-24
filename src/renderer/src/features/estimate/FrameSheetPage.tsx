@@ -2572,11 +2572,17 @@ export default function FrameSheetPage({
                     height={box.height}
                     opacity={manualOnly ? 0.12 : (item.opacity ?? 0.75)}
                     style={{
-                      cursor: traceMode === "move" ? "move" : "default",
-                      pointerEvents: traceMode === "move" ? "auto" : "none",
+                      // 図面はいつでもつかんで動かせる（縮尺合わせ・線引き・建具入力のときはその操作を優先）
+                      cursor:
+                        traceMode === "scale" || drawing || fittingMode
+                          ? "default"
+                          : "move",
+                      pointerEvents: "auto",
                     }}
                     onPointerDown={(event) => {
-                      if (traceMode !== "move") return;
+                      // 縮尺合わせ・線引き・建具入力のときは図面の上のクリックをその操作へ通す
+                      if (traceMode === "scale" || drawing || fittingMode)
+                        return;
                       event.stopPropagation();
                       pushDiagram();
                       // つかんだ図面を操作対象にして動かす（まとめて動かす中は全員が動く）
