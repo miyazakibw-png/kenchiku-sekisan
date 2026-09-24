@@ -64,14 +64,14 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(340px, 0.95fr) minmax(280px, 0.95fr)
+    minmax(340px, 1.05fr) minmax(280px, 0.85fr)
     minmax(200px, 0.6fr) minmax(270px, 0.9fr);
   /* 天井伏図の欄が増えても図や表を縮めない（入りきらない分は上段をスクロール） */
   grid-auto-rows: min-content;
   gap: 8px;
   padding: 8px;
-  /* 上段は画面の1/3まで。入りきらない分は各欄を別々にスクロールする */
-  max-height: 33vh;
+  /* 上段は画面の1/3＋説明行を消した分まで。入りきらない分は各欄を別々にスクロールする */
+  max-height: calc(33vh + 22px);
   /* 画面幅が狭いときは横にスクロールして寸法入力・記号・建具を必ず見られるようにする */
   overflow-x: auto;
   min-height: 0;
@@ -171,10 +171,10 @@
   width: 78px;
 }
 
-/* 寸法欄は広くとり、その分を向き・種別から回す */
+/* 向き欄は半分くらいに詰め、その分を図の側へ回す */
 .room-sheet-page .edges table.grid th:nth-child(3),
 .room-sheet-page .edges table.grid td:nth-child(3) {
-  width: 96px;
+  width: 48px;
 }
 
 .room-sheet-page .edges table.grid td:nth-child(3) input.num {

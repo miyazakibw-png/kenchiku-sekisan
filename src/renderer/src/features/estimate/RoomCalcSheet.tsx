@@ -1857,11 +1857,11 @@ export default function RoomCalcSheet({
             </button>
           </>
         )}
-        <span className="hint">
-          {hasUpper
-            ? "記号は上段の表をクリックすると計算式へ入ります"
-            : "建具記号は建具表から直接引用します（例 <SD2>）"}
-        </span>
+        {!hasUpper && (
+          <span className="hint">
+            建具記号は建具表から直接引用します（例 &lt;SD2&gt;）
+          </span>
+        )}
       </div>
 
       <div className="calc-body" ref={gridRef} onKeyDown={onGridKeyDown}>
