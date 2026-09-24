@@ -263,11 +263,6 @@
   color: #cbd5e1;
 }
 
-/* 開口・Ｒ開口の自動の高さ：両隣の数字入力欄と同じ右寄せにして位置を揃える */
-.room-sheet-page .edges .dim-split > span.height-auto {
-  text-align: right;
-}
-
 .room-sheet-page .corner-move {
   display: inline-flex;
   align-items: center;
