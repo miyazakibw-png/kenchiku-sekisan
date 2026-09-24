@@ -2362,8 +2362,8 @@ const KIND_SYMBOL: Record<
 const KIND_LABEL: Record<CeilingElementKind, string> = {
   wallBeam: "壁付き梁型",
   ceilingBeam: "天井付梁型",
-  dropWall: "下がり壁",
-  dropCeiling: "下がり天井",
+  dropWall: "下り壁",
+  dropCeiling: "下り天井",
 };
 
 /** 計算式で使う天井伏図の記号（合計と線ごと） */
@@ -2374,12 +2374,12 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
     { symbol: "GA", label: "壁付き梁型 面積", value: totals.wallBeamArea },
     { symbol: "BL", label: "天井付梁型 長さ", value: totals.ceilingBeamLength },
     { symbol: "BA", label: "天井付梁型 面積", value: totals.ceilingBeamArea },
-    { symbol: "DWL", label: "下がり壁 長さ", value: totals.dropWallLength },
-    { symbol: "DWA", label: "下がり壁 面積", value: totals.dropWallArea },
-    { symbol: "SL", label: "下がり天井 長さ", value: totals.dropCeilingLength },
+    { symbol: "DWL", label: "下り壁 長さ", value: totals.dropWallLength },
+    { symbol: "DWA", label: "下り壁 面積", value: totals.dropWallArea },
+    { symbol: "SL", label: "下り天井 長さ", value: totals.dropCeilingLength },
     {
       symbol: "SA",
-      label: "下がり天井 見付面積",
+      label: "下り天井 見付面積",
       value: totals.dropCeilingArea,
     },
   ];
@@ -2411,7 +2411,7 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
   for (const [no, row] of quantities.dropCeilingByHeight.entries()) {
     symbols.push({
       symbol: `SLH${no + 1}`,
-      label: `下がり天井 段差${row.drop.toFixed(2)} 長さ`,
+      label: `下り天井 段差${row.drop.toFixed(2)} 長さ`,
       value: row.length,
     });
   }

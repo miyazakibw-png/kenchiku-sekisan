@@ -154,11 +154,11 @@
 }
 
 .room-sheet-page .edges span.curve input.num {
-  width: 34px;
+  width: 26px;
 }
 
 .room-sheet-page .edges span.curve select {
-  width: 40px;
+  width: 32px;
 }
 
 /* 寸法・Ｒ向きは数字だけなので狭くする */
@@ -183,6 +183,17 @@
 .room-sheet-page .edges select {
   max-width: 100%;
   width: 100%;
+}
+
+/* Ｒ向き・種別は半分くらいに詰めて、その分を図や記号表へ回す */
+.room-sheet-page .edges table.grid th:nth-child(5),
+.room-sheet-page .edges table.grid td:nth-child(5) {
+  width: 56px;
+}
+
+.room-sheet-page .edges table.grid th:nth-child(6),
+.room-sheet-page .edges table.grid td:nth-child(6) {
+  width: 48px;
 }
 
 .room-sheet-page .edges span.diagonal {
@@ -670,18 +681,18 @@
 }
 
 .room-sheet-page .symbols td.symbol {
-  width: 28px;
+  width: 34px;
   font-weight: 700;
 }
 
 /* 記号の数量欄は狭く */
 .room-sheet-page .symbols table.two-up td.num {
-  width: 44px;
+  width: 53px;
 }
 
 /* 記号表は2組ずつ横に並べる（高さを半分にして下段の表示行を増やす） */
 .room-sheet-page .symbols table.two-up {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .room-sheet-page .symbols table.two-up td {
@@ -693,7 +704,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 52px;
+  max-width: 62px;
 }
 
 /* 記号・建具は列幅を詰めて、図と寸法入力に幅をまわす */
