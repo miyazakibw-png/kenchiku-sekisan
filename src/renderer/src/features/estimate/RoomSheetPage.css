@@ -460,8 +460,9 @@
   cursor: pointer;
 }
 
-/* 壁の無い開口は点線 */
-.room-sheet-page .edge.opening {
+/* 壁の無い開口・Ｒ開口は点線 */
+.room-sheet-page .edge.opening,
+.room-sheet-page .edge.curveOpening {
   stroke: #64748b;
   stroke-dasharray: 8 5;
 }

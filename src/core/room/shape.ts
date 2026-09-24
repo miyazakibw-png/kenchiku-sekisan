@@ -11,23 +11,24 @@ export type EdgeDirection = "E" | "W" | "N" | "S" | "D";
 
 /**
  * 壁：積算対象／開口：壁の無い部分（数量に入れない）／柱：柱1ヶ所分の総幅
- * 曲面壁：弦の長さと矢（ふくらみ）を入れて弧長を壁長さに使う
+ * Ｒ壁（曲面壁）：弦の長さと矢（ふくらみ）を入れて弧長を壁長さに使う
+ * Ｒ開口：弧長を開口の長さに使う曲線の開口（開口と同じく数量に入れない）
  */
-export type EdgeKind = "wall" | "opening" | "column" | "curve";
+export type EdgeKind = "wall" | "opening" | "column" | "curve" | "curveOpening";
 
 export interface RoomEdge {
   id: string;
   direction: EdgeDirection;
-  /** 未入力（自動算出）は null。曲面壁では弦の長さ */
+  /** 未入力（自動算出）は null。Ｒ壁・Ｒ開口では弦の長さ */
   length: number | null;
   kind: EdgeKind;
   /** 斜め辺の横移動（右がプラス）。direction が "D" のときに使う */
   dx?: number | null;
   /** 斜め辺の縦移動（下がプラス）。direction が "D" のときに使う */
   dy?: number | null;
-  /** 曲面壁の矢（ふくらみ）。プラスは外側へ、マイナスは内側へ。0・未入力なら直線 */
+  /** Ｒ壁・Ｒ開口の矢（ふくらみ）。プラスは外側へ、マイナスは内側へ。0・未入力なら直線 */
   bulge?: number | null;
-  /** 壁高さの手入力（m）。空欄なら面する天井区画から自動算出。壁面積だけに効く */
+  /** 壁・柱の高さの手入力（m）。空欄なら面する天井区画から自動算出。壁面積・柱面積だけに効く */
   height?: number | null;
 }
 
@@ -53,9 +54,9 @@ export interface RoomShape {
 }
 
 export interface SolvedEdge extends RoomEdge {
-  /** 自動算出した寸法を含む確定値。決められない場合は null（曲面壁は弦の長さ） */
+  /** 自動算出した寸法を含む確定値。決められない場合は null（Ｒ壁・Ｒ開口は弦の長さ） */
   resolved: number | null;
-  /** 数量に使う長さ。曲面壁は弧長、それ以外は resolved と同じ */
+  /** 数量に使う長さ。Ｒ壁・Ｒ開口は弧長、それ以外は resolved と同じ */
   measured: number | null;
   /** 自動算出した辺 */
   auto: boolean;
@@ -107,7 +108,7 @@ function diagonalVector(row: RoomEdge): Point {
 }
 
 /**
- * 曲面壁の弧長。弦の長さ c と矢（ふくらみ）h から求める。
+ * Ｒ壁・Ｒ開口の弧長。弦の長さ c と矢（ふくらみ）h から求める。
  *   r = c^2 / (8h) + h / 2
  *   弧長 = 2 * r * asin(c / (2r))
  * 矢は外側へふくらむがプラス、内側へ凹むがマイナスで、長さはどちらも同じ。
@@ -706,7 +707,7 @@ export function solveShape(shape: RoomShape): SolvedShape {
       measured:
         value === null
           ? null
-          : row.kind === "curve"
+          : row.kind === "curve" || row.kind === "curveOpening"
             ? arcLength(value, row.bulge ?? null)
             : value,
       auto:
@@ -895,6 +896,7 @@ export function edgeTotals(solved: SolvedShape): EdgeLengthTotals {
   for (const row of solved.edges) {
     if (row.measured === null) continue;
     if (row.kind === "curve") totals.wall += row.measured;
+    else if (row.kind === "curveOpening") totals.opening += row.measured;
     else totals[row.kind] += row.measured;
   }
   return {

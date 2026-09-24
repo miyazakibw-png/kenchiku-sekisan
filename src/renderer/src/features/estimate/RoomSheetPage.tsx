@@ -140,7 +140,8 @@ const KIND_LABEL: Record<EdgeKind, string> = {
   wall: "壁",
   opening: "開口",
   column: "柱",
-  curve: "曲面壁",
+  curve: "Ｒ壁",
+  curveOpening: "Ｒ開口",
 };
 
 /** 記号表の左上から先に並べる記号（その部屋に無くても0で残す） */
@@ -2138,8 +2139,11 @@ export default function RoomSheetPage({
         ]
           .filter(Boolean)
           .join(" ");
-        // 曲面壁は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
-        const bulge = line.kind === "curve" ? (line.bulge ?? 0) : 0;
+        // Ｒ壁・Ｒ開口は矢（ふくらみ）の分だけ膨らませて描く（マイナスは内側へ凹む）
+        const bulge =
+          line.kind === "curve" || line.kind === "curveOpening"
+            ? (line.bulge ?? 0)
+            : 0;
         const span = Math.hypot(next.x - point.x, next.y - point.y);
         const normal =
           span === 0
@@ -3161,8 +3165,8 @@ export default function RoomSheetPage({
                           line.auto ? formatNumber(line.resolved, 2) : ""
                         }
                         title={
-                          line.kind === "curve"
-                            ? "曲面壁は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
+                          line.kind === "curve" || line.kind === "curveOpening"
+                            ? "Ｒ壁・Ｒ開口は弦（両端を結ぶ直線）の長さを入れます（計算式も入れられます）"
                             : "6.4+0.3 のような計算式も入れられます。空欄にすると、閉じた形になるように自動算出します"
                         }
                         onKeyDown={(e) => {
@@ -3241,7 +3245,7 @@ export default function RoomSheetPage({
                   </span>
                 </td>
                 <td>
-                  {line.kind === "curve" ? (
+                  {line.kind === "curve" || line.kind === "curveOpening" ? (
                     <span className="curve">
                       <input
                         className="num"

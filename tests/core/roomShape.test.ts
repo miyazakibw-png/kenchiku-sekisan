@@ -7,6 +7,7 @@ import {
   cutCorner,
   deducts,
   edge,
+  edgeTotals,
   floorArea,
   freeColumn,
   freeColumnTotals,
@@ -456,6 +457,32 @@ describe("部屋形状（単線図）", () => {
     const order = symbols.map((row) => row.symbol);
     expect(order.indexOf("RHL")).toBe(order.indexOf("HL") + 1);
     expect(order.indexOf("RWA")).toBe(order.indexOf("WA") + 1);
+  });
+
+  it("Ｒ開口は弧長を開口の長さに数え、壁・曲面には入れない", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curveOpening"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    // Ｒ開口は弦の長さ＋矢から弧長（4.16）を出す
+    expect(solved.edges[2].measured).toBe(4.16);
+    const totals = edgeTotals(solved);
+    // 開口と同じく開口長さに入る（壁長さ・柱長さには入らない）
+    expect(totals.opening).toBe(4.16);
+    expect(totals.wall).toBe(10);
+    const quantities = roomQuantities(solved, 2.5);
+    // 壁長さは直線の壁だけ（4＋3＋3）、壁面積・曲面の数量は出ない
+    expect(quantities.wallLength).toBe(10);
+    expect(quantities.wallArea).toBe(25);
+    expect(quantities.curveLength).toBe(0);
+    const symbols = roomSymbols(solved, 2.5);
+    expect(symbols.find((row) => row.symbol === "RHL")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
   });
 
   it("曲面壁の無い部屋にはRHL・RWAを出さず、HL・WAは壁全体のまま", () => {
