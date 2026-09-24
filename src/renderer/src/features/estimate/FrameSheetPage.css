@@ -481,3 +481,8 @@
   font-weight: 400;
   color: #1d4ed8;
 }
+
+/* 「選んだ線」パネルは一番右の列に置く（図の上に被らないようにする） */
+.frame-sheet-page > .upper > section.rooms.kind-apply {
+  grid-column: -2;
+}
