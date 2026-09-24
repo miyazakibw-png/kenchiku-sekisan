@@ -173,6 +173,11 @@ table.estimate tr.subtotal .subtotal-label {
   padding: 0 4px;
 }
 
+/* 選んだ小計行は普通の行と同じ青いバーにする（小計の色が上書きしないよう後に置く） */
+table.estimate tr.subtotal.selected {
+  background: #e8f0fe;
+}
+
 .estimate-page .hint {
   margin: 0 8px 16px;
   font-size: 11px;
