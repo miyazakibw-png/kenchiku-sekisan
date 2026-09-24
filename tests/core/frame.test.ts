@@ -541,6 +541,32 @@ describe("parseFrameTraces", () => {
     expect(got.active).toBe(0);
   });
 
+  it("部屋・ピット計算書の underlays/underlay に入った図面も読む（traces 優先）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        underlays: [
+          { image: "data:a", metersPerPixel: 0.01, x: 1, y: 2, opacity: 0.5 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(0);
+    const single = parseFrameTraces(
+      JSON.stringify({
+        underlay: { image: "data:c", metersPerPixel: 0.01, x: 0, y: 0 },
+      }),
+    );
+    expect(single.traces.map((item) => item.image)).toEqual(["data:c"]);
+    const both = parseFrameTraces(
+      JSON.stringify({
+        traces: [{ image: "data:t", metersPerPixel: 0.01, x: 0, y: 0 }],
+        underlays: [{ image: "data:u", metersPerPixel: 0.01, x: 0, y: 0 }],
+      }),
+    );
+    expect(both.traces.map((item) => item.image)).toEqual(["data:t"]);
+  });
+
   it("壊れたJSON・空は図面なしで読む", () => {
     expect(parseFrameTraces("").traces).toEqual([]);
     expect(parseFrameTraces("null").traces).toEqual([]);

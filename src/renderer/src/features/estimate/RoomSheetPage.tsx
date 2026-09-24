@@ -25,6 +25,7 @@ import {
   underlayAtTraceOrigin,
   underlayForTrace,
   type RoomTrace,
+  type TraceUnderlay,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
@@ -35,6 +36,7 @@ import {
   useUnderlay,
   type UnderlayBox,
 } from "./useUnderlay";
+import DrawingSourcePicker from "./DrawingSourcePicker";
 import {
   closeShape,
   closeShapeAtEdge,
@@ -560,6 +562,21 @@ export default function RoomSheetPage({
     homeSpot,
   });
   const { underlay, setUnderlay, underlays, setUnderlays } = underlayTool;
+
+  /** 他の計算書の図面を呼び出す窓を出しているか */
+  const [importPicker, setImportPicker] = useState(false);
+
+  /** 他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さごとこの計算書へ貼る */
+  const importDrawings = useCallback(
+    (drawings: TraceUnderlay[]) => {
+      if (drawings.length === 0) return;
+      setUnderlays([...underlays, ...drawings], underlays.length);
+      setMessage(
+        `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
+      );
+    },
+    [setMessage, setUnderlays, underlays],
+  );
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
   const { markSaved } = useSaveOnLeave(
@@ -2605,7 +2622,10 @@ export default function RoomSheetPage({
             🖼 図面をなぞる
           </button>
           {/* 図面はこの画面でそのまま貼る・開く（ファイルは複数まとめて選べる）。なぞる画面からも入れられる */}
-          <UnderlayTools u={underlayTool} />
+          <UnderlayTools
+            u={underlayTool}
+            onImport={() => setImportPicker(true)}
+          />
           <button
             type="button"
             className={expanded ? "on" : ""}
@@ -4718,6 +4738,16 @@ export default function RoomSheetPage({
             );
           }}
           onClose={() => setShowTrace(false)}
+        />
+      )}
+
+      {importPicker && !printMode && (
+        <DrawingSourcePicker
+          projectId={project.id}
+          excludeRowId={row.id}
+          excludeCalcType="room"
+          onPick={importDrawings}
+          onClose={() => setImportPicker(false)}
         />
       )}
 

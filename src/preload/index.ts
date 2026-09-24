@@ -67,6 +67,7 @@ import type {
   SaveRoomSheetRequest,
   SaveSubjectsResult,
   SaveTransferRowsRequest,
+  SheetDrawingSource,
   Subject,
   SubjectDraft,
   SyncDetailsResult,
@@ -154,6 +155,9 @@ const api = {
     projectId: number,
   ): Promise<Record<number, string[]>> =>
     ipcRenderer.invoke(IPC.estimateRowsFilledSheets, projectId),
+  /** 計算書ごとに置いてある図面一式（他の計算書へ元図面を呼び出す一覧に使う） */
+  listSheetDrawingSources: (projectId: number): Promise<SheetDrawingSource[]> =>
+    ipcRenderer.invoke(IPC.sheetDrawingSources, projectId),
   /** 部屋計算書の上段。まだ無ければ部位別入力表の行から作られる */
   getRoomSheet: (estimateRowId: number): Promise<RoomSheet> =>
     ipcRenderer.invoke(IPC.roomSheetGet, estimateRowId),

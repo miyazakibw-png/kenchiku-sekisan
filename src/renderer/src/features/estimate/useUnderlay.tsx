@@ -745,8 +745,15 @@ export function unionBox(
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-/** 図面取り込みのボタン列（図面を貼る／図面ファイル／縮尺合わせ／戻す／動かす／濃さ／外す） */
-export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
+/** 図面取り込みのボタン列（図面を貼る／図面ファイル／呼び出す／縮尺合わせ／戻す／動かす／濃さ／外す） */
+export function UnderlayTools({
+  u,
+  onImport,
+}: {
+  u: Underlay;
+  /** 他の計算書で置いた図面を呼び出す窓を開く（指定したときだけボタンを出す） */
+  onImport?: () => void;
+}): JSX.Element {
   return (
     <span className="kind-pick underlay-tools">
       {u.count > 1 && (
@@ -817,6 +824,15 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
           onChange={(e) => u.setPageText(e.target.value)}
         />
       </label>
+      {onImport !== undefined && (
+        <button
+          type="button"
+          title="他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さのまま呼び出して貼ります"
+          onClick={onImport}
+        >
+          📥 図面を呼び出す
+        </button>
+      )}
       {u.underlay.image !== "" && (
         <>
           <button

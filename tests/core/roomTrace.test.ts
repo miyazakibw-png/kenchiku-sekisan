@@ -479,6 +479,45 @@ describe("parseUnderlays（複数枚の下敷きを読む）", () => {
     expect(parseUnderlays("not json")).toEqual([]);
   });
 
+  it("軸組計算書の traces に入った図面も読む（縮尺済みは scaled にする）", () => {
+    const got = parseUnderlays(
+      JSON.stringify({
+        traces: [
+          {
+            image: "data:a",
+            metersPerPixel: 0.01,
+            x: 1,
+            y: 2,
+            opacity: 0.5,
+          },
+          { image: "data:b", metersPerPixel: 0, x: 0, y: 0 },
+        ],
+      }),
+    );
+    expect(got).toEqual([
+      {
+        image: "data:a",
+        metersPerPixel: 0.01,
+        x: 1,
+        y: 2,
+        opacity: 0.5,
+        scaled: true,
+      },
+      { image: "data:b", metersPerPixel: 0, x: 0, y: 0, opacity: 0.75 },
+    ]);
+    // 自分の underlays があるときはそちらを読む（未調整の印もそのまま）
+    const both = parseUnderlays(
+      JSON.stringify({
+        underlays: [{ ...one }],
+        traces: [{ image: "data:t", metersPerPixel: 0.01, x: 0, y: 0 }],
+      }),
+    );
+    expect(both.map((item) => item.image)).toEqual(["data:a"]);
+    expect(hasUnscaledUnderlay(JSON.stringify({ underlays: [one] }))).toBe(
+      true,
+    );
+  });
+
   it("縮尺未調整の判定はどれか1枚でも未調整なら true", () => {
     expect(hasUnscaledUnderlay(JSON.stringify({ underlays: [two, one] }))).toBe(
       true,

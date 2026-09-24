@@ -1,0 +1,87 @@
+/** 他の計算書の図面を呼び出す窓 */
+.drawing-source-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+}
+
+.drawing-source-picker {
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  width: min(640px, 92vw);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.drawing-source-picker .picker-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 13px;
+}
+
+.drawing-source-picker .picker-bar button {
+  font-size: 12px;
+}
+
+.drawing-source-picker .picker-body {
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drawing-source-picker .picker-empty {
+  margin: 16px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.drawing-source-picker .picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drawing-source-picker .picker-row:hover {
+  background: #f1f5f9;
+}
+
+.drawing-source-picker .picker-name {
+  font-weight: bold;
+}
+
+.drawing-source-picker .picker-kind {
+  color: #475569;
+}
+
+.drawing-source-picker .picker-count {
+  margin-left: auto;
+  color: #6b7280;
+}
+
+.drawing-source-picker .picker-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid #e5e7eb;
+}

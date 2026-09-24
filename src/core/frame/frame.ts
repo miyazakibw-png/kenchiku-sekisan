@@ -76,6 +76,8 @@ export function parseFrameTraces(json: string): FrameTraceList {
   try {
     const parsed = JSON.parse(json) as {
       traces?: unknown;
+      underlays?: unknown;
+      underlay?: unknown;
       active?: unknown;
       locked?: unknown;
     } | null;
@@ -97,13 +99,27 @@ export function parseFrameTraces(json: string): FrameTraceList {
       const traces = parsed.traces
         .map((item) => clean(item))
         .filter((item): item is FrameTrace => item !== null);
-      const active = typeof parsed.active === "number" ? parsed.active : 0;
-      return {
-        traces,
-        active: Math.min(Math.max(active, 0), Math.max(traces.length - 1, 0)),
-        locked: parsed.locked === true,
-      };
+      if (traces.length > 0) {
+        const active = typeof parsed.active === "number" ? parsed.active : 0;
+        return {
+          traces,
+          active: Math.min(Math.max(active, 0), Math.max(traces.length - 1, 0)),
+          locked: parsed.locked === true,
+        };
+      }
     }
+    // 部屋・ピット計算書からコピーしてきた計算書は underlays（または underlay）に
+    // 図面が入っているので、traces が無いときはそちらを読む（項目は同じ）
+    const rawUnderlays = Array.isArray(parsed.underlays)
+      ? parsed.underlays
+      : parsed.underlay !== undefined
+        ? [parsed.underlay]
+        : [];
+    const underlayTraces = rawUnderlays
+      .map((item) => clean(item))
+      .filter((item): item is FrameTrace => item !== null);
+    if (underlayTraces.length > 0)
+      return { traces: underlayTraces, active: 0, locked: false };
     const single = clean(parsed);
     return single === null
       ? empty

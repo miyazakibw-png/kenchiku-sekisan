@@ -7,8 +7,18 @@ import type {
   FormworkTransferRow,
   FormworkTransferRule,
 } from "../core/aggregate/formworkTransfer";
+import type { TraceUnderlay } from "../core/room/trace";
 
 export type { BasicMasterKind, BasicMasterRow };
+export type { TraceUnderlay };
+
+/** 計算書に置いてある図面一式（他の計算書へ呼び出す一覧に使う） */
+export interface SheetDrawingSource {
+  estimateRowId: number;
+  /** 図面を置いた計算書の種類（room/frame/pit） */
+  calcType: CalcType;
+  drawings: TraceUnderlay[];
+}
 export type { FormworkSourceGroup, FormworkTransferRow, FormworkTransferRule };
 
 export interface Subject {

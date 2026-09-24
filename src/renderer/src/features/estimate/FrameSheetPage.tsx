@@ -45,6 +45,7 @@ import {
   type RoomShape,
   type SolvedShape,
 } from "../../../../core/room/shape";
+import type { TraceUnderlay } from "../../../../core/room/trace";
 import {
   evaluateCalcSheet,
   trimEmptySets,
@@ -60,6 +61,7 @@ import {
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
+import DrawingSourcePicker from "./DrawingSourcePicker";
 import { pdfPageImage } from "./pdfPage";
 import {
   loadImageSize,
@@ -891,6 +893,32 @@ export default function FrameSheetPage({
       );
     },
     [pushDiagram, traceBoxes, traces.length],
+  );
+
+  /** 他の計算書の図面を呼び出す窓を出しているか */
+  const [importPicker, setImportPicker] = useState(false);
+
+  /** 他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さごとこの計算書へ貼る */
+  const importDrawings = useCallback(
+    (drawings: TraceUnderlay[]) => {
+      if (drawings.length === 0) return;
+      pushDiagram();
+      setTraces((current) => [
+        ...current,
+        ...drawings.map((item) => ({
+          image: item.image,
+          metersPerPixel: item.metersPerPixel,
+          x: item.x,
+          y: item.y,
+          opacity: item.opacity,
+        })),
+      ]);
+      setActiveTrace(traces.length);
+      setMessage(
+        `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
+      );
+    },
+    [pushDiagram, traces.length],
   );
 
   /** クリップボードの画像（Shift+Windows+S の切り取り）を図面にする */
@@ -2334,6 +2362,13 @@ export default function FrameSheetPage({
                   onChange={(e) => setPageText(e.target.value)}
                 />
               </label>
+              <button
+                type="button"
+                title="他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さのまま呼び出して貼ります"
+                onClick={() => setImportPicker(true)}
+              >
+                📥 図面を呼び出す
+              </button>
             </>
           )}
           {trace.image !== "" && !printMode && (
@@ -3800,6 +3835,16 @@ export default function FrameSheetPage({
       </div>
 
       {upperArea}
+
+      {importPicker && !printMode && (
+        <DrawingSourcePicker
+          projectId={project.id}
+          excludeRowId={row.id}
+          excludeCalcType="frame"
+          onPick={importDrawings}
+          onClose={() => setImportPicker(false)}
+        />
+      )}
 
       <RoomCalcSheet
         sets={lower}

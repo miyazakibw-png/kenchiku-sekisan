@@ -93,6 +93,7 @@ import {
   useUnderlay,
   type UnderlayBox,
 } from "./useUnderlay";
+import DrawingSourcePicker from "./DrawingSourcePicker";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import CalcPrintSheet from "../print/CalcPrintSheet";
@@ -362,6 +363,21 @@ export default function PitSheetPage({
     underlayTool;
   underlaysRef.current = underlays;
   moveAllRef.current = underlayTool.moveAll;
+
+  /** 他の計算書の図面を呼び出す窓を出しているか */
+  const [importPicker, setImportPicker] = useState(false);
+
+  /** 他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さごとこの計算書へ貼る */
+  const importDrawings = useCallback(
+    (drawings: TraceUnderlay[]) => {
+      if (drawings.length === 0) return;
+      setUnderlays([...underlays, ...drawings], underlays.length);
+      setMessage(
+        `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
+      );
+    },
+    [setMessage, setUnderlays, underlays],
+  );
 
   // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
   // （選んだ図面の1枚として残り、別の図面が増えない）
@@ -2491,7 +2507,10 @@ export default function PitSheetPage({
               🖼 図面をなぞる（
               {tracePick ? `${tracePick.symbol}を直す` : `新しい${pitWord}`}）
             </button>
-            <UnderlayTools u={underlayTool} />
+            <UnderlayTools
+              u={underlayTool}
+              onImport={() => setImportPicker(true)}
+            />
             <button
               type="button"
               className={expanded ? "on" : ""}
@@ -2884,6 +2903,16 @@ export default function PitSheetPage({
             );
           }}
           onClose={() => setShowTrace(false)}
+        />
+      )}
+
+      {importPicker && !printMode && (
+        <DrawingSourcePicker
+          projectId={project.id}
+          excludeRowId={row.id}
+          excludeCalcType="pit"
+          onPick={importDrawings}
+          onClose={() => setImportPicker(false)}
         />
       )}
 

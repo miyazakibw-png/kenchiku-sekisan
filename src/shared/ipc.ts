@@ -21,6 +21,7 @@ export const IPC = {
   estimateRowsList: "estimateRows:list",
   estimateRowsSave: "estimateRows:save",
   estimateRowsFilledSheets: "estimateRows:filledSheets",
+  sheetDrawingSources: "sheets:drawingSources",
   roomSheetGet: "roomSheet:get",
   roomSheetSave: "roomSheet:save",
   roomFittingRegister: "roomSheet:fittingRegister",

@@ -148,19 +148,33 @@ export function parseUnderlay(json: string): TraceUnderlay {
 /**
  * 保存した trace の JSON に入れた下敷きを全部読む（複数置ける画面は underlays 配列。
  * 1枚だけの古いデータは underlay 単体なので、その1枚を返す）
+ *
+ * 軸組計算書からコピーしてきた計算書は traces 配列に図面が入っているので、
+ * underlays/underlay が無いときはそちらも読む（項目は同じ）。軸組の図面は縮尺済み
+ * （metersPerPixel>0）として扱う。
  */
 export function parseUnderlays(json: string): TraceUnderlay[] {
   try {
     const parsed = JSON.parse(json) as {
       underlays?: unknown;
       underlay?: unknown;
+      traces?: unknown;
     };
+    const fromTraces =
+      !Array.isArray(parsed.underlays) && parsed.underlay === undefined;
     const list = Array.isArray(parsed.underlays)
       ? parsed.underlays
       : parsed.underlay !== undefined
         ? [parsed.underlay]
-        : [];
-    return list.map((raw) => normalizeUnderlay(raw as Partial<TraceUnderlay>));
+        : Array.isArray(parsed.traces)
+          ? parsed.traces
+          : [];
+    return list.map((raw) => {
+      const underlay = normalizeUnderlay(raw as Partial<TraceUnderlay>);
+      if (fromTraces && underlay.image !== "" && underlay.metersPerPixel > 0)
+        underlay.scaled = true;
+      return underlay;
+    });
   } catch {
     return [];
   }
