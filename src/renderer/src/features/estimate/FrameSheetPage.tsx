@@ -481,7 +481,8 @@ export default function FrameSheetPage({
         workHeight: loaded.workHeight,
         traces: loadedTrace.traces,
         activeTrace: loadedTrace.active,
-        traceLocked: loadedTrace.locked,
+        // 「まとめて動かす」は開くたびOFFに戻す（ONのまま残ると、1枚だけ動かしたいとき2枚とも動いて困る）
+        traceLocked: false,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
       });
       diagramHistory.clear();
@@ -2190,7 +2191,14 @@ export default function FrameSheetPage({
                 type="button"
                 className={traceLocked ? "on" : ""}
                 title="ONの間「✥ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
-                onClick={() => setTraceLocked(!traceLocked)}
+                onClick={() => {
+                  setTraceLocked(!traceLocked);
+                  setMessage(
+                    traceLocked
+                      ? "まとめて動かすをOFFにしました（つかんだ図面だけ動きます）"
+                      : "まとめて動かすをONにしました（全部の図面が一緒に動きます）",
+                  );
+                }}
               >
                 🔗 まとめて動かす
               </button>
@@ -2299,6 +2307,11 @@ export default function FrameSheetPage({
                     setPanMode(false);
                     panDragRef.current = null;
                     setFitTrace(true);
+                    setMessage(
+                      traceLocked
+                        ? "🔗まとめて動かすがON：全部の図面が一緒に動きます。1枚だけ動かすときは「🔗 まとめて動かす」を押してOFFにしてください"
+                        : "図面をつまんで動かせます（つかんだ1枚だけ動きます）",
+                    );
                   }
                 }}
               >
