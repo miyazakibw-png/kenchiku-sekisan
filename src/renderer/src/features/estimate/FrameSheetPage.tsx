@@ -1151,39 +1151,45 @@ export default function FrameSheetPage({
   );
 
   /** 建具入力モード：対象の線に記号で建具を付ける */
-  const addFittingToTarget = useCallback(() => {
-    if (fittingTargetId === null) {
-      setMessage("先に建具を付ける線をクリックしてください");
-      return;
-    }
-    const symbol = fittingSymbolText.trim();
-    if (symbol === "") {
-      setMessage("建具の記号を入れてください");
-      return;
-    }
-    const count = Number(fittingCountText);
-    pushDiagram();
-    setFrameFittings((current) => [
-      ...current,
-      {
-        id: newId("ff"),
-        symbol,
-        multiplier: Number.isFinite(count) && count > 0 ? count : 1,
-        lineId: fittingTargetId,
-      },
-    ]);
-    const label = lines.find((line) => line.id === fittingTargetId)?.label;
-    setMessage(
-      `${symbol}${Number.isFinite(count) && count > 1 ? `×${count}` : ""}を${label ?? "線"}に付けました`,
+  const addFittingToTarget = useCallback(
+    (override?: string) => {
+      if (fittingTargetId === null) {
+        setMessage("先に建具を付ける線をクリックしてください");
+        return;
+      }
+      const symbol = (override ?? fittingSymbolText).trim();
+      if (symbol === "") {
+        setMessage("建具の記号を入れてください");
+        return;
+      }
+      const count = Number(fittingCountText);
+      pushDiagram();
+      setFrameFittings((current) => [
+        ...current,
+        {
+          id: newId("ff"),
+          symbol,
+          multiplier: Number.isFinite(count) && count > 0 ? count : 1,
+          lineId: fittingTargetId,
+        },
+      ]);
+      const label = lines.find((line) => line.id === fittingTargetId)?.label;
+      setMessage(
+        `${symbol}${Number.isFinite(count) && count > 1 ? `×${count}` : ""}を${label ?? "線"}に付けました`,
+      );
+      setFittingSymbolText("");
+    },
+    [fittingCountText, fittingSymbolText, fittingTargetId, lines, pushDiagram],
+  );
+
+  /** 記号欄に打った文字で絞り込んだ建具表の候補（空欄なら全部） */
+  const fittingCandidates = useMemo(() => {
+    const needle = fittingSymbolText.trim().toUpperCase();
+    if (needle === "") return fittings;
+    return fittings.filter((fitting) =>
+      fitting.symbol.toUpperCase().includes(needle),
     );
-    setFittingSymbolText("");
-  }, [
-    fittingCountText,
-    fittingSymbolText,
-    fittingTargetId,
-    lines,
-    pushDiagram,
-  ]);
+  }, [fittingSymbolText, fittings]);
 
   /** レイアウトへ部屋を置く（重ならないように少しずらして置く） */
   const addPlacement = useCallback(
@@ -2502,10 +2508,9 @@ export default function FrameSheetPage({
               }}
             >
               <input
-                list="frame-fitting-symbols-bar"
                 placeholder="記号（例 SD2）"
                 value={fittingSymbolText}
-                title="建具表の記号を入れて Enter か「付ける」を押します"
+                title="建具表の記号を入れて Enter か「付ける」を押します（下の候補は押すだけで付きます）"
                 onChange={(e) => setFittingSymbolText(e.target.value)}
               />
               <input
@@ -2519,11 +2524,18 @@ export default function FrameSheetPage({
                 付ける
               </button>
             </form>
-            <datalist id="frame-fitting-symbols-bar">
-              {fittings.map((fitting) => (
-                <option key={fitting.id} value={fitting.symbol} />
+            {fittingTargetId !== null &&
+              fittingCandidates.map((fitting) => (
+                <button
+                  key={fitting.id}
+                  type="button"
+                  className="chip"
+                  title="押すとこの線に付きます"
+                  onClick={() => addFittingToTarget(fitting.symbol)}
+                >
+                  {fitting.symbol}
+                </button>
               ))}
-            </datalist>
           </div>
         )}
         <div className="canvas" ref={canvasRef}>
