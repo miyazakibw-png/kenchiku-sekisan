@@ -1765,7 +1765,15 @@ export function wallEdgeHeights(
     heights,
   );
   for (const [index, edge] of solved.edges.entries()) {
-    if (edge.kind !== "wall" && edge.kind !== "curve" && edge.kind !== "column")
+    // 壁・Ｒ壁・柱のほか、開口・Ｒ開口も「壁があったとしたらの高さ」を出す
+    // （数量には使われず、寸法入力表の平均高さの表示にだけ使う）
+    if (
+      edge.kind !== "wall" &&
+      edge.kind !== "curve" &&
+      edge.kind !== "column" &&
+      edge.kind !== "opening" &&
+      edge.kind !== "curveOpening"
+    )
       continue;
     const from = points[index];
     const to = points[(index + 1) % points.length];
