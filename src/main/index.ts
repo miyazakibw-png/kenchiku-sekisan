@@ -336,6 +336,13 @@ function recoverInput(target: BrowserWindow | null): void {
   window.webContents.focus();
 }
 
+/** 保存ダイアログを開く場所（ドキュメントの実フォルダ。ライブラリの既定先が無いときは作る） */
+function saveDialogDir(): string {
+  const dir = app.getPath("documents");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC.masterOptions, (_event, projectId: number | null = null) =>
     listMasterOptions(getDatabase(), projectId),
@@ -638,9 +645,10 @@ function registerIpcHandlers(): void {
             },
       );
       const window = BrowserWindow.fromWebContents(event.sender);
+      const defaultPath = join(saveDialogDir(), defaultName);
       const result = window
-        ? await dialog.showSaveDialog(window, { defaultPath: defaultName })
-        : await dialog.showSaveDialog({ defaultPath: defaultName });
+        ? await dialog.showSaveDialog(window, { defaultPath })
+        : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       try {
@@ -1082,11 +1090,10 @@ function registerIpcHandlers(): void {
       paper: PrintPaper,
     ): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
+      const defaultPath = join(saveDialogDir(), `${defaultName}.pdf`);
       const result = window
-        ? await dialog.showSaveDialog(window, {
-            defaultPath: `${defaultName}.pdf`,
-          })
-        : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
+        ? await dialog.showSaveDialog(window, { defaultPath })
+        : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       const pdf = await event.sender.printToPDF({
@@ -1109,7 +1116,10 @@ function registerIpcHandlers(): void {
     IPC.screenExcel,
     async (event, request: ScreenExcelRequest): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
-      const defaultPath = `${request.defaultName}.xlsx`;
+      const defaultPath = join(
+        saveDialogDir(),
+        `${request.defaultName}.xlsx`,
+      );
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath })
         : await dialog.showSaveDialog({ defaultPath });
