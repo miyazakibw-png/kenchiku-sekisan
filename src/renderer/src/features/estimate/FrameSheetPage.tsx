@@ -1485,14 +1485,17 @@ export default function FrameSheetPage({
       if (drawStart === null) {
         pushDiagram();
         setDrawStart(next);
-        setMessage("終点をクリックしてください");
+        setMessage(
+          "終点をクリックしてください（Shiftを押しながらだと斜め線になります）",
+        );
         return;
       }
-      // 直交で引く（長い方の向きに合わせる）
+      // 直交で引く（長い方の向きに合わせる）。Shiftを押している間は斜め線
       const dx = Math.abs(next.x - drawStart.x);
       const dy = Math.abs(next.y - drawStart.y);
-      const end =
-        dx >= dy
+      const end = event.shiftKey
+        ? next
+        : dx >= dy
           ? { x: next.x, y: drawStart.y }
           : { x: drawStart.x, y: next.y };
       if (dx < 0.05 && dy < 0.05) {
@@ -1972,7 +1975,7 @@ export default function FrameSheetPage({
             <button
               type="button"
               className={drawing ? "on" : ""}
-              title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します）"
+              title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します。終点をShiftを押しながらクリックすると斜め線になります）"
               onClick={() => {
                 setDrawStart(null);
                 // 線を引く間は表示範囲を止めて、図面が動かないようにする
