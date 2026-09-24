@@ -1941,21 +1941,23 @@ export default function FrameSheetPage({
           <button
             type="button"
             className={panMode ? "on" : ""}
-            title="図をつまんで動かします（大きくしたときに端まで見られます）"
+            title="図をつまんで動かして見る所を変えます（大きくしたときに端まで見られます。図面そのものは「✥ 図面を動かす」で動きます）"
             onClick={() => {
               const next = !panMode;
               setPanMode(next);
               if (next) {
-                // 図を動かす中は縮尺合わせ・図面を動かすのクリックが効かないので切る
+                // 画面を動かす中は縮尺合わせ・図面を動かす・線を引くのクリックが効かないので切る
                 setTraceMode("off");
                 setScalePoints([]);
+                setDrawing(false);
+                setDrawStart(null);
               }
               setMessage(
                 next ? "図をつまんだまま動かすと見る所を変えられます" : "",
               );
             }}
           >
-            ✋ 図を動かす
+            ✋ 画面を動かす
           </button>
           {traces.length > 0 && (
             <button
@@ -1985,6 +1987,9 @@ export default function FrameSheetPage({
                 if (!drawing) {
                   setTraceMode("off");
                   setScalePoints([]);
+                  // 画面を動かす（パン）中はクリックが効かないので切る
+                  setPanMode(false);
+                  panDragRef.current = null;
                 }
                 setMessage(
                   drawing
