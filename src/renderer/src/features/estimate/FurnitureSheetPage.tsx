@@ -1492,8 +1492,12 @@ export default function FurnitureSheetPage({
             </button>
           </>
         )}
-        <button type="button" onClick={() => addRow(picked + 1)}>
-          ＋ 行を足す
+        <button
+          type="button"
+          title="いちばん下に空の行を足します"
+          onClick={() => addRow(rows.length)}
+        >
+          ↓ 行追加
         </button>
         <button
           type="button"
