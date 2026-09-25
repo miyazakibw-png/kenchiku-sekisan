@@ -47,7 +47,6 @@ export interface FormworkTransferRule {
   /** 掛け率（元明細ごと） */
   coefficient: number;
   subjectId: number | null;
-  materialCategory: string;
   /** 転記先名称（例：打放型枠） */
   name: string;
   /** 転記先の摘要 上段（元明細から写して、明細ごとに変えられる） */
@@ -99,7 +98,6 @@ export interface FormworkSourceGroup {
 /** 一括作成のもとになる元明細（集計書兼工事マスターの明細） */
 export interface FormworkBulkSource {
   masterKey: string;
-  materialCategory: string;
   descriptionUpper: string;
   descriptionLower: string;
   unit: string;
@@ -115,7 +113,6 @@ export interface FormworkBulkSpec {
   unit: string;
   /** 掛け率の初期値（あとで明細ごとに直せる） */
   coefficient: number;
-  materialCategory: string;
   /** 摘要を元明細から写す */
   copyDescription: boolean;
 }
@@ -134,10 +131,6 @@ export function buildFormworkRulesFromSources(
     sourceKeys: [source.masterKey],
     coefficient: spec.coefficient === 0 ? 1 : spec.coefficient,
     subjectId: spec.subjectId,
-    materialCategory:
-      spec.materialCategory === ""
-        ? source.materialCategory
-        : spec.materialCategory,
     name: spec.name,
     description: spec.copyDescription ? source.descriptionUpper : "",
     descriptionLower: spec.copyDescription ? source.descriptionLower : "",
@@ -182,7 +175,6 @@ interface Bucket {
   formwork: string;
   order: number;
   subjectId: number | null;
-  materialCategory: string;
   name: string;
   description: string;
   descriptionLower: string;
@@ -225,7 +217,6 @@ export function buildFormworkTransferRows(
         const key = [
           formwork,
           rule.subjectId ?? "",
-          rule.materialCategory,
           rule.name,
           rule.description,
           rule.descriptionLower,
@@ -235,7 +226,6 @@ export function buildFormworkTransferRows(
           formwork,
           order: categoryOrder(categories, formwork),
           subjectId: rule.subjectId,
-          materialCategory: rule.materialCategory,
           name: rule.name,
           description: rule.description,
           descriptionLower: rule.descriptionLower,
@@ -303,7 +293,7 @@ export function buildFormworkTransferRows(
       part2Split: false,
       part3: "",
       subjectId: bucket.subjectId,
-      materialCategory: bucket.materialCategory,
+      materialCategory: "",
       partNumber: null,
       partName: "",
       detailNumber: number,

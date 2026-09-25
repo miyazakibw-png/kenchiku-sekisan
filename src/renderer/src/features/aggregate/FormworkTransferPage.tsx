@@ -91,7 +91,6 @@ export default function FormworkTransferPage({
   );
   const [bulkUnit, setBulkUnit] = useState("");
   const [bulkCoefficient, setBulkCoefficient] = useState(1);
-  const [bulkCategory, setBulkCategory] = useState("");
   const [copyDescription, setCopyDescription] = useState(true);
 
   const reload = useCallback(async () => {
@@ -161,7 +160,6 @@ export default function FormworkTransferPage({
         name: bulkName,
         unit: bulkUnit,
         coefficient: bulkCoefficient,
-        materialCategory: bulkCategory,
         copyDescription,
       },
       `型枠-${Date.now()}`,
@@ -369,14 +367,6 @@ export default function FormworkTransferPage({
           />
         </label>
         <label>
-          材種区分{" "}
-          <TextInput
-            value={bulkCategory}
-            placeholder="空欄＝元のまま"
-            onCommit={setBulkCategory}
-          />
-        </label>
-        <label>
           <input
             type="checkbox"
             checked={copyDescription}
@@ -396,7 +386,7 @@ export default function FormworkTransferPage({
         <thead>
           <tr>
             <th colSpan={5}>変換元明細</th>
-            <th colSpan={6}>変換後の型枠明細</th>
+            <th colSpan={5}>変換後の型枠明細</th>
             <th rowSpan={2}>取消</th>
           </tr>
           <tr>
@@ -406,7 +396,6 @@ export default function FormworkTransferPage({
             <th>単位</th>
             <th>掛け率</th>
             <th>科目</th>
-            <th>材種区分</th>
             <th>名称</th>
             <th>摘要 下段</th>
             <th>摘要 上段</th>
@@ -469,14 +458,6 @@ export default function FormworkTransferPage({
                       </option>
                     ))}
                   </select>
-                </td>
-                <td>
-                  <TextInput
-                    value={rule.materialCategory}
-                    onCommit={(value) =>
-                      update(index, { materialCategory: value })
-                    }
-                  />
                 </td>
                 <td>
                   <TextInput

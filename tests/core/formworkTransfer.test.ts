@@ -68,7 +68,6 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
     sourceKeys: ["k1"],
     coefficient: 1,
     subjectId: 5,
-    materialCategory: "型枠",
     name: "打放型枠",
     description: "仕上",
     descriptionLower: "",
@@ -82,14 +81,12 @@ describe("buildFormworkRulesFromSources", () => {
   const sources = [
     {
       masterKey: "k1",
-      materialCategory: "仕上",
       descriptionUpper: "仕上",
       descriptionLower: "打放補修共",
       unit: "m2",
     },
     {
       masterKey: "k2",
-      materialCategory: "仕上",
       descriptionUpper: "貼物下",
       descriptionLower: "",
       unit: "m2",
@@ -101,7 +98,6 @@ describe("buildFormworkRulesFromSources", () => {
     name: "打放型枠",
     unit: "",
     coefficient: 1,
-    materialCategory: "型枠",
     copyDescription: true,
   };
 
@@ -112,7 +108,6 @@ describe("buildFormworkRulesFromSources", () => {
       key: "型枠-1",
       sourceKeys: ["k1"],
       subjectId: 5,
-      materialCategory: "型枠",
       name: "打放型枠",
       description: "仕上",
       descriptionLower: "打放補修共",
@@ -192,7 +187,7 @@ describe("buildFormworkTransferRows", () => {
       formwork: "基礎階",
       part1: "",
       subjectId: 5,
-      materialCategory: "型枠",
+      materialCategory: "",
       description: "仕上",
       unit: "m2",
     });

@@ -99,7 +99,6 @@ function rule(sourceKeys: string[]): FormworkTransferRule {
     sourceKeys,
     coefficient: 1,
     subjectId: 5,
-    materialCategory: "型枠",
     name: "打放型枠",
     description: "合板型枠",
     descriptionLower: "",
