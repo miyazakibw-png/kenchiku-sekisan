@@ -335,3 +335,9 @@
 .furniture-page.furniture-print .furniture-table-wrap::after {
   display: none;
 }
+
+@media print {
+  .furniture-page .furniture-table-wrap::after {
+    display: none;
+  }
+}

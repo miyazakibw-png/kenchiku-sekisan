@@ -144,3 +144,9 @@
   display: block;
   height: 100vh;
 }
+
+@media print {
+  .misc-page .misc-table-wrap::after {
+    display: none;
+  }
+}

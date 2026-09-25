@@ -191,3 +191,15 @@ table.aggregate td select:focus {
   background: #fff;
   outline: 1px solid #1f4e79;
 }
+
+/* 表の下に白い余白を残す（行削除で上の行が動かないようにする。
+   aggregate-bodyは横flexのスクロール欄なので、中の末尾要素の下マージンで作る） */
+.aggregate-body > :last-child {
+  margin-bottom: 100vh;
+}
+
+@media print {
+  .aggregate-body > :last-child {
+    margin-bottom: 0;
+  }
+}
