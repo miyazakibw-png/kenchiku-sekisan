@@ -67,6 +67,13 @@ table.transfer input {
   font-size: 12px;
 }
 
+/* 行の高さは集計書と同じにする（明細マスターの .grid td input ルールの余白を打ち消す） */
+table.transfer td input:not([type]),
+table.transfer td select {
+  padding: 0;
+  margin: 0;
+}
+
 table.transfer input.num {
   text-align: right;
 }
