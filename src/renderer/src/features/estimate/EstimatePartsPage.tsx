@@ -527,7 +527,7 @@ export default function EstimatePartsPage({
           type="button"
           onClick={() => editRows(insertRow(rows, selected))}
         >
-          ➕ 行挿入
+          ⤒ 行挿入
         </button>
         <button
           type="button"
