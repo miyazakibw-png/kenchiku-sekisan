@@ -207,16 +207,14 @@ table.estimate tr.subtotal.selected {
 }
 
 /* 行を消したとき、消した行より上の行が動かないよう、表の下に白い余白を残す
-   （消した行の下の行が上へ詰まる形にする。印刷には出さない） */
-.estimate-page::after {
-  content: "";
-  display: block;
-  flex: 0 0 auto;
-  height: 100vh;
+   （消した行の下の行が上へ詰まる形にする。印刷には出さない。
+    ※疑似要素だとflexの子として他の欄を潰すことがあるので、paddingで下へ余白を作る） */
+.estimate-page {
+  padding-bottom: 100vh;
 }
 
 @media print {
-  .estimate-page::after {
-    display: none;
+  .estimate-page {
+    padding-bottom: 0;
   }
 }
