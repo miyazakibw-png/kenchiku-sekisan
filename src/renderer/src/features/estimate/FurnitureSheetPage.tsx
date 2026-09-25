@@ -48,6 +48,11 @@ import {
   type FurnitureSymbol,
 } from "../../../../core/furniture/furnitureSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
+import { normalizePastedMatrix, parseTsv } from "@shared/tsv";
+import {
+  pasteFurnitureCells,
+  type FurnitureCellPos,
+} from "./furnitureCells";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { ask } from "../common/askDialog";
@@ -459,6 +464,8 @@ export default function FurnitureSheetPage({
     column: FurnitureColumn;
     values: string[];
   } | null>(null);
+  /** 行入力部で最後にカーソルを置いたマス（エクセル貼り付けの左上になる） */
+  const inputCell = useRef<FurnitureCellPos | null>(null);
   /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
@@ -1297,6 +1304,65 @@ export default function FurnitureSheetPage({
   const detailCells = printing || visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
+  /**
+   * 行入力部のマスのカーソルを記録する。
+   * 行は「番号」欄（.num）の次から入力欄が並ぶので、その順番からマスの位置を出す。
+   */
+  const findInputCell = (
+    target: EventTarget | null,
+  ): FurnitureCellPos | null => {
+    if (!(target instanceof HTMLElement)) return null;
+    const td = target.closest("td");
+    const tr = td?.parentElement;
+    const tbody = tr?.parentElement;
+    if (!td || !tr || !tbody) return null;
+    const tds = Array.from(tr.children);
+    const numberIndex = tds.findIndex((item) =>
+      item.classList.contains("num"),
+    );
+    if (numberIndex < 0) return null;
+    const col = tds.indexOf(td) - numberIndex - 1;
+    if (col < 0 || col >= inputColumns.length) return null;
+    const index = Array.from(tbody.children).indexOf(tr);
+    if (index < 0) return null;
+    return { row: index, col };
+  };
+
+  /** 選んでいるマスを左上にして、エクセルの表を行入力部へ取り込む */
+  const pasteCells = useCallback(
+    (text: string) => {
+      if (text.trim() === "") return;
+      const matrix = normalizePastedMatrix(parseTsv(text));
+      const at = inputCell.current ?? { row: picked, col: 0 };
+      const result = pasteFurnitureCells(
+        rows,
+        at,
+        matrix,
+        inputColumns.map((column) => column.key),
+        { parts: options.pickupParts, units: options.units },
+      );
+      changeRows(result.rows);
+      const notes = [
+        result.addedRows > 0 ? `${result.addedRows} 行追加` : "",
+        result.errorCount > 0
+          ? `取り込めない値 ${result.errorCount} 件（${result.firstError}）`
+          : "",
+      ].filter((note) => note !== "");
+      setMessage(
+        notes.length === 0
+          ? "貼り付けました"
+          : `貼り付けました（${notes.join("／")}）`,
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inputColumns, options.pickupParts, options.units, picked, rows],
+  );
+
+  /** エクセルの表をそのまま貼り付ける（選んでいるマスから取り込む） */
+  const pasteFromExcel = useCallback(async () => {
+    pasteCells(await navigator.clipboard.readText());
+  }, [pasteCells]);
+
   const tableWidth =
     // 紙には操作欄（＋－）を出さないので、その分は幅に入れない
     (printing ? 0 : OPS_WIDTH) +
@@ -1541,6 +1607,13 @@ export default function FurnitureSheetPage({
           onClick={() => pasteRows("append")}
         >
           📋 追加貼付
+        </button>
+        <button
+          type="button"
+          title="カーソルのマスを左上にして、エクセルでコピーした表を行入力部へ取り込みます（行入力部の中で Ctrl+V でも同じです）"
+          onClick={() => void pasteFromExcel()}
+        >
+          📋 エクセルから貼付
         </button>
         <button
           type="button"
@@ -2183,6 +2256,19 @@ export default function FurnitureSheetPage({
           className="furniture-table"
           ref={tableRef}
           style={{ width: tableWidth }}
+          onFocusCapture={(event) => {
+            const pos = findInputCell(event.target);
+            if (pos !== null) inputCell.current = pos;
+          }}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text");
+            // 1マス分の文字は今までどおりその欄へ貼る
+            if (!text.includes("\t") && !text.includes("\n")) return;
+            // カーソルが行入力部以外（明細欄・タテ欄）にあるときは取り込まない
+            if (findInputCell(event.target) === null) return;
+            event.preventDefault();
+            pasteCells(text);
+          }}
         >
           <colgroup>
             {!printing && (
@@ -2823,6 +2909,8 @@ export default function FurnitureSheetPage({
         右端のタテの列（科目〜備考の見出し）は、部位別雑・金物入力表と同じように
         家具に付く関連明細をタテに拾います（［➕
         タテ明細］で列を足します。どちらも集計に入ります）。
+        エクセルからの貼り付けは、行入力部の欄をその並び順で当てます（カーソルのマスが左上。
+        「📋 エクセルから貼付」ボタンか行入力部で Ctrl+V。足りない行は自動で足します）。
       </p>
     </div>
   );
