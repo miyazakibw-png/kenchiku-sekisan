@@ -533,9 +533,19 @@ export default function MiscSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        return current.map((column, index) =>
-          index === at ? { ...column, ...patch } : column,
-        );
+        // 書き込んだら次の列へ進む（部屋計算書と同じ）。次が無ければ新しい明細列を足してそこへ進む
+        const next = [
+          ...current.slice(0, at),
+          { ...current[at], ...patch },
+          ...current.slice(at + 1),
+        ];
+        if (at + 1 < next.length) {
+          setPickedColumn(next[at + 1].id);
+          return next;
+        }
+        const created = miscColumn();
+        setPickedColumn(created.id);
+        return [...next, created];
       });
       setMessage(`${detail.name} を呼び出しました`);
     },

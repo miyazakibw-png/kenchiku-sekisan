@@ -73,7 +73,11 @@ export default function TransferSheetPage({
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [rowClip, setRowClip] = useState<TransferRowDraft[]>([]);
   /** カーソルのマスと、Shift+クリックで広げた範囲 */
-  const [cell, setCell] = useState<TransferCellPos>({ row: 0, line: 0, col: 0 });
+  const [cell, setCell] = useState<TransferCellPos>({
+    row: 0,
+    line: 0,
+    col: 0,
+  });
   const [cellEnd, setCellEnd] = useState<TransferCellPos>({
     row: 0,
     line: 0,
@@ -83,6 +87,30 @@ export default function TransferSheetPage({
   const history = useRowsHistory(rows, setRows);
 
   const inherited = useMemo(() => resolveTransferInherited(rows), [rows]);
+
+  /** 部位Ⅰ・部位Ⅱの欄で呼び出せる、部位別入力表の入力分（重複を消した一覧） */
+  const part1Entries = useMemo<PickEntry[]>(
+    () =>
+      Array.from(
+        new Set(
+          estimateRows
+            .map((row) => row.part1.trim())
+            .filter((text) => text !== ""),
+        ),
+      ).map((text) => ({ value: text, label: text })),
+    [estimateRows],
+  );
+  const part2Entries = useMemo<PickEntry[]>(
+    () =>
+      Array.from(
+        new Set(
+          estimateRows
+            .map((row) => row.part2.trim())
+            .filter((text) => text !== ""),
+        ),
+      ).map((text) => ({ value: text, label: text })),
+    [estimateRows],
+  );
 
   const { markSaved } = useSaveOnLeave(rows, () => save(true));
 
@@ -97,6 +125,16 @@ export default function TransferSheetPage({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // 部位Ⅰ・部位Ⅱの欄の呼び出し用に、部位別入力表の行を読んでおく
+  useEffect(() => {
+    void (async () =>
+      setEstimateRows(
+        (await window.sekisan.listEstimateRows(project.id)).filter(
+          (row) => row.rowType !== "subtotal",
+        ),
+      ))();
+  }, [project.id]);
 
   useEffect(() => {
     if (!callOpen || subjectId === null) {
@@ -238,7 +276,9 @@ export default function TransferSheetPage({
           : "",
       ].filter((note) => note !== "");
       setMessage(
-        notes.length === 0 ? "貼り付けました" : `貼り付けました（${notes.join("／")}）`,
+        notes.length === 0
+          ? "貼り付けました"
+          : `貼り付けました（${notes.join("／")}）`,
       );
     },
     [cell, history, masters, rows],
@@ -606,21 +646,25 @@ export default function TransferSheetPage({
                   {index + 1}
                 </td>
                 <td rowSpan={2}>
-                  <input
-                    lang="ja"
+                  <PickInput
+                    entries={part1Entries}
+                    japanese
+                    commitOnBlur
                     value={row.part1}
                     placeholder={shown.part1}
-                    title="空欄のときは入力のある上の行を引き継ぎます"
-                    onChange={(e) => update(index, { part1: e.target.value })}
+                    title="文字を入れるか、部位別入力表の部位Ⅰから選びます。空欄のときは入力のある上の行を引き継ぎます"
+                    onCommit={(text) => update(index, { part1: text })}
                   />
                 </td>
                 <td rowSpan={2}>
-                  <input
-                    lang="ja"
+                  <PickInput
+                    entries={part2Entries}
+                    japanese
+                    commitOnBlur
                     value={row.part2}
                     placeholder={shown.part2}
-                    title="空欄のときは入力のある上の行を引き継ぎます"
-                    onChange={(e) => update(index, { part2: e.target.value })}
+                    title="文字を入れるか、部位別入力表の部位Ⅱから選びます。空欄のときは入力のある上の行を引き継ぎます"
+                    onCommit={(text) => update(index, { part2: text })}
                   />
                 </td>
                 <td className="flag" rowSpan={2}>
