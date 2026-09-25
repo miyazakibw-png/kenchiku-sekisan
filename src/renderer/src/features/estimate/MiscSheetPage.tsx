@@ -141,6 +141,11 @@ export default function MiscSheetPage({
   const [pickedRow, setPickedRow] = useState<string | null>(null);
   /** 名称ID欄の候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** 明細（列）コピーで控えた列（この計算書の中だけ） */
+  const [colClipboard, setColClipboard] = useState<{
+    column: MiscColumn;
+    values: string[];
+  } | null>(null);
   /** マスター呼出画面（計算書と同じ作り） */
   const [callOpen, setCallOpen] = useState(false);
   const [callSource, setCallSource] = useState<CallSource>("basic");
@@ -412,6 +417,59 @@ export default function MiscSheetPage({
         return next;
       }),
     [pickedColumn, changeColumns],
+  );
+
+  /** 選んでいる明細（列）の見出しと行ごとの数量をまとめて控える */
+  const copyColumn = useCallback((): void => {
+    const column = columns.find((item) => item.id === pickedColumn);
+    if (column === undefined) {
+      setMessage("コピーする明細の列を選んでください");
+      return;
+    }
+    const values = rows.map((row) => row.values[column.id] ?? "");
+    setColClipboard({ column, values });
+    setMessage(
+      `⧉ 「${column.name || "明細"}」をコピーしました（貼り付けたい列を選んで「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  }, [columns, pickedColumn, rows]);
+
+  /** コピーした明細（列）を貼る（上書き＝選んでいる列／挿入＝その左／追加＝いちばん右。行ごとの数量も一緒に） */
+  const pasteColumn = useCallback(
+    (mode: "over" | "insert" | "append"): void => {
+      if (colClipboard === null) return;
+      const at = columns.findIndex((column) => column.id === pickedColumn);
+      history.push(contentRef.current);
+      let targetId: string;
+      let nextColumns: MiscColumn[];
+      if (mode === "over" && at >= 0) {
+        targetId = columns[at].id;
+        nextColumns = columns.map((column, index) =>
+          index === at ? { ...colClipboard.column, id: column.id } : column,
+        );
+      } else {
+        targetId = miscColumn().id;
+        const created = { ...colClipboard.column, id: targetId };
+        nextColumns =
+          mode === "insert" && at >= 0
+            ? [...columns.slice(0, at), created, ...columns.slice(at)]
+            : [...columns, created];
+      }
+      setColumns(nextColumns);
+      setRows(
+        rows.map((row, index) => ({
+          ...row,
+          values: {
+            ...row.values,
+            [targetId]: colClipboard.values[index] ?? "",
+          },
+        })),
+      );
+      setPickedColumn(targetId);
+      const where =
+        mode === "over" ? "上書き" : mode === "insert" ? "挿入" : "追加";
+      setMessage(`明細を${where}貼付しました（保存で確定）`);
+    },
+    [colClipboard, columns, history, pickedColumn, rows],
   );
 
   /** 名称ID欄に入ったとき、その科目の明細を候補として読み込む */
@@ -752,6 +810,37 @@ export default function MiscSheetPage({
           onClick={() => moveColumn(1)}
         >
           明細 →
+        </button>
+        <button
+          type="button"
+          title="選んでいる明細（列）を、行ごとの数量も一緒にコピーします"
+          onClick={copyColumn}
+        >
+          ⧉ 列コピー
+        </button>
+        <button
+          type="button"
+          title="選んでいる明細の列へ、コピーした列を上書きします"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="選んでいる明細の列の左へ、コピーした列を挿入します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("insert")}
+        >
+          ⇲ 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="いちばん右へ、コピーした列を足します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("append")}
+        >
+          ⤓ 追加貼付
         </button>
         <button
           type="button"

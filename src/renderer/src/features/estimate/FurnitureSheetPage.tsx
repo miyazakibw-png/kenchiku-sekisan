@@ -454,6 +454,11 @@ export default function FurnitureSheetPage({
   /** 行コピーで控えた行（この計算書の中だけ） */
   const [clipboard, setClipboard] = useState<FurnitureRow[]>([]);
   const [pickedColumn, setPickedColumn] = useState<string | null>(null);
+  /** タテ明細（列）コピーで控えた列（この計算書の中だけ） */
+  const [colClipboard, setColClipboard] = useState<{
+    column: FurnitureColumn;
+    values: string[];
+  } | null>(null);
   /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
@@ -1059,6 +1064,56 @@ export default function FurnitureSheetPage({
     changeColumns(next);
   };
 
+  /** 選んでいるタテ明細（列）の見出しと行ごとの数量をまとめて控える */
+  const copyColumn = (): void => {
+    const column = columns.find((item) => item.id === pickedColumn);
+    if (column === undefined) {
+      setMessage("コピーするタテ明細の列を選んでください");
+      return;
+    }
+    const values = rows.map((row) => row.values?.[column.id] ?? "");
+    setColClipboard({ column, values });
+    setMessage(
+      `⧉ 「${column.name || "明細"}」をコピーしました（貼り付けたい列を選んで「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  };
+
+  /** コピーしたタテ明細（列）を貼る（上書き＝選んでいる列／挿入＝その左／追加＝いちばん右。行ごとの数量も一緒に） */
+  const pasteColumn = (mode: "over" | "insert" | "append"): void => {
+    if (colClipboard === null) return;
+    const at = columns.findIndex((column) => column.id === pickedColumn);
+    history.push(contentRef.current);
+    let targetId: string;
+    let nextColumns: FurnitureColumn[];
+    if (mode === "over" && at >= 0) {
+      targetId = columns[at].id;
+      nextColumns = columns.map((column, index) =>
+        index === at ? { ...colClipboard.column, id: column.id } : column,
+      );
+    } else {
+      targetId = furnitureColumn().id;
+      const created = { ...colClipboard.column, id: targetId };
+      nextColumns =
+        mode === "insert" && at >= 0
+          ? [...columns.slice(0, at), created, ...columns.slice(at)]
+          : [...columns, created];
+    }
+    setColumns(nextColumns);
+    setRows(
+      rows.map((row, index) => ({
+        ...row,
+        values: {
+          ...(row.values ?? {}),
+          [targetId]: colClipboard.values[index] ?? "",
+        },
+      })),
+    );
+    setPickedColumn(targetId);
+    const where =
+      mode === "over" ? "上書き" : mode === "insert" ? "挿入" : "追加";
+    setMessage(`タテ明細を${where}貼付しました（保存で確定）`);
+  };
+
   /** タテの明細のマス（行×列）に数量（計算式も可）を入れる */
   const editCell = (rowId: string, columnId: string, text: string): void =>
     changeRows(
@@ -1514,6 +1569,37 @@ export default function FurnitureSheetPage({
           onClick={() => moveColumn(1)}
         >
           明細 →
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテ明細（列）を、行ごとの数量も一緒にコピーします"
+          onClick={copyColumn}
+        >
+          ⧉ 列コピー
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテ明細の列へ、コピーした列を上書きします"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテ明細の列の左へ、コピーした列を挿入します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("insert")}
+        >
+          ⇲ 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="いちばん右へ、コピーした列を足します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("append")}
+        >
+          ⤓ 追加貼付
         </button>
         <button
           type="button"
