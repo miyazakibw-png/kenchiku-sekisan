@@ -889,10 +889,19 @@ export default function FurnitureSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        // 上書き呼出：選んでいる列の中身をそのまま入れ替える
-        return current.map((column, index) =>
-          index === at ? { ...column, ...patch } : column,
-        );
+        // 書き込んだら次の列へ進む（雑・金物入力表と同じ）。次が無ければ新しい明細列を足してそこへ進む
+        const next = [
+          ...current.slice(0, at),
+          { ...current[at], ...patch },
+          ...current.slice(at + 1),
+        ];
+        if (at + 1 < next.length) {
+          setPickedColumn(next[at + 1].id);
+          return next;
+        }
+        const created = furnitureColumn();
+        setPickedColumn(created.id);
+        return [...next, created];
       });
       setMessage(`${detail.name} を呼び出しました`);
     },
