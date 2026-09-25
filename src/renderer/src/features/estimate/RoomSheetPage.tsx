@@ -49,7 +49,7 @@ import {
   incomingIsVertical,
   isDiagonal,
   mirrorShape,
-  moveCorner,
+  moveCorners,
   nextEdgeDirection,
   notchEdge,
   rectangleShape,
@@ -377,10 +377,14 @@ export default function RoomSheetPage({
   /** 図形の角（○印）をつかんでいる間の持ち手。base はつかみ始めた時の形 */
   const cornerDragRef = useRef<{
     index: number;
+    /** つかんだ角が複数選択に入っていたら、その全員分 */
+    indices: number[];
     base: RoomShape;
     origin: Point;
     moved: boolean;
   } | null>(null);
+  /** 複数角をつかんで動かした直後のクリックでは選択を1点に戻さないための印 */
+  const cornerClickSuppressRef = useRef(false);
   /** 天井伏図（線・区画の高さ・C番号の位置）を1つの履歴にして戻る・進む */
   const ceilingHistory = useUndoRedo<{
     ceiling: CeilingElement[];
@@ -466,6 +470,13 @@ export default function RoomSheetPage({
   const [rangeEdge, setRangeEdge] = useState<string | null>(null);
   /** L型・コ型を足す場所（角の番号＝その角から出ていく辺の番号） */
   const [selectedCorner, setSelectedCorner] = useState<number | null>(null);
+  /** まとめて動かすために選んでいる角（Ctrl/Shift＋クリックで複数選べる） */
+  const [selectedCorners, setSelectedCorners] = useState<number[]>([]);
+  /** 角の選択をまとめて入れ直す（最後に選んだ角が、L型・コ型など1点を使う操作の対象になる） */
+  const pickCorners = (list: number[]): void => {
+    setSelectedCorners(list);
+    setSelectedCorner(list.length > 0 ? list[list.length - 1] : null);
+  };
   const [cutAcross, setCutAcross] = useState("1.00");
   const [cutAlong, setCutAlong] = useState("1.00");
   const [prompt, setPrompt] = useState<ShapePrompt>(null);
@@ -1378,12 +1389,25 @@ export default function RoomSheetPage({
     event: ReactPointerEvent<SVGElement>,
   ): void => {
     if (freeDraw !== null) return;
+    // Ctrl/Shift＋クリックは複数選択の切り替えなので、つかみ移動は始めない
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return;
     const origin = solved.points[index];
     if (origin === undefined) return;
-    setSelectedCorner(index);
+    // 複数選択に入っている角をつかんだら全員いっしょに動かす
+    const indices =
+      selectedCorners.includes(index) && selectedCorners.length > 1
+        ? selectedCorners
+        : [index];
+    pickCorners(indices);
     setSelectedEdge(null);
     setAddCornerMode(false);
-    cornerDragRef.current = { index, base: shape, origin, moved: false };
+    cornerDragRef.current = {
+      index,
+      indices,
+      base: shape,
+      origin,
+      moved: false,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
     event.stopPropagation();
   };
@@ -1401,9 +1425,9 @@ export default function RoomSheetPage({
       event.clientY,
     );
     if (point === null) return;
-    const result = moveCorner(
+    const result = moveCorners(
       drag.base,
-      index,
+      drag.indices,
       point.x - drag.origin.x,
       point.y - drag.origin.y,
     );
@@ -1421,7 +1445,12 @@ export default function RoomSheetPage({
     const drag = cornerDragRef.current;
     if (drag === null || drag.index !== index) return;
     cornerDragRef.current = null;
-    if (drag.moved) setMessage("角をつかんで動かしました");
+    if (!drag.moved) return;
+    // 複数角を動かした直後に来るクリックでは、選択を1点に戻さない
+    if (drag.indices.length > 1) cornerClickSuppressRef.current = true;
+    setMessage(
+      `${drag.indices.length > 1 ? `${drag.indices.length}点の` : ""}角をつかんで動かしました`,
+    );
   };
 
   // 自由線を引いている間、Escでやめられる
@@ -1718,7 +1747,7 @@ export default function RoomSheetPage({
     }
     applyShape(mirrorShape(shape, axis));
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     setMessage(axis === "x" ? "左右に反転しました" : "上下に反転しました");
   };
 
@@ -1731,7 +1760,7 @@ export default function RoomSheetPage({
     setShape(shapePast[shapePast.length - 1]);
     setShapePast(shapePast.slice(0, -1));
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     setMessage("図形を1つ前に戻しました");
   };
 
@@ -1744,7 +1773,7 @@ export default function RoomSheetPage({
     setShape(shapeFuture[0]);
     setShapeFuture(shapeFuture.slice(1));
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     setMessage("図形を1つ先へ進めました");
   };
 
@@ -1757,7 +1786,7 @@ export default function RoomSheetPage({
     }
     applyShape(next);
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
   };
 
   /**
@@ -1817,9 +1846,9 @@ export default function RoomSheetPage({
     setSelectedEdge(null);
     // 続けてL型を足せるよう、選んである角は残す（形が小さくなったときは最後の角へ寄せる）
     setShowCorners(true);
-    setSelectedCorner(
+    pickCorners([
       Math.min(selectedCorner, Math.max(result.shape.edges.length - 1, 0)),
-    );
+    ]);
     setMessage(
       `選んだ角をL型に欠き取りました（足した辺は${KIND_LABEL[edgeKind]}）${
         result.adjusted ? "（隣の辺の長さに合わせました）" : ""
@@ -1852,7 +1881,7 @@ export default function RoomSheetPage({
       setPrompt(null);
       applyShape(next);
       setSelectedEdge(null);
-      setSelectedCorner(null);
+      pickCorners([]);
       setMessage(
         `図形を${formatNumber(value / prompt.current, 2)}倍に合わせました（選んだ辺を ${formatNumber(value, 2)}m にしました）`,
       );
@@ -1907,7 +1936,7 @@ export default function RoomSheetPage({
     }
     applyShape(turned.shape);
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     let imageNote = "";
     if (underlays.length > 0) {
       const turnedUnderlays = await Promise.all(
@@ -2006,11 +2035,17 @@ export default function RoomSheetPage({
    * 動かした結果、両隣の辺が縦横でなくなると斜め辺になる。
    */
   const moveSelectedCorner = (dx: number, dy: number): void => {
-    if (selectedCorner === null) {
+    const targets =
+      selectedCorners.length > 0
+        ? selectedCorners
+        : selectedCorner !== null
+          ? [selectedCorner]
+          : [];
+    if (targets.length === 0) {
       setMessage("図の角（○印）を選んでから移動を押してください");
       return;
     }
-    const result = moveCorner(shape, selectedCorner, dx, dy);
+    const result = moveCorners(shape, targets, dx, dy);
     if (result.error) {
       setMessage(result.error);
       return;
@@ -2018,7 +2053,7 @@ export default function RoomSheetPage({
     applyShape(result.shape);
     setSelectedEdge(null);
     setMessage(
-      `角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
+      `${targets.length > 1 ? `${targets.length}点の` : ""}角を 横${formatNumber(dx, 2)}／縦${formatNumber(dy, 2)} 動かしました`,
     );
   };
 
@@ -2205,7 +2240,7 @@ export default function RoomSheetPage({
   const applySplit = (edgeId: string, first: number): void => {
     applyShape(splitEdge(shape, edgeId, first));
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     setMessage(
       `辺を ${formatNumber(first, 2)} の位置で分けて角を足しました（寸法欄でも直せます）`,
     );
@@ -2241,7 +2276,7 @@ export default function RoomSheetPage({
     }
     applyShape(applyKindToNewEdges(base.shape, result.shape, edgeKind));
     setSelectedEdge(null);
-    setSelectedCorner(null);
+    pickCorners([]);
     setMessage(
       `選んだ辺をコ型に凹ませました${offset !== undefined ? `（辺のはじから ${formatNumber(offset, 2)} の位置）` : ""}（足した辺は${KIND_LABEL[edgeKind]}）${base.note}`,
     );
@@ -2300,7 +2335,7 @@ export default function RoomSheetPage({
                 return;
               }
               selectEdge(line.id, event.shiftKey);
-              setSelectedCorner(null);
+              pickCorners([]);
               // 閉じていないときは、押した辺の寸法で合わせる
               if (!event.shiftKey && solved.error !== null) fitEdge(line.id);
             }}
@@ -2392,8 +2427,24 @@ export default function RoomSheetPage({
             onPointerDown={(event) => startCornerDrag(index, event)}
             onPointerMove={(event) => moveCornerDrag(index, event)}
             onPointerUp={() => endCornerDrag(index)}
-            onClick={() => {
-              setSelectedCorner(index);
+            onClick={(event) => {
+              if (cornerClickSuppressRef.current) {
+                cornerClickSuppressRef.current = false;
+                return;
+              }
+              if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                const next = selectedCorners.includes(index)
+                  ? selectedCorners.filter((item) => item !== index)
+                  : [...selectedCorners, index];
+                pickCorners(next);
+                setMessage(
+                  next.length > 0
+                    ? `角を${next.length}点選んでいます（移動・つかみ移動が全員に効きます。Ctrl・Shift＋クリックで増減）`
+                    : "角の選択を外しました",
+                );
+                return;
+              }
+              pickCorners([index]);
               setSelectedEdge(null);
               setAddCornerMode(false);
             }}
@@ -2409,7 +2460,7 @@ export default function RoomSheetPage({
               cx={point.x}
               cy={point.y}
               r={cornerRadius}
-              className={`corner ${selectedCorner === index ? "selected" : ""}`}
+              className={`corner ${selectedCorners.includes(index) ? "selected" : ""}`}
             />
           </g>
         ))}
@@ -2950,40 +3001,40 @@ export default function RoomSheetPage({
               </label>
               <button
                 type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を左へ動かします"
+                disabled={selectedCorners.length === 0}
+                title="角（○印）を選んでから押すと、選んだ角を左へ動かします（Ctrl・Shift＋クリックで複数の角を選べます）"
                 onClick={() => moveSelectedCorner(-Math.abs(Number(moveX)), 0)}
               >
                 ←
               </button>
               <button
                 type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を右へ動かします"
+                disabled={selectedCorners.length === 0}
+                title="角（○印）を選んでから押すと、選んだ角を右へ動かします（Ctrl・Shift＋クリックで複数の角を選べます）"
                 onClick={() => moveSelectedCorner(Math.abs(Number(moveX)), 0)}
               >
                 →
               </button>
               <button
                 type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を上へ動かします"
+                disabled={selectedCorners.length === 0}
+                title="角（○印）を選んでから押すと、選んだ角を上へ動かします（Ctrl・Shift＋クリックで複数の角を選べます）"
                 onClick={() => moveSelectedCorner(0, -Math.abs(Number(moveY)))}
               >
                 ↑
               </button>
               <button
                 type="button"
-                disabled={selectedCorner === null}
-                title="角（○印）を選んでから押すと、その角を下へ動かします"
+                disabled={selectedCorners.length === 0}
+                title="角（○印）を選んでから押すと、選んだ角を下へ動かします（Ctrl・Shift＋クリックで複数の角を選べます）"
                 onClick={() => moveSelectedCorner(0, Math.abs(Number(moveY)))}
               >
                 ↓
               </button>
               <button
                 type="button"
-                disabled={selectedCorner === null}
-                title="横・縦の両方へ同時に動かします（斜めの辺になります）"
+                disabled={selectedCorners.length === 0}
+                title="横・縦の両方へ同時に動かします（斜めの辺になります。Ctrl・Shift＋クリックで複数の角を選べます）"
                 onClick={() => moveSelectedCorner(Number(moveX), Number(moveY))}
               >
                 ╱ 斜めへ
@@ -3020,7 +3071,7 @@ export default function RoomSheetPage({
               title="角の○印を出す／消す（形が決まったら消せます）"
               onClick={() => {
                 const next = !showCorners;
-                if (!next) setSelectedCorner(null);
+                if (!next) pickCorners([]);
                 setShowCorners(next);
                 window.localStorage.setItem(CORNERS_KEY, next ? "1" : "0");
               }}

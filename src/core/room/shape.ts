@@ -1497,6 +1497,52 @@ export function moveCorner(
 }
 
 /**
+ * 複数の頂点（角）を同じ寸法だけ一緒に動かす。
+ * 両端が選ばれている辺は形のままずれるだけなので寸法は触らず、
+ * 片側だけ動く境目の辺（選んだ角と選んでない角を結ぶ辺）だけ向き・長さを組み直す。
+ * 全部の角を選ぶと形ごとずれるだけなので形は変わらない。
+ */
+export function moveCorners(
+  shape: RoomShape,
+  cornerIndices: number[],
+  moveX: number,
+  moveY: number,
+): { shape: RoomShape; error: string | null } {
+  const count = shape.edges.length;
+  if (count < 3) return { shape, error: "先に部屋の形を作ってください" };
+  if (moveX === 0 && moveY === 0) {
+    return { shape, error: "移動する寸法を入れてください" };
+  }
+  const solved = solveShape(shape);
+  if (solved.points.length !== count) {
+    return { shape, error: "先に部屋の寸法を決めてください" };
+  }
+  const moved = new Set(
+    cornerIndices.map((index) => ((index % count) + count) % count),
+  );
+  if (moved.size === 0) {
+    return { shape, error: "動かす角を選んでください" };
+  }
+  const points = solved.points.map((point, index) =>
+    moved.has(index) ? { x: point.x + moveX, y: point.y + moveY } : point,
+  );
+  const edges = [...shape.edges];
+  for (let index = 0; index < count; index += 1) {
+    const next = (index + 1) % count;
+    if (moved.has(index) === moved.has(next)) continue;
+    const edge = edgeFromVector(shape.edges[index], {
+      x: points[next].x - points[index].x,
+      y: points[next].y - points[index].y,
+    });
+    if ((edge.length ?? 0) <= 0) {
+      return { shape, error: "移動すると辺の長さが0以下になります" };
+    }
+    edges[index] = edge;
+  }
+  return { shape: { edges }, error: null };
+}
+
+/**
  * 選んだ範囲（この辺からこの辺まで）の辺の番号。
  * 始めの辺から形をたどる向き（表の並び順）に進んで終わりの辺まで。一周をまたいでもよい。
  */

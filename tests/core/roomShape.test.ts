@@ -14,6 +14,7 @@ import {
   lShape,
   mirrorShape,
   moveCorner,
+  moveCorners,
   nextEdgeDirection,
   notchEdge,
   rectangleShape,
@@ -636,6 +637,79 @@ describe("部屋形状（単線図）", () => {
     expect(solved.points).toHaveLength(4);
     // 台形（上辺5.00・下辺4.00・高さ3.00）
     expect(floorArea(solved)).toBe(13.5);
+  });
+
+  it("複数の角をいっしょに動かすと、つながる辺は形のままずれる", () => {
+    const shape = rectangleShape(4, 3);
+    // 下辺の両端（右下・左下）をいっしょに1.00下げる
+    const moved = moveCorners(shape, [2, 3], 0, 1);
+    expect(moved.error).toBeNull();
+    const solved = solveShape(moved.shape);
+    expect(solved.error).toBeNull();
+    // 右・左の辺だけ伸びて、下辺はそのまま
+    expect(solved.edges[1].length).toBe(4);
+    expect(solved.edges[2].length).toBe(4);
+    expect(solved.edges[3].length).toBe(4);
+    expect(floorArea(solved)).toBe(16);
+  });
+
+  it("下がり出っぱりのある下辺を全部いっしょに下げられる", () => {
+    // 下辺の真ん中が 4.00×0.50 だけ下がった形
+    const shape = {
+      edges: [
+        edge("E", 6),
+        edge("S", 3),
+        edge("W", 1),
+        edge("S", 0.5),
+        edge("W", 4),
+        edge("N", 0.5),
+        edge("W", 1),
+        edge("N", 3),
+      ],
+    };
+    // 下辺側の6角（頂点2〜7）をいっしょに0.50下げる
+    const moved = moveCorners(shape, [2, 3, 4, 5, 6, 7], 0, 0.5);
+    expect(moved.error).toBeNull();
+    const solved = solveShape(moved.shape);
+    expect(solved.error).toBeNull();
+    // 左右の外壁だけ伸びて、出っぱりの形はそのまま
+    expect(solved.edges[1].length).toBe(3.5);
+    expect(solved.edges[2].length).toBe(1);
+    expect(solved.edges[3].length).toBe(0.5);
+    expect(solved.edges[4].length).toBe(4);
+    expect(solved.edges[5].length).toBe(0.5);
+    expect(solved.edges[6].length).toBe(1);
+    expect(solved.edges[7].length).toBe(3.5);
+    // 6.00×3.50＋出っぱり4.00×0.50
+    expect(floorArea(solved)).toBe(23);
+  });
+
+  it("複数選択の1点だけの移動は1点移動と同じ結果になる", () => {
+    const shape = rectangleShape(4, 3);
+    const single = moveCorners(shape, [1], 1, 0);
+    const one = moveCorner(shape, 1, 1, 0);
+    expect(single.error).toBeNull();
+    expect(one.error).toBeNull();
+    expect(single.shape.edges.map((row) => row.direction)).toEqual(
+      one.shape.edges.map((row) => row.direction),
+    );
+    expect(single.shape.edges.map((row) => row.length)).toEqual(
+      one.shape.edges.map((row) => row.length),
+    );
+  });
+
+  it("選んだ角が全部のときは形は変わらない", () => {
+    const shape = rectangleShape(4, 3);
+    const moved = moveCorners(shape, [0, 1, 2, 3], 1, 1);
+    expect(moved.error).toBeNull();
+    expect(moved.shape.edges.map((row) => row.length)).toEqual([4, 3, 4, 3]);
+  });
+
+  it("移動で辺がつぶれるときはエラーにする", () => {
+    const shape = rectangleShape(4, 3);
+    // 右下の角だけ上げると右辺が0になる
+    const moved = moveCorners(shape, [2], 0, -3);
+    expect(moved.error).toBe("移動すると辺の長さが0以下になります");
   });
 
   it("外形寸法（X・Y の最大）を出せる", () => {
