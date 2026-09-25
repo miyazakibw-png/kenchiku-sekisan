@@ -2075,6 +2075,26 @@ export function wallEdgeHeights(
     false,
     heights,
   );
+  // 壁に付く梁型がある壁は、壁面が梁底（取りつく天井高さ−Ｈ）までなのでその高さにする
+  // （梁は壁から壁までなので辺全体に効く。複数あればいちばん低い梁底に合わせる）
+  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  const beamHeightByEdge = new Map<string, number>();
+  for (const element of elements) {
+    if (
+      element.kind !== "wallBeam" ||
+      element.edgeId === null ||
+      (element.free ?? null) !== null
+    )
+      continue;
+    const base = bases.get(element.id) ?? null;
+    const drop = elementDrop(element, base);
+    if (base === null || drop === null) continue;
+    const under = round2(base - drop);
+    const previous = beamHeightByEdge.get(element.edgeId);
+    if (previous === undefined || under < previous) {
+      beamHeightByEdge.set(element.edgeId, under);
+    }
+  }
   for (const [index, edge] of solved.edges.entries()) {
     // 壁・Ｒ壁・柱のほか、開口・Ｒ開口も「壁があったとしたらの高さ」を出す
     // （数量には使われず、寸法入力表の平均高さの表示にだけ使う）
@@ -2135,6 +2155,11 @@ export function wallEdgeHeights(
           ? roomCeilingHeight
           : height;
       weighted += (bounds[i + 1] - bounds[i]) * effective;
+    }
+    // 壁付き梁型の梁底より上は壁面に入らないので、梁底の高さまで下げる
+    const beamHeight = beamHeightByEdge.get(edge.id);
+    if (beamHeight !== undefined && beamHeight < weighted) {
+      weighted = beamHeight;
     }
     if (weighted < roomCeilingHeight - 1e-6) {
       result.set(edge.id, round2(weighted));

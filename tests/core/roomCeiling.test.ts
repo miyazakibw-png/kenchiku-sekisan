@@ -1197,6 +1197,43 @@ describe("低い天井の区画に面している壁の壁高さ", () => {
     expect(symbols.find((row) => row.symbol === "WA1")?.value).toBe(10);
   });
 
+  it("壁に付く梁型がある壁は梁底（取りつく天井高さ−Ｈ）の高さになる", () => {
+    const solved = shape();
+    // 右の壁にＨ0.6の壁付き梁型 → その壁の高さは 3.0−0.6 = 2.4
+    const elements = [
+      element("wallBeam", solved.edges[1].id, { width: 0.15, height: 0.6 }),
+    ];
+    const heights = wallEdgeHeights(elements, solved, 3.0);
+    expect(heights.get(solved.edges[1].id)).toBe(2.4);
+    // 梁型の無い壁は部屋の天井高さのまま
+    expect(heights.has(solved.edges[0].id)).toBe(false);
+    // 壁面積も梁底の高さで計算（右の壁だけ2.4）
+    const quantities = roomQuantities(solved, 3.0, [], undefined, 0, heights);
+    expect(quantities.wallArea).toBe(40.2);
+  });
+
+  it("Ｈも範囲の天井高さも空の梁型は壁の高さを変えない", () => {
+    const solved = shape();
+    const heights = wallEdgeHeights(
+      [element("wallBeam", solved.edges[1].id, {})],
+      solved,
+      3.0,
+    );
+    expect(heights.size).toBe(0);
+  });
+
+  it("下がった天井に取りつく梁型は、その天井からＨ分だけ壁を下げる", () => {
+    const solved = shape();
+    // 右の壁から2mの所に下がり天井（区画2.0）＋右の壁にＨ0.6の壁付き梁型
+    const elements = [
+      element("dropCeiling", solved.edges[1].id, { offset: 2, height: 1.0 }),
+      element("wallBeam", solved.edges[1].id, { height: 0.6 }),
+    ];
+    const heights = wallEdgeHeights(elements, solved, 3.0);
+    // 梁の取りつく天井は下がった2.0。壁面は梁底（2.0−0.6＝1.4）まで
+    expect(heights.get(solved.edges[1].id)).toBe(1.4);
+  });
+
   it("下がり天井が無い部屋ではいつもどおり", () => {
     const solved = shape();
     const heights = wallEdgeHeights([], solved, 3.0);
