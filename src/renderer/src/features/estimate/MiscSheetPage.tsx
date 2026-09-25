@@ -542,8 +542,9 @@ export default function MiscSheetPage({
         materialCategory: found.materialCategory || column.materialCategory,
         partNumber: keepPart
           ? column.partNumber
-          : (options.pickupParts.find((part) => part.name === found.partName)
-              ?.id ?? null),
+          : (found.partNumber ??
+            (options.pickupParts.find((part) => part.name === found.partName)
+              ?.id ?? null)),
         partName: keepPart ? column.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,

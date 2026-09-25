@@ -707,8 +707,9 @@ export default function RoomCalcSheet({
         materialCategory: found.materialCategory || row.materialCategory,
         partNumber: keepPart
           ? row.partNumber
-          : (pickupParts.find((part) => part.name === found.partName)?.id ??
-            null),
+          : (found.partNumber ??
+            (pickupParts.find((part) => part.name === found.partName)?.id ??
+              null)),
         partName: keepPart ? row.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
@@ -860,11 +861,11 @@ export default function RoomCalcSheet({
         materialCategory:
           detail.materialCategory || (kept?.materialCategory ?? ""),
         partNumber:
-          detail.partName.trim() === ""
-            ? (kept?.partNumber ?? null)
-            : (detail.partNumber ??
-              pickupParts.find((part) => part.name === detail.partName)?.id ??
-              null),
+          detail.partNumber ??
+          (detail.partName.trim() !== ""
+            ? (pickupParts.find((part) => part.name === detail.partName)?.id ??
+              null)
+            : (kept?.partNumber ?? null)),
         partName: detail.partName || (kept?.partName ?? ""),
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,

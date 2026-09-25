@@ -1187,9 +1187,10 @@ export default function FurnitureSheetPage({
                   detail.materialCategory || each.materialCategory,
                 partNumber: keepPart
                   ? each.partNumber
-                  : (options.pickupParts.find(
+                  : (detail.partNumber ??
+                    (options.pickupParts.find(
                       (part) => part.name === detail.partName,
-                    )?.id ?? null),
+                    )?.id ?? null)),
                 partName: keepPart ? each.partName : detail.partName,
                 name: detail.name,
                 descriptionUpper: detail.descriptionUpper,

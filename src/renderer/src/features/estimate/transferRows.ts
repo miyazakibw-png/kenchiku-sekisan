@@ -132,6 +132,7 @@ export function applyEstimateParts(
 export function applyDetail(
   row: TransferRowDraft,
   detail: Detail,
+  pickupParts: { id: number; name: string }[] = [],
 ): TransferRowDraft {
   // マスター側が空欄の項目は、先に入れてある部位・区分・単位を消さない
   return {
@@ -139,6 +140,12 @@ export function applyDetail(
     subjectId: detail.subjectId,
     materialCategory: detail.materialCategory || row.materialCategory,
     detailNumber: detail.detailNumber,
+    partId:
+      detail.partNumber ??
+      (detail.partName.trim() !== ""
+        ? (pickupParts.find((part) => part.name === detail.partName)?.id ??
+          null)
+        : row.partId),
     partName: detail.partName || row.partName,
     name: detail.name,
     sourceDetailId: detail.id,
