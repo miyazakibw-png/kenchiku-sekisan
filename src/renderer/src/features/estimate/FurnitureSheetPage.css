@@ -324,3 +324,14 @@
   border: 1px solid #c7d2de;
   background: #fff;
 }
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す */
+.furniture-page .furniture-table-wrap::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}
+
+.furniture-page.furniture-print .furniture-table-wrap::after {
+  display: none;
+}

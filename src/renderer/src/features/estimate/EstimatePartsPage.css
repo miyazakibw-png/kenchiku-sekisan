@@ -205,3 +205,18 @@ table.estimate tr.subtotal.selected {
   margin-right: 4px;
   cursor: help;
 }
+
+/* 行を消したとき、消した行より上の行が動かないよう、表の下に白い余白を残す
+   （消した行の下の行が上へ詰まる形にする。印刷には出さない） */
+.estimate-page::after {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  height: 100vh;
+}
+
+@media print {
+  .estimate-page::after {
+    display: none;
+  }
+}

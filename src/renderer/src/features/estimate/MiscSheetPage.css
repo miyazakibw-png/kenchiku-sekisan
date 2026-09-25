@@ -137,3 +137,10 @@
 .misc-page table.grid.misc .resizer:hover {
   background: #60a5fa;
 }
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す */
+.misc-page .misc-table-wrap::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}

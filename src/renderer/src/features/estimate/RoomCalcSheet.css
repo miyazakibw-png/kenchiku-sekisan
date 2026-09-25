@@ -469,3 +469,11 @@
   top: 0;
   z-index: 1;
 }
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す
+   （計算表の下段スクロール欄。部屋計算書・汎用計算書・別ウィンドウの明細入力すべて） */
+.room-calc-sheet .calc-body::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}
