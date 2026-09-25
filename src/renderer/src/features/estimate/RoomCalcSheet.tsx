@@ -705,11 +705,8 @@ export default function RoomCalcSheet({
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
         materialCategory: found.materialCategory || row.materialCategory,
-        partNumber: keepPart
-          ? row.partNumber
-          : (found.partNumber ??
-            (pickupParts.find((part) => part.name === found.partName)?.id ??
-              null)),
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: keepPart ? row.partNumber : (found.partNumber ?? null),
         partName: keepPart ? row.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
@@ -860,12 +857,11 @@ export default function RoomCalcSheet({
         detailNumber: detail.detailNumber,
         materialCategory:
           detail.materialCategory || (kept?.materialCategory ?? ""),
+        // 部位ID・部位名は工事マスター（明細）の通りに入れる
+        // （部位名から部位IDを探さない。マスターの部位が両方空のときは先の行の部位を残す）
         partNumber:
           detail.partNumber ??
-          (detail.partName.trim() !== ""
-            ? (pickupParts.find((part) => part.name === detail.partName)?.id ??
-              null)
-            : (kept?.partNumber ?? null)),
+          (detail.partName.trim() === "" ? (kept?.partNumber ?? null) : null),
         partName: detail.partName || (kept?.partName ?? ""),
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,

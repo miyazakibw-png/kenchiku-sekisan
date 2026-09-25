@@ -540,11 +540,8 @@ export default function MiscSheetPage({
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
         materialCategory: found.materialCategory || column.materialCategory,
-        partNumber: keepPart
-          ? column.partNumber
-          : (found.partNumber ??
-            (options.pickupParts.find((part) => part.name === found.partName)
-              ?.id ?? null)),
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: keepPart ? column.partNumber : (found.partNumber ?? null),
         partName: keepPart ? column.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
@@ -564,11 +561,8 @@ export default function MiscSheetPage({
       const patch: Partial<MiscColumn> = {
         subjectId: detail.subjectId,
         materialCategory: detail.materialCategory,
-        partNumber:
-          detail.partNumber ??
-          options.pickupParts.find((part) => part.name === detail.partName)
-            ?.id ??
-          null,
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: detail.partNumber ?? null,
         detailNumber: detail.detailNumber,
         partName: detail.partName,
         name: detail.name,

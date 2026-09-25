@@ -184,16 +184,16 @@ export default function TransferSheetPage({
     (detail: Detail) => {
       history.edit((current) => {
         if (current.length === 0) {
-          return [applyDetail(emptyTransferRow(), detail, options.pickupParts)];
+          return [applyDetail(emptyTransferRow(), detail)];
         }
         const at = Math.min(selected, current.length - 1);
         return current.map((row, index) =>
-          index === at ? applyDetail(row, detail, options.pickupParts) : row,
+          index === at ? applyDetail(row, detail) : row,
         );
       });
       setMessage(`${detail.name} を転記しました`);
     },
-    [history, options.pickupParts, selected],
+    [history, selected],
   );
 
   /**
@@ -228,12 +228,12 @@ export default function TransferSheetPage({
       }
       history.edit((current) =>
         current.map((row, at) =>
-          at === index ? applyDetail(row, found, options.pickupParts) : row,
+          at === index ? applyDetail(row, found) : row,
         ),
       );
       setMessage(`${found.name} を呼び出しました`);
     },
-    [detailCache, history, options.pickupParts, project.id, update],
+    [detailCache, history, project.id, update],
   );
 
   const materialEntries = useMemo(

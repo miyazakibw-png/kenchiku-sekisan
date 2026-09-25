@@ -867,11 +867,8 @@ export default function FurnitureSheetPage({
       const patch: Partial<FurnitureColumn> = {
         subjectId: detail.subjectId,
         materialCategory: detail.materialCategory,
-        partNumber:
-          detail.partNumber ??
-          options.pickupParts.find((part) => part.name === detail.partName)
-            ?.id ??
-          null,
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: detail.partNumber ?? null,
         detailNumber: detail.detailNumber,
         partName: detail.partName,
         name: detail.name,
@@ -1185,12 +1182,10 @@ export default function FurnitureSheetPage({
                 detailNumber: detail.detailNumber,
                 materialCategory:
                   detail.materialCategory || each.materialCategory,
+                // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
                 partNumber: keepPart
                   ? each.partNumber
-                  : (detail.partNumber ??
-                    (options.pickupParts.find(
-                      (part) => part.name === detail.partName,
-                    )?.id ?? null)),
+                  : (detail.partNumber ?? null),
                 partName: keepPart ? each.partName : detail.partName,
                 name: detail.name,
                 descriptionUpper: detail.descriptionUpper,
