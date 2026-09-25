@@ -87,6 +87,8 @@ import {
   parseCeilingCodes,
   splitDropCeiling,
   wallEdgeHeights,
+  beamAttachPoint,
+  resolveCeilingAnchor,
   type CeilingAnchor,
   type CeilingCodes,
   type CeilingElement,
@@ -438,6 +440,17 @@ export default function RoomSheetPage({
   const [freeCursor, setFreeCursor] = useState<
     (CeilingPoint & { onEdge: boolean }) | null
   >(null);
+  /** 天井付梁型を引くモード（①を押した後は a が入る） */
+  const [beamDraw, setBeamDraw] = useState<
+    { a: CeilingAnchor } | "idle" | null
+  >(null);
+  /** 天井付梁型のＷ・Ｈ（描く前に入れる。次に描くときも残る） */
+  const [beamSize, setBeamSize] = useState<{ width: string; height: string }>({
+    width: "0.30",
+    height: "",
+  });
+  /** ②を待っている間の、カーソルの所の端点（水平・垂直・柱に合わせた後の位置） */
+  const [beamCursor, setBeamCursor] = useState<CeilingPoint | null>(null);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
   const [expanded, setExpanded] = useState(false);
   /**
@@ -935,21 +948,11 @@ export default function RoomSheetPage({
       );
   }, [symbols]);
 
-  /** 端点（辺の上の位置）の座標 */
+  /** 端点（辺の上の位置、柱の真ん中、または梁型の線の上）の座標 */
   const anchorPos = useCallback(
-    (anchor: CeilingAnchor): { x: number; y: number } | null => {
-      const edgeIndex = solved.edges.findIndex(
-        (row) => row.id === anchor.edgeId,
-      );
-      if (edgeIndex < 0 || solved.points.length === 0) return null;
-      const from = solved.points[edgeIndex];
-      const to = solved.points[(edgeIndex + 1) % solved.points.length];
-      return {
-        x: from.x + (to.x - from.x) * anchor.rate,
-        y: from.y + (to.y - from.y) * anchor.rate,
-      };
-    },
-    [solved.edges, solved.points],
+    (anchor: CeilingAnchor): { x: number; y: number } | null =>
+      resolveCeilingAnchor(anchor, solved, ceiling),
+    [solved, ceiling],
   );
 
   const ceilingLines = useMemo(() => {
@@ -1238,13 +1241,31 @@ export default function RoomSheetPage({
   ): { x: number; y: number } | null =>
     svgPointAt(event.currentTarget, event.clientX, event.clientY);
 
-  /** クリックした所に一番近い、辺の上の位置（線の端は必ず部屋のふちに付く。gap＝クリックから辺への離れ） */
+  /** クリックした所に一番近い、辺の上の位置（線の端は必ず部屋のふち・柱・梁型に付く。gap＝クリックから辺への離れ） */
   const nearestAnchor = useCallback(
-    (point: {
-      x: number;
-      y: number;
-    }): (CeilingAnchor & { gap: number }) | null => {
+    (
+      point: {
+        x: number;
+        y: number;
+      },
+      exclude?: string,
+    ): (CeilingAnchor & { gap: number }) | null => {
       let best: { edgeId: string; rate: number; gap: number } | null = null;
+      let column: { id: string; gap: number } | null = null;
+      for (const row of solved.columns) {
+        const gap = Math.hypot(point.x - row.x, point.y - row.y);
+        if (column === null || gap < column.gap) column = { id: row.id, gap };
+      }
+      // すでに引いた梁型（壁付き・天井付）の線の真ん中にも付けられる
+      let beam: { id: string; rate: number; gap: number } | null = null;
+      for (const element of ceiling) {
+        if (element.id === exclude) continue;
+        if (element.kind !== "wallBeam" && element.kind !== "ceilingBeam")
+          continue;
+        const hit = beamAttachPoint(element, solved, ceiling, point);
+        if (hit !== null && (beam === null || hit.gap < beam.gap))
+          beam = { id: element.id, rate: hit.rate, gap: hit.gap };
+      }
       for (const [index, row] of solved.edges.entries()) {
         const from = solved.points[index];
         const to = solved.points[(index + 1) % solved.points.length];
@@ -1268,11 +1289,37 @@ export default function RoomSheetPage({
         if (best === null || gap < best.gap)
           best = { edgeId: row.id, rate, gap };
       }
-      return best === null
-        ? null
-        : { edgeId: best.edgeId, rate: best.rate, gap: best.gap };
+      if (best === null) return null;
+      // 辺より独立柱の真ん中・梁型の線の方が近く、そば（線の端が付く近さ）のときはそれに付ける。
+      // 部屋の中の遠い所を押したときは折れ点・辺の上のままにする
+      // （辺の上の位置も控えてあるので、柱や梁型が消えても線は残る）
+      const snap = view.span * 0.03;
+      if (
+        column !== null &&
+        column.gap < best.gap &&
+        column.gap <= snap &&
+        (beam === null || column.gap <= beam.gap)
+      ) {
+        return {
+          edgeId: best.edgeId,
+          rate: best.rate,
+          columnId: column.id,
+          gap: column.gap,
+        };
+      }
+      if (beam !== null && beam.gap < best.gap && beam.gap <= snap) {
+        return {
+          edgeId: best.edgeId,
+          rate: best.rate,
+          columnId: null,
+          elementId: beam.id,
+          elementRate: beam.rate,
+          gap: beam.gap,
+        };
+      }
+      return { edgeId: best.edgeId, rate: best.rate, gap: best.gap };
     },
-    [solved.edges, solved.points],
+    [solved, ceiling, view.span],
   );
 
   /** 自由線の端が付く、辺への近さ（部屋の中のクリックは折れ点になる） */
@@ -1289,9 +1336,18 @@ export default function RoomSheetPage({
     const near = nearestAnchor(point);
     if (near === null) return;
     if (freeDraw === "idle") {
-      setFreeDraw({ a: { edgeId: near.edgeId, rate: near.rate }, via: [] });
+      setFreeDraw({
+        a: {
+          edgeId: near.edgeId,
+          rate: near.rate,
+          columnId: near.columnId ?? null,
+          elementId: near.elementId ?? null,
+          elementRate: near.elementRate,
+        },
+        via: [],
+      });
       setMessage(
-        "①を置きました。部屋の中をクリックすると折れ点を足せます。辺の近くをクリックすると②になって線ができます",
+        "①を置きました。部屋の中をクリックすると折れ点を足せます。辺か柱・梁型の近くをクリックすると②になって線ができます",
       );
       return;
     }
@@ -1299,7 +1355,7 @@ export default function RoomSheetPage({
     if (near.gap > freeSnap) {
       setFreeDraw({ ...freeDraw, via: [...freeDraw.via, point] });
       setMessage(
-        `折れ点を足しました（${freeDraw.via.length + 1}か所）。部屋の中＝折れ点、辺の近く＝②です`,
+        `折れ点を足しました（${freeDraw.via.length + 1}か所）。部屋の中＝折れ点、辺か柱・梁型の近く＝②です`,
       );
       return;
     }
@@ -1309,7 +1365,13 @@ export default function RoomSheetPage({
       edgeId: null,
       free: {
         a: freeDraw.a,
-        b: { edgeId: near.edgeId, rate: near.rate },
+        b: {
+          edgeId: near.edgeId,
+          rate: near.rate,
+          columnId: near.columnId ?? null,
+          elementId: near.elementId ?? null,
+          elementRate: near.elementRate,
+        },
         ...(freeDraw.via.length > 0 ? { via: freeDraw.via } : {}),
       },
     };
@@ -1318,7 +1380,147 @@ export default function RoomSheetPage({
     setFreeDraw(null);
     setFreeCursor(null);
     setMessage(
-      "自由線の下がり天井を引きました。線をクリックすると①・折れ点・②の持ち手が出て、つかんで動かせます",
+      "自由線を引きました。線をクリックすると①・折れ点・②の持ち手が出て、つかんで動かせます。種別を天井付梁型に変えると、柱と柱の間などに梁型が入ります",
+    );
+  };
+
+  /**
+   * 天井付梁型の②を、押した所から決める。
+   * 柱の上→柱の真ん中。Shift→自由な斜め（辺の上のその点）。
+   * 普通のクリック→①を通る近い方の軸（水平・垂直）上で、押した所にいちばん近い
+   * 軸上の点（柱の真ん中、または軸と辺の交点）。
+   */
+  const beamEnd = useCallback(
+    (
+      point: CeilingPoint,
+      start: CeilingAnchor,
+      shiftKey: boolean,
+    ): CeilingAnchor | null => {
+      const near = nearestAnchor(point);
+      if (near === null) return null;
+      // 柱の真ん中・すでに引いた梁型の線の上はそのまま付く
+      if ((near.columnId ?? near.elementId ?? null) !== null)
+        return {
+          edgeId: near.edgeId,
+          rate: near.rate,
+          columnId: near.columnId ?? null,
+          elementId: near.elementId ?? null,
+          elementRate: near.elementRate,
+        };
+      if (shiftKey)
+        return { edgeId: near.edgeId, rate: near.rate, columnId: null };
+      const a = anchorPos(start);
+      if (a === null) return null;
+      const horizontal = Math.abs(point.x - a.x) >= Math.abs(point.y - a.y);
+      const clickAlong = horizontal ? point.x - a.x : point.y - a.y;
+      if (Math.abs(clickAlong) < 1e-9) return null;
+      const dirSign = clickAlong > 0 ? 1 : -1;
+      const axis = horizontal ? a.y : a.x;
+      const tol = view.span * 0.03;
+      const candidates: { anchor: CeilingAnchor; along: number }[] = [];
+      for (const column of solved.columns) {
+        const off = horizontal ? column.y - axis : column.x - axis;
+        if (Math.abs(off) > tol) continue;
+        const along = horizontal ? column.x - a.x : column.y - a.y;
+        if (dirSign * along <= 1e-9) continue;
+        candidates.push({
+          anchor: { edgeId: near.edgeId, rate: near.rate, columnId: column.id },
+          along,
+        });
+      }
+      for (const [index, row] of solved.edges.entries()) {
+        const from = solved.points[index];
+        const to = solved.points[(index + 1) % solved.points.length];
+        const denom = horizontal ? to.y - from.y : to.x - from.x;
+        if (Math.abs(denom) < 1e-9) continue;
+        const rate = horizontal
+          ? (axis - from.y) / denom
+          : (axis - from.x) / denom;
+        if (rate < -1e-9 || rate > 1 + 1e-9) continue;
+        const ix = from.x + (to.x - from.x) * rate;
+        const iy = from.y + (to.y - from.y) * rate;
+        const along = horizontal ? ix - a.x : iy - a.y;
+        if (dirSign * along <= 1e-9) continue;
+        candidates.push({
+          anchor: {
+            edgeId: row.id,
+            rate: Math.max(0, Math.min(1, rate)),
+            columnId: null,
+          },
+          along,
+        });
+      }
+      const best = candidates.sort(
+        (left, right) =>
+          Math.abs(left.along - clickAlong) -
+          Math.abs(right.along - clickAlong),
+      )[0];
+      return best === undefined ? null : best.anchor;
+    },
+    [
+      nearestAnchor,
+      anchorPos,
+      solved.columns,
+      solved.edges,
+      solved.points,
+      view.span,
+    ],
+  );
+
+  /**
+   * 天井付梁型を引くモードでの図のクリック。
+   * 1か所目＝①（近い辺の上か柱の真ん中）。2か所目＝②で梁型ができる
+   * （水平・垂直は普通にクリック、斜めはShift+クリック、柱はそのまま付く）
+   */
+  const clickBeamDraw = (event: React.MouseEvent<SVGSVGElement>): void => {
+    const point = svgPoint(event);
+    if (point === null) return;
+    if (beamDraw === "idle") {
+      const near = nearestAnchor(point);
+      if (near === null) return;
+      setBeamDraw({
+        a: {
+          edgeId: near.edgeId,
+          rate: near.rate,
+          columnId: near.columnId ?? null,
+          elementId: near.elementId ?? null,
+          elementRate: near.elementRate,
+        },
+      });
+      setMessage(
+        "①を置きました。②を押す所に帯（Ｗ幅の点線）がついて行きます。柱か壁・梁型の上でクリックすると梁型ができます（斜めはShift+クリック）",
+      );
+      return;
+    }
+    if (beamDraw === null) return;
+    const end = beamEnd(point, beamDraw.a, event.shiftKey);
+    if (end === null) {
+      setMessage("その向きには付けられる柱や壁がありません");
+      return;
+    }
+    const width = Number(beamSize.width.trim());
+    const height = beamSize.height.trim();
+    const beam = ceilingElement("ceilingBeam", null);
+    const next: CeilingElement = {
+      ...beam,
+      edgeId: null,
+      width: Number.isFinite(width) && width > 0 ? width : (beam.width ?? 0.3),
+      // 引いた線を梁の真ん中にする（Ｗ幅が両側に広がる）
+      offset:
+        -(Number.isFinite(width) && width > 0 ? width : (beam.width ?? 0.3)) /
+        2,
+      height:
+        height !== "" && Number.isFinite(Number(height))
+          ? Number(height)
+          : null,
+      free: { a: beamDraw.a, b: end },
+    };
+    changeCeiling((current) => [...current, next]);
+    setPickedCeiling(next.id);
+    setBeamDraw("idle");
+    setBeamCursor(null);
+    setMessage(
+      "天井付梁型を引きました。続けて別の場所を押すとまた①になります（やめるにはEsc、またはもう一度ボタン）",
     );
   };
 
@@ -1328,7 +1530,7 @@ export default function RoomSheetPage({
     key: "a" | "b" | number,
     event: ReactPointerEvent<SVGElement>,
   ): void => {
-    if (freeDraw !== null) return;
+    if (freeDraw !== null || beamDraw !== null) return;
     const element = ceiling.find((row) => row.id === elementId);
     if (element === undefined || element.free === undefined) return;
     if (element.free === null) return;
@@ -1365,13 +1567,19 @@ export default function RoomSheetPage({
               ),
             },
           };
-        const near = nearestAnchor(point);
+        const near = nearestAnchor(point, row.id);
         if (near === null) return row;
         return {
           ...row,
           free: {
             ...row.free,
-            [drag.key]: { edgeId: near.edgeId, rate: near.rate },
+            [drag.key]: {
+              edgeId: near.edgeId,
+              rate: near.rate,
+              columnId: near.columnId ?? null,
+              elementId: near.elementId ?? null,
+              elementRate: near.elementRate,
+            },
           },
         };
       }),
@@ -1388,7 +1596,7 @@ export default function RoomSheetPage({
     index: number,
     event: ReactPointerEvent<SVGElement>,
   ): void => {
-    if (freeDraw !== null) return;
+    if (freeDraw !== null || beamDraw !== null) return;
     // Ctrl/Shift＋クリックは複数選択の切り替えなので、つかみ移動は始めない
     if (event.ctrlKey || event.metaKey || event.shiftKey) return;
     const origin = solved.points[index];
@@ -1453,18 +1661,83 @@ export default function RoomSheetPage({
     );
   };
 
-  // 自由線を引いている間、Escでやめられる
+  // 自由線・梁型を引いている間・柱の入力を開いている間、Escでやめられる
   useEffect(() => {
-    if (freeDraw === null) return;
+    if (
+      freeDraw === null &&
+      beamDraw === null &&
+      !columnMode &&
+      selectedColumn === null
+    )
+      return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
+      if (event.key !== "Escape") return;
+      if (freeDraw !== null) {
         setFreeDraw(null);
         setFreeCursor(null);
+        return;
+      }
+      if (beamDraw !== null) {
+        setBeamDraw(null);
+        setBeamCursor(null);
+        return;
+      }
+      if (columnMode || selectedColumn !== null) {
+        setColumnMode(false);
+        setColumnGhost(null);
+        setSelectedColumn(null);
+        setMessage("独立柱の入力を閉じました");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [freeDraw]);
+  }, [freeDraw, beamDraw, columnMode, selectedColumn]);
+
+  // 選んでいる柱を矢印キーで少しずつ動かす（0.05ずつ。続けて動かす間は履歴は1つ）
+  const columnNudgeAtRef = useRef(0);
+  useEffect(() => {
+    if (selectedColumn === null || columnMode) return;
+    const onKey = (event: KeyboardEvent): void => {
+      const step = 0.05;
+      const move = {
+        ArrowUp: { x: 0, y: -step },
+        ArrowDown: { x: 0, y: step },
+        ArrowLeft: { x: -step, y: 0 },
+        ArrowRight: { x: step, y: 0 },
+      }[event.key];
+      if (move === undefined) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target !== null &&
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)
+      )
+        return;
+      const column = (shape.columns ?? []).find(
+        (row) => row.id === selectedColumn,
+      );
+      if (column === undefined) return;
+      event.preventDefault();
+      const now = Date.now();
+      if (now - columnNudgeAtRef.current > 800) {
+        columnNudgeAtRef.current = now;
+        setShapePast((past) => [...past.slice(-49), shape]);
+        setShapeFuture([]);
+      }
+      const x = round2(column.x + move.x);
+      const y = round2(column.y + move.y);
+      setShape({
+        ...shape,
+        columns: (shape.columns ?? []).map((row) =>
+          row.id === selectedColumn ? { ...row, x, y } : row,
+        ),
+      });
+      setMessage(
+        `柱を動かしました（←→↑↓で0.05ずつ。柱の真ん中：${formatNumber(x, 2)}, ${formatNumber(y, 2)}）`,
+      );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedColumn, columnMode, shape]);
 
   /**
    * 区画一覧で入れた下がりは、その区画だけの高さとして覚える（隣の区画・下がり天井の行のＨは変えない）。
@@ -2084,7 +2357,7 @@ export default function RoomSheetPage({
     });
     setSelectedColumn(added.id);
     setMessage(
-      `独立柱を置きました（${formatNumber(added.width, 2)}×${formatNumber(added.depth, 2)}）。柱として数えます（床・天井は面積を減らし、周長を柱長ＣＬ・柱面積ＨＡ・巾木ＨＬ・廻り縁ＭＬへ足します）`,
+      `独立柱を置きました（${formatNumber(added.width, 2)}×${formatNumber(added.depth, 2)}）。柱として数えます（床・天井は面積を減らし、周長を柱長ＣＬ・独立柱面積ＨＤＡ・巾木ＨＬ・廻り縁ＭＬへ足します。選んでいる柱は←→↑↓キーでも動きます）`,
     );
   };
 
@@ -2110,6 +2383,8 @@ export default function RoomSheetPage({
     event: ReactPointerEvent<SVGElement>,
   ): void => {
     if (columnMode) return;
+    // 自由線・梁型を引いている間は、柱のクリックは図のクリック（線の端を柱に付ける）
+    if (freeDraw !== null || beamDraw !== null) return;
     const point = svgPointAt(
       event.currentTarget.ownerSVGElement,
       event.clientX,
@@ -2181,7 +2456,7 @@ export default function RoomSheetPage({
     setMessage(
       next === "wall"
         ? "壁として数えます（周長を壁長ＷＬ・壁面積ＷＡ・巾木ＨＬ・廻り縁ＭＬへ足します）"
-        : "柱として数えます（周長を柱長ＣＬ・柱面積ＨＡ・巾木ＨＬ・廻り縁ＭＬへ足します）",
+        : "柱として数えます（周長を柱長ＣＬ・独立柱面積ＨＤＡ・巾木ＨＬ・廻り縁ＭＬへ足します）",
     );
   };
 
@@ -2323,9 +2598,9 @@ export default function RoomSheetPage({
           <g
             key={line.id}
             onClick={(event) => {
-              // 独立柱を置いている間・自由線を引いている間は、辺を選ばない
+              // 独立柱を置いている間・自由線・梁型を引いている間は、辺を選ばない
               if (columnMode) return;
-              if (freeDraw !== null) return;
+              if (freeDraw !== null || beamDraw !== null) return;
               if (kindPick !== null) {
                 toggleKindPick(line.id);
                 return;
@@ -2390,6 +2665,8 @@ export default function RoomSheetPage({
               return;
             }
             if (columnMode) return;
+            // 自由線・梁型を引いている間は、柱のクリックは図のクリックとして扱う
+            if (freeDraw !== null || beamDraw !== null) return;
             event.stopPropagation();
             setSelectedColumn(selectedColumn === column.id ? null : column.id);
             setColumnWidth(formatNumber(column.width, 2));
@@ -2432,6 +2709,8 @@ export default function RoomSheetPage({
                 cornerClickSuppressRef.current = false;
                 return;
               }
+              // 自由線・梁型を引いている間は、角のクリックは図のクリックとして扱う
+              if (freeDraw !== null || beamDraw !== null) return;
               if (event.ctrlKey || event.metaKey || event.shiftKey) {
                 const next = selectedCorners.includes(index)
                   ? selectedCorners.filter((item) => item !== index)
@@ -2483,7 +2762,7 @@ export default function RoomSheetPage({
               y2={line.y2}
               className="ceiling-line-hit"
               onClick={() => {
-                if (freeDraw !== null) return;
+                if (freeDraw !== null || beamDraw !== null) return;
                 setPickedCeiling(
                   pickedCeiling === line.elementId ? null : line.elementId,
                 );
@@ -2611,6 +2890,63 @@ export default function RoomSheetPage({
                 <text
                   x={freeCursor.x}
                   y={freeCursor.y}
+                  className="dim ceiling"
+                  fontSize={fontFix ?? dimFontSize}
+                >
+                  ②
+                </text>
+              )}
+            </g>
+          );
+        })()}
+      {beamDraw !== null &&
+        beamDraw !== "idle" &&
+        (() => {
+          const start = anchorPos(beamDraw.a);
+          if (start === null) return null;
+          const width = Number(beamSize.width.trim());
+          const half = Number.isFinite(width) && width > 0 ? width / 2 : 0.15;
+          let quad: string | null = null;
+          if (beamCursor !== null) {
+            const dx = beamCursor.x - start.x;
+            const dy = beamCursor.y - start.y;
+            const size = Math.hypot(dx, dy);
+            if (size > 1e-9) {
+              const nx = (-dy / size) * half;
+              const ny = (dx / size) * half;
+              quad = `${start.x + nx},${start.y + ny} ${beamCursor.x + nx},${
+                beamCursor.y + ny
+              } ${beamCursor.x - nx},${beamCursor.y - ny} ${start.x - nx},${
+                start.y - ny
+              }`;
+            }
+          }
+          return (
+            <g className="ceiling-beam-draw" pointerEvents="none">
+              {quad !== null && (
+                <polygon points={quad} className="ceiling-beam-band" />
+              )}
+              {beamCursor !== null && (
+                <line
+                  x1={start.x}
+                  y1={start.y}
+                  x2={beamCursor.x}
+                  y2={beamCursor.y}
+                  className="ceiling-line ceilingBeam"
+                />
+              )}
+              <text
+                x={start.x}
+                y={start.y}
+                className="dim ceiling"
+                fontSize={fontFix ?? dimFontSize}
+              >
+                ①
+              </text>
+              {beamCursor !== null && (
+                <text
+                  x={beamCursor.x}
+                  y={beamCursor.y}
                   className="dim ceiling"
                   fontSize={fontFix ?? dimFontSize}
                 >
@@ -2948,6 +3284,17 @@ export default function RoomSheetPage({
                 >
                   🗑 この柱を消す
                 </button>
+                <button
+                  type="button"
+                  title="この入力表を閉じます（Escキー、または図の何もない所のクリックでも閉じます）"
+                  onClick={() => {
+                    setColumnMode(false);
+                    setColumnGhost(null);
+                    setSelectedColumn(null);
+                  }}
+                >
+                  ✕
+                </button>
               </span>
             )}
             <button
@@ -3099,13 +3446,29 @@ export default function RoomSheetPage({
                   clickFreeDraw(event);
                   return;
                 }
+                if (beamDraw !== null) {
+                  clickBeamDraw(event);
+                  return;
+                }
                 if (columnMode) addFreeColumn(event);
+                // 何もない所をクリックしたら、選んでいる柱を外す（入力表が閉じる）
+                if (!columnMode && selectedColumn !== null)
+                  setSelectedColumn(null);
               }}
               onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
               onPointerMove={(event) => {
                 underlayTool.onPointerMove(event);
                 if (columnMode) setColumnGhost(svgPoint(event));
                 if (freePointDragRef.current !== null) return;
+                if (beamDraw !== null && beamDraw !== "idle") {
+                  const point = svgPoint(event);
+                  if (point === null) {
+                    setBeamCursor(null);
+                    return;
+                  }
+                  const end = beamEnd(point, beamDraw.a, event.shiftKey);
+                  setBeamCursor(end === null ? null : anchorPos(end));
+                }
                 if (freeDraw !== null && freeDraw !== "idle") {
                   const point = svgPoint(event);
                   if (point === null) {
@@ -3115,10 +3478,7 @@ export default function RoomSheetPage({
                   const near = nearestAnchor(point);
                   const snapped =
                     near !== null && near.gap <= freeSnap
-                      ? anchorPos({
-                          edgeId: near.edgeId,
-                          rate: near.rate,
-                        })
+                      ? anchorPos(near)
                       : null;
                   setFreeCursor(
                     snapped !== null
@@ -3928,22 +4288,79 @@ export default function RoomSheetPage({
               type="button"
               className={freeDraw !== null ? "on" : ""}
               disabled={solved.edges.length === 0}
-              title="壁に沿わない下がり天井を、図の上でクリックして引きます（①→部屋の中で折れ点→辺の近くで②。折れ点でL字・コの字になります）"
+              title="壁に沿わない線（下がり天井・天井付梁型）を、図の上でクリックして引きます。線の端は近い辺か独立柱の真ん中・すでに引いた梁型の線に付きます（①→部屋の中で折れ点→辺か柱・梁型の近くで②。折れ点でL字・コの字。種別を天井付梁型に変えると柱と柱の間に梁型が入ります）"
               onClick={() => {
                 if (freeDraw !== null) {
                   setFreeDraw(null);
                   setFreeCursor(null);
                   return;
                 }
+                setBeamDraw(null);
+                setBeamCursor(null);
                 setFreeDraw("idle");
                 setFreeCursor(null);
                 setMessage(
-                  "①を置く場所を上の図でクリックしてください（線の端は近い辺の上に付きます。部屋の中をクリックすると折れ点、辺の近くで②。もう一度押すとやめます）",
+                  "①を置く場所を上の図でクリックしてください（線の端は近い辺か独立柱の真ん中に付きます。部屋の中をクリックすると折れ点、辺か柱の近くで②。もう一度押すとやめます）",
                 );
               }}
             >
               ✏ 自由線を引く
             </button>
+            <span className="ceiling-beam-draw-fields">
+              <button
+                type="button"
+                className={beamDraw !== null ? "on" : ""}
+                disabled={solved.edges.length === 0}
+                title="天井付梁型を、図の上で柱・壁・すでに引いた梁型を2点クリックして引きます。①を押すと帯（Ｗ幅の点線）がカーソルにつき、②を押すと梁型ができます。水平・垂直はそのままクリック、斜めはShift+クリック、柱の上は柱の真ん中・梁型の上は線の真ん中に付きます"
+                onClick={() => {
+                  if (beamDraw !== null) {
+                    setBeamDraw(null);
+                    setBeamCursor(null);
+                    return;
+                  }
+                  setFreeDraw(null);
+                  setFreeCursor(null);
+                  setBeamDraw("idle");
+                  setBeamCursor(null);
+                  setMessage(
+                    "Ｗ・Ｈを入れてから、上の図で①（近い辺の上か柱の真ん中・すでに引いた梁型の線の上）をクリックしてください。②を押す所に帯の点線がついて行きます（斜めはShift+クリック。もう一度押すとやめます）",
+                  );
+                }}
+              >
+                ⬒ 天井付梁型
+              </button>
+              {beamDraw !== null && (
+                <>
+                  <label>
+                    Ｗ
+                    <input
+                      className="num"
+                      value={beamSize.width}
+                      onChange={(e) =>
+                        setBeamSize((current) => ({
+                          ...current,
+                          width: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Ｈ
+                    <input
+                      className="num"
+                      value={beamSize.height}
+                      placeholder="空=未定"
+                      onChange={(e) =>
+                        setBeamSize((current) => ({
+                          ...current,
+                          height: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </>
+              )}
+            </span>
           </div>
           <table className="grid">
             <thead>
@@ -4095,15 +4512,15 @@ export default function RoomSheetPage({
                             ）
                           </option>
                         ))}
-                        {element.kind === "dropCeiling" && (
+                        {(element.kind === "dropCeiling" ||
+                          (element.free !== null &&
+                            element.free !== undefined)) && (
                           <option value="__free__">
-                            自由線（辺の上の2点）
+                            自由線（辺・独立柱・梁型の上の2点）
                           </option>
                         )}
                       </select>
-                      {element.kind === "dropCeiling" &&
-                      element.free !== null &&
-                      element.free !== undefined
+                      {element.free !== null && element.free !== undefined
                         ? (["a", "b"] as const).map((side) => {
                             const anchor = element.free?.[side];
                             if (anchor === undefined) return null;
@@ -4119,6 +4536,9 @@ export default function RoomSheetPage({
                                   onChange={(e) =>
                                     setFreeAnchor(element, side, {
                                       edgeId: e.target.value,
+                                      columnId: null,
+                                      elementId: null,
+                                      elementRate: undefined,
                                     })
                                   }
                                 >
@@ -4146,10 +4566,42 @@ export default function RoomSheetPage({
                                         0,
                                         Math.min(1, value / edgeLength),
                                       ),
+                                      columnId: null,
+                                      elementId: null,
+                                      elementRate: undefined,
                                     });
                                   }}
                                 />
                                 m
+                                {(anchor.columnId ?? null) !== null && (
+                                  <button
+                                    type="button"
+                                    className="ceiling-anchor-column"
+                                    title={`独立柱${solved.columns.findIndex((col) => col.id === anchor.columnId) + 1 || "?"}の真ん中に付いています。押すと柱から外して、左の辺の位置に戻します`}
+                                    onClick={() =>
+                                      setFreeAnchor(element, side, {
+                                        columnId: null,
+                                      })
+                                    }
+                                  >
+                                    ⇒柱
+                                  </button>
+                                )}
+                                {(anchor.elementId ?? null) !== null && (
+                                  <button
+                                    type="button"
+                                    className="ceiling-anchor-column"
+                                    title="すでに引いた梁型の線の真ん中に付いています。押すと梁型から外して、左の辺の位置に戻します"
+                                    onClick={() =>
+                                      setFreeAnchor(element, side, {
+                                        elementId: null,
+                                        elementRate: undefined,
+                                      })
+                                    }
+                                  >
+                                    ⇒梁
+                                  </button>
+                                )}
                               </span>
                             );
                           })

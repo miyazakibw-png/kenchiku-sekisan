@@ -969,8 +969,10 @@ export interface RoomQuantities {
   wallArea: number | null;
   /** RWA 曲面壁の面積（弧長×天井高さ－曲面にある建具面積） */
   curveArea: number | null;
-  /** HA 柱面積 */
+  /** HA 柱面積（壁の中に作った柱だけ。独立柱はHDAへ） */
   columnArea: number | null;
+  /** HDA 独立柱 面積（部屋の中に置いた柱の見付。壁にした柱はWAへ） */
+  freeColumnArea: number | null;
   /** ML 廻り縁長さ */
   moldingLength: number;
   /** DA 差し引いた建具面積 */
@@ -1060,10 +1062,8 @@ export function roomQuantities(
     columnArea:
       height === null
         ? null
-        : round2(
-            edgeArea(solved, "column", height, edgeHeights) +
-              free.perimeter * height,
-          ),
+        : round2(edgeArea(solved, "column", height, edgeHeights)),
+    freeColumnArea: free.face,
     moldingLength: round2(totals.wall + freeWall.perimeter + column),
     fittingArea: fitting.area,
     fittingBaseboard: fitting.baseboard,
@@ -1088,6 +1088,7 @@ export const ROOM_FIXED_SYMBOLS: { symbol: string; label: string }[] = [
   { symbol: "HL", label: "巾木長さ" },
   { symbol: "WA", label: "壁面積" },
   { symbol: "HA", label: "柱面積" },
+  { symbol: "HDA", label: "独立柱 面積" },
   { symbol: "GA", label: "壁付き梁型 面積" },
   { symbol: "BA", label: "天井付梁型 面積" },
   { symbol: "CA", label: "天井面積" },
@@ -1157,6 +1158,7 @@ export function roomSymbols(
         ]
       : []),
     { symbol: "HA", label: "柱面積", value: quantities.columnArea },
+    { symbol: "HDA", label: "独立柱 面積", value: quantities.freeColumnArea },
     { symbol: "ML", label: "廻り縁", value: quantities.moldingLength },
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },
     { symbol: "DL", label: "建具巾木減", value: quantities.fittingBaseboard },
@@ -1201,6 +1203,21 @@ export function roomSymbols(
         edgeId: row.id,
       });
     }
+  }
+
+  // 独立柱（部屋の中に置いた柱）も1本ずつ記号にする（壁にした柱はWA側に入っている）
+  let freeColumnIndex = 0;
+  for (const column of solved.columns) {
+    if (column.kind === "wall") continue;
+    freeColumnIndex += 1;
+    symbols.push({
+      symbol: `HDA${freeColumnIndex}`,
+      label: `独立柱${freeColumnIndex} 面積`,
+      value:
+        ceilingHeight === null
+          ? null
+          : round2((column.width + column.depth) * 2 * ceilingHeight),
+    });
   }
 
   return symbols;

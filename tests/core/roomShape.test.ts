@@ -835,13 +835,18 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(quantities.ceilingArea).toBe(23.24);
     // 周長は柱として足される
     expect(quantities.columnLength).toBe(5);
-    expect(quantities.columnArea).toBe(12.5);
+    // 柱面積ＨＡは壁に作った柱だけなので0、独立柱の見付はＨＤＡへ
+    expect(quantities.columnArea).toBe(0);
+    expect(quantities.freeColumnArea).toBe(12.5);
     expect(quantities.baseboardLength).toBe(25);
     expect(quantities.moldingLength).toBe(25);
 
-    // 独立柱だけの記号は作らない
+    // 独立柱は合計のＨＤＡと1本ずつのＨＤＡ１・ＨＤＡ２で記号になる
     const symbols = roomSymbols(solved, 2.5);
-    expect(symbols.some((row) => row.symbol.startsWith("I"))).toBe(false);
+    expect(symbols.find((row) => row.symbol === "HDA")?.value).toBe(12.5);
+    expect(symbols.find((row) => row.symbol === "HDA1")?.value).toBe(6);
+    expect(symbols.find((row) => row.symbol === "HDA2")?.value).toBe(6.5);
+    expect(symbols.find((row) => row.symbol === "HA")?.value).toBe(0);
   });
 
   it("壁にした独立柱は周長・見付を壁側（ＷＬ・ＷＡ・ＨＬ・ＭＬ）に数える", () => {
@@ -853,11 +858,12 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     const quantities = roomQuantities(solved, 2.5);
     // 床・天井は柱・壁どちらの平面の面積も減る
     expect(quantities.floorArea).toBe(23.44);
-    // 壁種の周長1.8は壁長・壁面積へ、柱種の2.4だけが柱長・柱面積へ
+    // 壁種の周長1.8は壁長・壁面積へ、柱種の2.4だけが柱長・独立柱面積へ
     expect(quantities.wallLength).toBe(21.8);
     expect(quantities.wallArea).toBe(54.5);
     expect(quantities.columnLength).toBe(2.4);
-    expect(quantities.columnArea).toBe(6);
+    expect(quantities.columnArea).toBe(0);
+    expect(quantities.freeColumnArea).toBe(6);
     expect(quantities.baseboardLength).toBe(24.2);
     expect(quantities.moldingLength).toBe(24.2);
   });

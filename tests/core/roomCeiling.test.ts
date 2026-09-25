@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  beamAttachPoint,
   beamFootprintArea,
   ceilingBoundaries,
   ceilingElement,
   ceilingLines,
+  elementCenterline,
+  pointOnPath,
+  resolveCeilingAnchor,
   ceilingQuantities,
   ceilingRegions,
   ceilingSymbols,
@@ -1233,5 +1237,192 @@ describe("低い天井の区画に面している壁の壁高さ", () => {
     expect(
       roomQuantities(solved, 3.0, [], undefined, 0, manual).columnArea,
     ).toBe(8.8);
+  });
+});
+
+describe("独立柱に付く自由線", () => {
+  it("自由線の端は独立柱の真ん中に付けられる（柱が消えたら辺の上に戻る）", () => {
+    const solved = solveShape({
+      ...rectangleShape(4, 3),
+      columns: [
+        { id: "col-a", x: 1, y: 1.5, width: 0.3, depth: 0.3 },
+        { id: "col-b", x: 3, y: 1.5, width: 0.3, depth: 0.3 },
+      ],
+    });
+    const free = element("dropCeiling", null, {
+      height: 0.5,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.25, columnId: "col-a" },
+        b: { edgeId: solved.edges[2].id, rate: 0.75, columnId: "col-b" },
+      },
+    });
+    // 柱の真ん中（1,1.5）→（3,1.5）の2m線が引ける
+    expect(
+      ceilingLines([free], solved, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length),
+    ).toEqual([2]);
+    // 柱が消えたら、控えてある辺の上の位置（1,0）→（1,3）に戻る
+    const noCols = { ...solved, columns: [] };
+    expect(
+      ceilingLines([free], noCols, 2.7)
+        .filter((line) => line.elementId === free.id)
+        .map((line) => line.length),
+    ).toEqual([3]);
+  });
+
+  it("自由線を天井付梁型に変えると、柱〜柱の間に帯2本の梁型が引けて数量が出る", () => {
+    const solved = solveShape({
+      ...rectangleShape(4, 3),
+      columns: [
+        { id: "col-a", x: 1, y: 1.5, width: 0.3, depth: 0.3 },
+        { id: "col-b", x: 3, y: 1.5, width: 0.3, depth: 0.3 },
+      ],
+    });
+    const beam = element("ceilingBeam", null, {
+      width: 0.3,
+      offset: 0,
+      height: 0.4,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.25, columnId: "col-a" },
+        b: { edgeId: solved.edges[2].id, rate: 0.75, columnId: "col-b" },
+      },
+    });
+    const lines = ceilingLines([beam], solved, 2.7).filter(
+      (line) => line.elementId === beam.id,
+    );
+    // 帯の両側の2本（離れ0 と 離れ＋Ｗ0.30）、各2m
+    expect(lines.map((line) => [line.no, line.length])).toEqual([
+      [0, 2],
+      [1, 2],
+    ]);
+    // BL長さは見えている1本目の長さ、BA面積は 長さ×（Ｗ＋Ｈ×2）＝2×(0.3+0.8)
+    const result = ceilingQuantities([beam], solved, 2.7);
+    expect(result.totals.ceilingBeamLength).toBe(2);
+    expect(result.totals.ceilingBeamArea).toBeCloseTo(2.2, 6);
+  });
+
+  it("自由線の梁型が通る帯は天井の区画から梁底分が引かれる", () => {
+    const solved = shape();
+    // 壁から壁まで通る天井付梁型（区画を2つに分ける）
+    const beam = element("ceilingBeam", null, {
+      width: 0.4,
+      offset: 0,
+      height: 0.4,
+      free: {
+        a: { edgeId: solved.edges[3].id, rate: 0.5 }, // (0,1.5)
+        b: { edgeId: solved.edges[1].id, rate: 0.5 }, // (4,1.5)
+      },
+    });
+    const regions = ceilingRegions([beam], solved, 2.7);
+    // 梁底の帯（4×0.40＝1.6㎡）は天井ではないので区画から外れ、上下の2区画（10.4㎡）に分かれる
+    expect(regions.map((row) => row.code)).toEqual(["C1", "C2"]);
+    expect(regions.reduce((sum, row) => sum + row.area, 0)).toBeCloseTo(
+      10.4,
+      6,
+    );
+  });
+});
+
+describe("梁型に付く自由線", () => {
+  it("自由線の端はすでに引いた梁型の線の真ん中に付けられる（梁型が消えたら辺の上に戻る）", () => {
+    const solved = shape();
+    const beam = element("wallBeam", solved.edges[0].id, { width: 0.4 });
+    // 線の真ん中（帯の中央）に付く点を、クリックした所から求める
+    const center = elementCenterline(beam, solved, [beam]);
+    expect(center).not.toBeNull();
+    const mid = pointOnPath(center!, 0.5)!;
+    const hit = beamAttachPoint(beam, solved, [beam], {
+      x: mid.x + 0.01,
+      y: mid.y + 0.01,
+    });
+    expect(hit).not.toBeNull();
+    expect(hit!.rate).toBeCloseTo(0.5, 1);
+    // その点を端点に持つ自由線の解決は梁型の線の真ん中
+    const anchor = {
+      edgeId: solved.edges[3].id,
+      rate: 0.5,
+      elementId: beam.id,
+      elementRate: hit!.rate,
+    };
+    const resolved = resolveCeilingAnchor(anchor, solved, [beam]);
+    expect(resolved).not.toBeNull();
+    // 押した所にいちばん近い、線の真ん中の上の点に付く
+    expect(resolved!.x).toBeCloseTo(hit!.point.x, 6);
+    expect(resolved!.y).toBeCloseTo(hit!.point.y, 6);
+    // 梁型が消えたら、控えてある辺の上の位置に戻る
+    expect(resolveCeilingAnchor(anchor, solved, [])).toEqual({
+      x: 0,
+      y: 1.5,
+    });
+  });
+
+  it("梁型〜辺の間に天井付梁型が引けて帯2本の線が出る", () => {
+    const solved = shape();
+    // 先に引いた壁付き梁型（上辺沿い）
+    const first = element("wallBeam", solved.edges[0].id, { width: 0.4 });
+    const center = elementCenterline(first, solved, [first]);
+    const mid = pointOnPath(center!, 0.5)!;
+    // その線の真ん中から、向かい側の下辺へ天井付梁型
+    const second = element("ceilingBeam", null, {
+      width: 0.3,
+      offset: -0.15,
+      height: 0.4,
+      free: {
+        a: {
+          edgeId: solved.edges[0].id,
+          rate: 0.5,
+          elementId: first.id,
+          elementRate: 0.5,
+        },
+        b: { edgeId: solved.edges[2].id, rate: 0.5 },
+      },
+    });
+    const lines = ceilingLines([first, second], solved, 2.7).filter(
+      (line) => line.elementId === second.id,
+    );
+    // 帯の両側の2本が出る（線の真ん中から下辺の真ん中まで、長さは2本とも同じ）
+    expect(lines.length).toBe(2);
+    expect(lines[0].length).toBeCloseTo(lines[1].length, 6);
+    // 先の梁型を消しても、辺の上の位置へ戻って線は残る（上辺の真ん中→下辺の真ん中）
+    const fallback = ceilingLines([second], solved, 2.7).filter(
+      (line) => line.elementId === second.id,
+    );
+    expect(fallback.length).toBe(2);
+    expect(fallback[0].length).toBeCloseTo(3, 1);
+    expect(mid).not.toBeNull();
+  });
+
+  it("梁型どうしが互いを指していても、辺の上の位置に戻って止まる", () => {
+    const solved = shape();
+    // 互いの線の真ん中を端点にする2本の自由線（循環）— 解決はループせず辺の上に戻る
+    const first = element("dropCeiling", null, {
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.25 },
+        b: {
+          edgeId: solved.edges[2].id,
+          rate: 0.5,
+          elementId: "b-id",
+          elementRate: 0.5,
+        },
+      },
+    });
+    const second = {
+      ...element("dropCeiling", null, {}),
+      id: "b-id",
+      free: {
+        a: { edgeId: solved.edges[1].id, rate: 0.5 },
+        b: {
+          edgeId: solved.edges[3].id,
+          rate: 0.5,
+          elementId: first.id,
+          elementRate: 0.5,
+        },
+      },
+    };
+    const lines = ceilingLines([first, second], solved, 2.7);
+    // どちらも辺の上の位置で線が出る（無限ループしない）
+    expect(lines.filter((line) => line.elementId === first.id).length).toBe(1);
+    expect(lines.filter((line) => line.elementId === second.id).length).toBe(1);
   });
 });
