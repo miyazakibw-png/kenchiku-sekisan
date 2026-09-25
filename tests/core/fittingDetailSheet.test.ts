@@ -90,9 +90,9 @@ describe("建具明細作成表", () => {
     ];
     const resolved = resolveFurnitureRows(rows, "fittingDetail");
     expect(resolved.map((row) => row.part)).toEqual(["AD1", "", "AW2"]);
-    // 家具計算書はこれまでどおり引き継ぐ
+    // 家具計算書も引き継がない
     const furniture = resolveFurnitureRows(rows, "furniture");
-    expect(furniture.map((row) => row.part)).toEqual(["AD1", "AD1", "AW2"]);
+    expect(furniture.map((row) => row.part)).toEqual(["AD1", "", "AW2"]);
   });
 
   it("数量欄も上の行を引き継がない（全行入力）", () => {
@@ -103,9 +103,9 @@ describe("建具明細作成表", () => {
     ];
     const resolved = resolveFurnitureRows(rows, "fittingDetail");
     expect(resolved.map((row) => row.quantity)).toEqual(["3", "", "1"]);
-    // 家具計算書はこれまでどおり引き継ぐ
+    // 家具計算書も引き継がない
     const furniture = resolveFurnitureRows(rows, "furniture");
-    expect(furniture.map((row) => row.quantity)).toEqual(["3", "3", "1"]);
+    expect(furniture.map((row) => row.quantity)).toEqual(["3", "", "1"]);
   });
 
   it("表に無い部位記号の間の文字は設定で変えられる（はじめは「-」）", () => {
@@ -141,7 +141,7 @@ describe("建具明細作成表", () => {
     expect(rows[0].detail.name).toBe("片開きドア");
   });
 
-  it("単位は入れたまま出る（2行目以降は上と同じ。基本マスターから選ぶ）", () => {
+  it("単位は入れたまま出る（空欄はそのまま空欄。基本マスターから選ぶ）", () => {
     const settings = furnitureSettingsFor("fittingDetail");
     const rows = applyFurnitureDetails(
       [
@@ -152,7 +152,7 @@ describe("建具明細作成表", () => {
       settings,
       "fittingDetail",
     );
-    expect(rows.map((row) => row.detail.unit)).toEqual(["本", "本", "枚"]);
+    expect(rows.map((row) => row.detail.unit)).toEqual(["本", "", "枚"]);
   });
 
   it("名称IDは2行目以降+1（家具計算書の+0.01とは違う）", () => {

@@ -1431,6 +1431,13 @@ export default function FurnitureSheetPage({
         <button type="button" onClick={() => addRow(picked + 1)}>
           ＋ 行を足す
         </button>
+        <button
+          type="button"
+          title="カーソル行の上に行を作ります"
+          onClick={() => addRow(picked)}
+        >
+          ⤒ 行挿入
+        </button>
         <button type="button" onClick={() => removeRow(picked)}>
           － 行を消す
         </button>

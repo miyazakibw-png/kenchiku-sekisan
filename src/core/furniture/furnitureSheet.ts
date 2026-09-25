@@ -603,7 +603,7 @@ export function furnitureCellValue(
 }
 
 /**
- * タテ方向の明細のマス1つ分の計上数量＝マスの値 × その行の数量（家具の個数。未入力は上の行と同じ、無ければ1）。
+ * タテ方向の明細のマス1つ分の計上数量＝マスの値 × その行の数量（家具の個数。未入力は1）。
  */
 export function furnitureCellQuantity(
   row: FurnitureRow,
@@ -756,9 +756,10 @@ export interface FurnitureResolved {
 
 /**
  * 上の行からの引き継ぎ。
- * 科目・部位ID・部位・数量・単位・計算式は未入力なら上の行と同じ、
+ * 科目・部位ID・部位Ⅰ・計算式は未入力なら上の行と同じ、
  * 名称IDは未入力なら上の行＋0.01。
  * 名称（部材名称）は kind がカーテン・ブラインドのときだけ上の行と同じ。
+ * 部位・数量・単位は引き継がない（空欄のまま残せる。見出しだけの行にも使える）。
  */
 export function resolveFurnitureRows(
   rows: FurnitureRow[],
@@ -788,15 +789,12 @@ export function resolveFurnitureRows(
       carried.detailNumber = bump(carried.detailNumber);
     // 部位Ⅰ（置き場所）は空欄なら上の行と同じ
     if ((row.place ?? "").trim() !== "") carried.place = row.place ?? "";
-    // 部位は建具明細作成表では引き継がない（未入力はそのまま空欄＝名称だけの見出し行に使える）
-    if (row.part.trim() !== "" || isFittingDetailSheet(kind))
-      carried.part = row.part;
+    // 部位・数量・単位は引き継がない（空欄のまま残せる＝名称だけの見出し行にも使える）
+    carried.part = row.part;
     if (!carriesName || row.nameSymbol.trim() !== "")
       carried.nameSymbol = row.nameSymbol;
-    // 数量も建具明細作成表では引き継がない（全行入力）
-    if (row.quantity.trim() !== "" || isFittingDetailSheet(kind))
-      carried.quantity = row.quantity;
-    if (row.unit.trim() !== "") carried.unit = row.unit;
+    carried.quantity = row.quantity;
+    carried.unit = row.unit;
     if (row.detail.formula.trim() !== "") carried.formula = row.detail.formula;
     return { ...carried };
   });
@@ -1123,7 +1121,7 @@ export function sizeVariables(row: FurnitureRow): Record<string, number> {
 
 /**
  * 1行の計上数量。
- * 計算式（W・H・Dが使える）があればその結果、無ければ数量欄（未入力は上の行と同じ）。
+ * 計算式（W・H・Dが使える）があればその結果、無ければ数量欄。
  * 0はタイトル行なので数量として扱わない。
  */
 export function rowQuantity(
