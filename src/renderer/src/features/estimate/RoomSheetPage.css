@@ -64,14 +64,14 @@
   display: grid;
   /* 図形・寸法入力・記号・この部屋の建具を横に4つ並べる */
   grid-template-columns:
-    minmax(340px, 0.95fr) minmax(280px, 0.95fr)
+    minmax(340px, 1.05fr) minmax(280px, 0.85fr)
     minmax(200px, 0.6fr) minmax(270px, 0.9fr);
   /* 天井伏図の欄が増えても図や表を縮めない（入りきらない分は上段をスクロール） */
   grid-auto-rows: min-content;
   gap: 8px;
   padding: 8px;
-  /* 上段は画面の1/3まで。入りきらない分は各欄を別々にスクロールする */
-  max-height: 33vh;
+  /* 上段は画面の1/3＋説明行を消した分まで。入りきらない分は各欄を別々にスクロールする */
+  max-height: calc(33vh + 22px);
   /* 画面幅が狭いときは横にスクロールして寸法入力・記号・建具を必ず見られるようにする */
   overflow-x: auto;
   min-height: 0;
@@ -79,6 +79,9 @@
 
 .room-sheet-page > .upper > section {
   min-height: 0;
+  /* 表が欄より広いときは欄は列の広さに縮んで中でスクロールする
+     （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
+  min-width: 0;
   overflow: auto;
 }
 
@@ -93,8 +96,16 @@
   border-radius: 6px;
   box-shadow: 0 8px 24px rgb(15 23 42 / 25%);
   grid-template-columns: minmax(0, 1.9fr) minmax(320px, 0.9fr);
-  grid-auto-rows: minmax(0, 1fr);
+  /* 行は明示する（暗黙行だけだと図の grid-row:1/-1 が「最後の行」に効かず高さが半分に止まる）。
+     右列は寸法入力だけ＝1行、天井伏図も出すとき＝2行（.has-ceiling で切替） */
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: min-content;
   overflow: hidden;
+}
+
+/* 天井伏図も出すときは右列を2行にし、図は全行分の高さを使う */
+.room-sheet-page > .upper.expanded.has-ceiling {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
 .room-sheet-page > .upper.expanded > .symbols,
@@ -104,6 +115,8 @@
 
 .room-sheet-page > .upper.expanded > .drawing {
   grid-column: 1;
+  /* 右列を上（寸法入力表）・下（天井伏図入力表）に分けても、図は全行分の高さを使う */
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -117,9 +130,12 @@
   aspect-ratio: auto;
 }
 
+/* 大きく開いた右列は、表が列より広くても欄が縮んで中でスクロールするようにする
+   （縮まないと欄が列の外にはみ出し、右端の操作列ごと隠れる） */
 .room-sheet-page > .upper.expanded > .edges,
 .room-sheet-page > .upper.expanded > .ceiling {
   grid-column: 2;
+  min-width: 0;
 }
 
 .room-sheet-page > .upper.expanded > section {
@@ -148,11 +164,11 @@
 }
 
 .room-sheet-page .edges span.curve input.num {
-  width: 34px;
+  width: 26px;
 }
 
 .room-sheet-page .edges span.curve select {
-  width: 40px;
+  width: 32px;
 }
 
 /* 寸法・Ｒ向きは数字だけなので狭くする */
@@ -163,20 +179,83 @@
   width: 78px;
 }
 
-/* 寸法欄は広くとり、その分を向き・種別から回す */
+/* 向き欄は半分くらいに詰め、その分を図の側へ回す */
 .room-sheet-page .edges table.grid th:nth-child(3),
 .room-sheet-page .edges table.grid td:nth-child(3) {
-  width: 96px;
+  width: 48px;
 }
 
 .room-sheet-page .edges table.grid td:nth-child(3) input.num {
   width: 100%;
 }
 
+/* 寸法欄は左に長さ・右に壁高さの2つの入力を並べる */
+.room-sheet-page .edges table.grid th:nth-child(4),
+.room-sheet-page .edges table.grid td:nth-child(4) {
+  width: 108px;
+}
+
+.room-sheet-page .edges .dim-split {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.room-sheet-page .edges .dim-split input.num {
+  width: 50%;
+  min-width: 0;
+}
+
+.room-sheet-page .edges .dim-split > span {
+  flex: 1;
+  text-align: center;
+}
+
+/* 手で入れた壁高さは橙字にして、自動（天井区画から）と区別する */
+.room-sheet-page .edges .dim-split input.num.height.manual {
+  color: #c2410c;
+  font-weight: 600;
+}
+
 /* 向き・種別は選択肢が読める幅を取る */
 .room-sheet-page .edges select {
   max-width: 100%;
   width: 100%;
+}
+
+/* Ｒ向き・種別は半分くらいに詰めて、その分を図や記号表へ回す */
+.room-sheet-page .edges table.grid th:nth-child(5),
+.room-sheet-page .edges table.grid td:nth-child(5) {
+  width: 56px;
+}
+
+.room-sheet-page .edges table.grid th:nth-child(6),
+.room-sheet-page .edges table.grid td:nth-child(6) {
+  width: 48px;
+}
+
+/* 印刷（選の列が無い）ときは列が1つずれるので、各欄の幅を1つずらして同じ幅にする */
+.room-sheet-page .edges table.grid.print th:nth-child(2),
+.room-sheet-page .edges table.grid.print td:nth-child(2) {
+  width: 48px;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(3),
+.room-sheet-page .edges table.grid.print td:nth-child(3) {
+  width: 108px;
+}
+/* 画面では3列目＝向き欄向けの「入力は幅いっぱい」が、印刷では3列目＝寸法欄に当たる。
+   そこに当てると2分割の入力が全体幅になって開口の長さが右寄りに出るので、半分に戻す */
+.room-sheet-page .edges table.grid.print td:nth-child(3) input.num {
+  width: 50%;
+  min-width: 0;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(4),
+.room-sheet-page .edges table.grid.print td:nth-child(4) {
+  width: 56px;
+}
+.room-sheet-page .edges table.grid.print th:nth-child(5),
+.room-sheet-page .edges table.grid.print td:nth-child(5) {
+  width: 48px;
 }
 
 .room-sheet-page .edges span.diagonal {
@@ -377,6 +456,17 @@
   justify-content: center;
 }
 
+/* 下敷きの図面があるときは、なぞる画面と同じく左上づめ・画像原寸で出す */
+.room-sheet-page .canvas.has-underlay {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* 図の大きさを画素で指定するので、flex の縮みで画像が縮まないようにする */
+.room-sheet-page .canvas.has-underlay > svg {
+  flex: 0 0 auto;
+}
+
 /* 図の一番下に出す外形寸法（X＝横・Y＝縦の最大） */
 .room-sheet-page .canvas .extents {
   position: absolute;
@@ -402,8 +492,9 @@
   cursor: pointer;
 }
 
-/* 壁の無い開口は点線 */
-.room-sheet-page .edge.opening {
+/* 壁の無い開口・Ｒ開口は点線 */
+.room-sheet-page .edge.opening,
+.room-sheet-page .edge.curveOpening {
   stroke: #64748b;
   stroke-dasharray: 8 5;
 }
@@ -422,10 +513,25 @@
   cursor: pointer;
 }
 
+/* 壁として数える独立柱は色を変える */
+.room-sheet-page .free-column.wall {
+  fill: #e2e8f0;
+  stroke: #475569;
+}
+
 .room-sheet-page .free-column.selected {
   fill: #bfdbfe;
   stroke: #2563eb;
   stroke-width: 4;
+}
+
+/* 置く前にカーソルについていく柱の形 */
+.room-sheet-page .free-column-ghost {
+  fill: rgba(191, 219, 254, 0.45);
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
 }
 
 .room-sheet-page .edge.selected {
@@ -547,8 +653,25 @@
   line-height: 1.1;
 }
 
-.room-sheet-page .ceiling table.grid td.ceiling-actions {
+/* 操作列（⇄・✂・🗑）を先頭列にして左端に張り付ける。
+   画面幅が狭いとき欄の右端は画面外に出るので、左ならいつでも見える */
+.room-sheet-page .ceiling table.grid td.ceiling-actions,
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   white-space: nowrap;
+  background: #fff;
+  /* 表が狭くて列が潰れてもボタン（⇄✂↔🗑）が全部入るだけの幅は確保する */
+  min-width: 190px;
+}
+
+.room-sheet-page .ceiling table.grid th.ceiling-actions {
+  background: #f6f8fb;
+}
+
+.room-sheet-page .ceiling tr.picked > td.ceiling-actions {
+  background: #fff7ed;
 }
 
 .room-sheet-page .ceiling table.grid td.ceiling-actions button + button {
@@ -559,6 +682,47 @@
 .room-sheet-page .ceiling table.grid small.ceiling-range {
   color: #2563eb;
   font-size: 10px;
+}
+
+/* 天井付梁型を引くときのＷ・Ｈ入力（ボタンの横） */
+.room-sheet-page .ceiling-beam-draw-fields {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-sheet-page .ceiling-beam-draw-fields label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.room-sheet-page .ceiling-beam-draw-fields input {
+  width: 3.2em;
+}
+
+/* 天井付梁型を引いている間の帯の点線プレビュー */
+.room-sheet-page .ceiling-beam-band {
+  fill: rgba(180, 83, 9, 0.12);
+  stroke: #b45309;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 自由線の端点（辺と、辺の始まりの角からの位置） */
+.room-sheet-page .ceiling table.grid .ceiling-anchor {
+  display: block;
+  white-space: nowrap;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor select {
+  width: 4.5em;
+}
+
+.room-sheet-page .ceiling table.grid .ceiling-anchor input {
+  width: 3.2em;
 }
 
 .room-sheet-page td.no,
@@ -622,18 +786,18 @@
 }
 
 .room-sheet-page .symbols td.symbol {
-  width: 28px;
+  width: 34px;
   font-weight: 700;
 }
 
 /* 記号の数量欄は狭く */
 .room-sheet-page .symbols table.two-up td.num {
-  width: 44px;
+  width: 53px;
 }
 
 /* 記号表は2組ずつ横に並べる（高さを半分にして下段の表示行を増やす） */
 .room-sheet-page .symbols table.two-up {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .room-sheet-page .symbols table.two-up td {
@@ -645,7 +809,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 52px;
+  max-width: 62px;
 }
 
 /* 記号・建具は列幅を詰めて、図と寸法入力に幅をまわす */
@@ -709,6 +873,8 @@
 
 .room-sheet-page .ceiling {
   grid-column: span 4;
+  /* 表が列より広いとき欄が縮んで中でスクロールする（縮まないと右端の操作列が見えなくなる） */
+  min-width: 0;
 }
 
 .room-sheet-page .section-bar button.on {
@@ -802,4 +968,45 @@
   text-align: center;
   cursor: pointer;
   color: #1e3a8a;
+}
+
+/* 図を見ながら計算書に数字を入れるための小窓 */
+.room-sheet-page .mini-drawing {
+  position: fixed;
+  z-index: 60;
+  width: 540px;
+  height: 400px;
+  min-width: 200px;
+  min-height: 140px;
+  background: #fff;
+  border: 1.5px solid #748ba6;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  resize: both;
+  overflow: hidden;
+}
+
+.room-sheet-page .mini-drawing-head {
+  cursor: move;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  background: #eef2f8;
+  font-size: 11px;
+  color: #33415c;
+  border-bottom: 1px solid #d5d9e0;
+  user-select: none;
+  touch-action: none;
+}
+
+.room-sheet-page .mini-drawing-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.room-sheet-page .mini-drawing-body {
+  cursor: grab;
+  touch-action: none;
 }

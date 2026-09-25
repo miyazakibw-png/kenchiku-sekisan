@@ -590,6 +590,8 @@ export function evaluateCalcSheet(
   const bValues: Record<string, number> = {};
   const pending = new Set(sets.map((set) => set.id));
   const setTotals = new Map<string, number>();
+  /** 計算式から参照できるB記号（他のセットの累計）。定義されているBは後で解けることがある */
+  const definedB = usedBSymbols(sets);
 
   const evaluateSet = (
     set: CalcSet,
@@ -608,20 +610,18 @@ export function evaluateCalcSheet(
         ...unknownSymbols(a, all),
         ...(b === "" ? [] : unknownSymbols(b, all)),
       ];
-      if (missing.length > 0) {
-        if (missing.some((name) => /^B([1-9]|[1-9][0-9])$/.test(name))) {
-          resolved = false;
-        }
-        return {
-          value: null,
-          text: "",
-          total: null,
-          totalText: "",
-          error: `記号 ${missing[0]} の数量が分かりません`,
-        };
-      }
-      const valueA = evaluateFormula(a, all);
-      const valueB = b === "" ? null : evaluateFormula(b, all);
+      // 表に無い記号は0として計算する（記号を全部入れた式でも止めない）。
+      // 定義はあるのにまだ値が無いB記号（後で解けるもの・循環しているもの）は再評価に回す
+      const pendingB = missing.filter(
+        (name) => /^B([1-9]|[1-9][0-9])$/.test(name) && definedB.has(name),
+      );
+      if (pendingB.length > 0) resolved = false;
+      const filled = { ...all };
+      missing.forEach((name) => {
+        filled[name] = 0;
+      });
+      const valueA = evaluateFormula(a, filled);
+      const valueB = b === "" ? null : evaluateFormula(b, filled);
       if (valueA === null || (b !== "" && valueB === null)) {
         return {
           value: null,
@@ -638,7 +638,8 @@ export function evaluateCalcSheet(
         text: displayQuantity(value),
         total,
         totalText: displayQuantity(total),
-        error: "",
+        error:
+          pendingB.length > 0 ? `記号 ${pendingB[0]} の数量が分かりません` : "",
       };
     });
     return { results, resolved };

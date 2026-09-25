@@ -1,0 +1,64 @@
+/* 耐火被覆・塗装入力表の計算書の印刷書式（計算書と同じA3横・白地・細い罫線） */
+.fireproof-print-sheet .fireproof-print-body {
+  transform-origin: top left;
+}
+
+.fireproof-print-sheet table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+/* 表を紙の幅に合わせて拡大しても罫線が太くならないよう、拡大の分だけ幅を割り引く */
+.fireproof-print-sheet th,
+.fireproof-print-sheet td {
+  border: 1px solid #000;
+  border-width: calc(1px / var(--print-line-scale, 1));
+  padding: 0 2px;
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  box-sizing: border-box;
+  font-weight: normal;
+  text-align: left;
+}
+
+.fireproof-print-sheet thead th {
+  background: #e5e7eb;
+  font-weight: 600;
+  text-align: center;
+}
+
+.fireproof-print-sheet td.num {
+  text-align: right;
+}
+
+.fireproof-print-sheet td.mark {
+  text-align: center;
+}
+
+/* 耐火被覆厚み・必要数・取合の帯（画面の上の帯と同じ内容） */
+.fireproof-print-sheet .fireproof-print-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  border: 1px solid #000;
+  border-width: calc(1px / var(--print-line-scale, 1));
+  padding: 0 6px;
+  box-sizing: border-box;
+}
+
+.fireproof-print-sheet .fireproof-print-strip b {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
+}
+
+/* 入力が少なく下が空く分は、手入力できるよう横罫線だけを引く */
+.fireproof-print-sheet tr.blank td {
+  border: none;
+  border-bottom: 1px solid #000;
+  border-bottom-width: calc(1px / var(--print-line-scale, 1));
+}

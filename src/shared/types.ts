@@ -7,8 +7,18 @@ import type {
   FormworkTransferRow,
   FormworkTransferRule,
 } from "../core/aggregate/formworkTransfer";
+import type { TraceUnderlay } from "../core/room/trace";
 
 export type { BasicMasterKind, BasicMasterRow };
+export type { TraceUnderlay };
+
+/** 計算書に置いてある図面一式（他の計算書へ呼び出す一覧に使う） */
+export interface SheetDrawingSource {
+  estimateRowId: number;
+  /** 図面を置いた計算書の種類（room/frame/pit） */
+  calcType: CalcType;
+  drawings: TraceUnderlay[];
+}
 export type { FormworkSourceGroup, FormworkTransferRow, FormworkTransferRule };
 
 export interface Subject {
@@ -267,6 +277,8 @@ export interface EstimateRow {
   note: string;
   calcType: CalcType;
   displayOrder: number;
+  /** 計算書に縮尺未調整の図面（下敷き）があるとき true。備考欄に「縮尺調整（未）」を出す目印で、行には保存しない */
+  scalePending?: boolean;
 }
 
 export type EstimateRowDraft = Omit<
@@ -448,6 +460,32 @@ export interface FurnitureSheetSummary {
   /** 入力した行数 */
   rowCount: number;
   updatedAt: string;
+}
+
+/** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト。1工事に1つ） */
+export interface FireproofSheetRecord {
+  id: number;
+  projectId: number;
+  floorCount: number;
+  /** 柱リスト（FireproofFloorList） */
+  columnsJson: string;
+  /** 梁リスト（FireproofFloorList） */
+  beamsJson: string;
+  /** 階共通リスト（FireproofCommonRowの配列） */
+  commonJson: string;
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: string;
+  note: string;
+}
+
+export interface SaveFireproofSheetRequest {
+  id: number;
+  floorCount: number;
+  columnsJson: string;
+  beamsJson: string;
+  commonJson: string;
+  estimateJson: string;
+  note: string;
 }
 
 /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
@@ -781,7 +819,10 @@ export interface SaveAggregateEditsRequest {
 export interface EstimateRowCheckCell {
   partName: string;
   name: string;
+  /** 倍率をかけた計上数量 */
   quantity: number;
+  /** 倍率をかける前の計算書そのままの数量 */
+  baseQuantity: number;
 }
 
 export interface EstimateRowCheck {
@@ -821,6 +862,12 @@ export interface SaveFormworkRulesRequest {
   rules: FormworkTransferRule[];
 }
 
+/** ④の表で並び替えた順を転記入力表へ反映する */
+export interface ReorderFormworkRowsRequest {
+  projectId: number;
+  rows: FormworkTransferRow[];
+}
+
 /** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
 export interface BreakdownSettingsRecord {
   projectId: number;
@@ -843,6 +890,10 @@ export interface BreakdownSettingsRecord {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: { from: string; to: string }[];
+  /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
+  partTitlesOn: boolean;
+  /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字。空なら出さない） */
+  partTitles: { from: number; title: string }[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数 */
@@ -861,6 +912,8 @@ export interface BreakdownVersion {
   confirmed: number;
   aggregateRunId: number | null;
   note: string;
+  /** この回で初めて出てきた工種科目（科目ID。前の回に無かったもの） */
+  newSubjects: number[];
 }
 
 /** 内訳書の1行 */
@@ -899,10 +952,7 @@ export interface SaveBreakdownRowsRequest {
 
 /** 掃き出しの種類 */
 export type BreakdownExportKind =
-  | "bcs"
-  | "excelAll"
-  | "excelBySubject"
-  | "excelCompare";
+  "bcs" | "excelAll" | "excelBySubject" | "excelCompare";
 
 export interface BreakdownExportRequest {
   projectId: number;
@@ -955,6 +1005,18 @@ export interface BackupResult {
   message: string;
 }
 
+/** 1物件だけの掃き出し・読み込みの結果 */
+export interface ProjectFileResult {
+  /** 取り消した場合は false */
+  done: boolean;
+  /** 書き出した／読み込んだファイル */
+  filePath: string | null;
+  /** 画面に出す説明 */
+  message: string;
+  /** 読み込んだ工事（書き出しのときは null） */
+  projectId: number | null;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;
@@ -983,4 +1045,20 @@ export interface SaveBasicMasterResult {
   masters: BasicMasters;
   /** 番号・名称の不備。1件でもあれば保存しない */
   errors: string[];
+}
+
+/** 画面の罫線1種類分の形（設定画面で直せる） */
+export interface LineStyleSetting {
+  /** 太さ（px） */
+  width: number;
+  /** 線の形（solid=実線 dashed=破線 dotted=点線） */
+  style: string;
+  /** 線の色（#rrggbb） */
+  color: string;
+}
+
+/** 画面の罫線の設定（thin=細い線＝表のマス目、thick=太い線＝まとまりの区切り） */
+export interface LineStyleSettings {
+  thin: LineStyleSetting;
+  thick: LineStyleSetting;
 }

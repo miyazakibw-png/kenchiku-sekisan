@@ -91,7 +91,7 @@
 
 .room-calc-sheet table.calc th,
 .room-calc-sheet table.calc td {
-  border: 1px solid #d7dde5;
+  border: var(--line-thin);
   padding: 0;
 }
 
@@ -374,12 +374,12 @@
 
 /* 1明細＝1行。区切り線はセット明細の上下だけに引く */
 .room-calc-sheet table.calc tbody.set {
-  border-top: 2px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
+  border-top: var(--line-thick);
+  border-bottom: var(--line-thick);
 }
 
 .room-calc-sheet table.calc tbody.set tr td {
-  border-top-color: #eef2f7;
+  border-top-color: var(--line-thin-color);
 }
 
 .room-calc-sheet table.calc tbody.set tr:first-child td {
@@ -468,4 +468,18 @@
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す
+   （計算表の下段スクロール欄。部屋計算書・汎用計算書・別ウィンドウの明細入力すべて） */
+.room-calc-sheet .calc-body::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}
+
+@media print {
+  .room-calc-sheet .calc-body::after {
+    display: none;
+  }
 }

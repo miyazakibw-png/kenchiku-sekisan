@@ -11,25 +11,142 @@ import type {
   CalcType,
   EstimateRow,
   SaveEstimateRowsRequest,
+  SheetDrawingSource,
 } from "../../shared/types";
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
+import { hasUnscaledUnderlay, parseUnderlays } from "../../core/room/trace";
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
+}
+
+/** 計算書に縮尺未調整の図面（下敷き）が残っている行。備考欄の「縮尺調整（未）」表示に使う */
+function listUnscaledUnderlayRows(
+  db: AppDatabase,
+  projectId: number,
+): Set<number> {
+  const pending = new Set<number>();
+  const collect = (
+    sheets: { estimateRowId: number; traceJson: string }[],
+  ): void => {
+    for (const sheet of sheets) {
+      if (hasUnscaledUnderlay(sheet.traceJson)) {
+        pending.add(sheet.estimateRowId);
+      }
+    }
+  };
+  collect(
+    db
+      .select({
+        estimateRowId: projectRoomSheets.estimateRowId,
+        traceJson: projectRoomSheets.traceJson,
+      })
+      .from(projectRoomSheets)
+      .where(eq(projectRoomSheets.projectId, projectId))
+      .all(),
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectFrameSheets.estimateRowId,
+        traceJson: projectFrameSheets.traceJson,
+      })
+      .from(projectFrameSheets)
+      .where(eq(projectFrameSheets.projectId, projectId))
+      .all(),
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectPitSheets.estimateRowId,
+        traceJson: projectPitSheets.traceJson,
+      })
+      .from(projectPitSheets)
+      .where(eq(projectPitSheets.projectId, projectId))
+      .all(),
+  );
+  return pending;
+}
+
+/**
+ * 部位別入力表の行ごとに、計算書へ置いてある図面（縮尺・位置・濃さ）を返す。
+ * 他の計算書から元図面を呼び出す一覧に使う。部屋・ピット計算書は underlays、
+ * 軸組計算書は traces に入っているが、parseUnderlays が両方を読むので同じ手順で集める。
+ */
+export function listSheetDrawingSources(
+  db: AppDatabase,
+  projectId: number,
+): SheetDrawingSource[] {
+  const sources: SheetDrawingSource[] = [];
+  const collect = (
+    sheets: { estimateRowId: number; traceJson: string }[],
+    calcType: CalcType,
+  ): void => {
+    for (const sheet of sheets) {
+      const drawings = parseUnderlays(sheet.traceJson).filter(
+        (item) => item.image !== "",
+      );
+      if (drawings.length > 0) {
+        sources.push({
+          estimateRowId: sheet.estimateRowId,
+          calcType,
+          drawings,
+        });
+      }
+    }
+  };
+  collect(
+    db
+      .select({
+        estimateRowId: projectRoomSheets.estimateRowId,
+        traceJson: projectRoomSheets.traceJson,
+      })
+      .from(projectRoomSheets)
+      .where(eq(projectRoomSheets.projectId, projectId))
+      .all(),
+    "room",
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectFrameSheets.estimateRowId,
+        traceJson: projectFrameSheets.traceJson,
+      })
+      .from(projectFrameSheets)
+      .where(eq(projectFrameSheets.projectId, projectId))
+      .all(),
+    "frame",
+  );
+  collect(
+    db
+      .select({
+        estimateRowId: projectPitSheets.estimateRowId,
+        traceJson: projectPitSheets.traceJson,
+      })
+      .from(projectPitSheets)
+      .where(eq(projectPitSheets.projectId, projectId))
+      .all(),
+    "pit",
+  );
+  return sources;
 }
 
 export function listEstimateRows(
   db: AppDatabase,
   projectId: number,
 ): EstimateRow[] {
+  const unscaled = listUnscaledUnderlayRows(db, projectId);
   return db
     .select()
     .from(projectEstimateRows)
     .where(eq(projectEstimateRows.projectId, projectId))
     .orderBy(asc(projectEstimateRows.displayOrder), asc(projectEstimateRows.id))
     .all()
-    .map(toRow);
+    .map((row) => ({
+      ...toRow(row),
+      ...(unscaled.has(row.id) ? { scalePending: true } : {}),
+    }));
 }
 
 /** 部位別入力表の一括保存。画面の行順をそのまま display_order にする */
@@ -184,7 +301,9 @@ export function listFilledCalcSheets(
     .all()
     .forEach((sheet) => {
       if (hasContent(sheet.pitsJson, sheet.beamsJson, sheet.lowerJson)) {
+        // 面積計算書はピット計算書と同じ表に入るので、どちらの種類にも内容がある扱いにする
         add(sheet.estimateRowId, "pit");
+        add(sheet.estimateRowId, "area");
       }
     });
 

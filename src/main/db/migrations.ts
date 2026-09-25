@@ -974,4 +974,34 @@ UPDATE project_fittings SET symbol = trim(symbol, ' 　	') WHERE symbol <> trim(
   `
 ALTER TABLE project_fittings ADD COLUMN reinforcement_formula TEXT NOT NULL DEFAULT '';
 `,
+  // 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト）
+  `
+CREATE TABLE project_fireproof_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  floor_count INTEGER NOT NULL DEFAULT 0,
+  columns_json TEXT NOT NULL DEFAULT '{}',
+  beams_json TEXT NOT NULL DEFAULT '{}',
+  common_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_fireproof_sheet_project ON project_fireproof_sheets(project_id);
+`,
+  // 耐火被覆・塗装入力表（入力管理表）の置き場
+  `
+ALTER TABLE project_fireproof_sheets ADD COLUMN estimate_json TEXT NOT NULL DEFAULT '[]';
+`,
+  // 内訳書の回：その回で初めて出てきた工種科目
+  `
+ALTER TABLE project_breakdown_versions ADD COLUMN new_subjects_json TEXT NOT NULL DEFAULT '[]';
+`,
+  // 内訳書の設定：基本部位のタイトル行（部位番号の範囲の始まり→出す文字）
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_json TEXT NOT NULL DEFAULT '[{"from":10,"title":"＜床＞"},{"from":20,"title":"＜巾木＞"},{"from":30,"title":"＜壁＞"},{"from":40,"title":"＜柱型＞"},{"from":50,"title":"＜梁型＞"},{"from":60,"title":"＜天井＞"},{"from":70,"title":"＜その他＞"}]';
+`,
+  // 内訳書の設定：基本部位のタイトル行を出すかどうか（表は残す）
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_on INTEGER NOT NULL DEFAULT 0;
+`,
 ];

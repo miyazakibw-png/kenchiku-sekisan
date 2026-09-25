@@ -106,6 +106,10 @@ export default function AggregatePrintPage({
         if (area instanceof HTMLElement)
           area.style.setProperty("--print-scale", "1");
         await job();
+      } catch (error) {
+        window.alert(
+          error instanceof Error ? error.message : "保存できませんでした",
+        );
       } finally {
         setBusy(false);
       }
@@ -149,6 +153,27 @@ export default function AggregatePrintPage({
           }
         >
           📄 PDF
+        </button>
+        <button
+          type="button"
+          title="同じ内容を白黒のPDFで保存します"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              // PDFを取っている間だけ白黒にする（画面の見え方は変わりません）
+              document.body.classList.add("pdf-mono");
+              try {
+                await window.sekisan.printPdf(`${name}_白黒`, {
+                  pageSize: "A4",
+                  landscape: true,
+                });
+              } finally {
+                document.body.classList.remove("pdf-mono");
+              }
+            })
+          }
+        >
+          📄 PDF白黒
         </button>
       </div>
       <div className="sheets">

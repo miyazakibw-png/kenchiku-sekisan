@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { calcVariables } from "../../src/core/aggregate/variables";
+import { arcLength } from "../../src/core/room/shape";
 import {
+  parseFrameTraces,
   buildFrameLines,
   defaultFrameKinds,
   findSharedWalls,
+  frameArcApex,
   frameLineAttribute,
+  frameLinePath,
   frameQuantities,
   frameSymbols,
   isPickedUp,
@@ -129,6 +133,52 @@ describe("軸組ライン", () => {
     });
     expect(lines[0].source).toBe("manual");
     expect(lines[0].length).toBe(3.5);
+  });
+
+  it("曲面壁：矢（ふくらみ）を付けた線は長さが弦ではなく弧長になる", () => {
+    const lines = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [{ id: "m1", x1: 0, y1: 0, x2: 3.5, y2: 0, bulge: 0.5 }],
+      attributes: {},
+    });
+    expect(lines[0].bulge).toBe(0.5);
+    // 部屋計算書のＲ壁と同じ式の弧長（弦より長い）
+    expect(lines[0].length).toBe(arcLength(3.5, 0.5));
+    expect(lines[0].length).toBeGreaterThan(3.5);
+  });
+
+  it("曲面壁のパスは弧（A命令）で、向きはbulgeの符号に従う", () => {
+    const leftSide = frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.3 });
+    const rightSide = frameLinePath({
+      x1: 0,
+      y1: 0,
+      x2: 2,
+      y2: 0,
+      bulge: -0.3,
+    });
+    // ＋は始点→終点の左側（弦が右向きなら上側）にふくらむ
+    expect(leftSide).toMatch(/^M 0 0 A [\d.]+ [\d.]+ 0 0 1 2 0$/);
+    expect(rightSide).toMatch(/^M 0 0 A [\d.]+ [\d.]+ 0 0 0 2 0$/);
+    // 離れが弦の半分を超えるときは大きい弧（半周超え）になる
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 1.5 })).toMatch(
+      /^M 0 0 A [\d.]+ [\d.]+ 0 1 1 2 0$/,
+    );
+  });
+
+  it("矢が無い・0の線は直線パスで、弧の先端は弦の中点から側へ矢の分", () => {
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0 })).toBe("M 0 0 L 2 0");
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0 })).toBe(
+      "M 0 0 L 2 0",
+    );
+    expect(frameArcApex({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.3 })).toEqual({
+      x: 1,
+      y: -0.3,
+    });
+    expect(frameArcApex({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: -0.3 })).toEqual({
+      x: 1,
+      y: 0.3,
+    });
   });
 });
 
@@ -433,5 +483,93 @@ describe("軸組種類（線の色分け）", () => {
       attributes: {},
     });
     expect(frameQuantities(lines, [], 3).byKind).toEqual([]);
+  });
+});
+
+describe("parseFrameTraces", () => {
+  it("図面1枚だけの古い形（FrameTraceそのまま）をその1枚として読む", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      }),
+    );
+    expect(got.traces).toEqual([
+      {
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      },
+    ]);
+    expect(got.active).toBe(0);
+    expect(got.locked).toBe(false);
+  });
+
+  it("複数枚の形をそのまま読む（選んだ番号・まとめて動かすも戻る）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "data:a", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 1,
+        locked: true,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(1);
+    expect(got.locked).toBe(true);
+  });
+
+  it("画像の無い図面は除き、選んだ番号は範囲内に収める", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 9,
+        locked: false,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:b"]);
+    expect(got.active).toBe(0);
+  });
+
+  it("部屋・ピット計算書の underlays/underlay に入った図面も読む（traces 優先）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        underlays: [
+          { image: "data:a", metersPerPixel: 0.01, x: 1, y: 2, opacity: 0.5 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(0);
+    const single = parseFrameTraces(
+      JSON.stringify({
+        underlay: { image: "data:c", metersPerPixel: 0.01, x: 0, y: 0 },
+      }),
+    );
+    expect(single.traces.map((item) => item.image)).toEqual(["data:c"]);
+    const both = parseFrameTraces(
+      JSON.stringify({
+        traces: [{ image: "data:t", metersPerPixel: 0.01, x: 0, y: 0 }],
+        underlays: [{ image: "data:u", metersPerPixel: 0.01, x: 0, y: 0 }],
+      }),
+    );
+    expect(both.traces.map((item) => item.image)).toEqual(["data:t"]);
+  });
+
+  it("壊れたJSON・空は図面なしで読む", () => {
+    expect(parseFrameTraces("").traces).toEqual([]);
+    expect(parseFrameTraces("null").traces).toEqual([]);
+    expect(parseFrameTraces("{}").traces).toEqual([]);
   });
 });

@@ -132,10 +132,15 @@ describe("エクセル（.xlsx）の書き出し", () => {
     const xfs = [
       ...cellXfs.matchAll(/<xf [^>]*fontId="(\d+)" fillId="(\d+)"/g),
     ];
-    // 違うセルの書式は、赤文字（fontId=3）・黄色の地（fillId=3）
-    expect(xfs[Number(diff)]?.[1]).toBe("3");
+    // 違うセルの書式は、赤文字（fontId=2・太字なし）・黄色の地（fillId=3）
+    expect(xfs[Number(diff)]?.[1]).toBe("2");
     expect(xfs[Number(diff)]?.[2]).toBe("3");
     expect(xfs[Number(plain)]?.[1]).toBe("0");
     expect(xfs[Number(plain)]?.[2]).toBe("0");
+    const fonts = /<fonts[^>]*>(.*?)<\/fonts>/s.exec(styles)?.[1] ?? "";
+    const fontList = [...fonts.matchAll(/<font>.*?<\/font>/g)].map(
+      (font) => font[0],
+    );
+    expect(fontList[2]).not.toContain("<b/>");
   });
 });

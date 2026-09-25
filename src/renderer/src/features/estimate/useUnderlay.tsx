@@ -34,11 +34,40 @@ export interface Point {
   y: number;
 }
 
+/**
+ * 2枚目以降の図面を置く場所。今ある図面の右横に並べる（上に重ねると前の図面が隠れて見えないため）
+ * 置いてある図面が無いときは {x:0, y:0}
+ */
+export function spotBesideBoxes(boxes: (UnderlayBox | null)[]): {
+  x: number;
+  y: number;
+} {
+  const drawn = boxes.filter((box): box is UnderlayBox => box !== null);
+  if (drawn.length === 0) return { x: 0, y: 0 };
+  return {
+    x: Math.max(...drawn.map((box) => box.x + box.width)) + 0.5,
+    y: Math.min(...drawn.map((box) => box.y)),
+  };
+}
+
 export interface UnderlayBox {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+/** 画像の大きさ（画素数）を読む。読めないときは null */
+export function loadImageSize(
+  dataUrl: string,
+): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () =>
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
 }
 
 /** 画面の座標を svg の座標（図の座標m）にする */
@@ -70,14 +99,46 @@ interface Options {
   dragStart?: (before: TraceUnderlay) => void;
   /** 図面を動かしている途中（from＝動かし始めの下敷き、to＝いまの下敷き）。図形を一緒に動かすときに渡す */
   drag?: (from: TraceUnderlay, to: TraceUnderlay) => void;
+  /**
+   * 下敷きを2枚以上置けるようにする（大きい部屋で図面が複数枚になるとき）。
+   * true のとき貼る・開くは追加になり、選んだ1枚（active）を動かす・合わせる・外す。
+   * 指定しないときは今までどおり1枚だけ（貼る・開くは置き替え）
+   */
+  multi?: boolean;
+  /** 「近くへ戻す」で図面を置き直す場所（図形の左上。無いときは原点） */
+  homeSpot?: { x: number; y: number };
 }
 
 export interface Underlay {
+  /** いま選んでいる図面（無ければ空）。操作ボタンは全部この1枚に効く */
   underlay: TraceUnderlay;
   setUnderlay: Dispatch<SetStateAction<TraceUnderlay>>;
-  /** 画像を置く範囲（m）。図面が無い・縮尺が無いときは null */
+  /** 置いてある図面を全部（画像のあるものだけ）。複数置ける画面で使う */
+  underlays: TraceUnderlay[];
+  /** 置き替え用（読み込み・戻る）。画像の無いものは除いて並びをそのまま使う。何枚目を選ぶかは activeIndex（省略時は1枚目） */
+  setUnderlays: (list: TraceUnderlay[], activeIndex?: number) => void;
+  /** いま選んでいる図面の番号（underlays の何枚目か） */
+  active: number;
+  setActive: (index: number) => void;
+  /** 図面が何枚置いてあるか */
+  count: number;
+  /** 選んでいる図面の画像を置く範囲（m）。図面が無い・縮尺が無いときは null */
   box: UnderlayBox | null;
+  /** 全図面の画像を置く範囲（m）。underlays と同じ並び、無い所は null */
+  boxes: (UnderlayBox | null)[];
+  /** 次に足す図面を置く場所（今ある図面の右横。無いときは原点） */
+  nextSpot: { x: number; y: number };
+  /** 選んでいる図面をいちばん上に出す（重なっている所で見える図面を変える。複数置ける画面だけ） */
+  bringFront: () => void;
+  /** 選んでいる図面を図形の近くへ戻す（遠くへ動いて見えなくなったときに。まとめて動かす中は全員まとめて戻る） */
+  goHome: () => void;
+  /** ONの間は「図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
+  moveAll: boolean;
+  /** 読み込みのときの「まとめて動かす」の状態を戻す */
+  setMoveAll: (on: boolean) => void;
+  toggleMoveAll: () => void;
   mode: UnderlayMode;
+
   scalePoints: Point[];
   scaleText: string;
   setScaleText: (text: string) => void;
@@ -86,6 +147,8 @@ export interface Underlay {
   canUndoScale: boolean;
   pasteImage: () => Promise<void>;
   openFile: () => Promise<void>;
+  /** 図面ファイルをまとめて複数選んで置く（複数置ける画面だけ。1枚の画面は openFile と同じ動き） */
+  openFiles: () => Promise<void>;
   applyScale: () => void;
   undoScale: () => void;
   toggleScale: () => void;
@@ -106,9 +169,15 @@ export function useUnderlay({
   commit,
   dragStart,
   drag,
+  multi = false,
+  homeSpot,
 }: Options): Underlay {
-  const [underlay, setUnderlay] = useState<TraceUnderlay>(EMPTY_UNDERLAY);
-  const [size, setSize] = useState({ width: 1000, height: 700 });
+  /** 置いてある図面。画像のあるものだけ持つ */
+  const [underlays, setUnderlaysState] = useState<TraceUnderlay[]>([]);
+  const [active, setActiveState] = useState(0);
+  const [sizes, setSizes] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
   const [mode, setMode] = useState<UnderlayMode>("off");
   const [scalePoints, setScalePoints] = useState<Point[]>([]);
   const [scaleText, setScaleText] = useState("3.640");
@@ -118,54 +187,131 @@ export function useUnderlay({
     clientX: number;
     clientY: number;
     from: TraceUnderlay;
+    /** 動かし始めの全図面（まとめて動かすの基準。ここからずらすので加速しない） */
+    all: TraceUnderlay[];
     /** この距離（px）以上動いたら動かすと見なす。動かさないクリックは図形の選択にそのまま渡す */
     started: boolean;
   } | null>(null);
+
+  const underlay = underlays[active] ?? EMPTY_UNDERLAY;
+
+  /** 選んでいる図面の番号。ドラッグ中などの古いcallbackからも常に今の番号を見るため参照で持つ */
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  /** ONの間は全部の図面が一緒に動く。ドラッグ中の古いcallbackからも今の状態を見るため参照で持つ */
+  const [moveAll, setMoveAllState] = useState(false);
+  const moveAllRef = useRef(moveAll);
+  moveAllRef.current = moveAll;
+
+  const setUnderlay: Dispatch<SetStateAction<TraceUnderlay>> = useCallback(
+    (next) => {
+      setUnderlaysState((current) => {
+        const resolved =
+          typeof next === "function"
+            ? next(current[activeRef.current] ?? EMPTY_UNDERLAY)
+            : next;
+        if (current.length === 0)
+          return resolved.image === "" ? current : [resolved];
+        const updated = current.map((item, index) =>
+          index === activeRef.current ? resolved : item,
+        );
+        return updated.filter((item) => item.image !== "");
+      });
+    },
+    [],
+  );
+
+  const setUnderlays = useCallback((list: TraceUnderlay[], activeIndex = 0) => {
+    const kept = list.filter((item) => item.image !== "");
+    setUnderlaysState(kept);
+    setActiveState(Math.min(Math.max(activeIndex, 0), kept.length - 1));
+  }, []);
+
+  const setActive = useCallback(
+    (index: number) => {
+      setActiveState(Math.min(Math.max(index, 0), underlays.length - 1));
+    },
+    [underlays.length],
+  );
 
   const replace = useCallback(
     (before: TraceUnderlay, after: TraceUnderlay) => {
       if (commit) commit(before, after);
       setUnderlay(after);
     },
-    [commit],
+    [commit, setUnderlay],
   );
 
   useEffect(() => {
-    if (underlay.image === "") return;
-    const image = new Image();
-    image.onload = () =>
-      setSize({ width: image.naturalWidth, height: image.naturalHeight });
-    image.src = underlay.image;
-  }, [underlay.image]);
+    underlays.forEach((item) => {
+      if (item.image === "" || sizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [sizes, underlays]);
 
-  const box = useMemo<UnderlayBox | null>(() => {
-    if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
-    return {
-      x: underlay.x,
-      y: underlay.y,
-      width: size.width * underlay.metersPerPixel,
-      height: size.height * underlay.metersPerPixel,
-    };
-  }, [size, underlay]);
+  const boxes = useMemo<(UnderlayBox | null)[]>(
+    () =>
+      underlays.map((item) => {
+        const size = sizes[item.image];
+        if (item.image === "" || item.metersPerPixel <= 0 || size === undefined)
+          return null;
+        return {
+          x: item.x,
+          y: item.y,
+          width: size.width * item.metersPerPixel,
+          height: size.height * item.metersPerPixel,
+        };
+      }),
+    [sizes, underlays],
+  );
+  const box = boxes[active] ?? null;
+  const count = underlays.length;
+  /** 追加する図面の置き場所（今ある図面の右横。無いときは原点） */
+  const nextSpot = useMemo(() => spotBesideBoxes(boxes), [boxes]);
 
   const SCALE_HINT =
     "図面の中で長さの分かる所を2回クリックし、その実寸（m）を入れて［合わせる］を押してください";
 
   const putImage = useCallback(
     (dataUrl: string) => {
-      replace(underlay, {
+      // 複数置ける画面では、今ある図面の右横に置く（重ねると前の図面が隠れる）。1枚だけの画面は今までどおり原点
+      const spot = multi ? nextSpot : { x: 0, y: 0 };
+      const next: TraceUnderlay = {
         image: dataUrl,
         metersPerPixel: Math.max(planSize, 10) / 1000,
-        x: 0,
-        y: 0,
+        x: spot.x,
+        y: spot.y,
         opacity: 0.75,
         scaled: false,
-      });
+      };
+      if (multi) {
+        // 2枚目以降は追加になる（選ぶ図面は足した方にする）
+        setUnderlaysState((current) => {
+          const kept = current.filter((item) => item.image !== "");
+          return [...kept, next];
+        });
+        setActiveState(count);
+      } else {
+        replace(underlay, next);
+      }
       setScalePoints([]);
       setMode("scale");
       setMessage(SCALE_HINT);
     },
-    [planSize, replace, setMessage, underlay],
+    [count, multi, nextSpot, planSize, replace, setMessage, underlay],
   );
 
   const pasteImage = useCallback(async () => {
@@ -214,6 +360,71 @@ export function useUnderlay({
     }
     setMessage(got.note === "" ? "取り込みをやめました" : got.note);
   }, [pageText, putImage, setMessage]);
+
+  const openFiles = useCallback(async () => {
+    // 1枚だけ置ける画面は今までどおり（複数選びは出さない）
+    if (!multi) {
+      await openFile();
+      return;
+    }
+    const page = Number(pageText);
+    setMessage("ファイルを読んでいます…");
+    const got = await window.sekisan.openDrawingFiles(page > 0 ? page : 1);
+    if (got.items.length === 0) {
+      setMessage(got.note === "" ? "取り込みをやめました" : got.note);
+      return;
+    }
+    const metersPerPixel = Math.max(planSize, 10) / 1000;
+    let cursor = nextSpot;
+    let placed = 0;
+    for (const item of got.items) {
+      let dataUrl = item.image;
+      if (item.pdf !== "") {
+        const made = await pdfPageImage(item.pdf, page > 0 ? page : 1);
+        dataUrl = made.image;
+        if (dataUrl === "") {
+          setMessage("PDFを画像にできませんでした");
+          continue;
+        }
+      }
+      if (dataUrl === "") continue;
+      // 先に大きさを読み、次の図面をこの図面の右横へずらして置く
+      const size = await loadImageSize(dataUrl);
+      if (size !== null)
+        setSizes((current) =>
+          current[dataUrl] !== undefined
+            ? current
+            : { ...current, [dataUrl]: size },
+        );
+      const next: TraceUnderlay = {
+        image: dataUrl,
+        metersPerPixel,
+        x: cursor.x,
+        y: cursor.y,
+        opacity: 0.75,
+        scaled: false,
+      };
+      setUnderlaysState((current) => [
+        ...current.filter((entry) => entry.image !== ""),
+        next,
+      ]);
+      cursor = {
+        x:
+          cursor.x +
+          (size !== null
+            ? size.width * metersPerPixel
+            : Math.max(planSize, 10)) +
+          0.5,
+        y: cursor.y,
+      };
+      placed += 1;
+    }
+    if (placed === 0) return;
+    setActiveState(count + placed - 1);
+    setScalePoints([]);
+    setMode("scale");
+    setMessage(`${placed}枚の図面を置きました。${SCALE_HINT}`);
+  }, [count, multi, nextSpot, openFile, pageText, planSize, setMessage]);
 
   const applyScale = useCallback(() => {
     const meters = Number(scaleText);
@@ -272,14 +483,72 @@ export function useUnderlay({
     );
   }, [mode, setMessage]);
 
+  const setMoveAll = useCallback((on: boolean) => setMoveAllState(on), []);
+
+  const toggleMoveAll = useCallback(() => {
+    const next = !moveAll;
+    setMoveAllState(next);
+    setMessage(
+      next
+        ? "図面をまとめて動かします（「✋ 図面を動かす」で全部の図面が一緒に動きます）"
+        : "図面を1枚ずつ動かすに戻しました",
+    );
+  }, [moveAll, setMessage]);
+
+  const goHome = useCallback(() => {
+    const home = homeSpot ?? { x: 0, y: 0 };
+    const index = Math.min(
+      Math.max(activeRef.current, 0),
+      underlays.length - 1,
+    );
+    const picked = underlays[index];
+    if (picked === undefined) return;
+    if (moveAllRef.current && underlays.length > 1) {
+      // まとめて動かす中は、選んだ図面が戻る分だけ全員をずらす（重ね合わせはそのまま）
+      const dx = home.x - picked.x;
+      const dy = home.y - picked.y;
+      setUnderlaysState(
+        underlays.map((item) =>
+          item.image === ""
+            ? item
+            : { ...item, x: item.x + dx, y: item.y + dy },
+        ),
+      );
+    } else {
+      setUnderlay({ ...picked, x: home.x, y: home.y });
+    }
+    setMessage("図面を図形の近くへ戻しました");
+  }, [homeSpot, setUnderlay, setMessage, underlays]);
+
+  const bringFront = useCallback(() => {
+    if (!multi || underlays.length < 2) return;
+    const index = Math.min(
+      Math.max(activeRef.current, 0),
+      underlays.length - 1,
+    );
+    const picked = underlays[index];
+    if (picked === undefined) return;
+    // 後に置いた図面が上に重なるので、選んだ図面をいちばん後ろへ移す
+    setUnderlaysState([...underlays.filter((_, i) => i !== index), picked]);
+    setActiveState(underlays.length - 1);
+    setMessage("選んでいる図面をいちばん上に出しました");
+  }, [multi, setMessage, underlays]);
+
   const remove = useCallback(async () => {
     if (!(await ask("下敷きの図面を外します。よろしいですか"))) return;
-    replace(underlay, EMPTY_UNDERLAY);
+    if (multi) {
+      setUnderlaysState((current) =>
+        current.filter((_, index) => index !== active),
+      );
+      setActiveState((current) => Math.min(current, underlays.length - 2));
+    } else {
+      replace(underlay, EMPTY_UNDERLAY);
+    }
     setMode("off");
     setScalePoints([]);
     setScaleUndo([]);
     setMessage("下敷きの図面を外しました");
-  }, [replace, setMessage, underlay]);
+  }, [active, multi, replace, setMessage, underlay, underlays.length]);
 
   const onSvgClick = useCallback(
     (event: MouseEvent<SVGSVGElement>): boolean => {
@@ -302,10 +571,11 @@ export function useUnderlay({
         clientX: event.clientX,
         clientY: event.clientY,
         from: underlay,
+        all: underlays,
         started: false,
       };
     },
-    [mode, underlay],
+    [mode, underlay, underlays],
   );
 
   const onPointerMove = useCallback(
@@ -327,13 +597,26 @@ export function useUnderlay({
       }
       const from = svgPoint(svg, start.clientX, start.clientY);
       const to = svgPoint(svg, event.clientX, event.clientY);
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
       const moved: TraceUnderlay = {
         ...start.from,
-        x: start.from.x + (to.x - from.x),
-        y: start.from.y + (to.y - from.y),
+        x: start.from.x + dx,
+        y: start.from.y + dy,
       };
       if (drag) drag(start.from, moved);
-      setUnderlay(moved);
+      if (moveAllRef.current) {
+        // まとめて動かす中は、動かし始めの全図面から同じだけずらす（重ね合わせた図面がばらけない）
+        setUnderlaysState(
+          start.all.map((item) =>
+            item.image === ""
+              ? item
+              : { ...item, x: item.x + dx, y: item.y + dy },
+          ),
+        );
+      } else {
+        setUnderlay(moved);
+      }
     },
     [drag, dragStart],
   );
@@ -342,13 +625,26 @@ export function useUnderlay({
     const start = dragRef.current;
     if (start === null) return;
     dragRef.current = null;
-    if (start.started) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (start.started)
+      event.currentTarget.releasePointerCapture(event.pointerId);
   }, []);
 
   return {
     underlay,
     setUnderlay,
+    underlays,
+    setUnderlays,
+    active,
+    setActive,
+    count,
     box,
+    boxes,
+    nextSpot,
+    bringFront,
+    goHome,
+    moveAll,
+    setMoveAll,
+    toggleMoveAll,
     mode,
     scalePoints,
     scaleText,
@@ -358,6 +654,7 @@ export function useUnderlay({
     canUndoScale: scaleUndo.length > 0,
     pasteImage,
     openFile,
+    openFiles,
     applyScale,
     undoScale,
     toggleScale,
@@ -368,6 +665,70 @@ export function useUnderlay({
     onPointerMove,
     onPointerUp,
     svgClass: mode === "off" ? "" : `underlay-${mode}`,
+  };
+}
+
+/**
+ * 貼った図面を、図形と同じ角度・同じ起点（図の座標m）で回した下敷きに作り直す。
+ * 図形を辺起点で回したあとも図面とずれないようにするためのもの。
+ * 回転した画像は外接枠で貼り直すので、位置・縮尺は図形と揃ったままになる。
+ */
+export async function rotateUnderlay(
+  underlay: TraceUnderlay,
+  pivot: Point,
+  pivotTo: Point,
+  angle: number,
+): Promise<TraceUnderlay | null> {
+  if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("画像を読めませんでした"));
+    el.src = underlay.image;
+  }).catch(() => null);
+  if (img === null) return null;
+  const mpp = underlay.metersPerPixel;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // 図形と同じ変形：起点まわりに回して、起点のあらたな位置へ置く
+  const turn = (x: number, y: number): Point => {
+    const dx = x - pivot.x;
+    const dy = y - pivot.y;
+    return {
+      x: pivotTo.x + dx * cos - dy * sin,
+      y: pivotTo.y + dx * sin + dy * cos,
+    };
+  };
+  // 回った4隅の外接枠（図の座標m）を新しい置き場所にする
+  const corners = [
+    turn(underlay.x, underlay.y),
+    turn(underlay.x + w * mpp, underlay.y),
+    turn(underlay.x, underlay.y + h * mpp),
+    turn(underlay.x + w * mpp, underlay.y + h * mpp),
+  ];
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = (Math.max(...xs) - left) / mpp;
+  const height = (Math.max(...ys) - top) / mpp;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return null;
+  // 画像の中の起点（画素）を、新しい外接枠での「起点のあらたな位置」へ写す
+  ctx.translate((pivotTo.x - left) / mpp, (pivotTo.y - top) / mpp);
+  ctx.rotate(angle);
+  ctx.translate(-(pivot.x - underlay.x) / mpp, -(pivot.y - underlay.y) / mpp);
+  ctx.drawImage(img, 0, 0);
+  return {
+    ...underlay,
+    image: canvas.toDataURL("image/png"),
+    x: left,
+    y: top,
   };
 }
 
@@ -384,10 +745,63 @@ export function unionBox(
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-/** 図面取り込みのボタン列（図面を貼る／図面ファイル／縮尺合わせ／戻す／動かす／濃さ／外す） */
-export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
+/** 図面取り込みのボタン列（図面を貼る／図面ファイル／呼び出す／縮尺合わせ／戻す／動かす／濃さ／外す） */
+export function UnderlayTools({
+  u,
+  onImport,
+}: {
+  u: Underlay;
+  /** 他の計算書で置いた図面を呼び出す窓を開く（指定したときだけボタンを出す） */
+  onImport?: () => void;
+}): JSX.Element {
   return (
     <span className="kind-pick underlay-tools">
+      {u.count > 1 && (
+        <label
+          className="snap-field"
+          title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
+        >
+          図面を選ぶ
+          <select
+            value={u.active}
+            onChange={(e) => u.setActive(Number(e.target.value))}
+          >
+            {u.underlays.map((_, index) => (
+              <option key={index} value={index}>
+                図面{index + 1}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {u.count > 1 && u.underlay.image !== "" && (
+        <button
+          type="button"
+          title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
+          onClick={u.bringFront}
+        >
+          ⬆ 上に出す
+        </button>
+      )}
+      {u.count > 1 && (
+        <button
+          type="button"
+          className={u.moveAll ? "on" : ""}
+          title="ONの間「✋ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
+          onClick={u.toggleMoveAll}
+        >
+          🔗 まとめて動かす
+        </button>
+      )}
+      {u.underlay.image !== "" && (
+        <button
+          type="button"
+          title="選んでいる図面（橙枠）を図形の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
+          onClick={u.goHome}
+        >
+          📍 近くへ戻す
+        </button>
+      )}
       <button
         type="button"
         title="Shift+Windows+S で切り取った図面を、図の下敷きに貼ります（図形の位置・大きさを図面と見比べながら作れます）"
@@ -397,8 +811,8 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
       </button>
       <button
         type="button"
-        title="PDF・画像のファイルを選んで、図の下敷きに貼ります"
-        onClick={() => void u.openFile()}
+        title="PDF・画像のファイルを選んで、図の下敷きに貼ります（複数まとめて選ぶと横に並べて置きます）"
+        onClick={() => void u.openFiles()}
       >
         📄 図面ファイル
       </button>
@@ -410,6 +824,15 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
           onChange={(e) => u.setPageText(e.target.value)}
         />
       </label>
+      {onImport !== undefined && (
+        <button
+          type="button"
+          title="他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さのまま呼び出して貼ります"
+          onClick={onImport}
+        >
+          📥 図面を呼び出す
+        </button>
+      )}
       {u.underlay.image !== "" && (
         <>
           <button
@@ -492,21 +915,45 @@ export function UnderlayTools({ u }: { u: Underlay }): JSX.Element {
   );
 }
 
-/** svg の中に置く下敷きの画像（いちばん下に描く） */
+/** svg の中に置く下敷きの画像（いちばん下に描く）。置いた図面は全部重ねて出す */
 export function UnderlayImage({ u }: { u: Underlay }): JSX.Element | null {
-  if (u.box === null) return null;
+  const drawn = u.underlays
+    .map((item, index) => ({ item, index, box: u.boxes[index] ?? null }))
+    .filter(({ box }) => box !== null);
+  if (drawn.length === 0) return null;
   return (
-    <image
-      href={u.underlay.image}
-      x={u.box.x}
-      y={u.box.y}
-      width={u.box.width}
-      height={u.box.height}
-      preserveAspectRatio="none"
-      opacity={u.underlay.opacity}
-      className="underlay-image"
-      style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
-    />
+    <>
+      {drawn.map(({ item, index, box }) => (
+        <g key={index}>
+          <image
+            href={item.image}
+            x={box!.x}
+            y={box!.y}
+            width={box!.width}
+            height={box!.height}
+            preserveAspectRatio="none"
+            opacity={item.opacity}
+            className="underlay-image"
+            style={{ pointerEvents: u.mode === "off" ? "none" : "auto" }}
+          />
+          {/* 図面が2枚以上あるときは、ボタンが効く図面に橙の枠を出す */}
+          {u.count > 1 && index === u.active && (
+            <rect
+              x={box!.x}
+              y={box!.y}
+              width={box!.width}
+              height={box!.height}
+              fill="none"
+              stroke="#e8590c"
+              strokeWidth="2"
+              strokeDasharray="8 4"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          )}
+        </g>
+      ))}
+    </>
   );
 }
 

@@ -141,6 +141,23 @@ describe("内訳書", () => {
     );
   });
 
+  it("確定し忘れても newRound で転記すると、開いていた回を確定して次の回を作る", () => {
+    const first = transferBreakdown(db, projectId);
+    // 確定を押さないまま「次の回として新しく作る」を選んだ転記
+    const second = transferBreakdown(db, projectId, true);
+    expect(second.version?.round).toBe(2);
+    const versions = listBreakdownVersions(db, projectId);
+    expect(versions).toHaveLength(2);
+    // もとの回は確定済みになり、行もそのまま残る
+    const kept = getBreakdown(db, projectId, first.version?.id);
+    expect(kept.version?.confirmed).toBe(1);
+    expect(kept.rows.length).toBe(first.rows.length);
+    // さらに転記すると今度は2回目が作り直される
+    const again = transferBreakdown(db, projectId);
+    expect(again.version?.round).toBe(2);
+    expect(again.version?.id).toBe(second.version?.id);
+  });
+
   it("工種科目の並べ替えは2回目以降も持ち越す", () => {
     const first = transferBreakdown(db, projectId);
     saveBreakdownSettings(db, {
@@ -152,6 +169,18 @@ describe("内訳書", () => {
     const second = transferBreakdown(db, projectId);
     expect(second.version?.round).toBe(2);
     expect(second.settings.subjectOrder).toEqual([9, 5, 1]);
+  });
+
+  it("その回で初めて出てきた科目を記録する（前の回にあった科目は新しくない）", () => {
+    const first = transferBreakdown(db, projectId);
+    expect(first.version?.newSubjects).toEqual([5]);
+    // 確定する前に作り直しても、この回の中では「新しい」まま
+    const again = transferBreakdown(db, projectId);
+    expect(again.version?.newSubjects).toEqual([5]);
+    confirmBreakdownVersion(db, first.version?.id ?? 0);
+    // 次の回では前の回にあった科目は「新しい」ではない
+    const second = transferBreakdown(db, projectId);
+    expect(second.version?.newSubjects).toEqual([]);
   });
 
   it("作った回を削除すると行も消える", () => {

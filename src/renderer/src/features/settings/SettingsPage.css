@@ -101,3 +101,15 @@
 .settings-check input {
   margin-top: 2px;
 }
+
+/* 画面の線の設定：選んだ線の見本 */
+.settings-page .line-sample {
+  display: inline-block;
+  width: 120px;
+  vertical-align: middle;
+}
+
+.settings-page .settings-table input[type="number"] {
+  width: 56px;
+  text-align: right;
+}

@@ -104,6 +104,33 @@ describe("軸組計算書", () => {
     expect(reopened.lowerJson).toContain('"s1"');
   });
 
+  it("施工高さを保存すると部位別入力表の天井高さへも書き戻す", () => {
+    const project = createProject(db, "高さ連動");
+    const [frameRow] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("1階軸組", "frame", 2.7)],
+    });
+    const sheet = getFrameSheet(db, frameRow.id);
+
+    saveFrameSheet(db, {
+      id: sheet.id,
+      layoutJson: "[]",
+      linesJson: "[]",
+      attributesJson: "{}",
+      fittingsJson: "[]",
+      lowerJson: "[]",
+      workHeight: 3.5,
+      traceJson: "{}",
+      kindsJson: "[]",
+      note: "",
+    });
+
+    const saved = listEstimateRows(db, project.id).find(
+      (each) => each.id === frameRow.id,
+    );
+    expect(saved?.ceilingHeight).toBe(3.5);
+  });
+
   it("置ける部屋は部屋計算書を作った行だけで、部屋名は部位Ⅱ＋部位Ⅲ", () => {
     const project = createProject(db, "部屋一覧");
     const rows = saveEstimateRows(db, {

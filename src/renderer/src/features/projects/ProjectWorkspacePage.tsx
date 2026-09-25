@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AggregateDetail,
   MasterOptions,
   ProjectField,
   ProjectSummary,
 } from "@shared/types";
+import type { MiscRow } from "../../../../core/misc/miscSheet";
+import { sourceJumpOf } from "../aggregate/aggregateRows";
 import { normalizeDate } from "./projectLedger";
+import { loadColumnSettings, sortByLedgerOrder } from "./ledgerColumns";
 import {
   ALWAYS_VISIBLE,
   loadHiddenFields,
@@ -27,6 +31,8 @@ import MiscSheetPage from "../estimate/MiscSheetPage";
 import FurnitureSheetListPage from "../estimate/FurnitureSheetListPage";
 import FurnitureSheetPage from "../estimate/FurnitureSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
+import FireproofListPage from "../estimate/FireproofListPage";
+import FireproofEstimatePage from "../estimate/FireproofEstimatePage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
 import AggregatePage from "../aggregate/AggregatePage";
@@ -60,6 +66,15 @@ interface HeaderField {
 
 const keepAsIs = (project: ProjectSummary): ProjectSummary => project;
 
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed === null ? fallback : (parsed as T);
+  } catch {
+    return fallback;
+  }
+}
+
 export default function ProjectWorkspacePage({
   project,
   fields,
@@ -78,10 +93,16 @@ export default function ProjectWorkspacePage({
   const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
   /** 家具・設備入力表の一覧で選んで開いている表 */
   const [furnitureSheetId, setFurnitureSheetId] = useState<number | null>(null);
+  /** 建具表の「建具明細作成」で開いている建具明細作成表 */
+  const [fittingDetailSheetId, setFittingDetailSheetId] = useState<
+    number | null
+  >(null);
   /** 建具表の「計算書」から飛んできたときに開く部屋計算書（部位別入力表の行id） */
   const [jumpEstimateRowId, setJumpEstimateRowId] = useState<number | null>(
     null,
   );
+  /** 集計書兼工事マスターの数量根拠から出所へ飛んできたときの戻り先 */
+  const [backToAggregate, setBackToAggregate] = useState<string | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
 
   useEffect(() => setOptions(initialOptions), [initialOptions]);
@@ -105,67 +126,72 @@ export default function ProjectWorkspacePage({
   useActiveProjectName(draft.name);
 
   const headerFields = useMemo<HeaderField[]>(
-    () => [
-      {
-        key: "managementNo",
-        label: "管理番号",
-        value: draft.managementNo,
-        fieldId: null,
-        readOnly: true,
-        set: keepAsIs,
-      },
-      {
-        key: "name",
-        label: "工事名称",
-        value: draft.name,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, name: value }),
-      },
-      {
-        key: "projectDate",
-        label: "日付",
-        value: draft.projectDate,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, projectDate: value }),
-      },
-      {
-        key: "builderName",
-        label: "施工会社名",
-        value: draft.builderName,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, builderName: value }),
-      },
-      {
-        key: "designerName",
-        label: "設計事務所名",
-        value: draft.designerName,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, designerName: value }),
-      },
-      {
-        key: "note",
-        label: "備考",
-        value: draft.note,
-        fieldId: null,
-        readOnly: false,
-        set: (project, value) => ({ ...project, note: value }),
-      },
-      ...fields.map((field) => ({
-        key: `field-${field.id}`,
-        label: field.title,
-        value: draft.fieldValues[field.id] ?? "",
-        fieldId: field.id,
-        readOnly: false,
-        set: (project: ProjectSummary, value: string): ProjectSummary => ({
-          ...project,
-          fieldValues: { ...project.fieldValues, [field.id]: value },
-        }),
-      })),
-    ],
+    // 物件管理台帳の「列の表示・並び」と同じ順で出す
+    () =>
+      sortByLedgerOrder(
+        [
+          {
+            key: "managementNo",
+            label: "管理番号",
+            value: draft.managementNo,
+            fieldId: null,
+            readOnly: true,
+            set: keepAsIs,
+          },
+          {
+            key: "name",
+            label: "工事名称",
+            value: draft.name,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, name: value }),
+          },
+          {
+            key: "projectDate",
+            label: "日付",
+            value: draft.projectDate,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, projectDate: value }),
+          },
+          {
+            key: "builderName",
+            label: "施工会社名",
+            value: draft.builderName,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, builderName: value }),
+          },
+          {
+            key: "designerName",
+            label: "設計事務所名",
+            value: draft.designerName,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, designerName: value }),
+          },
+          {
+            key: "note",
+            label: "備考",
+            value: draft.note,
+            fieldId: null,
+            readOnly: false,
+            set: (project, value) => ({ ...project, note: value }),
+          },
+          ...fields.map((field) => ({
+            key: `field-${field.id}`,
+            label: field.title,
+            value: draft.fieldValues[field.id] ?? "",
+            fieldId: field.id,
+            readOnly: false,
+            set: (project: ProjectSummary, value: string): ProjectSummary => ({
+              ...project,
+              fieldValues: { ...project.fieldValues, [field.id]: value },
+            }),
+          })),
+        ],
+        loadColumnSettings(),
+      ),
     [draft, fields],
   );
 
@@ -183,6 +209,67 @@ export default function ProjectWorkspacePage({
       return;
     }
     onSave(draft);
+  };
+
+  /** 集計書の数量根拠1件から、その拾いを書いた計算書・入力表を開く */
+  const openSource = async (detail: AggregateDetail): Promise<void> => {
+    const jump = sourceJumpOf(detail);
+    if (jump === null) {
+      setMessage("この拾いの出所が分かりません（元の計算書が消えています）");
+      return;
+    }
+    const from = openedMenu;
+    if (jump.kind === "calcSheet") {
+      setBackToAggregate(from);
+      setJumpEstimateRowId(jump.estimateRowId);
+      setOpenedMenu("roomFinishes");
+      return;
+    }
+    if (jump.kind === "furniture") {
+      // 建具明細作成表からの拾いは建具明細作成表へ（一覧には出ないので表を読んで分ける）
+      const furnitureSheet = await window.sekisan.getFurnitureSheet(
+        jump.sheetId,
+      );
+      setBackToAggregate(from);
+      if (furnitureSheet.kind === "fittingDetail") {
+        setFittingDetailSheetId(jump.sheetId);
+        setOpenedMenu("fittingDetail");
+        return;
+      }
+      setFurnitureSheetId(jump.sheetId);
+      setOpenedMenu("furnitureInput");
+      return;
+    }
+    if (jump.kind === "fireproof") {
+      setBackToAggregate(from);
+      setOpenedMenu("fireproofEstimate");
+      return;
+    }
+    if (jump.kind === "transfer") {
+      setBackToAggregate(from);
+      setOpenedMenu("transferInput");
+      return;
+    }
+    // 部位別雑・金物入力表は行のidしか持たないので、その行のある表を探す
+    const sheets = await window.sekisan.listMiscSheets(draft.id);
+    for (const summary of sheets) {
+      const sheet = await window.sekisan.getMiscSheet(summary.id);
+      const rows = parseJson<MiscRow[]>(sheet.rowsJson, []);
+      if (!rows.some((row) => row.id === jump.rowId)) continue;
+      setBackToAggregate(from);
+      setMiscSheetId(summary.id);
+      setOpenedMenu("miscInput");
+      return;
+    }
+    setMessage("この拾いの出所が分かりません（元の入力表が消えています）");
+  };
+
+  /** 出所から戻るときは、飛んできた集計書兼工事マスターへ返す */
+  const leaveSource = (): boolean => {
+    if (backToAggregate === null) return false;
+    setOpenedMenu(backToAggregate);
+    setBackToAggregate(null);
+    return true;
   };
 
   const openMenu = (item: WorkspaceMenuItem): void => {
@@ -259,6 +346,33 @@ export default function ProjectWorkspacePage({
           setFurnitureSheetId(sheetId);
           setOpenedMenu("furnitureInput");
         }}
+        onOpenFittingDetail={() => {
+          void window.sekisan
+            .ensureFittingDetailSheet(draft.id)
+            .then((sheet) => {
+              setFittingDetailSheetId(sheet.id);
+              setOpenedMenu("fittingDetail");
+            });
+        }}
+      />
+    );
+  }
+
+  if (openedMenu === "fittingDetail") {
+    if (fittingDetailSheetId === null) {
+      setOpenedMenu("fittings");
+      return <></>;
+    }
+    return (
+      <FurnitureSheetPage
+        project={draft}
+        options={options}
+        sheetId={fittingDetailSheetId}
+        onBack={() => {
+          setFittingDetailSheetId(null);
+          if (leaveSource()) return;
+          setOpenedMenu("fittings");
+        }}
       />
     );
   }
@@ -271,6 +385,7 @@ export default function ProjectWorkspacePage({
         initialEstimateRowId={jumpEstimateRowId}
         onBack={() => {
           setJumpEstimateRowId(null);
+          if (leaveSource()) return;
           setOpenedMenu(null);
         }}
       />
@@ -292,7 +407,10 @@ export default function ProjectWorkspacePage({
         project={draft}
         options={options}
         sheetId={miscSheetId}
-        onBack={() => setMiscSheetId(null)}
+        onBack={() => {
+          setMiscSheetId(null);
+          leaveSource();
+        }}
       />
     );
   }
@@ -312,7 +430,29 @@ export default function ProjectWorkspacePage({
         project={draft}
         options={options}
         sheetId={furnitureSheetId}
-        onBack={() => setFurnitureSheetId(null)}
+        onBack={() => {
+          setFurnitureSheetId(null);
+          leaveSource();
+        }}
+      />
+    );
+  }
+
+  if (openedMenu === "fireproofList") {
+    return (
+      <FireproofListPage project={draft} onBack={() => setOpenedMenu(null)} />
+    );
+  }
+
+  if (openedMenu === "fireproofEstimate") {
+    return (
+      <FireproofEstimatePage
+        project={draft}
+        options={options}
+        onBack={() => {
+          if (leaveSource()) return;
+          setOpenedMenu(null);
+        }}
       />
     );
   }
@@ -322,7 +462,10 @@ export default function ProjectWorkspacePage({
       <TransferSheetPage
         project={draft}
         options={options}
-        onBack={() => setOpenedMenu(null)}
+        onBack={() => {
+          if (leaveSource()) return;
+          setOpenedMenu(null);
+        }}
       />
     );
   }
@@ -347,7 +490,13 @@ export default function ProjectWorkspacePage({
   }
 
   if (openedMenu === "aggregate" || openedMenu === "projectMaster") {
-    return <AggregatePage project={draft} onBack={() => setOpenedMenu(null)} />;
+    return (
+      <AggregatePage
+        project={draft}
+        onBack={() => setOpenedMenu(null)}
+        onOpenSource={(detail) => void openSource(detail)}
+      />
+    );
   }
 
   if (openedMenu === "roomAggregate") {
@@ -470,24 +619,26 @@ export default function ProjectWorkspacePage({
       </div>
 
       <div className="workspace-menu">
-        {(["master", "input", "aggregate", "output"] as const).map((group) => (
-          <section key={group}>
-            <h3>{MENU_GROUP_LABEL[group]}</h3>
-            {WORKSPACE_MENU.filter((item) => item.group === group).map(
-              (item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={item.ready ? "menu-item" : "menu-item pending"}
-                  title={item.note}
-                  onClick={() => openMenu(item)}
-                >
-                  {item.label}
-                </button>
-              ),
-            )}
-          </section>
-        ))}
+        {(["master", "fireproof", "input", "aggregate", "output"] as const).map(
+          (group) => (
+            <section key={group}>
+              <h3>{MENU_GROUP_LABEL[group]}</h3>
+              {WORKSPACE_MENU.filter((item) => item.group === group).map(
+                (item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={item.ready ? "menu-item" : "menu-item pending"}
+                    title={item.note}
+                    onClick={() => openMenu(item)}
+                  >
+                    {item.label}
+                  </button>
+                ),
+              )}
+            </section>
+          ),
+        )}
       </div>
     </div>
   );

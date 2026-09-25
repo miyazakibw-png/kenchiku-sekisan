@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -17,6 +18,7 @@ import type {
 } from "@shared/types";
 import {
   applyFurnitureDetails,
+  columnCellTexts,
   furnitureCellQuantity,
   furnitureCellValue,
   furnitureColumn,
@@ -31,6 +33,8 @@ import {
   hasShape,
   floorAreaOf,
   isEmptyFurnitureColumn,
+  isFittingDetailSheet,
+  NO_CALC_CELL,
   pasteFurnitureRows,
   resolveFurnitureRows,
   revertFurnitureDetail,
@@ -44,7 +48,13 @@ import {
   type FurnitureSymbol,
 } from "../../../../core/furniture/furnitureSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
+import { normalizePastedMatrix, parseTsv } from "@shared/tsv";
+import {
+  pasteFurnitureCells,
+  type FurnitureCellPos,
+} from "./furnitureCells";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { ask } from "../common/askDialog";
 import "./RoomCalcSheet.css";
 import "./EstimatePartsPage.css";
@@ -55,6 +65,8 @@ interface Props {
   options: MasterOptions;
   sheetId: number;
   onBack: () => void;
+  /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
+  printMode?: boolean;
 }
 
 function parseJson<T>(json: string, fallback: T): T {
@@ -121,6 +133,13 @@ function useDragWindow(): {
   };
 }
 
+/** A3横1枚に入る幅（用紙の余白8mmを引いた分。96dpiの画素） */
+const PRINT_WIDTH = 1527;
+/** A3横1枚の高さ・見出しの帯・1行の高さ（計算書印刷と同じ） */
+const PRINT_HEIGHT = 1062;
+const PRINT_TITLE_HEIGHT = 24;
+const PRINT_ROW_HEIGHT = 22;
+
 /** 入力欄の列（表示・非表示を切り替えられる） */
 interface InputColumn {
   key: string;
@@ -159,9 +178,27 @@ const CURTAIN_INPUT_COLUMNS: InputColumn[] = [
   { key: "unit", label: "単位", forDetail: false },
 ];
 
+/** 建具明細作成表の入力欄（部位欄は1つ。W・Hは建具表と取り合い、Dはこの表だけの入力） */
+const FITTING_DETAIL_INPUT_COLUMNS: InputColumn[] = [
+  { key: "place", label: "部位Ⅰ", forDetail: false },
+  { key: "subjectId", label: "科目", forDetail: true },
+  { key: "partNumber", label: "部位ID", forDetail: true },
+  { key: "detailNumber", label: "名称ID", forDetail: true },
+  { key: "part", label: "部位", forDetail: false },
+  { key: "nameSymbol", label: "名称", forDetail: false },
+  { key: "width", label: "W", forDetail: false },
+  { key: "height", label: "H", forDetail: false },
+  { key: "depth", label: "D", forDetail: false },
+  { key: "quantity", label: "数量", forDetail: false },
+  { key: "unit", label: "単位", forDetail: false },
+  { key: "descriptionUpper", label: "摘要(上段)", forDetail: false },
+  { key: "remarksLower", label: "備考(下段)", forDetail: false },
+];
+
 /** 計算書の種類ごとの入力欄の列（システムキッチン・洗面化粧台・棚・ハンガーパイプはW1・W2・W3。
  * ハンガーパイプはDの代わりに形状。カーテン・ブラインドはW・H・Dの代わりに建具記号） */
 function inputColumnsFor(kind: string): InputColumn[] {
+  if (isFittingDetailSheet(kind)) return FITTING_DETAIL_INPUT_COLUMNS;
   if (hasFittingSymbol(kind)) return CURTAIN_INPUT_COLUMNS;
   if (hasModel(kind))
     return INPUT_COLUMNS.flatMap((column) => {
@@ -262,7 +299,8 @@ const OPS_WIDTH = 46;
 const NO_WIDTH = 34;
 const INPUT_DEFAULT = 80;
 const DETAIL_DEFAULT = 100;
-const COLUMN_DEFAULT = 90;
+/** タテの明細（列）の標準の幅 */
+const COLUMN_DEFAULT = 153;
 /** タテの明細の見出し（科目・部位ID…）を出す列 */
 const LABEL_WIDTH = 72;
 
@@ -339,17 +377,14 @@ function SymbolTable({
     symbols
       .map((item) => item.symbol.trim())
       .filter(
-        (symbol, index, all) =>
-          symbol !== "" && all.indexOf(symbol) !== index,
+        (symbol, index, all) => symbol !== "" && all.indexOf(symbol) !== index,
       ),
   );
   const change = (index: number, patch: Partial<FurnitureSymbol>): void => {
     const next = [...symbols];
     if (index === symbols.length) next.push({ symbol: "", text: "", ...patch });
     else next[index] = { ...next[index], ...patch };
-    onChange(
-      next.filter((item) => item.symbol !== "" || item.text !== ""),
-    );
+    onChange(next.filter((item) => item.symbol !== "" || item.text !== ""));
   };
   return (
     <div className="symbol-table">
@@ -402,28 +437,40 @@ export default function FurnitureSheetPage({
   options,
   sheetId,
   onBack,
+  printMode = false,
 }: Props): JSX.Element {
   const [sheet, setSheet] = useState<FurnitureSheet | null>(null);
   const [rows, setRows] = useState<FurnitureRow[]>([]);
   const [columns, setColumns] = useState<FurnitureColumn[]>([]);
-  const [settings, setSettings] = useState<FurnitureSettings>(
-    furnitureSettings(),
-  );
+  const [settings, setSettings] =
+    useState<FurnitureSettings>(furnitureSettings());
   const [hidden, setHidden] = useState<string[]>(() => readHidden(sheetId));
   const [showSettings, setShowSettings] = useState(false);
   const settingsDrag = useDragWindow();
   const callDrag = useDragWindow();
   const [message, setMessage] = useState("");
+  /** 印刷の間だけ紙の形（明細だけ）にする */
+  const [forPrint, setForPrint] = useState(false);
+  /** 見出し文字の基準（全物件共通。この種類の表はみなこれを表示する） */
+  const [baseLabels, setBaseLabels] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState(0);
   /** 複数行コピーの範囲の終わり（Shift+クリックで選んだ行） */
   const [pickedEnd, setPickedEnd] = useState(0);
   /** 行コピーで控えた行（この計算書の中だけ） */
   const [clipboard, setClipboard] = useState<FurnitureRow[]>([]);
   const [pickedColumn, setPickedColumn] = useState<string | null>(null);
+  /** タテ明細（列）コピーで控えた列（この計算書の中だけ） */
+  const [colClipboard, setColClipboard] = useState<{
+    column: FurnitureColumn;
+    values: string[];
+  } | null>(null);
+  /** 行入力部で最後にカーソルを置いたマス（エクセル貼り付けの左上になる） */
+  const inputCell = useRef<FurnitureCellPos | null>(null);
   /** タテ明細の名称ID欄の候補（選んだ科目の明細） */
   const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
   /** 建具表（カーテン・ブラインドの建具記号からW・Hを呼び出す） */
   const [fittings, setFittings] = useState<Fitting[]>([]);
+  const [part1Options, setPart1Options] = useState<string[]>([]);
   /** 部位別入力表の部位Ⅲ（カーテン・ブラインドの+部位の候補） */
   const [part3Options, setPart3Options] = useState<string[]>([]);
   /** マスター呼出画面（部位別雑・金物入力表と同じ作り） */
@@ -439,14 +486,88 @@ export default function FurnitureSheetPage({
   );
   const widthRef = useRef(widths);
   widthRef.current = widths;
+  /** 紙に出すときの表（下の空白を横罫線で埋める本数を測るのに使う） */
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [printBlankRows, setPrintBlankRows] = useState(0);
 
-  const { markSaved } = useSaveOnLeave({ rows, columns, settings }, () =>
-    save(true),
+  // 表の名前・集計書での置き場所（部位Ⅰ・部位Ⅱ・倍率）など、行以外の直し分も画面を離れるとき自動保存する
+  const sheetMeta =
+    sheet === null
+      ? null
+      : {
+          name: sheet.name,
+          part1: sheet.part1,
+          part2: sheet.part2,
+          part2Split: sheet.part2Split,
+          multiplier: sheet.multiplier,
+          note: sheet.note,
+        };
+  const { markSaved } = useSaveOnLeave(
+    { rows, columns, settings, sheetMeta },
+    () => save(true),
   );
+
+  /** ↶戻る・↷進む用の履歴（行・タテの明細列・表の設定をまとめて1つの履歴にする） */
+  const history = useUndoRedo<{
+    rows: FurnitureRow[];
+    columns: FurnitureColumn[];
+    settings: FurnitureSettings;
+  }>();
+  const contentRef = useRef({ rows, columns, settings });
+  useEffect(() => {
+    contentRef.current = { rows, columns, settings };
+  });
+
+  /** 行を直す（直す前の中身を履歴へ積む） */
+  const changeRows = (next: React.SetStateAction<FurnitureRow[]>): void => {
+    history.push(contentRef.current);
+    setRows(next);
+  };
+
+  /** タテの明細列を直す（直す前の中身を履歴へ積む） */
+  const changeColumns = (
+    next: React.SetStateAction<FurnitureColumn[]>,
+  ): void => {
+    history.push(contentRef.current);
+    setColumns(next);
+  };
+
+  /** 表の設定を直す（直す前の中身を履歴へ積む） */
+  const commitSettings = (
+    next: React.SetStateAction<FurnitureSettings>,
+  ): void => {
+    history.push(contentRef.current);
+    setSettings(next);
+  };
+
+  const undo = (): void => {
+    const previous = history.undo(contentRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    setRows(previous.rows);
+    setColumns(previous.columns);
+    setSettings(previous.settings);
+    setMessage("1つ前に戻しました（保存すると確定します）");
+  };
+
+  const redo = (): void => {
+    const next = history.redo(contentRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    setRows(next.rows);
+    setColumns(next.columns);
+    setSettings(next.settings);
+    setMessage("1つ先へ進めました（保存すると確定します）");
+  };
 
   const save = useCallback(
     async (quiet = false): Promise<void> => {
-      if (!sheet) return;
+      // 印刷書式は見るだけ（保存しない）
+      if (!sheet || printMode) return;
       const saved = await window.sekisan.saveFurnitureSheet({
         id: sheet.id,
         name: sheet.name,
@@ -461,11 +582,27 @@ export default function FurnitureSheetPage({
         note: sheet.note,
       });
       setSheet(saved);
-      markSaved({ rows, columns, settings });
+      markSaved({
+        rows,
+        columns,
+        settings,
+        sheetMeta: {
+          name: saved.name,
+          part1: saved.part1,
+          part2: saved.part2,
+          part2Split: saved.part2Split,
+          multiplier: saved.multiplier,
+          note: saved.note,
+        },
+      });
       if (!quiet)
-        setMessage("保存しました（建具表へ転記し、集計実行で集計書に入ります）");
+        setMessage(
+          isFittingDetailSheet(sheet.kind)
+            ? "保存しました（W・Hを建具表へ返し、集計実行で集計書に入ります）"
+            : "保存しました（建具表へ転記し、集計実行で集計書に入ります）",
+        );
     },
-    [columns, markSaved, rows, settings, sheet],
+    [columns, markSaved, printMode, rows, settings, sheet],
   );
 
   useEffect(() => {
@@ -502,27 +639,51 @@ export default function FurnitureSheetPage({
       setColumns(nextColumns);
       setSettings(nextSettings);
       setHidden(readHidden(sheetId));
+      history.clear();
       markSaved({
         rows: nextRows,
         columns: nextColumns,
         settings: nextSettings,
+        sheetMeta: {
+          name: loaded.name,
+          part1: loaded.part1,
+          part2: loaded.part2,
+          part2Split: loaded.part2Split,
+          multiplier: loaded.multiplier,
+          note: loaded.note,
+        },
       });
-      if (hasFittingSymbol(loaded.kind)) {
-        setFittings(await window.sekisan.listFittings(loaded.projectId));
+      if (hasFittingSymbol(loaded.kind) || isFittingDetailSheet(loaded.kind)) {
+        if (hasFittingSymbol(loaded.kind))
+          setFittings(await window.sekisan.listFittings(loaded.projectId));
         const estimateRows = await window.sekisan.listEstimateRows(
           loaded.projectId,
         );
-        setPart3Options(
+        setPart1Options(
           Array.from(
             new Set(
               estimateRows
-                .filter((row) => row.rowType === "room")
-                .map((row) => row.part3.trim())
+                .map((row) => row.part1.trim())
                 .filter((text) => text !== ""),
             ),
           ),
         );
+        if (hasFittingSymbol(loaded.kind))
+          setPart3Options(
+            Array.from(
+              new Set(
+                estimateRows
+                  .filter((row) => row.rowType === "room")
+                  .map((row) => row.part3.trim())
+                  .filter((text) => text !== ""),
+              ),
+            ),
+          );
       }
+      const baseSettings = await window.sekisan.getFurnitureBaseSettings(
+        loaded.kind,
+      );
+      setBaseLabels(baseSettings.columnLabels ?? {});
     })();
   }, [markSaved, sheetId]);
 
@@ -606,6 +767,18 @@ export default function FurnitureSheetPage({
     [sheet?.kind, view],
   );
 
+  /** タテ明細のマスごとの式。建具明細作成表は空欄の行を上の行と同じ式とみなす */
+  const columnTexts = useMemo(() => {
+    const map = new Map<string, string[]>();
+    columns.forEach((column) => {
+      map.set(
+        column.id,
+        columnCellTexts(view, column.id, sheet?.kind ?? "furniture"),
+      );
+    });
+    return map;
+  }, [columns, view, sheet?.kind]);
+
   const subjectEntries = useMemo<PickEntry[]>(
     () =>
       options.subjects.map((subject) => ({
@@ -629,6 +802,10 @@ export default function FurnitureSheetPage({
   const part3Entries = useMemo<PickEntry[]>(
     () => part3Options.map((text) => ({ value: text, label: text })),
     [part3Options],
+  );
+  const part1Entries = useMemo<PickEntry[]>(
+    () => part1Options.map((text) => ({ value: text, label: text })),
+    [part1Options],
   );
   const fittingEntries = useMemo<PickEntry[]>(
     () =>
@@ -660,7 +837,10 @@ export default function FurnitureSheetPage({
         setNumberOptions([]);
         return;
       }
-      const forProject = await window.sekisan.listDetails(subjectId, project.id);
+      const forProject = await window.sekisan.listDetails(
+        subjectId,
+        project.id,
+      );
       const basic = await window.sekisan.listDetails(subjectId, null);
       const numbers = new Set(forProject.map((row) => row.detailNumber));
       setNumberOptions([
@@ -694,11 +874,8 @@ export default function FurnitureSheetPage({
       const patch: Partial<FurnitureColumn> = {
         subjectId: detail.subjectId,
         materialCategory: detail.materialCategory,
-        partNumber:
-          detail.partNumber ??
-          options.pickupParts.find((part) => part.name === detail.partName)
-            ?.id ??
-          null,
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: detail.partNumber ?? null,
         detailNumber: detail.detailNumber,
         partName: detail.partName,
         name: detail.name,
@@ -709,7 +886,7 @@ export default function FurnitureSheetPage({
         remarksLower: detail.remarksLower,
         sourceDetailId: detail.id,
       };
-      setColumns((current) => {
+      changeColumns((current) => {
         const at = current.findIndex((column) => column.id === pickedColumn);
         if (at < 0) {
           const created = furnitureColumn(patch);
@@ -721,14 +898,19 @@ export default function FurnitureSheetPage({
           setPickedColumn(created.id);
           return [...current.slice(0, at), created, ...current.slice(at)];
         }
-        if (isEmptyFurnitureColumn(current[at])) {
-          return current.map((column, index) =>
-            index === at ? { ...column, ...patch } : column,
-          );
+        // 書き込んだら次の列へ進む（雑・金物入力表と同じ）。次が無ければ新しい明細列を足してそこへ進む
+        const next = [
+          ...current.slice(0, at),
+          { ...current[at], ...patch },
+          ...current.slice(at + 1),
+        ];
+        if (at + 1 < next.length) {
+          setPickedColumn(next[at + 1].id);
+          return next;
         }
-        const created = furnitureColumn(patch);
+        const created = furnitureColumn();
         setPickedColumn(created.id);
-        return [...current.slice(0, at + 1), created, ...current.slice(at + 1)];
+        return [...next, created];
       });
       setMessage(`${detail.name} を呼び出しました`);
     },
@@ -736,15 +918,14 @@ export default function FurnitureSheetPage({
   );
 
   const editRow = (index: number, patch: Partial<FurnitureRow>): void => {
-    setRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+    changeRows(
+      rows.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+    );
   };
 
   /** 右の明細欄を手で直す（直した欄は自動作成で上書きしない） */
-  const editDetail = (
-    index: number,
-    patch: Partial<FurnitureDetail>,
-  ): void => {
-    setRows(
+  const editDetail = (index: number, patch: Partial<FurnitureDetail>): void => {
+    changeRows(
       rows.map((row, at) => {
         if (at !== index) return row;
         const edited = [...row.detail.edited];
@@ -761,7 +942,7 @@ export default function FurnitureSheetPage({
 
   /** 手で直した明細欄（赤字）を自動作成に戻す。key を省くと行の全部の欄 */
   const revertDetail = (index: number, key?: string): void => {
-    setRows(
+    changeRows(
       rows.map((row, at) =>
         at === index
           ? revertFurnitureDetail(row, key === undefined ? undefined : [key])
@@ -785,13 +966,13 @@ export default function FurnitureSheetPage({
   const addRow = (at: number): void => {
     const next = [...rows];
     next.splice(at, 0, furnitureRow());
-    setRows(next);
+    changeRows(next);
     pickRow(at, false);
   };
 
   const removeRow = (at: number): void => {
     if (rows.length <= 1) return;
-    setRows(rows.filter((_row, index) => index !== at));
+    changeRows(rows.filter((_row, index) => index !== at));
     pickRow(Math.min(at, rows.length - 2), false);
   };
 
@@ -801,7 +982,7 @@ export default function FurnitureSheetPage({
     const next = [...rows];
     const moved = next.splice(at, 1)[0];
     next.splice(to, 0, moved);
-    setRows(next);
+    changeRows(next);
     pickRow(to, false);
   };
 
@@ -830,7 +1011,7 @@ export default function FurnitureSheetPage({
       ))
     )
       return;
-    setRows(
+    changeRows(
       rows.map((row, at) =>
         at >= selectionStart && at <= selectionEnd
           ? revertFurnitureDetail(row)
@@ -843,7 +1024,7 @@ export default function FurnitureSheetPage({
   const pasteRows = (mode: FurniturePasteMode): void => {
     if (clipboard.length === 0) return;
     const at = mode === "append" ? rows.length : selectionStart;
-    setRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
+    changeRows(pasteFurnitureRows(rows, selectionStart, clipboard, mode));
     setPicked(at);
     setPickedEnd(at + clipboard.length - 1);
     const where =
@@ -856,7 +1037,7 @@ export default function FurnitureSheetPage({
   };
 
   const editColumn = (id: string, patch: Partial<FurnitureColumn>): void =>
-    setColumns(
+    changeColumns(
       columns.map((column) =>
         column.id === id ? { ...column, ...patch } : column,
       ),
@@ -865,7 +1046,7 @@ export default function FurnitureSheetPage({
   /** タテ方向の明細（列）を足す */
   const addColumn = (): void => {
     const created = furnitureColumn();
-    setColumns([...columns, created]);
+    changeColumns([...columns, created]);
     setPickedColumn(created.id);
     setMessage("タテの明細を足しました");
   };
@@ -873,7 +1054,7 @@ export default function FurnitureSheetPage({
   /** タテの明細は少なくとも1列は残す（入力欄が見えるように） */
   const removeColumn = (id: string): void => {
     const rest = columns.filter((column) => column.id !== id);
-    setColumns(rest.length > 0 ? rest : [furnitureColumn()]);
+    changeColumns(rest.length > 0 ? rest : [furnitureColumn()]);
     if (pickedColumn === id) setPickedColumn(null);
   };
 
@@ -884,12 +1065,62 @@ export default function FurnitureSheetPage({
     const next = [...columns];
     const [moved] = next.splice(at, 1);
     next.splice(to, 0, moved);
-    setColumns(next);
+    changeColumns(next);
+  };
+
+  /** 選んでいるタテ明細（列）の見出しと行ごとの数量をまとめて控える */
+  const copyColumn = (): void => {
+    const column = columns.find((item) => item.id === pickedColumn);
+    if (column === undefined) {
+      setMessage("コピーするタテ明細の列を選んでください");
+      return;
+    }
+    const values = rows.map((row) => row.values?.[column.id] ?? "");
+    setColClipboard({ column, values });
+    setMessage(
+      `⧉ 「${column.name || "明細"}」をコピーしました（貼り付けたい列を選んで「上書貼付」「挿入貼付」「追加貼付」）`,
+    );
+  };
+
+  /** コピーしたタテ明細（列）を貼る（上書き＝選んでいる列／挿入＝その左／追加＝いちばん右。行ごとの数量も一緒に） */
+  const pasteColumn = (mode: "over" | "insert" | "append"): void => {
+    if (colClipboard === null) return;
+    const at = columns.findIndex((column) => column.id === pickedColumn);
+    history.push(contentRef.current);
+    let targetId: string;
+    let nextColumns: FurnitureColumn[];
+    if (mode === "over" && at >= 0) {
+      targetId = columns[at].id;
+      nextColumns = columns.map((column, index) =>
+        index === at ? { ...colClipboard.column, id: column.id } : column,
+      );
+    } else {
+      targetId = furnitureColumn().id;
+      const created = { ...colClipboard.column, id: targetId };
+      nextColumns =
+        mode === "insert" && at >= 0
+          ? [...columns.slice(0, at), created, ...columns.slice(at)]
+          : [...columns, created];
+    }
+    setColumns(nextColumns);
+    setRows(
+      rows.map((row, index) => ({
+        ...row,
+        values: {
+          ...(row.values ?? {}),
+          [targetId]: colClipboard.values[index] ?? "",
+        },
+      })),
+    );
+    setPickedColumn(targetId);
+    const where =
+      mode === "over" ? "上書き" : mode === "insert" ? "挿入" : "追加";
+    setMessage(`タテ明細を${where}貼付しました（保存で確定）`);
   };
 
   /** タテの明細のマス（行×列）に数量（計算式も可）を入れる */
   const editCell = (rowId: string, columnId: string, text: string): void =>
-    setRows(
+    changeRows(
       rows.map((row) =>
         row.id === rowId
           ? { ...row, values: { ...(row.values ?? {}), [columnId]: text } }
@@ -902,7 +1133,7 @@ export default function FurnitureSheetPage({
     async (column: FurnitureColumn, text: string): Promise<void> => {
       const value = text.trim();
       if (value === "") {
-        setColumns((current) =>
+        changeColumns((current) =>
           current.map((each) =>
             each.id === column.id ? { ...each, detailNumber: null } : each,
           ),
@@ -939,7 +1170,7 @@ export default function FurnitureSheetPage({
       }
       const detail = found;
       if (detail === undefined) {
-        setColumns((current) =>
+        changeColumns((current) =>
           current.map((each) =>
             each.id === column.id ? { ...each, detailNumber: number } : each,
           ),
@@ -948,7 +1179,7 @@ export default function FurnitureSheetPage({
         return;
       }
       const keepPart = column.partNumber !== null || column.partName !== "";
-      setColumns((current) =>
+      changeColumns((current) =>
         current.map((each) =>
           each.id === column.id
             ? {
@@ -958,11 +1189,10 @@ export default function FurnitureSheetPage({
                 detailNumber: detail.detailNumber,
                 materialCategory:
                   detail.materialCategory || each.materialCategory,
+                // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
                 partNumber: keepPart
                   ? each.partNumber
-                  : (options.pickupParts.find(
-                      (part) => part.name === detail.partName,
-                    )?.id ?? null),
+                  : (detail.partNumber ?? null),
                 partName: keepPart ? each.partName : detail.partName,
                 name: detail.name,
                 descriptionUpper: detail.descriptionUpper,
@@ -993,6 +1223,7 @@ export default function FurnitureSheetPage({
   const saveAsBase = async (): Promise<void> => {
     if (!sheet) return;
     await window.sekisan.saveFurnitureBaseSettings(sheet.kind, settings);
+    setBaseLabels(settings.columnLabels ?? {});
     setMessage(
       `「${furnitureKindLabel(sheet.kind)}」の基準として保存しました（どの物件でもこの種類の新しい表はこの設定から始まります）`,
     );
@@ -1008,38 +1239,172 @@ export default function FurnitureSheetPage({
     )
       return;
     const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
-    setSettings(base);
+    setBaseLabels(base.columnLabels ?? {});
+    commitSettings(base);
     setMessage("基準の設定を読み込みました（保存するとこの表に確定します）");
   };
 
   const changeSettings = (patch: Partial<FurnitureSettings>): void => {
-    setSettings({ ...settings, ...patch });
+    commitSettings({ ...settings, ...patch });
   };
 
   const allInputColumns = inputColumnsFor(sheet?.kind ?? "furniture");
+  // この種類の表に無い入力欄は出さない（表によって組み立てる列が違うので、列の一覧を正とする）
+  const inputKeys = new Set(allInputColumns.map((column) => column.key));
   const tripleWidth = hasTripleWidth(sheet?.kind ?? "furniture");
   const withShape = hasShape(sheet?.kind ?? "furniture");
   const withModel = hasModel(sheet?.kind ?? "furniture");
   const withFitting = hasFittingSymbol(sheet?.kind ?? "furniture");
+  const isFittingDetail = isFittingDetailSheet(sheet?.kind ?? "");
   const shapeHint = (settings.shapeSymbols ?? [])
     .map((item) => `${item.symbol}→${item.text}`)
     .join("　");
-  const inputColumns = allInputColumns.filter((column) =>
-    visible(column.key),
-  );
-  const detailCells = visible("detail") ? DETAIL_CELLS : [];
+  // 紙には明細だけを出す（明細を作るための入力欄は出さない・画面の✔に関わらず明細は出す）
+  const printing = printMode || forPrint;
+  const inputColumns = printing
+    ? []
+    : allInputColumns.filter((column) => visible(column.key));
+
+  /** 行入力部の欄を出すか（紙には出さない） */
+  const showInput = (key: string): boolean =>
+    !printing && visible(key) && inputKeys.has(key as keyof FurnitureRow);
+
+  /** 行入力部の見出し文字（この表で直した文字が優先。無ければ基準の文字、それも無ければもとの見出し） */
+  const labelText = (key: string): string =>
+    settings.columnLabels?.[key] ?? baseLabels[key] ?? "";
+  const labelOf = (column: InputColumn): string => {
+    const text = labelText(column.key);
+    return text.trim() === "" ? column.label : text;
+  };
+
+  /** 見出し文字を直す（この表だけに効く。空欄にするともとの見出しへ戻る） */
+  const editLabel = (key: string, text: string): void =>
+    commitSettings({
+      ...settings,
+      columnLabels: { ...(settings.columnLabels ?? {}), [key]: text },
+    });
+
+  /** 見出し文字をこの種類の基準（全物件共通）に登録する。以後どの物件の同じ種類の表にもこの見出しが出る（表ごとに直した文字がある表はそちらが優先） */
+  const registerLabelsAsBase = async (): Promise<void> => {
+    if (!sheet) return;
+    const base = await window.sekisan.getFurnitureBaseSettings(sheet.kind);
+    const labels = {
+      ...(base.columnLabels ?? {}),
+      ...(settings.columnLabels ?? {}),
+    };
+    await window.sekisan.saveFurnitureBaseSettings(sheet.kind, {
+      ...base,
+      columnLabels: labels,
+    });
+    setBaseLabels(labels);
+    setMessage(
+      "見出し文字を基準に登録しました（この種類のどの表にも同じ見出しが出ます）",
+    );
+  };
+  const detailCells = printing || visible("detail") ? DETAIL_CELLS : [];
   const headRowCount = COLUMN_HEADS.length + 1;
 
+  /**
+   * 行入力部のマスのカーソルを記録する。
+   * 行は「番号」欄（.num）の次から入力欄が並ぶので、その順番からマスの位置を出す。
+   */
+  const findInputCell = (
+    target: EventTarget | null,
+  ): FurnitureCellPos | null => {
+    if (!(target instanceof HTMLElement)) return null;
+    const td = target.closest("td");
+    const tr = td?.parentElement;
+    const tbody = tr?.parentElement;
+    if (!td || !tr || !tbody) return null;
+    const tds = Array.from(tr.children);
+    const numberIndex = tds.findIndex((item) =>
+      item.classList.contains("num"),
+    );
+    if (numberIndex < 0) return null;
+    const col = tds.indexOf(td) - numberIndex - 1;
+    if (col < 0 || col >= inputColumns.length) return null;
+    const index = Array.from(tbody.children).indexOf(tr);
+    if (index < 0) return null;
+    return { row: index, col };
+  };
+
+  /** 選んでいるマスを左上にして、エクセルの表を行入力部へ取り込む */
+  const pasteCells = useCallback(
+    (text: string) => {
+      if (text.trim() === "") return;
+      const matrix = normalizePastedMatrix(parseTsv(text));
+      const at = inputCell.current ?? { row: picked, col: 0 };
+      const result = pasteFurnitureCells(
+        rows,
+        at,
+        matrix,
+        inputColumns.map((column) => column.key),
+        { parts: options.pickupParts, units: options.units },
+      );
+      changeRows(result.rows);
+      const notes = [
+        result.addedRows > 0 ? `${result.addedRows} 行追加` : "",
+        result.errorCount > 0
+          ? `取り込めない値 ${result.errorCount} 件（${result.firstError}）`
+          : "",
+      ].filter((note) => note !== "");
+      setMessage(
+        notes.length === 0
+          ? "貼り付けました"
+          : `貼り付けました（${notes.join("／")}）`,
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inputColumns, options.pickupParts, options.units, picked, rows],
+  );
+
+  /** エクセルの表をそのまま貼り付ける（選んでいるマスから取り込む） */
+  const pasteFromExcel = useCallback(async () => {
+    pasteCells(await navigator.clipboard.readText());
+  }, [pasteCells]);
+
   const tableWidth =
-    OPS_WIDTH +
+    // 紙には操作欄（＋－）を出さないので、その分は幅に入れない
+    (printing ? 0 : OPS_WIDTH) +
     NO_WIDTH +
     inputColumns.reduce(
       (sum, column) => sum + widthOf(column.key, INPUT_DEFAULT),
       0,
     ) +
-    detailCells.reduce((sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT), 0) +
+    detailCells.reduce(
+      (sum, cell) => sum + widthOf(cell.id, DETAIL_DEFAULT),
+      0,
+    ) +
     LABEL_WIDTH +
-    columns.reduce((sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT), 0);
+    columns.reduce(
+      (sum, column) => sum + widthOf(column.id, COLUMN_DEFAULT),
+      0,
+    );
+
+  /** 紙（A3横）の幅に収まらないときの縮め方 */
+  const printScale = Math.min(1, PRINT_WIDTH / Math.max(tableWidth, 1));
+
+  /**
+   * 紙の下が空く分を埋める横罫線の本数。
+   * 見出しと1行の高さを実際に測ってから数えるので、1枚の下まで罫線が入る。
+   */
+  useLayoutEffect(() => {
+    if (!printing) {
+      if (printBlankRows !== 0) setPrintBlankRows(0);
+      return;
+    }
+    const table = tableRef.current;
+    if (!table) return;
+    const head = table.tHead?.offsetHeight ?? 0;
+    const body = table.tBodies[0];
+    const rowHeight = body?.rows[0]?.offsetHeight ?? PRINT_ROW_HEIGHT;
+    const room =
+      (PRINT_HEIGHT - PRINT_TITLE_HEIGHT) / printScale -
+      head -
+      rowHeight * view.length;
+    const next = Math.max(0, Math.floor(room / PRINT_ROW_HEIGHT));
+    if (next !== printBlankRows) setPrintBlankRows(next);
+  }, [printing, printScale, printBlankRows, view.length, columns.length]);
 
   /** タテの明細（列）の1マス分の入力欄 */
   const headCell = (
@@ -1130,10 +1495,28 @@ export default function FurnitureSheetPage({
   };
 
   if (!sheet)
-    return <div className="estimate-page furniture-page">読み込み中…</div>;
+    return printMode ? (
+      <></>
+    ) : (
+      <div className="estimate-page furniture-page">読み込み中…</div>
+    );
 
   return (
-    <div className="estimate-page furniture-page">
+    <div
+      className={`estimate-page furniture-page${printMode ? " furniture-print" : ""}`}
+      // 1枚に収まる分はA3横1枚の高さに固定して、次の計算書が紙の頭から始まるようにする
+      style={
+        printMode && printBlankRows > 0
+          ? { height: `${PRINT_HEIGHT}px` }
+          : undefined
+      }
+    >
+      {printMode && (
+        <div className="calc-print-title">
+          {isFittingDetailSheet(sheet.kind) ? "建具明細作成表" : "家具計算書"}　
+          {sheet.name}　{project.managementNo} {project.name}
+        </div>
+      )}
       <div className="toolbar">
         <button
           type="button"
@@ -1141,14 +1524,49 @@ export default function FurnitureSheetPage({
             void save(true).then(onBack);
           }}
         >
-          ← 家具・設備入力表（一覧）へ
+          {isFittingDetailSheet(sheet.kind)
+            ? "← 建具表へ"
+            : "← 家具・設備入力表（一覧）へ"}
         </button>
-        <h2>家具計算書</h2>
+        <h2>
+          {isFittingDetailSheet(sheet.kind) ? "建具明細作成表" : "家具計算書"}
+        </h2>
         <span className="project">
           {sheet.name}／{project.managementNo} {project.name}
         </span>
-        <button type="button" onClick={() => addRow(picked + 1)}>
-          ＋ 行を足す
+        {!printMode && (
+          <>
+            <button
+              type="button"
+              disabled={!history.canUndo}
+              title="1つ前の内容に戻します"
+              onClick={undo}
+            >
+              ↶ 戻る
+            </button>
+            <button
+              type="button"
+              disabled={!history.canRedo}
+              title="戻した内容を1つ先へ進めます"
+              onClick={redo}
+            >
+              ↷ 進む
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          title="いちばん下に空の行を足します"
+          onClick={() => addRow(rows.length)}
+        >
+          ↓ 行追加
+        </button>
+        <button
+          type="button"
+          title="カーソル行の上に行を作ります"
+          onClick={() => addRow(picked)}
+        >
+          ⤒ 行挿入
         </button>
         <button type="button" onClick={() => removeRow(picked)}>
           － 行を消す
@@ -1192,6 +1610,13 @@ export default function FurnitureSheetPage({
         </button>
         <button
           type="button"
+          title="カーソルのマスを左上にして、エクセルでコピーした表を行入力部へ取り込みます（行入力部の中で Ctrl+V でも同じです）"
+          onClick={() => void pasteFromExcel()}
+        >
+          📋 エクセルから貼付
+        </button>
+        <button
+          type="button"
           title="カーソルの行（Shift+クリックの範囲）で手で直した明細欄（赤字）をすべて自動作成に戻します。1欄だけならその欄を右クリック"
           onClick={() => void revertSelectedDetails()}
         >
@@ -1220,6 +1645,37 @@ export default function FurnitureSheetPage({
         </button>
         <button
           type="button"
+          title="選んでいるタテ明細（列）を、行ごとの数量も一緒にコピーします"
+          onClick={copyColumn}
+        >
+          ⧉ 列コピー
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテ明細の列へ、コピーした列を上書きします"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("over")}
+        >
+          📋 上書貼付
+        </button>
+        <button
+          type="button"
+          title="選んでいるタテ明細の列の左へ、コピーした列を挿入します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("insert")}
+        >
+          ⇲ 挿入貼付
+        </button>
+        <button
+          type="button"
+          title="いちばん右へ、コピーした列を足します"
+          disabled={colClipboard === null}
+          onClick={() => pasteColumn("append")}
+        >
+          ⤓ 追加貼付
+        </button>
+        <button
+          type="button"
           className={callOpen ? "on" : ""}
           title="タテの明細にマスターの明細を呼び出します"
           onClick={() => setCallOpen(!callOpen)}
@@ -1233,7 +1689,17 @@ export default function FurnitureSheetPage({
         >
           ⚙ 設定
         </button>
-        <button type="button" onClick={() => window.print()}>
+        <button
+          type="button"
+          title="明細だけを紙に出します（明細を作るための入力欄は出しません）"
+          onClick={() => {
+            setForPrint(true);
+            window.setTimeout(() => {
+              window.print();
+              setForPrint(false);
+            }, 100);
+          }}
+        >
           🖨 印刷
         </button>
         <button type="button" onClick={() => void save()}>
@@ -1251,7 +1717,13 @@ export default function FurnitureSheetPage({
               checked={visible(column.key)}
               onChange={() => toggleColumnView(column.key)}
             />
-            {column.label}
+            <input
+              className="title-text"
+              value={labelText(column.key)}
+              placeholder={column.label}
+              title="表の見出しに出す文字。空欄にするともとの見出しに戻ります"
+              onChange={(event) => editLabel(column.key, event.target.value)}
+            />
           </label>
         ))}
         <label className="detail-toggle">
@@ -1408,7 +1880,11 @@ export default function FurnitureSheetPage({
             onMouseDown={settingsDrag.onMouseDown}
             title="この見出しをドラッグすると設定の窓を動かせます"
           >
-            <b>家具計算書の設定</b>
+            <b>
+              {isFittingDetailSheet(sheet?.kind ?? "")
+                ? "建具明細作成表の設定"
+                : "家具計算書の設定"}
+            </b>
             <span>（この表だけの設定。見出しをドラッグで移動）</span>
             <button type="button" onClick={() => setShowSettings(false)}>
               ✕ 閉じる
@@ -1433,11 +1909,39 @@ export default function FurnitureSheetPage({
             >
               基準を読込
             </button>
+            <button
+              type="button"
+              onClick={() => void registerLabelsAsBase()}
+              title="見出しの文字（表示する列の右横で直せる文字）をこの種類の基準にします。以後どの物件でもこの種類の表に同じ見出しが出ます（表ごとに直した文字がある表はそちらが優先）"
+            >
+              見出しを基準に登録
+            </button>
           </div>
-            <table>
-              <tbody>
-                <tr>
-                  <td>部位の前後付加文字</td>
+          <table>
+            <tbody>
+              <tr>
+                <td>
+                  {isFittingDetail ? "部位の分解文字" : "部位の前後付加文字"}
+                </td>
+                {isFittingDetail ? (
+                  <td>
+                    <span className="hint">
+                      アルファベットと数字以降の間に入れる文字＝
+                    </span>
+                    <input
+                      lang="ja"
+                      value={settings.partSeparator ?? "-"}
+                      onChange={(event) =>
+                        changeSettings({ partSeparator: event.target.value })
+                      }
+                    />
+                    <span className="hint">
+                      （部位をアルファベット＋数字以降に分解して出す。入力は「-」等何でも同じ変換：AW3A→AW
+                      {settings.partSeparator ?? "-"}
+                      3A）
+                    </span>
+                  </td>
+                ) : (
                   <td>
                     <input
                       lang="ja"
@@ -1455,120 +1959,161 @@ export default function FurnitureSheetPage({
                       }
                     />
                   </td>
-                  <td>+部位の前後付加文字</td>
+                )}
+                {!isFittingDetail && (
+                  <>
+                    <td>+部位の前後付加文字</td>
+                    <td>
+                      <input
+                        lang="ja"
+                        value={settings.addPrefix}
+                        onChange={(event) =>
+                          changeSettings({ addPrefix: event.target.value })
+                        }
+                      />
+                      ＋部位＋
+                      <input
+                        lang="ja"
+                        value={settings.addSuffix}
+                        onChange={(event) =>
+                          changeSettings({ addSuffix: event.target.value })
+                        }
+                      />
+                    </td>
+                  </>
+                )}
+              </tr>
+              {isFittingDetail && (
+                <tr>
+                  <td>建具明細作成表へ変換する行</td>
+                  <td colSpan={3}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={settings.convertEstimate ?? true}
+                        onChange={(event) =>
+                          changeSettings({
+                            convertEstimate: event.target.checked,
+                          })
+                        }
+                      />
+                      計算書からの転記分
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={settings.convertManual ?? true}
+                        onChange={(event) =>
+                          changeSettings({
+                            convertManual: event.target.checked,
+                          })
+                        }
+                      />
+                      建具入力部
+                    </label>
+                    <span className="hint">
+                      （家具計算書からの転記分は変換しません。外すとその出どころの行は取り合いを保ったまま新しく足されません）
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {withModel && (
+                <tr>
+                  <td>加工手間(梁欠き)の前後付加文字</td>
                   <td>
                     <input
                       lang="ja"
-                      value={settings.addPrefix}
+                      value={settings.beamPrefix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ addPrefix: event.target.value })
+                        changeSettings({ beamPrefix: event.target.value })
                       }
                     />
-                    ＋部位＋
+                    ＋梁欠き＋
                     <input
                       lang="ja"
-                      value={settings.addSuffix}
+                      value={settings.beamSuffix ?? ""}
                       onChange={(event) =>
-                        changeSettings({ addSuffix: event.target.value })
+                        changeSettings({ beamSuffix: event.target.value })
+                      }
+                    />
+                  </td>
+                  <td>(窓)の前後付加文字</td>
+                  <td>
+                    <input
+                      lang="ja"
+                      value={settings.windowPrefix ?? ""}
+                      onChange={(event) =>
+                        changeSettings({ windowPrefix: event.target.value })
+                      }
+                    />
+                    ＋窓＋
+                    <input
+                      lang="ja"
+                      value={settings.windowSuffix ?? ""}
+                      onChange={(event) =>
+                        changeSettings({ windowSuffix: event.target.value })
                       }
                     />
                   </td>
                 </tr>
-                {withModel && (
-                  <tr>
-                    <td>加工手間(梁欠き)の前後付加文字</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        value={settings.beamPrefix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ beamPrefix: event.target.value })
-                        }
-                      />
-                      ＋梁欠き＋
-                      <input
-                        lang="ja"
-                        value={settings.beamSuffix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ beamSuffix: event.target.value })
-                        }
-                      />
-                    </td>
-                    <td>(窓)の前後付加文字</td>
-                    <td>
-                      <input
-                        lang="ja"
-                        value={settings.windowPrefix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ windowPrefix: event.target.value })
-                        }
-                      />
-                      ＋窓＋
-                      <input
-                        lang="ja"
-                        value={settings.windowSuffix ?? ""}
-                        onChange={(event) =>
-                          changeSettings({ windowSuffix: event.target.value })
-                        }
-                      />
-                    </td>
-                  </tr>
-                )}
-                {withFitting && (
-                  <tr>
-                    <td>摘要(下段)の文字（建具記号から建具表のW・Hをmmで呼び出し）</td>
-                    <td colSpan={3} className="size-labels">
-                      <input
-                        lang="ja"
-                        value={settings.fittingPrefix ?? ""}
-                        title="前に付ける文字（例：(）"
-                        onChange={(event) =>
-                          changeSettings({ fittingPrefix: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具記号＋</span>
-                      <input
-                        lang="ja"
-                        value={settings.fittingSeparator ?? ""}
-                        title="記号と寸法の間の文字（例：:）"
-                        onChange={(event) =>
-                          changeSettings({
-                            fittingSeparator: event.target.value,
-                          })
-                        }
-                      />
-                      <input
-                        value={settings.widthLabel}
-                        title="Wの前に付ける文字（例：W。空でも可）"
-                        onChange={(event) =>
-                          changeSettings({ widthLabel: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具W(mm)＋</span>
-                      <input
-                        value={settings.heightLabel}
-                        title="Hの前に付ける文字（例：*H）"
-                        onChange={(event) =>
-                          changeSettings({ heightLabel: event.target.value })
-                        }
-                      />
-                      <span className="hint">＋建具H(mm)＋</span>
-                      <input
-                        lang="ja"
-                        value={settings.fittingSuffix ?? ""}
-                        title="後ろに付ける文字（例：)部）"
-                        onChange={(event) =>
-                          changeSettings({ fittingSuffix: event.target.value })
-                        }
-                      />
-                      <span className="hint">
-                        →{" "}
-                        {`${settings.fittingPrefix ?? ""}AW1${settings.fittingSeparator ?? ""}${settings.widthLabel}1720${settings.heightLabel}1000${settings.fittingSuffix ?? ""}`}
-                      </span>
-                    </td>
-                  </tr>
-                )}
-                {!withModel && !withFitting && (
+              )}
+              {withFitting && (
+                <tr>
+                  <td>
+                    摘要(下段)の文字（建具記号から建具表のW・Hをmmで呼び出し）
+                  </td>
+                  <td colSpan={3} className="size-labels">
+                    <input
+                      lang="ja"
+                      value={settings.fittingPrefix ?? ""}
+                      title="前に付ける文字（例：(）"
+                      onChange={(event) =>
+                        changeSettings({ fittingPrefix: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具記号＋</span>
+                    <input
+                      lang="ja"
+                      value={settings.fittingSeparator ?? ""}
+                      title="記号と寸法の間の文字（例：:）"
+                      onChange={(event) =>
+                        changeSettings({
+                          fittingSeparator: event.target.value,
+                        })
+                      }
+                    />
+                    <input
+                      value={settings.widthLabel}
+                      title="Wの前に付ける文字（例：W。空でも可）"
+                      onChange={(event) =>
+                        changeSettings({ widthLabel: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具W(mm)＋</span>
+                    <input
+                      value={settings.heightLabel}
+                      title="Hの前に付ける文字（例：*H）"
+                      onChange={(event) =>
+                        changeSettings({ heightLabel: event.target.value })
+                      }
+                    />
+                    <span className="hint">＋建具H(mm)＋</span>
+                    <input
+                      lang="ja"
+                      value={settings.fittingSuffix ?? ""}
+                      title="後ろに付ける文字（例：)部）"
+                      onChange={(event) =>
+                        changeSettings({ fittingSuffix: event.target.value })
+                      }
+                    />
+                    <span className="hint">
+                      →{" "}
+                      {`${settings.fittingPrefix ?? ""}AW1${settings.fittingSeparator ?? ""}${settings.widthLabel}1720${settings.heightLabel}1000${settings.fittingSuffix ?? ""}`}
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {!withModel && !withFitting && (
                 <tr>
                   <td>
                     {withShape
@@ -1648,10 +2193,11 @@ export default function FurnitureSheetPage({
                     )}
                   </td>
                 </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="symbol-tables">
+              )}
+            </tbody>
+          </table>
+          <div className="symbol-tables">
+            {!isFittingDetail && (
               <SymbolTable
                 title={
                   withFitting
@@ -1661,39 +2207,73 @@ export default function FurnitureSheetPage({
                 symbols={settings.partSymbols}
                 onChange={(partSymbols) => changeSettings({ partSymbols })}
               />
-              <SymbolTable
-                title={
-                  withFitting
+            )}
+            <SymbolTable
+              title={
+                isFittingDetail
+                  ? "名称の記号（組み合わせ可。例：KBD→片開きドア。組み合わせと同じ並びの登録記号があるときは登録記号が優先。表に無い文字はそのまま出ます）"
+                  : withFitting
                     ? "部材名称の記号（表に無い文字はそのまま出ます）"
                     : "名称の記号"
-                }
-                symbols={settings.nameSymbols}
-                onChange={(nameSymbols) => changeSettings({ nameSymbols })}
+              }
+              symbols={settings.nameSymbols}
+              onChange={(nameSymbols) => changeSettings({ nameSymbols })}
+            />
+            {withShape && (
+              <SymbolTable
+                title="形状の記号（計上設定）"
+                symbols={settings.shapeSymbols ?? []}
+                onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
               />
-              {withShape && (
-                <SymbolTable
-                  title="形状の記号（計上設定）"
-                  symbols={settings.shapeSymbols ?? []}
-                  onChange={(shapeSymbols) => changeSettings({ shapeSymbols })}
-                />
-              )}
-              {withModel && (
-                <SymbolTable
-                  title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
-                  symbols={settings.floorAreaTable ?? []}
-                  onChange={(floorAreaTable) =>
-                    changeSettings({ floorAreaTable })
-                  }
-                />
-              )}
-            </div>
+            )}
+            {withModel && (
+              <SymbolTable
+                title="型番→床面積の計算式（表に無い4桁は上2桁・下2桁を/10して+0.1）"
+                symbols={settings.floorAreaTable ?? []}
+                onChange={(floorAreaTable) =>
+                  changeSettings({ floorAreaTable })
+                }
+              />
+            )}
+          </div>
         </div>
       )}
 
-      <div className="furniture-table-wrap">
-        <table className="furniture-table" style={{ width: tableWidth }}>
+      <div
+        className="furniture-table-wrap"
+        style={
+          // 紙（A3横）の幅に収まらないときだけ、表全体を縮めて出す
+          printMode && tableWidth > PRINT_WIDTH
+            ? ({
+                transform: `scale(${PRINT_WIDTH / tableWidth})`,
+                // 縮めた分だけ罫線を割り引いて、紙の上では1pxのまま出す
+                "--print-line-scale": PRINT_WIDTH / tableWidth,
+              } as CSSProperties)
+            : undefined
+        }
+      >
+        <table
+          className="furniture-table"
+          ref={tableRef}
+          style={{ width: tableWidth }}
+          onFocusCapture={(event) => {
+            const pos = findInputCell(event.target);
+            if (pos !== null) inputCell.current = pos;
+          }}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text");
+            // 1マス分の文字は今までどおりその欄へ貼る
+            if (!text.includes("\t") && !text.includes("\n")) return;
+            // カーソルが行入力部以外（明細欄・タテ欄）にあるときは取り込まない
+            if (findInputCell(event.target) === null) return;
+            event.preventDefault();
+            pasteCells(text);
+          }}
+        >
           <colgroup>
-            <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            {!printing && (
+              <col className="ops-col" style={{ width: OPS_WIDTH }} />
+            )}
             <col style={{ width: NO_WIDTH }} />
             {inputColumns.map((column) => (
               <col
@@ -1717,9 +2297,11 @@ export default function FurnitureSheetPage({
           </colgroup>
           <thead>
             <tr>
-              <th className="ops-col" rowSpan={headRowCount}>
-                操作
-              </th>
+              {!printing && (
+                <th className="ops-col" rowSpan={headRowCount}>
+                  操作
+                </th>
+              )}
               <th rowSpan={headRowCount}>番号</th>
               {inputColumns.map((column) => (
                 <th
@@ -1731,7 +2313,7 @@ export default function FurnitureSheetPage({
                   }
                 >
                   <span className="cellbox">
-                    {column.label}
+                    {labelOf(column)}
                     <span className="resizer" />
                   </span>
                 </th>
@@ -1769,46 +2351,50 @@ export default function FurnitureSheetPage({
               ))}
             </tr>
             {COLUMN_HEADS.slice(1).map((head) => (
-                <tr key={String(head.key)}>
-                  <th className="vlabel">{head.label}</th>
-                  {columns.map((column) => (
-                    <th
-                      key={column.id}
-                      className={
-                        pickedColumn === column.id ? "vcol on" : "vcol"
-                      }
-                      onClick={() => setPickedColumn(column.id)}
-                    >
-                      <span className="cellbox">
-                        {headCell(column, head)}
-                        {columnGrip(column.id)}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            <tr className="vcol-total">
-              <th className="vlabel">合計</th>
-              {columns.map((column) => (
-                  <th key={column.id} className="vcol num">
+              <tr key={String(head.key)}>
+                <th className="vlabel">{head.label}</th>
+                {columns.map((column) => (
+                  <th
+                    key={column.id}
+                    className={pickedColumn === column.id ? "vcol on" : "vcol"}
+                    onClick={() => setPickedColumn(column.id)}
+                  >
                     <span className="cellbox">
-                      {isEmptyFurnitureColumn(column) &&
-                      !rows.some((row) => (row.values?.[column.id] ?? "").trim() !== "")
-                        ? ""
-                        : furnitureColumnTotal(view, column.id).toFixed(2)}
-                      <button
-                        type="button"
-                        className="drop"
-                        title="このタテの明細（列）を消します"
-                        onClick={() => removeColumn(column.id)}
-                      >
-                        🗑
-                      </button>
+                      {headCell(column, head)}
                       {columnGrip(column.id)}
                     </span>
                   </th>
                 ))}
               </tr>
+            ))}
+            <tr className="vcol-total">
+              <th className="vlabel">合計</th>
+              {columns.map((column) => (
+                <th key={column.id} className="vcol num">
+                  <span className="cellbox">
+                    {isEmptyFurnitureColumn(column) &&
+                    !rows.some(
+                      (row) => (row.values?.[column.id] ?? "").trim() !== "",
+                    )
+                      ? ""
+                      : furnitureColumnTotal(
+                          view,
+                          column.id,
+                          sheet?.kind ?? "furniture",
+                        ).toFixed(2)}
+                    <button
+                      type="button"
+                      className="drop"
+                      title="このタテの明細（列）を消します"
+                      onClick={() => removeColumn(column.id)}
+                    >
+                      🗑
+                    </button>
+                    {columnGrip(column.id)}
+                  </span>
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {view.map((row, index) => {
@@ -1837,16 +2423,31 @@ export default function FurnitureSheetPage({
                     pickRow(index, event.shiftKey);
                   }}
                 >
-                  <td className="ops-col">
-                    <button type="button" onClick={() => addRow(index + 1)}>
-                      ＋
-                    </button>
-                    <button type="button" onClick={() => removeRow(index)}>
-                      －
-                    </button>
-                  </td>
+                  {!printing && (
+                    <td className="ops-col">
+                      <button type="button" onClick={() => addRow(index + 1)}>
+                        ＋
+                      </button>
+                      <button type="button" onClick={() => removeRow(index)}>
+                        －
+                      </button>
+                    </td>
+                  )}
                   <td className="num">{index + 1}</td>
-                  {visible("subjectId") && (
+                  {showInput("place") && (
+                    <td className="no-print">
+                      <PickInput
+                        entries={part1Entries}
+                        japanese
+                        commitOnBlur
+                        value={rows[index].place ?? ""}
+                        placeholder={resolved[index].place}
+                        title="集計書での置き場所（部位Ⅰ）。文字を入れるか、部位別入力表の部位Ⅰから選びます。空欄のときは上の行と同じ"
+                        onCommit={(text) => editRow(index, { place: text })}
+                      />
+                    </td>
+                  )}
+                  {showInput("subjectId") && (
                     <td className="no-print">
                       <PickInput
                         entries={subjectEntries}
@@ -1870,7 +2471,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("partNumber") && (
+                  {showInput("partNumber") && (
                     <td className="no-print">
                       <PickInput
                         entries={pickupPartEntries}
@@ -1892,9 +2493,12 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("detailNumber") && (
+                  {showInput("detailNumber") && (
                     <td className="num no-print">
-                      <input
+                      <PickInput
+                        entries={numberEntries}
+                        halfWidth
+                        commitOnBlur
                         value={
                           rows[index].detailNumber === null
                             ? ""
@@ -1903,15 +2507,25 @@ export default function FurnitureSheetPage({
                         placeholder={
                           resolved[index].detailNumber === null
                             ? ""
-                            : resolved[index].detailNumber.toFixed(2)
+                            : isFittingDetail
+                              ? String(resolved[index].detailNumber)
+                              : resolved[index].detailNumber.toFixed(2)
                         }
-                        title="空欄のときは上の行に0.01を足します"
-                        onChange={(event) => {
-                          const value = Number(event.target.value);
+                        title={
+                          isFittingDetail
+                            ? "空欄のときは上の行に1を足します（科目を入れるとマスターの明細から選べます）"
+                            : "空欄のときは上の行に0.01を足します（科目を入れるとマスターの明細から選べます）"
+                        }
+                        onFocus={() =>
+                          void loadNumberOptions(
+                            rows[index].subjectId ?? resolved[index].subjectId,
+                          )
+                        }
+                        onCommit={(text) => {
+                          const value = Number(text);
                           editRow(index, {
                             detailNumber:
-                              event.target.value.trim() === "" ||
-                              Number.isNaN(value)
+                              text.trim() === "" || Number.isNaN(value)
                                 ? null
                                 : value,
                           });
@@ -1919,7 +2533,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("part") && (
+                  {showInput("part") && (
                     <td>
                       <input
                         value={rows[index].part}
@@ -1930,7 +2544,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("partAdd") && (
+                  {showInput("partAdd") && (
                     <td>
                       {withFitting ? (
                         <PickInput
@@ -1951,7 +2565,7 @@ export default function FurnitureSheetPage({
                       )}
                     </td>
                   )}
-                  {visible("partSymbol") && (
+                  {showInput("partSymbol") && (
                     <td>
                       {withFitting ? (
                         <PickInput
@@ -1975,12 +2589,14 @@ export default function FurnitureSheetPage({
                       )}
                     </td>
                   )}
-                  {visible("nameSymbol") && (
+                  {showInput("nameSymbol") && (
                     <td>
                       <input
                         lang="ja"
                         value={rows[index].nameSymbol}
-                        placeholder={withFitting ? resolved[index].nameSymbol : ""}
+                        placeholder={
+                          withFitting ? resolved[index].nameSymbol : ""
+                        }
                         title={
                           withFitting
                             ? "部材名称。空欄のときは上の行と同じ（設定の記号表にある文字は変わります）"
@@ -1992,7 +2608,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withFitting && visible("fittingSymbol") && (
+                  {withFitting && showInput("fittingSymbol") && (
                     <td>
                       <PickInput
                         entries={fittingEntries}
@@ -2006,7 +2622,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withModel && !withFitting && visible("width") && (
+                  {!withModel && !withFitting && showInput("width") && (
                     <td className="num">
                       <input
                         value={rows[index].width}
@@ -2016,7 +2632,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("model") && (
+                  {withModel && showInput("model") && (
                     <td className="num">
                       <input
                         value={rows[index].model ?? ""}
@@ -2027,7 +2643,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {tripleWidth && visible("width2") && (
+                  {tripleWidth && showInput("width2") && (
                     <td className="num">
                       <input
                         value={rows[index].width2 ?? ""}
@@ -2038,7 +2654,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {tripleWidth && visible("width3") && (
+                  {tripleWidth && showInput("width3") && (
                     <td className="num">
                       <input
                         value={rows[index].width3 ?? ""}
@@ -2048,7 +2664,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withFitting && visible("height") && (
+                  {!withFitting && showInput("height") && (
                     <td className="num">
                       <input
                         value={rows[index].height}
@@ -2058,17 +2674,20 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withShape && !withModel && !withFitting && visible("depth") && (
-                    <td className="num">
-                      <input
-                        value={rows[index].depth}
-                        onChange={(event) =>
-                          editRow(index, { depth: event.target.value })
-                        }
-                      />
-                    </td>
-                  )}
-                  {withShape && visible("shape") && (
+                  {!withShape &&
+                    !withModel &&
+                    !withFitting &&
+                    showInput("depth") && (
+                      <td className="num">
+                        <input
+                          value={rows[index].depth}
+                          onChange={(event) =>
+                            editRow(index, { depth: event.target.value })
+                          }
+                        />
+                      </td>
+                    )}
+                  {withShape && showInput("shape") && (
                     <td className="num">
                       <input
                         value={rows[index].shape ?? ""}
@@ -2079,7 +2698,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("quantity") && (
+                  {showInput("quantity") && (
                     <td className="num">
                       <input
                         value={rows[index].quantity}
@@ -2091,7 +2710,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {visible("unit") && (
+                  {showInput("unit") && (
                     <td>
                       <PickInput
                         entries={unitEntries}
@@ -2105,20 +2724,22 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withModel && !withFitting && visible("descriptionUpper") && (
-                    <td>
-                      <input
-                        lang="ja"
-                        value={rows[index].descriptionUpper}
-                        onChange={(event) =>
-                          editRow(index, {
-                            descriptionUpper: event.target.value,
-                          })
-                        }
-                      />
-                    </td>
-                  )}
-                  {withModel && visible("beam") && (
+                  {!withModel &&
+                    !withFitting &&
+                    showInput("descriptionUpper") && (
+                      <td>
+                        <input
+                          lang="ja"
+                          value={rows[index].descriptionUpper}
+                          onChange={(event) =>
+                            editRow(index, {
+                              descriptionUpper: event.target.value,
+                            })
+                          }
+                        />
+                      </td>
+                    )}
+                  {withModel && showInput("beam") && (
                     <td>
                       <input
                         lang="ja"
@@ -2130,7 +2751,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("window") && (
+                  {withModel && showInput("window") && (
                     <td>
                       <input
                         lang="ja"
@@ -2142,7 +2763,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {!withFitting && visible("remarksLower") && (
+                  {!withFitting && showInput("remarksLower") && (
                     <td>
                       <input
                         lang="ja"
@@ -2153,7 +2774,7 @@ export default function FurnitureSheetPage({
                       />
                     </td>
                   )}
-                  {withModel && visible("floorFormula") && (
+                  {withModel && showInput("floorFormula") && (
                     <td className="num">
                       <input
                         value={rows[index].floorFormula ?? ""}
@@ -2224,7 +2845,9 @@ export default function FurnitureSheetPage({
                   )}
                   <td className="vlabel" />
                   {columns.map((column) => {
-                    const text = rows[index].values?.[column.id] ?? "";
+                    const raw = rows[index].values?.[column.id] ?? "";
+                    // 建具明細作成表は空欄の行を上の行と同じ式とみなす（未入力可）
+                    const text = columnTexts.get(column.id)?.[index] ?? raw;
                     const value = furnitureCellValue(row, text);
                     const counted = furnitureCellQuantity(
                       row,
@@ -2235,7 +2858,9 @@ export default function FurnitureSheetPage({
                       <td
                         key={column.id}
                         className={
-                          text !== "" && value === null
+                          text !== "" &&
+                          value === null &&
+                          !NO_CALC_CELL.test(text.trim())
                             ? "num vcell error"
                             : "num vcell"
                         }
@@ -2246,15 +2871,16 @@ export default function FurnitureSheetPage({
                         }
                       >
                         <input
-                          value={text}
+                          value={raw}
+                          placeholder={raw === "" ? text : ""}
                           title={
                             withFitting
-                              ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）"
+                              ? "数字か計算式。W・Hで建具表から呼び出したこの行の寸法（mに直した値）が使えます（例：W*H）「-」だけでその行は計算なし"
                               : withModel
-                              ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
-                              : tripleWidth
-                                ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
-                                : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
+                                ? "数字か計算式。FAでこの行の床面積（m²）、Hで高さ（mに直した値）が使えます（例：FA*2）"
+                                : tripleWidth
+                                  ? "数字か計算式。W1・W2・W3・H・Dでこの行の寸法（mに直した値）が使えます（WはW1+W2+W3の合計。例：W1*D）"
+                                  : "数字か計算式。W・H・Dでこの行の寸法（mに直した値）が使えます（例：W*H）"
                           }
                           onFocus={() => setPickedColumn(column.id)}
                           onChange={(event) =>
@@ -2267,6 +2893,13 @@ export default function FurnitureSheetPage({
                 </tr>
               );
             })}
+            {/* 紙で下が空く分は、手入力できるよう横罫線だけを引く（計算書と同じ） */}
+            {printing &&
+              Array.from({ length: printBlankRows }, (_unused, blank) => (
+                <tr className="blank" key={`blank-${blank}`}>
+                  <td colSpan={1 + detailCells.length + 1 + columns.length} />
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -2274,7 +2907,10 @@ export default function FurnitureSheetPage({
       <p className="hint">
         ヨコの1行＝家具1件の明細（左の入力から自動で作ります）。
         右端のタテの列（科目〜備考の見出し）は、部位別雑・金物入力表と同じように
-        家具に付く関連明細をタテに拾います（［➕ タテ明細］で列を足します。どちらも集計に入ります）。
+        家具に付く関連明細をタテに拾います（［➕
+        タテ明細］で列を足します。どちらも集計に入ります）。
+        エクセルからの貼り付けは、行入力部の欄をその並び順で当てます（カーソルのマスが左上。
+        「📋 エクセルから貼付」ボタンか行入力部で Ctrl+V。足りない行は自動で足します）。
       </p>
     </div>
   );

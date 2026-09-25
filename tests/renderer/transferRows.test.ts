@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendTransferRows,
   applyDetail,
-  buildTransferColumns,
   applyEstimateParts,
   emptyTransferRow,
   insertTransferRow,
+  insertTransferRows,
+  overwriteTransferRows,
   parseQuantity,
   removeTransferRow,
   resolveTransferInherited,
   updateTransferRow,
 } from "../../src/renderer/src/features/estimate/transferRows";
+import {
+  copyTransferCells,
+  pasteTransferCells,
+} from "../../src/renderer/src/features/estimate/transferCells";
 import type { Detail, EstimateRow } from "../../src/shared/types";
-import { buildPastePreview } from "../../src/renderer/src/features/grid/gridClipboard";
 
 describe("転記入力表の行操作", () => {
   it("Ａ〜Ｉは入力が無ければ入力のある上の行を引き継ぐ", () => {
@@ -38,9 +43,29 @@ describe("転記入力表の行操作", () => {
       part3: "事務室",
       subjectId: 5,
       materialCategory: "仕上",
+      partId: null,
+      detailNumber: null,
     });
     expect(inherited[2].part3).toBe("廊下");
     expect(inherited[2].part1).toBe("1階");
+  });
+
+  it("部位IDは上の行と同じ、明細IDは上の行＋0.01を引き継ぐ", () => {
+    const rows = [
+      { ...emptyTransferRow(), partId: 165, detailNumber: 290 },
+      emptyTransferRow(),
+      emptyTransferRow(),
+      { ...emptyTransferRow(), detailNumber: 300 },
+      emptyTransferRow(),
+    ];
+
+    const inherited = resolveTransferInherited(rows);
+    expect(inherited.map((row) => row.partId)).toEqual([
+      165, 165, 165, 165, 165,
+    ]);
+    expect(inherited.map((row) => row.detailNumber)).toEqual([
+      290, 290.01, 290.02, 300, 300.01,
+    ]);
   });
 
   it("行挿入・行削除・行更新ができる", () => {
@@ -129,69 +154,114 @@ describe("転記入力表の行操作", () => {
   });
 });
 
-describe("転記入力表のエクセル貼り付け（科目IDから）", () => {
-  const columns = buildTransferColumns(
-    [{ id: 1, name: "仕上" }],
-    [{ id: 2, name: "m2" }],
-    [{ id: 3, name: "床" }],
-  );
+describe("転記入力表のマス単位のコピー・貼り付け", () => {
+  const masters = {
+    units: [{ id: 2, name: "m2" }],
+    parts: [{ id: 3, name: "床" }],
+  };
+  const matrix = (text: string): string[][] =>
+    text.split("\n").map((line) => line.split("\t"));
 
-  it("科目IDから右へ、1行1明細で取り込む", () => {
-    const text = [
-      [
-        "5",
-        "1",
-        "3",
-        "1.02",
-        "",
-        "ビニル床シート",
-        "上段",
-        "下段",
-        "12.345",
-        "2",
-        "備考上",
-        "備考下",
-      ].join("\t"),
-      ["6", "仕上", "", "", "壁", "塗装", "", "", "3", "m2", "", ""].join("\t"),
-    ].join("\n");
-
-    const preview = buildPastePreview(
+  it("選んでいるマスを左上にして、上段・下段の順に取り込む", () => {
+    const result = pasteTransferCells(
       [emptyTransferRow()],
-      columns,
-      text,
-      0,
-      0,
-      () => emptyTransferRow(),
+      { row: 0, line: 0, col: 0 },
+      matrix(
+        [
+          "3\t床\t上段",
+          "1.02\tビニル床シート\t下段",
+          "\t\t次の明細の上段",
+        ].join("\n"),
+      ),
+      masters,
     );
 
-    expect(preview.errorCount).toBe(0);
-    expect(preview.addedRows).toBe(1);
-    const [first, second] = preview.rows;
-    expect(first.subjectId).toBe(5);
-    // マスターのIDで打った仕上区分・単位・部位はマスターの名前に直す
-    expect(first.materialCategory).toBe("仕上");
-    expect(first.unit).toBe("m2");
+    expect(result.errorCount).toBe(0);
+    expect(result.addedRows).toBe(1);
+    const [first, second] = result.rows;
     expect(first.partId).toBe(3);
     expect(first.partName).toBe("床");
+    expect(first.descriptionUpper).toBe("上段");
     expect(first.detailNumber).toBe(1.02);
-    expect(first.quantity).toBe(12.35);
-    expect(first.remarks).toBe("備考上");
-    expect(first.remarksLower).toBe("備考下");
-    expect(second.subjectId).toBe(6);
-    expect(second.partName).toBe("壁");
+    expect(first.name).toBe("ビニル床シート");
+    expect(first.descriptionLower).toBe("下段");
+    expect(second.descriptionUpper).toBe("次の明細の上段");
   });
 
-  it("数字で入れる欄に文字が来たときは取り込まずに件数を返す", () => {
-    const preview = buildPastePreview(
+  it("科目IDは対象外で、途中のマスからでも貼り付けられる", () => {
+    const result = pasteTransferCells(
       [emptyTransferRow()],
-      columns,
-      "あ\t仕上",
-      0,
-      0,
-      () => emptyTransferRow(),
+      { row: 0, line: 1, col: 3 },
+      matrix("12.345\t2"),
+      masters,
     );
-    expect(preview.errorCount).toBe(1);
-    expect(preview.rows[0].subjectId).toBeNull();
-    expect(preview.rows[0].materialCategory).toBe("仕上");
+
+    expect(result.errorCount).toBe(0);
+    const [row] = result.rows;
+    expect(row.subjectId).toBeNull();
+    expect(row.quantity).toBe(12.35);
+    // 単位はマスターのIDで打っても名前に直す
+    expect(row.unit).toBe("m2");
+  });
+
+  it("数字の欄に文字が来たときは取り込まずに件数を返す", () => {
+    const result = pasteTransferCells(
+      [emptyTransferRow()],
+      { row: 0, line: 0, col: 0 },
+      matrix("あ\t床"),
+      masters,
+    );
+    expect(result.errorCount).toBe(1);
+    expect(result.rows[0].partId).toBeNull();
+    expect(result.rows[0].partName).toBe("床");
+  });
+
+  it("選んだマスをエクセルへ貼れる形でコピーする", () => {
+    const rows = [
+      {
+        ...emptyTransferRow(),
+        partId: 3,
+        partName: "床",
+        detailNumber: 1.02,
+        name: "ビニル床シート",
+      },
+    ];
+    expect(
+      copyTransferCells(rows, {
+        start: { row: 0, line: 0, col: 0 },
+        end: { row: 0, line: 1, col: 1 },
+      }),
+    ).toBe("3\t床\n1.02\tビニル床シート");
+  });
+});
+
+describe("転記入力表の行コピー", () => {
+  const rows = [
+    { ...emptyTransferRow(), id: 1, name: "一" },
+    { ...emptyTransferRow(), id: 2, name: "二" },
+  ];
+  const copied = [{ ...emptyTransferRow(), id: 9, name: "写し" }];
+
+  it("上書貼付はカーソルの行を置き換える", () => {
+    const next = overwriteTransferRows(rows, 1, copied);
+    expect(next.map((row) => row.name)).toEqual(["一", "写し"]);
+    // 貼り付けた行は新しい行として持つ
+    expect(next[1].id).toBeNull();
+  });
+
+  it("挿入貼付はカーソルの行の上へ入れる", () => {
+    expect(insertTransferRows(rows, 1, copied).map((row) => row.name)).toEqual([
+      "一",
+      "写し",
+      "二",
+    ]);
+  });
+
+  it("追加貼付は最終行の下へ足す", () => {
+    expect(appendTransferRows(rows, copied).map((row) => row.name)).toEqual([
+      "一",
+      "二",
+      "写し",
+    ]);
   });
 });

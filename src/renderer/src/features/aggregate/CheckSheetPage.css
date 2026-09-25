@@ -4,6 +4,13 @@
   color: #6b7280;
 }
 
+/* 型枠転記画面：一番上のヘッダー（戻る・保存）だけ固定にする。
+   共通CSSで .toolbar は全部上に張り付くので、①②③④の操作行は流して
+   一番上のヘッダーが押し出されて見えなくなるのを防ぐ */
+.formwork-transfer-page > .toolbar:not(:first-child) {
+  position: static;
+}
+
 table.check-sheet {
   border-collapse: collapse;
   margin: 8px;
@@ -12,7 +19,7 @@ table.check-sheet {
 
 table.check-sheet th,
 table.check-sheet td {
-  border: 1px solid #c9ced6;
+  border: var(--line-thin);
   padding: 1px 4px;
   font-size: 12px;
   white-space: nowrap;
@@ -55,4 +62,15 @@ table.check-sheet tr.spacer td {
 
 .check-sheet-page table.check-sheet td.number input {
   text-align: right;
+}
+
+/* 計上される仕組みの表：左端の✔（表に出す部位） */
+.check-sheet-page table.part-rules td.flag {
+  min-width: 0;
+  width: 5ch;
+  text-align: center;
+}
+
+.check-sheet-page table.part-rules td.flag input {
+  width: auto;
 }
