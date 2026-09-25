@@ -391,7 +391,7 @@ export default function TransferSheetPage({
           type="button"
           onClick={() => history.edit(insertTransferRow(rows, selected))}
         >
-          ➕ 行挿入
+          ⤒ 行挿入
         </button>
         <button
           type="button"
