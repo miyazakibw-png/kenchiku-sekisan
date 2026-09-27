@@ -16,7 +16,7 @@ import {
   collectEstimateRowChecks,
   getAggregate,
   listAggregateRuns,
-  listCalcErrorRowIds,
+  listCalcErrors,
   runAggregation,
   saveAggregateEdits,
   setDetailUnused,
@@ -259,7 +259,7 @@ describe("集計処理", () => {
     addRoom("事務室", 1, 1);
     const rowId = drafts[drafts.length - 1].id as number;
     // 正常な計算書はエラーにならない
-    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(false);
+    expect(listCalcErrors(db, projectId).has(rowId)).toBe(false);
 
     const sheet = getRoomSheet(db, rowId);
     // 計算式が誤っている（演算子が欠けている）行はエラー
@@ -279,7 +279,7 @@ describe("集計処理", () => {
       ceilingHeight: 2.5,
       note: "",
     });
-    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(true);
+    expect(listCalcErrors(db, projectId).has(rowId)).toBe(true);
 
     // 式を直し、部屋の形が閉じていない（横方向に足りない）状態もエラー
     saveRoomSheet(db, {
@@ -298,7 +298,10 @@ describe("集計処理", () => {
       ceilingHeight: 2.5,
       note: "",
     });
-    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(true);
+    const errored = listCalcErrors(db, projectId);
+    expect(errored.has(rowId)).toBe(true);
+    // 備考欄の説明に形の誤りを出せるよう、理由の文も返す
+    expect(errored.get(rowId)).toContain("閉じていません");
   });
 
   it("転記入力表は集計書に計上するが根拠（部屋別）には出さない", () => {

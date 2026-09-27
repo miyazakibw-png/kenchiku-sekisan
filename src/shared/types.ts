@@ -279,8 +279,8 @@ export interface EstimateRow {
   displayOrder: number;
   /** 計算書に縮尺未調整の図面（下敷き）があるとき true。備考欄に「縮尺調整（未）」を出す目印で、行には保存しない */
   scalePending?: boolean;
-  /** 計算書に誤り（計算式の誤り・部屋の形が決まらない等）があるとき true。備考欄に「計算エラー」を出す目印で、行には保存しない */
-  calcError?: boolean;
+  /** 計算書に誤り（計算式の誤り・部屋の形が決まらない等）があるとき、その説明。備考欄に「計算エラー」を出す目印で、行には保存しない */
+  calcError?: string;
 }
 
 export type EstimateRowDraft = Omit<

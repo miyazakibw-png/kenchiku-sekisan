@@ -633,20 +633,26 @@ export function collectEntries(
 }
 
 /**
- * 計算に誤りのある計算書を持つ行（備考欄の「計算エラー」表示に使う）。
+ * 計算に誤りのある計算書を持つ行と、その誤りの説明
+ * （部位別入力表の備考欄「計算エラー」の目印と、何が誤りかを示す説明に使う）。
  * 誤り＝下段の計算式の誤り（式が正しくない・B記号が解けない）か、
  * 部屋計算書は上段の形が決まらないとき。
  */
-export function listCalcErrorRowIds(
+export function listCalcErrors(
   db: AppDatabase,
   projectId: number,
-): Set<number> {
-  const errored = new Set<number>();
+): Map<number, string> {
+  const errored = new Map<number, string>();
   evaluateRowSheets(db, projectId).evaluations.forEach(
     ({ context, result, shapeError }) => {
       if (context.estimateRowId === null) return;
-      if (result.errors.length > 0 || shapeError !== null)
-        errored.add(context.estimateRowId);
+      const messages = [
+        ...(shapeError !== null ? [shapeError] : []),
+        ...result.errors.map((error) => error.message),
+      ];
+      const unique = [...new Set(messages)];
+      if (unique.length > 0)
+        errored.set(context.estimateRowId, unique.join("／"));
     },
   );
   return errored;
