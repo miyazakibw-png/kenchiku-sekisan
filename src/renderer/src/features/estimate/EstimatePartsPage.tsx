@@ -928,6 +928,14 @@ export default function EstimatePartsPage({
                     ""
                   ) : (
                     <>
+                      {row.calcError === true && (
+                        <span
+                          className="calc-error"
+                          title="この行の計算書に誤りがあります（計算式の誤り・部屋の形が決まらない等）。計算書を開いて直してください"
+                        >
+                          計算エラー
+                        </span>
+                      )}
                       {row.scalePending === true && (
                         <span
                           className="scale-pending"

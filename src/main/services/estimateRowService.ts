@@ -16,6 +16,7 @@ import type {
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
 import { hasUnscaledUnderlay, parseUnderlays } from "../../core/room/trace";
+import { listCalcErrorRowIds } from "./aggregationService";
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
@@ -137,6 +138,7 @@ export function listEstimateRows(
   projectId: number,
 ): EstimateRow[] {
   const unscaled = listUnscaledUnderlayRows(db, projectId);
+  const errored = listCalcErrorRowIds(db, projectId);
   return db
     .select()
     .from(projectEstimateRows)
@@ -146,6 +148,7 @@ export function listEstimateRows(
     .map((row) => ({
       ...toRow(row),
       ...(unscaled.has(row.id) ? { scalePending: true } : {}),
+      ...(errored.has(row.id) ? { calcError: true } : {}),
     }));
 }
 

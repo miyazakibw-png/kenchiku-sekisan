@@ -16,6 +16,7 @@ import {
   collectEstimateRowChecks,
   getAggregate,
   listAggregateRuns,
+  listCalcErrorRowIds,
   runAggregation,
   saveAggregateEdits,
   setDetailUnused,
@@ -252,6 +253,52 @@ describe("集計処理", () => {
       "事務室",
       "会議室",
     ]);
+  });
+
+  it("計算式の誤りがある行と、形が決まらない部屋の行は計算エラーになる", () => {
+    addRoom("事務室", 1, 1);
+    const rowId = drafts[drafts.length - 1].id as number;
+    // 正常な計算書はエラーにならない
+    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(false);
+
+    const sheet = getRoomSheet(db, rowId);
+    // 計算式が誤っている（演算子が欠けている）行はエラー
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(
+        JSON.parse(lowerJson(1)).map(
+          (set: { lines: { formulaA: string }[] }) => ({
+            ...set,
+            lines: [{ ...set.lines[0], formulaA: "FA*" }],
+          }),
+        ),
+      ),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(true);
+
+    // 式を直し、部屋の形が閉じていない（横方向に足りない）状態もエラー
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: JSON.stringify({
+        edges: [
+          { id: "e1", direction: "E", length: 4, kind: "wall" },
+          { id: "e2", direction: "S", length: 3, kind: "wall" },
+          { id: "e3", direction: "W", length: 3, kind: "wall" },
+          { id: "e4", direction: "N", length: 3, kind: "wall" },
+        ],
+      }),
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: lowerJson(1),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    expect(listCalcErrorRowIds(db, projectId).has(rowId)).toBe(true);
   });
 
   it("転記入力表は集計書に計上するが根拠（部屋別）には出さない", () => {

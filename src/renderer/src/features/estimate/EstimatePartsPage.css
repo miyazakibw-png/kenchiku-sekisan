@@ -197,6 +197,16 @@ table.estimate tr.subtotal.selected {
   cursor: help;
 }
 
+/* 計算に誤りのある計算書がある行の備考欄に出す印 */
+.calc-error {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 4px;
+  cursor: help;
+}
+
 /* 縮尺未調整の図面がある行の備考欄に出す印 */
 .scale-pending {
   color: #c2410c;

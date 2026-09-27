@@ -30,6 +30,7 @@ import {
   masterKeyOf,
   type AggregateEntry,
   type AggregatedItem,
+  type EstimateRowContext,
 } from "../../core/aggregate/aggregate";
 import { calcVariables } from "../../core/aggregate/variables";
 import {
@@ -77,6 +78,7 @@ import {
   normalizeSets,
   partOfSet,
   type CalcSet,
+  type CalcSheetResult,
 } from "../../core/room/calcSheet";
 import {
   roomSymbols,
@@ -327,11 +329,24 @@ function keyResolver(
   };
 }
 
-/** 計算書と転記入力表から集計詳細データを作る */
-export function collectEntries(
+/** 行の計算書を集計と同じ変数で評価したもの */
+interface EvaluatedSheet {
+  context: EstimateRowContext;
+  sets: CalcSet[];
+  result: CalcSheetResult;
+  /** 部屋計算書で形が決まらない（寸法が閉じない・未入力が残る）ときの説明 */
+  shapeError: string | null;
+}
+
+/**
+ * 部位別入力表の行ごとに計算書（部屋別・軸組・汎用・ピット）を読み、
+ * 集計で使うのと同じ変数で下段の計算式を評価する。
+ * 集計（entries 化）と「計算エラー」の目印で同じ評価を使うためここに1か所置く。
+ */
+function evaluateRowSheets(
   db: AppDatabase,
   projectId: number,
-): AggregateEntry[] {
+): { evaluations: EvaluatedSheet[]; part2Order: Map<string, number> } {
   const fittings = db
     .select()
     .from(projectFittings)
@@ -390,7 +405,7 @@ export function collectEntries(
   );
 
   const part2Order = new Map<string, number>();
-  const entries: AggregateEntry[] = [];
+  const evaluations: EvaluatedSheet[] = [];
   let inherited = { part1: "", part2: "", part2Split: 0 };
 
   rows.forEach((row) => {
@@ -447,15 +462,14 @@ export function collectEntries(
         ...pitVariables(quantities),
         ...pitWallVariables(walls, sleeves, sleeveKinds, sheet.wallStep),
       };
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables, (set) =>
-            pitPartVariables(quantities, partOfSet(set)),
-          ),
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables, (set) =>
+          pitPartVariables(quantities, partOfSet(set)),
         ),
-      );
+        shapeError: null,
+      });
       return;
     }
 
@@ -468,13 +482,12 @@ export function collectEntries(
         CH: row.ceilingHeight ?? 0,
         ...calcVariables([], fittings),
       };
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables),
-        ),
-      );
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables),
+        shapeError: null,
+      });
       return;
     }
 
@@ -521,15 +534,14 @@ export function collectEntries(
         parseJson<FrameKind[]>(sheet.kindsJson, defaultFrameKinds()),
       );
       const variables = calcVariables(symbols, fittings, sheet.workHeight);
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables, (set) =>
-            linePartVariables(symbols, set.partName),
-          ),
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables, (set) =>
+          linePartVariables(symbols, set.partName),
         ),
-      );
+        shapeError: null,
+      });
       return;
     }
 
@@ -586,20 +598,58 @@ export function collectEntries(
     ];
     // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
     const variables = withFixedRoomSymbols(calcVariables(symbols, fittings));
-    entries.push(
-      ...entriesFromCalcSheet(
-        context,
-        sets,
-        evaluateCalcSheet(sets, variables),
-      ),
-    );
+    evaluations.push({
+      context,
+      sets,
+      result: evaluateCalcSheet(sets, variables),
+      // 形が決まらない部屋は壁・床の数量が出ない（画面では寸法欄が点滅する）
+      shapeError:
+        solved.error !== null
+          ? solved.error
+          : solved.missing.length > 0
+            ? "寸法が足りず決められない辺があります"
+            : null,
+    });
   });
+
+  return { evaluations, part2Order };
+}
+
+/** 計算書と転記入力表から集計詳細データを作る */
+export function collectEntries(
+  db: AppDatabase,
+  projectId: number,
+): AggregateEntry[] {
+  const { evaluations, part2Order } = evaluateRowSheets(db, projectId);
+  const entries = evaluations.flatMap(({ context, sets, result }) =>
+    entriesFromCalcSheet(context, sets, result),
+  );
 
   entries.push(...miscEntries(db, projectId, part2Order));
   entries.push(...furnitureEntries(db, projectId, part2Order));
   entries.push(...fireproofEntries(db, projectId, part2Order));
   entries.push(...transferEntries(db, projectId, part2Order));
   return entries;
+}
+
+/**
+ * 計算に誤りのある計算書を持つ行（備考欄の「計算エラー」表示に使う）。
+ * 誤り＝下段の計算式の誤り（式が正しくない・B記号が解けない）か、
+ * 部屋計算書は上段の形が決まらないとき。
+ */
+export function listCalcErrorRowIds(
+  db: AppDatabase,
+  projectId: number,
+): Set<number> {
+  const errored = new Set<number>();
+  evaluateRowSheets(db, projectId).evaluations.forEach(
+    ({ context, result, shapeError }) => {
+      if (context.estimateRowId === null) return;
+      if (result.errors.length > 0 || shapeError !== null)
+        errored.add(context.estimateRowId);
+    },
+  );
+  return errored;
 }
 
 /** 部位別雑・金物入力表（その部屋の計算書に入れたのと同じ扱いで集計する） */
