@@ -26,11 +26,11 @@ const LIST_COLUMNS: {
 }[] = [
   { key: "ops", label: "操作", className: "ops", defaultWidth: 150 },
   { key: "no", label: "No", className: "no", defaultWidth: 40 },
-  { key: "name", label: "表の名前（部位Ⅲ）", className: "name", defaultWidth: 170 },
-  { key: "kind", label: "種類", className: "name", defaultWidth: 150 },
   { key: "part1", label: "部位Ⅰ", className: "name", defaultWidth: 110 },
   { key: "part2", label: "部位Ⅱ", className: "name", defaultWidth: 110 },
   { key: "split", label: "仕訳", className: "count", defaultWidth: 50 },
+  { key: "name", label: "表の名前（部位Ⅲ）", className: "name", defaultWidth: 170 },
+  { key: "kind", label: "種類", className: "name", defaultWidth: 150 },
   { key: "multiplier", label: "倍率", className: "count", defaultWidth: 56 },
   { key: "rows", label: "行数", className: "count", defaultWidth: 50 },
   { key: "note", label: "メモ", className: "note", defaultWidth: 240 },
@@ -471,31 +471,6 @@ export default function FurnitureSheetListPage({
               <td className="name">
                 <input
                   lang="ja"
-                  value={sheet.name}
-                  onChange={(event) =>
-                    change(index, { name: event.target.value })
-                  }
-                  onBlur={() => void save(sheets)}
-                />
-              </td>
-              <td className="name">
-                <select
-                  value={sheet.kind}
-                  onChange={(event) => {
-                    change(index, { kind: event.target.value });
-                  }}
-                  onBlur={() => void save(sheets)}
-                >
-                  {KINDS.map((kind) => (
-                    <option key={kind.key} value={kind.key}>
-                      {kind.label}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td className="name">
-                <input
-                  lang="ja"
                   list="furniture-part1-options"
                   title="部位別入力表で入力済みの部位Ⅰから選べます（手で書いても可）"
                   value={sheet.part1}
@@ -536,6 +511,31 @@ export default function FurnitureSheetListPage({
                     void save(next);
                   }}
                 />
+              </td>
+              <td className="name">
+                <input
+                  lang="ja"
+                  value={sheet.name}
+                  onChange={(event) =>
+                    change(index, { name: event.target.value })
+                  }
+                  onBlur={() => void save(sheets)}
+                />
+              </td>
+              <td className="name">
+                <select
+                  value={sheet.kind}
+                  onChange={(event) => {
+                    change(index, { kind: event.target.value });
+                  }}
+                  onBlur={() => void save(sheets)}
+                >
+                  {KINDS.map((kind) => (
+                    <option key={kind.key} value={kind.key}>
+                      {kind.label}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td className="count">
                 <input
