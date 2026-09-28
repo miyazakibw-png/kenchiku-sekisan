@@ -2660,7 +2660,7 @@ export default function RoomSheetPage({
                   : undefined
               }
             >
-              {formatNumber(line.resolved, 2)}
+              {formatNumber(line.measured ?? line.resolved, 2)}
             </text>
           </g>
         );
@@ -3942,6 +3942,14 @@ export default function RoomSheetPage({
                         <option value="out">外</option>
                         <option value="in">内</option>
                       </select>
+                      {(line.bulge ?? 0) !== 0 && (
+                        <span
+                          className="arc-len"
+                          title="弦と矢から出した弧の長さ（壁長さ・壁面積はこの長さで数えます）"
+                        >
+                          弧{formatNumber(line.measured, 2)}
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <span className="none">－</span>
