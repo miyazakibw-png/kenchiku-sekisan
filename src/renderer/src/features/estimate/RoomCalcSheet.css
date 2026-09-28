@@ -272,6 +272,50 @@
   min-width: 160px;
 }
 
+/* 計算書内のマスター作成画面（呼出画面より左寄り・中身に合わせた高さ） */
+.room-calc-sheet .call-window.create-window {
+  left: 24px;
+  right: auto;
+  top: 90px;
+  width: 420px;
+  height: auto;
+  max-height: calc(100vh - 16px);
+  resize: none;
+  overflow-y: auto;
+}
+
+.room-calc-sheet .create-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.room-calc-sheet .create-form label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-calc-sheet .create-form label > span {
+  flex: 0 0 auto;
+  width: 60px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.room-calc-sheet .create-form label > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  padding: 1px 4px;
+}
+
+.room-calc-sheet .create-form label > input.num {
+  text-align: right;
+}
+
 /* 呼出一覧（1明細＝上下2行。摘要まで見えるようにする） */
 .room-calc-sheet .call-table {
   width: 100%;

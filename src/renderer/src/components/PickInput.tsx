@@ -26,6 +26,7 @@ export function PickInput({
   row,
   col,
   commitOnBlur = false,
+  popupSide = "bottom",
   onCommit,
   onFocus,
 }: {
@@ -43,6 +44,8 @@ export function PickInput({
   row?: number;
   col?: number;
   commitOnBlur?: boolean;
+  /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
+  popupSide?: "bottom" | "right";
   onCommit: (text: string) => void;
   onFocus?: () => void;
 }): JSX.Element {
@@ -58,6 +61,21 @@ export function PickInput({
   const openList = (): void => {
     if (!entries || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
+    const width = Math.max(rect.width, 220);
+    if (popupSide === "right") {
+      // 欄の右側に出す（下の行をふさがない）。右に入らなければ左側へ
+      const height = Math.min(320, window.innerHeight - 16);
+      const left =
+        rect.right + 4 + width <= window.innerWidth - 4
+          ? rect.right + 4
+          : Math.max(4, rect.left - width - 4);
+      const top = Math.max(
+        4,
+        Math.min(rect.top, window.innerHeight - height - 4),
+      );
+      setBox({ left, top, width, height });
+      return;
+    }
     // 画面の下に入りきらないときは欄の上に出す（一覧の中はスクロールできる）
     const below = window.innerHeight - rect.bottom - 8;
     const above = rect.top - 8;
@@ -66,7 +84,7 @@ export function PickInput({
     setBox({
       left: Math.min(rect.left, window.innerWidth - 240),
       top: up ? rect.top - height : rect.bottom,
-      width: Math.max(rect.width, 220),
+      width,
       height,
     });
   };

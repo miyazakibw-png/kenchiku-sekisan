@@ -96,6 +96,20 @@ interface Props {
 
 type CallSource = "basic" | "project" | "assembly";
 
+/** 計算書内マスター作成の入力欄（明細番号は文字列で持ち、登録時に数字へ直す） */
+type CreateForm = {
+  subjectId: number | null;
+  detailNumber: string;
+  materialCategory: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+  remarksUpper: string;
+  remarksLower: string;
+  estimateDisplay: string;
+};
+
 /** コメント行（※行挿入）で選べる色 */
 const BANNER_COLORS: { label: string; color: string }[] = [
   { label: "緑", color: "#dcfce7" },
@@ -282,6 +296,14 @@ export default function RoomCalcSheet({
   const [subjectId, setSubjectId] = useState<number | null>(null);
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
+  /** マスター作成画面（開くときカーソル行の明細を初期値にする） */
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createPos, setCreatePos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [createForm, setCreateForm] = useState<CreateForm | null>(null);
+  /** 作成したあと呼出画面の一覧を読み直すための合図 */
+  const [detailsVersion, setDetailsVersion] = useState(0);
   const [bannerOpen, setBannerOpen] = useState(false);
   /** コメント行（※行）にカーソルがあるときの、そのコメント行のセットID */
   const [bannerSetId, setBannerSetId] = useState<string | null>(null);
@@ -512,7 +534,7 @@ export default function RoomCalcSheet({
           : await window.sekisan.listDetails(subjectId, projectId),
       );
     })();
-  }, [callOpen, projectId, source, subjectId]);
+  }, [callOpen, projectId, source, subjectId, detailsVersion]);
 
   // 呼出先や科目を変えたら、セットを選ぶ画面は閉じる
   useEffect(() => {
@@ -841,6 +863,113 @@ export default function RoomCalcSheet({
       index: at < 0 ? currentSet.details.length : at,
     };
   }, [bannerSetId, currentSet, writeFocus]);
+
+  /** 書込先の行に入っている科目ID（呼出画面の工種科目はこれに合わせる） */
+  const callRowSubject = useMemo(() => {
+    if (!callRow) return null;
+    const set = sets.find((item) => item.id === callRow.setId);
+    return set?.details[callRow.index]?.subjectId ?? null;
+  }, [callRow, sets]);
+
+  // 計算書の行に科目IDが入っていれば、呼出画面の工種科目をその科目にする（選び直し可）
+  useEffect(() => {
+    if (!callOpen || callRowSubject === null) return;
+    setSubjectId(callRowSubject);
+    setSubjectNumber(String(callRowSubject));
+  }, [callOpen, callRowSubject]);
+
+  /** マスター作成画面を開く（カーソルのある明細行の内容を初期値にする） */
+  const openCreate = (): void => {
+    if (createOpen) {
+      setCreateOpen(false);
+      return;
+    }
+    const set = callRow ? sets.find((item) => item.id === callRow.setId) : null;
+    const detail = callRow ? (set?.details[callRow.index] ?? null) : null;
+    setCreateForm({
+      subjectId: detail?.subjectId ?? subjectId,
+      detailNumber:
+        detail?.detailNumber === null || detail?.detailNumber === undefined
+          ? ""
+          : detail.detailNumber.toFixed(2),
+      materialCategory: detail?.materialCategory ?? "",
+      name: detail?.name ?? "",
+      descriptionUpper: detail?.descriptionUpper ?? "",
+      descriptionLower: detail?.descriptionLower ?? "",
+      unit: detail?.unit ?? "",
+      remarksUpper: detail?.remarksUpper ?? "",
+      remarksLower: detail?.remarksLower ?? "",
+      estimateDisplay: detail?.estimateDisplay ?? "",
+    });
+    setCreateOpen(true);
+  };
+
+  /** 入力欄の内容を工事マスター（明細）のいちばん下へ新しく登録する */
+  const createMaster = async (): Promise<void> => {
+    if (!createForm) return;
+    const subjectKey = createForm.subjectId;
+    if (subjectKey === null) {
+      onMessage("工種科目を選んでください");
+      return;
+    }
+    const number = createForm.detailNumber.trim();
+    const parsed = number === "" ? null : Number.parseFloat(number);
+    if (number !== "" && Number.isNaN(parsed)) {
+      onMessage("明細番号は数字で入れてください");
+      return;
+    }
+    if (createForm.name.trim() === "") {
+      onMessage("名称を入れてください");
+      return;
+    }
+    const rows = await window.sekisan.listDetails(subjectKey, projectId);
+    await window.sekisan.saveDetails({
+      subjectId: subjectKey,
+      rows: [
+        ...rows.map((row) => ({
+          id: row.id,
+          detailNumber: row.detailNumber,
+          materialCategory: row.materialCategory,
+          partName: row.partName,
+          name: row.name,
+          descriptionUpper: row.descriptionUpper,
+          descriptionLower: row.descriptionLower,
+          unit: row.unit,
+          remarksUpper: row.remarksUpper,
+          remarksLower: row.remarksLower,
+          estimateDisplay: row.estimateDisplay,
+          isActive: row.isActive,
+        })),
+        {
+          id: null,
+          detailNumber: parsed,
+          materialCategory: createForm.materialCategory,
+          partName: "",
+          name: createForm.name,
+          descriptionUpper: createForm.descriptionUpper,
+          descriptionLower: createForm.descriptionLower,
+          unit: createForm.unit,
+          remarksUpper: createForm.remarksUpper,
+          remarksLower: createForm.remarksLower,
+          estimateDisplay: createForm.estimateDisplay,
+          isActive: true,
+        },
+      ],
+      deletedIds: [],
+      projectId,
+    });
+    setCreateOpen(false);
+    // 呼出画面を開いていれば、その科目の一覧へ切り替えて作った明細をすぐ出す
+    if (callOpen) {
+      setSource("basic");
+      setSubjectId(subjectKey);
+      setSubjectNumber(String(subjectKey));
+    }
+    setDetailsVersion((version) => version + 1);
+    onMessage(
+      "明細マスターに登録しました（「マスター呼出」の基本マスター（明細）に出ます）",
+    );
+  };
 
   /** 明細を1つ呼び出す（上書き基準・空きが無ければ自動で挿入） */
   const callDetail = useCallback(
@@ -1805,6 +1934,14 @@ export default function RoomCalcSheet({
         >
           📂 マスター呼出
         </button>
+        <button
+          type="button"
+          className={createOpen ? "on" : ""}
+          title="カーソルのある明細行の内容をもとに工事マスター（明細）へ登録します（登録した明細はマスター呼出の一覧にすぐ出ます）"
+          onClick={openCreate}
+        >
+          📝 マスター作成
+        </button>
         {template && (
           <>
             <button
@@ -1983,6 +2120,7 @@ export default function RoomCalcSheet({
                     >
                       <td className="set-part">
                         <PickInput
+                          popupSide="right"
                           row={gridRow}
                           col={0}
                           entries={aggregationPartEntries}
@@ -1999,6 +2137,7 @@ export default function RoomCalcSheet({
                         <>
                           <td className="material">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={1}
                               entries={materialEntries}
@@ -2023,6 +2162,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={2}
                               entries={subjectEntries}
@@ -2048,6 +2188,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={3}
                               entries={pickupPartEntries}
@@ -2073,6 +2214,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={4}
                               entries={numberEntries}
@@ -2166,6 +2308,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="unit">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={9}
                               entries={unitEntries}
@@ -2736,6 +2879,204 @@ export default function RoomCalcSheet({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {createOpen && createForm && (
+        <div
+          className="call-window create-window"
+          style={
+            createPos === null
+              ? undefined
+              : {
+                  left: `${createPos.x}px`,
+                  top: `${createPos.y}px`,
+                  right: "auto",
+                }
+          }
+        >
+          <div
+            className="section-bar drag"
+            onMouseDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              const box = e.currentTarget.parentElement;
+              if (!box) return;
+              const rect = box.getBoundingClientRect();
+              const offsetX = e.clientX - rect.left;
+              const offsetY = e.clientY - rect.top;
+              const move = (event: MouseEvent): void =>
+                setCreatePos({
+                  x: event.clientX - offsetX,
+                  y: event.clientY - offsetY,
+                });
+              const up = (): void => {
+                window.removeEventListener("mousemove", move);
+                window.removeEventListener("mouseup", up);
+              };
+              window.addEventListener("mousemove", move);
+              window.addEventListener("mouseup", up);
+            }}
+            title="この見出しをドラッグすると作成画面を動かせます"
+          >
+            <span>マスター作成（見出しをドラッグで移動）</span>
+            <button type="button" onClick={() => setCreateOpen(false)}>
+              ✕ 閉じる
+            </button>
+          </div>
+          <div className="call-subject">
+            <span>工種科目</span>
+            <input
+              className="num"
+              value={
+                createForm.subjectId === null ? "" : String(createForm.subjectId)
+              }
+              title="工種科目の番号を入れると、その科目へ登録します"
+              onChange={(e) => {
+                const text = e.target.value.trim();
+                const found = subjects.find(
+                  (subject) => String(subject.id) === text,
+                );
+                setCreateForm({ ...createForm, subjectId: found?.id ?? null });
+              }}
+            />
+            <select
+              value={
+                createForm.subjectId === null
+                  ? ""
+                  : String(createForm.subjectId)
+              }
+              title="一覧から選び直せます"
+              onChange={(e) => {
+                const id = Number.parseInt(e.target.value, 10);
+                setCreateForm({
+                  ...createForm,
+                  subjectId: Number.isNaN(id) ? null : id,
+                });
+              }}
+            >
+              <option value="">（工種科目を選ぶ）</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.id}：{subject.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="create-form">
+            <label>
+              <span>明細番号</span>
+              <input
+                className="num"
+                value={createForm.detailNumber}
+                placeholder="例 302.00"
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    detailNumber: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>材種区分</span>
+              <input
+                value={createForm.materialCategory}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    materialCategory: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>名称</span>
+              <input
+                value={createForm.name}
+                onChange={(e) =>
+                  setCreateForm({ ...createForm, name: e.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>摘要（上）</span>
+              <input
+                value={createForm.descriptionUpper}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    descriptionUpper: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>摘要（下）</span>
+              <input
+                value={createForm.descriptionLower}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    descriptionLower: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>単位</span>
+              <input
+                className="num"
+                value={createForm.unit}
+                onChange={(e) =>
+                  setCreateForm({ ...createForm, unit: e.target.value })
+                }
+              />
+            </label>
+            <label>
+              <span>備考（上）</span>
+              <input
+                value={createForm.remarksUpper}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    remarksUpper: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>備考（下）</span>
+              <input
+                value={createForm.remarksLower}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    remarksLower: e.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span>積算用表示</span>
+              <input
+                value={createForm.estimateDisplay}
+                onChange={(e) =>
+                  setCreateForm({
+                    ...createForm,
+                    estimateDisplay: e.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+          <div className="section-bar">
+            <button type="button" onClick={() => void createMaster()}>
+              ✔ 登録する
+            </button>
+            <span className="hint">
+              この工事の明細マスター（工事マスター）へ足します。「マスター呼出」の基本マスター（明細）にすぐ出ます。
+            </span>
+          </div>
         </div>
       )}
     </div>
