@@ -319,6 +319,19 @@ function viewBox(
     return { box: "0 0 100 100", span: 100 };
   const xs = solved.points.map((point) => point.x);
   const ys = solved.points.map((point) => point.y);
+  // Ｒ壁・Ｒ開口は弦から矢ぶん外へふくらむので、弧のいちばん外の点も収まるようにする
+  solved.edges.forEach((edge, index) => {
+    const bulge = edge.bulge ?? 0;
+    if (bulge === 0) return;
+    const a = solved.points[index];
+    const b = solved.points[(index + 1) % solved.points.length];
+    if (!a || !b) return;
+    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    if (span === 0) return;
+    const normal = { x: -(b.y - a.y) / span, y: (b.x - a.x) / span };
+    xs.push((a.x + b.x) / 2 - normal.x * bulge);
+    ys.push((a.y + b.y) / 2 - normal.y * bulge);
+  });
   for (const underlay of underlayBoxes) {
     xs.push(underlay.x, underlay.x + underlay.width);
     ys.push(underlay.y, underlay.y + underlay.height);
