@@ -167,6 +167,12 @@
   padding: 0 4px;
 }
 
+/* セット明細の入力欄は、一覧画面と同じ行の高さに揃える */
+.modal.assembly-editor .grid td input,
+.modal.assembly-editor .grid td select {
+  padding: 1px 4px;
+}
+
 .assembly-page .num {
   text-align: right;
   font-variant-numeric: tabular-nums;

@@ -70,6 +70,35 @@ export default function AssemblyMasterPage({
   onBack,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-assembly-list-v1");
+  /** セット明細の表は、開いたときに一覧のいまの列幅をそのまま写して出す */
+  const editorTableRef = useCallback((table: HTMLTableElement | null) => {
+    if (!table) return;
+    const list = document.querySelector<HTMLTableElement>(
+      ".assembly-page .assembly-list",
+    );
+    const header = list?.tHead?.rows.item(list.tHead.rows.length - 1);
+    if (!header || header.cells.length === 0) return;
+    let group = table.querySelector("colgroup");
+    if (!(group instanceof HTMLElement)) {
+      group = document.createElement("colgroup");
+      table.insertBefore(group, table.firstChild);
+    }
+    while (group.children.length < header.cells.length)
+      group.appendChild(document.createElement("col"));
+    let total = 0;
+    [...header.cells].forEach((cell, index) => {
+      const col = group.children[index];
+      if (!(col instanceof HTMLTableColElement)) return;
+      const width = cell.getBoundingClientRect().width;
+      // いちばん右の列は一覧の「セット」ではなく操作列（↑↓🗑）なので狭くなりすぎないようにする
+      const floor = index === header.cells.length - 1 ? 64 : 28;
+      const px = Math.max(floor, width);
+      col.style.width = `${px}px`;
+      total += px;
+    });
+    table.style.tableLayout = "fixed";
+    table.style.width = `${total}px`;
+  }, []);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const [subject, setSubject] = useState<Subject | null>(
     options.subjects[0] ?? null,
@@ -427,7 +456,7 @@ export default function AssemblyMasterPage({
             </header>
 
             <div className="modal-body">
-              <table className="grid">
+              <table className="grid" ref={editorTableRef}>
                 <thead>
                   <tr>
                     <th>行</th>
@@ -694,40 +723,45 @@ export default function AssemblyMasterPage({
                       <th>掛け率</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {assembly.items.map((item, itemIndex) => {
-                      const open = (): void => {
-                        setChooser([]);
-                        void openEditor(assembly);
-                      };
-                      return (
-                        <tr
-                          key={`${assembly.id}-${itemIndex}`}
-                          tabIndex={0}
-                          onDoubleClick={open}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") open();
-                          }}
-                        >
+                  {assembly.items.map((item, itemIndex) => {
+                    const open = (): void => {
+                      setChooser([]);
+                      void openEditor(assembly);
+                    };
+                    return (
+                      // 一覧と同じ1明細2行の見た目にする（セットが2種類以上でも崩さない）
+                      <tbody
+                        key={`${assembly.id}-${itemIndex}`}
+                        className="detail-group"
+                        tabIndex={0}
+                        onDoubleClick={open}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") open();
+                        }}
+                      >
+                        <tr className="upper-row">
                           <td className="num">
-                            {formatDetailNumber(item.partNumber)} /{" "}
+                            {formatDetailNumber(item.partNumber)}
+                          </td>
+                          <td>{item.partName}</td>
+                          <td>{item.descriptionUpper}</td>
+                          <td>{item.remarksUpper}</td>
+                          <td rowSpan={2}>{item.unit}</td>
+                          <td rowSpan={2} className="num">
+                            {item.coefficient}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="num">
                             {formatDetailNumber(item.detailNumber)}
                           </td>
-                          <td>
-                            {item.partName} / {item.name}
-                          </td>
-                          <td>
-                            {item.descriptionUpper} {item.descriptionLower}
-                          </td>
-                          <td>
-                            {item.remarksUpper} {item.remarksLower}
-                          </td>
-                          <td>{item.unit}</td>
-                          <td className="num">{item.coefficient}</td>
+                          <td>{item.name}</td>
+                          <td>{item.descriptionLower}</td>
+                          <td>{item.remarksLower}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
+                      </tbody>
+                    );
+                  })}
                 </table>
               ))}
             </div>

@@ -2822,6 +2822,16 @@ export default function RoomCalcSheet({
                     className="call-table"
                     key={`${assembly.scope}-${assembly.id}`}
                   >
+                    {/* 1行目が全幅の見出しなので、列幅はここで一覧と同じに決める */}
+                    <colgroup>
+                      <col className="no" />
+                      <col className="no" />
+                      <col />
+                      <col />
+                      <col className="unit" />
+                      <col />
+                      <col className="unit" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th colSpan={7}>
