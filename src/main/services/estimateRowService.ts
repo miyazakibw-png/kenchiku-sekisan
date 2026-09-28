@@ -22,16 +22,35 @@ function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
 }
 
-/** 計算書に縮尺未調整の図面（下敷き）が残っている行。備考欄の「縮尺調整（未）」表示に使う */
+/**
+ * 計算書に縮尺未調整の図面（下敷き）が残っている行。備考欄の「縮尺調整（未）」表示に使う。
+ * 行の「いま選ばれている計算書」だけを見る。昔に別の種類の計算書で置いた図面の記録が
+ * 残っていても、その種類は開けないので印を残さない（種類を戻せばまた出る）。
+ */
 function listUnscaledUnderlayRows(
   db: AppDatabase,
   projectId: number,
 ): Set<number> {
   const pending = new Set<number>();
+  const calcTypes = new Map<number, string>(
+    db
+      .select({
+        id: projectEstimateRows.id,
+        calcType: projectEstimateRows.calcType,
+      })
+      .from(projectEstimateRows)
+      .where(eq(projectEstimateRows.projectId, projectId))
+      .all()
+      .map((row) => [row.id, row.calcType]),
+  );
   const collect = (
     sheets: { estimateRowId: number; traceJson: string }[],
+    matches: (calcType: string) => boolean,
   ): void => {
     for (const sheet of sheets) {
+      const calcType = calcTypes.get(sheet.estimateRowId) ?? "";
+      // 種類が分からない行は今までどおり全部の計算書を見て残す
+      if (!matches(calcType) && calcType !== "") continue;
       if (needsScaleAdjustment(sheet.traceJson)) {
         pending.add(sheet.estimateRowId);
       }
@@ -46,6 +65,7 @@ function listUnscaledUnderlayRows(
       .from(projectRoomSheets)
       .where(eq(projectRoomSheets.projectId, projectId))
       .all(),
+    (calcType) => calcType === "room",
   );
   collect(
     db
@@ -56,6 +76,7 @@ function listUnscaledUnderlayRows(
       .from(projectFrameSheets)
       .where(eq(projectFrameSheets.projectId, projectId))
       .all(),
+    (calcType) => calcType === "frame",
   );
   collect(
     db
@@ -66,6 +87,7 @@ function listUnscaledUnderlayRows(
       .from(projectPitSheets)
       .where(eq(projectPitSheets.projectId, projectId))
       .all(),
+    (calcType) => calcType === "pit" || calcType === "area",
   );
   return pending;
 }

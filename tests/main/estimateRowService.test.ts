@@ -18,6 +18,10 @@ import {
   getRoomSheet,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
+import {
+  getFrameSheet,
+  saveFrameSheet,
+} from "../../src/main/services/frameSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
 
 function createDb(): AppDatabase {
@@ -217,5 +221,59 @@ describe("計算書の書式", () => {
       { id: 2, name: "地下階" },
       { id: 3, name: "地上階" },
     ]);
+  });
+});
+
+describe("縮尺調整（未）の印", () => {
+  it("行のいまの計算書種類だけを見る（別種類に残った印は出さない）", () => {
+    const [row] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: "部屋A", calcType: "room" })],
+    });
+    // 部屋計算書の図面は縮尺合わせ済み（scaled:true・印なし）
+    const roomSheet = getRoomSheet(db, row.id);
+    saveRoomSheet(db, {
+      id: roomSheet.id,
+      shapeJson: '{"edges":[]}',
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: "[]",
+      ceilingHeight: 2.4,
+      traceJson: JSON.stringify({
+        underlays: [
+          {
+            image: "data:image/png;base64,AA==",
+            metersPerPixel: 0.01,
+            x: 0,
+            y: 0,
+            opacity: 0.75,
+            scaled: true,
+          },
+        ],
+      }),
+      note: "",
+    });
+    // 前に軸組計算書で置いた図面の「縮尺合わせがまだ」の印が残っている
+    const frame = getFrameSheet(db, row.id);
+    saveFrameSheet(db, {
+      id: frame.id,
+      layoutJson: "[]",
+      linesJson: "[]",
+      attributesJson: "{}",
+      fittingsJson: "[]",
+      lowerJson: "[]",
+      workHeight: 2.4,
+      traceJson: JSON.stringify({ traces: [], scalePending: true }),
+      kindsJson: "[]",
+      note: "",
+    });
+    // 行の種類は部屋別のまま → 軸組の印は出ない
+    expect(listEstimateRows(db, projectId)[0].scalePending).toBeUndefined();
+    // 種類を軸組に戻すとその計算書の印が出る
+    saveEstimateRows(db, {
+      projectId,
+      rows: [{ ...draft({ part3: "部屋A", calcType: "frame" }), id: row.id }],
+    });
+    expect(listEstimateRows(db, projectId)[0].scalePending).toBe(true);
   });
 });
