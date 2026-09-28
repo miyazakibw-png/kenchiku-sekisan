@@ -57,6 +57,63 @@ interface EditorState {
   items: DraftItem[];
 }
 
+/** 一覧のいまの列幅を読む（見出しの文字→幅 と 位置→幅） */
+function listColumnWidths(): {
+  byLabel: Map<string, number>;
+  byIndex: number[];
+} | null {
+  const list = document.querySelector<HTMLTableElement>(
+    ".assembly-page .assembly-list",
+  );
+  const header = list?.tHead?.rows.item(list.tHead.rows.length - 1);
+  if (!header || header.cells.length === 0) return null;
+  const byLabel = new Map<string, number>();
+  const byIndex: number[] = [];
+  [...header.cells].forEach((cell) => {
+    const width = cell.getBoundingClientRect().width;
+    byIndex.push(width);
+    byLabel.set(cell.textContent?.trim() ?? "", width);
+  });
+  return { byLabel, byIndex };
+}
+
+/**
+ * 表の列幅を一覧に合わせる。
+ * 見出しが同じ列はその幅、見出しが一覧に無い列は同じ位置の幅を使う。
+ * lastFloor はいちばん右の列（操作列など）の最小幅。
+ */
+function alignTableToList(
+  table: HTMLTableElement | null,
+  lastFloor = 0,
+): void {
+  if (!table) return;
+  const header = table.tHead?.rows.item(table.tHead.rows.length - 1);
+  const widths = listColumnWidths();
+  if (!header || header.cells.length === 0 || !widths) return;
+  let group = table.querySelector("colgroup");
+  if (!(group instanceof HTMLElement)) {
+    group = document.createElement("colgroup");
+    table.insertBefore(group, table.firstChild);
+  }
+  while (group.children.length < header.cells.length)
+    group.appendChild(document.createElement("col"));
+  let total = 0;
+  [...header.cells].forEach((cell, index) => {
+    const col = group.children[index];
+    if (!(col instanceof HTMLTableColElement)) return;
+    const label = cell.textContent?.trim() ?? "";
+    const isLast = index === header.cells.length - 1;
+    const width = Math.max(
+      isLast ? Math.max(28, lastFloor) : 28,
+      widths.byLabel.get(label) ?? widths.byIndex[index] ?? 28,
+    );
+    col.style.width = `${width}px`;
+    total += width;
+  });
+  table.style.tableLayout = "fixed";
+  table.style.width = `${total}px`;
+}
+
 /** 統合確認（内容がまったく同じセットができた場合） */
 interface MergeState {
   keepId: number;
@@ -70,35 +127,16 @@ export default function AssemblyMasterPage({
   onBack,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-assembly-list-v1");
-  /** セット明細の表は、開いたときに一覧のいまの列幅をそのまま写して出す */
-  const editorTableRef = useCallback((table: HTMLTableElement | null) => {
-    if (!table) return;
-    const list = document.querySelector<HTMLTableElement>(
-      ".assembly-page .assembly-list",
-    );
-    const header = list?.tHead?.rows.item(list.tHead.rows.length - 1);
-    if (!header || header.cells.length === 0) return;
-    let group = table.querySelector("colgroup");
-    if (!(group instanceof HTMLElement)) {
-      group = document.createElement("colgroup");
-      table.insertBefore(group, table.firstChild);
-    }
-    while (group.children.length < header.cells.length)
-      group.appendChild(document.createElement("col"));
-    let total = 0;
-    [...header.cells].forEach((cell, index) => {
-      const col = group.children[index];
-      if (!(col instanceof HTMLTableColElement)) return;
-      const width = cell.getBoundingClientRect().width;
-      // いちばん右の列は一覧の「セット」ではなく操作列（↑↓🗑）なので狭くなりすぎないようにする
-      const floor = index === header.cells.length - 1 ? 64 : 28;
-      const px = Math.max(floor, width);
-      col.style.width = `${px}px`;
-      total += px;
-    });
-    table.style.tableLayout = "fixed";
-    table.style.width = `${total}px`;
-  }, []);
+  /** セット明細の表は、開いたときに一覧のいまの列幅をそのまま写して出す（右端は操作列なので64px以上） */
+  const editorTableRef = useCallback(
+    (table: HTMLTableElement | null) => alignTableToList(table, 64),
+    [],
+  );
+  /** 「セット明細を選ぶ」の表も同じく一覧の列幅で出す */
+  const chooserTableRef = useCallback(
+    (table: HTMLTableElement | null) => alignTableToList(table),
+    [],
+  );
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const [subject, setSubject] = useState<Subject | null>(
     options.subjects[0] ?? null,
@@ -706,7 +744,11 @@ export default function AssemblyMasterPage({
             </header>
             <div className="modal-body">
               {chooser.map((assembly, groupIndex) => (
-                <table className="grid" key={assembly.id}>
+                <table
+                  className="grid"
+                  key={assembly.id}
+                  ref={chooserTableRef}
+                >
                   <thead>
                     <tr>
                       <th colSpan={6}>

@@ -2704,7 +2704,20 @@ export default function RoomCalcSheet({
             </span>
           </div>
           <div className="call-scroll">
-            <table className="call-table">
+            <table
+              className={`call-table ${source === "assembly" ? "asm" : ""}`}
+            >
+              {/* 部位名／名称・摘要は他の自由幅の列の1.5倍（広げたい分だけ表は横スクロールする） */}
+              <colgroup>
+                {source === "assembly" && <col className="scope" />}
+                <col className="no" />
+                <col className="no" />
+                <col className="name" />
+                <col className="desc" />
+                <col className="unit" />
+                <col className="flex" />
+                {source === "assembly" && <col className="unit" />}
+              </colgroup>
               <thead>
                 <tr>
                   {source === "assembly" && <th className="scope">区分</th>}
@@ -2819,17 +2832,17 @@ export default function RoomCalcSheet({
               <div className="assembly-pick-scroll">
                 {pickGroup.map((assembly, groupIndex) => (
                   <table
-                    className="call-table"
+                    className="call-table pick"
                     key={`${assembly.scope}-${assembly.id}`}
                   >
-                    {/* 1行目が全幅の見出しなので、列幅はここで一覧と同じに決める */}
+                    {/* 1行目が全幅の見出しなので、列幅は一覧と同じ決め方でここで与える */}
                     <colgroup>
                       <col className="no" />
                       <col className="no" />
-                      <col />
-                      <col />
+                      <col className="name" />
+                      <col className="desc" />
                       <col className="unit" />
-                      <col />
+                      <col className="flex" />
                       <col className="unit" />
                     </colgroup>
                     <thead>

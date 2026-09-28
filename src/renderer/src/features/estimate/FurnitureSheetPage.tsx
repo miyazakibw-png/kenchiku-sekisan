@@ -1824,6 +1824,15 @@ export default function FurnitureSheetPage({
             </div>
             <div className="call-scroll">
               <table className="call-table">
+                {/* 部位名／名称・摘要はいまの1.5倍。表は窓より広いので横スクロール */}
+                <colgroup>
+                  <col className="no" />
+                  <col className="no" />
+                  <col className="name" />
+                  <col className="desc" />
+                  <col className="unit" />
+                  <col className="flex" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th className="no">部位ID</th>

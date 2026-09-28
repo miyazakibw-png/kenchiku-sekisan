@@ -375,6 +375,40 @@
   text-align: center;
 }
 
+/* 呼出画面の表の部位名／名称・摘要は、いまの幅の1.5倍にする。
+   細い列はそのまま・備考は今の幅のままにするので、表は窓より少し広くなり
+   足りない分は横スクロールする（呼出画面は右下ドラッグで広げられる） */
+.room-calc-sheet .call-table {
+  width: max(100%, 917px);
+}
+.room-calc-sheet .call-table col.name,
+.room-calc-sheet .call-table col.desc {
+  width: 280px;
+}
+.room-calc-sheet .call-table col.flex {
+  width: 187px;
+}
+.room-calc-sheet .call-table.asm {
+  width: max(100%, 885px);
+}
+.room-calc-sheet .call-table.asm col.name,
+.room-calc-sheet .call-table.asm col.desc {
+  width: 233px;
+}
+.room-calc-sheet .call-table.asm col.flex {
+  width: 155px;
+}
+.room-calc-sheet .call-table.pick {
+  width: max(100%, 900px);
+}
+.room-calc-sheet .call-table.pick col.name,
+.room-calc-sheet .call-table.pick col.desc {
+  width: 255px;
+}
+.room-calc-sheet .call-table.pick col.flex {
+  width: 170px;
+}
+
 /* 1行目が同じセットが複数あるとき、中身を見て選ぶポップアップ */
 .room-calc-sheet .assembly-pick {
   position: absolute;
