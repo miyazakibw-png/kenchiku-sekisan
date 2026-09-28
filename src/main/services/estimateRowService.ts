@@ -15,7 +15,7 @@ import type {
 } from "../../shared/types";
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
-import { hasUnscaledUnderlay, parseUnderlays } from "../../core/room/trace";
+import { needsScaleAdjustment, parseUnderlays } from "../../core/room/trace";
 import { listCalcErrors } from "./aggregationService";
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
@@ -32,7 +32,7 @@ function listUnscaledUnderlayRows(
     sheets: { estimateRowId: number; traceJson: string }[],
   ): void => {
     for (const sheet of sheets) {
-      if (hasUnscaledUnderlay(sheet.traceJson)) {
+      if (needsScaleAdjustment(sheet.traceJson)) {
         pending.add(sheet.estimateRowId);
       }
     }
@@ -85,9 +85,14 @@ export function listSheetDrawingSources(
     calcType: CalcType,
   ): void => {
     for (const sheet of sheets) {
-      const drawings = parseUnderlays(sheet.traceJson).filter(
-        (item) => item.image !== "",
-      );
+      // 呼出元の計算書が縮尺未調整のとき、その図面も未調整として扱う
+      // （呼び出した側の計算書にも「縮尺調整（未）」が出る）
+      const unscaled = needsScaleAdjustment(sheet.traceJson);
+      const drawings = parseUnderlays(sheet.traceJson)
+        .filter((item) => item.image !== "")
+        .map((item) =>
+          unscaled ? { ...item, scaled: false } : item,
+        );
       if (drawings.length > 0) {
         sources.push({
           estimateRowId: sheet.estimateRowId,

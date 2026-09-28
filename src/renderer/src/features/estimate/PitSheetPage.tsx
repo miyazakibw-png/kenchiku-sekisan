@@ -71,6 +71,7 @@ import {
 import {
   EMPTY_TRACE,
   EMPTY_UNDERLAY,
+  parseScalePending,
   parseTrace,
   parseTracedShapes,
   parseUnderlayLocked,
@@ -372,11 +373,14 @@ export default function PitSheetPage({
     (drawings: TraceUnderlay[]) => {
       if (drawings.length === 0) return;
       setUnderlays([...underlays, ...drawings], underlays.length);
+      // 縮尺未調整の図面を呼び出したときは「縮尺合わせがまだ」の印を残す
+      if (drawings.some((drawing) => drawing.scaled !== true))
+        underlayTool.setScalePending(true);
       setMessage(
         `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
       );
     },
-    [setMessage, setUnderlays, underlays],
+    [setMessage, setUnderlays, underlays, underlayTool],
   );
 
   // なぞる画面で画像を貼り替え・縮尺を変えたら「いま選んでいる図面」に反映する
@@ -447,6 +451,7 @@ export default function PitSheetPage({
       traced,
       underlays,
       underlayLocked: underlayTool.moveAll,
+      scalePending: underlayTool.scalePending,
     },
     () => save(),
   );
@@ -565,10 +570,12 @@ export default function PitSheetPage({
                 : [synced];
             })();
       const underlayLocked = parseUnderlayLocked(loaded.traceJson);
+      const scalePending = parseScalePending(loaded.traceJson);
       setTrace(loadedTrace);
       setTraced(parseTracedShapes(loaded.traceJson));
       setUnderlays(nextUnderlays);
       setMoveAll(underlayLocked);
+      underlayTool.setScalePending(scalePending);
       if (synced)
         setMessage(
           `図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いた${pitWord}が元の図面に重なります。保存すると残ります）`,
@@ -586,6 +593,7 @@ export default function PitSheetPage({
         traced: parseTracedShapes(loaded.traceJson),
         underlays: nextUnderlays,
         underlayLocked,
+        scalePending,
       });
       setFittings(await window.sekisan.listFittings(project.id));
       setOptions(await window.sekisan.getMasterOptions(project.id));
@@ -679,6 +687,7 @@ export default function PitSheetPage({
       trace,
       underlays,
       underlayLocked: underlayTool.moveAll,
+      scalePending: underlayTool.scalePending,
     });
     const saved = await window.sekisan.savePitSheet({
       id: sheet.id,
@@ -695,6 +704,7 @@ export default function PitSheetPage({
         underlay: underlays[0] ?? EMPTY_UNDERLAY,
         underlays,
         underlayLocked: underlayTool.moveAll,
+        ...(underlayTool.scalePending ? { scalePending: true } : {}),
       }),
       note,
     });
@@ -713,6 +723,7 @@ export default function PitSheetPage({
     trace,
     traced,
     underlayTool.moveAll,
+    underlayTool.scalePending,
     underlays,
     wallStep,
     walls,

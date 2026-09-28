@@ -190,11 +190,34 @@ export function parseUnderlayLocked(json: string): boolean {
   }
 }
 
+/**
+ * traceJson に残す「縮尺合わせがまだ」の印。
+ * 図面を置いた計算書は、あとで図面を外してもなぞった寸法が図面の縮尺のままなので、
+ * 下敷きの有無とは別にこの印で記録する（縮尺合わせが済むと外れる）。
+ */
+export function parseScalePending(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { scalePending?: unknown };
+    return parsed.scalePending === true;
+  } catch {
+    return false;
+  }
+}
+
 /** traceJson の中に、縮尺がまだ合わせられていない下敷きの図面があるか（一覧の「縮尺調整（未）」表示に使う） */
 export function hasUnscaledUnderlay(json: string): boolean {
   return parseUnderlays(json).some(
     (underlay) => underlay.image !== "" && underlay.scaled !== true,
   );
+}
+
+/**
+ * 「縮尺調整（未）」を出すか。
+ * 今残っている未調整の下敷きだけでなく、図面を置いた計算書が縮尺合わせを済ませていない
+ * 記録（scalePending）があれば、図面を外したあとも出す。
+ */
+export function needsScaleAdjustment(json: string): boolean {
+  return hasUnscaledUnderlay(json) || parseScalePending(json);
 }
 
 /**

@@ -18,6 +18,7 @@ import type {
 import {
   EMPTY_TRACE,
   EMPTY_UNDERLAY,
+  parseScalePending,
   parseTrace,
   parseUnderlayLocked,
   parseUnderlays,
@@ -599,11 +600,14 @@ export default function RoomSheetPage({
     (drawings: TraceUnderlay[]) => {
       if (drawings.length === 0) return;
       setUnderlays([...underlays, ...drawings], underlays.length);
+      // 縮尺未調整の図面を呼び出したときは「縮尺合わせがまだ」の印を残す
+      if (drawings.some((drawing) => drawing.scaled !== true))
+        underlayTool.setScalePending(true);
       setMessage(
         `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
       );
     },
-    [setMessage, setUnderlays, underlays],
+    [setMessage, setUnderlays, underlays, underlayTool],
   );
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
@@ -618,6 +622,7 @@ export default function RoomSheetPage({
       trace,
       underlays,
       underlayLocked: underlayTool.moveAll,
+      scalePending: underlayTool.scalePending,
     },
     () => save(),
   );
@@ -645,10 +650,12 @@ export default function RoomSheetPage({
       setTrace(parseTrace(loaded.traceJson));
       setUnderlays(parseUnderlays(loaded.traceJson));
       underlayTool.setMoveAll(parseUnderlayLocked(loaded.traceJson));
+      underlayTool.setScalePending(parseScalePending(loaded.traceJson));
       markSaved({
         trace: parseTrace(loaded.traceJson),
         underlays: parseUnderlays(loaded.traceJson),
         underlayLocked: parseUnderlayLocked(loaded.traceJson),
+        scalePending: parseScalePending(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
         roomFittings: parseRoomFittings(loaded.fittingsJson),
         ceiling: parseCeiling(loaded.ceilingJson, height),
@@ -1109,6 +1116,7 @@ export default function RoomSheetPage({
       trace,
       underlays,
       underlayLocked: underlayTool.moveAll,
+      scalePending: underlayTool.scalePending,
     });
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
@@ -1122,6 +1130,7 @@ export default function RoomSheetPage({
         underlay: underlays[0] ?? EMPTY_UNDERLAY,
         underlays,
         underlayLocked: underlayTool.moveAll,
+        ...(underlayTool.scalePending ? { scalePending: true } : {}),
       }),
       ceilingHeight,
       note: sheet.note,
@@ -1141,6 +1150,7 @@ export default function RoomSheetPage({
     trace,
     underlays,
     underlayTool.moveAll,
+    underlayTool.scalePending,
   ]);
 
   /** 図の1ピクセルが何メートルか（C番号をつかんで動かすときに使う） */

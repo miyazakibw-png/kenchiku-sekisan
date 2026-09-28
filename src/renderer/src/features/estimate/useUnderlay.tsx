@@ -149,6 +149,9 @@ export interface Underlay {
   openFile: () => Promise<void>;
   /** 図面ファイルをまとめて複数選んで置く（複数置ける画面だけ。1枚の画面は openFile と同じ動き） */
   openFiles: () => Promise<void>;
+  /** 「縮尺合わせがまだ」の印（図面を置いた計算書で保存時に traceJson の scalePending へ残す） */
+  scalePending: boolean;
+  setScalePending: Dispatch<SetStateAction<boolean>>;
   applyScale: () => void;
   undoScale: () => void;
   toggleScale: () => void;
@@ -178,6 +181,12 @@ export function useUnderlay({
   const [sizes, setSizes] = useState<
     Record<string, { width: number; height: number }>
   >({});
+  /**
+   * 「縮尺合わせがまだ」の印。図面を置いたら立て、縮尺合わせが済んだら下ろす。
+   * 図面を外しても下ろさない（外したあとも縮尺の確かめが必要）ので、計算書はこの印を
+   * traceJson の scalePending に残す。
+   */
+  const [scalePending, setScalePending] = useState(false);
   const [mode, setMode] = useState<UnderlayMode>("off");
   const [scalePoints, setScalePoints] = useState<Point[]>([]);
   const [scaleText, setScaleText] = useState("3.640");
@@ -307,6 +316,7 @@ export function useUnderlay({
       } else {
         replace(underlay, next);
       }
+      setScalePending(true);
       setScalePoints([]);
       setMode("scale");
       setMessage(SCALE_HINT);
@@ -421,6 +431,7 @@ export function useUnderlay({
     }
     if (placed === 0) return;
     setActiveState(count + placed - 1);
+    setScalePending(true);
     setScalePoints([]);
     setMode("scale");
     setMessage(`${placed}枚の図面を置きました。${SCALE_HINT}`);
@@ -448,6 +459,7 @@ export function useUnderlay({
     }
     setScaleUndo((current) => [...current.slice(-9), underlay]);
     replace(underlay, scaled);
+    setScalePending(false);
     setScalePoints([]);
     setMode("off");
     setMessage(
@@ -461,6 +473,8 @@ export function useUnderlay({
     const last = scaleUndo[scaleUndo.length - 1];
     if (last === undefined) return;
     replace(underlay, last);
+    // 縮尺合わせを戻す＝また未調整に戻ったので印を立てる
+    setScalePending(true);
     setScaleUndo(scaleUndo.slice(0, -1));
     setMessage("縮尺合わせを元に戻しました");
   }, [replace, scaleUndo, setMessage, underlay]);
@@ -655,6 +669,8 @@ export function useUnderlay({
     pasteImage,
     openFile,
     openFiles,
+    scalePending,
+    setScalePending,
     applyScale,
     undoScale,
     toggleScale,

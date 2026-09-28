@@ -45,7 +45,10 @@ import {
   type RoomShape,
   type SolvedShape,
 } from "../../../../core/room/shape";
-import type { TraceUnderlay } from "../../../../core/room/trace";
+import {
+  parseScalePending,
+  type TraceUnderlay,
+} from "../../../../core/room/trace";
 import {
   evaluateCalcSheet,
   trimEmptySets,
@@ -173,6 +176,8 @@ interface FrameDiagramContent {
   activeTrace: number;
   /** 「🔗 まとめて動かす」がONか */
   traceLocked: boolean;
+  /** 「縮尺合わせがまだ」の印（図面を置いた計算書で残る。図面を外しても残す） */
+  scalePending: boolean;
   kinds: FrameKind[];
 }
 
@@ -204,6 +209,8 @@ export default function FrameSheetPage({
   const [activeTrace, setActiveTrace] = useState(0);
   /** 「🔗 まとめて動かす」：ONの間は「✥ 図面を動かす」で全部の図面が一緒に動く（重ね合わせたあと1枚の絵として固定する） */
   const [traceLocked, setTraceLocked] = useState(false);
+  /** 「縮尺合わせがまだ」の印。図面を置いたら立て、縮尺合わせが済んだら下ろす（図面を外しても下ろさない） */
+  const [scalePending, setScalePending] = useState(false);
   /** 図面画像の大きさ（画素。画像データごとに覚える） */
   const [traceSizes, setTraceSizes] = useState<
     Record<string, { width: number; height: number }>
@@ -347,6 +354,7 @@ export default function FrameSheetPage({
       activeTrace,
       traceLocked,
       kinds,
+      scalePending,
     },
     () => save(),
   );
@@ -361,6 +369,7 @@ export default function FrameSheetPage({
     traces: [],
     activeTrace: 0,
     traceLocked: false,
+    scalePending: false,
     kinds: defaultFrameKinds(),
   });
   useEffect(() => {
@@ -372,6 +381,7 @@ export default function FrameSheetPage({
       traces,
       activeTrace,
       traceLocked,
+      scalePending,
       kinds,
     };
   }, [
@@ -382,6 +392,7 @@ export default function FrameSheetPage({
     traces,
     activeTrace,
     traceLocked,
+    scalePending,
     kinds,
   ]);
 
@@ -411,6 +422,7 @@ export default function FrameSheetPage({
     setTraces(previous.traces);
     setActiveTrace(previous.activeTrace);
     setTraceLocked(previous.traceLocked);
+    setScalePending(previous.scalePending);
     setKinds(previous.kinds);
     setMessage("図を1つ前に戻しました（保存すると確定します）");
   };
@@ -436,6 +448,7 @@ export default function FrameSheetPage({
     setTraces(next.traces);
     setActiveTrace(next.activeTrace);
     setTraceLocked(next.traceLocked);
+    setScalePending(next.scalePending);
     setKinds(next.kinds);
     setMessage("図を1つ先へ進めました（保存すると確定します）");
   };
@@ -469,9 +482,11 @@ export default function FrameSheetPage({
       setWorkHeight(height);
       const loadedTrace = parseFrameTraces(loaded.traceJson);
       const loadedKinds = parseJson<FrameKind[]>(loaded.kindsJson, []);
+      const loadedPending = parseScalePending(loaded.traceJson);
       setTraces(loadedTrace.traces);
       setActiveTrace(loadedTrace.active);
       setTraceLocked(loadedTrace.locked);
+      setScalePending(loadedPending);
       setKinds(loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds());
       markSaved({
         placements: parseJson<FramePlacement[]>(loaded.layoutJson, []),
@@ -495,6 +510,7 @@ export default function FrameSheetPage({
         activeTrace: loadedTrace.active,
         // 「まとめて動かす」は開くたびOFFに戻す（ONのまま残ると、1枚だけ動かしたいとき2枚とも動いて困る）
         traceLocked: false,
+        scalePending: loadedPending,
         kinds: loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds(),
       });
       diagramHistory.clear();
@@ -797,6 +813,7 @@ export default function FrameSheetPage({
       activeTrace,
       traceLocked,
       kinds,
+      scalePending,
     });
     const saved = await window.sekisan.saveFrameSheet({
       id: sheet.id,
@@ -810,6 +827,7 @@ export default function FrameSheetPage({
         traces,
         active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
         locked: traceLocked,
+        ...(scalePending ? { scalePending: true } : {}),
       }),
       kindsJson: JSON.stringify(kinds),
       note: sheet.note,
@@ -882,6 +900,7 @@ export default function FrameSheetPage({
         },
       ]);
       setActiveTrace(traces.length);
+      setScalePending(true);
       setScalePoints([]);
       setTraceMode("scale");
       setPanMode(false);
@@ -914,6 +933,9 @@ export default function FrameSheetPage({
         })),
       ]);
       setActiveTrace(traces.length);
+      // 縮尺未調整の図面を呼び出したときは「縮尺合わせがまだ」の印を残す
+      if (drawings.some((drawing) => drawing.scaled !== true))
+        setScalePending(true);
       setMessage(
         `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
       );
@@ -1003,6 +1025,7 @@ export default function FrameSheetPage({
     }
     if (placed === 0) return;
     setActiveTrace(traces.length + placed - 1);
+    setScalePending(true);
     setScalePoints([]);
     setTraceMode("scale");
     setPanMode(false);
@@ -1013,7 +1036,12 @@ export default function FrameSheetPage({
 
   /** 縮尺合わせの前の形（「↶ 縮尺を戻す」で元に戻せるように取っておく） */
   const [scaleUndo, setScaleUndo] = useState<
-    { traces: FrameTrace[]; active: number; lines: FrameManualLine[] }[]
+    {
+      traces: FrameTrace[];
+      active: number;
+      lines: FrameManualLine[];
+      pending: boolean;
+    }[]
   >([]);
 
   /** 縮尺合わせ：2点の間、または選んだ線の実寸を入れて、図面と引いた線を伸び縮みさせる */
@@ -1045,6 +1073,7 @@ export default function FrameSheetPage({
         traces,
         active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
         lines: manualLines,
+        pending: scalePending,
       },
     ]);
     setTrace((current) => ({
@@ -1063,6 +1092,7 @@ export default function FrameSheetPage({
         y2: line.y2 * factor,
       })),
     );
+    setScalePending(false);
     setScalePoints([]);
     setHeldView(null);
     setTraceMode("off");
@@ -1071,6 +1101,7 @@ export default function FrameSheetPage({
     activeTrace,
     manualLines,
     pushDiagram,
+    scalePending,
     scalePoints,
     scaleText,
     selectedLineId,
@@ -1134,6 +1165,7 @@ export default function FrameSheetPage({
         Math.min(last.active, Math.max(last.traces.length - 1, 0)),
       );
       setManualLines(last.lines);
+      setScalePending(last.pending);
       setHeldView(null);
       setMessage("縮尺合わせを元に戻しました");
       return current.slice(0, -1);

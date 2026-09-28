@@ -9,6 +9,8 @@ import {
   parseTrace,
   parseUnderlay,
   parseUnderlays,
+  parseScalePending,
+  needsScaleAdjustment,
   hasUnscaledUnderlay,
   parseTracedShapes,
   rectFromCorners,
@@ -525,5 +527,43 @@ describe("parseUnderlays（複数枚の下敷きを読む）", () => {
     expect(hasUnscaledUnderlay(JSON.stringify({ underlays: [two] }))).toBe(
       false,
     );
+  });
+});
+
+describe("scalePending（図面を外したあとも残る「縮尺合わせがまだ」の印）", () => {
+  it("印が無い・壊れたJSONは false、印があれば true", () => {
+    expect(parseScalePending("{}")).toBe(false);
+    expect(parseScalePending("not json")).toBe(false);
+    expect(parseScalePending(JSON.stringify({ scalePending: false }))).toBe(
+      false,
+    );
+    expect(parseScalePending(JSON.stringify({ scalePending: true }))).toBe(
+      true,
+    );
+  });
+
+  it("図面を外しても scalePending が残れば「縮尺調整（未）」を出す", () => {
+    const scaled = {
+      image: "data:a",
+      metersPerPixel: 0.01,
+      x: 0,
+      y: 0,
+      opacity: 0.75,
+      scaled: true,
+    };
+    // 図面を全部外したあと（underlays が空）でも印が残っていれば出る
+    expect(needsScaleAdjustment(JSON.stringify({ scalePending: true }))).toBe(
+      true,
+    );
+    expect(
+      needsScaleAdjustment(
+        JSON.stringify({ underlays: [], scalePending: true }),
+      ),
+    ).toBe(true);
+    // 縮尺済みの図面だけ残っていて印が無ければ出ない
+    expect(
+      needsScaleAdjustment(JSON.stringify({ underlays: [scaled] })),
+    ).toBe(false);
+    expect(needsScaleAdjustment("{}")).toBe(false);
   });
 });

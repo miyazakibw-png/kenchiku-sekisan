@@ -939,7 +939,7 @@ export default function EstimatePartsPage({
                       {row.scalePending === true && (
                         <span
                           className="scale-pending"
-                          title="この行の計算書に縮尺をまだ合わせていない図面があります。計算書の「⤢ 縮尺合わせ」で合わせると消えます"
+                          title="この行の計算書で図面を置いたあと縮尺合わせが済んでいません（図面を外したあとも残ります）。計算書で図面を呼び出して「⤢ 縮尺合わせ」で合わせると消えます"
                         >
                           縮尺調整（未）
                         </span>
