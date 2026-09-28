@@ -204,6 +204,23 @@ describe("転記入力表のマス単位のコピー・貼り付け", () => {
     expect(row.unit).toBe("m2");
   });
 
+  it("部位ID・明細IDを打っても部位名・名称は変わらない", () => {
+    const result = pasteTransferCells(
+      [{ ...emptyTransferRow(), partName: "手書きの部位", name: "手書きの名称" }],
+      { row: 0, line: 0, col: 0 },
+      matrix("3\n1.02"),
+      masters,
+    );
+
+    expect(result.errorCount).toBe(0);
+    const [row] = result.rows;
+    expect(row.partId).toBe(3);
+    expect(row.detailNumber).toBe(1.02);
+    // IDを打ち換えても先に入れた文字はそのまま
+    expect(row.partName).toBe("手書きの部位");
+    expect(row.name).toBe("手書きの名称");
+  });
+
   it("数字の欄に文字が来たときは取り込まずに件数を返す", () => {
     const result = pasteTransferCells(
       [emptyTransferRow()],

@@ -67,8 +67,6 @@ export default function TransferSheetPage({
   const [details, setDetails] = useState<Detail[]>([]);
   const [partsOpen, setPartsOpen] = useState(false);
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
-  /** 明細IDで呼び出すための明細マスター（科目ごとに一度だけ読む） */
-  const [detailCache, setDetailCache] = useState<Record<number, Detail[]>>({});
   /** 行コピー（複数行可。Shift+クリックで広げる） */
   const [selectedEnd, setSelectedEnd] = useState(0);
   const [rowClip, setRowClip] = useState<TransferRowDraft[]>([]);
@@ -196,12 +194,9 @@ export default function TransferSheetPage({
     [history, selected],
   );
 
-  /**
-   * 明細IDを打って明細マスターから呼び出す。
-   * 科目（打った行、無ければ上の行から引き継いだ科目）の明細を探す。
-   */
-  const callDetailNumber = useCallback(
-    async (index: number, subject: number | null, text: string) => {
+  /** 明細IDは打ち換えても名称・摘要・単位は変えない（呼出は「マスター呼出」ボタンで） */
+  const commitDetailNumber = useCallback(
+    (index: number, text: string) => {
       const trimmed = text.trim();
       if (trimmed === "") {
         update(index, { detailNumber: null });
@@ -213,27 +208,8 @@ export default function TransferSheetPage({
         return;
       }
       update(index, { detailNumber: parsed });
-      if (subject === null) {
-        setMessage("科目IDを先に入れてください（明細を探せません）");
-        return;
-      }
-      const list =
-        detailCache[subject] ??
-        (await window.sekisan.listDetails(subject, project.id));
-      setDetailCache((current) => ({ ...current, [subject]: list }));
-      const found = list.find((detail) => detail.detailNumber === parsed);
-      if (!found) {
-        setMessage(`明細ID ${trimmed} は科目 ${subject} にありません`);
-        return;
-      }
-      history.edit((current) =>
-        current.map((row, at) =>
-          at === index ? applyDetail(row, found) : row,
-        ),
-      );
-      setMessage(`${found.name} を呼び出しました`);
     },
-    [detailCache, history, project.id, update],
+    [update],
   );
 
   const materialEntries = useMemo(
@@ -739,18 +715,13 @@ export default function TransferSheetPage({
                     placeholder={
                       shown.partId === null ? "" : String(shown.partId)
                     }
-                    title="空欄のときは入力のある上の行と同じ部位IDになります"
+                    title="空欄のときは入力のある上の行と同じ部位IDになります（打ち換えても部位名は変わりません）"
                     {...cellProps(index, 0, 0)}
                     onChange={(e) => {
                       const text = e.target.value.trim();
                       const parsed = Number.parseInt(text, 10);
-                      const id = Number.isNaN(parsed) ? null : parsed;
-                      const part = options.pickupParts.find(
-                        (item) => item.id === id,
-                      );
                       update(index, {
-                        partId: id,
-                        partName: part ? part.name : row.partName,
+                        partId: Number.isNaN(parsed) ? null : parsed,
                       });
                     }}
                   />
@@ -813,15 +784,9 @@ export default function TransferSheetPage({
                         ? ""
                         : shown.detailNumber.toFixed(2)
                     }
-                    title="明細IDを入れると、その科目の明細マスターから名称・摘要・単位を呼び出します（空欄のときは上の行＋0.01）"
+                    title="明細IDは打ち換えても名称は変わりません（呼出は「📂 マスター呼出」ボタンで。空欄のときは上の行＋0.01）"
                     {...cellProps(index, 1, 0)}
-                    onBlur={(e) =>
-                      void callDetailNumber(
-                        index,
-                        row.subjectId ?? shown.subjectId,
-                        e.target.value,
-                      )
-                    }
+                    onBlur={(e) => commitDetailNumber(index, e.target.value)}
                   />
                 </td>
                 <td className={cellClass(index, 1, 1)}>

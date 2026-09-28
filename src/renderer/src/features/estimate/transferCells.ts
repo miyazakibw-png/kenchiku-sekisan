@@ -59,20 +59,14 @@ function textCell(
 
 const partIdCell: CellAccessor = {
   get: (row) => (row.partId === null ? "" : String(row.partId)),
-  set: (row, value, masters) => {
+  set: (row, value) => {
     const trimmed = value.trim();
     if (trimmed === "") return { row: { ...row, partId: null } };
     const parsed = Number.parseInt(trimmed, 10);
     if (Number.isNaN(parsed))
       return { row, error: "部位IDは数字で入れてください" };
-    const part = masters.parts.find((item) => item.id === parsed);
-    return {
-      row: {
-        ...row,
-        partId: parsed,
-        partName: part ? part.name : row.partName,
-      },
-    };
+    // 部位IDを打っても部位名は変えない（文字を先に入れて後から番号を振る使い方のため）
+    return { row: { ...row, partId: parsed } };
   },
 };
 
