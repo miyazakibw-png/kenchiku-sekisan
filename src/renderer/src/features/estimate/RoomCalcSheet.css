@@ -231,7 +231,7 @@
   position: fixed;
   right: 24px;
   top: 90px;
-  width: 760px;
+  width: 1100px;
   height: 62vh;
   min-width: 420px;
   min-height: 220px;
@@ -375,35 +375,41 @@
   text-align: center;
 }
 
-/* 呼出画面の表の部位名／名称・摘要は、いまの幅の1.5倍にする。
-   細い列はそのまま・備考は今の幅のままにするので、表は窓より少し広くなり
-   足りない分は横スクロールする（呼出画面は右下ドラッグで広げられる） */
+/* 呼出画面の表：部位名／名称は元の幅の1.5倍、摘要はさらにその1.5倍（元の2.25倍）。
+   呼出画面の窓は表全体が入る幅（1100px）で開く。狭い画面では横スクロールする
+   （呼出画面は右下ドラッグでも広げられる） */
 .room-calc-sheet .call-table {
-  width: max(100%, 917px);
+  width: max(100%, 1057px);
 }
-.room-calc-sheet .call-table col.name,
-.room-calc-sheet .call-table col.desc {
+.room-calc-sheet .call-table col.name {
   width: 280px;
+}
+.room-calc-sheet .call-table col.desc {
+  width: 420px;
 }
 .room-calc-sheet .call-table col.flex {
   width: 187px;
 }
 .room-calc-sheet .call-table.asm {
-  width: max(100%, 885px);
+  width: max(100%, 1002px);
 }
-.room-calc-sheet .call-table.asm col.name,
-.room-calc-sheet .call-table.asm col.desc {
+.room-calc-sheet .call-table.asm col.name {
   width: 233px;
+}
+.room-calc-sheet .call-table.asm col.desc {
+  width: 350px;
 }
 .room-calc-sheet .call-table.asm col.flex {
   width: 155px;
 }
 .room-calc-sheet .call-table.pick {
-  width: max(100%, 900px);
+  width: max(100%, 1028px);
 }
-.room-calc-sheet .call-table.pick col.name,
-.room-calc-sheet .call-table.pick col.desc {
+.room-calc-sheet .call-table.pick col.name {
   width: 255px;
+}
+.room-calc-sheet .call-table.pick col.desc {
+  width: 383px;
 }
 .room-calc-sheet .call-table.pick col.flex {
   width: 170px;
