@@ -32,6 +32,15 @@ import {
   withFixedRoomSymbols,
 } from "../../src/core/room/shape";
 
+/** 2点間のベクトル・外積・長さ（辺の向きを比べる用） */
+const sub = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+  x: a.x - b.x,
+  y: a.y - b.y,
+});
+const cross = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+  a.x * b.y - a.y * b.x;
+const len = (a: { x: number; y: number }) => Math.hypot(a.x, a.y);
+
 /** 形の向きを見るために、左上を原点にそろえた頂点の並び */
 function cornerSet(shape: ReturnType<typeof rectangleShape>): string[] {
   const points = solveShape(shape).points;
@@ -162,6 +171,37 @@ describe("部屋形状（単線図）", () => {
     const solved = solveShape(cut.shape);
     expect(solved.error).toBeNull();
     expect(solved.points).toHaveLength(cut.shape.edges.length);
+  });
+
+  it("斜めどうしの角のL型は、つなぐ辺と平行な脚になる", () => {
+    // 角1を動かすと、角1の両側の辺がどちらも斜めになる
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    expect(moved.error).toBeNull();
+    const before = solveShape(moved.shape);
+    expect(before.error).toBeNull();
+    const cut = cutCorner(moved.shape, 1, 0.5, 0.5);
+    expect(cut.error).toBeNull();
+    const after = solveShape(cut.shape);
+    expect(after.error).toBeNull();
+    // 角1に入る辺・出る辺の向き（元の形）
+    const inUnit = sub(before.points[1], before.points[0]);
+    const outUnit = sub(before.points[2], before.points[1]);
+    // 欠き取り後：角1の所は 折れ点(back) → 真ん中 → 折れ点(forward) の3点になる
+    const back = after.points[1];
+    const middle = after.points[2];
+    const forward = after.points[3];
+    // 真ん中の点は「つなぐ2辺と平行な平行四辺形」の頂点（座標の丸め分だけずれるので近いかを見る）
+    const expectMiddle = sub(
+      { x: back.x + forward.x, y: back.y + forward.y },
+      before.points[1],
+    );
+    expect(len(sub(middle, expectMiddle))).toBeLessThan(0.02);
+    // 2本の脚がそれぞれ元の出る辺・入る辺と平行（丸め誤差を含めてほぼ0）
+    expect(cross(sub(middle, back), outUnit)).toBeCloseTo(0, 1);
+    expect(cross(sub(forward, middle), inUnit)).toBeCloseTo(0, 1);
+    // 脚の長さは欠き取り寸法のまま
+    expect(len(sub(middle, back))).toBeCloseTo(0.5, 1);
+    expect(len(sub(forward, middle))).toBeCloseTo(0.5, 1);
   });
 
   it("斜め辺を作ったあとでも角の欠き取りを何度でも続けられる", () => {

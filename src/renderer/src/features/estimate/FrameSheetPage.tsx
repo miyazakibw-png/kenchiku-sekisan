@@ -2405,6 +2405,23 @@ export default function FrameSheetPage({
               </button>
             </>
           )}
+          {scalePending && !printMode && (
+            <span
+              className="underlay-pending"
+              title="この計算書は図面の縮尺合わせがまだです。部位別入力表の備考欄に「縮尺調整（未）」が出ています。図面を呼び出して縮尺合わせをするか、図面が要らなければ右のボタンで印を消せます"
+            >
+              ⚠ 縮尺合わせがまだ
+              {traces.filter((row) => row.image !== "").length === 0 && (
+                <button
+                  type="button"
+                  title="図面がありません。この印だけを消します"
+                  onClick={() => setScalePending(false)}
+                >
+                  調整済みにする
+                </button>
+              )}
+            </span>
+          )}
           {trace.image !== "" && !printMode && (
             <>
               <button

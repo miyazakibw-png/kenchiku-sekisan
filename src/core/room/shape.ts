@@ -352,16 +352,13 @@ export function cutCorner(
     x: round2(corner.x + ((next.x - corner.x) / outLength) * across),
     y: round2(corner.y + ((next.y - corner.y) / outLength) * across),
   };
-  // L型の折れ点は、角から遠い方（角をそのまま残さない方）を選ぶ
-  const candidates = [
-    { x: back.x, y: forward.y },
-    { x: forward.x, y: back.y },
-  ];
-  const middle =
-    Math.hypot(candidates[0].x - corner.x, candidates[0].y - corner.y) >=
-    Math.hypot(candidates[1].x - corner.x, candidates[1].y - corner.y)
-      ? candidates[0]
-      : candidates[1];
+  // L型の折れ点は、つなぐ2辺と平行な平行四辺形の頂点に置く。
+  // 縦横の辺どうしの角では従来の「遠い候補」と同じ点になり、
+  // 斜めの辺を含む角では角の向きに合わせて回ったLになる。
+  const middle = {
+    x: round2(back.x + forward.x - corner.x),
+    y: round2(back.y + forward.y - corner.y),
+  };
 
   const shortenedIn = edgeFromVector(inEdge, {
     x: back.x - previous.x,

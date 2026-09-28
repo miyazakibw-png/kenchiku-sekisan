@@ -849,6 +849,24 @@ export function UnderlayTools({
           📥 図面を呼び出す
         </button>
       )}
+      {u.scalePending && (
+        <span
+          className="underlay-pending"
+          title="この計算書は図面の縮尺合わせがまだです。部位別入力表の備考欄に「縮尺調整（未）」が出ています。図面を呼び出して縮尺合わせをするか、図面が要らなければ右のボタンで印を消せます"
+        >
+          ⚠ 縮尺合わせがまだ
+          {u.count === 0 ||
+          u.underlays.every((item) => item.scaled === true) ? (
+            <button
+              type="button"
+              title="図面がありません・全部調整済みなので、この印だけを消します"
+              onClick={() => u.setScalePending(false)}
+            >
+              調整済みにする
+            </button>
+          ) : null}
+        </span>
+      )}
       {u.underlay.image !== "" && (
         <>
           <button
