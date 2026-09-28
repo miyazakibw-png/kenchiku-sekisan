@@ -3,6 +3,8 @@
   border-collapse: collapse;
   margin: 8px;
   width: calc(100% - 16px);
+  /* 列の幅は colgroup（見出しの右端ドラッグで変えられる）が決める */
+  table-layout: fixed;
 }
 
 .misc-list-page table.grid.misc-list th,
@@ -29,7 +31,6 @@
 }
 
 .misc-list-page table.grid.misc-list .ops {
-  width: 220px;
   white-space: nowrap;
 }
 
@@ -38,11 +39,51 @@
   margin-right: 4px;
 }
 
+/** いちばん右の「消す」だけの列 */
+.misc-list-page table.grid.misc-list .ops.del {
+  text-align: center;
+}
+
+.misc-list-page table.grid.misc-list .ops.del button {
+  margin-right: 0;
+}
+
+/** 見出しの中身（th 自体を position 指定すると Chrome で行の高さが崩れるため、この箱を基準にする） */
+.misc-list-page table.grid.misc-list th .cellbox {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/** 列幅を変えるつまみ（見出しの右端。当たり判定は th 側で右端8pxを見ている） */
+.misc-list-page table.grid.misc-list th .resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 8px;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.misc-list-page table.grid.misc-list th .resizer:hover {
+  background: #60a5fa;
+}
+
 .misc-list-page table.grid.misc-list tr.selected {
   background: #e8f0fe;
 }
 
 .misc-list-page table.grid.misc-list input {
+  width: 100%;
+  border: none;
+  font-size: 12px;
+  background: transparent;
+}
+
+.misc-list-page table.grid.misc-list select {
   width: 100%;
   border: none;
   font-size: 12px;

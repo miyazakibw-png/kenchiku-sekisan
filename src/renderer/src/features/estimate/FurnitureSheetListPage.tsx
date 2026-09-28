@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   EstimateRow,
+  FurnitureSheet,
   FurnitureSheetSummary,
   ProjectSummary,
 } from "@shared/types";
@@ -10,9 +11,31 @@ import {
   isFittingDetailSheet,
 } from "../../../../core/furniture/furnitureSheet";
 import { ask } from "../common/askDialog";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
+import { useColumnWidths } from "./columnWidths";
 import OtherProjectSheetPicker from "./OtherProjectSheetPicker";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
+
+/** 一覧の列（右端の「消す」列はボタンだけ置く空の見出し） */
+const LIST_COLUMNS: {
+  key: string;
+  label: string;
+  className: string;
+  defaultWidth: number;
+}[] = [
+  { key: "ops", label: "操作", className: "ops", defaultWidth: 150 },
+  { key: "no", label: "No", className: "no", defaultWidth: 40 },
+  { key: "name", label: "表の名前（部位Ⅲ）", className: "name", defaultWidth: 170 },
+  { key: "kind", label: "種類", className: "name", defaultWidth: 150 },
+  { key: "part1", label: "部位Ⅰ", className: "name", defaultWidth: 110 },
+  { key: "part2", label: "部位Ⅱ", className: "name", defaultWidth: 110 },
+  { key: "split", label: "仕訳", className: "count", defaultWidth: 50 },
+  { key: "multiplier", label: "倍率", className: "count", defaultWidth: 56 },
+  { key: "rows", label: "行数", className: "count", defaultWidth: 50 },
+  { key: "note", label: "メモ", className: "note", defaultWidth: 240 },
+  { key: "del", label: "", className: "ops del", defaultWidth: 64 },
+];
 
 interface Props {
   project: ProjectSummary;
@@ -37,6 +60,30 @@ export default function FurnitureSheetListPage({
   const [estimateRows, setEstimateRows] = useState<EstimateRow[]>([]);
   /** 他の物件から表を写す窓 */
   const [pickingOther, setPickingOther] = useState(false);
+  const { widthOf, resizeAtEdge } = useColumnWidths(
+    `furniture-list-widths:${project.id}`,
+  );
+
+  /** ↶戻る・↷進む用の履歴（一覧の行・並びをまとめて1つの履歴にする） */
+  const history = useUndoRedo<FurnitureSheetSummary[]>();
+  const sheetsRef = useRef(sheets);
+  sheetsRef.current = sheets;
+  /** 消した表の中身（↶戻るで作り直すために控える。ID→表全体） */
+  const graves = useRef(new Map<number, FurnitureSheet>());
+  /** 同じ欄への続けての入力を履歴1つにまとめるための目印 */
+  const editKey = useRef<string | null>(null);
+  /** 戻る・進むの途中（連打しても順番が崩れないよう一度に1つ） */
+  const applying = useRef(false);
+
+  /** 変更前の一覧を履歴へ積む（keyがあるときは同じ欄の連続入力を1つにまとめる） */
+  const pushHistory = useCallback(
+    (key?: string): void => {
+      if (key !== undefined && editKey.current === key) return;
+      history.push(sheetsRef.current);
+      editKey.current = key ?? null;
+    },
+    [history],
+  );
 
   const load = useCallback(async (): Promise<void> => {
     // 建具明細作成表は建具表の「建具明細作成」から開くので、ここの一覧には出さない
@@ -50,6 +97,7 @@ export default function FurnitureSheetListPage({
 
   /** 他の物件の表をこの物件の末尾に写す */
   const copyFromOther = async (sheetIds: number[]): Promise<void> => {
+    pushHistory();
     setSheets(
       (
         await window.sekisan.copyFurnitureSheetsFromProject(
@@ -83,12 +131,18 @@ export default function FurnitureSheetListPage({
   }, [load]);
 
   const save = async (next: FurnitureSheetSummary[]): Promise<void> => {
+    editKey.current = null;
     setSheets(next);
-    setSheets(await window.sekisan.saveFurnitureSheetList(project.id, next));
+    setSheets(
+      (await window.sekisan.saveFurnitureSheetList(project.id, next)).filter(
+        (sheet) => !isFittingDetailSheet(sheet.kind),
+      ),
+    );
     setMessage("保存しました");
   };
 
   const add = async (): Promise<void> => {
+    pushHistory();
     await window.sekisan.createFurnitureSheet(
       project.id,
       `家具計算書${sheets.length + 1}`,
@@ -103,14 +157,21 @@ export default function FurnitureSheetListPage({
       `「${sheet.name}」を消します。中の入力と建具表へ転記した分も消えます。よろしいですか。`,
     );
     if (!ok) return;
+    // 戻るで戻せるよう、消す前に表の中身を控える
+    graves.current.set(
+      sheet.id,
+      await window.sekisan.getFurnitureSheet(sheet.id),
+    );
+    pushHistory();
     await window.sekisan.deleteFurnitureSheet(sheet.id);
     await load();
-    setMessage("表を消しました");
+    setMessage("表を消しました（↶ 戻るで戻せます）");
   };
 
   const move = async (index: number, step: number): Promise<void> => {
     const to = index + step;
     if (to < 0 || to >= sheets.length) return;
+    pushHistory();
     const next = [...sheets];
     const moved = next.splice(index, 1)[0];
     next.splice(to, 0, moved);
@@ -133,6 +194,7 @@ export default function FurnitureSheetListPage({
 
   const paste = async (mode: "insert" | "append"): Promise<void> => {
     if (clipboard.length === 0) return;
+    pushHistory();
     const at = mode === "insert" ? selectionStart : sheets.length;
     setSheets(
       (
@@ -146,11 +208,116 @@ export default function FurnitureSheetListPage({
     index: number,
     patch: Partial<FurnitureSheetSummary>,
   ): void => {
+    const sheet = sheets[index];
+    pushHistory(
+      sheet === undefined
+        ? undefined
+        : `${sheet.id}:${Object.keys(patch).join(",")}`,
+    );
     setSheets(
       sheets.map((sheet, at) =>
         at === index ? { ...sheet, ...patch } : sheet,
       ),
     );
+  };
+
+  /**
+   * 履歴の一覧へ戻す・進める。履歴の後に足した表は消し（中身は控える）、
+   * 履歴にある消した表は控えた中身から作り直す（IDは新しく振られ、履歴の中も合わせる）。
+   */
+  const applyList = useCallback(
+    async (target: FurnitureSheetSummary[]): Promise<void> => {
+      const currentIds = new Set(
+        sheetsRef.current.map((sheet) => sheet.id),
+      );
+      const targetIds = new Set(target.map((sheet) => sheet.id));
+      for (const sheet of sheetsRef.current) {
+        if (targetIds.has(sheet.id)) continue;
+        graves.current.set(
+          sheet.id,
+          await window.sekisan.getFurnitureSheet(sheet.id),
+        );
+        await window.sekisan.deleteFurnitureSheet(sheet.id);
+      }
+      const idMap = new Map<number, number>();
+      for (const sheet of target) {
+        if (currentIds.has(sheet.id)) continue;
+        const grave = graves.current.get(sheet.id);
+        const created = await window.sekisan.createFurnitureSheet(
+          project.id,
+          sheet.name,
+          sheet.kind,
+        );
+        if (grave !== undefined) {
+          await window.sekisan.saveFurnitureSheet({
+            id: created.id,
+            name: grave.name,
+            part1: grave.part1,
+            part2: grave.part2,
+            part2Split: grave.part2Split,
+            multiplier: grave.multiplier,
+            kind: grave.kind,
+            rowsJson: grave.rowsJson,
+            columnsJson: grave.columnsJson,
+            settingsJson: grave.settingsJson,
+            note: grave.note,
+          });
+        }
+        idMap.set(sheet.id, created.id);
+      }
+      const resolved = target.map((sheet) => ({
+        ...sheet,
+        id: idMap.get(sheet.id) ?? sheet.id,
+      }));
+      setSheets(
+        (
+          await window.sekisan.saveFurnitureSheetList(project.id, resolved)
+        ).filter((sheet) => !isFittingDetailSheet(sheet.kind)),
+      );
+      if (idMap.size > 0) {
+        history.map((snap) =>
+          snap.map((sheet) => ({
+            ...sheet,
+            id: idMap.get(sheet.id) ?? sheet.id,
+          })),
+        );
+      }
+      setSelected((at) => Math.min(at, Math.max(resolved.length - 1, 0)));
+      setSelectedEnd((at) => Math.min(at, Math.max(resolved.length - 1, 0)));
+    },
+    [history, project.id],
+  );
+
+  const undo = async (): Promise<void> => {
+    if (applying.current) return;
+    const previous = history.undo(sheetsRef.current);
+    if (previous === null) {
+      setMessage("戻せる操作がありません");
+      return;
+    }
+    applying.current = true;
+    try {
+      await applyList(previous);
+      setMessage("1つ前に戻しました");
+    } finally {
+      applying.current = false;
+    }
+  };
+
+  const redo = async (): Promise<void> => {
+    if (applying.current) return;
+    const next = history.redo(sheetsRef.current);
+    if (next === null) {
+      setMessage("進める操作がありません");
+      return;
+    }
+    applying.current = true;
+    try {
+      await applyList(next);
+      setMessage("1つ先へ進めました");
+    } finally {
+      applying.current = false;
+    }
   };
 
   return (
@@ -163,6 +330,22 @@ export default function FurnitureSheetListPage({
         <span className="project">
           {project.managementNo} {project.name}
         </span>
+        <button
+          type="button"
+          disabled={!history.canUndo}
+          title="1つ前の内容に戻します（消した表も中身ごと戻ります）"
+          onClick={() => void undo()}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={!history.canRedo}
+          title="戻した内容を1つ先へ進めます"
+          onClick={() => void redo()}
+        >
+          ↷ 進む
+        </button>
         <button type="button" onClick={() => void add()}>
           ➕ 表を足す
         </button>
@@ -228,18 +411,31 @@ export default function FurnitureSheetListPage({
       )}
 
       <table className="grid misc-list">
+        <colgroup>
+          {LIST_COLUMNS.map((column) => (
+            <col
+              key={column.key}
+              style={{ width: widthOf(column.key, column.defaultWidth) }}
+            />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th className="ops">操作</th>
-            <th className="no">No</th>
-            <th className="name">表の名前（部位Ⅲ）</th>
-            <th className="name">種類</th>
-            <th className="name">部位Ⅰ</th>
-            <th className="name">部位Ⅱ</th>
-            <th className="count">仕訳</th>
-            <th className="count">倍率</th>
-            <th className="count">行数</th>
-            <th className="note">メモ</th>
+            {LIST_COLUMNS.map((column) => (
+              <th
+                key={column.key}
+                className={column.className}
+                title="右端をドラッグして列の幅を変えます"
+                onMouseDown={(event) =>
+                  resizeAtEdge(column.key, column.defaultWidth, event)
+                }
+              >
+                <span className="cellbox">
+                  {column.label}
+                  <span className="resizer" />
+                </span>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -269,9 +465,6 @@ export default function FurnitureSheetListPage({
                 </button>
                 <button type="button" onClick={() => void move(index, 1)}>
                   ↓
-                </button>
-                <button type="button" onClick={() => void remove(sheet)}>
-                  🗑 消す
                 </button>
               </td>
               <td className="no">{index + 1}</td>
@@ -366,6 +559,11 @@ export default function FurnitureSheetListPage({
                   }
                   onBlur={() => void save(sheets)}
                 />
+              </td>
+              <td className="ops del">
+                <button type="button" onClick={() => void remove(sheet)}>
+                  🗑 消す
+                </button>
               </td>
             </tr>
           ))}
