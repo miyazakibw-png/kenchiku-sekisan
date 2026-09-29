@@ -61,6 +61,8 @@ export const IPC = {
   aggregateRuns: "aggregate:runs",
   aggregateSaveEdits: "aggregate:save-edits",
   aggregateSetUnused: "aggregate:set-unused",
+  aggregateManualInsert: "aggregate:manual-insert",
+  aggregateManualDelete: "aggregate:manual-delete",
   estimateRowChecks: "estimate-rows:checks",
   formworkTransferGet: "formworkTransfer:get",
   formworkTransferSaveRules: "formworkTransfer:saveRules",

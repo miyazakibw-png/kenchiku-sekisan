@@ -87,6 +87,17 @@ table.aggregate tbody.row.warn td {
   background: #ffffcc;
 }
 
+/* 手で挿入した明細行は薄い緑で示し、番号欄に小さな「手」印を付ける */
+table.aggregate tbody.row.manual td {
+  background: #e8f5e9;
+}
+
+table.aggregate td .manual-mark {
+  margin-left: 2px;
+  font-size: 10px;
+  color: #0e7a0e;
+}
+
 /* 不要明細（内訳書へ飛ばさない明細）は灰色で示す */
 table.aggregate tbody.row.unused td {
   background: #eeeeee;

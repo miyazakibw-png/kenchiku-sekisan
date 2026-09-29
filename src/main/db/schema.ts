@@ -797,6 +797,46 @@ export const projectUnusedDetails = sqliteTable(
   }),
 );
 
+/**
+ * 集計書兼工事マスターへ手で挿入した明細行。
+ * 計算書を持たないので、集計をかけ直すたびに afterMasterKey の直後へ差し込む
+ * （アンカーが消えたときは同じ 科目+部位Ⅰ+部位Ⅱ の最後→科目の最後→全体の最後）。
+ */
+export const projectManualAggregateItems = sqliteTable(
+  "project_manual_aggregate_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** 挿入位置（この明細の直後。集計行の masterKey、手入力行は manual:N） */
+    afterMasterKey: text("after_master_key").notNull().default(""),
+    subjectId: integer("subject_id"),
+    materialCategory: text("material_category").notNull().default(""),
+    part1: text("part1").notNull().default(""),
+    part2: text("part2").notNull().default(""),
+    part2Raw: text("part2_raw").notNull().default(""),
+    partNumber: real("part_number"),
+    partName: text("part_name").notNull().default(""),
+    detailNumber: real("detail_number"),
+    name: text("name").notNull().default(""),
+    descriptionUpper: text("description_upper").notNull().default(""),
+    descriptionLower: text("description_lower").notNull().default(""),
+    unit: text("unit").notNull().default(""),
+    remarksUpper: text("remarks_upper").notNull().default(""),
+    remarksLower: text("remarks_lower").notNull().default(""),
+    estimateDisplay: text("estimate_display").notNull().default(""),
+    formwork: text("formwork").notNull().default(""),
+    quantity: real("quantity").notNull().default(0),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (t) => ({
+    projectIdx: index("idx_manual_aggregate_items").on(t.projectId),
+  }),
+);
+
 /** 転記用書式（打放型枠など）。明細自体が転記情報を持ち、集計をかけ直しても残る */
 export const projectTransferRules = sqliteTable(
   "project_transfer_rules",

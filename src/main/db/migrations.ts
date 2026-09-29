@@ -1004,4 +1004,31 @@ ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_json TEXT NOT NULL
   `
 ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_on INTEGER NOT NULL DEFAULT 0;
 `,
+  // 集計書兼工事マスターへ手で挿入した明細行（集計のたびにアンカー行の直後へ差し込む）
+  `
+CREATE TABLE project_manual_aggregate_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  after_master_key TEXT NOT NULL DEFAULT '',
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_raw TEXT NOT NULL DEFAULT '',
+  part_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  formwork TEXT NOT NULL DEFAULT '',
+  quantity REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX ix_manual_aggregate_items ON project_manual_aggregate_items(project_id);
+`,
 ];

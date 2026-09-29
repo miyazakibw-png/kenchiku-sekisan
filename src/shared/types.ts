@@ -737,6 +737,8 @@ export interface AggregateItem {
   formwork: string;
   /** 不要明細（人が印を付けた明細。内訳書へは飛ばさず工種科目の最後にまとめる） */
   unused: boolean;
+  /** 集計書へ手で挿入した明細行（計算書を持たないので数量は手入力） */
+  manual: boolean;
   quantity: number;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];
@@ -807,6 +809,8 @@ export interface AggregateItemEdit {
   unit: string;
   remarksUpper: string;
   remarksLower: string;
+  /** 手入力行だけ使う（計算書から来る行の数量は集計値なので触らない） */
+  quantity?: number;
 }
 
 export interface SaveAggregateEditsRequest {
@@ -815,6 +819,21 @@ export interface SaveAggregateEditsRequest {
   edits: AggregateItemEdit[];
   /** 同じ工事用明細マスターから拾った行も、まとめて同じ内容に直す */
   applyToSameDetail?: boolean;
+}
+
+/** 集計書へ明細行を手で挿入する（選んだ行の直後） */
+export interface InsertAggregateManualItemRequest {
+  projectId: number;
+  runId: number;
+  /** この行の直後に挿入する（集計行の masterKey） */
+  afterMasterKey: string;
+}
+
+/** 集計書へ手で挿入した明細行を消す */
+export interface DeleteAggregateManualItemRequest {
+  projectId: number;
+  /** 消す手入力行の masterKey（manual:N） */
+  masterKey: string;
 }
 
 /** 部位別入力表のチェック列（管理用部位ごとの仕上名称と数量） */

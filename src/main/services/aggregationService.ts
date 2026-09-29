@@ -19,6 +19,7 @@ import {
   projectMiscSheets,
   projectFireproofSheets,
   projectFurnitureSheets,
+  projectManualAggregateItems,
   projectPitSheets,
   projectRoomSheets,
   projectTransferRows,
@@ -32,6 +33,11 @@ import {
   type AggregatedItem,
   type EstimateRowContext,
 } from "../../core/aggregate/aggregate";
+import {
+  isManualMasterKey,
+  manualIdOf,
+  mergeManualItems,
+} from "../../core/aggregate/manualItems";
 import { calcVariables } from "../../core/aggregate/variables";
 import {
   entriesFromMiscSheet,
@@ -127,7 +133,9 @@ import type {
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  DeleteAggregateManualItemRequest,
   EstimateRowCheck,
+  InsertAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
 } from "../../shared/types";
@@ -205,6 +213,100 @@ export function setDetailUnused(
   return runAggregation(db, request.projectId);
 }
 
+/** 集計書へ手で挿入した明細行（登録順） */
+function manualRows(
+  db: AppDatabase,
+  projectId: number,
+): (typeof projectManualAggregateItems.$inferSelect)[] {
+  return db
+    .select()
+    .from(projectManualAggregateItems)
+    .where(eq(projectManualAggregateItems.projectId, projectId))
+    .orderBy(asc(projectManualAggregateItems.id))
+    .all();
+}
+
+/**
+ * 計算書・転記入力表からの集計結果へ、手で挿入した明細行を差し込んだもの。
+ * 集計実行と「古いかどうか」の判定で同じ並びにするためここに1か所置く。
+ */
+function mergedAggregateItems(
+  db: AppDatabase,
+  projectId: number,
+  entries: AggregateEntry[],
+  skipPart2: ReadonlySet<number>,
+): AggregatedItem[] {
+  const unused = unusedMasterKeys(db, projectId);
+  const items = aggregateItems(entries, skipPart2, unused);
+  return mergeManualItems(items, manualRows(db, projectId), unused);
+}
+
+/**
+ * 集計書へ明細行を手で挿入する（選んだ行の直後）。
+ * 欄はアンカー行から写して空欄に近い形で入れ、あとで画面から直す。
+ */
+export function insertAggregateManualItem(
+  db: AppDatabase,
+  request: InsertAggregateManualItemRequest,
+): AggregateView {
+  const anchor = db
+    .select()
+    .from(projectAggregateItems)
+    .where(
+      and(
+        eq(projectAggregateItems.runId, request.runId),
+        eq(projectAggregateItems.masterKey, request.afterMasterKey),
+      ),
+    )
+    .get();
+  if (!anchor) return getAggregate(db, request.projectId);
+  db.insert(projectManualAggregateItems)
+    .values({
+      projectId: request.projectId,
+      afterMasterKey: anchor.masterKey,
+      subjectId: anchor.subjectId,
+      materialCategory: anchor.materialCategory,
+      part1: anchor.part1,
+      part2: anchor.part2,
+      part2Raw: anchor.part2Raw,
+      partNumber: anchor.partNumber,
+      partName: anchor.partName,
+      detailNumber: anchor.detailNumber,
+      estimateDisplay: anchor.estimateDisplay,
+      formwork: anchor.formwork,
+    })
+    .run();
+  return runAggregation(db, request.projectId);
+}
+
+/** 集計書へ手で挿入した明細行を消す（不要の印もいっしょに消す） */
+export function deleteAggregateManualItem(
+  db: AppDatabase,
+  request: DeleteAggregateManualItemRequest,
+): AggregateView {
+  const id = manualIdOf(request.masterKey);
+  if (id === null) return getAggregate(db, request.projectId);
+  db.transaction((tx) => {
+    tx.delete(projectManualAggregateItems)
+      .where(
+        and(
+          eq(projectManualAggregateItems.id, id),
+          eq(projectManualAggregateItems.projectId, request.projectId),
+        ),
+      )
+      .run();
+    tx.delete(projectUnusedDetails)
+      .where(
+        and(
+          eq(projectUnusedDetails.projectId, request.projectId),
+          eq(projectUnusedDetails.masterKey, request.masterKey),
+        ),
+      )
+      .run();
+  });
+  return runAggregation(db, request.projectId);
+}
+
 /**
  * 集計を実行して保存する。戻り値は最新の集計結果。
  * 型枠転記を決めてあるときは、そのつど型枠数量を作り直して集計し直す
@@ -223,11 +325,7 @@ export function runAggregation(
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const items = aggregateItems(
-    entries,
-    skipPart2,
-    unusedMasterKeys(db, projectId),
-  );
+  const items = mergedAggregateItems(db, projectId, entries, skipPart2);
 
   const run = db.transaction((tx) => {
     const created = tx
@@ -876,10 +974,81 @@ export function saveAggregateEdits(
 
   db.transaction((tx) => {
     edits.forEach((edit) => {
+      // 手入力行は計算書を持たないので、手入力テーブルだけを直す
+      const manualId = manualIdOf(edit.masterKey);
+      if (manualId !== null) {
+        tx.update(projectManualAggregateItems)
+          .set({
+            subjectId: edit.subjectId,
+            materialCategory: edit.materialCategory,
+            partNumber: edit.partNumber,
+            partName: edit.partName,
+            detailNumber: edit.detailNumber,
+            name: edit.name,
+            descriptionUpper: edit.descriptionUpper,
+            descriptionLower: edit.descriptionLower,
+            unit: edit.unit,
+            remarksUpper: edit.remarksUpper,
+            remarksLower: edit.remarksLower,
+            quantity: edit.quantity ?? 0,
+          })
+          .where(
+            and(
+              eq(projectManualAggregateItems.id, manualId),
+              eq(projectManualAggregateItems.projectId, projectId),
+            ),
+          )
+          .run();
+        return;
+      }
+
       const matched = details.filter(
         (detail) => detail.masterKey === edit.masterKey,
       );
       if (matched.length === 0) return;
+
+      // 直した結果この行の集計キーが変わるとき、
+      // この行をアンカーにしている手入力行の指し先もそろえる
+      const itemRow = tx
+        .select()
+        .from(projectAggregateItems)
+        .where(
+          and(
+            eq(projectAggregateItems.runId, runId),
+            eq(projectAggregateItems.masterKey, edit.masterKey),
+          ),
+        )
+        .get();
+      if (itemRow) {
+        const nextKey = masterKeyOf({
+          part1: itemRow.part1,
+          part2: itemRow.part2,
+          subjectId: edit.subjectId,
+          materialCategory: edit.materialCategory,
+          partNumber: edit.partNumber,
+          partName: edit.partName,
+          detailNumber: edit.detailNumber,
+          name: edit.name,
+          descriptionUpper: edit.descriptionUpper,
+          descriptionLower: edit.descriptionLower,
+          unit: edit.unit,
+          remarksUpper: edit.remarksUpper,
+          remarksLower: edit.remarksLower,
+          estimateDisplay: itemRow.estimateDisplay,
+        });
+        if (nextKey !== edit.masterKey) {
+          tx.update(projectManualAggregateItems)
+            .set({ afterMasterKey: nextKey })
+            .where(
+              and(
+                eq(projectManualAggregateItems.projectId, projectId),
+                eq(projectManualAggregateItems.afterMasterKey, edit.masterKey),
+              ),
+            )
+            .run();
+        }
+      }
+
       // 同じ明細マスターから拾った行（摘要などが古いまま別行に分かれている分）もそろえる
       const sameDetailIds = new Set(
         matched
@@ -1250,6 +1419,7 @@ function toItem(row: typeof projectAggregateItems.$inferSelect): AggregateItem {
     estimateDisplay: row.estimateDisplay,
     formwork: row.formwork,
     unused: row.unused === 1,
+    manual: isManualMasterKey(row.masterKey),
     quantity: row.quantity,
     rooms: parseJson<{ roomName: string; quantity: number }[]>(
       row.roomsJson,
@@ -1334,10 +1504,11 @@ function isStale(db: AppDatabase, projectId: number, runId: number): boolean {
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const fresh = aggregateItems(
+  const fresh = mergedAggregateItems(
+    db,
+    projectId,
     collectEntries(db, projectId),
     skipPart2,
-    unusedMasterKeys(db, projectId),
   );
   const saved = db
     .select()

@@ -51,6 +51,8 @@ import type {
   SaveDetailsRequest,
   SaveEstimateRowsRequest,
   SaveFittingsRequest,
+  DeleteAggregateManualItemRequest,
+  InsertAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
   ReorderFormworkRowsRequest,
@@ -310,6 +312,16 @@ const api = {
   /** 不要明細の印を付ける／外す（内訳書へ飛ばさず工種科目の最後にまとめる） */
   setDetailUnused: (request: SetDetailUnusedRequest): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateSetUnused, request),
+  /** 集計書へ明細行を手で挿入する（選んだ行の直後） */
+  insertAggregateManualItem: (
+    request: InsertAggregateManualItemRequest,
+  ): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateManualInsert, request),
+  /** 集計書へ手で挿入した明細行を消す */
+  deleteAggregateManualItem: (
+    request: DeleteAggregateManualItemRequest,
+  ): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateManualDelete, request),
   /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
   getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferGet, projectId),

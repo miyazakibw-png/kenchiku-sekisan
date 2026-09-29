@@ -242,6 +242,40 @@ export default function AggregatePage({
     [applyToSameDetail, edits, markSaved, project.id, view.run],
   );
 
+  /** 選んだ明細の下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
+  const insertManual = useCallback(async () => {
+    if (selected === null || view.run === null) return;
+    const result = await window.sekisan.insertAggregateManualItem({
+      projectId: project.id,
+      runId: view.run.id,
+      afterMasterKey: selected.masterKey,
+    });
+    setView(result);
+    setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setMessage(
+      "選んだ明細の下に明細行を挿入しました（集計をかけ直しても残ります。摘要・名称・数量などを直接入れられます）",
+    );
+  }, [project.id, selected, view.run]);
+
+  /** 手で挿入した明細行を消す（手入力行を選んだときだけ押せる） */
+  const deleteManual = useCallback(async () => {
+    if (selected === null || !selected.manual) return;
+    if (
+      !window.confirm(
+        "手で挿入した明細行を消します。元に戻せません。よいですか？",
+      )
+    )
+      return;
+    const result = await window.sekisan.deleteAggregateManualItem({
+      projectId: project.id,
+      masterKey: selected.masterKey,
+    });
+    setView(result);
+    setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setSelected(null);
+    setMessage("手で挿入した明細行を消しました");
+  }, [project.id, selected]);
+
   /** 不要明細の印を付ける／外す（内訳書へ飛ばさなくなる） */
   const toggleUnused = useCallback(async () => {
     if (selected === null) return;
@@ -396,6 +430,22 @@ export default function AggregatePage({
         </button>
         <button
           type="button"
+          disabled={selected === null || view.run === null}
+          onClick={() => void insertManual()}
+          title="選んだ明細の下に新しい明細行を挿入します。計算書を持たない手入力の行なので、集計をかけ直しても消えずに残ります（摘要・名称・数量などを直接入れ、修正を保存で登録します）"
+        >
+          ＋ 明細行を挿入
+        </button>
+        <button
+          type="button"
+          disabled={selected?.manual !== true}
+          onClick={() => void deleteManual()}
+          title="手で挿入した明細行を消します（緑色の「手」印が付いた行を選んだときだけ押せます）"
+        >
+          🗑 手入力行を消す
+        </button>
+        <button
+          type="button"
           className={checking ? "on" : ""}
           onClick={() => setChecking(!checking)}
         >
@@ -482,17 +532,26 @@ export default function AggregatePage({
               : "";
             const isSelected = selected?.masterKey === item.masterKey;
             const unusedClass = item.unused ? "unused" : "";
+            const manualClass = item.manual ? "manual" : "";
             const draft = edits[item.masterKey] ?? initialEdit(item);
             return (
               <tbody
                 key={item.id}
-                className={`row ${check} ${unusedClass} ${isSelected ? "selected" : ""}`}
+                className={`row ${check} ${unusedClass} ${manualClass} ${isSelected ? "selected" : ""}`}
                 data-master-key={item.masterKey}
                 onClick={() => setSelected(item)}
               >
                 <tr className="detail-upper">
                   <td className="no" rowSpan={2}>
                     {draft.subjectId ?? ""}
+                    {item.manual && (
+                      <span
+                        className="manual-mark"
+                        title="手で挿入した明細行（計算書を持たない手入力の行）"
+                      >
+                        手
+                      </span>
+                    )}
                   </td>
                   <td rowSpan={2}>
                     <select
@@ -589,7 +648,20 @@ export default function AggregatePage({
                     />
                   </td>
                   <td className="number">
-                    {aggregateQuantityText(item.quantity, draft.unit)}
+                    {item.manual ? (
+                      <input
+                        className="number"
+                        title="数量。手入力行は計算書を持たないので直接入れます"
+                        value={draft.quantity ?? item.quantity}
+                        onChange={(e) =>
+                          editItem(item, {
+                            quantity: toNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    ) : (
+                      aggregateQuantityText(item.quantity, draft.unit)
+                    )}
                   </td>
                   <td>
                     <PickInput
