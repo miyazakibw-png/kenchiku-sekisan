@@ -53,6 +53,7 @@ import type {
   SaveFittingsRequest,
   DeleteAggregateManualItemRequest,
   InsertAggregateManualItemRequest,
+  MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
   ReorderFormworkRowsRequest,
@@ -322,6 +323,11 @@ const api = {
     request: DeleteAggregateManualItemRequest,
   ): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateManualDelete, request),
+  /** 手で挿入した明細行の付き先を別の明細へ付け直す（上付き・下付きはそのまま） */
+  moveAggregateManualItem: (
+    request: MoveAggregateManualItemRequest,
+  ): Promise<AggregateView> =>
+    ipcRenderer.invoke(IPC.aggregateManualMove, request),
   /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
   getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferGet, projectId),

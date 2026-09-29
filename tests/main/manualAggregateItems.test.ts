@@ -11,6 +11,7 @@ import {
   deleteAggregateManualItem,
   getAggregate,
   insertAggregateManualItem,
+  moveAggregateManualItem,
   runAggregation,
   saveAggregateEdits,
 } from "../../src/main/services/aggregationService";
@@ -76,9 +77,11 @@ describe("集計書へ手で挿入した明細行", () => {
     expect(after.items).toHaveLength(3);
     expect(after.items[1].manual).toBe(true);
     expect(after.items[1].name).toBe("");
-    // 欄はアンカーから写す
+    // 位置欄だけアンカーから写し、部位番号・部位名・明細番号はカラで入る
     expect(after.items[1].part1).toBe("1階");
-    expect(after.items[1].partName).toBe("床");
+    expect(after.items[1].partNumber).toBe(null);
+    expect(after.items[1].partName).toBe("");
+    expect(after.items[1].detailNumber).toBe(null);
 
     // もう一度集計しても同じ位置に残る
     const again = runAggregation(db, projectId);
@@ -100,6 +103,42 @@ describe("集計書へ手で挿入した明細行", () => {
     expect(after.items[1].name).toBe("ビニル床シート");
     const again = runAggregation(db, projectId);
     expect(again.items[0].manual).toBe(true);
+  });
+
+  it("付け直すと別の明細の上下に付き替わる（上付き・下付きはそのまま）", () => {
+    const view = insertAggregateManualItem(db, {
+      projectId,
+      runId: runAggregation(db, projectId).run!.id,
+      afterMasterKey: runAggregation(db, projectId).items[0].masterKey,
+      before: true,
+    });
+    const manualKey = view.items.find((item) => item.manual)!.masterKey;
+    // 上付きの行を 2番目の明細へ付け直す
+    const moved = moveAggregateManualItem(db, {
+      projectId,
+      masterKey: manualKey,
+      anchorMasterKey: view.items[2].masterKey,
+    });
+    expect(moved.items.map((item) => item.manual)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(moved.items[2].name).toBe("巾木");
+    // 集計をかけ直しても新しい付き先のまま残る
+    const again = runAggregation(db, projectId);
+    expect(again.items.map((item) => item.manual)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    // 自分自身や存在しない明細へは付け替えられない
+    const self = moveAggregateManualItem(db, {
+      projectId,
+      masterKey: manualKey,
+      anchorMasterKey: manualKey,
+    });
+    expect(self.items[1].masterKey).toBe(manualKey);
   });
 
   it("手入力行を直すと手入力テーブルだけが更新され、数量も入る", () => {

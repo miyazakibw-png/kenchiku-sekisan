@@ -166,6 +166,8 @@ export default function AggregatePage({
   /** 同じ明細マスターから拾った行をまとめて直す（既定は直した行だけ） */
   const [applyToSameDetail, setApplyToSameDetail] = useState(false);
   const [message, setMessage] = useState("");
+  /** 手入力行の付け直しモード（次にクリックした明細が新しい付き先） */
+  const [moving, setMoving] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const basisRef = useRef<HTMLElement>(null);
   /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
@@ -259,6 +261,46 @@ export default function AggregatePage({
       );
     },
     [project.id, selected, view.run],
+  );
+
+  /** 手で挿入した明細行の付け直し（次にクリックした明細へ付き替える） */
+  const moveManual = useCallback(
+    async (anchor: AggregateItem) => {
+      if (selected === null || !selected.manual) return;
+      if (anchor.masterKey === selected.masterKey) {
+        setMoving(false);
+        setMessage("付け直しをやめました");
+        return;
+      }
+      const result = await window.sekisan.moveAggregateManualItem({
+        projectId: project.id,
+        masterKey: selected.masterKey,
+        anchorMasterKey: anchor.masterKey,
+      });
+      setView(result);
+      setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setMoving(false);
+      setSelected(
+        result.items.find((item) => item.masterKey === selected.masterKey) ??
+          null,
+      );
+      setMessage(
+        "明細行を付け直しました（選んだ明細の上付き・下付きはそのままです）",
+      );
+    },
+    [project.id, selected],
+  );
+
+  /** 行クリック：付け直しモードなら付き替え、ふだんは選択 */
+  const clickRow = useCallback(
+    (item: AggregateItem) => {
+      if (moving) {
+        void moveManual(item);
+        return;
+      }
+      setSelected(item);
+    },
+    [moveManual, moving],
   );
 
   /** 手で挿入した明細行を消す（手入力行を選んだときだけ押せる） */
@@ -450,6 +492,25 @@ export default function AggregatePage({
         </button>
         <button
           type="button"
+          className={moving ? "on" : ""}
+          disabled={selected?.manual !== true}
+          onClick={() => {
+            if (moving) {
+              setMoving(false);
+              setMessage("付け直しをやめました");
+              return;
+            }
+            setMoving(true);
+            setMessage(
+              "付け直す先の明細をクリックしてください（同じ行を押すとやめます）",
+            );
+          }}
+          title="選んだ手入力行を別の明細の上下に付け直します。明細の順番が変わったときに、説明行を付け替えるのに使います（上付き・下付きはそのまま）"
+        >
+          ⇅ 行を付け直す
+        </button>
+        <button
+          type="button"
           disabled={selected?.manual !== true}
           onClick={() => void deleteManual()}
           title="手で挿入した明細行を消します（緑色の「手」印が付いた行を選んだときだけ押せます）"
@@ -551,7 +612,7 @@ export default function AggregatePage({
                 key={item.id}
                 className={`row ${check} ${unusedClass} ${manualClass} ${isSelected ? "selected" : ""}`}
                 data-master-key={item.masterKey}
-                onClick={() => setSelected(item)}
+                onClick={() => clickRow(item)}
               >
                 <tr className="detail-upper">
                   <td className="no" rowSpan={2}>

@@ -831,6 +831,15 @@ export interface InsertAggregateManualItemRequest {
   before?: boolean;
 }
 
+/** 手で挿入した明細行の付き先を別の明細へ付け直す */
+export interface MoveAggregateManualItemRequest {
+  projectId: number;
+  /** 動かす手入力行（manual:N） */
+  masterKey: string;
+  /** 新しく付く先の明細（集計行または他の手入力行の masterKey） */
+  anchorMasterKey: string;
+}
+
 /** 集計書へ手で挿入した明細行を消す */
 export interface DeleteAggregateManualItemRequest {
   projectId: number;

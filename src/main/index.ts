@@ -157,6 +157,7 @@ import {
 } from "./services/transferRowService";
 import {
   deleteAggregateManualItem,
+  moveAggregateManualItem,
   getAggregate,
   collectEstimateRowChecks,
   insertAggregateManualItem,
@@ -218,6 +219,7 @@ import type {
   SaveRoomSheetRequest,
   DeleteAggregateManualItemRequest,
   InsertAggregateManualItemRequest,
+  MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   ReorderFormworkRowsRequest,
   SaveFormworkRulesRequest,
@@ -585,6 +587,11 @@ function registerIpcHandlers(): void {
     IPC.aggregateManualDelete,
     (_event, request: DeleteAggregateManualItemRequest) =>
       deleteAggregateManualItem(getDatabase(), request),
+  );
+  ipcMain.handle(
+    IPC.aggregateManualMove,
+    (_event, request: MoveAggregateManualItemRequest) =>
+      moveAggregateManualItem(getDatabase(), request),
   );
   ipcMain.handle(IPC.formworkTransferGet, (_event, projectId: number) =>
     getFormworkTransfer(getDatabase(), projectId),

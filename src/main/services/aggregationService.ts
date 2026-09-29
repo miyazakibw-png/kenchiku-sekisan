@@ -137,6 +137,7 @@ import type {
   DeleteAggregateManualItemRequest,
   EstimateRowCheck,
   InsertAggregateManualItemRequest,
+  MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
 } from "../../shared/types";
@@ -272,12 +273,36 @@ export function insertAggregateManualItem(
       part1: anchor.part1,
       part2: anchor.part2,
       part2Raw: anchor.part2Raw,
-      partNumber: anchor.partNumber,
-      partName: anchor.partName,
-      detailNumber: anchor.detailNumber,
       estimateDisplay: anchor.estimateDisplay,
       formwork: anchor.formwork,
     })
+    .run();
+  return runAggregation(db, request.projectId);
+}
+
+/**
+ * 手で挿入した明細行の付き先を別の明細へ付け直す。
+ * 上に付く・下に付くの向きはそのまま（元の付け方を引き継ぐ）。
+ */
+export function moveAggregateManualItem(
+  db: AppDatabase,
+  request: MoveAggregateManualItemRequest,
+): AggregateView {
+  const id = manualIdOf(request.masterKey);
+  const view = getAggregate(db, request.projectId);
+  if (id === null) return view;
+  const anchor = view.items.find(
+    (item) => item.masterKey === request.anchorMasterKey,
+  );
+  if (!anchor || request.anchorMasterKey === request.masterKey) return view;
+  db.update(projectManualAggregateItems)
+    .set({ afterMasterKey: request.anchorMasterKey })
+    .where(
+      and(
+        eq(projectManualAggregateItems.id, id),
+        eq(projectManualAggregateItems.projectId, request.projectId),
+      ),
+    )
     .run();
   return runAggregation(db, request.projectId);
 }
