@@ -10,6 +10,7 @@ import {
   describePartMap,
   toCheckSheetTsv,
 } from "../../../../core/aggregate/checkSheet";
+import { toHalfWidth } from "../../../../core/breakdown/breakdown";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -168,7 +169,7 @@ export default function CheckSheetPage({
             <th colSpan={2}>部位</th>
             {sheet.parts.map((part) => (
               <th key={part.id} colSpan={2}>
-                {part.name}
+                {toHalfWidth(part.name)}
               </th>
             ))}
           </tr>
@@ -190,12 +191,18 @@ export default function CheckSheetPage({
             <tbody key={`${block.part1}|${block.part2}`}>
               {Array.from({ length: rowCount }, (_unused, row) => (
                 <tr key={row}>
-                  {row === 0 && <td rowSpan={rowCount}>{block.part1}</td>}
-                  {row === 0 && <td rowSpan={rowCount}>{block.part2}</td>}
+                  {row === 0 && (
+                    <td rowSpan={rowCount}>{toHalfWidth(block.part1)}</td>
+                  )}
+                  {row === 0 && (
+                    <td rowSpan={rowCount}>{toHalfWidth(block.part2)}</td>
+                  )}
                   {block.columns.flatMap((column, columnIndex) => {
                     const cell = column[row];
                     return [
-                      <td key={`n${columnIndex}`}>{cell ? cell.name : ""}</td>,
+                      <td key={`n${columnIndex}`}>
+                        {cell ? toHalfWidth(cell.name) : ""}
+                      </td>,
                       <td key={`q${columnIndex}`} className="number">
                         {cell ? cell.quantity.toFixed(2) : ""}
                       </td>,
@@ -243,7 +250,7 @@ export default function CheckSheetPage({
                 />
               </td>
               <td className="number">{rule.id}</td>
-              <td>{rule.name}</td>
+              <td>{toHalfWidth(rule.name)}</td>
               <td>
                 <input
                   value={partMap[String(rule.id)] ?? ""}
