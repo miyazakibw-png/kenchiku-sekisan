@@ -40,6 +40,7 @@ function row(id: number, afterMasterKey: string, over: Partial<ManualAggregateRo
   return {
     id,
     afterMasterKey,
+    before: false,
     subjectId: 1,
     materialCategory: "仕上",
     part1: "1階",
@@ -125,6 +126,47 @@ describe("手入力の集計明細", () => {
     );
     // row1: subjectId=1・部位違い → 科目1の最後（cの後）。row2: subjectId=9 無し → 最後
     expect(keys(merged)).toEqual(["a", "b", "c", "manual:1", "manual:2"]);
+  });
+
+  it("上に挿入：アンカー行の直前に差し込む", () => {
+    const merged = mergeManualItems(
+      [item("a"), item("b"), item("c")],
+      [row(1, "b", { before: true })],
+      new Set(),
+    );
+    expect(keys(merged)).toEqual(["a", "manual:1", "b", "c"]);
+  });
+
+  it("同じ行の上に2行挿入したら登録順に上から並ぶ", () => {
+    const merged = mergeManualItems(
+      [item("a")],
+      [row(1, "a", { before: true }), row(2, "a", { before: true })],
+      new Set(),
+    );
+    expect(keys(merged)).toEqual(["manual:1", "manual:2", "a"]);
+  });
+
+  it("上挿入のアンカーが消えたら同じ 科目+部位Ⅰ+部位Ⅱ の先頭に置く", () => {
+    const merged = mergeManualItems(
+      [
+        item("a", { subjectId: 1, part1: "1階", part2: "事務室" }),
+        item("b", { subjectId: 1, part1: "1階", part2: "事務室" }),
+        item("c", { subjectId: 1, part1: "1階", part2: "会議室" }),
+      ],
+      [row(1, "gone", { before: true })],
+      new Set(),
+    );
+    expect(keys(merged)).toEqual(["manual:1", "a", "b", "c"]);
+  });
+
+  it("上挿入のアンカー行を直してキーが変わっても直前に付いていく", () => {
+    // 直前挿入も直後挿入と同じキーで追従する（追従自体はサービス側のテストで確認）
+    const merged = mergeManualItems(
+      [item("a"), item("b")],
+      [row(1, "a", { before: true }), row(2, "a")],
+      new Set(),
+    );
+    expect(keys(merged)).toEqual(["manual:1", "a", "manual:2", "b"]);
   });
 
   it("手入力行は集計値・根拠を持たない（数量は登録値、根拠は空）", () => {

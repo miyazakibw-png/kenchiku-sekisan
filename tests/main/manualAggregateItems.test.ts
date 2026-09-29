@@ -87,6 +87,21 @@ describe("集計書へ手で挿入した明細行", () => {
     expect(getAggregate(db, projectId).items[1].manual).toBe(true);
   });
 
+  it("上に挿入すると選んだ行の直前に入り、集計をかけ直しても残る", () => {
+    const view = runAggregation(db, projectId);
+    const after = insertAggregateManualItem(db, {
+      projectId,
+      runId: view.run!.id,
+      afterMasterKey: view.items[0].masterKey,
+      before: true,
+    });
+    expect(after.items).toHaveLength(3);
+    expect(after.items[0].manual).toBe(true);
+    expect(after.items[1].name).toBe("ビニル床シート");
+    const again = runAggregation(db, projectId);
+    expect(again.items[0].manual).toBe(true);
+  });
+
   it("手入力行を直すと手入力テーブルだけが更新され、数量も入る", () => {
     const view = insertAggregateManualItem(db, {
       projectId,

@@ -242,20 +242,24 @@ export default function AggregatePage({
     [applyToSameDetail, edits, markSaved, project.id, view.run],
   );
 
-  /** 選んだ明細の下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
-  const insertManual = useCallback(async () => {
-    if (selected === null || view.run === null) return;
-    const result = await window.sekisan.insertAggregateManualItem({
-      projectId: project.id,
-      runId: view.run.id,
-      afterMasterKey: selected.masterKey,
-    });
-    setView(result);
-    setRuns(await window.sekisan.listAggregateRuns(project.id));
-    setMessage(
-      "選んだ明細の下に明細行を挿入しました（集計をかけ直しても残ります。摘要・名称・数量などを直接入れられます）",
-    );
-  }, [project.id, selected, view.run]);
+  /** 選んだ明細の上下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
+  const insertManual = useCallback(
+    async (before: boolean) => {
+      if (selected === null || view.run === null) return;
+      const result = await window.sekisan.insertAggregateManualItem({
+        projectId: project.id,
+        runId: view.run.id,
+        afterMasterKey: selected.masterKey,
+        before,
+      });
+      setView(result);
+      setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setMessage(
+        `選んだ明細の${before ? "上" : "下"}に明細行を挿入しました（集計をかけ直しても残ります。摘要・名称・数量などを直接入れられます）`,
+      );
+    },
+    [project.id, selected, view.run],
+  );
 
   /** 手で挿入した明細行を消す（手入力行を選んだときだけ押せる） */
   const deleteManual = useCallback(async () => {
@@ -431,10 +435,18 @@ export default function AggregatePage({
         <button
           type="button"
           disabled={selected === null || view.run === null}
-          onClick={() => void insertManual()}
+          onClick={() => void insertManual(false)}
           title="選んだ明細の下に新しい明細行を挿入します。計算書を持たない手入力の行なので、集計をかけ直しても消えずに残ります（摘要・名称・数量などを直接入れ、修正を保存で登録します）"
         >
-          ＋ 明細行を挿入
+          ＋ 下に明細行を挿入
+        </button>
+        <button
+          type="button"
+          disabled={selected === null || view.run === null}
+          onClick={() => void insertManual(true)}
+          title="選んだ明細の上に新しい明細行を挿入します。同じ明細が並ぶ場面で、その前に＜共通仕様＞のような説明行を付けたいときに使います"
+        >
+          ＋ 上に明細行を挿入
         </button>
         <button
           type="button"

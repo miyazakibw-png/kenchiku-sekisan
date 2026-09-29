@@ -821,12 +821,14 @@ export interface SaveAggregateEditsRequest {
   applyToSameDetail?: boolean;
 }
 
-/** 集計書へ明細行を手で挿入する（選んだ行の直後） */
+/** 集計書へ明細行を手で挿入する（選んだ行の直後・直前） */
 export interface InsertAggregateManualItemRequest {
   projectId: number;
   runId: number;
   /** この行の直後に挿入する（集計行の masterKey） */
   afterMasterKey: string;
+  /** true のときその行の直前に挿入する（既定は直後） */
+  before?: boolean;
 }
 
 /** 集計書へ手で挿入した明細行を消す */

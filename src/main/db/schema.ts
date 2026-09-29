@@ -811,6 +811,8 @@ export const projectManualAggregateItems = sqliteTable(
       .references(() => projects.id, { onDelete: "cascade" }),
     /** 挿入位置（この明細の直後。集計行の masterKey、手入力行は manual:N） */
     afterMasterKey: text("after_master_key").notNull().default(""),
+    /** 1: その明細の直前に置く（グループの上に付ける説明行） */
+    anchorBefore: integer("anchor_before").notNull().default(0),
     subjectId: integer("subject_id"),
     materialCategory: text("material_category").notNull().default(""),
     part1: text("part1").notNull().default(""),

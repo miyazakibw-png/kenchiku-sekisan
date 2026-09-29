@@ -37,6 +37,7 @@ import {
   isManualMasterKey,
   manualIdOf,
   mergeManualItems,
+  type ManualAggregateRow,
 } from "../../core/aggregate/manualItems";
 import { calcVariables } from "../../core/aggregate/variables";
 import {
@@ -217,13 +218,14 @@ export function setDetailUnused(
 function manualRows(
   db: AppDatabase,
   projectId: number,
-): (typeof projectManualAggregateItems.$inferSelect)[] {
+): ManualAggregateRow[] {
   return db
     .select()
     .from(projectManualAggregateItems)
     .where(eq(projectManualAggregateItems.projectId, projectId))
     .orderBy(asc(projectManualAggregateItems.id))
-    .all();
+    .all()
+    .map(({ anchorBefore, ...row }) => ({ ...row, before: anchorBefore === 1 }));
 }
 
 /**
@@ -264,6 +266,7 @@ export function insertAggregateManualItem(
     .values({
       projectId: request.projectId,
       afterMasterKey: anchor.masterKey,
+      anchorBefore: request.before === true ? 1 : 0,
       subjectId: anchor.subjectId,
       materialCategory: anchor.materialCategory,
       part1: anchor.part1,

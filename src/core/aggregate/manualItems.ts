@@ -25,8 +25,10 @@ export function manualIdOf(masterKey: string): number | null {
 /** DBに残す手入力行（集計行と同じ欄＋挿入位置） */
 export interface ManualAggregateRow {
   id: number;
-  /** この明細の直後に置く（集計行の masterKey） */
+  /** この明細の直後（anchorBeforeのとき直前）に置く（集計行の masterKey） */
   afterMasterKey: string;
+  /** true のときその明細の直前に置く */
+  before: boolean;
   subjectId: number | null;
   materialCategory: string;
   part1: string;
@@ -79,8 +81,9 @@ export function manualItemOf(
 
 /**
  * 集計結果へ手入力行を差し込む。
- * アンカー行の直後。アンカーが無いとき（元の行が消えた・キーが変わった）は
- * 同じ 科目+部位Ⅰ+部位Ⅱ の最後 → 同じ科目の最後 → 全体の最後 に置く。
+ * アンカー行の直後（before のとき直前）。アンカーが無いとき（元の行が消えた・
+ * キーが変わった）は、直後挿入は同じ 科目+部位Ⅰ+部位Ⅱ の最後→同じ科目の最後、
+ * 直前挿入は同じ 科目+部位Ⅰ+部位Ⅱ の先頭→同じ科目の先頭、それも無ければ全体の最後。
  * rows は登録順で渡す（手入力行どうしの順序が保たれ、手入力行へ重ねて挿入もできる）。
  */
 export function mergeManualItems(
@@ -95,12 +98,39 @@ export function mergeManualItems(
       (current) => current.masterKey === row.afterMasterKey,
     );
     if (anchorIndex >= 0) {
-      // 同じアンカーに挿入済みの手入力行は飛ばして後ろへ並べる（登録順）
-      let at = anchorIndex + 1;
-      while (at < result.length && isManualMasterKey(result[at].masterKey)) {
-        at += 1;
+      let at: number;
+      if (row.before) {
+        // 直前挿入：その行の直前へ（同じ行の上に挿入済みの手入力行の下に並び、登録順に上から並ぶ）
+        at = anchorIndex;
+      } else {
+        // 直後挿入：同じアンカーに挿入済みの手入力行は飛ばして後ろへ並べる（登録順）
+        at = anchorIndex + 1;
+        while (at < result.length && isManualMasterKey(result[at].masterKey)) {
+          at += 1;
+        }
       }
       result.splice(at, 0, item);
+      return;
+    }
+    if (row.before) {
+      // 直前挿入のアンカーが無いとき：同じ 科目+部位Ⅰ+部位Ⅱ の先頭→同じ科目の先頭
+      let firstSameGroup = -1;
+      let firstSameSubject = -1;
+      result.forEach((current, index) => {
+        if (current.subjectId === item.subjectId) {
+          if (firstSameSubject < 0) firstSameSubject = index;
+          if (
+            firstSameGroup < 0 &&
+            current.part1 === item.part1 &&
+            current.part2 === item.part2
+          ) {
+            firstSameGroup = index;
+          }
+        }
+      });
+      if (firstSameGroup >= 0) result.splice(firstSameGroup, 0, item);
+      else if (firstSameSubject >= 0) result.splice(firstSameSubject, 0, item);
+      else result.push(item);
       return;
     }
     let lastSameGroup = -1;

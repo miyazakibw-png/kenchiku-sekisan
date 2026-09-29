@@ -1031,4 +1031,8 @@ CREATE TABLE project_manual_aggregate_items (
 );
 CREATE INDEX ix_manual_aggregate_items ON project_manual_aggregate_items(project_id);
 `,
+  // 手入力行を「明細の直前」にも挿せるように（0=直後、1=直前）
+  `
+ALTER TABLE project_manual_aggregate_items ADD COLUMN anchor_before INTEGER NOT NULL DEFAULT 0;
+`,
 ];
