@@ -766,6 +766,8 @@ export function frameSymbols(
 ): FrameSymbol[] {
   const symbols: FrameSymbol[] = [
     { symbol: "AH", label: "施工高さ", value: workHeight },
+    // 部位別入力表の天井高さ（CH）と相互連動する施工高さを CH 記号でも使えるように
+    { symbol: "CH", label: "施工高さ（天井高さ）", value: workHeight },
     { symbol: "AL", label: "軸組長さ", value: quantities.length },
     { symbol: "AA", label: "軸組面積", value: quantities.area },
     { symbol: "DA", label: "建具面積（減）", value: quantities.fittingArea },

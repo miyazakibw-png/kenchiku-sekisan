@@ -371,13 +371,15 @@ describe("軸組数量", () => {
   it("記号表に合計と線ごとの数量が並ぶ", () => {
     const quantities = frameQuantities(lines(), [], 2.5);
     const symbols = frameSymbols(quantities, 2.5);
-    expect(symbols.slice(0, 5).map((item) => item.symbol)).toEqual([
+    expect(symbols.slice(0, 6).map((item) => item.symbol)).toEqual([
       "AH",
+      "CH",
       "AL",
       "AA",
       "DA",
       "RF",
     ]);
+    expect(symbols.find((item) => item.symbol === "CH")?.value).toBe(2.5);
     expect(symbols.find((item) => item.symbol === "AL1")?.value).toBe(4);
     expect(symbols.find((item) => item.symbol === "AA1")?.value).toBe(10);
   });
