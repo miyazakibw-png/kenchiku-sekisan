@@ -1035,4 +1035,51 @@ CREATE INDEX ix_manual_aggregate_items ON project_manual_aggregate_items(project
   `
 ALTER TABLE project_manual_aggregate_items ADD COLUMN anchor_before INTEGER NOT NULL DEFAULT 0;
 `,
+  // 転記入力表の科目IDは工事の科目マスターの番号なので、基本の科目マスターへの
+  // 外部キーを外す（基本に無い番号を入れると保存自体が失敗していた）
+  `
+CREATE TABLE project_transfer_rows_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  formwork TEXT NOT NULL DEFAULT '',
+  part3 TEXT NOT NULL DEFAULT '',
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_id INTEGER,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  source_detail_id INTEGER,
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  quantity REAL,
+  unit TEXT NOT NULL DEFAULT '',
+  unit_price REAL,
+  amount REAL,
+  remarks TEXT NOT NULL DEFAULT '',
+  memo TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  formwork_key TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO project_transfer_rows_new (
+  id, project_id, part1, part2, part2_split, formwork, part3, subject_id,
+  material_category, part_id, part_name, detail_number, name, source_detail_id,
+  description_upper, description_lower, quantity, unit, unit_price, amount,
+  remarks, memo, display_order, formwork_key, remarks_lower
+)
+SELECT
+  id, project_id, part1, part2, part2_split, formwork, part3, subject_id,
+  material_category, part_id, part_name, detail_number, name, source_detail_id,
+  description_upper, description_lower, quantity, unit, unit_price, amount,
+  remarks, memo, display_order, formwork_key, remarks_lower
+FROM project_transfer_rows;
+DROP INDEX IF EXISTS idx_transfer_rows_project;
+DROP TABLE project_transfer_rows;
+ALTER TABLE project_transfer_rows_new RENAME TO project_transfer_rows;
+CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, display_order);
+`,
 ];

@@ -524,10 +524,8 @@ export const projectTransferRows = sqliteTable(
     part2Split: integer("part2_split").notNull().default(0),
     formwork: text("formwork").notNull().default(""),
     part3: text("part3").notNull().default(""),
-    /** H: 科目ID */
-    subjectId: integer("subject_id").references(() => mSubjects.id, {
-      onDelete: "set null",
-    }),
+    /** H: 科目ID（工事の科目マスターの番号。基本の科目マスターに無い番号も入る） */
+    subjectId: integer("subject_id"),
     /** I: 仕上（材種）区分 */
     materialCategory: text("material_category").notNull().default(""),
     /** J〜N: 明細（セット明細は使わず、全て1明細入力） */
