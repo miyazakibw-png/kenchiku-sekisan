@@ -3909,6 +3909,7 @@ export default function FrameSheetPage({
         result={calcResult}
         onMessage={setMessage}
         windowTitle={`軸組・梁計算書　${project.managementNo}`}
+        saveSheet={save}
       />
 
       <p className="hint">

@@ -443,6 +443,19 @@ export function runAggregation(
   return runAggregation(db, projectId, { skipFormwork: true });
 }
 
+/**
+ * 計算書の「マスター作成」：集計実行と同じ処理を走らせて、工事マスター（集計書の内容）と
+ * セット明細マスターを最新にする。集計書は見せないので数だけ返す。
+ */
+export function buildProjectMasters(
+  db: AppDatabase,
+  projectId: number,
+): { aggregateCount: number; assembliesAdded: number } {
+  const assembliesAdded = syncAssembliesFromSheets(db, projectId);
+  const view = runAggregation(db, projectId);
+  return { aggregateCount: view.items.length, assembliesAdded };
+}
+
 /** 詳細データがどの集計行になったかを引く（部位Ⅱ分不要の科目は部位Ⅱを外して探す） */
 function keyResolver(
   items: AggregatedItem[],

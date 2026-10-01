@@ -163,6 +163,7 @@ import {
   insertAggregateManualItem,
   listAggregateRuns,
   runAggregation,
+  buildProjectMasters,
   saveAggregateEdits,
   setDetailUnused,
 } from "./services/aggregationService";
@@ -554,6 +555,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.aggregateRun, (_event, projectId: number) =>
     runAggregation(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.aggregateBuildMasters, (_event, projectId: number) =>
+    buildProjectMasters(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.aggregateGet,

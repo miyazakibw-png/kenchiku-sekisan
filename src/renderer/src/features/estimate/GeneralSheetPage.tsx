@@ -216,6 +216,7 @@ export default function GeneralSheetPage({
         onMessage={setMessage}
         hasUpper={false}
         windowTitle={`汎用計算書　${project.managementNo}`}
+        saveSheet={save}
       />
 
       <p className="hint">

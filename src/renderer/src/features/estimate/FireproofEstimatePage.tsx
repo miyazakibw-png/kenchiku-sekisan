@@ -525,6 +525,7 @@ export default function FireproofEstimatePage({
             void save(true);
           }}
           onMessage={setMessage}
+          saveSheet={() => save(true)}
         />
       );
     }
@@ -1513,6 +1514,7 @@ function GeneralSheetView({
   onChange,
   onBack,
   onMessage,
+  saveSheet,
 }: {
   project: ProjectSummary;
   row: FireproofManageRow;
@@ -1524,6 +1526,7 @@ function GeneralSheetView({
   onChange: (patch: Partial<FireproofManageRow>) => void;
   onBack: () => void;
   onMessage: (text: string) => void;
+  saveSheet: () => Promise<void>;
 }): JSX.Element {
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [jumpTick, setJumpTick] = useState(0);
@@ -1600,6 +1603,7 @@ function GeneralSheetView({
         onMessage={onMessage}
         hasUpper={false}
         windowTitle={`汎用計算書　${project.managementNo}`}
+        saveSheet={saveSheet}
       />
 
       <p className="hint">

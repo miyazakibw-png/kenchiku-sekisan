@@ -295,6 +295,11 @@ const api = {
   /** 集計処理（集計書兼工事マスターと集計詳細データを作る） */
   runAggregation: (projectId: number): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateRun, projectId),
+  /** 計算書の「マスター作成」：集計実行と同じ処理で工事マスター・セット明細マスターを最新にする */
+  buildProjectMasters: (
+    projectId: number,
+  ): Promise<{ aggregateCount: number; assembliesAdded: number }> =>
+    ipcRenderer.invoke(IPC.aggregateBuildMasters, projectId),
   getAggregate: (projectId: number, runId?: number): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateGet, projectId, runId),
   listAggregateRuns: (projectId: number): Promise<AggregateRun[]> =>

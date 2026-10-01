@@ -13,6 +13,7 @@ import {
 } from "../../src/main/services/roomSheetService";
 import { saveTransferRows } from "../../src/main/services/transferRowService";
 import {
+  buildProjectMasters,
   collectEstimateRowChecks,
   getAggregate,
   listAggregateRuns,
@@ -21,6 +22,8 @@ import {
   saveAggregateEdits,
   setDetailUnused,
 } from "../../src/main/services/aggregationService";
+import { listAssemblies } from "../../src/main/services/assemblyService";
+import { listProjectDetailsInUse } from "../../src/main/services/detailService";
 import { transferBreakdown } from "../../src/main/services/breakdownService";
 import {
   getMiscSheet,
@@ -668,5 +671,66 @@ describe("集計処理", () => {
 
     const view = runAggregation(db, projectId);
     expect(view.details).toHaveLength(1);
+  });
+
+  it("マスター作成は集計実行と同じく工事マスターとセット明細マスターを最新にする", () => {
+    addRoom("事務室", 1, 1);
+
+    const built = buildProjectMasters(db, projectId);
+    expect(built.aggregateCount).toBe(1);
+    expect(built.assembliesAdded).toBe(1);
+
+    // マスター呼出の工事マスター（明細）は最新の集計から出る
+    expect(
+      listProjectDetailsInUse(db, 5, projectId).map((detail) => detail.name),
+    ).toEqual(["ビニル床シート"]);
+    // セット明細マスターに計算書のセットが登録されている
+    expect(listAssemblies(db, projectId)).toHaveLength(1);
+    expect(listAssemblies(db, projectId)[0].items[0].partName).toBe("床");
+
+    // 計算書を直してから再度マスター作成すると、呼出もその内容に変わる
+    const row = drafts[0];
+    const sheet = getRoomSheet(db, row.id as number);
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify([
+        {
+          id: "s1",
+          partNumber: 10,
+          partName: "床",
+          details: [
+            {
+              id: "d1",
+              sourceDetailId: null,
+              subjectId: 5,
+              detailNumber: 1.01,
+              materialCategory: "仕上",
+              partName: "",
+              name: "長尺シート",
+              descriptionUpper: "",
+              descriptionLower: "t=2.5",
+              unit: "m2",
+              remarksUpper: "",
+              remarksLower: "",
+              estimateDisplay: "",
+              coefficient: 1,
+            },
+          ],
+          lines: [
+            { id: "l1", formulaA: "FA", formulaB: "", comment: "", bSymbol: "" },
+          ],
+        },
+      ]),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    buildProjectMasters(db, projectId);
+    expect(
+      listProjectDetailsInUse(db, 5, projectId).map((detail) => detail.name),
+    ).toEqual(["長尺シート"]);
   });
 });

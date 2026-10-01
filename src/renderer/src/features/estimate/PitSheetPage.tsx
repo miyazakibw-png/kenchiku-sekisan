@@ -2948,6 +2948,7 @@ export default function PitSheetPage({
         onMessage={setMessage}
         hasUpper
         windowTitle={`${sheetName}　${project.managementNo}`}
+        saveSheet={save}
       />
 
       <p className="hint">

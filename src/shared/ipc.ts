@@ -57,6 +57,7 @@ export const IPC = {
   transferRowsList: "transferRows:list",
   transferRowsSave: "transferRows:save",
   aggregateRun: "aggregate:run",
+  aggregateBuildMasters: "aggregate:build-masters",
   aggregateGet: "aggregate:get",
   aggregateRuns: "aggregate:runs",
   aggregateSaveEdits: "aggregate:save-edits",

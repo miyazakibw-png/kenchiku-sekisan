@@ -5225,6 +5225,7 @@ export default function RoomSheetPage({
         onMessage={setMessage}
         windowTitle={`部屋計算書　${project.managementNo} ${roomName || "（部屋名なし）"}`}
         template={lowerTemplate}
+        saveSheet={save}
       />
 
       {showTrace && !printMode && (
