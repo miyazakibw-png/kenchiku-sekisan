@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type {
   AggregateDetail,
   AggregateItem,
@@ -17,6 +18,7 @@ import { displayQuantity } from "../../../../core/room/calcSheet";
 import { resolveMasterName } from "@shared/masters";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
+import { focusCell } from "../grid/focusCell";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
 import "../estimate/EstimatePartsPage.css";
@@ -401,6 +403,70 @@ export default function AggregatePage({
     [view.details],
   );
 
+  /**
+   * 積算用表示欄まわりのカーソル移動（2行組＋縦結合セルなので専用に処理）。
+   * ・積算用表示で↑↓＝上下の明細の積算用表示へ
+   * ・備考（下段）から→＝積算用表示へ（積算用表示から←は備考欄下へ）
+   * ・積算用表示から→は既定のまま（全体共通の移動に任せる）
+   */
+  const onTableKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement)) return;
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const all =
+      field.value.length > 0 && start === 0 && end === field.value.length;
+    const atStart =
+      start === null || end === null ? true : all || (start === 0 && end === 0);
+    const atEnd =
+      start === null || end === null
+        ? true
+        : all || (start === field.value.length && start === end);
+
+    if (field.dataset.estimateDisplay !== undefined) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const inputs = Array.from(
+          field
+            .closest("table")
+            ?.querySelectorAll<HTMLInputElement>(
+              "input[data-estimate-display]",
+            ) ?? [],
+        );
+        const target =
+          inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!target) return;
+        event.preventDefault();
+        focusCell(target);
+        target.select();
+        return;
+      }
+      if (event.key === "ArrowLeft" && atStart) {
+        const target = field
+          .closest("tbody")
+          ?.querySelector<HTMLInputElement>("input[data-remarks-lower]");
+        if (!target) return;
+        event.preventDefault();
+        focusCell(target);
+        target.select();
+      }
+      return;
+    }
+    if (
+      field.dataset.remarksLower !== undefined &&
+      event.key === "ArrowRight" &&
+      atEnd
+    ) {
+      const target = field
+        .closest("tbody")
+        ?.querySelector<HTMLInputElement>("input[data-estimate-display]");
+      if (!target) return;
+      event.preventDefault();
+      focusCell(target);
+      target.select();
+    }
+  }, []);
+
   /** 左端の科目ボタン（計上された工種科目だけを出す） */
   const usedSubjects = useMemo(() => {
     const ids: number[] = [];
@@ -576,7 +642,7 @@ export default function AggregatePage({
           ))}
           {usedSubjects.length === 0 && <span className="note">未集計</span>}
         </nav>
-        <table className="parts aggregate">
+        <table className="parts aggregate" onKeyDown={onTableKeyDown}>
           <colgroup>
             {COLUMNS.map((label, index) => (
               <col key={label} style={{ width: `${widths[index]}px` }} />
@@ -733,6 +799,7 @@ export default function AggregatePage({
                     ) : (
                       <input
                         lang="ja"
+                        data-estimate-display
                         value={draft.estimateDisplay ?? ""}
                         {...spaceMark(draft.estimateDisplay ?? "")}
                         onChange={(e) =>
@@ -806,6 +873,7 @@ export default function AggregatePage({
                   <td>
                     <input
                       lang="ja"
+                      data-remarks-lower
                       value={draft.remarksLower}
                       {...spaceMark(draft.remarksLower)}
                       onChange={(e) =>
