@@ -34,6 +34,7 @@ import {
   pitSymbol,
   pitVariables,
   type PitBeam,
+  type PitPoint,
   type PitShape,
 } from "../../src/core/pit/pit";
 
@@ -1096,6 +1097,33 @@ describe("placeTracedPit（図面をなぞったピットの置き方）", () =>
     expect(p2.direction).toBe("right");
     expect(p2.baseId).toBeUndefined();
     expect(p2.traceX).toBe(16);
+  });
+
+  it("1個目をなぞっていなくても、なぞったピットは図面の位置に置く", () => {
+    const manual = mk("p1", "P1");
+    const before: PitShape[] = [manual];
+    const traced = (id: string, symbol: string, origin: PitPoint) => {
+      const made = placeTracedPit(
+        before,
+        setPitPoints(mk(id, symbol), square),
+        origin,
+      );
+      before.push(made);
+      return made;
+    };
+    const p2 = traced("p2", "P2", { x: 10, y: 1 });
+    const p3 = traced("p3", "P3", { x: 10, y: 4.5 });
+    const p4 = traced("p4", "P4", { x: 10, y: 8 });
+    const p5 = traced("p5", "P5", { x: 17.5, y: 12 });
+
+    const rects = layoutPits([manual, p2, p3, p4, p5]);
+    expect(rects.map((rect) => [rect.left, rect.top])).toEqual([
+      [0, 0],
+      [10, 1],
+      [10, 4.5],
+      [10, 8],
+      [17.5, 12],
+    ]);
   });
 
   it("なぞり直すときは自分より前のピットだけを基準に探す", () => {

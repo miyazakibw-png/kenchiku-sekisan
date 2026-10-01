@@ -912,12 +912,30 @@ function pitNumber(index: number): string {
 
 /**
  * ピットを順番に並べる。1個目を基準に、2個目からは向きとすき間で置く。
- * 1個目が図面をなぞって作ったものなら、図面の中の位置（traceX/Y）にそのまま置く
+ * 図面をなぞって作ったピット（traceX/Y を持つもの）は、図面の中の位置にそのまま置く
  * （下敷きの図面を同じ縦尺で左上=0に置けば、描いたピットと図面が重なる）。
+ * 基準ピット（baseId）があるものだけ、その基準からの差（offsetX/Y）で置く。
  */
 export function layoutPits(pits: readonly PitShape[]): PitRect[] {
   const rects: PitRect[] = [];
   pits.forEach((pit, index) => {
+    if (
+      pit.traceX !== undefined &&
+      pit.traceY !== undefined &&
+      (index === 0 ||
+        pit.baseId === undefined ||
+        !rects.some((rect) => rect.id === pit.baseId))
+    ) {
+      rects.push({
+        id: pit.id,
+        symbol: pit.symbol,
+        left: pit.traceX + (pit.shiftX ?? 0),
+        top: pit.traceY + (pit.shiftY ?? 0),
+        x: pit.x,
+        y: pit.y,
+      });
+      return;
+    }
     if (index === 0) {
       rects.push({
         id: pit.id,
