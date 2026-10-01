@@ -50,6 +50,7 @@ import {
   pitWallTable,
   refitPitWalls,
   pitWallVariables,
+  retracePits,
   defaultPitSleeveKinds,
   groupLengthMm,
   PIT_WALL_SIZES,
@@ -81,7 +82,6 @@ import {
   type TraceUnderlay,
   traceAfterUnderlay,
   traceFromUnderlay,
-  underlayAtTraceOrigin,
   underlayForTrace,
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
@@ -360,8 +360,7 @@ export default function PitSheetPage({
     dragStart: dragUnderlayStart,
     drag: dragUnderlay,
   });
-  const { underlay, setUnderlay, underlays, setUnderlays, setMoveAll } =
-    underlayTool;
+  const { underlay, underlays, setUnderlays, setMoveAll } = underlayTool;
   underlaysRef.current = underlays;
   moveAllRef.current = underlayTool.moveAll;
 
@@ -536,7 +535,6 @@ export default function PitSheetPage({
         trimEmptySets(parseJson<CalcSet[]>(loaded.lowerJson, [])),
       );
       setSheet(loaded);
-      setPits(loadedPits);
       setBeams(loadedBeams);
       setWalls(loadedWalls);
       setSleeves(loadedSleeves);
@@ -569,10 +567,23 @@ export default function PitSheetPage({
                   )
                 : [synced];
             })();
+      // なぞったピットは、保存されている「なぞった形」と下敷きの位置から置き直す
+      // （位置が合っていれば変わらない。保存時の位置がずれていたときも図面に合わせて直る）
+      const tracedShapes = parseTracedShapes(loaded.traceJson);
+      const repairedPits = retracePits(loadedPits, {
+        traced: tracedShapes,
+        underlay:
+          synced ??
+          nextUnderlays.find(
+            (item) => item.image !== "" && item.image === loadedTrace.image,
+          ) ??
+          tracedUnderlay,
+      });
       const underlayLocked = parseUnderlayLocked(loaded.traceJson);
       const scalePending = parseScalePending(loaded.traceJson);
       setTrace(loadedTrace);
-      setTraced(parseTracedShapes(loaded.traceJson));
+      setTraced(tracedShapes);
+      setPits(repairedPits);
       setUnderlays(nextUnderlays);
       setMoveAll(underlayLocked);
       underlayTool.setScalePending(scalePending);
@@ -581,7 +592,7 @@ export default function PitSheetPage({
           `図形欄の図面をなぞりに使った図面・縮尺にそろえました（描いた${pitWord}が元の図面に重なります。保存すると残ります）`,
         );
       markSaved({
-        pits: loadedPits,
+        pits: repairedPits,
         beams: loadedBeams,
         walls: loadedWalls,
         sleeves: loadedSleeves,
@@ -590,7 +601,7 @@ export default function PitSheetPage({
         lower: sets,
         note: loaded.note,
         trace: loadedTrace,
-        traced: parseTracedShapes(loaded.traceJson),
+        traced: tracedShapes,
         underlays: nextUnderlays,
         underlayLocked,
         scalePending,
@@ -2866,9 +2877,7 @@ export default function PitSheetPage({
             // なぞった図面と縮尺を図形の下敷きにそろえ、なぞった位置に重なるように置く。
             // 同じ図面が既にあればその枚だけを書き替え、無ければ選んだ図面を置き替え（全部無ければ新しい1枚を足す）
             if (trace.image === "") {
-              const placed = underlayAtTraceOrigin(underlay, meters);
-              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
-              setUnderlay(placed);
+              applyTrace(meters, pixels, { x: underlay.x, y: underlay.y });
             } else {
               const matchIndex = underlays.findIndex(
                 (item) => item.image === trace.image,
@@ -2892,17 +2901,16 @@ export default function PitSheetPage({
                   { ...trace, metersPerPixel: perPixel },
                   base,
                 ) ?? base;
-              const placed = underlayAtTraceOrigin(synced, meters);
-              applyTrace(meters, pixels, { x: placed.x, y: placed.y });
+              applyTrace(meters, pixels, { x: synced.x, y: synced.y });
               if (slotIndex >= 0) {
                 setUnderlays(
                   underlays.map((item, index) =>
-                    index === slotIndex ? placed : item,
+                    index === slotIndex ? synced : item,
                   ),
                   slotIndex,
                 );
               } else {
-                setUnderlays([...underlays, placed], underlays.length);
+                setUnderlays([...underlays, synced], underlays.length);
               }
             }
             // 直したあとは「選」を外して、続けてなぞる分は新しいピットにする

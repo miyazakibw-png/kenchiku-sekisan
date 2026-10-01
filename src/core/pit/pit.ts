@@ -317,9 +317,9 @@ export function setPitPoints(
 
 /**
  * なぞって作った（直した）ピットを、同じ図面でなぞった基準ピットからの位置に置く。
- * origin はなぞった形の左上（図面の中の位置・m）。
+ * origin はなぞった形の左上（図の中の位置・m）。
  * 前に置かれたピットのうち、図面の位置を持つ最初のものを基準に「自由」で置く。
- * 基準になるピットが無いときは置き方を変えない（1個目や、なぞっていないピットの隣）。
+ * 基準になるピットが無いときは図面の位置だけ入れる（なぞった形のずれ・古い基準は消す）。
  */
 export function placeTracedPit(
   before: readonly PitShape[],
@@ -330,6 +330,11 @@ export function placeTracedPit(
     ...pit,
     traceX: round4(origin.x),
     traceY: round4(origin.y),
+    baseId: undefined,
+    offsetX: undefined,
+    offsetY: undefined,
+    shiftX: undefined,
+    shiftY: undefined,
   };
   const base = before.find(
     (each) =>
@@ -337,8 +342,12 @@ export function placeTracedPit(
       each.traceX !== undefined &&
       each.traceY !== undefined,
   );
-  if (!base || base.traceX === undefined || base.traceY === undefined)
-    return placed;
+  if (!base || base.traceX === undefined || base.traceY === undefined) {
+    return {
+      ...placed,
+      direction: placed.direction === "free" ? "right" : placed.direction,
+    };
+  }
   return {
     ...placed,
     direction: "free",
@@ -346,9 +355,74 @@ export function placeTracedPit(
     offsetX: round4(origin.x - base.traceX),
     offsetY: round4(origin.y - base.traceY),
     align: undefined,
-    shiftX: undefined,
-    shiftY: undefined,
   };
+}
+
+/** 保存されている「なぞった形」（画素の点の左上）＋なぞりに使った図面の位置・縮尺 */
+export interface RetraceSource {
+  /** なぞった形（id はピットの id） */
+  traced: readonly {
+    id: string;
+    points: readonly { x: number; y: number }[];
+  }[];
+  /** なぞりに使った図面の下敷き（図の座標での左上と、1画素あたりのm） */
+  underlay: {
+    image: string;
+    metersPerPixel: number;
+    x: number;
+    y: number;
+  };
+}
+
+/**
+ * なぞったピットの位置を、保存された「なぞった形」と下敷きから計算し直す。
+ * 図の位置は「下敷きの左上＋なぞった形の左上（m）」。基準にしているピット（baseId）も
+ * なぞったものなら差（offsetX/Y）を入れ直し、無ければ基準を外す。
+ * 位置が合っていれば何も変わらないので、開くたびに実行しても同じ結果になる。
+ */
+export function retracePits(
+  pits: readonly PitShape[],
+  source: RetraceSource,
+): PitShape[] {
+  if (source.underlay.image === "" || source.underlay.metersPerPixel <= 0)
+    return pits.map((pit) => ({ ...pit }));
+  const spots = new Map<string, PitPoint>();
+  source.traced.forEach((shape) => {
+    if (shape.points.length === 0) return;
+    const minX = Math.min(...shape.points.map((point) => point.x));
+    const minY = Math.min(...shape.points.map((point) => point.y));
+    spots.set(shape.id, {
+      x: round4(source.underlay.x + minX * source.underlay.metersPerPixel),
+      y: round4(source.underlay.y + minY * source.underlay.metersPerPixel),
+    });
+  });
+  if (spots.size === 0) return pits.map((pit) => ({ ...pit }));
+  return pits.map((pit) => {
+    const spot = spots.get(pit.id);
+    if (!spot) return { ...pit };
+    const base =
+      pit.baseId !== undefined
+        ? pits.find((each) => each.id === pit.baseId)
+        : undefined;
+    const baseSpot = base === undefined ? undefined : spots.get(base.id);
+    if (pit.direction === "free" && baseSpot !== undefined) {
+      return {
+        ...pit,
+        traceX: spot.x,
+        traceY: spot.y,
+        offsetX: round4(spot.x - baseSpot.x),
+        offsetY: round4(spot.y - baseSpot.y),
+      };
+    }
+    return {
+      ...pit,
+      traceX: spot.x,
+      traceY: spot.y,
+      baseId: undefined,
+      offsetX: undefined,
+      offsetY: undefined,
+    };
+  });
 }
 
 /** 下敷きの図面の置き方（図の座標での左上と、1画素あたりのm） */
