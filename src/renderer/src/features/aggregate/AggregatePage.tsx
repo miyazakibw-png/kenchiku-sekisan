@@ -39,9 +39,19 @@ const COLUMNS = [
   "数量",
   "単位",
   "備考",
+  "積算用表示",
 ] as const;
 
-const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120];
+const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120, 90];
+
+const EDGE_SPACE = /^\s|\s$/;
+
+/** 前後に空白（全角・半角）がある欄は目印を付ける。見た目が同じでも別の明細になるため */
+function spaceMark(text: string): { className?: string; title?: string } {
+  return EDGE_SPACE.test(text)
+    ? { className: "edge-space", title: "前後に空白があります" }
+    : {};
+}
 
 /** 集計書で直す前の内容（直していない欄は集計結果のまま） */
 function initialEdit(item: AggregateItem): AggregateItemEdit {
@@ -58,7 +68,21 @@ function initialEdit(item: AggregateItem): AggregateItemEdit {
     unit: item.unit,
     remarksUpper: item.remarksUpper,
     remarksLower: item.remarksLower,
+    estimateDisplay: item.estimateDisplay,
   };
+}
+
+/**
+ * 積算用表示を持たない入力（転記入力表・部位別雑・金物入力表・家具・設備入力表・耐火被覆の管理表）から来た明細か。
+ * これらは積算用表示がいつも空なので、集計書からは直せない。
+ */
+function lacksEstimateDisplay(detail: AggregateDetail): boolean {
+  if (detail.sourceKind === "transfer") return true;
+  if (detail.sourceKind === "misc") return true;
+  if (detail.sourceKind === "furniture") return true;
+  return (
+    detail.sourceKind === "fireproof" && detail.traceId.split(":").length === 2
+  );
 }
 
 /** 番号欄の入力（空欄は未入力） */
@@ -163,8 +187,6 @@ export default function AggregatePage({
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
-  /** 同じ明細マスターから拾った行をまとめて直す（既定は直した行だけ） */
-  const [applyToSameDetail, setApplyToSameDetail] = useState(false);
   const [message, setMessage] = useState("");
   /** 手入力行の付け直しモード（次にクリックした明細が新しい付き先） */
   const [moving, setMoving] = useState(false);
@@ -173,7 +195,7 @@ export default function AggregatePage({
   /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
   const [basisTop, setBasisTop] = useState(0);
   const { widths, startResize } = useColumnWidths(
-    "aggregate-columns-v1",
+    "aggregate-columns-v2",
     COLUMN_WIDTHS,
   );
 
@@ -229,7 +251,6 @@ export default function AggregatePage({
         projectId: project.id,
         runId: view.run.id,
         edits: list,
-        applyToSameDetail,
       });
       setView(result);
       setRuns(await window.sekisan.listAggregateRuns(project.id));
@@ -241,7 +262,7 @@ export default function AggregatePage({
         `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
       );
     },
-    [applyToSameDetail, edits, markSaved, project.id, view.run],
+    [edits, markSaved, project.id, view.run],
   );
 
   /** 選んだ明細の上下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
@@ -369,6 +390,17 @@ export default function AggregatePage({
     [selected, view.details],
   );
 
+  /** 積算用表示を直せない明細（集計キー） */
+  const fixedEstimateDisplay = useMemo(
+    () =>
+      new Set(
+        view.details
+          .filter(lacksEstimateDisplay)
+          .map((detail) => detail.masterKey),
+      ),
+    [view.details],
+  );
+
   /** 左端の科目ボタン（計上された工種科目だけを出す） */
   const usedSubjects = useMemo(() => {
     const ids: number[] = [];
@@ -458,14 +490,6 @@ export default function AggregatePage({
         >
           💾 修正を保存（{Object.keys(edits).length}件）
         </button>
-        <label title="チェックを入れると、同じ工事用明細マスターから拾った他の行（摘要などが古いまま別の行に分かれている分）も、まとめて同じ内容に直します。ふだんは外したまま（直した行だけ変わります）">
-          <input
-            type="checkbox"
-            checked={applyToSameDetail}
-            onChange={(e) => setApplyToSameDetail(e.target.checked)}
-          />
-          同じ明細をまとめて直す
-        </label>
         <button
           type="button"
           disabled={selected === null}
@@ -594,7 +618,7 @@ export default function AggregatePage({
                         ? (subject?.id ?? "")
                         : ""}
                     </td>
-                    <td colSpan={8}>{line.heading.text}</td>
+                    <td colSpan={COLUMNS.length - 1}>{line.heading.text}</td>
                   </tr>
                 </tbody>
               );
@@ -646,6 +670,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.materialCategory}
+                      {...spaceMark(draft.materialCategory)}
                       onChange={(e) =>
                         editItem(item, { materialCategory: e.target.value })
                       }
@@ -664,6 +689,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.partName}
+                      {...spaceMark(draft.partName)}
                       onChange={(e) =>
                         editItem(item, { partName: e.target.value })
                       }
@@ -673,6 +699,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.descriptionUpper}
+                      {...spaceMark(draft.descriptionUpper)}
                       onChange={(e) =>
                         editItem(item, { descriptionUpper: e.target.value })
                       }
@@ -684,10 +711,35 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.remarksUpper}
+                      {...spaceMark(draft.remarksUpper)}
                       onChange={(e) =>
                         editItem(item, { remarksUpper: e.target.value })
                       }
                     />
+                  </td>
+                  <td
+                    rowSpan={2}
+                    className="estimate-display"
+                    title={
+                      fixedEstimateDisplay.has(item.masterKey)
+                        ? "積算用表示。転記入力表などから来た明細は積算用表示を持たないので直せません"
+                        : "積算用表示。違うと同じ明細でも別の行になります"
+                    }
+                  >
+                    {fixedEstimateDisplay.has(item.masterKey) ? (
+                      <span {...spaceMark(item.estimateDisplay)}>
+                        {item.estimateDisplay}
+                      </span>
+                    ) : (
+                      <input
+                        lang="ja"
+                        value={draft.estimateDisplay ?? ""}
+                        {...spaceMark(draft.estimateDisplay ?? "")}
+                        onChange={(e) =>
+                          editItem(item, { estimateDisplay: e.target.value })
+                        }
+                      />
+                    )}
                   </td>
                 </tr>
                 <tr className="detail-lower">
@@ -708,6 +760,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.name}
+                      {...spaceMark(draft.name)}
                       onChange={(e) => editItem(item, { name: e.target.value })}
                     />
                   </td>
@@ -715,6 +768,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.descriptionLower}
+                      {...spaceMark(draft.descriptionLower)}
                       onChange={(e) =>
                         editItem(item, { descriptionLower: e.target.value })
                       }
@@ -753,6 +807,7 @@ export default function AggregatePage({
                     <input
                       lang="ja"
                       value={draft.remarksLower}
+                      {...spaceMark(draft.remarksLower)}
                       onChange={(e) =>
                         editItem(item, { remarksLower: e.target.value })
                       }

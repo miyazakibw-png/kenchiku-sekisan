@@ -216,17 +216,17 @@ export function setDetailUnused(
 }
 
 /** 集計書へ手で挿入した明細行（登録順） */
-function manualRows(
-  db: AppDatabase,
-  projectId: number,
-): ManualAggregateRow[] {
+function manualRows(db: AppDatabase, projectId: number): ManualAggregateRow[] {
   return db
     .select()
     .from(projectManualAggregateItems)
     .where(eq(projectManualAggregateItems.projectId, projectId))
     .orderBy(asc(projectManualAggregateItems.id))
     .all()
-    .map(({ anchorBefore, ...row }) => ({ ...row, before: anchorBefore === 1 }));
+    .map(({ anchorBefore, ...row }) => ({
+      ...row,
+      before: anchorBefore === 1,
+    }));
 }
 
 /**
@@ -979,6 +979,9 @@ function applyEditToSheet(
     detail.unit = edit.unit;
     detail.remarksUpper = edit.remarksUpper;
     detail.remarksLower = edit.remarksLower;
+    if (edit.estimateDisplay !== undefined) {
+      detail.estimateDisplay = edit.estimateDisplay;
+    }
   });
   return changed ? JSON.stringify(sets) : null;
 }
@@ -993,7 +996,7 @@ export function saveAggregateEdits(
   db: AppDatabase,
   request: SaveAggregateEditsRequest,
 ): AggregateView {
-  const { projectId, runId, edits, applyToSameDetail = false } = request;
+  const { projectId, runId, edits } = request;
   const details = db
     .select()
     .from(projectAggregateDetails)
@@ -1018,6 +1021,9 @@ export function saveAggregateEdits(
             unit: edit.unit,
             remarksUpper: edit.remarksUpper,
             remarksLower: edit.remarksLower,
+            ...(edit.estimateDisplay === undefined
+              ? {}
+              : { estimateDisplay: edit.estimateDisplay }),
             quantity: edit.quantity ?? 0,
           })
           .where(
@@ -1062,7 +1068,7 @@ export function saveAggregateEdits(
           unit: edit.unit,
           remarksUpper: edit.remarksUpper,
           remarksLower: edit.remarksLower,
-          estimateDisplay: itemRow.estimateDisplay,
+          estimateDisplay: edit.estimateDisplay ?? itemRow.estimateDisplay,
         });
         if (nextKey !== edit.masterKey) {
           tx.update(projectManualAggregateItems)
@@ -1077,12 +1083,6 @@ export function saveAggregateEdits(
         }
       }
 
-      // 同じ明細マスターから拾った行（摘要などが古いまま別行に分かれている分）もそろえる
-      const sameDetailIds = new Set(
-        matched
-          .map((detail) => detail.sourceDetailId)
-          .filter((id): id is number => id !== null),
-      );
       // 修正履歴（明細マスター変更履歴）に、直した前後を1件残す
       const head = matched[0];
       const before = snapshotOf({
@@ -1108,7 +1108,7 @@ export function saveAggregateEdits(
         unit: edit.unit,
         remarksUpper: edit.remarksUpper,
         remarksLower: edit.remarksLower,
-        estimateDisplay: head.estimateDisplay,
+        estimateDisplay: edit.estimateDisplay ?? head.estimateDisplay,
         isActive: true,
       });
       const subjectId = edit.subjectId ?? head.subjectId;
@@ -1127,15 +1127,7 @@ export function saveAggregateEdits(
           .run();
       }
 
-      const targets =
-        applyToSameDetail && sameDetailIds.size > 0
-          ? details.filter(
-              (detail) =>
-                detail.masterKey === edit.masterKey ||
-                (detail.sourceDetailId !== null &&
-                  sameDetailIds.has(detail.sourceDetailId)),
-            )
-          : matched;
+      const targets = matched;
 
       // 転記入力表の行
       targets.forEach((target) => {

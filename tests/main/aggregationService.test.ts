@@ -413,6 +413,45 @@ describe("集計処理", () => {
     expect(runAggregation(db, projectId).items[0].name).toBe("長尺塩ビシート");
   });
 
+  it("集計書で直した積算用表示を計算書へ書き戻す", () => {
+    addRoom("事務室", 1, 1);
+    const before = runAggregation(db, projectId);
+    const item = before.items[0];
+
+    const after = saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: item.masterKey,
+          subjectId: item.subjectId,
+          materialCategory: item.materialCategory,
+          partNumber: item.partNumber,
+          partName: item.partName,
+          detailNumber: item.detailNumber,
+          name: item.name,
+          descriptionUpper: item.descriptionUpper,
+          descriptionLower: item.descriptionLower,
+          unit: item.unit,
+          remarksUpper: item.remarksUpper,
+          remarksLower: item.remarksLower,
+          estimateDisplay: "床面積",
+        },
+      ],
+    });
+
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0].estimateDisplay).toBe("床面積");
+    expect(after.items[0].quantity).toBe(12);
+    expect(runAggregation(db, projectId).items[0].estimateDisplay).toBe(
+      "床面積",
+    );
+    const logs = listDetailChangeLogs(db, projectId).filter(
+      (log) => log.origin === "集計書兼工事マスター",
+    );
+    expect(logs[0].changedFields).toContain("estimateDisplay");
+  });
+
   it("集計書で直した内容は明細マスター変更履歴に残る", () => {
     addRoom("事務室", 1, 1);
     const before = runAggregation(db, projectId);
@@ -529,76 +568,6 @@ describe("集計処理", () => {
     const again = runAggregation(db, projectId);
     expect(again.items[0].partNumber).toBe(41);
     expect(again.items[0].quantity).toBe(4);
-  });
-
-  it("同じ明細マスターから拾った行は、まとめて直せる", () => {
-    const saved = saveDetails(db, {
-      subjectId: 5,
-      projectId,
-      rows: [
-        {
-          id: null,
-          detailNumber: 1.01,
-          materialCategory: "仕上",
-          partName: "床",
-          name: "ビニル床タイル",
-          descriptionUpper: "",
-          descriptionLower: "3.0 コンクリート面",
-          unit: "m2",
-          remarksUpper: "",
-          remarksLower: "",
-          estimateDisplay: "",
-          isActive: true,
-        },
-      ],
-      deletedIds: [],
-    });
-    const detailId = saved[0].id;
-    saveTransferRows(db, {
-      projectId,
-      rows: [
-        {
-          ...transferDraft(14.57),
-          name: "ビニル床タイル",
-          sourceDetailId: detailId,
-        },
-        {
-          ...transferDraft(32.63),
-          name: "ビニル床タイル",
-          descriptionUpper: "東リ:ロイヤルウッド 同等",
-          sourceDetailId: detailId,
-        },
-      ],
-    });
-    const before = runAggregation(db, projectId);
-    // 摘要（上）が違うので、同じ明細でも集計書では2行に分かれる
-    expect(before.items).toHaveLength(2);
-
-    const after = saveAggregateEdits(db, {
-      projectId,
-      runId: before.run?.id ?? 0,
-      applyToSameDetail: true,
-      edits: [
-        {
-          masterKey: before.items[0].masterKey,
-          subjectId: 5,
-          materialCategory: "仕上",
-          partNumber: 10,
-          partName: "床",
-          detailNumber: 1.01,
-          name: "ビニル床タイル",
-          descriptionUpper: "東リ:ロイヤルウッド 同等",
-          descriptionLower: "3.0 コンクリート面",
-          unit: "m2",
-          remarksUpper: "",
-          remarksLower: "",
-        },
-      ],
-    });
-
-    expect(after.items).toHaveLength(1);
-    expect(after.items[0].descriptionUpper).toBe("東リ:ロイヤルウッド 同等");
-    expect(after.items[0].quantity).toBe(47.2);
   });
 
   it("集計書で直しても物件専用の明細マスターは変わらない", () => {

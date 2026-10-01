@@ -809,6 +809,8 @@ export interface AggregateItemEdit {
   unit: string;
   remarksUpper: string;
   remarksLower: string;
+  /** 積算用表示。無いときは今のまま（転記入力表など積算用表示を持たない行は直せない） */
+  estimateDisplay?: string;
   /** 手入力行だけ使う（計算書から来る行の数量は集計値なので触らない） */
   quantity?: number;
 }
@@ -817,8 +819,6 @@ export interface SaveAggregateEditsRequest {
   projectId: number;
   runId: number;
   edits: AggregateItemEdit[];
-  /** 同じ工事用明細マスターから拾った行も、まとめて同じ内容に直す */
-  applyToSameDetail?: boolean;
 }
 
 /** 集計書へ明細行を手で挿入する（選んだ行の直後・直前） */

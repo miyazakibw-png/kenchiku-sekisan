@@ -214,3 +214,13 @@ table.aggregate td select:focus {
     margin-bottom: 0;
   }
 }
+
+/* 前後に空白がある欄（見た目が同じでも別の明細になる） */
+table.aggregate .edge-space {
+  background: #ffe4e1;
+  outline: 1px dashed #d00000;
+}
+
+table.aggregate td.estimate-display {
+  vertical-align: middle;
+}
