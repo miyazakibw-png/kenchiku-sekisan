@@ -365,6 +365,7 @@ function copyCalcSheets(
         ceilingJson: room.ceilingJson,
         lowerJson: room.lowerJson,
         ceilingHeight: room.ceilingHeight,
+        traceJson: room.traceJson,
         note: room.note,
       })
       .run();
@@ -426,6 +427,7 @@ function copyCalcSheets(
         sleeveKindsJson: pit.sleeveKindsJson,
         wallStep: pit.wallStep,
         lowerJson: pit.lowerJson,
+        traceJson: pit.traceJson,
         note: pit.note,
       })
       .run();

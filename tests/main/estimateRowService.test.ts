@@ -22,6 +22,10 @@ import {
   getFrameSheet,
   saveFrameSheet,
 } from "../../src/main/services/frameSheetService";
+import {
+  getPitSheet,
+  savePitSheet,
+} from "../../src/main/services/pitSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
 
 function createDb(): AppDatabase {
@@ -156,6 +160,7 @@ describe("部位別入力表", () => {
       ceilingJson: sheet.ceilingJson,
       lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
       ceilingHeight: 2.5,
+      traceJson: '{"underlays":[{"image":"data:png","x":1}]}',
       note: "もとの計算書",
     });
 
@@ -173,6 +178,10 @@ describe("部位別入力表", () => {
     const copiedSheet = getRoomSheet(db, saved[1].id);
     expect(copiedSheet.lowerJson).toBe('[{"id":"set-1","detail":"床仕上"}]');
     expect(copiedSheet.note).toBe("もとの計算書");
+    // 下図（貼り付けた図面）も一緒に写る
+    expect(copiedSheet.traceJson).toBe(
+      '{"underlays":[{"image":"data:png","x":1}]}',
+    );
     expect(copiedSheet.id).not.toBe(sheet.id);
 
     saveRoomSheet(db, {
@@ -185,6 +194,40 @@ describe("部位別入力表", () => {
       note: "直した計算書",
     });
     expect(getRoomSheet(db, source.id).note).toBe("もとの計算書");
+  });
+
+  it("行コピーの貼付はピット計算書の下図も複製する", () => {
+    const [source] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: "基礎階ピット", calcType: "pit" })],
+    });
+    const sheet = getPitSheet(db, source.id);
+    savePitSheet(db, {
+      id: sheet.id,
+      pitsJson: sheet.pitsJson,
+      beamsJson: sheet.beamsJson,
+      wallsJson: sheet.wallsJson,
+      sleevesJson: sheet.sleevesJson,
+      sleeveKindsJson: sheet.sleeveKindsJson,
+      wallStep: sheet.wallStep,
+      lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
+      traceJson: '{"underlays":[{"image":"data:png","x":-17.4}]}',
+      note: "ピット計算書",
+    });
+
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        { ...source },
+        draft({ part3: "コピー", calcType: "pit", copySourceId: source.id }),
+      ],
+    });
+    const copiedSheet = getPitSheet(db, saved[1].id);
+    expect(copiedSheet.traceJson).toBe(
+      '{"underlays":[{"image":"data:png","x":-17.4}]}',
+    );
+    expect(copiedSheet.note).toBe("ピット計算書");
+    expect(copiedSheet.id).not.toBe(sheet.id);
   });
 
   it("物件コピーで部位別入力表も複製し、コピー元とは切り離す", () => {
