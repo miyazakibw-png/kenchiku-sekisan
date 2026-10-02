@@ -360,6 +360,80 @@ export function moveSetDetail(
   return { ...set, details, lines: padLines(details, set.lines) };
 }
 
+/** その行が上下へ動かせるか（端では隣のセットへ出られるかも含める） */
+export function canMoveRowAcross(
+  sets: CalcSet[],
+  setIndex: number,
+  index: number,
+  step: number,
+): boolean {
+  const set = sets[setIndex];
+  if (!set || index < 0 || index >= set.details.length) return false;
+  const to = index + step;
+  if (to >= 0 && to < set.details.length) return true;
+  return step < 0
+    ? sets.slice(0, setIndex).some((item) => !isCommentSet(item))
+    : sets.slice(setIndex + 1).some((item) => !isCommentSet(item));
+}
+
+/**
+ * 明細を上下へ動かす。セット内なら隣と入れ替え、セットの端では
+ * 隣の（※行でない）セットの端へ移す。※行は位置を変えない。
+ * 計算式の行は動かさない（セット内の入れ替えと同じ考え方）。
+ * 動かしたあとの明細の位置（セットID・行番号）を返す。動かせないときは null。
+ */
+export function moveDetailAcrossSets(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+  step: number,
+): { sets: CalcSet[]; setId: string; index: number } | null {
+  const at = sets.findIndex((set) => set.id === setId);
+  if (at < 0) return null;
+  const set = sets[at];
+  if (index < 0 || index >= set.details.length) return null;
+  const to = index + step;
+  if (to >= 0 && to < set.details.length) {
+    const moved = moveSetDetail(set, index, step);
+    return {
+      sets: sets.map((item, n) => (n === at ? moved : item)),
+      setId,
+      index: to,
+    };
+  }
+  if (step < 0 && index !== 0) return null;
+  if (step > 0 && index !== set.details.length - 1) return null;
+  const targetIndex =
+    step < 0
+      ? sets.slice(0, at).findLastIndex((item) => !isCommentSet(item))
+      : sets.findIndex(
+          (item, n) => n > at && !isCommentSet(item),
+        );
+  if (targetIndex < 0) return null;
+  const detail = set.details[index];
+  const source = removeSetDetail(set, index);
+  const next = sets.map((item, n) => {
+    if (n === at) return source;
+    if (n !== targetIndex) return item;
+    const details =
+      step < 0 ? [...item.details, detail] : [detail, ...item.details];
+    return { ...item, details, lines: padLines(details, item.lines) };
+  });
+  // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
+  const cleaned = next.filter(
+    (item, n) =>
+      n !== at ||
+      item.details.length > 0 ||
+      item.banner != null ||
+      item.lines.some((line) => !isEmptyLine(line)),
+  );
+  return {
+    sets: cleaned,
+    setId: sets[targetIndex].id,
+    index: step < 0 ? sets[targetIndex].details.length : 0,
+  };
+}
+
 /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
 export function openSetDetail(set: CalcSet, index: number): CalcSet {
   const details = [...set.details];

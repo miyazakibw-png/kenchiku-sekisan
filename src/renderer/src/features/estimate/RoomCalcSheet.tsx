@@ -14,6 +14,7 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  canMoveRowAcross,
   commentSet,
   displayQuantity,
   displayedValue,
@@ -21,7 +22,7 @@ import {
   insertSetBefore,
   isCommentSet,
   mergeWithPreviousSet,
-  moveSetDetail,
+  moveDetailAcrossSets,
   openSetDetail,
   padLines,
   removeSet,
@@ -770,18 +771,16 @@ export default function RoomCalcSheet({
     [onFocus, sets, updateSet],
   );
 
-  /** セットの中の明細を上下に入れ替える */
+  /** 明細を上下へ動かす（セットの端では隣のセットの端へ） */
   const moveDetail = useCallback(
     (setId: string, index: number, step: number): void => {
-      const target = sets.find((set) => set.id === setId);
-      if (!target) return;
-      const to = index + step;
-      if (to < 0 || to >= target.details.length) return;
-      const next = moveSetDetail(target, index, step);
-      updateSet(setId, { details: next.details, lines: next.lines });
-      onFocus({ setId, area: "detail", index: to });
+      // セットの端では隣のセット（※行はまたぐ）の端へ移す
+      const moved = moveDetailAcrossSets(sets, setId, index, step);
+      if (!moved) return;
+      commit(moved.sets);
+      onFocus({ setId: moved.setId, area: "detail", index: moved.index });
     },
-    [onFocus, sets, updateSet],
+    [commit, onFocus, sets],
   );
 
   // 明細・計算式の欄へカーソルを移したら、コメント行のカーソルは外す
@@ -2477,16 +2476,20 @@ export default function RoomCalcSheet({
                           <>
                             <button
                               type="button"
-                              title="この明細を1つ上へ移動します"
-                              disabled={rowIndex === 0}
+                              title="この明細を1つ上へ移動します（先頭では前のセットの最後へ）"
+                              disabled={
+                                !canMoveRowAcross(sets, setIndex, rowIndex, -1)
+                              }
                               onClick={() => moveDetail(set.id, rowIndex, -1)}
                             >
                               ↑
                             </button>
                             <button
                               type="button"
-                              title="この明細を1つ下へ移動します"
-                              disabled={rowIndex === set.details.length - 1}
+                              title="この明細を1つ下へ移動します（最後では次のセットの先頭へ）"
+                              disabled={
+                                !canMoveRowAcross(sets, setIndex, rowIndex, 1)
+                              }
                               onClick={() => moveDetail(set.id, rowIndex, 1)}
                             >
                               ↓

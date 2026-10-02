@@ -3,6 +3,8 @@ import {
   addSetDetailRow,
   addSetLineRow,
   addSetRow,
+  canMoveRowAcross,
+  moveDetailAcrossSets,
   moveSetDetail,
   removeSetDetail,
   calcDetail,
@@ -13,6 +15,7 @@ import {
   displayQuantity,
   evaluateCalcSheet,
   insertSetBefore,
+  isCommentSet,
   mergeWithPreviousSet,
   nextBSymbol,
   openSetDetail,
@@ -385,6 +388,71 @@ describe("行の追加と削除", () => {
     expect(next.length).toBe(2);
     expect(next[0].banner?.text2).toBe("手洗い部");
     expect(next[1].banner).toBeNull();
+  });
+
+  it("明細の上下移動はセットの端を越えると隣のセットの端へ移る", () => {
+    const first = calcSet(2);
+    first.partName = "床";
+    first.details = [
+      calcDetail({ name: "床1" }),
+      calcDetail({ name: "床2" }),
+    ];
+    const second = calcSet(2);
+    second.partName = "壁";
+    second.details = [
+      calcDetail({ name: "壁1" }),
+      calcDetail({ name: "壁2" }),
+    ];
+    const sets = [first, second];
+    const up = moveDetailAcrossSets(sets, second.id, 0, -1);
+    expect(up?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床1", "床2", "壁1"],
+      ["壁2"],
+    ]);
+    expect(up?.setId).toBe(first.id);
+    expect(up?.index).toBe(2);
+    const down = moveDetailAcrossSets(sets, first.id, 1, 1);
+    expect(down?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床1"],
+      ["床2", "壁1", "壁2"],
+    ]);
+    expect(down?.setId).toBe(second.id);
+    expect(down?.index).toBe(0);
+    // 端では動ける（隣のセットがある）
+    expect(canMoveRowAcross(sets, 0, 0, -1)).toBe(false);
+    expect(canMoveRowAcross(sets, 0, 1, 1)).toBe(true);
+    expect(canMoveRowAcross(sets, 1, 0, -1)).toBe(true);
+    expect(canMoveRowAcross(sets, 1, 1, 1)).toBe(false);
+  });
+
+  it("セットをまたぐ移動は※行をそのままにしてまたぐ", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const comment = commentSet("※ 見出し", "#dcfce7");
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    const moved = moveDetailAcrossSets([first, comment, second], second.id, 0, -1);
+    // 出た側のセットは空行だけになるので消え、※行はそのまま残る
+    expect(moved?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床", "壁"],
+      [],
+    ]);
+    expect(isCommentSet(moved!.sets[1])).toBe(true);
+    expect(moved?.sets[1].banner?.text).toBe("※ 見出し");
+  });
+
+  it("セットをまたいで出ると明細だけ移し、空になったセットは消える", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    second.lines = [calcLine({ formulaA: "1" })];
+    const moved = moveDetailAcrossSets([first, second], first.id, 0, 1);
+    expect(moved?.sets).toHaveLength(1);
+    expect(moved?.sets[0].id).toBe(second.id);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
+    // 計算式は動かないので、足した明細に合わせて末に空の計算式行が足される
+    expect(moved?.sets[0].lines.map((l) => l.formulaA)).toEqual(["1", ""]);
   });
 
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {
