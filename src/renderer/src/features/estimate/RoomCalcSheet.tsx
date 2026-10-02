@@ -23,6 +23,7 @@ import {
   isCommentSet,
   mergeWithPreviousSet,
   moveDetailAcrossSets,
+  moveDetailTo,
   openSetDetail,
   padLines,
   removeSet,
@@ -251,7 +252,12 @@ const CALC_COLUMNS: {
     width: 100,
     className: "estimate",
   },
-  { label: "操作", title: "明細の並べ替え・削除", width: 92, className: "ops" },
+  {
+    label: "操作",
+    title: "明細の並べ替え・削除。つまみ（⠿）をつかんで行を移せます",
+    width: 108,
+    className: "ops",
+  },
 ];
 
 const CALC_COLUMN_WIDTHS = CALC_COLUMNS.map((column) => column.width);
@@ -309,6 +315,15 @@ export default function RoomCalcSheet({
   } | null>(null);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
+  /** 行のつかみ移動（ドラッグ中の行と、今落とそうとしている行） */
+  const [dragRow, setDragRow] = useState<{
+    setId: string;
+    index: number;
+  } | null>(null);
+  const [dropAt, setDropAt] = useState<{
+    setId: string;
+    index: number;
+  } | null>(null);
   /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
   const lastColumn = useRef<number | null>(null);
   /** 最後にカーソルがあった表の行（通し番号）。ボタンを押しても残るので、行追加・行挿入の先に使う */
@@ -782,6 +797,33 @@ export default function RoomCalcSheet({
     },
     [commit, onFocus, sets],
   );
+
+  // 行をつかんで落とした先（明細のある行）の手前へ移す
+  const dropDetail = useCallback(
+    (targetSetId: string, targetIndex: number): void => {
+      if (!dragRow) return;
+      const moved = moveDetailTo(
+        sets,
+        dragRow.setId,
+        dragRow.index,
+        targetSetId,
+        targetIndex,
+      );
+      setDragRow(null);
+      setDropAt(null);
+      if (!moved) return;
+      commit(moved.sets);
+      onFocus({ setId: moved.setId, area: "detail", index: moved.index });
+    },
+    [commit, dragRow, onFocus, sets],
+  );
+
+  // ※行（見出し）へ落としたときは、そのすぐ下のセットの先頭に入れる
+  const dropTargetUnderBanner = (set: CalcSet): CalcSet | null => {
+    const at = sets.findIndex((item) => item.id === set.id);
+    if (at < 0) return null;
+    return sets.slice(at).find((item) => !isCommentSet(item)) ?? null;
+  };
 
   // 明細・計算式の欄へカーソルを移したら、コメント行のカーソルは外す
   useEffect(() => {
@@ -1959,6 +2001,18 @@ export default function RoomCalcSheet({
                       }
                       shiftClicking.current = false;
                     }}
+                    onDragOver={(e) => {
+                      if (!dragRow) return;
+                      const target = dropTargetUnderBanner(set);
+                      if (!target) return;
+                      e.preventDefault();
+                      setDropAt({ setId: target.id, index: 0 });
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const target = dropTargetUnderBanner(set);
+                      if (target) dropDetail(target.id, 0);
+                    }}
                   >
                     <td
                       className="banner-left"
@@ -2040,6 +2094,11 @@ export default function RoomCalcSheet({
                         callRow.index === rowIndex
                           ? "call-row"
                           : "",
+                        dropAt &&
+                        dropAt.setId === set.id &&
+                        dropAt.index === rowIndex
+                          ? "drop-target"
+                          : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
@@ -2055,6 +2114,15 @@ export default function RoomCalcSheet({
                           setRangeEnd(null);
                         }
                         shiftClicking.current = false;
+                      }}
+                      onDragOver={(e) => {
+                        if (!dragRow || !detail) return;
+                        e.preventDefault();
+                        setDropAt({ setId: set.id, index: rowIndex });
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        dropDetail(set.id, rowIndex);
                       }}
                     >
                       <td className="set-part">
@@ -2474,6 +2542,25 @@ export default function RoomCalcSheet({
                       <td className="ops">
                         {detail && (
                           <>
+                            <span
+                              className="grip"
+                              title="つかんで移動：移したい行へドラッグします（落とした行の手前に入ります）"
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", "");
+                                setDragRow({
+                                  setId: set.id,
+                                  index: rowIndex,
+                                });
+                              }}
+                              onDragEnd={() => {
+                                setDragRow(null);
+                                setDropAt(null);
+                              }}
+                            >
+                              ⠿
+                            </span>
                             <button
                               type="button"
                               title="この明細を1つ上へ移動します（先頭では前のセットの最後へ）"

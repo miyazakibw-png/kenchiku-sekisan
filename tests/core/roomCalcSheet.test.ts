@@ -5,6 +5,7 @@ import {
   addSetRow,
   canMoveRowAcross,
   moveDetailAcrossSets,
+  moveDetailTo,
   moveSetDetail,
   removeSetDetail,
   calcDetail,
@@ -453,6 +454,51 @@ describe("行の追加と削除", () => {
     expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
     // 計算式は動かないので、足した明細に合わせて末に空の計算式行が足される
     expect(moved?.sets[0].lines.map((l) => l.formulaA)).toEqual(["1", ""]);
+  });
+
+  it("つかんで動かすと移し先の行の手前に入る（同じセット）", () => {
+    const set = calcSet(4);
+    set.details = ["A", "B", "C", "D"].map((name) => calcDetail({ name }));
+    const down = moveDetailTo([set], set.id, 0, set.id, 3);
+    expect(down?.sets[0].details.map((d) => d.name)).toEqual([
+      "B",
+      "C",
+      "A",
+      "D",
+    ]);
+    expect(down?.index).toBe(2);
+    const up = moveDetailTo(down!.sets, set.id, 2, set.id, 0);
+    expect(up?.sets[0].details.map((d) => d.name)).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+    // 同じ行・直下行へ落としても動かない
+    expect(moveDetailTo(up!.sets, set.id, 0, set.id, 0)).toBeNull();
+    expect(moveDetailTo(up!.sets, set.id, 0, set.id, 1)).toBeNull();
+  });
+
+  it("つかんで別のセットへ動かすと手前に入り、出た側が空行だけなら消す", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(2);
+    second.details = [
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    const moved = moveDetailTo([first, second], first.id, 0, second.id, 1);
+    expect(moved?.sets).toHaveLength(1);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual([
+      "壁",
+      "床",
+      "天井",
+    ]);
+    expect(moved?.setId).toBe(second.id);
+    expect(moved?.index).toBe(1);
+    // ※行へは落とせない
+    const comment = commentSet("※ 見出し", "#dcfce7");
+    expect(moveDetailTo([second, comment], second.id, 0, comment.id, 0)).toBeNull();
   });
 
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {

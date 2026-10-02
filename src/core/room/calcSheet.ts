@@ -434,6 +434,68 @@ export function moveDetailAcrossSets(
   };
 }
 
+/**
+ * 明細をドラッグで別の行の位置へ移す（移し先の行の「手前」に入る）。
+ * 計算式の行は動かさない（↑↓移動と同じ考え方）。
+ * 動かしたあとの明細の位置（セットID・行番号）を返す。動かせない・位置が変わらないときは null。
+ */
+export function moveDetailTo(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+  targetSetId: string,
+  targetIndex: number,
+): { sets: CalcSet[]; setId: string; index: number } | null {
+  const at = sets.findIndex((set) => set.id === setId);
+  const to = sets.findIndex((set) => set.id === targetSetId);
+  if (at < 0 || to < 0) return null;
+  const set = sets[at];
+  const target = sets[to];
+  if (
+    isCommentSet(target) ||
+    index < 0 ||
+    index >= set.details.length ||
+    targetIndex < 0
+  )
+    return null;
+  const detail = set.details[index];
+  if (at === to) {
+    const details = set.details.filter((_, n) => n !== index);
+    const clamped = Math.min(targetIndex, set.details.length - 1);
+    // 下へ動かすときは、抜いた分だけ移し先が1つ前にずれる
+    const insertAt = index < clamped ? clamped - 1 : clamped;
+    details.splice(insertAt, 0, detail);
+    if (details.every((item, n) => item === set.details[n])) return null;
+    return {
+      sets: sets.map((item, n) =>
+        n === at
+          ? { ...item, details, lines: padLines(details, item.lines) }
+          : item,
+      ),
+      setId,
+      index: insertAt,
+    };
+  }
+  const source = removeSetDetail(set, index);
+  const details = [...target.details];
+  const insertAt = Math.min(targetIndex, details.length);
+  details.splice(insertAt, 0, detail);
+  const next = sets.map((item, n) => {
+    if (n === at) return source;
+    if (n !== to) return item;
+    return { ...item, details, lines: padLines(details, item.lines) };
+  });
+  // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
+  const cleaned = next.filter(
+    (item, n) =>
+      n !== at ||
+      item.details.length > 0 ||
+      item.banner != null ||
+      item.lines.some((line) => !isEmptyLine(line)),
+  );
+  return { sets: cleaned, setId: targetSetId, index: insertAt };
+}
+
 /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
 export function openSetDetail(set: CalcSet, index: number): CalcSet {
   const details = [...set.details];
