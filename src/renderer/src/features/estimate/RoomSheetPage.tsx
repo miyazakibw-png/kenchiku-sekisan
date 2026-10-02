@@ -531,6 +531,8 @@ export default function RoomSheetPage({
   const [showCorners, setShowCorners] = useState(
     () => window.localStorage.getItem(CORNERS_KEY) === "1",
   );
+  /** 「○角移動」ONのときだけ○印をつかんで角を動かせる（OFFでは押しても選択だけ） */
+  const [cornerMove, setCornerMove] = useState(false);
   /** 図形の戻る・進む用（1操作ごとの形を覚えておく） */
   const [shapePast, setShapePast] = useState<RoomShape[]>([]);
   const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
@@ -1620,6 +1622,11 @@ export default function RoomSheetPage({
     if (freeDraw !== null || beamDraw !== null) return;
     // Ctrl/Shift＋クリックは複数選択の切り替えなので、つかみ移動は始めない
     if (event.ctrlKey || event.metaKey || event.shiftKey) return;
+    // 「○角移動」がOFFのときは押しても選択だけ。下敷きの移動に渡らないようここで止める
+    if (!cornerMove) {
+      event.stopPropagation();
+      return;
+    }
     const origin = solved.points[index];
     if (origin === undefined) return;
     // 複数選択に入っている角をつかんだら全員いっしょに動かす
@@ -3428,13 +3435,31 @@ export default function RoomSheetPage({
               title="角の○印を出す／消す（形が決まったら消せます）"
               onClick={() => {
                 const next = !showCorners;
-                if (!next) pickCorners([]);
+                if (!next) {
+                  pickCorners([]);
+                  setCornerMove(false);
+                  cornerDragRef.current = null;
+                }
                 setShowCorners(next);
                 window.localStorage.setItem(CORNERS_KEY, next ? "1" : "0");
               }}
             >
               {showCorners ? "○角を消す" : "○角を出す"}
             </button>
+            {showCorners && (
+              <button
+                type="button"
+                className={cornerMove ? "on" : ""}
+                title="○印をつかんで角を動かせるようにする（もう一度押すと止めます）"
+                onClick={() => {
+                  const next = !cornerMove;
+                  if (!next) cornerDragRef.current = null;
+                  setCornerMove(next);
+                }}
+              >
+                {cornerMove ? "○角移動をやめる" : "○角移動"}
+              </button>
+            )}
           </div>
           <div
             className={
