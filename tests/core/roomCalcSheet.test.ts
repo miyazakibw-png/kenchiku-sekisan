@@ -19,6 +19,7 @@ import {
   isCommentSet,
   mergeWithPreviousSet,
   nextBSymbol,
+  normalizeSets,
   openSetDetail,
   padLines,
   partOfSet,
@@ -512,6 +513,32 @@ describe("行の追加と削除", () => {
     const moved = moveDetailTo([first, second], second.id, 0, first.id, 1);
     expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
     expect(moved?.index).toBe(1);
+  });
+
+  it("明細を出したあと末尾に余った空の計算式行は詰める", () => {
+    const first = calcSet(2);
+    first.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "天井" })];
+    const moved = moveDetailAcrossSets([first, second], first.id, 1, 1);
+    // 出た側は明細1件なので計算式行も1行にそろう（使えない空行が残らない）
+    expect(moved?.sets[0].details).toHaveLength(1);
+    expect(moved?.sets[0].lines).toHaveLength(1);
+  });
+
+  it("読み込み時に明細より多い末尾の空の計算式行は詰める", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine(), calcLine(), calcLine()];
+    const next = normalizeSets([set]);
+    expect(next[0].lines).toHaveLength(1);
+    // 式が入っている行は残し、その先の空行だけ詰める
+    const kept = calcSet(1);
+    kept.lines = [calcLine(), calcLine({ formulaA: "1" }), calcLine()];
+    expect(normalizeSets([kept])[0].lines.map((l) => l.formulaA)).toEqual([
+      "",
+      "1",
+    ]);
   });
 
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {

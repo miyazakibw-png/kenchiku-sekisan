@@ -254,16 +254,20 @@ export function calcSet(detailCount = 1): CalcSet {
  */
 export function normalizeSets(sets: CalcSet[]): CalcSet[] {
   return detachBanners(
-    sets.map((set) => ({
-      ...set,
-      id: set.id ?? newId("s"),
-      partNumber: set.partNumber ?? null,
-      partName: set.partName ?? "",
-      banner: set.banner ?? null,
-      assemblyId: set.assemblyId ?? null,
-      details: (set.details ?? []).map((detail) => calcDetail(detail)),
-      lines: (set.lines ?? []).map((line) => calcLine(line)),
-    })),
+    sets.map((set) => {
+      const details = (set.details ?? []).map((detail) => calcDetail(detail));
+      const lines = (set.lines ?? []).map((line) => calcLine(line));
+      return {
+        ...set,
+        id: set.id ?? newId("s"),
+        partNumber: set.partNumber ?? null,
+        partName: set.partName ?? "",
+        banner: set.banner ?? null,
+        assemblyId: set.assemblyId ?? null,
+        details,
+        lines: syncLines(details, lines),
+      };
+    }),
   );
 }
 
@@ -343,7 +347,8 @@ export function removeSetRow(set: CalcSet, index: number): CalcSet {
 /** 明細を1件だけ消す（計算式の行は残して動かさない） */
 export function removeSetDetail(set: CalcSet, index: number): CalcSet {
   const details = set.details.filter((_, rowIndex) => rowIndex !== index);
-  return { ...set, details, lines: padLines(details, set.lines) };
+  // 明細が減った分、末尾に余った空の計算式行は詰める（空行が残らないように）
+  return { ...set, details, lines: syncLines(details, set.lines) };
 }
 
 /** 明細を上下に入れ替える（計算式の行は動かさない） */
@@ -417,7 +422,7 @@ export function moveDetailAcrossSets(
     if (n !== targetIndex) return item;
     const details =
       step < 0 ? [...item.details, detail] : [detail, ...item.details];
-    return { ...item, details, lines: padLines(details, item.lines) };
+    return { ...item, details, lines: syncLines(details, item.lines) };
   });
   // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
   const cleaned = next.filter(
@@ -469,7 +474,7 @@ export function moveDetailTo(
     return {
       sets: sets.map((item, n) =>
         n === at
-          ? { ...item, details, lines: padLines(details, item.lines) }
+          ? { ...item, details, lines: syncLines(details, item.lines) }
           : item,
       ),
       setId,
@@ -483,7 +488,7 @@ export function moveDetailTo(
   const next = sets.map((item, n) => {
     if (n === at) return source;
     if (n !== to) return item;
-    return { ...item, details, lines: padLines(details, item.lines) };
+    return { ...item, details, lines: syncLines(details, item.lines) };
   });
   // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
   const cleaned = next.filter(
