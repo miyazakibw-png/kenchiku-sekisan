@@ -41,7 +41,9 @@ export function lowerTemplateFrom(sets: readonly CalcSet[]): CalcSet[] {
   const template: CalcSet[] = [];
   sets.forEach((set) => {
     if (set.banner != null)
-      template.push(commentSet(set.banner.text, set.banner.color));
+      template.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
     if (isCommentSet(set)) return;
     const blank = calcSet(1);
     template.push({

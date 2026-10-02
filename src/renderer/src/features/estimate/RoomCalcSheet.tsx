@@ -1222,6 +1222,7 @@ export default function RoomCalcSheet({
           at: details.length,
           text: set.banner?.text ?? "",
           color: set.banner?.color ?? "#e2e8f0",
+          text2: set.banner?.text2,
         });
         lastSetId = "";
         return;
@@ -1961,17 +1962,41 @@ export default function RoomCalcSheet({
                     }}
                   >
                     <td
-                      colSpan={CALC_COLUMNS.length}
+                      className="banner-left"
+                      colSpan={12}
                       style={{ background: set.banner.color }}
                     >
                       <input
                         lang="ja"
+                        title="見出しの文字"
                         value={set.banner.text}
                         onFocus={() => setBannerSetId(set.id)}
                         onChange={(e) =>
                           updateSet(set.id, {
                             banner: {
                               text: e.target.value,
+                              text2: set.banner?.text2,
+                              color: set.banner?.color ?? "#e2e8f0",
+                            },
+                          })
+                        }
+                      />
+                    </td>
+                    <td
+                      className="banner-right"
+                      colSpan={CALC_COLUMNS.length - 12}
+                      style={{ background: set.banner.color }}
+                    >
+                      <input
+                        lang="ja"
+                        title="コメント列の位置から書く文字"
+                        value={set.banner.text2 ?? ""}
+                        onFocus={() => setBannerSetId(set.id)}
+                        onChange={(e) =>
+                          updateSet(set.id, {
+                            banner: {
+                              text: set.banner?.text ?? "",
+                              text2: e.target.value,
                               color: set.banner?.color ?? "#e2e8f0",
                             },
                           })

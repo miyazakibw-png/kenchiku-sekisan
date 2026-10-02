@@ -80,7 +80,8 @@ function DetailRow({ row }: { row: CalcPrintRow }): JSX.Element {
         className={`banner${boundary}`}
         style={{ background: row.banner.color }}
       >
-        <td colSpan={CALC_PRINT_COLUMNS.length}>{row.banner.text}</td>
+        <td colSpan={12}>{row.banner.text}</td>
+        <td colSpan={CALC_PRINT_COLUMNS.length - 12}>{row.banner.text2}</td>
       </tr>
     );
   return (

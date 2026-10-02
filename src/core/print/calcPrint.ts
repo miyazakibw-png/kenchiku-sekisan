@@ -9,7 +9,7 @@ import {
 /** 計算書（下段）の印刷1行。画面の並びのまま、文字にしてから紙へ出す */
 export interface CalcPrintRow {
   /** 見出し（※行）のときは色付きの1行として出す */
-  banner: { text: string; color: string } | null;
+  banner: { text: string; text2?: string; color: string } | null;
   /** そのセットのいちばん上の行（画面と同じく太線の区切りを入れる） */
   setTop: boolean;
   /** そのセットのいちばん下の行 */
@@ -100,7 +100,11 @@ export function calcPrintRows(
     if (set.banner) {
       rows.push({
         ...emptyRow(),
-        banner: { text: set.banner.text, color: set.banner.color },
+        banner: {
+          text: set.banner.text,
+          text2: set.banner.text2,
+          color: set.banner.color,
+        },
       });
     }
     const count = setRowCount(set);

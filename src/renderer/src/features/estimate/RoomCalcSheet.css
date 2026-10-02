@@ -493,12 +493,20 @@
 }
 
 .room-calc-sheet tr.banner-row input {
-  width: calc(100% - 26px);
   vertical-align: middle;
   background: transparent;
   border: none;
   font: inherit;
   padding: 1px 2px;
+}
+
+/* 左の入力は部位合計欄まで、右の入力はコメント列から（消すボタンの分だけ短く） */
+.room-calc-sheet tr.banner-row td.banner-left input {
+  width: calc(100% - 4px);
+}
+
+.room-calc-sheet tr.banner-row td.banner-right input {
+  width: calc(100% - 26px);
 }
 
 .room-calc-sheet tr.banner-row button {

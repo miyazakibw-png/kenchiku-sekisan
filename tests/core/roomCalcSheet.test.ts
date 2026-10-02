@@ -372,6 +372,21 @@ describe("行の追加と削除", () => {
     expect(next[1].partName).toBe("壁");
   });
 
+  it("※行の2つ目の文字（コメント列）は独立した行にも残る", () => {
+    const host = calcSet(1);
+    host.partName = "壁";
+    host.details = [calcDetail({ name: "壁" })];
+    host.banner = {
+      text: "※ 見出し",
+      text2: "手洗い部",
+      color: "#dcfce7",
+    };
+    const next = detachBanners([host]);
+    expect(next.length).toBe(2);
+    expect(next[0].banner?.text2).toBe("手洗い部");
+    expect(next[1].banner).toBeNull();
+  });
+
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {
     const banner = commentSet("※ 見出し", "#dcfce7");
     const stray = { ...banner, lines: [calcLine()] };

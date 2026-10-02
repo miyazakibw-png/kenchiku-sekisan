@@ -41,6 +41,8 @@ export interface CalcLine {
 /** セットの上に出す見出し行（目印。色を付けて部位のまとまりを見やすくする） */
 export interface CalcBanner {
   text: string;
+  /** コメント列の位置から書く2つ目の文字（入っていれば出す） */
+  text2?: string;
   /** CSS の色（画面で選んだ登録色） */
   color: string;
 }
@@ -162,14 +164,18 @@ export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
 }
 
 /** コメント行（明細を持たない、色付きの1行だけのセット） */
-export function commentSet(text: string, color: string): CalcSet {
+export function commentSet(
+  text: string,
+  color: string,
+  text2?: string,
+): CalcSet {
   return {
     id: newId("s"),
     partNumber: null,
     partName: "",
     details: [],
     lines: [],
-    banner: { text, color },
+    banner: { text, text2, color },
     assemblyId: null,
   };
 }
@@ -196,7 +202,9 @@ export function detachBanners(sets: CalcSet[]): CalcSet[] {
         ? { ...item, lines: [] }
         : item;
     if (set.banner != null && !isCommentSet(set)) {
-      next.push(commentSet(set.banner.text, set.banner.color));
+      next.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
       next.push({ ...set, banner: null });
       return;
     }
@@ -476,7 +484,9 @@ export function removeSet(sets: CalcSet[], setId: string): CalcSet[] {
     }
     if (isCommentSet(set)) return;
     if (set.banner != null)
-      next.push(commentSet(set.banner.text, set.banner.color));
+      next.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
   });
   return next;
 }
@@ -505,7 +515,13 @@ export function mergeWithPreviousSet(
     at,
     1,
     ...(target.banner != null
-      ? [commentSet(target.banner.text, target.banner.color)]
+      ? [
+          commentSet(
+            target.banner.text,
+            target.banner.color,
+            target.banner.text2,
+          ),
+        ]
       : []),
   );
   next[previousAt] = merged;
