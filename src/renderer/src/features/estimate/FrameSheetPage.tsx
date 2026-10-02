@@ -58,9 +58,7 @@ import { computeFitting } from "../../../../core/fittings/fitting";
 import { bareSymbolVariables } from "../../../../core/aggregate/variables";
 import {
   DEFAULT_FITTING_PART_VALUES,
-  fittingKindForPart,
-  fittingSuffix,
-  fittingSymbolForPart,
+  fittingPartVariables,
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
@@ -773,21 +771,16 @@ export default function FrameSheetPage({
 
   /** <AW1> だけのときは、そのセットの部位に合った数値を採る */
   const partFittingVariables = useCallback(
-    (set: CalcSet): Record<string, number> => {
-      const kind = fittingKindForPart(set.partName, partValues, set.partNumber);
-      const suffix = fittingSuffix(kind);
+    (set: CalcSet): Record<string, number> => ({
       // 部位が補強のセットでは <X1> などで補強長さを採る
-      const values: Record<string, number> = linePartVariables(
-        symbols,
-        set.partName,
-      );
-      if (suffix === "") return values;
-      fittings.forEach((fitting) => {
-        const value = calcVariables[`<${fitting.symbol}${suffix}>`];
-        if (value !== undefined) values[`<${fitting.symbol}>`] = value;
-      });
-      return values;
-    },
+      ...linePartVariables(symbols, set.partName),
+      ...fittingPartVariables(
+        set,
+        fittings.map((fitting) => fitting.symbol),
+        calcVariables,
+        partValues,
+      ),
+    }),
     [calcVariables, fittings, partValues, symbols],
   );
 
@@ -1763,20 +1756,12 @@ export default function FrameSheetPage({
     [calcFocus],
   );
 
-  /** 建具表クリック：入れる先のセットの部位に合わせて採る数値を変える */
+  /** 建具表クリック：&lt;記号&gt; のみを入れる（採る数値はセットの部位で決まる） */
   const insertFittingSymbol = useCallback(
     (symbol: string) => {
-      const set = lower.find((each) => each.id === calcFocus?.setId);
-      useSymbol(
-        fittingSymbolForPart(
-          symbol,
-          set?.partName ?? "",
-          partValues,
-          set?.partNumber ?? null,
-        ),
-      );
+      useSymbol(`<${symbol}>`);
     },
-    [calcFocus, lower, partValues, useSymbol],
+    [useSymbol],
   );
 
   /** 既に注意した誤りの内容（同じ誤りのまま2回目を押したら閉じる） */

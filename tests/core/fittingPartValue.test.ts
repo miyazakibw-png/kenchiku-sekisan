@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FITTING_PART_VALUES,
   fittingKindForPart,
+  fittingPartVariables,
   fittingSuffix,
   fittingSymbolForPart,
   parseFittingPartValues,
@@ -64,5 +65,48 @@ describe("建具記号の部位ごとの採用値", () => {
     expect(fittingKindForPart("補強", DEFAULT_FITTING_PART_VALUES, 999)).toBe(
       "reinforcement",
     );
+  });
+});
+
+describe("式に <記号> だけ書いたときの採用値（画面と集計で共通）", () => {
+  const variables = {
+    "<SD1>": 1.79,
+    "<SD1:HL>": 0.85,
+    "<SD1:RF>": 5.05,
+    "<SD1:W>": 0.85,
+  };
+  const symbols = ["SD1"];
+
+  it("補強のセットでは <記号> が軸組横補強を指す", () => {
+    expect(
+      fittingPartVariables(
+        { partName: "補強", partNumber: null },
+        symbols,
+        variables,
+        DEFAULT_FITTING_PART_VALUES,
+      ),
+    ).toEqual({ "<SD1>": 5.05 });
+  });
+
+  it("巾木のセットでは <記号> が巾木減を指す", () => {
+    expect(
+      fittingPartVariables(
+        { partName: "巾木", partNumber: null },
+        symbols,
+        variables,
+        DEFAULT_FITTING_PART_VALUES,
+      ),
+    ).toEqual({ "<SD1>": 0.85 });
+  });
+
+  it("面積を採る部位では上書きしない（<記号> は面積のまま）", () => {
+    expect(
+      fittingPartVariables(
+        { partName: "壁", partNumber: null },
+        symbols,
+        variables,
+        DEFAULT_FITTING_PART_VALUES,
+      ),
+    ).toEqual({});
   });
 });

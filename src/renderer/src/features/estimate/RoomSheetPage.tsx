@@ -109,9 +109,7 @@ import { computeFitting } from "../../../../core/fittings/fitting";
 import { evaluateFormula } from "../../../../core/formula/evaluate";
 import {
   DEFAULT_FITTING_PART_VALUES,
-  fittingKindForPart,
-  fittingSuffix,
-  fittingSymbolForPart,
+  fittingPartVariables,
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
 import { formatNumber } from "./estimateRows";
@@ -1894,17 +1892,13 @@ export default function RoomSheetPage({
    * 例：巾木のセットは巾木減、補強のセットは軸組横補強。
    */
   const partFittingVariables = useCallback(
-    (set: CalcSet): Record<string, number> => {
-      const kind = fittingKindForPart(set.partName, partValues, set.partNumber);
-      const suffix = fittingSuffix(kind);
-      if (suffix === "") return {};
-      const values: Record<string, number> = {};
-      fittings.forEach((fitting) => {
-        const value = calcVariables[`<${fitting.symbol}${suffix}>`];
-        if (value !== undefined) values[`<${fitting.symbol}>`] = value;
-      });
-      return values;
-    },
+    (set: CalcSet): Record<string, number> =>
+      fittingPartVariables(
+        set,
+        fittings.map((fitting) => fitting.symbol),
+        calcVariables,
+        partValues,
+      ),
     [calcVariables, fittings, partValues],
   );
 
@@ -1943,22 +1937,14 @@ export default function RoomSheetPage({
   );
 
   /**
-   * 建具表クリック：入れる先のセットの部位に合わせて採る数値を変える。
-   * 例：壁＝面積 &lt;AW1&gt;／巾木＝巾木減 &lt;AW1:HL&gt;／補強＝軸組横補強 &lt;AW1:RF&gt;
+   * 建具表クリック：&lt;記号&gt; のみを入れる。
+   * 採る数値はセットの部位で決まる（部位別の採用値設定）。
    */
   const insertFittingSymbol = useCallback(
     (symbol: string) => {
-      const set = lower.find((each) => each.id === calcFocus?.setId);
-      useSymbol(
-        fittingSymbolForPart(
-          symbol,
-          set?.partName ?? "",
-          partValues,
-          set?.partNumber ?? null,
-        ),
-      );
+      useSymbol(`<${symbol}>`);
     },
-    [calcFocus, lower, partValues, useSymbol],
+    [useSymbol],
   );
 
   /** 画面を閉じるとき、式の誤りがあれば注意して該当箇所へ飛ぶ */

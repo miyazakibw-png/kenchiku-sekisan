@@ -62,7 +62,8 @@ import {
 } from "../../core/fireproof/fireproofEstimate";
 import { normalizeFloorList } from "../../core/fireproof/fireproofList";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
-import { listFittings } from "./fittingService";
+import { getFittingPartValues, listFittings } from "./fittingService";
+import { fittingPartVariables } from "../../core/fittings/partValue";
 import {
   listProjectBasicMasters,
   listProjectSubjects,
@@ -493,6 +494,9 @@ function evaluateRowSheets(
     .all();
 
   const deductionLimit = getDeductionLimit(db);
+  // 建具記号を <記号> だけ書いたとき、セットの部位が採る数値（画面と同じ採り方）
+  const partValues = getFittingPartValues(db);
+  const fittingSymbols = fittings.map((fitting) => fitting.symbol);
 
   const rows = db
     .select()
@@ -676,9 +680,15 @@ function evaluateRowSheets(
       evaluations.push({
         context,
         sets,
-        result: evaluateCalcSheet(sets, variables, (set) =>
-          linePartVariables(symbols, set.partName),
-        ),
+        result: evaluateCalcSheet(sets, variables, (set) => ({
+          ...linePartVariables(symbols, set.partName),
+          ...fittingPartVariables(
+            set,
+            fittingSymbols,
+            variables,
+            partValues,
+          ),
+        })),
         shapeError: null,
       });
       return;
@@ -736,11 +746,24 @@ function evaluateRowSheets(
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];
     // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
-    const variables = withFixedRoomSymbols(calcVariables(symbols, fittings));
+    // <記号:RF> は部屋計算書では建具表の軸組横補強（施工高さを掛けない。画面と同じ採り方）
+    const variables = withFixedRoomSymbols({
+      ...calcVariables(symbols, fittings),
+      ...Object.fromEntries(
+        fittings.flatMap((fitting) => {
+          const reinforcement = computeFitting(fitting).reinforcement;
+          return reinforcement === null
+            ? []
+            : [[`<${fitting.symbol}:RF>`, reinforcement]];
+        }),
+      ),
+    });
     evaluations.push({
       context,
       sets,
-      result: evaluateCalcSheet(sets, variables),
+      result: evaluateCalcSheet(sets, variables, (set) =>
+        fittingPartVariables(set, fittingSymbols, variables, partValues),
+      ),
       // 形が決まらない部屋は壁・床の数量が出ない（画面では寸法欄が点滅する）
       shapeError:
         solved.error !== null

@@ -12,6 +12,7 @@ import {
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
 import { saveTransferRows } from "../../src/main/services/transferRowService";
+import { saveFittings } from "../../src/main/services/fittingService";
 import {
   buildProjectMasters,
   collectEstimateRowChecks,
@@ -222,6 +223,55 @@ describe("集計処理", () => {
 
     const view = runAggregation(db, projectId);
     expect(view.items[0].quantity).toBe(3.82);
+  });
+
+  it("補強のセットで <記号> だけ書いた計算式は軸組横補強を採る（画面と同じ）", () => {
+    // 建具 SD1（W0.85・H2.10・腰高なし）：面積1.79・軸組横補強0.85
+    saveFittings(db, {
+      projectId,
+      rows: [
+        {
+          id: null,
+          symbol: "SD1",
+          name: "",
+          width: 0.85,
+          height: 2.1,
+          sillHeight: null,
+          widthFormula: "",
+          heightFormula: "",
+          sillHeightFormula: "",
+          areaFormula: "",
+          baseboardFormula: "",
+          reinforcementFormula: "",
+          note: "",
+          fromEstimate: 0,
+        },
+      ],
+    });
+    addRoom("事務室", 1, 1);
+    const row = drafts[drafts.length - 1];
+    const sheet = getRoomSheet(db, row.id as number);
+    const lower = JSON.parse(lowerJson(1)) as {
+      partName: string;
+      lines: unknown[];
+    }[];
+    lower[0].partName = "補強";
+    lower[0].lines = [
+      { id: "l1", formulaA: "<SD1>", formulaB: "", comment: "", bSymbol: "" },
+    ];
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(lower),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    const view = runAggregation(db, projectId);
+    // 部位が「補強」なので <SD1> は面積1.79ではなく軸組横補強0.85を採る
+    expect(view.items[0].quantity).toBe(0.85);
   });
 
   it("部位別入力表のチェック列は行ごとに部位別の名称と数量を返す", () => {
