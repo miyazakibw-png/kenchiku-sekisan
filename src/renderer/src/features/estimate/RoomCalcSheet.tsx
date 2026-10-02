@@ -323,6 +323,7 @@ export default function RoomCalcSheet({
   const [dropAt, setDropAt] = useState<{
     setId: string;
     index: number;
+    bannerSetId?: string;
   } | null>(null);
   /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
   const lastColumn = useRef<number | null>(null);
@@ -818,11 +819,14 @@ export default function RoomCalcSheet({
     [commit, dragRow, onFocus, sets],
   );
 
-  // ※行（見出し）へ落としたときは、そのすぐ下のセットの先頭に入れる
-  const dropTargetUnderBanner = (set: CalcSet): CalcSet | null => {
+  // ※行（見出し）へ落としたときは、その上の行（前のセットの最後）に入れる
+  const dropTargetAboveBanner = (
+    set: CalcSet,
+  ): { set: CalcSet; index: number } | null => {
     const at = sets.findIndex((item) => item.id === set.id);
     if (at < 0) return null;
-    return sets.slice(at).find((item) => !isCommentSet(item)) ?? null;
+    const target = sets.slice(0, at).findLast((item) => !isCommentSet(item));
+    return target ? { set: target, index: target.details.length } : null;
   };
 
   // 明細・計算式の欄へカーソルを移したら、コメント行のカーソルは外す
@@ -1988,7 +1992,7 @@ export default function RoomCalcSheet({
                   <tr
                     className={`banner-row${
                       isSelectedRow(set.id, 0) ? " row-selected" : ""
-                    }`}
+                    }${dropAt?.bannerSetId === set.id ? " drop-target" : ""}`}
                     onMouseDownCapture={(e) => {
                       shiftClicking.current = e.shiftKey;
                     }}
@@ -2003,15 +2007,19 @@ export default function RoomCalcSheet({
                     }}
                     onDragOver={(e) => {
                       if (!dragRow) return;
-                      const target = dropTargetUnderBanner(set);
+                      const target = dropTargetAboveBanner(set);
                       if (!target) return;
                       e.preventDefault();
-                      setDropAt({ setId: target.id, index: 0 });
+                      setDropAt({
+                        setId: target.set.id,
+                        index: target.index,
+                        bannerSetId: set.id,
+                      });
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
-                      const target = dropTargetUnderBanner(set);
-                      if (target) dropDetail(target.id, 0);
+                      const target = dropTargetAboveBanner(set);
+                      if (target) dropDetail(target.set.id, target.index);
                     }}
                   >
                     <td
@@ -2544,7 +2552,7 @@ export default function RoomCalcSheet({
                           <>
                             <span
                               className="grip"
-                              title="つかんで移動：移したい行へドラッグします（落とした行の手前に入ります）"
+                              title="つかんで移動：移したい行へドラッグします（落とした行の上に入ります）"
                               draggable
                               onDragStart={(e) => {
                                 e.dataTransfer.effectAllowed = "move";

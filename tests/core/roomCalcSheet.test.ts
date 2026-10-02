@@ -501,6 +501,19 @@ describe("行の追加と削除", () => {
     expect(moveDetailTo([second, comment], second.id, 0, comment.id, 0)).toBeNull();
   });
 
+  it("つかんでセットの最後へ動かすと末に足す（※行の上に入るときと同じ）", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(2);
+    second.details = [
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    const moved = moveDetailTo([first, second], second.id, 0, first.id, 1);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
+    expect(moved?.index).toBe(1);
+  });
+
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {
     const banner = commentSet("※ 見出し", "#dcfce7");
     const stray = { ...banner, lines: [calcLine()] };
