@@ -982,6 +982,8 @@ export interface RoomQuantities {
   wallLength: number;
   /** CL 柱長さ */
   columnLength: number;
+  /** DCL 独立柱長さ（部屋の中に置いた柱の周長合計。CLにも足されている） */
+  freeColumnLength: number;
   /** HL 巾木長さ（直線の壁＋柱－その建具の巾木減。曲面壁の分は除く） */
   baseboardLength: number;
   /** RHL 曲面壁の長さ（弧長－曲面にある建具の巾木減） */
@@ -1058,6 +1060,7 @@ export function roomQuantities(
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
     wallLength: round2(totals.wall + freeWall.perimeter),
     columnLength: column,
+    freeColumnLength: free.perimeter,
     baseboardLength: round2(
       totals.wall +
         freeWall.perimeter -
@@ -1152,12 +1155,23 @@ export function roomSymbols(
     edgeHeights,
   );
   const hasCurve = solved.edges.some((row) => row.kind === "curve");
+  // 独立柱がある部屋では DCL（独立柱長さ）を CL の次に出す（壁にした柱は入れない）
+  const hasFreeColumns = solved.columns.some((row) => row.kind !== "wall");
   const symbols: RoomSymbol[] = [
     { symbol: "FA", label: "床面積", value: quantities.floorArea },
     { symbol: "CA", label: "天井面積", value: quantities.ceilingArea },
     { symbol: "CH", label: "天井高さ", value: ceilingHeight },
     { symbol: "WL", label: "壁長さ", value: quantities.wallLength },
     { symbol: "CL", label: "柱長さ", value: quantities.columnLength },
+    ...(hasFreeColumns
+      ? [
+          {
+            symbol: "DCL",
+            label: "独立柱 長さ",
+            value: quantities.freeColumnLength,
+          },
+        ]
+      : []),
     { symbol: "HL", label: "巾木長さ", value: quantities.baseboardLength },
     ...(hasCurve
       ? [

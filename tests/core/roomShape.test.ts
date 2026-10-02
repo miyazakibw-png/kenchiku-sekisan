@@ -919,6 +919,16 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(symbols.find((row) => row.symbol === "HDA1")?.value).toBe(6);
     expect(symbols.find((row) => row.symbol === "HDA2")?.value).toBe(6.5);
     expect(symbols.find((row) => row.symbol === "HA")?.value).toBe(0);
+    // 独立柱がある部屋は柱長さの次に独立柱長さＤＣＬが出る（周長の合計5）
+    expect(symbols.findIndex((row) => row.symbol === "DCL")).toBe(
+      symbols.findIndex((row) => row.symbol === "CL") + 1,
+    );
+    expect(symbols.find((row) => row.symbol === "DCL")?.value).toBe(5);
+  });
+
+  it("独立柱が無い部屋ではＤＣＬは出ない", () => {
+    const symbols = roomSymbols(solveShape(rectangleShape(6, 4)), 2.5);
+    expect(symbols.find((row) => row.symbol === "DCL")).toBeUndefined();
   });
 
   it("壁にした独立柱は周長・見付を壁側（ＷＬ・ＷＡ・ＨＬ・ＭＬ）に数える", () => {
@@ -936,6 +946,8 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(quantities.columnLength).toBe(2.4);
     expect(quantities.columnArea).toBe(0);
     expect(quantities.freeColumnArea).toBe(6);
+    // ＤＣＬも柱種の柱だけ（壁種は入れない）
+    expect(quantities.freeColumnLength).toBe(2.4);
     expect(quantities.baseboardLength).toBe(24.2);
     expect(quantities.moldingLength).toBe(24.2);
   });
