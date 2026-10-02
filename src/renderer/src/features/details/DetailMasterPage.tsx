@@ -568,7 +568,7 @@ export default function DetailMasterPage({
         handleMove(index, index + 1);
       } else if (event.ctrlKey && event.key === "Enter") {
         event.preventDefault();
-        handleInsert(index + 1);
+        handleInsert(index);
       } else if (event.ctrlKey && event.key === "d") {
         event.preventDefault();
         handleCopy(index);
@@ -691,10 +691,10 @@ export default function DetailMasterPage({
             {syncMessage && <span className="status">{syncMessage}</span>}
             <button
               type="button"
-              title="行挿入 (Ctrl+Enter)"
-              onClick={() => handleInsert(selectedIndex + 1)}
+              title="カーソル行の上に空行を入れます (Ctrl+Enter)"
+              onClick={() => handleInsert(selectedIndex)}
             >
-              ➕ 行挿入
+              ↑ 行挿入
             </button>
             <button
               type="button"
