@@ -939,6 +939,15 @@ export default function PitSheetPage({
         ),
       );
       setMessage(`${symbol} を計算式に入れました`);
+      // 入れたあと式の欄にカーソルを戻す（「-」→記号→「-」→記号と続けて打てるように）
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>(
+          `input[data-jump="${target.setId}|${target.area}|${target.index}"]`,
+        );
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }, 0);
     },
     [calcFocus],
   );
