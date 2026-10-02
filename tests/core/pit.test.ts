@@ -29,6 +29,7 @@ import {
   setPitPoints,
   placeTracedPit,
   retracePits,
+  syncPitDepths,
   followUnderlay,
   pitTotal,
   pitPartVariables,
@@ -1354,5 +1355,25 @@ describe("followUnderlay（下敷きの縮尺合わせ・移動に、なぞっ�
       { x: 0, y: 0, metersPerPixel: 0.02 },
     );
     expect(got).toEqual([traced]);
+  });
+});
+
+describe("深さと天井高さ（部位別入力表）", () => {
+  const pit = (id: string, depth: number, depthManual?: boolean) => ({
+    id,
+    symbol: "P1",
+    x: 2,
+    y: 2,
+    depth,
+    depthManual,
+    direction: "right" as const,
+    gap: 0.5,
+  });
+  it("手で書き換えていないピットの深さは天井高さにそろう", () => {
+    const pits = syncPitDepths(
+      [pit("a", 1), pit("b", 3, true), pit("c", 1.5)],
+      1.85,
+    );
+    expect(pits.map((each) => each.depth)).toEqual([1.85, 3, 1.85]);
   });
 });

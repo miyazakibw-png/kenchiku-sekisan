@@ -21,6 +21,8 @@ export interface PitShape {
   y: number;
   /** 深さ（天井高さと同じ考え方。ピットごとに変えられる） */
   depth: number;
+  /** 深さを手で書き換えた印。あると部位別入力表の天井高さに連動しない */
+  depthManual?: boolean;
   /** 前のピットから見てどちら側に置くか（1個目は使わない） */
   direction: PitDirection;
   /** 前のピットとのすき間 */
@@ -63,6 +65,21 @@ export interface PitShape {
   cutX?: number;
   /** 斜めのY方向の量（古いデータ用） */
   cutY?: number;
+}
+
+/**
+ * 深さを部位別入力表の天井高さにそろえる。
+ * 深さを手で書き換えたピット（depthManual）はそのままにする。
+ */
+export function syncPitDepths(
+  pits: readonly PitShape[],
+  ceilingHeight: number | null,
+): PitShape[] {
+  return pits.map((pit) =>
+    pit.depthManual === true || ceilingHeight === null
+      ? { ...pit }
+      : { ...pit, depth: ceilingHeight },
+  );
 }
 
 /** ピットの角。左上・右上・右下・左下 */

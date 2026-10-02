@@ -51,6 +51,7 @@ import {
   refitPitWalls,
   pitWallVariables,
   retracePits,
+  syncPitDepths,
   defaultPitSleeveKinds,
   groupLengthMm,
   PIT_WALL_SIZES,
@@ -570,15 +571,18 @@ export default function PitSheetPage({
       // なぞったピットは、保存されている「なぞった形」と下敷きの位置から置き直す
       // （位置が合っていれば変わらない。保存時の位置がずれていたときも図面に合わせて直る）
       const tracedShapes = parseTracedShapes(loaded.traceJson);
-      const repairedPits = retracePits(loadedPits, {
-        traced: tracedShapes,
-        underlay:
-          synced ??
-          nextUnderlays.find(
-            (item) => item.image !== "" && item.image === loadedTrace.image,
-          ) ??
-          tracedUnderlay,
-      });
+      const repairedPits = syncPitDepths(
+        retracePits(loadedPits, {
+          traced: tracedShapes,
+          underlay:
+            synced ??
+            nextUnderlays.find(
+              (item) => item.image !== "" && item.image === loadedTrace.image,
+            ) ??
+            tracedUnderlay,
+        }),
+        row.ceilingHeight,
+      );
       const underlayLocked = parseUnderlayLocked(loaded.traceJson);
       const scalePending = parseScalePending(loaded.traceJson);
       setTrace(loadedTrace);
@@ -610,6 +614,11 @@ export default function PitSheetPage({
       setOptions(await window.sekisan.getMasterOptions(project.id));
     })();
   }, [markSaved, pitWord, project.id, row.id, setMoveAll, setUnderlays]);
+
+  // 部位別入力表の天井高さが変わったら、手で書き換えていないピットの深さもそろえる
+  useEffect(() => {
+    setPits((current) => syncPitDepths(current, row.ceilingHeight));
+  }, [row.ceilingHeight]);
 
   const quantities = useMemo(() => pitQuantities(pits, beams), [beams, pits]);
 
@@ -778,13 +787,14 @@ export default function PitSheetPage({
           symbol: pitSymbol(current.length),
           x: last?.x ?? 4,
           y: last?.y ?? 4,
-          depth: last?.depth ?? 1,
+          depth: last?.depth ?? row.ceilingHeight ?? 1,
+          depthManual: last?.depthManual,
           direction: "right",
           gap: last?.gap ?? DEFAULT_PIT_GAP,
         },
       ]);
     });
-  }, [changePits]);
+  }, [changePits, row.ceilingHeight]);
 
   /**
    * なぞった図（実寸mの点）をピットの形にする。
@@ -833,7 +843,8 @@ export default function PitSheetPage({
           symbol: pitSymbol(current.length),
           x: 4,
           y: 4,
-          depth: last?.depth ?? 1,
+          depth: last?.depth ?? row.ceilingHeight ?? 1,
+          depthManual: last?.depthManual,
           direction: "right",
           gap: last?.gap ?? DEFAULT_PIT_GAP,
         };
@@ -849,7 +860,7 @@ export default function PitSheetPage({
       // 次のピットは白紙からなぞる（図面と縮尺はそのまま）
       setTrace((current) => ({ ...current, points: [] }));
     },
-    [changePits, picked, pits],
+    [changePits, picked, pits, row.ceilingHeight],
   );
 
   /** Ｌ型・コ型で欠いた所へ、ぴったり収まる四角のピットを足す */
@@ -867,6 +878,7 @@ export default function PitSheetPage({
             x: notch.x,
             y: notch.y,
             depth: base.depth,
+            depthManual: base.depthManual,
             direction: "free",
             gap: base.gap,
             baseId: base.id,
@@ -1792,7 +1804,18 @@ export default function PitSheetPage({
       <div className={expanded ? "pit-upper expanded" : "pit-upper"}>
         <section className="pit-list">
           <div className="section-bar">
-            <h3>{pitWord}（Ｐ1が基準・深さだけ手入力・数量は自動）</h3>
+            <h3>
+              {pitWord}（Ｐ1が基準・深さだけ手入力・数量は自動）
+              <span
+                className="ceiling-height"
+                title="部位別入力表の天井高さ。深さはこの値にそろいます（深さを書き換えたピットはそのまま）"
+              >
+                　天井高さ（部位別入力表）
+                {row.ceilingHeight === null
+                  ? "－"
+                  : formatNumber(row.ceilingHeight, 2)}
+              </span>
+            </h3>
             <label title="「□を作る」で、欠いた所の内側に空けるすき間（Ｌ型は2方・コ型は3方）">
               □のすき間（m）
               <input
@@ -1957,11 +1980,19 @@ export default function PitSheetPage({
                       className="num"
                       defaultValue={pit.depth}
                       key={`d-${pit.id}-${pit.depth}`}
-                      onBlur={(e) =>
-                        editPit(pit.id, {
-                          depth: parseNumber(e.target.value) ?? 0,
-                        })
-                      }
+                      title="空欄は部位別入力表の天井高さにそろいます。書き換えるとそのまま（消すと天井高さに戻ります）"
+                      onBlur={(e) => {
+                        const parsed = parseNumber(e.target.value);
+                        editPit(
+                          pit.id,
+                          parsed === null
+                            ? {
+                                depth: row.ceilingHeight ?? pit.depth,
+                                depthManual: false,
+                              }
+                            : { depth: parsed, depthManual: true },
+                        );
+                      }}
                     />
                   </td>
                   <td>

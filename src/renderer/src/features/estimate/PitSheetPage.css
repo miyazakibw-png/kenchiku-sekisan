@@ -61,6 +61,11 @@
   font-size: 13px;
 }
 
+.pit-upper .section-bar h3 .ceiling-height {
+  font-weight: normal;
+  color: #475569;
+}
+
 .pit-upper input.num {
   width: 72px;
   text-align: right;
