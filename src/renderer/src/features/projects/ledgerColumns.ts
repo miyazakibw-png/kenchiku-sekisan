@@ -107,14 +107,52 @@ export function sortByLedgerOrder<T extends { key: string }>(
   const rank = new Map<string, number>();
   for (const column of FIXED_COLUMNS) rank.set(column.key, rank.size);
   for (const setting of settings) {
-    const key = setting.key.startsWith("field:")
-      ? `field-${setting.key.slice("field:".length)}`
-      : setting.key;
+    const key = workspaceKeyForLedger(setting.key);
     if (!rank.has(key)) rank.set(key, rank.size);
   }
   const rankOf = (key: string): number =>
     rank.get(key) ?? Number.MAX_SAFE_INTEGER;
   return [...items].sort((a, b) => rankOf(a.key) - rankOf(b.key));
+}
+
+/** 台帳の列キー（field:◯）↔ 積算操作画面の項目キー（field-◯） */
+export function workspaceKeyForLedger(ledgerKey: string): string {
+  return ledgerKey.startsWith("field:")
+    ? `field-${ledgerKey.slice("field:".length)}`
+    : ledgerKey;
+}
+
+export function ledgerKeyForWorkspace(workspaceKey: string): string {
+  return workspaceKey.startsWith("field-")
+    ? `field:${workspaceKey.slice("field-".length)}`
+    : workspaceKey;
+}
+
+/**
+ * 「列の表示・並び」で消した項目の積算操作画面キーの一覧。
+ * 固定列（日付・管理番号・工事名称）は消せないので除く。
+ */
+export function hiddenLedgerKeys(
+  settings: readonly LedgerColumnSetting[],
+): string[] {
+  const fixed = new Set(FIXED_COLUMNS.map((column) => column.key));
+  return settings
+    .filter((setting) => !setting.visible && !fixed.has(setting.key))
+    .map((setting) => workspaceKeyForLedger(setting.key));
+}
+
+/** 「列の表示・並び」の1項目の表示／非表示を変えた設定を返す（無ければ末尾に足す） */
+export function setColumnVisible(
+  settings: readonly LedgerColumnSetting[],
+  workspaceKey: string,
+  visible: boolean,
+): LedgerColumnSetting[] {
+  const ledgerKey = ledgerKeyForWorkspace(workspaceKey);
+  return settings.some((setting) => setting.key === ledgerKey)
+    ? settings.map((setting) =>
+        setting.key === ledgerKey ? { ...setting, visible } : setting,
+      )
+    : [...settings, { key: ledgerKey, visible }];
 }
 
 /** 一覧の並べ替え（上下移動） */
@@ -130,7 +168,8 @@ export function moveSetting(
   return next;
 }
 
-const STORAGE_KEY = "project-ledger-columns-v1";
+export const COLUMN_SETTINGS_STORAGE_KEY = "project-ledger-columns-v1";
+const STORAGE_KEY = COLUMN_SETTINGS_STORAGE_KEY;
 
 export function loadColumnSettings(): LedgerColumnSetting[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);

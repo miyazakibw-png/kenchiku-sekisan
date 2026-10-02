@@ -8,13 +8,19 @@ import type {
 import type { MiscRow } from "../../../../core/misc/miscSheet";
 import { sourceJumpOf } from "../aggregate/aggregateRows";
 import { normalizeDate } from "./projectLedger";
-import { loadColumnSettings, sortByLedgerOrder } from "./ledgerColumns";
+import {
+  COLUMN_SETTINGS_STORAGE_KEY,
+  hiddenLedgerKeys,
+  loadColumnSettings,
+  saveColumnSettings,
+  setColumnVisible,
+  sortByLedgerOrder,
+  type LedgerColumnSetting,
+} from "./ledgerColumns";
 import {
   ALWAYS_VISIBLE,
-  loadHiddenFields,
   MENU_GROUP_LABEL,
-  saveHiddenFields,
-  toggleHiddenField,
+  migrateWorkspaceHiddenFields,
   WORKSPACE_MENU,
   type WorkspaceMenuItem,
 } from "./workspaceMenu";
@@ -84,7 +90,25 @@ export default function ProjectWorkspacePage({
   backLabel = "← 物件管理台帳",
 }: Props): JSX.Element {
   const [draft, setDraft] = useState<ProjectSummary>(project);
-  const [hidden, setHidden] = useState<string[]>(loadHiddenFields);
+  // 表示項目・並びは物件管理台帳の「列の表示・並び」と同じ設定を使う
+  const [columnSettings, setColumnSettings] =
+    useState<LedgerColumnSetting[]>(() => {
+      migrateWorkspaceHiddenFields();
+      return loadColumnSettings();
+    });
+  // 台帳（別ウィンドウ）で「列の表示・並び」を変えたとき開いているこの画面にも反映する
+  useEffect(() => {
+    const sync = (event: StorageEvent): void => {
+      if (event.key === null || event.key === COLUMN_SETTINGS_STORAGE_KEY)
+        setColumnSettings(loadColumnSettings());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+  const hidden = useMemo(
+    () => hiddenLedgerKeys(columnSettings),
+    [columnSettings],
+  );
   const [showPicker, setShowPicker] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
   const [message, setMessage] = useState("");
@@ -190,9 +214,9 @@ export default function ProjectWorkspacePage({
             }),
           })),
         ],
-        loadColumnSettings(),
+        columnSettings,
       ),
-    [draft, fields],
+    [draft, fields, columnSettings],
   );
 
   const edit = (field: HeaderField, value: string): void =>
@@ -524,9 +548,11 @@ export default function ProjectWorkspacePage({
     return (
       <ProjectSummarySheet
         lines={headerFields
-          .filter((field) => field.key !== "note")
+          .filter(
+            (field) => field.key !== "note" && !hidden.includes(field.key),
+          )
           .map((field) => ({ label: field.label, value: field.value }))}
-        note={draft.note}
+        note={hidden.includes("note") ? "" : draft.note}
         onBack={() => setShowSheet(false)}
       />
     );
@@ -558,7 +584,9 @@ export default function ProjectWorkspacePage({
 
       {showPicker && (
         <div className="field-picker">
-          <span className="hint">管理番号・工事名称は常に表示します</span>
+          <span className="hint">
+            日付・管理番号・工事名称は常に表示します／物件管理台帳の「列の表示・並び」と同じ設定です
+          </span>
           {headerFields.map((field) => (
             <label key={field.key}>
               <input
@@ -566,9 +594,13 @@ export default function ProjectWorkspacePage({
                 disabled={ALWAYS_VISIBLE.includes(field.key)}
                 checked={!hidden.includes(field.key)}
                 onChange={() => {
-                  const next = toggleHiddenField(hidden, field.key);
-                  setHidden(next);
-                  saveHiddenFields(next);
+                  const next = setColumnVisible(
+                    columnSettings,
+                    field.key,
+                    hidden.includes(field.key),
+                  );
+                  setColumnSettings(next);
+                  saveColumnSettings(next);
                 }}
               />
               {field.label}
@@ -612,9 +644,11 @@ export default function ProjectWorkspacePage({
       <div className="summary-sheet-print">
         <SummarySheetBody
           lines={headerFields
-            .filter((field) => field.key !== "note")
+            .filter(
+              (field) => field.key !== "note" && !hidden.includes(field.key),
+            )
             .map((field) => ({ label: field.label, value: field.value }))}
-          note={draft.note}
+          note={hidden.includes("note") ? "" : draft.note}
         />
       </div>
 

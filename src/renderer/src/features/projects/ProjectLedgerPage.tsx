@@ -22,6 +22,7 @@ import ProjectWorkspacePage from "./ProjectWorkspacePage";
 import {
   allLedgerColumns,
   applyColumnSettings,
+  COLUMN_SETTINGS_STORAGE_KEY,
   loadColumnSettings,
   loadColumnWidths,
   moveSetting,
@@ -197,6 +198,16 @@ export default function ProjectLedgerPage({
       prev.map((row) => (row.id === saved.id ? saved : row)),
     );
     setToast("保存しました");
+  }, []);
+
+  // 積算操作画面（別ウィンドウ）で表示項目を変えたとき台帳の列にも反映する
+  useEffect(() => {
+    const sync = (event: StorageEvent): void => {
+      if (event.key === null || event.key === COLUMN_SETTINGS_STORAGE_KEY)
+        setColumnSettings(loadColumnSettings());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
 
   // 別のウィンドウ（工事概要など）で直された内容を台帳にも反映する
