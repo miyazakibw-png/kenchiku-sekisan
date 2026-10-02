@@ -71,7 +71,7 @@ body,
 .app-bar {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 180px 1fr auto 220px;
+  grid-template-columns: 180px 1fr auto auto 230px;
   align-items: center;
   background: #111827;
   color: #e5e7eb;
@@ -145,6 +145,21 @@ body,
   padding: 3px 8px;
   font-size: 12px;
   cursor: pointer;
+}
+
+/* 最上部の画面表示倍率 */
+.app-bar .display-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  color: #e5e7eb;
+  font-size: 12px;
+}
+
+.app-bar .display-zoom select {
+  font: inherit;
+  font-size: 12px;
 }
 
 /* 最上部右端の 印刷／PDF／エクセル */

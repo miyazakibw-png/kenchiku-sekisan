@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { IPC } from "../shared/ipc";
 import type { FittingPartValue } from "../core/fittings/partValue";
 import type { FurnitureSettings } from "../core/furniture/furnitureSheet";
@@ -494,6 +494,12 @@ const api = {
   /** 欄に入ったときにWindowsの日本語入力を切り替える（戻り値は調べるための記録） */
   setImeMode: (mode: ImeMode): Promise<string> =>
     ipcRenderer.invoke(IPC.imeMode, mode),
+
+  /** 画面全体の表示倍率を変える（1 が標準。0.5〜1.6 の範囲） */
+  setZoomFactor: (factor: number): void => {
+    const clamped = Math.min(Math.max(factor, 0.5), 1.6);
+    webFrame.setZoomFactor(clamped);
+  },
 
   /** 明細入力を独立したウィンドウで開く */
   openCalcWindow: (title: string): Promise<void> =>
