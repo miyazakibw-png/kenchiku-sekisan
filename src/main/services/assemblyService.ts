@@ -7,6 +7,7 @@ import {
   mFinishAssemblyItems,
   projectFrameSheets,
   projectGeneralSheets,
+  projectPitSheets,
   projectRoomFinishes,
   projectRoomSheets,
 } from "../db/schema";
@@ -315,8 +316,14 @@ function projectSheetTables(): (
   | typeof projectRoomSheets
   | typeof projectFrameSheets
   | typeof projectGeneralSheets
+  | typeof projectPitSheets
 )[] {
-  return [projectRoomSheets, projectFrameSheets, projectGeneralSheets];
+  return [
+    projectRoomSheets,
+    projectFrameSheets,
+    projectGeneralSheets,
+    projectPitSheets,
+  ];
 }
 
 function parseSets(lowerJson: string): CalcSet[] {

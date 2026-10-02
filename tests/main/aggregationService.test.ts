@@ -24,6 +24,10 @@ import {
 } from "../../src/main/services/aggregationService";
 import { listAssemblies } from "../../src/main/services/assemblyService";
 import { listProjectDetailsInUse } from "../../src/main/services/detailService";
+import {
+  getPitSheet,
+  savePitSheet,
+} from "../../src/main/services/pitSheetService";
 import { transferBreakdown } from "../../src/main/services/breakdownService";
 import {
   getMiscSheet,
@@ -732,5 +736,31 @@ describe("集計処理", () => {
     expect(
       listProjectDetailsInUse(db, 5, projectId).map((detail) => detail.name),
     ).toEqual(["長尺シート"]);
+  });
+
+  it("ピット計算書のセットもセット明細マスターに登録する", () => {
+    const rows = saveEstimateRows(db, {
+      projectId,
+      rows: [{ ...roomRow("基礎階ピット", 1), calcType: "pit" }],
+    });
+    const sheet = getPitSheet(db, rows[0].id);
+    savePitSheet(db, {
+      id: sheet.id,
+      pitsJson: sheet.pitsJson,
+      beamsJson: sheet.beamsJson,
+      wallsJson: sheet.wallsJson,
+      sleevesJson: sheet.sleevesJson,
+      sleeveKindsJson: sheet.sleeveKindsJson,
+      wallStep: sheet.wallStep,
+      lowerJson: lowerJson(1),
+      note: "",
+    });
+
+    const built = buildProjectMasters(db, projectId);
+    expect(built.assembliesAdded).toBe(1);
+    expect(listAssemblies(db, projectId)).toHaveLength(1);
+    expect(listAssemblies(db, projectId)[0].items[0].name).toBe(
+      "ビニル床シート",
+    );
   });
 });
