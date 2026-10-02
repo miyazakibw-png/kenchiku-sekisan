@@ -513,6 +513,7 @@ function notchDiagonalEdge(
   notchWidth: number,
   notchDepth: number,
   offset?: number,
+  notchKind?: EdgeKind,
 ): { shape: RoomShape; error: string | null } {
   const target = shape.edges[edgeIndex];
   const vector = diagonalVector(target);
@@ -524,6 +525,7 @@ function notchDiagonalEdge(
     Math.max(offset ?? (span - width) / 2, 0),
     span - width,
   );
+  const notch = notchKind ?? target.kind;
   const unit = { x: vector.x / span, y: vector.y / span };
   const inside = { x: -unit.y, y: unit.x };
   const along = (value: number): Point => ({
@@ -534,32 +536,44 @@ function notchDiagonalEdge(
     x: inside.x * value,
     y: inside.y * value,
   });
-  const steps: Point[] = [
-    along(head),
-    across(notchDepth),
-    along(width),
-    across(-notchDepth),
+  const steps: { move: Point; notch: boolean }[] = [
+    { move: along(head), notch: false },
+    { move: across(notchDepth), notch: true },
+    { move: along(width), notch: true },
+    { move: across(-notchDepth), notch: true },
   ];
   // 端数で形が開かないように、通る点を丸めてから辺の寸法を出す（最後は元の終点に戻す）
   const stops: Point[] = [{ x: 0, y: 0 }];
   for (const step of steps) {
     const last = stops[stops.length - 1];
-    stops.push({ x: round2(last.x + step.x), y: round2(last.y + step.y) });
+    stops.push({ x: round2(last.x + step.move.x), y: round2(last.y + step.move.y) });
   }
   stops.push({ x: round2(vector.x), y: round2(vector.y) });
-  const parts: Point[] = stops
+  // 元の辺と同じ向きに進む部分（凹みの前後）は元の辺の続きとして扱う
+  const parts = stops
     .slice(1)
     .map((stop, index) => ({
-      x: round2(stop.x - stops[index].x),
-      y: round2(stop.y - stops[index].y),
+      move: {
+        x: round2(stop.x - stops[index].x),
+        y: round2(stop.y - stops[index].y),
+      },
+      notch: index < steps.length ? steps[index].notch : false,
     }))
-    .filter((part) => Math.abs(part.x) >= 0.005 || Math.abs(part.y) >= 0.005);
+    .filter(
+      (part) =>
+        Math.abs(part.move.x) >= 0.005 || Math.abs(part.move.y) >= 0.005,
+    );
   const edges = [...shape.edges];
   edges.splice(
     edgeIndex,
     1,
     ...parts.map((part, index) =>
-      edgeFromVector(index === 0 ? target : edge("E", null, target.kind), part),
+      edgeFromVector(
+        index === 0
+          ? { ...target, kind: part.notch ? notch : target.kind }
+          : edge("E", null, part.notch ? notch : target.kind),
+        part.move,
+      ),
     ),
   );
   return { shape: { edges }, error: null };
@@ -568,6 +582,7 @@ function notchDiagonalEdge(
 /**
  * 指定した辺の途中をコ型に凹ませる。
  * offset を省くと中央に置く。いまの形と入れた寸法は残す。
+ * notchKind は凹みの内側3辺の種別（省くと元の辺と同じ）。凹みの前後は元の辺の続き。
  */
 export function notchEdge(
   shape: RoomShape,
@@ -575,6 +590,7 @@ export function notchEdge(
   notchWidth: number,
   notchDepth: number,
   offset?: number,
+  notchKind?: EdgeKind,
 ): { shape: RoomShape; error: string | null } {
   const target = shape.edges[edgeIndex];
   if (!target) return { shape, error: "凹ませる辺を選んでください" };
@@ -582,10 +598,18 @@ export function notchEdge(
     return { shape, error: "凹み寸法は0より大きい値を入れてください" };
   }
   if (isDiagonal(target.direction)) {
-    return notchDiagonalEdge(shape, edgeIndex, notchWidth, notchDepth, offset);
+    return notchDiagonalEdge(
+      shape,
+      edgeIndex,
+      notchWidth,
+      notchDepth,
+      offset,
+      notchKind,
+    );
   }
   const length = solveShape(shape).edges[edgeIndex].resolved;
   if (length === null) return { shape, error: "先に辺の寸法を決めてください" };
+  const notch = notchKind ?? target.kind;
   // 凹みが元の辺より大きいときは、辺が無くならない範囲まで縮めて凹ませる
   const width = Math.min(notchWidth, fitToEdge(length));
   const rest = round2(length - width);
@@ -594,9 +618,9 @@ export function notchEdge(
   const inside = insideDirection(target.direction as AxisDirection);
   const parts = [
     { ...target, length: head },
-    edge(inside, notchDepth, target.kind),
-    edge(target.direction, width, target.kind),
-    edge(opposite(inside), notchDepth, target.kind),
+    edge(inside, notchDepth, notch),
+    edge(target.direction, width, notch),
+    edge(opposite(inside), notchDepth, notch),
     edge(target.direction, tail, target.kind),
   ].filter((row) => (row.length ?? 0) > 0);
   const edges = [...shape.edges];

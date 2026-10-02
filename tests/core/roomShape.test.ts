@@ -333,6 +333,38 @@ describe("部屋形状（単線図）", () => {
     expect(floorArea(solveShape(notched.shape))).toBe(6 * 4 - 2 * 1);
   });
 
+  it("壁の辺に柱のコ型を入れても、凹みの前後の壁は壁のまま", () => {
+    const notched = notchEdge(rectangleShape(6, 4), 2, 2, 1, undefined, "column");
+    expect(notched.error).toBeNull();
+    // 凹みの内側3辺だけ柱。前後の辺は元の壁の続き
+    expect(notched.shape.edges.map((row) => row.kind)).toEqual([
+      "wall",
+      "wall",
+      "wall",
+      "column",
+      "column",
+      "column",
+      "wall",
+      "wall",
+    ]);
+  });
+
+  it("斜めの壁の辺に柱のコ型を入れても、凹みの前後の壁は壁のまま", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const index = moved.shape.edges.findIndex((row) => row.direction === "D");
+    const notched = notchEdge(moved.shape, index, 1, 0.5, undefined, "column");
+    expect(notched.error).toBeNull();
+    const kinds = notched.shape.edges.map((row) => row.kind);
+    expect(kinds[index]).toBe("wall");
+    expect(kinds.slice(index + 1, index + 4)).toEqual([
+      "column",
+      "column",
+      "column",
+    ]);
+    expect(kinds[index + 4]).toBe("wall");
+    expect(solveShape(notched.shape).error).toBeNull();
+  });
+
   it("壁の無い開口は壁長さに入れない", () => {
     const shape = rectangleShape(3, 3);
     const opened = updateEdge(shape, shape.edges[0].id, { kind: "opening" });

@@ -2567,12 +2567,13 @@ export default function RoomSheetPage({
       vertical ? along : across,
       vertical ? across : along,
       offset,
+      edgeKind,
     );
     if (result.error) {
       setMessage(result.error);
       return;
     }
-    applyShape(applyKindToNewEdges(base.shape, result.shape, edgeKind));
+    applyShape(result.shape);
     setSelectedEdge(null);
     pickCorners([]);
     setMessage(
