@@ -291,8 +291,11 @@ export default function RoomCalcSheet({
   /** コメント行（※行）にカーソルがあるときの、そのコメント行のセットID */
   const [bannerSetId, setBannerSetId] = useState<string | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
-  /** 明細番号欄の一覧候補（選んだ科目の明細） */
-  const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** 明細番号欄の一覧候補（選んだ科目の明細。for はどの科目の候補かの目印） */
+  const [numberOptions, setNumberOptions] = useState<{
+    for: number | null;
+    items: Detail[];
+  }>({ for: null, items: [] });
   /** 複数行コピーの範囲（Shift+クリックで選んだ最後の行） */
   const [rangeEnd, setRangeEnd] = useState<{
     setId: string;
@@ -405,11 +408,11 @@ export default function RoomCalcSheet({
   );
   const numberEntries: PickEntry[] = useMemo(
     () =>
-      numberOptions.map((item) => ({
+      numberOptions.items.map((item) => ({
         value: item.detailNumber?.toFixed(2) ?? "",
         label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
       })),
-    [numberOptions],
+    [numberOptions.items],
   );
   const unitEntries: PickEntry[] = useMemo(
     () =>
@@ -527,20 +530,26 @@ export default function RoomCalcSheet({
   /** 明細番号欄に入ったとき、その科目の明細を一覧候補として読み込む */
   const loadNumberOptions = useCallback(
     async (detailSubjectId: number | null): Promise<void> => {
-      if (detailSubjectId === null) {
-        setNumberOptions([]);
-        return;
-      }
+      // 先に科目の目印を入れて中身を空にする（読み込み中に前の科目の候補を選べないように）
+      setNumberOptions({ for: detailSubjectId, items: [] });
+      if (detailSubjectId === null) return;
       const project = await window.sekisan.listDetails(
         detailSubjectId,
         projectId,
       );
       const basic = await window.sekisan.listDetails(detailSubjectId, null);
       const numbers = new Set(project.map((row) => row.detailNumber));
-      setNumberOptions([
-        ...project,
-        ...basic.filter((row) => !numbers.has(row.detailNumber)),
-      ]);
+      setNumberOptions((current) =>
+        current.for === detailSubjectId
+          ? {
+              for: detailSubjectId,
+              items: [
+                ...project,
+                ...basic.filter((row) => !numbers.has(row.detailNumber)),
+              ],
+            }
+          : current,
+      );
     },
     [projectId],
   );
@@ -2123,7 +2132,11 @@ export default function RoomCalcSheet({
                           popupSide="right"
                               row={gridRow}
                               col={4}
-                              entries={numberEntries}
+                              entries={
+                                numberOptions.for === detail.subjectId
+                                  ? numberEntries
+                                  : []
+                              }
                               halfWidth
                               commitOnBlur
                               value={detail.detailNumber?.toFixed(2) ?? ""}
@@ -2132,10 +2145,11 @@ export default function RoomCalcSheet({
                                 focusDetail();
                                 void loadNumberOptions(detail.subjectId);
                               }}
-                              onCommit={(text) => {
+                              onCommit={(text, picked) => {
                                 if (
+                                  picked !== true &&
                                   text.trim() ===
-                                  (detail.detailNumber?.toFixed(2) ?? "")
+                                    (detail.detailNumber?.toFixed(2) ?? "")
                                 )
                                   return;
                                 void applyDetailNumber(set.id, rowIndex, text);

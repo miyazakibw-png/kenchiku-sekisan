@@ -46,7 +46,8 @@ export function PickInput({
   commitOnBlur?: boolean;
   /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
   popupSide?: "bottom" | "right";
-  onCommit: (text: string) => void;
+  /** picked＝一覧の行をクリックして選んだとき（同じ値でも呼び直したいときに使う） */
+  onCommit: (text: string, picked?: boolean) => void;
   onFocus?: () => void;
 }): JSX.Element {
   const [editing, setEditing] = useState<string | null>(null);
@@ -97,10 +98,10 @@ export function PickInput({
       entry.label.includes(typed.trim()),
   );
 
-  const commit = (text: string): void => {
+  const commit = (text: string, picked = false): void => {
     setEditing(null);
     setBox(null);
-    onCommit(text);
+    onCommit(text, picked);
   };
 
   return (
@@ -167,7 +168,7 @@ export function PickInput({
                   // クリックで欄から離れる前に選べるよう mousedown で決める
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    commit(entry.value);
+                    commit(entry.value, true);
                   }}
                 >
                   <span className="key">{entry.value}</span>
