@@ -89,9 +89,21 @@
   padding: 0 3px;
 }
 
+.room-calc-sheet td.ops .grip {
+  cursor: grab;
+  color: #94a3b8;
+  padding: 0 2px;
+  font-size: 11px;
+  user-select: none;
+}
+
+.room-calc-sheet tr.drop-target td {
+  border-top: 2px solid #2563eb;
+}
+
 .room-calc-sheet table.calc th,
 .room-calc-sheet table.calc td {
-  border: 1px solid #d7dde5;
+  border: var(--line-thin);
   padding: 0;
 }
 
@@ -231,7 +243,7 @@
   position: fixed;
   right: 24px;
   top: 90px;
-  width: 760px;
+  width: 1100px;
   height: 62vh;
   min-width: 420px;
   min-height: 220px;
@@ -270,6 +282,50 @@
 .room-calc-sheet .call-subject select {
   flex: 1 1 auto;
   min-width: 160px;
+}
+
+/* 計算書内のマスター作成画面（呼出画面より左寄り・中身に合わせた高さ） */
+.room-calc-sheet .call-window.create-window {
+  left: 24px;
+  right: auto;
+  top: 90px;
+  width: 420px;
+  height: auto;
+  max-height: calc(100vh - 16px);
+  resize: none;
+  overflow-y: auto;
+}
+
+.room-calc-sheet .create-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.room-calc-sheet .create-form label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-calc-sheet .create-form label > span {
+  flex: 0 0 auto;
+  width: 60px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.room-calc-sheet .create-form label > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  padding: 1px 4px;
+}
+
+.room-calc-sheet .create-form label > input.num {
+  text-align: right;
 }
 
 /* 呼出一覧（1明細＝上下2行。摘要まで見えるようにする） */
@@ -331,6 +387,46 @@
   text-align: center;
 }
 
+/* 呼出画面の表：部位名／名称は元の幅の1.5倍、摘要はさらにその1.5倍（元の2.25倍）。
+   呼出画面の窓は表全体が入る幅（1100px）で開く。狭い画面では横スクロールする
+   （呼出画面は右下ドラッグでも広げられる） */
+.room-calc-sheet .call-table {
+  width: max(100%, 1057px);
+}
+.room-calc-sheet .call-table col.name {
+  width: 280px;
+}
+.room-calc-sheet .call-table col.desc {
+  width: 420px;
+}
+.room-calc-sheet .call-table col.flex {
+  width: 187px;
+}
+.room-calc-sheet .call-table.asm {
+  width: max(100%, 1002px);
+}
+.room-calc-sheet .call-table.asm col.name {
+  width: 233px;
+}
+.room-calc-sheet .call-table.asm col.desc {
+  width: 350px;
+}
+.room-calc-sheet .call-table.asm col.flex {
+  width: 155px;
+}
+.room-calc-sheet .call-table.pick {
+  width: max(100%, 1028px);
+}
+.room-calc-sheet .call-table.pick col.name {
+  width: 255px;
+}
+.room-calc-sheet .call-table.pick col.desc {
+  width: 383px;
+}
+.room-calc-sheet .call-table.pick col.flex {
+  width: 170px;
+}
+
 /* 1行目が同じセットが複数あるとき、中身を見て選ぶポップアップ */
 .room-calc-sheet .assembly-pick {
   position: absolute;
@@ -374,12 +470,12 @@
 
 /* 1明細＝1行。区切り線はセット明細の上下だけに引く */
 .room-calc-sheet table.calc tbody.set {
-  border-top: 2px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
+  border-top: var(--line-thick);
+  border-bottom: var(--line-thick);
 }
 
 .room-calc-sheet table.calc tbody.set tr td {
-  border-top-color: #eef2f7;
+  border-top-color: var(--line-thin-color);
 }
 
 .room-calc-sheet table.calc tbody.set tr:first-child td {
@@ -409,12 +505,20 @@
 }
 
 .room-calc-sheet tr.banner-row input {
-  width: calc(100% - 26px);
   vertical-align: middle;
   background: transparent;
   border: none;
   font: inherit;
   padding: 1px 2px;
+}
+
+/* 左の入力は部位合計欄まで、右の入力はコメント列から（消すボタンの分だけ短く） */
+.room-calc-sheet tr.banner-row td.banner-left input {
+  width: calc(100% - 4px);
+}
+
+.room-calc-sheet tr.banner-row td.banner-right input {
+  width: calc(100% - 26px);
 }
 
 .room-calc-sheet tr.banner-row button {
@@ -468,4 +572,18 @@
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す
+   （計算表の下段スクロール欄。部屋計算書・汎用計算書・別ウィンドウの明細入力すべて） */
+.room-calc-sheet .calc-body::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}
+
+@media print {
+  .room-calc-sheet .calc-body::after {
+    display: none;
+  }
 }

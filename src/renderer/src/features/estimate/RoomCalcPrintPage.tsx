@@ -10,6 +10,8 @@ import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import EstimateCoverSheet from "./EstimateCoverSheet";
 import MiscSheetPrintSheet from "./MiscSheetPrintSheet";
+import FurnitureSheetPage from "./FurnitureSheetPage";
+import FireproofPrintSheet from "./FireproofPrintSheet";
 import "./RoomCalcPrintPage.css";
 
 interface Props {
@@ -18,8 +20,14 @@ interface Props {
   rows: EstimateRowDraft[];
   /** 表紙に出す部位別入力表の全行（一括印刷のときだけ渡す） */
   coverRows?: EstimateRowDraft[] | null;
+  /** 行IDごとの部屋名（部位Ⅱの引き継ぎを含む） */
+  roomNames?: Map<number, string>;
   /** いっしょに印刷する部位別雑・金物入力表（計算書のうしろに続けて出す） */
   miscSheetIds?: number[];
+  /** いっしょに印刷する家具・設備入力表（雑・金物のうしろに続けて出す） */
+  furnitureSheetIds?: number[];
+  /** いっしょに印刷する耐火被覆・塗装入力表の行（家具・設備のうしろに続けて出す） */
+  fireproofRowIds?: string[];
   options?: MasterOptions | null;
   onBack: () => void;
 }
@@ -33,7 +41,10 @@ export default function RoomCalcPrintPage({
   project,
   rows,
   coverRows = null,
+  roomNames,
   miscSheetIds = [],
+  furnitureSheetIds = [],
+  fireproofRowIds = [],
   options = null,
   onBack,
 }: Props): JSX.Element {
@@ -56,6 +67,10 @@ export default function RoomCalcPrintPage({
         if (area instanceof HTMLElement)
           area.style.setProperty("--print-scale", "1");
         await job();
+      } catch (error) {
+        window.alert(
+          error instanceof Error ? error.message : "保存できませんでした",
+        );
       } finally {
         setBusy(false);
       }
@@ -74,7 +89,11 @@ export default function RoomCalcPrintPage({
         <h2>計算書 印刷</h2>
         <span className="project">
           {project.managementNo} {project.name}（
-          {rows.length + miscSheetIds.length} 件・A3横）
+          {rows.length +
+            miscSheetIds.length +
+            furnitureSheetIds.length +
+            fireproofRowIds.length}{" "}
+          件・A3横）
         </span>
         <button
           type="button"
@@ -101,6 +120,27 @@ export default function RoomCalcPrintPage({
         >
           📄 PDF
         </button>
+        <button
+          type="button"
+          title="同じ内容を白黒のPDFで保存します"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              // PDFを取っている間だけ白黒にする（画面の見え方は変わりません）
+              document.body.classList.add("pdf-mono");
+              try {
+                await window.sekisan.printPdf(`${name}_白黒`, {
+                  pageSize: "A3",
+                  landscape: true,
+                });
+              } finally {
+                document.body.classList.remove("pdf-mono");
+              }
+            })
+          }
+        >
+          📄 PDF白黒
+        </button>
       </div>
       <div className="sheets">
         {coverRows !== null && (
@@ -108,7 +148,9 @@ export default function RoomCalcPrintPage({
         )}
         {rows.map((row) => {
           const key = row.id ?? `${row.part2}-${row.part3}`;
-          const roomName = `${row.part2} ${row.part3}`.trim();
+          const roomName =
+            (row.id === null ? undefined : roomNames?.get(row.id)) ??
+            `${row.part2} ${row.part3}`.trim();
           if (row.calcType === "frame")
             return (
               <FrameSheetPage
@@ -131,13 +173,14 @@ export default function RoomCalcPrintPage({
                 onBack={onBack}
               />
             );
-          if (row.calcType === "pit")
+          if (row.calcType === "pit" || row.calcType === "area")
             return (
               <PitSheetPage
                 key={key}
                 project={project}
                 row={row}
                 roomName={roomName}
+                sheetName={row.calcType === "area" ? "面積計算書" : undefined}
                 printMode
                 onBack={onBack}
               />
@@ -161,6 +204,20 @@ export default function RoomCalcPrintPage({
             options={options}
           />
         ))}
+        {options !== null &&
+          furnitureSheetIds.map((sheetId) => (
+            <FurnitureSheetPage
+              key={`furniture-${sheetId}`}
+              project={project}
+              options={options}
+              sheetId={sheetId}
+              printMode
+              onBack={onBack}
+            />
+          ))}
+        {fireproofRowIds.length > 0 && (
+          <FireproofPrintSheet project={project} rowIds={fireproofRowIds} />
+        )}
       </div>
     </div>
   );

@@ -38,8 +38,19 @@ export interface CeilingElement {
    * 壁高さ＝取りつく天井高さ − Ｈ。
    */
   baseHeight?: number | null;
-  /** 下がるのは線の向こう側（壁と反対側）か。未指定は壁側が下がる */
+  /** 下がるのは線の向こう側（壁と反対側）か。未指定は壁側が下がる。
+   *  自由線では ①→② の進行方向左側が下がる。inner を付けると右側が下がる */
   inner?: boolean;
+  /**
+   * 壁に沿わない下がり天井の線（自由線）。両端は辺の上に取る。
+   * 入っているときは沿う壁・離れは使わない。
+   * via は途中の折れ点（部屋の中の点。L字・コの字にするとき）
+   */
+  free?: {
+    a: CeilingAnchor;
+    b: CeilingAnchor;
+    via?: CeilingPoint[];
+  } | null;
   /**
    * 下がり天井の線を出す範囲（沿う壁の始まりの角から、壁の向きに測った位置。m）。
    * 空なら壁から壁まで。梁型で分かれた下がり天井を別々の行にしたときに入る
@@ -67,6 +78,29 @@ export interface CeilingElementResult {
 export interface CeilingPoint {
   x: number;
   y: number;
+}
+
+/**
+ * 自由線の端点（辺の上の位置）。
+ * 割合で覚えるので、寸法の変更・縮尺合わせ・回転でも辺の上の同じ所につく
+ */
+export interface CeilingAnchor {
+  /** どの辺の上か（壁・開口・柱・曲面壁すべて選べる。曲面壁は弦の上） */
+  edgeId: string;
+  /** 辺の始まりの角から終わりの角への割合（0=始まりの角、1=終わりの角） */
+  rate: number;
+  /**
+   * 独立柱の真ん中に付けるときは柱のid。
+   * 柱が消えたり読み込めないときは、辺の上の位置（edgeId+rate）に戻る
+   */
+  columnId?: string | null;
+  /**
+   * すでに引いた梁型（壁付き・天井付）の線の真ん中に付けるときは梁型のid。
+   * その梁型が消えたり読み込めないときは、辺の上の位置（edgeId+rate）に戻る
+   */
+  elementId?: string | null;
+  /** 梁型の線の真ん中に沿った割合（0=始まり、1=終わり。elementId があるとき使う） */
+  elementRate?: number;
 }
 
 /** 沿う壁の始まりの角から壁の向きに測った範囲（from < to） */
@@ -274,6 +308,404 @@ export function wallToWallLine(
   return { a: at(best[0]), b: at(best[1]), length: round2(best[1] - best[0]) };
 }
 
+/** 辺の上の端点（rate は辺の始まりの角からの割合） */
+function anchorPoint(
+  points: CeilingPoint[],
+  index: number,
+  rate: number,
+): CeilingPoint | null {
+  if (index < 0 || index >= points.length) return null;
+  const from = points[index];
+  const to = points[(index + 1) % points.length];
+  return {
+    x: from.x + (to.x - from.x) * rate,
+    y: from.y + (to.y - from.y) * rate,
+  };
+}
+
+/** 経路に沿って rate（0=始まり、1=終わり）の所の点 */
+export function pointOnPath(
+  path: CeilingPoint[],
+  rate: number,
+): CeilingPoint | null {
+  if (path.length < 2) return null;
+  const spans: number[] = [];
+  let total = 0;
+  for (let no = 0; no + 1 < path.length; no += 1) {
+    const span = Math.hypot(
+      path[no + 1].x - path[no].x,
+      path[no + 1].y - path[no].y,
+    );
+    spans.push(span);
+    total += span;
+  }
+  if (total <= 0) return null;
+  let left = Math.max(0, Math.min(1, rate)) * total;
+  for (let no = 0; no < spans.length; no += 1) {
+    if (left <= spans[no] || no === spans.length - 1) {
+      const at = spans[no] <= 0 ? 0 : left / spans[no];
+      return {
+        x: path[no].x + (path[no + 1].x - path[no].x) * at,
+        y: path[no].y + (path[no + 1].y - path[no].y) * at,
+      };
+    }
+    left -= spans[no];
+  }
+  return null;
+}
+
+/**
+ * 要素（梁型・下がり壁など）の「線の真ん中」の経路。
+ * 自由線は引いた線そのもの、壁に沿うものは帯の真ん中の線（壁から壁まで）。
+ * 別の梁型や線の端を付ける目印に使う
+ */
+export function elementCenterline(
+  element: CeilingElement,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
+  seen: ReadonlySet<string> = new Set<string>(),
+): CeilingPoint[] | null {
+  if (element.free !== null && element.free !== undefined) {
+    if (seen.has(element.id)) return null;
+    return freePath(
+      element,
+      solved,
+      elements,
+      new Set<string>([...seen, element.id]),
+    );
+  }
+  const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+  if (index < 0 || solved.points.length < 3) return null;
+  const width = element.width ?? 0;
+  const offset = element.offset ?? 0;
+  const distance =
+    element.kind === "ceilingBeam"
+      ? offset + width / 2
+      : element.kind === "dropCeiling"
+        ? offset
+        : Math.max(width / 2, 0.01);
+  const segment =
+    element.kind === "wallBeam" || element.kind === "dropWall"
+      ? offsetSegment(solved.points, index, distance)
+      : wallToWallLine(solved.points, index, distance);
+  return segment === null ? null : [segment.a, segment.b];
+}
+
+/**
+ * 自由線の端点を座標にする。
+ * 独立柱→すでに引いた梁型→辺の上、の順に探す（先のものが無くなっていれば辺の上に戻る）
+ */
+export function resolveCeilingAnchor(
+  anchor: CeilingAnchor,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
+  seen: ReadonlySet<string> = new Set<string>(),
+): CeilingPoint | null {
+  if ((anchor.columnId ?? null) !== null) {
+    const column = solved.columns.find((row) => row.id === anchor.columnId);
+    if (column !== undefined) return { x: column.x, y: column.y };
+  }
+  if ((anchor.elementId ?? null) !== null && !seen.has(anchor.elementId!)) {
+    const target = elements.find((row) => row.id === anchor.elementId);
+    if (target !== undefined) {
+      // elementCenterline の中で target.id が seen に入る（先の循環はそこで切られる）
+      const path = elementCenterline(target, solved, elements, seen);
+      const point =
+        path === null ? null : pointOnPath(path, anchor.elementRate ?? 0.5);
+      if (point !== null) return point;
+    }
+  }
+  const index = solved.edges.findIndex((row) => row.id === anchor.edgeId);
+  return anchorPoint(solved.points, index, anchor.rate);
+}
+
+/** 自由線の両端（解決できない辺があれば null） */
+function freeEnds(
+  element: CeilingElement,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
+  seen: ReadonlySet<string> = new Set<string>(),
+): { a: CeilingPoint; b: CeilingPoint } | null {
+  const free = element.free ?? null;
+  if (free === null) return null;
+  const seen2 = new Set<string>([...seen, element.id]);
+  const a = resolveCeilingAnchor(free.a, solved, elements, seen2);
+  const b = resolveCeilingAnchor(free.b, solved, elements, seen2);
+  if (a === null || b === null) return null;
+  return { a, b };
+}
+
+/** 自由線の経路（両端＋途中の折れ点。解決できない辺があれば null） */
+function freePath(
+  element: CeilingElement,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
+  seen: ReadonlySet<string> = new Set<string>(),
+): CeilingPoint[] | null {
+  const ends = freeEnds(element, solved, elements, seen);
+  if (ends === null) return null;
+  return [ends.a, ...(element.free?.via ?? []), ends.b];
+}
+
+/**
+ * 押した所にいちばん近い、その梁型の線の真ん中の上の位置。
+ * 梁型に線の端を付けるときに使う（rate は線の真ん中に沿った割合）
+ */
+export function beamAttachPoint(
+  element: CeilingElement,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[],
+  point: CeilingPoint,
+): { rate: number; point: CeilingPoint; gap: number } | null {
+  const path = elementCenterline(element, solved, elements, new Set<string>());
+  if (path === null || path.length < 2) return null;
+  const spans: number[] = [];
+  let total = 0;
+  for (let no = 0; no + 1 < path.length; no += 1) {
+    const span = Math.hypot(
+      path[no + 1].x - path[no].x,
+      path[no + 1].y - path[no].y,
+    );
+    spans.push(span);
+    total += span;
+  }
+  if (total <= 0) return null;
+  let best: { rate: number; point: CeilingPoint; gap: number } | null = null;
+  let traveled = 0;
+  for (let no = 0; no < spans.length; no += 1) {
+    const a = path[no];
+    const b = path[no + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const span = spans[no];
+    const rate =
+      span <= 0
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+              1,
+              ((point.x - a.x) * dx + (point.y - a.y) * dy) / span ** 2,
+            ),
+          );
+    const at = { x: a.x + dx * rate, y: a.y + dy * rate };
+    const gap = Math.hypot(point.x - at.x, point.y - at.y);
+    const along = (traveled + span * rate) / total;
+    if (best === null || gap < best.gap) best = { rate: along, point: at, gap };
+    traveled += span;
+  }
+  return best;
+}
+
+/**
+ * 折れ線（端→折れ点→…→端）を部屋の中に入っているところで切った残り。
+ * 凹んだ形では線がいったん外に出てまた入ることがあるので、ひと続きごとに返す。
+ * 各ひと続きは外周から外周への折れ線（両端は部屋のふちの上）
+ */
+function pathInside(
+  points: CeilingPoint[],
+  path: CeilingPoint[],
+): CeilingPoint[][] {
+  const runs: CeilingPoint[][] = [];
+  let current: CeilingPoint[] = [];
+  const push = (point: CeilingPoint): void => {
+    const last = current[current.length - 1];
+    if (
+      last !== undefined &&
+      Math.hypot(point.x - last.x, point.y - last.y) < 1e-9
+    )
+      return;
+    current.push(point);
+  };
+  for (let index = 0; index + 1 < path.length; index += 1) {
+    const a = path[index];
+    const b = path[index + 1];
+    const span = { x: b.x - a.x, y: b.y - a.y };
+    const size = Math.hypot(span.x, span.y);
+    if (size < 1e-9) continue;
+    const dir = { x: span.x / size, y: span.y / size };
+    const hits: number[] = [0, size];
+    points.forEach((point, no) => {
+      const next = points[(no + 1) % points.length];
+      const edge = { x: next.x - point.x, y: next.y - point.y };
+      const denom = cross(dir, edge);
+      if (Math.abs(denom) < 1e-9) return;
+      const gap = { x: point.x - a.x, y: point.y - a.y };
+      const rate = cross(gap, dir) / denom;
+      if (rate < -1e-9 || rate > 1 + 1e-9) return;
+      const t = cross(gap, edge) / denom;
+      if (t < -1e-6 || t > size + 1e-6) return;
+      if (!hits.some((value) => Math.abs(value - t) < 1e-6)) hits.push(t);
+    });
+    hits.sort((left, right) => left - right);
+    const at = (t: number): CeilingPoint => ({
+      x: a.x + dir.x * t,
+      y: a.y + dir.y * t,
+    });
+    for (let no = 0; no + 1 < hits.length; no += 1) {
+      const [start, end] = [hits[no], hits[no + 1]];
+      if (end - start < 1e-6) continue;
+      if (!inside(points, at((start + end) / 2))) continue;
+      const startPoint = at(start);
+      const endPoint = at(end);
+      const last = current[current.length - 1];
+      const joined =
+        last !== undefined &&
+        Math.hypot(startPoint.x - last.x, startPoint.y - last.y) < 1e-9;
+      if (!joined && current.length >= 2) {
+        runs.push(current);
+        current = [];
+      }
+      push(startPoint);
+      push(endPoint);
+    }
+  }
+  if (current.length >= 2) runs.push(current);
+  return runs;
+}
+
+/**
+ * 線分を部屋の中に入っているところで切った残り。
+ * 凹んだ形では線がいったん外に出てまた入ることがあるので、ひと続きごとに返す
+ */
+function chordInside(
+  points: CeilingPoint[],
+  a: CeilingPoint,
+  b: CeilingPoint,
+): CeilingSegment[] {
+  const span = { x: b.x - a.x, y: b.y - a.y };
+  const size = Math.hypot(span.x, span.y);
+  if (size < 1e-9) return [];
+  const dir = { x: span.x / size, y: span.y / size };
+  const hits: number[] = [0, size];
+  points.forEach((point, no) => {
+    const next = points[(no + 1) % points.length];
+    const edge = { x: next.x - point.x, y: next.y - point.y };
+    const denom = cross(dir, edge);
+    if (Math.abs(denom) < 1e-9) return;
+    const gap = { x: point.x - a.x, y: point.y - a.y };
+    const rate = cross(gap, dir) / denom;
+    if (rate < -1e-9 || rate > 1 + 1e-9) return;
+    const t = cross(gap, edge) / denom;
+    if (t < -1e-6 || t > size + 1e-6) return;
+    if (!hits.some((value) => Math.abs(value - t) < 1e-6)) hits.push(t);
+  });
+  hits.sort((left, right) => left - right);
+  const at = (t: number): CeilingPoint => ({
+    x: a.x + dir.x * t,
+    y: a.y + dir.y * t,
+  });
+  const pieces: CeilingSegment[] = [];
+  for (let no = 0; no + 1 < hits.length; no += 1) {
+    const [start, end] = [hits[no], hits[no + 1]];
+    if (end - start < 1e-6) continue;
+    if (!inside(points, at((start + end) / 2))) continue;
+    pieces.push({ a: at(start), b: at(end), length: round2(end - start) });
+  }
+  return pieces;
+}
+
+/**
+ * 下がり天井の線（図に出る分）。
+ * 自由線は両端を結んだ線を部屋の中で切ったもの、
+ * 壁に沿う線は壁から壁まで（範囲が入っていればその範囲だけ）
+ */
+export function dropCeilingSegments(
+  solved: SolvedShape,
+  element: CeilingElement,
+  elements: readonly CeilingElement[] = [],
+): CeilingSegment[] {
+  const points = solved.points;
+  const ends = freeEnds(element, solved, elements);
+  if (ends !== null) {
+    const path = freePath(element, solved, elements) ?? [];
+    if (path.length <= 2) return chordInside(points, ends.a, ends.b);
+    return pathInside(points, path).flatMap((run) =>
+      run.slice(0, -1).map((point, index) => ({
+        a: point,
+        b: run[index + 1],
+        length: round2(
+          Math.hypot(run[index + 1].x - point.x, run[index + 1].y - point.y),
+        ),
+      })),
+    );
+  }
+  const line = dropCeilingLine(
+    points,
+    solved.edges.findIndex((row) => row.id === element.edgeId),
+    element,
+  );
+  return line === null ? [] : [line];
+}
+
+/**
+ * 自由線の経路（①→折れ点→②）を、部屋の中に入っている区間ごとに、
+ * 線の進行方向の左側（inner が入っていれば右側）へ distance だけ離して返す。
+ * 天井付梁型の帯（離れ〜離れ＋Ｗ）の両側の線を出すのに使う
+ */
+function offsetFreePathSegments(
+  solved: SolvedShape,
+  element: CeilingElement,
+  distance: number,
+  elements: readonly CeilingElement[] = [],
+): CeilingSegment[] {
+  const path = freePath(element, solved, elements);
+  if (path === null || path.length < 2) return [];
+  const side = element.inner === true ? -1 : 1;
+  return pathInside(solved.points, path).flatMap((run) =>
+    run.slice(0, -1).flatMap((point, index) => {
+      const next = run[index + 1];
+      const dx = next.x - point.x;
+      const dy = next.y - point.y;
+      const size = Math.hypot(dx, dy);
+      if (size < 1e-9) return [];
+      const nx = (-dy / size) * side;
+      const ny = (dx / size) * side;
+      return [
+        {
+          a: { x: point.x + nx * distance, y: point.y + ny * distance },
+          b: { x: next.x + nx * distance, y: next.y + ny * distance },
+          length: round2(size),
+        },
+      ];
+    }),
+  );
+}
+
+/**
+ * 自由線の梁型が天井から取る帯（梁底）を、経路の一区間ごとの四角形で返す。
+ * 帯は経路の左側（inner なら右側）の 離れ〜離れ＋Ｗ
+ */
+function freeBeamPolys(
+  element: CeilingElement,
+  solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
+): CeilingPoint[][] {
+  const path = freePath(element, solved, elements);
+  if (path === null || path.length < 2) return [];
+  const [from, to] = barrierSpan(element);
+  const side = element.inner === true ? -1 : 1;
+  return pathInside(solved.points, path).flatMap((run) =>
+    run.slice(0, -1).flatMap((point, index) => {
+      const next = run[index + 1];
+      const dx = next.x - point.x;
+      const dy = next.y - point.y;
+      const size = Math.hypot(dx, dy);
+      if (size < 1e-9) return [];
+      const nx = (-dy / size) * side;
+      const ny = (dx / size) * side;
+      return [
+        [
+          { x: point.x + nx * from, y: point.y + ny * from },
+          { x: next.x + nx * from, y: next.y + ny * from },
+          { x: next.x + nx * to, y: next.y + ny * to },
+          { x: point.x + nx * to, y: point.y + ny * to },
+        ],
+      ];
+    }),
+  );
+}
+
 /**
  * 下がり天井の線（壁から壁）。範囲が入っていればその範囲だけに切る。
  * 範囲の外しか無ければ null
@@ -329,18 +761,139 @@ function acrossWallLine(
   };
 }
 
-/** その点がこの下がり天井の線より下がる側（壁側。inner なら線の向こう側）か。範囲は見ない */
-function loweredSide(
+/** 自由線の、下がる側へ向かう単位ベクトル（①→② の左側。inner なら右側） */
+function freeLowerSide(
+  a: CeilingPoint,
+  b: CeilingPoint,
+  element: CeilingElement,
+): CeilingPoint | null {
+  const span = { x: b.x - a.x, y: b.y - a.y };
+  const size = Math.hypot(span.x, span.y);
+  if (size < 1e-9) return null;
+  const left = { x: -span.y / size, y: span.x / size };
+  return element.inner === true ? { x: -left.x, y: -left.y } : left;
+}
+
+/** 形の外周の上にある点の位置（どの辺の、始めからの割合）。外周の上に無ければ null */
+function boundaryPos(
+  poly: CeilingPoint[],
+  p: CeilingPoint,
+): { index: number; t: number } | null {
+  let best: { index: number; t: number; d2: number } | null = null;
+  for (let index = 0; index < poly.length; index += 1) {
+    const a = poly[index];
+    const b = poly[(index + 1) % poly.length];
+    const edge = { x: b.x - a.x, y: b.y - a.y };
+    const size2 = edge.x * edge.x + edge.y * edge.y;
+    if (size2 < 1e-12) continue;
+    const t = Math.max(
+      0,
+      Math.min(1, ((p.x - a.x) * edge.x + (p.y - a.y) * edge.y) / size2),
+    );
+    const dx = p.x - (a.x + edge.x * t);
+    const dy = p.y - (a.y + edge.y * t);
+    const d2 = dx * dx + dy * dy;
+    if (best === null || d2 < best.d2) best = { index, t, d2 };
+  }
+  return best !== null && best.d2 < 1e-8
+    ? { index: best.index, t: best.t }
+    : null;
+}
+
+/**
+ * 形を、外周と外周を結ぶ折れ線で2つに分ける。
+ * 折れ線の両端は形のふちの上にあること（pathInside で切ったひと続きを渡す）
+ */
+function splitPieceByPath(
+  poly: CeilingPoint[],
+  path: CeilingPoint[],
+): CeilingPoint[][] {
+  if (path.length < 2) return [poly];
+  const first = path[0];
+  const last = path[path.length - 1];
+  const from = boundaryPos(poly, first);
+  const to = boundaryPos(poly, last);
+  if (from === null || to === null) return [poly];
+  // 外周を from→to と to→from に歩いて2つに分け、間を折れ線で結ぶ。
+  // 同じ辺の上のとき、割合の小さい方→大きい方は辺沿い（頂点なし）、
+  // 大きい方→小さい方は外周を一周する
+  const walk = (
+    start: { index: number; t: number },
+    end: { index: number; t: number },
+  ): CeilingPoint[] => {
+    if (start.index === end.index && start.t <= end.t) return [];
+    const found: CeilingPoint[] = [];
+    let index = start.index;
+    do {
+      index = (index + 1) % poly.length;
+      found.push(poly[index]);
+    } while (index !== end.index);
+    return found;
+  };
+  const inner = path.slice(1, -1);
+  const parts = [
+    [first, ...walk(from, to), last, ...inner.slice().reverse()],
+    [last, ...walk(to, from), first, ...inner],
+  ];
+  return parts.filter((row) => polygonArea(row) > 1e-6);
+}
+
+/**
+ * 折れ線（ひと続きごと）で部屋を分けたときの、下がる側の形を全部返す。
+ * 下がる側は「ひと続きの最初の線分の左側」（inner なら右側）にある区画
+ */
+function lowerSidePieces(
   points: CeilingPoint[],
-  index: number,
+  element: CeilingElement,
+  runs: CeilingPoint[][],
+): CeilingPoint[][] {
+  let pieces = [points];
+  runs.forEach((run) => {
+    pieces = pieces.flatMap((poly) => splitPieceByPath(poly, run));
+  });
+  return runs.flatMap((run) => {
+    const first = run[0];
+    const second = run[1];
+    const span = { x: second.x - first.x, y: second.y - first.y };
+    const size = Math.hypot(span.x, span.y);
+    if (size < 1e-9) return [];
+    const left = { x: -span.y / size, y: span.x / size };
+    const side = element.inner === true ? { x: -left.x, y: -left.y } : left;
+    const probe = {
+      x: (first.x + second.x) / 2 + side.x * 0.005,
+      y: (first.y + second.y) / 2 + side.y * 0.005,
+    };
+    const piece = pieces.find((poly) => inside(poly, probe));
+    return piece === undefined ? [] : [piece];
+  });
+}
+
+/** その点がこの下がり天井の線より下がる側（壁側。inner なら線の向こう側。自由線は①→②の左側）か。範囲は見ない */
+function loweredSide(
+  solved: SolvedShape,
   element: CeilingElement,
   target: CeilingPoint,
+  elements: readonly CeilingElement[] = [],
 ): boolean {
+  const points = solved.points;
+  const path = freePath(element, solved, elements);
+  if (path !== null) {
+    if (path.length > 2) {
+      return lowerSidePieces(points, element, pathInside(points, path)).some(
+        (poly) => inside(poly, target),
+      );
+    }
+    const side = freeLowerSide(path[0], path[path.length - 1], element);
+    if (side === null) return false;
+    const distance =
+      (target.x - path[0].x) * side.x + (target.y - path[0].y) * side.y;
+    return distance >= -1e-6;
+  }
+  const index = solved.edges.findIndex((row) => row.id === element.edgeId);
   if (index < 0 || index >= points.length) return false;
   const from = points[index];
   const normal = inwardNormal(points, index);
-  const reach =
-    (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
+  const reach = (target.x - from.x) * normal.x + (target.y - from.y) * normal.y;
   const far = element.offset ?? 0;
   return element.inner === true ? reach > far - 1e-6 : reach <= far + 1e-6;
 }
@@ -350,15 +903,16 @@ function loweredSide(
  * （線より下がる側で、範囲があればその中）
  */
 function loweredBy(
-  points: CeilingPoint[],
-  index: number,
+  solved: SolvedShape,
   element: CeilingElement,
   target: CeilingPoint,
+  elements: readonly CeilingElement[] = [],
 ): boolean {
-  if (!loweredSide(points, index, element, target)) return false;
+  if (!loweredSide(solved, element, target, elements)) return false;
   const range = element.range ?? null;
   if (range === null) return true;
-  const along = alongWall(points, index, target);
+  const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+  const along = alongWall(solved.points, index, target);
   return along > range.from - 1e-6 && along < range.to + 1e-6;
 }
 
@@ -387,10 +941,22 @@ export function elementDrop(
 function elementCenter(
   element: CeilingElement,
   solved: SolvedShape,
+  elements: readonly CeilingElement[] = [],
 ): CeilingPoint | null {
   const points = solved.points;
   const index = solved.edges.findIndex((row) => row.id === element.edgeId);
-  if (points.length < 3 || index < 0) return null;
+  if (points.length < 3 || index < 0) {
+    // 自由線のときは帯（梁型）か線（それ以外）の真ん中
+    const polys =
+      element.kind === "ceilingBeam" || element.kind === "wallBeam"
+        ? freeBeamPolys(element, solved, elements)
+        : [];
+    if (polys.length > 0)
+      return polygonCenter(polys[Math.floor(polys.length / 2)]);
+    const ends = freeEnds(element, solved, elements);
+    if (ends === null) return null;
+    return { x: (ends.a.x + ends.b.x) / 2, y: (ends.a.y + ends.b.y) / 2 };
+  }
   const width = element.width ?? 0;
   const offset = element.offset ?? 0;
   const distance =
@@ -428,7 +994,7 @@ export function ceilingBaseHeights(
       bases.set(element.id, roomCeilingHeight);
       return;
     }
-    const center = elementCenter(element, solved);
+    const center = elementCenter(element, solved, elements);
     if (center === null) {
       bases.set(element.id, roomCeilingHeight);
       return;
@@ -492,6 +1058,15 @@ interface CeilingBarrier {
   to: number;
   /** 沿う辺の向きの範囲（下がり天井を範囲で分けたとき）。空なら壁から壁まで */
   along: CeilingRange | null;
+  /**
+   * 自由線のとき、線の位置と下がる側の向き（この向き側すべてがその線の取っている場所）。
+   * 折れ線のときは下がる側の区画の形が pieces に入る
+   */
+  free: {
+    a: CeilingPoint;
+    side: CeilingPoint;
+    pieces?: CeilingPoint[][];
+  } | null;
 }
 
 /** 要素が天井から取っている場所（沿う辺からの離れの範囲） */
@@ -509,6 +1084,14 @@ function insideBarrier(
   barrier: CeilingBarrier,
   target: CeilingPoint,
 ): boolean {
+  if (barrier.free !== null) {
+    if (barrier.free.pieces !== undefined)
+      return barrier.free.pieces.some((poly) => inside(poly, target));
+    const distance =
+      (target.x - barrier.free.a.x) * barrier.free.side.x +
+      (target.y - barrier.free.a.y) * barrier.free.side.y;
+    return distance > 1e-6;
+  }
   if (barrier.index < 0 || barrier.index >= points.length) return false;
   const from = points[barrier.index];
   const normal = inwardNormal(points, barrier.index);
@@ -574,6 +1157,7 @@ function cutByBarriers(
 
 /** 行き止まりになる要素（梁型・下がり壁、低い下がり天井）を線の形にする */
 function barriersOf(
+  solved: SolvedShape,
   rows: {
     element: CeilingElement;
     index: number;
@@ -582,6 +1166,53 @@ function barriersOf(
 ): CeilingBarrier[] {
   return rows.map((row) => {
     const [from, to] = barrierSpan(row.element);
+    const elements = rows.map((row) => row.element);
+    const ends = freeEnds(row.element, solved, elements);
+    // 自由線の梁型が行き止まりになる所は、線の下がる側ではなく梁底の帯そのもの
+    if (
+      ends !== null &&
+      (row.element.kind === "ceilingBeam" || row.element.kind === "wallBeam")
+    ) {
+      const polys = freeBeamPolys(row.element, solved, elements);
+      return {
+        element: row.element,
+        index: row.index,
+        lines: row.lines.filter(
+          (line): line is CeilingSegment => line !== null,
+        ),
+        from: 0,
+        to: 0,
+        along: null,
+        free: {
+          a: ends.a,
+          side: { x: 0, y: 0 },
+          ...(polys.length > 0 ? { pieces: polys } : {}),
+        },
+      };
+    }
+    const free =
+      ends === null
+        ? null
+        : (() => {
+            const via = row.element.free?.via ?? [];
+            if (via.length > 0) {
+              const path = [ends.a, ...via, ends.b];
+              return {
+                a: ends.a,
+                side: freeLowerSide(ends.a, ends.b, row.element) ?? {
+                  x: 0,
+                  y: 0,
+                },
+                pieces: lowerSidePieces(
+                  solved.points,
+                  row.element,
+                  pathInside(solved.points, path),
+                ),
+              };
+            }
+            const side = freeLowerSide(ends.a, ends.b, row.element);
+            return side === null ? null : { a: ends.a, side };
+          })();
     return {
       lines: row.lines.filter((line): line is CeilingSegment => line !== null),
       index: row.index,
@@ -589,6 +1220,7 @@ function barriersOf(
       to,
       along:
         row.element.kind === "dropCeiling" ? (row.element.range ?? null) : null,
+      free,
     };
   });
 }
@@ -682,25 +1314,44 @@ export function ceilingLines(
   const rough = elements.map((element, order) => {
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
     const crossing = element.kind === "wallBeam" || element.kind === "dropWall";
-    const lines = distancesOf(element).map((distance, no) => {
-      const segment = crossing
-        ? offsetSegment(points, index, distance)
-        : element.kind === "dropCeiling"
-          ? dropCeilingLine(points, index, element)
-          : wallToWallLine(points, index, distance);
-      return segment === null
-        ? null
-        : {
+    const lines =
+      element.kind === "dropCeiling"
+        ? dropCeilingSegments(solved, element, elements).map((segment) => ({
             ...segment,
             elementId: element.id,
             kind: element.kind,
-            no,
-            distance,
-            same:
-              element.kind === "dropCeiling" &&
-              elementDrop(element, roomCeilingHeight) === 0,
-          };
-    });
+            no: 0,
+            distance: element.offset ?? 0,
+            same: elementDrop(element, roomCeilingHeight) === 0,
+          }))
+        : element.free !== null && element.free !== undefined
+          ? distancesOf(element).flatMap((distance, no) =>
+              offsetFreePathSegments(solved, element, distance, elements).map(
+                (segment) => ({
+                  ...segment,
+                  elementId: element.id,
+                  kind: element.kind,
+                  no,
+                  distance,
+                  same: false,
+                }),
+              ),
+            )
+          : distancesOf(element).map((distance, no) => {
+              const segment = crossing
+                ? offsetSegment(points, index, distance)
+                : wallToWallLine(points, index, distance);
+              return segment === null
+                ? null
+                : {
+                    ...segment,
+                    elementId: element.id,
+                    kind: element.kind,
+                    no,
+                    distance,
+                    same: false,
+                  };
+            });
     return {
       element,
       index,
@@ -718,7 +1369,10 @@ export function ceilingLines(
 
     // 自分より低くなる（下がりが大きい）線が行き止まりになる。
     // 下がり天井より梁底が高い梁型は下がり天井の中では見えないので、下がり天井が通し
-    const barriers = barriersOf(rough.filter((other) => blocks(row, other)));
+    const barriers = barriersOf(
+      solved,
+      rough.filter((other) => blocks(row, other)),
+    );
 
     return row.lines
       .filter((line): line is CeilingLine => line !== null)
@@ -755,6 +1409,7 @@ export function cutByBeams(
   });
   const row = rowOf(element);
   const barriers = barriersOf(
+    solved,
     elements
       .filter(
         (other) => other.kind !== "dropCeiling" && blocks(row, rowOf(other)),
@@ -835,6 +1490,8 @@ interface BeamBand {
   to: number;
   /** 見えている線（区画を切る線）と、その沿う辺の向きの範囲 */
   lines: { line: CeilingSegment; along: CeilingRange }[];
+  /** 自由線の梁：帯の四角形（経路の一区間ごと）。これがあれば index は -1 */
+  polys?: CeilingPoint[][];
 }
 
 /**
@@ -852,19 +1509,36 @@ function beamBands(
     if (element.kind !== "wallBeam" && element.kind !== "ceilingBeam")
       return [];
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
-    if (index < 0) return [];
+    const isFree = element.free !== null && element.free !== undefined;
+    if (!isFree && index < 0) return [];
     const [from, to] = barrierSpan(element);
     if (to - from < 1e-6) return [];
     const own = lines
       .filter((line) => line.elementId === element.id)
       .map((line) => {
-        const [start, end] = [
-          alongWall(points, index, line.a),
-          alongWall(points, index, line.b),
-        ].sort((left, right) => left - right);
+        const [start, end] =
+          index < 0
+            ? [0, 0]
+            : [
+                alongWall(points, index, line.a),
+                alongWall(points, index, line.b),
+              ].sort((left, right) => left - right);
         return { line, along: { from: start, to: end } };
       });
     if (own.length === 0) return [];
+    // 自由線の梁は、帯を経路ごとの四角形で持つ（中に入る所はその四角形）
+    if (isFree) {
+      return [
+        {
+          element,
+          index,
+          from,
+          to,
+          lines: own,
+          polys: freeBeamPolys(element, solved, elements),
+        },
+      ];
+    }
     return [{ element, index, from, to, lines: own }];
   });
 }
@@ -875,6 +1549,9 @@ function insideBand(
   band: BeamBand,
   target: CeilingPoint,
 ): boolean {
+  // 自由線の梁は、経路ごとの四角形のどれかに入っているか
+  if (band.polys !== undefined)
+    return band.polys.some((poly) => inside(poly, target));
   const from = points[band.index];
   const normal = inwardNormal(points, band.index);
   const distance =
@@ -1037,6 +1714,28 @@ function polygonCenter(poly: CeilingPoint[]): CeilingPoint {
   return { x: x / (3 * sum), y: y / (3 * sum) };
 }
 
+/**
+ * 形の中にある代表点（凹んだ形では重心が形の外に出るので、
+ * そのときは角と両隣の真ん中へ寄った内側の点を使う）
+ */
+function insidePolyPoint(
+  poly: CeilingPoint[],
+  center: CeilingPoint,
+): CeilingPoint {
+  if (inside(poly, center)) return center;
+  for (let no = 0; no < poly.length; no += 1) {
+    const point = poly[no];
+    const prev = poly[(no + poly.length - 1) % poly.length];
+    const next = poly[(no + 1) % poly.length];
+    const probe = {
+      x: point.x + ((prev.x + next.x) / 2 - point.x) * 0.5,
+      y: point.y + ((prev.y + next.y) / 2 - point.y) * 0.5,
+    };
+    if (inside(poly, probe)) return probe;
+  }
+  return center;
+}
+
 /** 梁型が天井から取る場所（梁底）。天井面積・区画の面積からはこの分を引く */
 export interface CeilingBeamFootprint {
   /** その梁底の真ん中（どの区画に入るかを見る） */
@@ -1061,7 +1760,15 @@ export function beamFootprints(
     const width = element.width ?? 0;
     if (width <= 0) return [];
     const index = solved.edges.findIndex((row) => row.id === element.edgeId);
-    if (index < 0) return [];
+    const isFree = element.free !== null && element.free !== undefined;
+    if (!isFree && index < 0) return [];
+    // 自由線の梁は、帯の四角形ごとの真ん中と面積（一区間ごと）
+    if (isFree) {
+      return freeBeamPolys(element, solved, elements).map((poly) => ({
+        center: polygonCenter(poly),
+        area: round2(Math.abs(polygonArea(poly))),
+      }));
+    }
     const pieces = lines.filter(
       (row) => row.elementId === element.id && row.no === 0,
     );
@@ -1144,21 +1851,29 @@ function regionPieces(
   );
   // 区画を切るのは下がり天井の線だけ。梁型の線で切れて短くなっていても、
   // 天井の高さが変わる境目は壁から壁までなので、切るときは壁までの線を使う。
+  // （範囲が入っていてもここでは壁から壁までで切り、範囲はあとで両端の壁直角の線で区切る。
+  // 自由線は引いた線そのもので切る）
   // 低い線から先に区切る（低い線で止まっている線も、その区画は区切れる）
   const lines = elements
     .filter((element) => element.kind === "dropCeiling")
-    .map((element) => ({
-      element,
-      line: wallToWallLine(
-        points,
-        solved.edges.findIndex((row) => row.id === element.edgeId),
-        element.offset ?? 0,
-      ),
-    }))
-    .filter(
-      (row): row is { element: CeilingElement; line: CeilingSegment } =>
-        row.line !== null,
-    )
+    .flatMap((element) => {
+      const ends = freeEnds(element, solved, elements);
+      const line =
+        ends !== null
+          ? null
+          : wallToWallLine(
+              points,
+              solved.edges.findIndex((row) => row.id === element.edgeId),
+              element.offset ?? 0,
+            );
+      const segments =
+        ends !== null
+          ? pathInside(points, freePath(element, solved, elements) ?? [])
+          : line === null
+            ? []
+            : [[line.a, line.b]];
+      return segments.map((path) => ({ element, path }));
+    })
     .sort(
       (left, right) =>
         (dropOf.get(right.element.id) ?? 0) -
@@ -1167,7 +1882,16 @@ function regionPieces(
 
   let polygons: CeilingPoint[][] = [points];
   lines.forEach((row) => {
-    polygons = polygons.flatMap((poly) => cutPolygon(poly, row.line));
+    // 折れ線は外周から外周への経路で区切る。直線のときは従来の切り方のまま
+    polygons = polygons.flatMap((poly) =>
+      row.path.length <= 2
+        ? cutPolygon(poly, {
+            a: row.path[0],
+            b: row.path[row.path.length - 1],
+            length: 0,
+          })
+        : splitPieceByPath(poly, row.path),
+    );
     // 範囲で分けた下がり天井は、下がる側を範囲の端（壁に直角の線）でも区切る。
     // 範囲の外は下がっていないので、隣の同じ高さの区画とまとまる
     const range = row.element.range ?? null;
@@ -1179,7 +1903,12 @@ function regionPieces(
       .map((along) => acrossWallLine(points, index, along))
       .filter((line): line is CeilingSegment => line !== null);
     polygons = polygons.flatMap((poly) =>
-      loweredSide(points, index, row.element, polygonCenter(poly))
+      loweredSide(
+        solved,
+        row.element,
+        insidePolyPoint(poly, polygonCenter(poly)),
+        elements,
+      )
         ? cuts.reduce<CeilingPoint[][]>(
             (rows, cut) => rows.flatMap((each) => cutPolygon(each, cut)),
             [poly],
@@ -1201,7 +1930,12 @@ function regionPieces(
 
   const pieces = polygons.map((poly) => {
     const center = polygonCenter(poly);
-    const found = dropAt(elements, solved, roomCeilingHeight, center);
+    const found = dropAt(
+      elements,
+      solved,
+      roomCeilingHeight,
+      insidePolyPoint(poly, center),
+    );
     // 梁底が天井を取るのは、梁底がその所の天井と同じか低いとき
     // （下がり天井より高い梁型は下がり天井の中では見えない）
     const band =
@@ -1217,7 +1951,15 @@ function regionPieces(
     const beam = band !== null || polygonArea(poly) - footprint < 1e-6;
     // その区画のふちになっている下がり天井（下がっていない側でも高さを入れられるように）
     const boundaryIds = lines
-      .filter((row) => onBoundary(poly, row.line))
+      .filter((row) =>
+        row.path.slice(0, -1).some((point, index) =>
+          onBoundary(poly, {
+            a: point,
+            b: row.path[index + 1],
+            length: 0,
+          }),
+        ),
+      )
       .map((row) => row.element.id);
     // 区画の中の点で覚えた天井高さがあればそれが優先（下がり天井の行のＨは既定）
     const noted = beam
@@ -1229,7 +1971,9 @@ function regionPieces(
     return {
       poly,
       center,
-      area: beam ? polygonArea(poly) : Math.max(0, polygonArea(poly) - footprint),
+      area: beam
+        ? polygonArea(poly)
+        : Math.max(0, polygonArea(poly) - footprint),
       drop: beam
         ? (beamDepth ?? found.drop)
         : noted === null
@@ -1302,6 +2046,128 @@ function regionPieces(
     );
 }
 
+/**
+ * 壁・曲面壁・柱ごとの高さ（その辺が面する天井区画の高さで重み付けした実効値）。
+ * 低い天井の区画に面する部分はその区画の高さ、残りは部屋の天井高さで壁面積・柱面積を計算する。
+ * 区画の境目で分かれる辺（下がり天井が壁に直角に付くとき）は長さの割合で合わせる。
+ * 高さが決まっていない区画・部屋の天井より高い区画に面する部分は部屋の天井高さのまま。
+ */
+export function wallEdgeHeights(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+  heights: CeilingRegionHeight[] = [],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  const points = solved.points;
+  if (
+    roomCeilingHeight === null ||
+    points.length < 3 ||
+    elements.length === 0
+  ) {
+    return result;
+  }
+  const regions = ceilingRegions(
+    elements,
+    solved,
+    roomCeilingHeight,
+    false,
+    false,
+    heights,
+  );
+  // 壁に付く梁型がある壁は、壁面が梁底（取りつく天井高さ−Ｈ）までなのでその高さにする
+  // （梁は壁から壁までなので辺全体に効く。複数あればいちばん低い梁底に合わせる）
+  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  const beamHeightByEdge = new Map<string, number>();
+  for (const element of elements) {
+    if (
+      element.kind !== "wallBeam" ||
+      element.edgeId === null ||
+      (element.free ?? null) !== null
+    )
+      continue;
+    const base = bases.get(element.id) ?? null;
+    const drop = elementDrop(element, base);
+    if (base === null || drop === null) continue;
+    const under = round2(base - drop);
+    const previous = beamHeightByEdge.get(element.edgeId);
+    if (previous === undefined || under < previous) {
+      beamHeightByEdge.set(element.edgeId, under);
+    }
+  }
+  for (const [index, edge] of solved.edges.entries()) {
+    // 壁・Ｒ壁・柱のほか、開口・Ｒ開口も「壁があったとしたらの高さ」を出す
+    // （数量には使われず、寸法入力表の平均高さの表示にだけ使う）
+    if (
+      edge.kind !== "wall" &&
+      edge.kind !== "curve" &&
+      edge.kind !== "column" &&
+      edge.kind !== "opening" &&
+      edge.kind !== "curveOpening"
+    )
+      continue;
+    const from = points[index];
+    const to = points[(index + 1) % points.length];
+    const span = { x: to.x - from.x, y: to.y - from.y };
+    if (Math.hypot(span.x, span.y) < 1e-9) continue;
+    const normal = inwardNormal(points, index);
+    // 辺と区画の境目が交わる位置（0〜1）で区切り、区間ごとの高さを長さで重み付けする
+    const cuts: number[] = [];
+    for (const region of regions) {
+      for (const part of region.parts) {
+        for (let i = 0; i < part.length; i += 1) {
+          const a = part[i];
+          const b = part[(i + 1) % part.length];
+          const leg = { x: b.x - a.x, y: b.y - a.y };
+          const denom = cross(span, leg);
+          if (Math.abs(denom) < 1e-9) continue;
+          const gap = { x: a.x - from.x, y: a.y - from.y };
+          const t = cross(gap, leg) / denom;
+          const u = cross(gap, span) / denom;
+          if (
+            t > 1e-6 &&
+            t < 1 - 1e-6 &&
+            u >= -1e-9 &&
+            u <= 1 + 1e-9 &&
+            !cuts.some((value) => Math.abs(value - t) < 1e-6)
+          ) {
+            cuts.push(t);
+          }
+        }
+      }
+    }
+    cuts.sort((left, right) => left - right);
+    const bounds = [0, ...cuts, 1];
+    let weighted = 0;
+    for (let i = 0; i < bounds.length - 1; i += 1) {
+      const rate = (bounds[i] + bounds[i + 1]) / 2;
+      const probe = {
+        x: from.x + span.x * rate + normal.x * 0.005,
+        y: from.y + span.y * rate + normal.y * 0.005,
+      };
+      const region = regions.find((row) =>
+        row.parts.some((part) => inside(part, probe)),
+      );
+      const height = region?.height ?? null;
+      // 低い区画に面する部分だけ下げる（高い区画・高さ未定・区画の外はそのまま）
+      const effective =
+        height === null || height >= roomCeilingHeight
+          ? roomCeilingHeight
+          : height;
+      weighted += (bounds[i + 1] - bounds[i]) * effective;
+    }
+    // 壁付き梁型の梁底より上は壁面に入らないので、梁底の高さまで下げる
+    const beamHeight = beamHeightByEdge.get(edge.id);
+    if (beamHeight !== undefined && beamHeight < weighted) {
+      weighted = beamHeight;
+    }
+    if (weighted < roomCeilingHeight - 1e-6) {
+      result.set(edge.id, round2(weighted));
+    }
+  }
+  return result;
+}
+
 /** 天井の区画どうしの境目に引く線 */
 export interface CeilingBoundary extends CeilingSegment {
   elementId: string;
@@ -1348,17 +2214,11 @@ export function ceilingBoundaries(
   );
   const lines = elements
     .filter((element) => element.kind === "dropCeiling")
-    .map((element) => ({
-      element,
-      line: dropCeilingLine(
-        points,
-        solved.edges.findIndex((row) => row.id === element.edgeId),
+    .flatMap((element) =>
+      dropCeilingSegments(solved, element, elements).map((line) => ({
         element,
-      ),
-    }))
-    .filter(
-      (row): row is { element: CeilingElement; line: CeilingSegment } =>
-        row.line !== null,
+        line,
+      })),
     );
 
   const regionAt = (at: CeilingPoint): (typeof regions)[number] | null =>
@@ -1548,7 +2408,6 @@ function dropAt(
   roomCeilingHeight: number | null,
   target: CeilingPoint,
 ): { drop: number; waiting: string; elementIds: string[] } {
-  const points = solved.points;
   let drop = 0;
   // 高さがまだ入っていない下がり天井。高さが決まるまで、その内と外は別の区画にする
   const waiting: string[] = [];
@@ -1556,9 +2415,8 @@ function dropAt(
   const covering: { id: string; offset: number }[] = [];
   elements.forEach((element) => {
     if (element.kind !== "dropCeiling") return;
-    const index = solved.edges.findIndex((row) => row.id === element.edgeId);
-    // 下がり天井が下げているのは、その線より壁側（innerなら線の向こう側）。範囲があればその中
-    if (!loweredBy(points, index, element, target)) return;
+    // 下がり天井が下げているのは、その線より壁側（innerなら線の向こう側。自由線は①→②の左側）。範囲があればその中
+    if (!loweredBy(solved, element, target, elements)) return;
     covering.push({ id: element.id, offset: element.offset ?? 0 });
     const here = elementDrop(element, roomCeilingHeight);
     // 高さがまだ入っていないときは、決まるまで内と外を別の区画にしておく。
@@ -1714,6 +2572,8 @@ export function splitDropCeiling(
   roomCeilingHeight: number | null,
 ): CeilingElement[] | null {
   if (element.kind !== "dropCeiling") return null;
+  // 自由線は壁の範囲ではなく両端で決まるので、分ける対象にならない
+  if ((element.free ?? null) !== null) return null;
   const index = solved.edges.findIndex((row) => row.id === element.edgeId);
   if (index < 0) return null;
   const pieces = ceilingLines(elements, solved, roomCeilingHeight).filter(
@@ -1777,9 +2637,7 @@ export function ceilingQuantities(
     // 壁や自分より低い線で止めた（梁をまたいで分かれていれば合わせた）実際の長さ
     const pieces =
       element.kind === "dropCeiling" || element.kind === "ceilingBeam"
-        ? lines.filter(
-            (line) => line.elementId === element.id && line.no === 0,
-          )
+        ? lines.filter((line) => line.elementId === element.id && line.no === 0)
         : [];
     const crossing =
       pieces.length === 0
@@ -1881,8 +2739,8 @@ const KIND_SYMBOL: Record<
 const KIND_LABEL: Record<CeilingElementKind, string> = {
   wallBeam: "壁付き梁型",
   ceilingBeam: "天井付梁型",
-  dropWall: "下がり壁",
-  dropCeiling: "下がり天井",
+  dropWall: "下り壁",
+  dropCeiling: "下り天井",
 };
 
 /** 計算式で使う天井伏図の記号（合計と線ごと） */
@@ -1893,12 +2751,12 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
     { symbol: "GA", label: "壁付き梁型 面積", value: totals.wallBeamArea },
     { symbol: "BL", label: "天井付梁型 長さ", value: totals.ceilingBeamLength },
     { symbol: "BA", label: "天井付梁型 面積", value: totals.ceilingBeamArea },
-    { symbol: "DWL", label: "下がり壁 長さ", value: totals.dropWallLength },
-    { symbol: "DWA", label: "下がり壁 面積", value: totals.dropWallArea },
-    { symbol: "SL", label: "下がり天井 長さ", value: totals.dropCeilingLength },
+    { symbol: "DWL", label: "下り壁 長さ", value: totals.dropWallLength },
+    { symbol: "DWA", label: "下り壁 面積", value: totals.dropWallArea },
+    { symbol: "SL", label: "下り天井 長さ", value: totals.dropCeilingLength },
     {
       symbol: "SA",
-      label: "下がり天井 見付面積",
+      label: "下り天井 見付面積",
       value: totals.dropCeilingArea,
     },
   ];
@@ -1930,7 +2788,7 @@ export function ceilingSymbols(quantities: CeilingQuantities): CeilingSymbol[] {
   for (const [no, row] of quantities.dropCeilingByHeight.entries()) {
     symbols.push({
       symbol: `SLH${no + 1}`,
-      label: `下がり天井 段差${row.drop.toFixed(2)} 長さ`,
+      label: `下り天井 段差${row.drop.toFixed(2)} 長さ`,
       value: row.length,
     });
   }
@@ -1951,26 +2809,18 @@ export function ceilingCutLines(
   if (points.length < 3) return [];
   return elements.flatMap((element) => {
     if (element.kind !== "dropCeiling") return [];
-    const line = dropCeilingLine(
-      points,
-      solved.edges.findIndex((row) => row.id === element.edgeId),
-      element,
+    return dropCeilingSegments(solved, element, elements).flatMap((line) =>
+      cutByBeams(line, element, elements, solved, roomCeilingHeight).map(
+        (piece) => ({
+          ...piece,
+          elementId: element.id,
+          kind: element.kind,
+          no: 0,
+          distance: 0,
+          same: elementDrop(element, roomCeilingHeight) === 0,
+        }),
+      ),
     );
-    if (line === null) return [];
-    return cutByBeams(
-      line,
-      element,
-      elements,
-      solved,
-      roomCeilingHeight,
-    ).map((piece) => ({
-      ...piece,
-      elementId: element.id,
-      kind: element.kind,
-      no: 0,
-      distance: 0,
-      same: elementDrop(element, roomCeilingHeight) === 0,
-    }));
   });
 }
 
@@ -2016,25 +2866,16 @@ export function dropCeilingSpans(
   // ほかの下がり天井では切らない。自分より低い線で切られた先にも、高さが違う所（段差）は残るため
   const drawn = elements
     .filter((element) => element.kind === "dropCeiling")
-    .flatMap((element) => {
-      const line = dropCeilingLine(
-        solved.points,
-        solved.edges.findIndex((row) => row.id === element.edgeId),
-        element,
-      );
-      return line === null
-        ? []
-        : cutByBeams(
-            line,
-            element,
-            elements,
-            solved,
-            roomCeilingHeight,
-          ).map((piece) => ({
+    .flatMap((element) =>
+      dropCeilingSegments(solved, element, elements).flatMap((line) =>
+        cutByBeams(line, element, elements, solved, roomCeilingHeight).map(
+          (piece) => ({
             elementId: element.id,
             ...piece,
-          }));
-    });
+          }),
+        ),
+      ),
+    );
 
   const spans = new Map<string, CeilingSpan>();
   ceilingBoundaries(

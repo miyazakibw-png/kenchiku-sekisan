@@ -5,7 +5,7 @@
 
 .furniture-page .furniture-table th,
 .furniture-page .furniture-table td {
-  border: 1px solid #999;
+  border: var(--line-thin);
   padding: 0;
   white-space: nowrap;
 }
@@ -263,5 +263,81 @@
     background: #fff !important;
     color: #000 !important;
     position: static !important;
+  }
+}
+
+/** 一括印刷に入れるときの家具計算書（表だけを紙に出す。A3横1枚の入れ物） */
+.furniture-page.furniture-print {
+  display: block;
+  position: relative;
+  width: 1527px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #fff;
+  margin: 0 auto 12px;
+  break-before: page;
+  page-break-before: always;
+  break-after: page;
+  page-break-after: always;
+}
+
+.furniture-page.furniture-print > .toolbar,
+.furniture-page.furniture-print > .furniture-columns,
+.furniture-page.furniture-print > .hint {
+  display: none;
+}
+
+.furniture-page.furniture-print > .calc-print-title {
+  height: 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/** 紙の罫線は細い線でそろえる（計算書・部位別雑金物の印刷と同じ）。
+    表を縮めて出すときも罫線が変わらないよう、縮尺の分だけ幅を割り引く */
+.furniture-page.furniture-print .furniture-table th,
+.furniture-page.furniture-print .furniture-table td {
+  border: 1px solid #000;
+  border-width: calc(1px / var(--print-line-scale, 1));
+}
+
+/** 下が空く分は、手入力できるよう横罫線だけを引く */
+.furniture-page.furniture-print .furniture-table tr.blank td {
+  border: none;
+  border-bottom: 1px solid #000;
+  border-bottom-width: calc(1px / var(--print-line-scale, 1));
+  height: 22px;
+}
+
+.furniture-page.furniture-print .furniture-table-wrap {
+  overflow: visible;
+  max-height: none;
+  transform-origin: top left;
+}
+
+/** 表示する列の見出し文字（✔の右横。ここで表の見出しを直せる） */
+.furniture-page .furniture-columns label .title-text {
+  width: 84px;
+  margin-left: 2px;
+  font-size: 12px;
+  padding: 0 2px;
+  border: 1px solid #c7d2de;
+  background: #fff;
+}
+
+/* 行を消したとき上の行が動かないよう、表の下に白い余白を残す */
+.furniture-page .furniture-table-wrap::after {
+  content: "";
+  display: block;
+  height: 100vh;
+}
+
+.furniture-page.furniture-print .furniture-table-wrap::after {
+  display: none;
+}
+
+@media print {
+  .furniture-page .furniture-table-wrap::after {
+    display: none;
   }
 }

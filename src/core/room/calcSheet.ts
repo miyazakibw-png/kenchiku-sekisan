@@ -41,6 +41,8 @@ export interface CalcLine {
 /** セットの上に出す見出し行（目印。色を付けて部位のまとまりを見やすくする） */
 export interface CalcBanner {
   text: string;
+  /** コメント列の位置から書く2つ目の文字（入っていれば出す） */
+  text2?: string;
   /** CSS の色（画面で選んだ登録色） */
   color: string;
 }
@@ -162,14 +164,18 @@ export function calcLine(patch: Partial<CalcLine> = {}): CalcLine {
 }
 
 /** コメント行（明細を持たない、色付きの1行だけのセット） */
-export function commentSet(text: string, color: string): CalcSet {
+export function commentSet(
+  text: string,
+  color: string,
+  text2?: string,
+): CalcSet {
   return {
     id: newId("s"),
     partNumber: null,
     partName: "",
     details: [],
     lines: [],
-    banner: { text, color },
+    banner: { text, text2, color },
     assemblyId: null,
   };
 }
@@ -196,7 +202,9 @@ export function detachBanners(sets: CalcSet[]): CalcSet[] {
         ? { ...item, lines: [] }
         : item;
     if (set.banner != null && !isCommentSet(set)) {
-      next.push(commentSet(set.banner.text, set.banner.color));
+      next.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
       next.push({ ...set, banner: null });
       return;
     }
@@ -246,16 +254,20 @@ export function calcSet(detailCount = 1): CalcSet {
  */
 export function normalizeSets(sets: CalcSet[]): CalcSet[] {
   return detachBanners(
-    sets.map((set) => ({
-      ...set,
-      id: set.id ?? newId("s"),
-      partNumber: set.partNumber ?? null,
-      partName: set.partName ?? "",
-      banner: set.banner ?? null,
-      assemblyId: set.assemblyId ?? null,
-      details: (set.details ?? []).map((detail) => calcDetail(detail)),
-      lines: (set.lines ?? []).map((line) => calcLine(line)),
-    })),
+    sets.map((set) => {
+      const details = (set.details ?? []).map((detail) => calcDetail(detail));
+      const lines = (set.lines ?? []).map((line) => calcLine(line));
+      return {
+        ...set,
+        id: set.id ?? newId("s"),
+        partNumber: set.partNumber ?? null,
+        partName: set.partName ?? "",
+        banner: set.banner ?? null,
+        assemblyId: set.assemblyId ?? null,
+        details,
+        lines: syncLines(details, lines),
+      };
+    }),
   );
 }
 
@@ -335,7 +347,8 @@ export function removeSetRow(set: CalcSet, index: number): CalcSet {
 /** 明細を1件だけ消す（計算式の行は残して動かさない） */
 export function removeSetDetail(set: CalcSet, index: number): CalcSet {
   const details = set.details.filter((_, rowIndex) => rowIndex !== index);
-  return { ...set, details, lines: padLines(details, set.lines) };
+  // 明細が減った分、末尾に余った空の計算式行は詰める（空行が残らないように）
+  return { ...set, details, lines: syncLines(details, set.lines) };
 }
 
 /** 明細を上下に入れ替える（計算式の行は動かさない） */
@@ -350,6 +363,142 @@ export function moveSetDetail(
   const details = [...set.details];
   [details[index], details[to]] = [details[to], details[index]];
   return { ...set, details, lines: padLines(details, set.lines) };
+}
+
+/** その行が上下へ動かせるか（端では隣のセットへ出られるかも含める） */
+export function canMoveRowAcross(
+  sets: CalcSet[],
+  setIndex: number,
+  index: number,
+  step: number,
+): boolean {
+  const set = sets[setIndex];
+  if (!set || index < 0 || index >= set.details.length) return false;
+  const to = index + step;
+  if (to >= 0 && to < set.details.length) return true;
+  return step < 0
+    ? sets.slice(0, setIndex).some((item) => !isCommentSet(item))
+    : sets.slice(setIndex + 1).some((item) => !isCommentSet(item));
+}
+
+/**
+ * 明細を上下へ動かす。セット内なら隣と入れ替え、セットの端では
+ * 隣の（※行でない）セットの端へ移す。※行は位置を変えない。
+ * 計算式の行は動かさない（セット内の入れ替えと同じ考え方）。
+ * 動かしたあとの明細の位置（セットID・行番号）を返す。動かせないときは null。
+ */
+export function moveDetailAcrossSets(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+  step: number,
+): { sets: CalcSet[]; setId: string; index: number } | null {
+  const at = sets.findIndex((set) => set.id === setId);
+  if (at < 0) return null;
+  const set = sets[at];
+  if (index < 0 || index >= set.details.length) return null;
+  const to = index + step;
+  if (to >= 0 && to < set.details.length) {
+    const moved = moveSetDetail(set, index, step);
+    return {
+      sets: sets.map((item, n) => (n === at ? moved : item)),
+      setId,
+      index: to,
+    };
+  }
+  if (step < 0 && index !== 0) return null;
+  if (step > 0 && index !== set.details.length - 1) return null;
+  const targetIndex =
+    step < 0
+      ? sets.slice(0, at).findLastIndex((item) => !isCommentSet(item))
+      : sets.findIndex(
+          (item, n) => n > at && !isCommentSet(item),
+        );
+  if (targetIndex < 0) return null;
+  const detail = set.details[index];
+  const source = removeSetDetail(set, index);
+  const next = sets.map((item, n) => {
+    if (n === at) return source;
+    if (n !== targetIndex) return item;
+    const details =
+      step < 0 ? [...item.details, detail] : [detail, ...item.details];
+    return { ...item, details, lines: syncLines(details, item.lines) };
+  });
+  // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
+  const cleaned = next.filter(
+    (item, n) =>
+      n !== at ||
+      item.details.length > 0 ||
+      item.banner != null ||
+      item.lines.some((line) => !isEmptyLine(line)),
+  );
+  return {
+    sets: cleaned,
+    setId: sets[targetIndex].id,
+    index: step < 0 ? sets[targetIndex].details.length : 0,
+  };
+}
+
+/**
+ * 明細をドラッグで別の行の位置へ移す（移し先の行の「手前」に入る）。
+ * 計算式の行は動かさない（↑↓移動と同じ考え方）。
+ * 動かしたあとの明細の位置（セットID・行番号）を返す。動かせない・位置が変わらないときは null。
+ */
+export function moveDetailTo(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+  targetSetId: string,
+  targetIndex: number,
+): { sets: CalcSet[]; setId: string; index: number } | null {
+  const at = sets.findIndex((set) => set.id === setId);
+  const to = sets.findIndex((set) => set.id === targetSetId);
+  if (at < 0 || to < 0) return null;
+  const set = sets[at];
+  const target = sets[to];
+  if (
+    isCommentSet(target) ||
+    index < 0 ||
+    index >= set.details.length ||
+    targetIndex < 0
+  )
+    return null;
+  const detail = set.details[index];
+  if (at === to) {
+    const details = set.details.filter((_, n) => n !== index);
+    const clamped = Math.min(targetIndex, set.details.length - 1);
+    // 下へ動かすときは、抜いた分だけ移し先が1つ前にずれる
+    const insertAt = index < clamped ? clamped - 1 : clamped;
+    details.splice(insertAt, 0, detail);
+    if (details.every((item, n) => item === set.details[n])) return null;
+    return {
+      sets: sets.map((item, n) =>
+        n === at
+          ? { ...item, details, lines: syncLines(details, item.lines) }
+          : item,
+      ),
+      setId,
+      index: insertAt,
+    };
+  }
+  const source = removeSetDetail(set, index);
+  const details = [...target.details];
+  const insertAt = Math.min(targetIndex, details.length);
+  details.splice(insertAt, 0, detail);
+  const next = sets.map((item, n) => {
+    if (n === at) return source;
+    if (n !== to) return item;
+    return { ...item, details, lines: syncLines(details, item.lines) };
+  });
+  // 明細が無くなって残るのが空の計算式行だけのセットは消す（空の行が残らないように）
+  const cleaned = next.filter(
+    (item, n) =>
+      n !== at ||
+      item.details.length > 0 ||
+      item.banner != null ||
+      item.lines.some((line) => !isEmptyLine(line)),
+  );
+  return { sets: cleaned, setId: targetSetId, index: insertAt };
 }
 
 /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
@@ -476,7 +625,9 @@ export function removeSet(sets: CalcSet[], setId: string): CalcSet[] {
     }
     if (isCommentSet(set)) return;
     if (set.banner != null)
-      next.push(commentSet(set.banner.text, set.banner.color));
+      next.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
   });
   return next;
 }
@@ -505,7 +656,13 @@ export function mergeWithPreviousSet(
     at,
     1,
     ...(target.banner != null
-      ? [commentSet(target.banner.text, target.banner.color)]
+      ? [
+          commentSet(
+            target.banner.text,
+            target.banner.color,
+            target.banner.text2,
+          ),
+        ]
       : []),
   );
   next[previousAt] = merged;
@@ -590,6 +747,8 @@ export function evaluateCalcSheet(
   const bValues: Record<string, number> = {};
   const pending = new Set(sets.map((set) => set.id));
   const setTotals = new Map<string, number>();
+  /** 計算式から参照できるB記号（他のセットの累計）。定義されているBは後で解けることがある */
+  const definedB = usedBSymbols(sets);
 
   const evaluateSet = (
     set: CalcSet,
@@ -608,20 +767,18 @@ export function evaluateCalcSheet(
         ...unknownSymbols(a, all),
         ...(b === "" ? [] : unknownSymbols(b, all)),
       ];
-      if (missing.length > 0) {
-        if (missing.some((name) => /^B([1-9]|[1-9][0-9])$/.test(name))) {
-          resolved = false;
-        }
-        return {
-          value: null,
-          text: "",
-          total: null,
-          totalText: "",
-          error: `記号 ${missing[0]} の数量が分かりません`,
-        };
-      }
-      const valueA = evaluateFormula(a, all);
-      const valueB = b === "" ? null : evaluateFormula(b, all);
+      // 表に無い記号は0として計算する（記号を全部入れた式でも止めない）。
+      // 定義はあるのにまだ値が無いB記号（後で解けるもの・循環しているもの）は再評価に回す
+      const pendingB = missing.filter(
+        (name) => /^B([1-9]|[1-9][0-9])$/.test(name) && definedB.has(name),
+      );
+      if (pendingB.length > 0) resolved = false;
+      const filled = { ...all };
+      missing.forEach((name) => {
+        filled[name] = 0;
+      });
+      const valueA = evaluateFormula(a, filled);
+      const valueB = b === "" ? null : evaluateFormula(b, filled);
       if (valueA === null || (b !== "" && valueB === null)) {
         return {
           value: null,
@@ -638,7 +795,8 @@ export function evaluateCalcSheet(
         text: displayQuantity(value),
         total,
         totalText: displayQuantity(total),
-        error: "",
+        error:
+          pendingB.length > 0 ? `記号 ${pendingB[0]} の数量が分かりません` : "",
       };
     });
     return { results, resolved };

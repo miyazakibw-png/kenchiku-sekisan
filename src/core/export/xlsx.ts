@@ -121,8 +121,8 @@ function stylesXml(): string {
   const xfs = MARKS.flatMap((mark) =>
     KINDS.flatMap((kind) =>
       BORDERS.map((border) => {
-        // 違うところは文字を赤（太字）・背景を黄色にする
-        const fontId = mark === "diff" ? 3 : kind === "header" ? 1 : 0;
+        // 違うところは文字を赤・背景を黄色にする（太字にはしない）
+        const fontId = mark === "diff" ? 2 : kind === "header" ? 1 : 0;
         const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
         const numFmtId = kind === "number" ? 176 : 0;
         const alignment =

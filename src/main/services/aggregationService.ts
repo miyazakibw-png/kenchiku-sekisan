@@ -17,7 +17,9 @@ import {
   projectFrameSheets,
   projectGeneralSheets,
   projectMiscSheets,
+  projectFireproofSheets,
   projectFurnitureSheets,
+  projectManualAggregateItems,
   projectPitSheets,
   projectRoomSheets,
   projectTransferRows,
@@ -29,7 +31,14 @@ import {
   masterKeyOf,
   type AggregateEntry,
   type AggregatedItem,
+  type EstimateRowContext,
 } from "../../core/aggregate/aggregate";
+import {
+  isManualMasterKey,
+  manualIdOf,
+  mergeManualItems,
+  type ManualAggregateRow,
+} from "../../core/aggregate/manualItems";
 import { calcVariables } from "../../core/aggregate/variables";
 import {
   entriesFromMiscSheet,
@@ -40,18 +49,30 @@ import {
   applyFurnitureDetails,
   entriesFromFurnitureSheet,
   furnitureSettings,
+  isFittingDetailSheet,
   type FittingSize,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
 } from "../../core/furniture/furnitureSheet";
+import { syncFittingDetailSheet } from "./furnitureSheetService";
+import {
+  entriesFromFireproofSheet,
+  normalizeManageRows,
+} from "../../core/fireproof/fireproofEstimate";
+import { normalizeFloorList } from "../../core/fireproof/fireproofList";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
-import { listFittings } from "./fittingService";
+import { getFittingPartValues, listFittings } from "./fittingService";
+import { fittingPartVariables } from "../../core/fittings/partValue";
 import {
   listProjectBasicMasters,
   listProjectSubjects,
 } from "./projectMasterService";
-import { aggregationPartIdOf } from "../../core/aggregate/checkSheet";
+import {
+  aggregationPartIdOf,
+  parseNumberRanges,
+} from "../../core/aggregate/checkSheet";
+import { getCheckSheetPartMap } from "./checkSheetService";
 import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import { syncAssembliesFromSheets } from "./assemblyService";
@@ -65,10 +86,12 @@ import {
   normalizeSets,
   partOfSet,
   type CalcSet,
+  type CalcSheetResult,
 } from "../../core/room/calcSheet";
 import {
   roomSymbols,
   solveShape,
+  withFixedRoomSymbols,
   type RoomFitting,
   type RoomShape,
 } from "../../core/room/shape";
@@ -78,6 +101,7 @@ import {
   ceilingSymbols,
   normalizeCeilingHeights,
   parseCeilingCodes,
+  wallEdgeHeights,
   type CeilingElement,
 } from "../../core/room/ceiling";
 import {
@@ -111,7 +135,10 @@ import type {
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  DeleteAggregateManualItemRequest,
   EstimateRowCheck,
+  InsertAggregateManualItemRequest,
+  MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
 } from "../../shared/types";
@@ -189,6 +216,126 @@ export function setDetailUnused(
   return runAggregation(db, request.projectId);
 }
 
+/** 集計書へ手で挿入した明細行（登録順） */
+function manualRows(db: AppDatabase, projectId: number): ManualAggregateRow[] {
+  return db
+    .select()
+    .from(projectManualAggregateItems)
+    .where(eq(projectManualAggregateItems.projectId, projectId))
+    .orderBy(asc(projectManualAggregateItems.id))
+    .all()
+    .map(({ anchorBefore, ...row }) => ({
+      ...row,
+      before: anchorBefore === 1,
+    }));
+}
+
+/**
+ * 計算書・転記入力表からの集計結果へ、手で挿入した明細行を差し込んだもの。
+ * 集計実行と「古いかどうか」の判定で同じ並びにするためここに1か所置く。
+ */
+function mergedAggregateItems(
+  db: AppDatabase,
+  projectId: number,
+  entries: AggregateEntry[],
+  skipPart2: ReadonlySet<number>,
+): AggregatedItem[] {
+  const unused = unusedMasterKeys(db, projectId);
+  const items = aggregateItems(entries, skipPart2, unused);
+  return mergeManualItems(items, manualRows(db, projectId), unused);
+}
+
+/**
+ * 集計書へ明細行を手で挿入する（選んだ行の直後）。
+ * 欄はアンカー行から写して空欄に近い形で入れ、あとで画面から直す。
+ */
+export function insertAggregateManualItem(
+  db: AppDatabase,
+  request: InsertAggregateManualItemRequest,
+): AggregateView {
+  const anchor = db
+    .select()
+    .from(projectAggregateItems)
+    .where(
+      and(
+        eq(projectAggregateItems.runId, request.runId),
+        eq(projectAggregateItems.masterKey, request.afterMasterKey),
+      ),
+    )
+    .get();
+  if (!anchor) return getAggregate(db, request.projectId);
+  db.insert(projectManualAggregateItems)
+    .values({
+      projectId: request.projectId,
+      afterMasterKey: anchor.masterKey,
+      anchorBefore: request.before === true ? 1 : 0,
+      subjectId: anchor.subjectId,
+      materialCategory: anchor.materialCategory,
+      part1: anchor.part1,
+      part2: anchor.part2,
+      part2Raw: anchor.part2Raw,
+      estimateDisplay: anchor.estimateDisplay,
+      formwork: anchor.formwork,
+    })
+    .run();
+  return runAggregation(db, request.projectId);
+}
+
+/**
+ * 手で挿入した明細行の付き先を別の明細へ付け直す。
+ * 上に付く・下に付くの向きはそのまま（元の付け方を引き継ぐ）。
+ */
+export function moveAggregateManualItem(
+  db: AppDatabase,
+  request: MoveAggregateManualItemRequest,
+): AggregateView {
+  const id = manualIdOf(request.masterKey);
+  const view = getAggregate(db, request.projectId);
+  if (id === null) return view;
+  const anchor = view.items.find(
+    (item) => item.masterKey === request.anchorMasterKey,
+  );
+  if (!anchor || request.anchorMasterKey === request.masterKey) return view;
+  db.update(projectManualAggregateItems)
+    .set({ afterMasterKey: request.anchorMasterKey })
+    .where(
+      and(
+        eq(projectManualAggregateItems.id, id),
+        eq(projectManualAggregateItems.projectId, request.projectId),
+      ),
+    )
+    .run();
+  return runAggregation(db, request.projectId);
+}
+
+/** 集計書へ手で挿入した明細行を消す（不要の印もいっしょに消す） */
+export function deleteAggregateManualItem(
+  db: AppDatabase,
+  request: DeleteAggregateManualItemRequest,
+): AggregateView {
+  const id = manualIdOf(request.masterKey);
+  if (id === null) return getAggregate(db, request.projectId);
+  db.transaction((tx) => {
+    tx.delete(projectManualAggregateItems)
+      .where(
+        and(
+          eq(projectManualAggregateItems.id, id),
+          eq(projectManualAggregateItems.projectId, request.projectId),
+        ),
+      )
+      .run();
+    tx.delete(projectUnusedDetails)
+      .where(
+        and(
+          eq(projectUnusedDetails.projectId, request.projectId),
+          eq(projectUnusedDetails.masterKey, request.masterKey),
+        ),
+      )
+      .run();
+  });
+  return runAggregation(db, request.projectId);
+}
+
 /**
  * 集計を実行して保存する。戻り値は最新の集計結果。
  * 型枠転記を決めてあるときは、そのつど型枠数量を作り直して集計し直す
@@ -207,11 +354,7 @@ export function runAggregation(
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const items = aggregateItems(
-    entries,
-    skipPart2,
-    unusedMasterKeys(db, projectId),
-  );
+  const items = mergedAggregateItems(db, projectId, entries, skipPart2);
 
   const run = db.transaction((tx) => {
     const created = tx
@@ -301,6 +444,19 @@ export function runAggregation(
   return runAggregation(db, projectId, { skipFormwork: true });
 }
 
+/**
+ * 計算書の「マスター作成」：集計実行と同じ処理を走らせて、工事マスター（集計書の内容）と
+ * セット明細マスターを最新にする。集計書は見せないので数だけ返す。
+ */
+export function buildProjectMasters(
+  db: AppDatabase,
+  projectId: number,
+): { aggregateCount: number; assembliesAdded: number } {
+  const assembliesAdded = syncAssembliesFromSheets(db, projectId);
+  const view = runAggregation(db, projectId);
+  return { aggregateCount: view.items.length, assembliesAdded };
+}
+
 /** 詳細データがどの集計行になったかを引く（部位Ⅱ分不要の科目は部位Ⅱを外して探す） */
 function keyResolver(
   items: AggregatedItem[],
@@ -313,11 +469,24 @@ function keyResolver(
   };
 }
 
-/** 計算書と転記入力表から集計詳細データを作る */
-export function collectEntries(
+/** 行の計算書を集計と同じ変数で評価したもの */
+interface EvaluatedSheet {
+  context: EstimateRowContext;
+  sets: CalcSet[];
+  result: CalcSheetResult;
+  /** 部屋計算書で形が決まらない（寸法が閉じない・未入力が残る）ときの説明 */
+  shapeError: string | null;
+}
+
+/**
+ * 部位別入力表の行ごとに計算書（部屋別・軸組・汎用・ピット）を読み、
+ * 集計で使うのと同じ変数で下段の計算式を評価する。
+ * 集計（entries 化）と「計算エラー」の目印で同じ評価を使うためここに1か所置く。
+ */
+function evaluateRowSheets(
   db: AppDatabase,
   projectId: number,
-): AggregateEntry[] {
+): { evaluations: EvaluatedSheet[]; part2Order: Map<string, number> } {
   const fittings = db
     .select()
     .from(projectFittings)
@@ -325,6 +494,9 @@ export function collectEntries(
     .all();
 
   const deductionLimit = getDeductionLimit(db);
+  // 建具記号を <記号> だけ書いたとき、セットの部位が採る数値（画面と同じ採り方）
+  const partValues = getFittingPartValues(db);
+  const fittingSymbols = fittings.map((fitting) => fitting.symbol);
 
   const rows = db
     .select()
@@ -376,7 +548,7 @@ export function collectEntries(
   );
 
   const part2Order = new Map<string, number>();
-  const entries: AggregateEntry[] = [];
+  const evaluations: EvaluatedSheet[] = [];
   let inherited = { part1: "", part2: "", part2Split: 0 };
 
   rows.forEach((row) => {
@@ -408,10 +580,13 @@ export function collectEntries(
             ? ("general" as const)
             : row.calcType === "pit"
               ? ("pit" as const)
-              : ("room" as const),
+              : row.calcType === "area"
+                ? ("area" as const)
+                : ("room" as const),
     };
 
-    if (row.calcType === "pit") {
+    // 面積計算書はピット計算書と同じもの（同じ表に入る）
+    if (row.calcType === "pit" || row.calcType === "area") {
       const sheet = pitSheets.get(row.id);
       if (!sheet) return;
       const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
@@ -430,15 +605,14 @@ export function collectEntries(
         ...pitVariables(quantities),
         ...pitWallVariables(walls, sleeves, sleeveKinds, sheet.wallStep),
       };
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables, (set) =>
-            pitPartVariables(quantities, partOfSet(set)),
-          ),
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables, (set) =>
+          pitPartVariables(quantities, partOfSet(set)),
         ),
-      );
+        shapeError: null,
+      });
       return;
     }
 
@@ -446,14 +620,17 @@ export function collectEntries(
       const sheet = generalSheets.get(row.id);
       if (!sheet) return;
       const sets = normalizeSets(parseJson<CalcSet[]>(sheet.lowerJson, []));
-      const variables = calcVariables([], fittings);
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables),
-        ),
-      );
+      // 汎用計算書は部位別入力表の天井高さを記号CHとして使う
+      const variables = {
+        CH: row.ceilingHeight ?? 0,
+        ...calcVariables([], fittings),
+      };
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables),
+        shapeError: null,
+      });
       return;
     }
 
@@ -500,15 +677,20 @@ export function collectEntries(
         parseJson<FrameKind[]>(sheet.kindsJson, defaultFrameKinds()),
       );
       const variables = calcVariables(symbols, fittings, sheet.workHeight);
-      entries.push(
-        ...entriesFromCalcSheet(
-          context,
-          sets,
-          evaluateCalcSheet(sets, variables, (set) =>
-            linePartVariables(symbols, set.partName),
+      evaluations.push({
+        context,
+        sets,
+        result: evaluateCalcSheet(sets, variables, (set) => ({
+          ...linePartVariables(symbols, set.partName),
+          ...fittingPartVariables(
+            set,
+            fittingSymbols,
+            variables,
+            partValues,
           ),
-        ),
-      );
+        })),
+        shapeError: null,
+      });
       return;
     }
 
@@ -536,14 +718,22 @@ export function collectEntries(
       parseJson<CeilingElement[]>(sheet.ceilingJson, []),
       ceilingHeight,
     );
+    const ceilingCodesParsed = parseCeilingCodes(sheet.ceilingCodesJson);
     const ceilingResult = ceilingQuantities(
       ceiling,
       solved,
       ceilingHeight,
-      parseCeilingCodes(sheet.ceilingCodesJson).heights,
+      ceilingCodesParsed.heights,
     );
     // 天井面積は梁型（壁付き・天井付）が取る梁底（長さ×Ｗ幅）の分を引く
     const beamArea = beamFootprintArea(ceiling, solved, ceilingHeight);
+    // まるごと低い天井の区画に面している壁は、その区画の高さで壁面積を計算する
+    const edgeHeights = wallEdgeHeights(
+      ceiling,
+      solved,
+      ceilingHeight,
+      ceilingCodesParsed.heights,
+    );
     const symbols = [
       ...roomSymbols(
         solved,
@@ -551,23 +741,83 @@ export function collectEntries(
         sheetFittings,
         deductionLimit,
         beamArea,
+        edgeHeights,
       ),
       ...(ceiling.length > 0 ? ceilingSymbols(ceilingResult) : []),
     ];
-    const variables = calcVariables(symbols, fittings);
-    entries.push(
-      ...entriesFromCalcSheet(
-        context,
-        sets,
-        evaluateCalcSheet(sets, variables),
+    // 記号表にいつも出している記号は、その部屋に無くても0として計算式で使える
+    // <記号:RF> は部屋計算書では建具表の軸組横補強（施工高さを掛けない。画面と同じ採り方）
+    const variables = withFixedRoomSymbols({
+      ...calcVariables(symbols, fittings),
+      ...Object.fromEntries(
+        fittings.flatMap((fitting) => {
+          const reinforcement = computeFitting(fitting).reinforcement;
+          return reinforcement === null
+            ? []
+            : [[`<${fitting.symbol}:RF>`, reinforcement]];
+        }),
       ),
-    );
+    });
+    evaluations.push({
+      context,
+      sets,
+      result: evaluateCalcSheet(sets, variables, (set) =>
+        fittingPartVariables(set, fittingSymbols, variables, partValues),
+      ),
+      // 形が決まらない部屋は壁・床の数量が出ない（画面では寸法欄が点滅する）
+      shapeError:
+        solved.error !== null
+          ? solved.error
+          : solved.missing.length > 0
+            ? "寸法が足りず決められない辺があります"
+            : null,
+    });
   });
+
+  return { evaluations, part2Order };
+}
+
+/** 計算書と転記入力表から集計詳細データを作る */
+export function collectEntries(
+  db: AppDatabase,
+  projectId: number,
+): AggregateEntry[] {
+  const { evaluations, part2Order } = evaluateRowSheets(db, projectId);
+  const entries = evaluations.flatMap(({ context, sets, result }) =>
+    entriesFromCalcSheet(context, sets, result),
+  );
 
   entries.push(...miscEntries(db, projectId, part2Order));
   entries.push(...furnitureEntries(db, projectId, part2Order));
+  entries.push(...fireproofEntries(db, projectId, part2Order));
   entries.push(...transferEntries(db, projectId, part2Order));
   return entries;
+}
+
+/**
+ * 計算に誤りのある計算書を持つ行と、その誤りの説明
+ * （部位別入力表の備考欄「計算エラー」の目印と、何が誤りかを示す説明に使う）。
+ * 誤り＝下段の計算式の誤り（式が正しくない・B記号が解けない）か、
+ * 部屋計算書は上段の形が決まらないとき。
+ */
+export function listCalcErrors(
+  db: AppDatabase,
+  projectId: number,
+): Map<number, string> {
+  const errored = new Map<number, string>();
+  evaluateRowSheets(db, projectId).evaluations.forEach(
+    ({ context, result, shapeError }) => {
+      if (context.estimateRowId === null) return;
+      const messages = [
+        ...(shapeError !== null ? [shapeError] : []),
+        ...result.errors.map((error) => error.message),
+      ];
+      const unique = [...new Set(messages)];
+      if (unique.length > 0)
+        errored.set(context.estimateRowId, unique.join("／"));
+    },
+  );
+  return errored;
 }
 
 /** 部位別雑・金物入力表（その部屋の計算書に入れたのと同じ扱いで集計する） */
@@ -591,6 +841,26 @@ function miscEntries(
     });
     return entriesFromMiscSheet({ columns, rows }, part2Order);
   });
+}
+
+/** 耐火被覆・塗装入力表（1行＝1明細。数量は柱入力表＋梁型入力表の必要数㎡合計×倍率） */
+function fireproofEntries(
+  db: AppDatabase,
+  projectId: number,
+  part2Order: Map<string, number>,
+): AggregateEntry[] {
+  const sheet = db
+    .select()
+    .from(projectFireproofSheets)
+    .where(eq(projectFireproofSheets.projectId, projectId))
+    .get();
+  if (!sheet) return [];
+  return entriesFromFireproofSheet(
+    normalizeManageRows(parseJson<unknown>(sheet.estimateJson, [])),
+    normalizeFloorList(parseJson<unknown>(sheet.columnsJson, {})),
+    part2Order,
+    normalizeFloorList(parseJson<unknown>(sheet.beamsJson, {})),
+  );
 }
 
 /** 建具表の記号・W・H（カーテン・ブラインドの寸法呼び出し用） */
@@ -618,7 +888,11 @@ function furnitureEntries(
       asc(projectFurnitureSheets.id),
     )
     .all();
-  return sheets.flatMap((sheet) => {
+  return sheets.flatMap((raw) => {
+    // 建具明細作成表は集計のたびに建具表と取り合う（建具表側で寸法を直した分も拾う）
+    const sheet = isFittingDetailSheet(raw.kind)
+      ? syncFittingDetailSheet(db, raw)
+      : raw;
     if (!part2Order.has(sheet.part2))
       part2Order.set(sheet.part2, part2Order.size);
     const rows = parseJson<FurnitureRow[]>(sheet.rowsJson, []);
@@ -626,12 +900,14 @@ function furnitureEntries(
       ...furnitureSettings(),
       ...parseJson<FurnitureSettings>(sheet.settingsJson, furnitureSettings()),
     };
+    // 建具明細作成表に置き場所（部位Ⅰ・部位Ⅱ）は無い：集計書での根拠は各明細の部位
+    const fittingDetail = isFittingDetailSheet(sheet.kind);
     return entriesFromFurnitureSheet(
       {
         sheetId: sheet.id,
-        part1: sheet.part1,
-        part2: sheet.part2,
-        part2Split: sheet.part2Split === 1,
+        part1: fittingDetail ? "" : sheet.part1,
+        part2: fittingDetail ? "" : sheet.part2,
+        part2Split: fittingDetail ? false : sheet.part2Split === 1,
         part3: sheet.name,
         multiplier: sheet.multiplier,
       },
@@ -661,44 +937,57 @@ function transferEntries(
     .all();
   const inherited = inheritTransferRows(rows);
 
-  return rows
-    .map((row, index) => ({ row, head: inherited[index] }))
-    .filter(({ row }) => row.name.trim() !== "" || row.quantity !== null)
-    .map(({ row, head }) => {
-      if (!part2Order.has(head.part2))
-        part2Order.set(head.part2, part2Order.size);
-      const quantity = row.quantity ?? 0;
-      return {
-        traceId: `transfer:${row.id}`,
-        sourceKind: "transfer" as const,
-        estimateRowId: null,
-        transferRowId: row.id,
-        part1: head.part1,
-        part2: head.part2Split === 1 ? head.part2 : "",
-        part2Raw: head.part2,
-        part2Split: head.part2Split === 1,
-        part2Order: part2Order.get(head.part2) ?? 0,
-        part3: head.part3,
-        formwork: head.formwork,
-        multiplier: 1,
-        subjectId: head.subjectId,
-        materialCategory: head.materialCategory,
-        partNumber: row.partId,
-        partName: row.partName,
-        detailNumber: row.detailNumber,
-        name: row.name,
-        descriptionUpper: row.descriptionUpper,
-        descriptionLower: row.descriptionLower,
-        unit: row.unit,
-        remarksUpper: row.remarks,
-        remarksLower: row.remarksLower,
-        estimateDisplay: "",
-        coefficient: 1,
-        setTotal: quantity,
-        quantity: displayedValue(quantity),
-        sourceDetailId: row.sourceDetailId,
-      };
-    });
+  return (
+    rows
+      .map((row, index) => ({ row, head: inherited[index] }))
+      // 部位名・名称が無くても、摘要や備考だけの行（仕様の続きなど）も計上する
+      .filter(
+        ({ row }) =>
+          [
+            row.partName,
+            row.name,
+            row.descriptionUpper,
+            row.descriptionLower,
+            row.remarks,
+            row.remarksLower,
+          ].some((text) => text.trim() !== "") || row.quantity !== null,
+      )
+      .map(({ row, head }) => {
+        if (!part2Order.has(head.part2))
+          part2Order.set(head.part2, part2Order.size);
+        const quantity = row.quantity ?? 0;
+        return {
+          traceId: `transfer:${row.id}`,
+          sourceKind: "transfer" as const,
+          estimateRowId: null,
+          transferRowId: row.id,
+          part1: head.part1,
+          part2: head.part2Split === 1 ? head.part2 : "",
+          part2Raw: head.part2,
+          part2Split: head.part2Split === 1,
+          part2Order: part2Order.get(head.part2) ?? 0,
+          part3: head.part3,
+          formwork: head.formwork,
+          multiplier: 1,
+          subjectId: head.subjectId,
+          materialCategory: head.materialCategory,
+          partNumber: head.partId,
+          partName: row.partName,
+          detailNumber: head.detailNumber,
+          name: row.name,
+          descriptionUpper: row.descriptionUpper,
+          descriptionLower: row.descriptionLower,
+          unit: row.unit,
+          remarksUpper: row.remarks,
+          remarksLower: row.remarksLower,
+          estimateDisplay: "",
+          coefficient: 1,
+          setTotal: quantity,
+          quantity: displayedValue(quantity),
+          sourceDetailId: row.sourceDetailId,
+        };
+      })
+  );
 }
 
 /** 計算書の下段（セット明細計算表）の1明細を、集計書で直した内容に書き換える */
@@ -726,6 +1015,9 @@ function applyEditToSheet(
     detail.unit = edit.unit;
     detail.remarksUpper = edit.remarksUpper;
     detail.remarksLower = edit.remarksLower;
+    if (edit.estimateDisplay !== undefined) {
+      detail.estimateDisplay = edit.estimateDisplay;
+    }
   });
   return changed ? JSON.stringify(sets) : null;
 }
@@ -740,7 +1032,7 @@ export function saveAggregateEdits(
   db: AppDatabase,
   request: SaveAggregateEditsRequest,
 ): AggregateView {
-  const { projectId, runId, edits, applyToSameDetail = false } = request;
+  const { projectId, runId, edits } = request;
   const details = db
     .select()
     .from(projectAggregateDetails)
@@ -749,16 +1041,84 @@ export function saveAggregateEdits(
 
   db.transaction((tx) => {
     edits.forEach((edit) => {
+      // 手入力行は計算書を持たないので、手入力テーブルだけを直す
+      const manualId = manualIdOf(edit.masterKey);
+      if (manualId !== null) {
+        tx.update(projectManualAggregateItems)
+          .set({
+            subjectId: edit.subjectId,
+            materialCategory: edit.materialCategory,
+            partNumber: edit.partNumber,
+            partName: edit.partName,
+            detailNumber: edit.detailNumber,
+            name: edit.name,
+            descriptionUpper: edit.descriptionUpper,
+            descriptionLower: edit.descriptionLower,
+            unit: edit.unit,
+            remarksUpper: edit.remarksUpper,
+            remarksLower: edit.remarksLower,
+            ...(edit.estimateDisplay === undefined
+              ? {}
+              : { estimateDisplay: edit.estimateDisplay }),
+            quantity: edit.quantity ?? 0,
+          })
+          .where(
+            and(
+              eq(projectManualAggregateItems.id, manualId),
+              eq(projectManualAggregateItems.projectId, projectId),
+            ),
+          )
+          .run();
+        return;
+      }
+
       const matched = details.filter(
         (detail) => detail.masterKey === edit.masterKey,
       );
       if (matched.length === 0) return;
-      // 同じ明細マスターから拾った行（摘要などが古いまま別行に分かれている分）もそろえる
-      const sameDetailIds = new Set(
-        matched
-          .map((detail) => detail.sourceDetailId)
-          .filter((id): id is number => id !== null),
-      );
+
+      // 直した結果この行の集計キーが変わるとき、
+      // この行をアンカーにしている手入力行の指し先もそろえる
+      const itemRow = tx
+        .select()
+        .from(projectAggregateItems)
+        .where(
+          and(
+            eq(projectAggregateItems.runId, runId),
+            eq(projectAggregateItems.masterKey, edit.masterKey),
+          ),
+        )
+        .get();
+      if (itemRow) {
+        const nextKey = masterKeyOf({
+          part1: itemRow.part1,
+          part2: itemRow.part2,
+          subjectId: edit.subjectId,
+          materialCategory: edit.materialCategory,
+          partNumber: edit.partNumber,
+          partName: edit.partName,
+          detailNumber: edit.detailNumber,
+          name: edit.name,
+          descriptionUpper: edit.descriptionUpper,
+          descriptionLower: edit.descriptionLower,
+          unit: edit.unit,
+          remarksUpper: edit.remarksUpper,
+          remarksLower: edit.remarksLower,
+          estimateDisplay: edit.estimateDisplay ?? itemRow.estimateDisplay,
+        });
+        if (nextKey !== edit.masterKey) {
+          tx.update(projectManualAggregateItems)
+            .set({ afterMasterKey: nextKey })
+            .where(
+              and(
+                eq(projectManualAggregateItems.projectId, projectId),
+                eq(projectManualAggregateItems.afterMasterKey, edit.masterKey),
+              ),
+            )
+            .run();
+        }
+      }
+
       // 修正履歴（明細マスター変更履歴）に、直した前後を1件残す
       const head = matched[0];
       const before = snapshotOf({
@@ -784,7 +1144,7 @@ export function saveAggregateEdits(
         unit: edit.unit,
         remarksUpper: edit.remarksUpper,
         remarksLower: edit.remarksLower,
-        estimateDisplay: head.estimateDisplay,
+        estimateDisplay: edit.estimateDisplay ?? head.estimateDisplay,
         isActive: true,
       });
       const subjectId = edit.subjectId ?? head.subjectId;
@@ -803,15 +1163,7 @@ export function saveAggregateEdits(
           .run();
       }
 
-      const targets =
-        applyToSameDetail && sameDetailIds.size > 0
-          ? details.filter(
-              (detail) =>
-                detail.masterKey === edit.masterKey ||
-                (detail.sourceDetailId !== null &&
-                  sameDetailIds.has(detail.sourceDetailId)),
-            )
-          : matched;
+      const targets = matched;
 
       // 転記入力表の行
       targets.forEach((target) => {
@@ -981,6 +1333,84 @@ export function saveAggregateEdits(
         });
       }
 
+      // 耐火被覆・塗装入力表の明細（入力管理表の行。汎用計算書の行はセット明細）
+      const fireproofTraceIds = targets
+        .filter((target) => target.traceId.startsWith("fireproof:"))
+        .map((target) => target.traceId);
+      // 「fireproof:行ID」＝管理表の明細、「fireproof:行ID:セットID:明細ID」＝汎用計算書の明細
+      const fireproofRowIds = new Set(
+        fireproofTraceIds
+          .filter((traceId) => traceId.split(":").length === 2)
+          .map((traceId) => traceId.split(":")[1]),
+      );
+      const fireproofSetTargets = new Map<string, string[]>();
+      fireproofTraceIds.forEach((traceId) => {
+        const parts = traceId.split(":");
+        if (parts.length < 4) return;
+        const list = fireproofSetTargets.get(parts[1]) ?? [];
+        list.push(`${parts[2]}:${parts[3]}`);
+        fireproofSetTargets.set(parts[1], list);
+      });
+      if (fireproofRowIds.size > 0 || fireproofSetTargets.size > 0) {
+        const fireproofSheet = tx
+          .select()
+          .from(projectFireproofSheets)
+          .where(eq(projectFireproofSheets.projectId, projectId))
+          .get();
+        if (fireproofSheet) {
+          const manageRows = normalizeManageRows(
+            parseJson<unknown>(fireproofSheet.estimateJson, []),
+          );
+          let fireproofChanged = false;
+          const nextManageRows = manageRows.map((manageRow) => {
+            const setTargets = fireproofSetTargets.get(manageRow.id);
+            if (setTargets) {
+              // 汎用計算書のセット明細を直す（管理表の明細欄は触らない）
+              const nextJson = applyEditToSheet(
+                JSON.stringify(manageRow.generalSheet),
+                setTargets.map((key) => `general:${key}`),
+                edit,
+              );
+              if (nextJson !== null) {
+                fireproofChanged = true;
+                return {
+                  ...manageRow,
+                  generalSheet: parseJson<CalcSet[]>(nextJson, []),
+                };
+              }
+            }
+            if (!fireproofRowIds.has(manageRow.id)) return manageRow;
+            fireproofChanged = true;
+            return {
+              ...manageRow,
+              detail: {
+                ...manageRow.detail,
+                subjectId: edit.subjectId,
+                materialCategory: edit.materialCategory,
+                partNumber: edit.partNumber,
+                partName: edit.partName,
+                detailNumber: edit.detailNumber,
+                name: edit.name,
+                descriptionUpper: edit.descriptionUpper,
+                descriptionLower: edit.descriptionLower,
+                unit: edit.unit,
+                remarksUpper: edit.remarksUpper,
+                remarksLower: edit.remarksLower,
+              },
+            };
+          });
+          if (fireproofChanged) {
+            tx.update(projectFireproofSheets)
+              .set({
+                estimateJson: JSON.stringify(nextManageRows),
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(projectFireproofSheets.id, fireproofSheet.id))
+              .run();
+          }
+        }
+      }
+
       // 計算書（部屋別・軸組・汎用）の下段
       const sheetTargets = new Map<string, string[]>();
       targets.forEach((target) => {
@@ -1000,7 +1430,7 @@ export function saveAggregateEdits(
             ? projectFrameSheets
             : sourceKind === "general"
               ? projectGeneralSheets
-              : sourceKind === "pit"
+              : sourceKind === "pit" || sourceKind === "area"
                 ? projectPitSheets
                 : projectRoomSheets;
         const sheet = tx
@@ -1045,6 +1475,7 @@ function toItem(row: typeof projectAggregateItems.$inferSelect): AggregateItem {
     estimateDisplay: row.estimateDisplay,
     formwork: row.formwork,
     unused: row.unused === 1,
+    manual: isManualMasterKey(row.masterKey),
     quantity: row.quantity,
     rooms: parseJson<{ roomName: string; quantity: number }[]>(
       row.roomsJson,
@@ -1129,10 +1560,11 @@ function isStale(db: AppDatabase, projectId: number, runId: number): boolean {
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const fresh = aggregateItems(
+  const fresh = mergedAggregateItems(
+    db,
+    projectId,
     collectEntries(db, projectId),
     skipPart2,
-    unusedMasterKeys(db, projectId),
   );
   const saved = db
     .select()
@@ -1178,6 +1610,23 @@ export function getAggregate(
   return { run, items, details };
 }
 
+/** チェック表の設定（部位番号の並び）で、その部位番号が入る列を探す */
+function mappedPartId(
+  partNumber: number | null,
+  partMap: Record<string, string>,
+): number | null {
+  if (partNumber === null || !Number.isFinite(partNumber)) return null;
+  const whole = Math.floor(partNumber);
+  for (const [key, text] of Object.entries(partMap)) {
+    const numbers = parseNumberRanges(text);
+    if (numbers && numbers.has(whole)) {
+      const id = Number(key);
+      if (Number.isFinite(id)) return id;
+    }
+  }
+  return null;
+}
+
 /**
  * 部位別入力表のチェック列（1部位＝名称＋数量の2列）。
  * 各行の計算書で拾った明細を、管理用部位（床・巾木・壁…）ごとにまとめる。
@@ -1189,24 +1638,31 @@ export function collectEstimateRowChecks(
   materialCategory: string,
 ): EstimateRowCheck[] {
   const parts = listProjectBasicMasters(db, projectId).aggregationParts;
+  const partMap = getCheckSheetPartMap(db);
   const byRow = new Map<
     number,
-    Map<string, { name: string; quantity: number }>
+    Map<string, { name: string; quantity: number; baseQuantity: number }>
   >();
 
   collectEntries(db, projectId).forEach((entry) => {
     if (entry.estimateRowId === null) return;
     if (entry.materialCategory !== materialCategory) return;
     if (entry.name.trim() === "") return;
-    const partId = aggregationPartIdOf(entry.partNumber);
+    const mapped = mappedPartId(entry.partNumber, partMap);
+    const partId = mapped ?? aggregationPartIdOf(entry.partNumber);
     const part =
       parts.find((row) => row.id === partId) ??
       parts.find((row) => entry.partName.includes(row.name));
     if (!part) return;
     const cells =
       byRow.get(entry.estimateRowId) ??
-      new Map<string, { name: string; quantity: number }>();
+      new Map<
+        string,
+        { name: string; quantity: number; baseQuantity: number }
+      >();
     byRow.set(entry.estimateRowId, cells);
+    // 倍率なしの数量（計算書そのままの数量）＝セット累計×掛け率
+    const baseQuantity = displayedValue(entry.setTotal * entry.coefficient);
     const cell = cells.get(part.name);
     if (cell) {
       // 同じ部位に複数の明細があるときは、名称を並べて数量を合計する
@@ -1215,12 +1671,14 @@ export function collectEstimateRowChecks(
           ? cell.name
           : `${cell.name}／${entry.name}`,
         quantity: displayedValue(cell.quantity + entry.quantity),
+        baseQuantity: displayedValue(cell.baseQuantity + baseQuantity),
       });
       return;
     }
     cells.set(part.name, {
       name: entry.name,
       quantity: displayedValue(entry.quantity),
+      baseQuantity,
     });
   });
 
@@ -1230,6 +1688,7 @@ export function collectEstimateRowChecks(
       partName,
       name: cell.name,
       quantity: cell.quantity,
+      baseQuantity: cell.baseQuantity,
     })),
   }));
 }

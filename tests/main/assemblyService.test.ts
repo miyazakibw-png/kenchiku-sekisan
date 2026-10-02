@@ -359,6 +359,27 @@ describe("計算書からの自動登録と連動", () => {
     expect(listAssemblies(db, projectIdRef).length).toBe(1);
   });
 
+  it("掛け率が違うだけのセットは別のセットとして登録する", () => {
+    const setB = calcSetJson(["軽鉄下地", "グラスウール"]) as {
+      details: { coefficient: number }[];
+    };
+    setB.details.forEach((detail) => {
+      detail.coefficient = 1.3;
+    });
+    makeRoomSheet([calcSetJson(["軽鉄下地", "グラスウール"])]);
+    makeRoomSheet([setB]);
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(2);
+    const assemblies = listAssemblies(db, projectIdRef);
+    expect(assemblies).toHaveLength(2);
+    expect(
+      assemblies.map((a) => a.items.map((i) => i.coefficient)),
+    ).toEqual([
+      [1, 1],
+      [1.3, 1.3],
+    ]);
+  });
+
   it("計算書で直しても他室の計算書とマスターの中身は変わらない（計算書は部屋独立）", () => {
     const sheetA = makeRoomSheet([calcSetJson(["軽鉄下地"])]);
     const sheetB = makeRoomSheet([calcSetJson(["軽鉄下地"])]);

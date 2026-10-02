@@ -1,9 +1,15 @@
+import {
+  ledgerKeyForWorkspace,
+  loadColumnSettings,
+  saveColumnSettings,
+} from "./ledgerColumns";
+
 /** 工事管理画面（積算操作：管理・移動・集計指示）のメニュー */
 export interface WorkspaceMenuItem {
   key: string;
   label: string;
   /** 画面上の区分け */
-  group: "master" | "input" | "aggregate" | "output";
+  group: "master" | "fireproof" | "input" | "aggregate" | "output";
   note: string;
   ready: boolean;
 }
@@ -35,6 +41,20 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     label: "セット明細表示",
     group: "master",
     note: "この物件専用の仕上明細セット。計算書でまとめて呼び出せる",
+    ready: true,
+  },
+  {
+    key: "fireproofList",
+    label: "鉄骨リスト",
+    group: "fireproof",
+    note: "階別リスト（柱・梁）と階共通リストを1つの画面で入力（階数を入れると行ができます）",
+    ready: true,
+  },
+  {
+    key: "fireproofEstimate",
+    label: "耐火被覆・塗装入力表",
+    group: "fireproof",
+    note: "入力管理表（1行＝1明細）と柱入力表（鉄骨リストの寸法から必要数㎡を出す）",
     ready: true,
   },
   {
@@ -139,32 +159,47 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
 
 export const MENU_GROUP_LABEL: Record<WorkspaceMenuItem["group"], string> = {
   master: "物件専用マスター",
-  input: "積算入力",
+  fireproof: "耐火被覆・塗装積算入力",
+  input: "仕上積算入力",
   aggregate: "集計",
   output: "内訳書・出力",
 };
 
+/**
+ * 日付・管理番号・工事名称は常に表示する標準項目（台帳の固定列と同じ）。
+ * それ以外は表示/非表示を切り替えられる。設定は台帳の「列の表示・並び」と同じ場所に記憶する。
+ */
+export const ALWAYS_VISIBLE = ["projectDate", "managementNo", "name"];
+
 const HIDDEN_KEY = "project.workspace.hiddenFields";
 
-/** 管理番号・工事名称は常に表示する標準項目。それ以外は表示/非表示を切り替えられる */
-export const ALWAYS_VISIBLE = ["managementNo", "name"];
-
-export function loadHiddenFields(): string[] {
+/**
+ * 以前の「積算操作画面の表示項目」設定を台帳の「列の表示・並び」へ一度だけ移す。
+ * 移し終えた旧設定は消す。
+ */
+export function migrateWorkspaceHiddenFields(): void {
   const raw = localStorage.getItem(HIDDEN_KEY);
-  if (!raw) return [];
-  const parsed: unknown = JSON.parse(raw);
-  return Array.isArray(parsed)
-    ? parsed.filter((key): key is string => typeof key === "string")
-    : [];
-}
-
-export function saveHiddenFields(keys: string[]): void {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify(keys));
-}
-
-export function toggleHiddenField(hidden: string[], key: string): string[] {
-  if (ALWAYS_VISIBLE.includes(key)) return hidden;
-  return hidden.includes(key)
-    ? hidden.filter((item) => item !== key)
-    : [...hidden, key];
+  if (raw === null) return;
+  localStorage.removeItem(HIDDEN_KEY);
+  let keys: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    keys = Array.isArray(parsed)
+      ? parsed.filter((key): key is string => typeof key === "string")
+      : [];
+  } catch {
+    return;
+  }
+  let settings = loadColumnSettings();
+  for (const workspaceKey of keys) {
+    const ledgerKey = ledgerKeyForWorkspace(workspaceKey);
+    settings = settings.some((setting) => setting.key === ledgerKey)
+      ? settings.map((setting) =>
+          setting.key === ledgerKey
+            ? { ...setting, visible: false }
+            : setting,
+        )
+      : [...settings, { key: ledgerKey, visible: false }];
+  }
+  saveColumnSettings(settings);
 }

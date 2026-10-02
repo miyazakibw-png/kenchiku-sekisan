@@ -61,6 +61,11 @@
   font-size: 13px;
 }
 
+.pit-upper .section-bar h3 .ceiling-height {
+  font-weight: normal;
+  color: #475569;
+}
+
 .pit-upper input.num {
   width: 72px;
   text-align: right;
@@ -424,6 +429,19 @@
 .pit-walls table.grid.pit-wall-list button {
   padding: 0 6px;
   font-size: 12px;
+}
+
+.pit-walls table.grid.pit-wall-list input.num {
+  width: 64px;
+  padding: 0 4px;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 手で直した長さは橙字にして、自動（図の間隔）と区別する */
+.pit-walls table.grid.pit-wall-list input.num.manual {
+  color: #c2410c;
+  font-weight: 600;
 }
 
 .pit-plan g.pit-wall.hover line {

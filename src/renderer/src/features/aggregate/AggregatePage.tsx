@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import type {
+  AggregateDetail,
   AggregateItem,
   AggregateItemEdit,
   AggregateRun,
   AggregateView,
+  MasterOptions,
   ProjectSummary,
   Subject,
 } from "@shared/types";
-import { checkQuantityUnit } from "../../../../core/aggregate/aggregate";
+import {
+  aggregateQuantityText,
+  checkQuantityUnit,
+} from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
+import { resolveMasterName } from "@shared/masters";
+import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
+import { focusCell } from "../grid/focusCell";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { sourceLabelOf } from "./aggregateRows";
 import "../estimate/EstimatePartsPage.css";
@@ -18,6 +27,8 @@ import "./AggregatePage.css";
 interface Props {
   project: ProjectSummary;
   onBack: () => void;
+  /** 数量根拠の1件から、その拾いを書いた計算書（出所）を開く */
+  onOpenSource?: (detail: AggregateDetail) => void;
 }
 
 const COLUMNS = [
@@ -30,9 +41,19 @@ const COLUMNS = [
   "数量",
   "単位",
   "備考",
+  "積算用表示",
 ] as const;
 
-const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120];
+const COLUMN_WIDTHS = [54, 120, 78, 120, 190, 190, 80, 46, 120, 90];
+
+const EDGE_SPACE = /^\s|\s$/;
+
+/** 前後に空白（全角・半角）がある欄は目印を付ける。見た目が同じでも別の明細になるため */
+function spaceMark(text: string): { className?: string; title?: string } {
+  return EDGE_SPACE.test(text)
+    ? { className: "edge-space", title: "前後に空白があります" }
+    : {};
+}
 
 /** 集計書で直す前の内容（直していない欄は集計結果のまま） */
 function initialEdit(item: AggregateItem): AggregateItemEdit {
@@ -49,7 +70,21 @@ function initialEdit(item: AggregateItem): AggregateItemEdit {
     unit: item.unit,
     remarksUpper: item.remarksUpper,
     remarksLower: item.remarksLower,
+    estimateDisplay: item.estimateDisplay,
   };
+}
+
+/**
+ * 積算用表示を持たない入力（転記入力表・部位別雑・金物入力表・家具・設備入力表・耐火被覆の管理表）から来た明細か。
+ * これらは積算用表示がいつも空なので、集計書からは直せない。
+ */
+function lacksEstimateDisplay(detail: AggregateDetail): boolean {
+  if (detail.sourceKind === "transfer") return true;
+  if (detail.sourceKind === "misc") return true;
+  if (detail.sourceKind === "furniture") return true;
+  return (
+    detail.sourceKind === "fireproof" && detail.traceId.split(":").length === 2
+  );
 }
 
 /** 番号欄の入力（空欄は未入力） */
@@ -138,7 +173,11 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
  * 計算書（部屋別・軸組・汎用）と転記入力表から集計した明細を、科目→部位Ⅰ→部位Ⅱの順に並べる。
  * 行をクリックすると数量根拠（部屋別の内訳）を表示する。
  */
-export default function AggregatePage({ project, onBack }: Props): JSX.Element {
+export default function AggregatePage({
+  project,
+  onBack,
+  onOpenSource,
+}: Props): JSX.Element {
   const [view, setView] = useState<AggregateView>({
     run: null,
     items: [],
@@ -146,18 +185,19 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   });
   const [runs, setRuns] = useState<AggregateRun[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [units, setUnits] = useState<MasterOptions["units"]>([]);
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
-  /** 同じ明細マスターから拾った行をまとめて直す（既定は直した行だけ） */
-  const [applyToSameDetail, setApplyToSameDetail] = useState(false);
   const [message, setMessage] = useState("");
+  /** 手入力行の付け直しモード（次にクリックした明細が新しい付き先） */
+  const [moving, setMoving] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const basisRef = useRef<HTMLElement>(null);
   /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
   const [basisTop, setBasisTop] = useState(0);
   const { widths, startResize } = useColumnWidths(
-    "aggregate-columns-v1",
+    "aggregate-columns-v2",
     COLUMN_WIDTHS,
   );
 
@@ -176,6 +216,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
   useEffect(() => {
     void (async () => {
       setSubjects(await window.sekisan.listSubjects(project.id));
+      setUnits((await window.sekisan.getMasterOptions(project.id)).units);
       await reload();
     })();
   }, [project.id, reload]);
@@ -212,7 +253,6 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         projectId: project.id,
         runId: view.run.id,
         edits: list,
-        applyToSameDetail,
       });
       setView(result);
       setRuns(await window.sekisan.listAggregateRuns(project.id));
@@ -224,8 +264,86 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
       );
     },
-    [applyToSameDetail, edits, markSaved, project.id, view.run],
+    [edits, markSaved, project.id, view.run],
   );
+
+  /** 選んだ明細の上下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
+  const insertManual = useCallback(
+    async (before: boolean) => {
+      if (selected === null || view.run === null) return;
+      const result = await window.sekisan.insertAggregateManualItem({
+        projectId: project.id,
+        runId: view.run.id,
+        afterMasterKey: selected.masterKey,
+        before,
+      });
+      setView(result);
+      setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setMessage(
+        `選んだ明細の${before ? "上" : "下"}に明細行を挿入しました（集計をかけ直しても残ります。摘要・名称・数量などを直接入れられます）`,
+      );
+    },
+    [project.id, selected, view.run],
+  );
+
+  /** 手で挿入した明細行の付け直し（次にクリックした明細へ付き替える） */
+  const moveManual = useCallback(
+    async (anchor: AggregateItem) => {
+      if (selected === null || !selected.manual) return;
+      if (anchor.masterKey === selected.masterKey) {
+        setMoving(false);
+        setMessage("付け直しをやめました");
+        return;
+      }
+      const result = await window.sekisan.moveAggregateManualItem({
+        projectId: project.id,
+        masterKey: selected.masterKey,
+        anchorMasterKey: anchor.masterKey,
+      });
+      setView(result);
+      setRuns(await window.sekisan.listAggregateRuns(project.id));
+      setMoving(false);
+      setSelected(
+        result.items.find((item) => item.masterKey === selected.masterKey) ??
+          null,
+      );
+      setMessage(
+        "明細行を付け直しました（選んだ明細の上付き・下付きはそのままです）",
+      );
+    },
+    [project.id, selected],
+  );
+
+  /** 行クリック：付け直しモードなら付き替え、ふだんは選択 */
+  const clickRow = useCallback(
+    (item: AggregateItem) => {
+      if (moving) {
+        void moveManual(item);
+        return;
+      }
+      setSelected(item);
+    },
+    [moveManual, moving],
+  );
+
+  /** 手で挿入した明細行を消す（手入力行を選んだときだけ押せる） */
+  const deleteManual = useCallback(async () => {
+    if (selected === null || !selected.manual) return;
+    if (
+      !window.confirm(
+        "手で挿入した明細行を消します。元に戻せません。よいですか？",
+      )
+    )
+      return;
+    const result = await window.sekisan.deleteAggregateManualItem({
+      projectId: project.id,
+      masterKey: selected.masterKey,
+    });
+    setView(result);
+    setRuns(await window.sekisan.listAggregateRuns(project.id));
+    setSelected(null);
+    setMessage("手で挿入した明細行を消しました");
+  }, [project.id, selected]);
 
   /** 不要明細の印を付ける／外す（内訳書へ飛ばさなくなる） */
   const toggleUnused = useCallback(async () => {
@@ -253,6 +371,16 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
     [subjects, view.items],
   );
 
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [units],
+  );
+
   /** 選んだ明細の数量根拠（合算前の1件ずつ） */
   const basis = useMemo(
     () =>
@@ -263,6 +391,81 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
           ),
     [selected, view.details],
   );
+
+  /** 積算用表示を直せない明細（集計キー） */
+  const fixedEstimateDisplay = useMemo(
+    () =>
+      new Set(
+        view.details
+          .filter(lacksEstimateDisplay)
+          .map((detail) => detail.masterKey),
+      ),
+    [view.details],
+  );
+
+  /**
+   * 積算用表示欄まわりのカーソル移動（2行組＋縦結合セルなので専用に処理）。
+   * ・積算用表示で↑↓＝上下の明細の積算用表示へ
+   * ・備考（下段）から→＝積算用表示へ（積算用表示から←は備考欄下へ）
+   * ・積算用表示から→は既定のまま（全体共通の移動に任せる）
+   */
+  const onTableKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement)) return;
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const all =
+      field.value.length > 0 && start === 0 && end === field.value.length;
+    const atStart =
+      start === null || end === null ? true : all || (start === 0 && end === 0);
+    const atEnd =
+      start === null || end === null
+        ? true
+        : all || (start === field.value.length && start === end);
+
+    if (field.dataset.estimateDisplay !== undefined) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const inputs = Array.from(
+          field
+            .closest("table")
+            ?.querySelectorAll<HTMLInputElement>(
+              "input[data-estimate-display]",
+            ) ?? [],
+        );
+        const target =
+          inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!target) return;
+        event.preventDefault();
+        focusCell(target);
+        target.select();
+        return;
+      }
+      if (event.key === "ArrowLeft" && atStart) {
+        const target = field
+          .closest("tbody")
+          ?.querySelector<HTMLInputElement>("input[data-remarks-lower]");
+        if (!target) return;
+        event.preventDefault();
+        focusCell(target);
+        target.select();
+      }
+      return;
+    }
+    if (
+      field.dataset.remarksLower !== undefined &&
+      event.key === "ArrowRight" &&
+      atEnd
+    ) {
+      const target = field
+        .closest("tbody")
+        ?.querySelector<HTMLInputElement>("input[data-estimate-display]");
+      if (!target) return;
+      event.preventDefault();
+      focusCell(target);
+      target.select();
+    }
+  }, []);
 
   /** 左端の科目ボタン（計上された工種科目だけを出す） */
   const usedSubjects = useMemo(() => {
@@ -353,14 +556,6 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
         >
           💾 修正を保存（{Object.keys(edits).length}件）
         </button>
-        <label title="チェックを入れると、同じ工事用明細マスターから拾った他の行（摘要などが古いまま別の行に分かれている分）も、まとめて同じ内容に直します。ふだんは外したまま（直した行だけ変わります）">
-          <input
-            type="checkbox"
-            checked={applyToSameDetail}
-            onChange={(e) => setApplyToSameDetail(e.target.checked)}
-          />
-          同じ明細をまとめて直す
-        </label>
         <button
           type="button"
           disabled={selected === null}
@@ -368,6 +563,49 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
           title="不要になった明細に印を付けます。印を付けた明細は工種科目の最後にまとめ、内訳書へは飛ばしません（計算書はそのまま残ります）"
         >
           {selected?.unused ? "↩ 不要を外す" : "🚫 不要明細にする"}
+        </button>
+        <button
+          type="button"
+          disabled={selected === null || view.run === null}
+          onClick={() => void insertManual(false)}
+          title="選んだ明細の下に新しい明細行を挿入します。計算書を持たない手入力の行なので、集計をかけ直しても消えずに残ります（摘要・名称・数量などを直接入れ、修正を保存で登録します）"
+        >
+          ＋ 下に明細行を挿入
+        </button>
+        <button
+          type="button"
+          disabled={selected === null || view.run === null}
+          onClick={() => void insertManual(true)}
+          title="選んだ明細の上に新しい明細行を挿入します。同じ明細が並ぶ場面で、その前に＜共通仕様＞のような説明行を付けたいときに使います"
+        >
+          ＋ 上に明細行を挿入
+        </button>
+        <button
+          type="button"
+          className={moving ? "on" : ""}
+          disabled={selected?.manual !== true}
+          onClick={() => {
+            if (moving) {
+              setMoving(false);
+              setMessage("付け直しをやめました");
+              return;
+            }
+            setMoving(true);
+            setMessage(
+              "付け直す先の明細をクリックしてください（同じ行を押すとやめます）",
+            );
+          }}
+          title="選んだ手入力行を別の明細の上下に付け直します。明細の順番が変わったときに、説明行を付け替えるのに使います（上付き・下付きはそのまま）"
+        >
+          ⇅ 行を付け直す
+        </button>
+        <button
+          type="button"
+          disabled={selected?.manual !== true}
+          onClick={() => void deleteManual()}
+          title="手で挿入した明細行を消します（緑色の「手」印が付いた行を選んだときだけ押せます）"
+        >
+          🗑 手入力行を消す
         </button>
         <button
           type="button"
@@ -404,7 +642,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
           ))}
           {usedSubjects.length === 0 && <span className="note">未集計</span>}
         </nav>
-        <table className="parts aggregate">
+        <table className="parts aggregate" onKeyDown={onTableKeyDown}>
           <colgroup>
             {COLUMNS.map((label, index) => (
               <col key={label} style={{ width: `${widths[index]}px` }} />
@@ -446,7 +684,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                         ? (subject?.id ?? "")
                         : ""}
                     </td>
-                    <td colSpan={8}>{line.heading.text}</td>
+                    <td colSpan={COLUMNS.length - 1}>{line.heading.text}</td>
                   </tr>
                 </tbody>
               );
@@ -457,17 +695,26 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
               : "";
             const isSelected = selected?.masterKey === item.masterKey;
             const unusedClass = item.unused ? "unused" : "";
+            const manualClass = item.manual ? "manual" : "";
             const draft = edits[item.masterKey] ?? initialEdit(item);
             return (
               <tbody
                 key={item.id}
-                className={`row ${check} ${unusedClass} ${isSelected ? "selected" : ""}`}
+                className={`row ${check} ${unusedClass} ${manualClass} ${isSelected ? "selected" : ""}`}
                 data-master-key={item.masterKey}
-                onClick={() => setSelected(item)}
+                onClick={() => clickRow(item)}
               >
                 <tr className="detail-upper">
                   <td className="no" rowSpan={2}>
                     {draft.subjectId ?? ""}
+                    {item.manual && (
+                      <span
+                        className="manual-mark"
+                        title="手で挿入した明細行（計算書を持たない手入力の行）"
+                      >
+                        手
+                      </span>
+                    )}
                   </td>
                   <td rowSpan={2}>
                     <select
@@ -489,6 +736,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.materialCategory}
+                      {...spaceMark(draft.materialCategory)}
                       onChange={(e) =>
                         editItem(item, { materialCategory: e.target.value })
                       }
@@ -507,6 +755,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.partName}
+                      {...spaceMark(draft.partName)}
                       onChange={(e) =>
                         editItem(item, { partName: e.target.value })
                       }
@@ -516,6 +765,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.descriptionUpper}
+                      {...spaceMark(draft.descriptionUpper)}
                       onChange={(e) =>
                         editItem(item, { descriptionUpper: e.target.value })
                       }
@@ -527,10 +777,36 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.remarksUpper}
+                      {...spaceMark(draft.remarksUpper)}
                       onChange={(e) =>
                         editItem(item, { remarksUpper: e.target.value })
                       }
                     />
+                  </td>
+                  <td
+                    rowSpan={2}
+                    className="estimate-display"
+                    title={
+                      fixedEstimateDisplay.has(item.masterKey)
+                        ? "積算用表示。転記入力表などから来た明細は積算用表示を持たないので直せません"
+                        : "積算用表示。違うと同じ明細でも別の行になります"
+                    }
+                  >
+                    {fixedEstimateDisplay.has(item.masterKey) ? (
+                      <span {...spaceMark(item.estimateDisplay)}>
+                        {item.estimateDisplay}
+                      </span>
+                    ) : (
+                      <input
+                        lang="ja"
+                        data-estimate-display
+                        value={draft.estimateDisplay ?? ""}
+                        {...spaceMark(draft.estimateDisplay ?? "")}
+                        onChange={(e) =>
+                          editItem(item, { estimateDisplay: e.target.value })
+                        }
+                      />
+                    )}
                   </td>
                 </tr>
                 <tr className="detail-lower">
@@ -551,6 +827,7 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.name}
+                      {...spaceMark(draft.name)}
                       onChange={(e) => editItem(item, { name: e.target.value })}
                     />
                   </td>
@@ -558,22 +835,47 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                     <input
                       lang="ja"
                       value={draft.descriptionLower}
+                      {...spaceMark(draft.descriptionLower)}
                       onChange={(e) =>
                         editItem(item, { descriptionLower: e.target.value })
                       }
                     />
                   </td>
-                  <td className="number">{displayQuantity(item.quantity)}</td>
+                  <td className="number">
+                    {item.manual ? (
+                      <input
+                        className="number"
+                        title="数量。手入力行は計算書を持たないので直接入れます"
+                        value={draft.quantity ?? item.quantity}
+                        onChange={(e) =>
+                          editItem(item, {
+                            quantity: toNumber(e.target.value) ?? 0,
+                          })
+                        }
+                      />
+                    ) : (
+                      aggregateQuantityText(item.quantity, draft.unit)
+                    )}
+                  </td>
                   <td>
-                    <input
+                    <PickInput
+                      entries={unitEntries}
+                      halfWidth
                       value={draft.unit}
-                      onChange={(e) => editItem(item, { unit: e.target.value })}
+                      title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                      onCommit={(text) =>
+                        editItem(item, {
+                          unit: resolveMasterName(units, text),
+                        })
+                      }
                     />
                   </td>
                   <td>
                     <input
                       lang="ja"
+                      data-remarks-lower
                       value={draft.remarksLower}
+                      {...spaceMark(draft.remarksLower)}
                       onChange={(e) =>
                         editItem(item, { remarksLower: e.target.value })
                       }
@@ -637,7 +939,20 @@ export default function AggregatePage({ project, onBack }: Props): JSX.Element {
                 <tbody>
                   {basis.map((detail) => (
                     <tr key={detail.id}>
-                      <td>{sourceLabelOf(detail.sourceKind)}</td>
+                      <td className="source">
+                        {onOpenSource ? (
+                          <button
+                            type="button"
+                            className="link"
+                            title={`${sourceLabelOf(detail.sourceKind)} を開く`}
+                            onClick={() => onOpenSource(detail)}
+                          >
+                            📐 {sourceLabelOf(detail.sourceKind)}
+                          </button>
+                        ) : (
+                          sourceLabelOf(detail.sourceKind)
+                        )}
+                      </td>
                       <td>{`${detail.part2Raw} ${detail.part3}`.trim()}</td>
                       <td className="number">
                         {displayQuantity(detail.setTotal)}

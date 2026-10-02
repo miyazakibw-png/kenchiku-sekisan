@@ -7,17 +7,21 @@ import {
   cutCorner,
   deducts,
   edge,
+  edgeTotals,
   floorArea,
   freeColumn,
   freeColumnTotals,
   lShape,
   mirrorShape,
   moveCorner,
+  moveCorners,
   nextEdgeDirection,
   notchEdge,
   rectangleShape,
   roomQuantities,
   roomSymbols,
+  rotateShape,
+  scaleShape,
   setEdgeKinds,
   shapeExtents,
   solveShape,
@@ -25,7 +29,17 @@ import {
   trimEdges,
   updateEdge,
   uShape,
+  withFixedRoomSymbols,
 } from "../../src/core/room/shape";
+
+/** 2点間のベクトル・外積・長さ（辺の向きを比べる用） */
+const sub = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+  x: a.x - b.x,
+  y: a.y - b.y,
+});
+const cross = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+  a.x * b.y - a.y * b.x;
+const len = (a: { x: number; y: number }) => Math.hypot(a.x, a.y);
 
 /** 形の向きを見るために、左上を原点にそろえた頂点の並び */
 function cornerSet(shape: ReturnType<typeof rectangleShape>): string[] {
@@ -159,6 +173,37 @@ describe("部屋形状（単線図）", () => {
     expect(solved.points).toHaveLength(cut.shape.edges.length);
   });
 
+  it("斜めどうしの角のL型は、つなぐ辺と平行な脚になる", () => {
+    // 角1を動かすと、角1の両側の辺がどちらも斜めになる
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    expect(moved.error).toBeNull();
+    const before = solveShape(moved.shape);
+    expect(before.error).toBeNull();
+    const cut = cutCorner(moved.shape, 1, 0.5, 0.5);
+    expect(cut.error).toBeNull();
+    const after = solveShape(cut.shape);
+    expect(after.error).toBeNull();
+    // 角1に入る辺・出る辺の向き（元の形）
+    const inUnit = sub(before.points[1], before.points[0]);
+    const outUnit = sub(before.points[2], before.points[1]);
+    // 欠き取り後：角1の所は 折れ点(back) → 真ん中 → 折れ点(forward) の3点になる
+    const back = after.points[1];
+    const middle = after.points[2];
+    const forward = after.points[3];
+    // 真ん中の点は「つなぐ2辺と平行な平行四辺形」の頂点（座標の丸め分だけずれるので近いかを見る）
+    const expectMiddle = sub(
+      { x: back.x + forward.x, y: back.y + forward.y },
+      before.points[1],
+    );
+    expect(len(sub(middle, expectMiddle))).toBeLessThan(0.02);
+    // 2本の脚がそれぞれ元の出る辺・入る辺と平行（丸め誤差を含めてほぼ0）
+    expect(cross(sub(middle, back), outUnit)).toBeCloseTo(0, 1);
+    expect(cross(sub(forward, middle), inUnit)).toBeCloseTo(0, 1);
+    // 脚の長さは欠き取り寸法のまま
+    expect(len(sub(middle, back))).toBeCloseTo(0.5, 1);
+    expect(len(sub(forward, middle))).toBeCloseTo(0.5, 1);
+  });
+
   it("斜め辺を作ったあとでも角の欠き取りを何度でも続けられる", () => {
     const moved = moveCorner(rectangleShape(8, 6), 1, -1, -1);
     let shape = moved.shape;
@@ -230,6 +275,36 @@ describe("部屋形状（単線図）", () => {
     );
   });
 
+  it("斜め辺のコ型は辺と直角に部屋の内側へ凹む", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const index = moved.shape.edges.findIndex((row) => row.direction === "D");
+    const before = floorArea(solveShape(moved.shape)) ?? 0;
+    const notched = notchEdge(moved.shape, index, 1, 0.5);
+    expect(notched.error).toBeNull();
+    const solved = solveShape(notched.shape);
+    // 内側へ凹むので床面積が幅×深さぶん減る
+    expect(floorArea(solved)).toBeCloseTo(before - 1 * 0.5, 2);
+    // 凹みの両わきの壁は斜め辺と直角（内積が0）
+    const points = solved.points;
+    const vec = (i: number): { x: number; y: number } => ({
+      x: points[(i + 1) % points.length].x - points[i].x,
+      y: points[(i + 1) % points.length].y - points[i].y,
+    });
+    const diag = vec(index);
+    for (const armIndex of [index + 1, index + 3]) {
+      const arm = vec(armIndex);
+      // 寸法はcm単位で丸めるので、内積は丸め誤差（数mmぶん）以内で0になる
+      expect(Math.abs(diag.x * arm.x + diag.y * arm.y)).toBeLessThan(0.02);
+    }
+    // 凹みの奥の辺は斜め辺と平行（内積の大きさが辺同士の長さの積）
+    const back = vec(index + 2);
+    const diagLen = Math.hypot(diag.x, diag.y);
+    const backLen = Math.hypot(back.x, back.y);
+    expect(Math.abs(diag.x * back.x + diag.y * back.y)).toBeGreaterThan(
+      diagLen * backLen - 0.05,
+    );
+  });
+
   it("斜め辺も途中で分けて角を足せる", () => {
     const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
     const diagonal = moved.shape.edges.find((row) => row.direction === "D");
@@ -256,6 +331,38 @@ describe("部屋形状（単線図）", () => {
     expect(notched.shape.edges[2].length).toBe(1);
     expect(notched.shape.edges[6].length).toBe(3);
     expect(floorArea(solveShape(notched.shape))).toBe(6 * 4 - 2 * 1);
+  });
+
+  it("壁の辺に柱のコ型を入れても、凹みの前後の壁は壁のまま", () => {
+    const notched = notchEdge(rectangleShape(6, 4), 2, 2, 1, undefined, "column");
+    expect(notched.error).toBeNull();
+    // 凹みの内側3辺だけ柱。前後の辺は元の壁の続き
+    expect(notched.shape.edges.map((row) => row.kind)).toEqual([
+      "wall",
+      "wall",
+      "wall",
+      "column",
+      "column",
+      "column",
+      "wall",
+      "wall",
+    ]);
+  });
+
+  it("斜めの壁の辺に柱のコ型を入れても、凹みの前後の壁は壁のまま", () => {
+    const moved = moveCorner(rectangleShape(6, 4), 1, -1, -1);
+    const index = moved.shape.edges.findIndex((row) => row.direction === "D");
+    const notched = notchEdge(moved.shape, index, 1, 0.5, undefined, "column");
+    expect(notched.error).toBeNull();
+    const kinds = notched.shape.edges.map((row) => row.kind);
+    expect(kinds[index]).toBe("wall");
+    expect(kinds.slice(index + 1, index + 4)).toEqual([
+      "column",
+      "column",
+      "column",
+    ]);
+    expect(kinds[index + 4]).toBe("wall");
+    expect(solveShape(notched.shape).error).toBeNull();
   });
 
   it("壁の無い開口は壁長さに入れない", () => {
@@ -414,6 +521,173 @@ describe("部屋形状（単線図）", () => {
     expect(roomQuantities(solved, 2.5).wallLength).toBe(14.16);
   });
 
+  it("曲面壁の分はRHL・RWAに分けて出し、HL・WAからは引く", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    // 曲面の辺に建具（面積1.0・巾木減0.4）を置いた場合も曲面側で差し引く
+    const fittings = [
+      {
+        symbol: "AW1",
+        multiplier: 1,
+        area: 1,
+        baseboardDeduction: 0.4,
+        edgeId: solved.edges[2].id,
+      },
+    ];
+    const quantities = roomQuantities(solved, 2.5, fittings);
+    // 壁合計14.16のうち曲面分4.16。HLは直線の壁だけ（4+3+3=10）
+    expect(quantities.wallLength).toBe(14.16);
+    expect(quantities.baseboardLength).toBe(10);
+    // RHLは弧長から曲面の建具巾木減を引く（4.16-0.4）
+    expect(quantities.curveLength).toBe(3.76);
+    // WAは直線の壁×天井高さ（10×2.5）、RWAは弧長×天井高さ－建具（4.16×2.5-1.0）
+    expect(quantities.wallArea).toBe(25);
+    expect(quantities.curveArea).toBe(9.4);
+
+    const symbols = roomSymbols(solved, 2.5, fittings);
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "RHL")?.value).toBe(3.76);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+    expect(symbols.find((row) => row.symbol === "RWA")?.value).toBe(9.4);
+    // RHLはHLの直下、RWAはWAの直下に並ぶ
+    const order = symbols.map((row) => row.symbol);
+    expect(order.indexOf("RHL")).toBe(order.indexOf("HL") + 1);
+    expect(order.indexOf("RWA")).toBe(order.indexOf("WA") + 1);
+  });
+
+  it("Ｒ開口は弧長を開口の長さに数え、壁・曲面には入れない", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curveOpening"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+    };
+    const solved = solveShape(shape);
+    // Ｒ開口は弦の長さ＋矢から弧長（4.16）を出す
+    expect(solved.edges[2].measured).toBe(4.16);
+    const totals = edgeTotals(solved);
+    // 開口と同じく開口長さに入る（壁長さ・柱長さには入らない）
+    expect(totals.opening).toBe(4.16);
+    expect(totals.wall).toBe(10);
+    const quantities = roomQuantities(solved, 2.5);
+    // 壁長さは直線の壁だけ（4＋3＋3）、壁面積・曲面の数量は出ない
+    expect(quantities.wallLength).toBe(10);
+    expect(quantities.wallArea).toBe(25);
+    expect(quantities.curveLength).toBe(0);
+    const symbols = roomSymbols(solved, 2.5);
+    expect(symbols.find((row) => row.symbol === "RHL")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
+  });
+
+  it("曲面壁の無い部屋にはRHL・RWAを出さず、HL・WAは壁全体のまま", () => {
+    const symbols = roomSymbols(solveShape(rectangleShape(3, 2)), 2.5);
+    expect(symbols.find((row) => row.symbol === "RHL")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "RWA")).toBeUndefined();
+    expect(symbols.find((row) => row.symbol === "HL")?.value).toBe(10);
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBe(25);
+  });
+
+  it("縮尺合わせ：選んだ辺の実寸で図形全体を同じ比率にする", () => {
+    const shape = {
+      edges: [
+        edge("E", 4),
+        edge("S", 3),
+        { ...edge("W", 4, "curve"), bulge: 0.5 },
+        edge("N", 3),
+      ],
+      columns: [freeColumn(2, 1, 0.5, 0.5)],
+    };
+    // 辺1（4.00）を実寸8.00に → 全体2倍
+    const next = scaleShape(shape, shape.edges[0].id, 8);
+    expect(next).not.toBeNull();
+    expect(next?.edges[0].length).toBe(8);
+    expect(next?.edges[1].length).toBe(6);
+    // 曲面壁は弦も矢も2倍
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[2].bulge).toBe(1);
+    // 独立柱の位置・大きさも2倍
+    expect(next?.columns?.[0].x).toBe(4);
+    expect(next?.columns?.[0].width).toBe(1);
+    // 弧長も2倍（丸めを含めた実値）
+    expect(solveShape(next!).edges[2].measured).toBe(8.33);
+  });
+
+  it("縮尺合わせ：斜め辺・自動算出の辺も基準にできる", () => {
+    // 斜め辺を基準にする（解決した長さ3.16を6.32へ → 2倍）
+    const moved = moveCorner(rectangleShape(4, 3), 1, 1, 0).shape;
+    const scaled = scaleShape(moved, moved.edges[1].id, 6.32);
+    expect(scaled?.edges[1].dx).toBe(-2);
+    expect(scaled?.edges[1].dy).toBe(6);
+    expect(solveShape(scaled!).edges[1].resolved).toBeCloseTo(6.32, 2);
+    expect(scaled?.edges[0].length).toBe(10);
+
+    // 自動算出（寸法なし）の辺を基準にすると、その辺に実寸が入る
+    const shape = rectangleShape(4, 3);
+    const withAuto = updateEdge(shape, shape.edges[2].id, { length: null });
+    const next = scaleShape(withAuto, shape.edges[2].id, 8);
+    expect(next?.edges[2].length).toBe(8);
+    expect(next?.edges[0].length).toBe(8);
+    expect(solveShape(next!).edges[2].resolved).toBe(8);
+  });
+
+  it("回転：選んだ辺を水平・垂直にして図形全体を回し、柱も同じ関係に留める", () => {
+    const shape = {
+      ...rectangleShape(4, 3),
+      columns: [freeColumn(4, 3, 0.5, 0.5)],
+    };
+    // 辺2（↓下 3.00）を水平に → 全部 -90°回る
+    const turned = rotateShape(shape, shape.edges[1].id, "horizontal");
+    expect(turned).not.toBeNull();
+    const next = turned!.shape;
+    // S(0,3)→E(3,0)：辺2が水平になる
+    expect(next.edges[1]).toMatchObject({ direction: "E", length: 3 });
+    // E4→N4、W4→S4、N3→W3
+    expect(next.edges[0]).toMatchObject({ direction: "N", length: 4 });
+    expect(next.edges[2]).toMatchObject({ direction: "S", length: 4 });
+    expect(next.edges[3]).toMatchObject({ direction: "W", length: 3 });
+    // 形は閉じたまま・面積は回る前と同じ
+    const solvedNext = solveShape(next);
+    expect(solvedNext.error).toBeNull();
+    expect(floorArea(solvedNext)).toBe(floorArea(solveShape(shape)));
+    // 右下の角（4,3）にあった柱は、回ったあとの右下の角（3,-4）に来る
+    expect(next.columns?.[0].x).toBe(3);
+    expect(next.columns?.[0].y).toBe(-4);
+    // 起点（辺2の始点）は (4,0) → (0,-4) に移る
+    expect(turned!.pivot).toEqual({ x: 4, y: 0 });
+    expect(turned!.pivotTo).toEqual({ x: 0, y: -4 });
+  });
+
+  it("回転：45°に傾いた形は、1辺を水平にすると全部の辺が縦横にそろう", () => {
+    // 45°回った四角（斜め辺だけの形）
+    const shape = {
+      edges: [
+        { ...edge("D", null), dx: 1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: 1 },
+        { ...edge("D", null), dx: -1, dy: -1 },
+        { ...edge("D", null), dx: 1, dy: -1 },
+      ],
+    };
+    const turned = rotateShape(shape, shape.edges[0].id, "horizontal");
+    const next = turned!.shape;
+    // 辺1は水平（E）に、残りも縦横にそろう（面積も閉じたまま）
+    expect(next.edges[0]).toMatchObject({ direction: "E", length: 1.41 });
+    expect(next.edges[1]).toMatchObject({ direction: "S", length: 1.41 });
+    expect(next.edges[2]).toMatchObject({ direction: "W", length: 1.41 });
+    expect(next.edges[3]).toMatchObject({ direction: "N", length: 1.41 });
+    expect(solveShape(next).error).toBeNull();
+    // 斜め辺1.4142…を2桁に丸めた 1.41×1.41 の面積になる
+    expect(floorArea(solveShape(next))).toBe(1.99);
+  });
+
   it("頂点を上下左右へ動かすと両隣の辺の寸法が変わる", () => {
     const shape = rectangleShape(4, 3);
     const moved = moveCorner(shape, 1, 1, 0);
@@ -435,6 +709,79 @@ describe("部屋形状（単線図）", () => {
     expect(solved.points).toHaveLength(4);
     // 台形（上辺5.00・下辺4.00・高さ3.00）
     expect(floorArea(solved)).toBe(13.5);
+  });
+
+  it("複数の角をいっしょに動かすと、つながる辺は形のままずれる", () => {
+    const shape = rectangleShape(4, 3);
+    // 下辺の両端（右下・左下）をいっしょに1.00下げる
+    const moved = moveCorners(shape, [2, 3], 0, 1);
+    expect(moved.error).toBeNull();
+    const solved = solveShape(moved.shape);
+    expect(solved.error).toBeNull();
+    // 右・左の辺だけ伸びて、下辺はそのまま
+    expect(solved.edges[1].length).toBe(4);
+    expect(solved.edges[2].length).toBe(4);
+    expect(solved.edges[3].length).toBe(4);
+    expect(floorArea(solved)).toBe(16);
+  });
+
+  it("下がり出っぱりのある下辺を全部いっしょに下げられる", () => {
+    // 下辺の真ん中が 4.00×0.50 だけ下がった形
+    const shape = {
+      edges: [
+        edge("E", 6),
+        edge("S", 3),
+        edge("W", 1),
+        edge("S", 0.5),
+        edge("W", 4),
+        edge("N", 0.5),
+        edge("W", 1),
+        edge("N", 3),
+      ],
+    };
+    // 下辺側の6角（頂点2〜7）をいっしょに0.50下げる
+    const moved = moveCorners(shape, [2, 3, 4, 5, 6, 7], 0, 0.5);
+    expect(moved.error).toBeNull();
+    const solved = solveShape(moved.shape);
+    expect(solved.error).toBeNull();
+    // 左右の外壁だけ伸びて、出っぱりの形はそのまま
+    expect(solved.edges[1].length).toBe(3.5);
+    expect(solved.edges[2].length).toBe(1);
+    expect(solved.edges[3].length).toBe(0.5);
+    expect(solved.edges[4].length).toBe(4);
+    expect(solved.edges[5].length).toBe(0.5);
+    expect(solved.edges[6].length).toBe(1);
+    expect(solved.edges[7].length).toBe(3.5);
+    // 6.00×3.50＋出っぱり4.00×0.50
+    expect(floorArea(solved)).toBe(23);
+  });
+
+  it("複数選択の1点だけの移動は1点移動と同じ結果になる", () => {
+    const shape = rectangleShape(4, 3);
+    const single = moveCorners(shape, [1], 1, 0);
+    const one = moveCorner(shape, 1, 1, 0);
+    expect(single.error).toBeNull();
+    expect(one.error).toBeNull();
+    expect(single.shape.edges.map((row) => row.direction)).toEqual(
+      one.shape.edges.map((row) => row.direction),
+    );
+    expect(single.shape.edges.map((row) => row.length)).toEqual(
+      one.shape.edges.map((row) => row.length),
+    );
+  });
+
+  it("選んだ角が全部のときは形は変わらない", () => {
+    const shape = rectangleShape(4, 3);
+    const moved = moveCorners(shape, [0, 1, 2, 3], 1, 1);
+    expect(moved.error).toBeNull();
+    expect(moved.shape.edges.map((row) => row.length)).toEqual([4, 3, 4, 3]);
+  });
+
+  it("移動で辺がつぶれるときはエラーにする", () => {
+    const shape = rectangleShape(4, 3);
+    // 右下の角だけ上げると右辺が0になる
+    const moved = moveCorners(shape, [2], 0, -3);
+    expect(moved.error).toBe("移動すると辺の長さが0以下になります");
   });
 
   it("外形寸法（X・Y の最大）を出せる", () => {
@@ -560,13 +907,59 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(quantities.ceilingArea).toBe(23.24);
     // 周長は柱として足される
     expect(quantities.columnLength).toBe(5);
-    expect(quantities.columnArea).toBe(12.5);
+    // 柱面積ＨＡは壁に作った柱だけなので0、独立柱の見付はＨＤＡへ
+    expect(quantities.columnArea).toBe(0);
+    expect(quantities.freeColumnArea).toBe(12.5);
     expect(quantities.baseboardLength).toBe(25);
     expect(quantities.moldingLength).toBe(25);
 
-    // 独立柱だけの記号は作らない
+    // 独立柱は合計のＨＤＡと1本ずつのＨＤＡ１・ＨＤＡ２で記号になる
     const symbols = roomSymbols(solved, 2.5);
-    expect(symbols.some((row) => row.symbol.startsWith("I"))).toBe(false);
+    expect(symbols.find((row) => row.symbol === "HDA")?.value).toBe(12.5);
+    expect(symbols.find((row) => row.symbol === "HDA1")?.value).toBe(6);
+    expect(symbols.find((row) => row.symbol === "HDA2")?.value).toBe(6.5);
+    expect(symbols.find((row) => row.symbol === "HA")?.value).toBe(0);
+    // 独立柱がある部屋は柱長さの次に独立柱長さＤＣＬが出る（周長の合計5）
+    expect(symbols.findIndex((row) => row.symbol === "DCL")).toBe(
+      symbols.findIndex((row) => row.symbol === "CL") + 1,
+    );
+    expect(symbols.find((row) => row.symbol === "DCL")?.value).toBe(5);
+  });
+
+  it("独立柱が無い部屋ではＤＣＬは出ない", () => {
+    const symbols = roomSymbols(solveShape(rectangleShape(6, 4)), 2.5);
+    expect(symbols.find((row) => row.symbol === "DCL")).toBeUndefined();
+  });
+
+  it("壁にした独立柱は周長・見付を壁側（ＷＬ・ＷＡ・ＨＬ・ＭＬ）に数える", () => {
+    const shape = {
+      ...rectangleShape(6, 4),
+      columns: [freeColumn(2, 2, 0.6, 0.6), freeColumn(4, 2, 0.5, 0.4, "wall")],
+    };
+    const solved = solveShape(shape);
+    const quantities = roomQuantities(solved, 2.5);
+    // 床・天井は柱・壁どちらの平面の面積も減る
+    expect(quantities.floorArea).toBe(23.44);
+    // 壁種の周長1.8は壁長・壁面積へ、柱種の2.4だけが柱長・独立柱面積へ
+    expect(quantities.wallLength).toBe(21.8);
+    expect(quantities.wallArea).toBe(54.5);
+    expect(quantities.columnLength).toBe(2.4);
+    expect(quantities.columnArea).toBe(0);
+    expect(quantities.freeColumnArea).toBe(6);
+    // ＤＣＬも柱種の柱だけ（壁種は入れない）
+    expect(quantities.freeColumnLength).toBe(2.4);
+    expect(quantities.baseboardLength).toBe(24.2);
+    expect(quantities.moldingLength).toBe(24.2);
+  });
+
+  it("記号表にいつも出す記号は、無いときも0で計算式に使える", () => {
+    const values = withFixedRoomSymbols({ FA: 24 });
+    // 天井伏図を描いていない部屋でも BA・GA を式に書ける
+    expect(values.BA).toBe(0);
+    expect(values.GA).toBe(0);
+    expect(values.CH).toBe(0);
+    // すでにある値は書き換えない
+    expect(values.FA).toBe(24);
   });
 
   it("独立柱が無い今までの図形は数量が変わらない", () => {

@@ -111,6 +111,19 @@
   background: #94a3b8;
 }
 
+/** 行ごとの「工事を開く」ボタンの列 */
+.project-list th.open,
+.project-list td.open {
+  text-align: center;
+}
+
+.project-list td.open button {
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
 .project-list th.handle,
 .project-list td.handle {
   width: 20px;

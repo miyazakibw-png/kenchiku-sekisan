@@ -17,7 +17,12 @@ import {
 } from "./calcSheet";
 
 /** コピーした行に混ざっていた※行（at＝その※行より上にある明細の数） */
-export type CopiedBanner = { at: number; text: string; color: string };
+export type CopiedBanner = {
+  at: number;
+  text: string;
+  color: string;
+  text2?: string;
+};
 
 /** コピーした行のセットの区切りと左端の部位（at＝そのセットの先頭の明細番号） */
 export type CopiedPart = {
@@ -364,7 +369,9 @@ export function rowsToSets(
     pushRows(at);
     banners
       .filter((banner) => clamp(banner.at) === at)
-      .forEach((banner) => created.push(commentSet(banner.text, banner.color)));
+      .forEach((banner) =>
+        created.push(commentSet(banner.text, banner.color, banner.text2)),
+      );
   });
   pushRows(details.length);
   return created;

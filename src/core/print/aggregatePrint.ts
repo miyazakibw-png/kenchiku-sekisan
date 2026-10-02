@@ -1,4 +1,5 @@
 import { displayQuantity } from "../room/calcSheet";
+import { aggregateQuantityText } from "../aggregate/aggregate";
 
 /** 集計書の印刷に使う明細（画面の集計書兼工事マスターの1明細） */
 export interface AggregatePrintItem {
@@ -17,6 +18,8 @@ export interface AggregatePrintItem {
   remarksUpper: string;
   remarksLower: string;
   unused: boolean;
+  /** 集計書で手で挿入した行（計算書を持たないので印刷には出さない） */
+  manual?: boolean;
   quantity: number;
   /** 数量根拠（部屋＝部位Ⅱ：部位Ⅲ ごとの拾い） */
   rooms: { roomName: string; quantity: number }[];
@@ -79,7 +82,10 @@ export function aggregatePrintRows(
   let part1: string | undefined;
   let part2: string | undefined;
   let unused: boolean | undefined;
-  items.forEach((item) => {
+  // 手で挿入した明細行は紙には出さない（画面の集計書だけに出る）
+  items
+    .filter((item) => item.manual !== true)
+    .forEach((item) => {
     if (subjectId !== item.subjectId) {
       subjectId = item.subjectId;
       part1 = undefined;
@@ -121,7 +127,7 @@ export function aggregatePrintRows(
         .filter((text) => text.trim() !== "")
         .join(" / "),
       description,
-      quantity: displayQuantity(item.quantity),
+      quantity: aggregateQuantityText(item.quantity, item.unit),
       unit: item.unit,
       remarks,
     });

@@ -22,11 +22,44 @@ export const NAME_PATTERN = {
   asIs: 1,
   /** 部位＋半角スペース＋名称 */
   withPart: 2,
+  /** 部位＋半角「：」＋名称 */
+  withPartColon: 3,
+  /** 部位＋全角「：」＋名称 */
+  withPartFullColon: 4,
 } as const;
+
+/**
+ * 名称欄の設定どおりに部位と名称をつなぐ。
+ * 「そのまま」のときは null（つなげず上下に分けて出す）。
+ */
+function joinPartAndName(
+  partName: string,
+  name: string,
+  namePattern: number,
+): string | null {
+  const separator =
+    namePattern === NAME_PATTERN.withPart
+      ? " "
+      : namePattern === NAME_PATTERN.withPartColon
+        ? ":"
+        : namePattern === NAME_PATTERN.withPartFullColon
+          ? "："
+          : null;
+  if (separator === null) return null;
+  return partName === "" ? name : `${partName}${separator}${name}`.trim();
+}
 
 export interface TextReplacement {
   from: string;
   to: string;
+}
+
+/** 基本部位のタイトル行（部位番号が「始まり」以上の範囲の前へ出す文字） */
+export interface PartTitle {
+  /** 範囲の始まりの部位番号（次の始まり未満までがこの範囲） */
+  from: number;
+  /** 出す文字（「＜床＞」のようにそのまま出る） */
+  title: string;
 }
 
 export interface BreakdownSettings {
@@ -48,6 +81,10 @@ export interface BreakdownSettings {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: TextReplacement[];
+  /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
+  partTitlesOn: boolean;
+  /** 基本部位のタイトル行（部位番号の範囲→出す文字。空なら出さない） */
+  partTitles: PartTitle[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数（タイトル行が無い分） */
@@ -67,6 +104,16 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitlesOn: false,
+  partTitles: [
+    { from: 10, title: "＜床＞" },
+    { from: 20, title: "＜巾木＞" },
+    { from: 30, title: "＜壁＞" },
+    { from: 40, title: "＜柱型＞" },
+    { from: 50, title: "＜梁型＞" },
+    { from: 60, title: "＜天井＞" },
+    { from: 70, title: "＜その他＞" },
+  ],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
 };
@@ -94,6 +141,8 @@ export interface BreakdownRow {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
+  subtotal?: boolean;
 }
 
 /** 内訳書へ転記する集計書兼工事マスターの明細 */
@@ -103,6 +152,8 @@ export interface BreakdownSourceItem {
   subjectId: number | null;
   /** 部位Ⅰ（集計書ではタイトル行になる） */
   part1: string;
+  /** 明細用部位の番号（基本部位のタイトル行を出す範囲の判断に使う） */
+  partNumber: number | null;
   partName: string;
   name: string;
   descriptionUpper: string;
@@ -342,6 +393,83 @@ function subjectSortKey(
 }
 
 /**
+ * 金額欄に出す金額。
+ * 直接入力があればそれを使い、無ければ数量×単価を出す。
+ */
+export function amountOf(row: {
+  quantity: number | null;
+  unitPrice: number | null;
+  amount: number | null;
+}): number | null {
+  if (row.amount !== null) return row.amount;
+  if (row.quantity !== null && row.unitPrice !== null) {
+    return row.quantity * row.unitPrice;
+  }
+  return null;
+}
+
+/**
+ * 金額が入った科目の終わりに「小計」行を足す。
+ * 画面では直接入力した金額か数量×単価を使い、科目ごとの合計金額を次の科目の前へ出す。
+ */
+export function withSubjectSubtotals(
+  rows: readonly BreakdownRow[],
+): BreakdownRow[] {
+  const next: BreakdownRow[] = [];
+  let total = 0;
+  let has = false;
+  let subjectId: number | null = null;
+  const flush = (): void => {
+    if (subjectId !== null && has) {
+      const subtotal = emptyRow("detail");
+      subtotal.nameLower = "小計";
+      subtotal.amount = total;
+      subtotal.subtotal = true;
+      subtotal.subjectId = subjectId;
+      next.push(subtotal);
+    }
+    total = 0;
+    has = false;
+  };
+  rows.forEach((row) => {
+    if (row.rowKind === "subject") {
+      flush();
+      subjectId = row.subjectId;
+      next.push(row);
+      return;
+    }
+    if (subjectId !== null && amountOf(row) !== null) {
+      total += amountOf(row) ?? 0;
+      has = true;
+    }
+    next.push(row);
+  });
+  flush();
+  return next;
+}
+
+/**
+ * 部位番号がどの範囲に入るか調べ、出すタイトル文字を返す。
+ * 範囲は「始まり以上・次の始まり未満」。部位番号が無い・どの範囲にも入らないときは null。
+ */
+export function partTitleOf(
+  partNumber: number | null,
+  partTitles: readonly PartTitle[],
+): string | null {
+  if (partNumber === null || !Number.isFinite(partNumber)) return null;
+  const whole = Math.floor(partNumber);
+  let title: string | null = null;
+  let best = Number.NEGATIVE_INFINITY;
+  partTitles.forEach((entry) => {
+    if (entry.from <= whole && entry.from > best && entry.title !== "") {
+      best = entry.from;
+      title = entry.title;
+    }
+  });
+  return title;
+}
+
+/**
  * 集計書兼工事マスターの明細を内訳書の行に変換する。
  * 工種科目ごとに見出し行を置き、明細を並べる。
  */
@@ -383,9 +511,12 @@ export function buildBreakdownRows(
 
     // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
     let part1: string | undefined;
+    // 基本部位のタイトル行は部位Ⅰごとに出し直す
+    let lastPartTitle: string | null = null;
     (groups.get(subjectId) ?? []).forEach((item) => {
       if (part1 !== item.part1) {
         part1 = item.part1;
+        lastPartTitle = null;
         if (part1 !== "") {
           const title = emptyRow("title");
           title.subjectId = subjectId;
@@ -394,6 +525,18 @@ export function buildBreakdownRows(
           title.nameLower = `（${part1}）`;
           rows.push(title);
         }
+      }
+      const partTitle = settings.partTitlesOn
+        ? partTitleOf(item.partNumber, settings.partTitles)
+        : null;
+      if (partTitle !== null && partTitle !== lastPartTitle) {
+        lastPartTitle = partTitle;
+        const title = emptyRow("title");
+        title.subjectId = subjectId;
+        title.subjectName = heading.subjectName;
+        title.partName = partTitle;
+        title.nameLower = partTitle;
+        rows.push(title);
       }
       rows.push(...detailRows(item, subjectId, heading.subjectName, settings));
     });
@@ -435,12 +578,11 @@ function detailRows(
   row.masterKey = item.masterKey;
   row.aggregateItemId = item.id;
   row.partName = item.partName;
-  if (
-    settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-    settings.namePattern === NAME_PATTERN.withPart
-  ) {
+  const joined = joinPartAndName(partName, name, settings.namePattern);
+  if (settings.layout === BREAKDOWN_LAYOUT.oneLine || joined !== null) {
     row.nameUpper = "";
-    row.nameLower = partName === "" ? name : `${partName} ${name}`.trim();
+    row.nameLower =
+      joined ?? (partName === "" ? name : `${partName} ${name}`.trim());
   } else {
     row.nameUpper = partName;
     row.nameLower = name;
@@ -488,7 +630,6 @@ function twoRowDetail(
   };
 
   const upper = line("note");
-  upper.nameLower = partName;
   upper.descriptionLower = applyReplacements(
     item.descriptionUpper,
     settings.replacements,
@@ -496,7 +637,14 @@ function twoRowDetail(
   upper.remarksLower = item.remarksUpper;
 
   const lower = line("detail");
-  lower.nameLower = name;
+  // 名称欄を「部位 名称」「部位：名称」にまとめる（部位は上段の名称欄には出さない）
+  const joined = joinPartAndName(partName, name, settings.namePattern);
+  if (joined !== null) {
+    lower.nameLower = joined;
+  } else {
+    upper.nameLower = partName;
+    lower.nameLower = name;
+  }
   lower.descriptionLower = applyReplacements(
     item.descriptionLower,
     settings.replacements,
@@ -531,4 +679,33 @@ export function collectSubjectOrder(
     .filter((subject) => used.has(subject.id))
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .map((subject) => subject.id);
+}
+
+/**
+ * 工種科目の並びに新しい科目を入れる。
+ * 今までの並び（動かした分も含めて覚えたもの）を基準に、新しい科目は
+ * 科目マスターの並びで直前に来る科目の直後へ入れる（前後の科目から位置を決める。
+ * どの既存科目より前なら先頭）。
+ */
+export function mergeSubjectOrder(
+  storedOrder: readonly number[],
+  usedIds: readonly number[],
+  subjects: readonly BreakdownSubject[],
+): number[] {
+  const orderById = new Map(
+    subjects.map((subject) => [subject.id, subject.displayOrder]),
+  );
+  const order = [...storedOrder];
+  usedIds
+    .filter((id) => !order.includes(id))
+    .forEach((id) => {
+      const key = orderById.get(id) ?? Number.MAX_SAFE_INTEGER;
+      let insertAt = 0;
+      order.forEach((existing, index) => {
+        const existingKey = orderById.get(existing) ?? Number.MAX_SAFE_INTEGER;
+        if (existingKey < key) insertAt = index + 1;
+      });
+      order.splice(insertAt, 0, id);
+    });
+  return order;
 }

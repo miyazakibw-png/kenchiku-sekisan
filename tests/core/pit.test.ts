@@ -28,12 +28,15 @@ import {
   setPitColumns,
   setPitPoints,
   placeTracedPit,
+  retracePits,
+  syncPitDepths,
   followUnderlay,
   pitTotal,
   pitPartVariables,
   pitSymbol,
   pitVariables,
   type PitBeam,
+  type PitPoint,
   type PitShape,
 } from "../../src/core/pit/pit";
 
@@ -1098,6 +1101,33 @@ describe("placeTracedPit（図面をなぞったピットの置き方）", () =>
     expect(p2.traceX).toBe(16);
   });
 
+  it("1個目をなぞっていなくても、なぞったピットは図面の位置に置く", () => {
+    const manual = mk("p1", "P1");
+    const before: PitShape[] = [manual];
+    const traced = (id: string, symbol: string, origin: PitPoint) => {
+      const made = placeTracedPit(
+        before,
+        setPitPoints(mk(id, symbol), square),
+        origin,
+      );
+      before.push(made);
+      return made;
+    };
+    const p2 = traced("p2", "P2", { x: 10, y: 1 });
+    const p3 = traced("p3", "P3", { x: 10, y: 4.5 });
+    const p4 = traced("p4", "P4", { x: 10, y: 8 });
+    const p5 = traced("p5", "P5", { x: 17.5, y: 12 });
+
+    const rects = layoutPits([manual, p2, p3, p4, p5]);
+    expect(rects.map((rect) => [rect.left, rect.top])).toEqual([
+      [0, 0],
+      [10, 1],
+      [10, 4.5],
+      [10, 8],
+      [17.5, 12],
+    ]);
+  });
+
   it("なぞり直すときは自分より前のピットだけを基準に探す", () => {
     const p1 = placeTracedPit([], setPitPoints(mk("p1", "P1"), square), {
       x: 10,
@@ -1114,6 +1144,136 @@ describe("placeTracedPit（図面をなぞったピットの置き方）", () =>
     expect(redone.baseId).toBeUndefined();
     expect(redone.traceX).toBe(11);
     expect(p2.baseId).toBe(p1.id);
+  });
+
+  it("なぞり直すと、なぞった形のずれと使えない基準は消える", () => {
+    const pit: PitShape = {
+      ...mk("p1", "P1"),
+      direction: "free",
+      baseId: "old",
+      offsetX: 1,
+      offsetY: 2,
+      shiftX: 0.5,
+      shiftY: 0.25,
+    };
+    const redone = placeTracedPit([], setPitPoints(pit, square), { x: 8, y: 9 });
+    expect(redone.traceX).toBe(8);
+    expect(redone.traceY).toBe(9);
+    expect(redone.baseId).toBeUndefined();
+    expect(redone.offsetX).toBeUndefined();
+    expect(redone.shiftX).toBeUndefined();
+    expect(redone.direction).toBe("right");
+  });
+});
+
+describe("retracePits（なぞった形と下敷きからピットの位置を直す）", () => {
+  const mk = (id: string, symbol: string): PitShape => ({
+    id,
+    symbol,
+    x: 4,
+    y: 3,
+    depth: 1,
+    direction: "right",
+    gap: DEFAULT_PIT_GAP,
+  });
+
+  it("位置が全部0に潰れていても、なぞった形と下敷きから図面の位置に直す", () => {
+    const underlay = { image: "plan.png", metersPerPixel: 0.1, x: -20, y: -15 };
+    const traced = [
+      {
+        id: "p1",
+        points: [
+          { x: 200, y: 150 },
+          { x: 240, y: 180 },
+        ],
+      },
+      {
+        id: "p2",
+        points: [
+          { x: 300, y: 160 },
+          { x: 340, y: 190 },
+        ],
+      },
+    ];
+    // p1 → (-20+200×0.1, -15+150×0.1) = (0, 0)、p2 → (10, 1)
+    const p1: PitShape = { ...mk("p1", "P1"), traceX: 0, traceY: 0 };
+    const p2: PitShape = {
+      ...mk("p2", "P2"),
+      traceX: 0,
+      traceY: 0,
+      direction: "free",
+      baseId: "p1",
+      offsetX: 0,
+      offsetY: 0,
+    };
+    const p3 = mk("p3", "P3");
+    const [r1, r2, r3] = retracePits([p1, p2, p3], { traced, underlay });
+    expect([r1.traceX, r1.traceY]).toEqual([0, 0]);
+    expect([r2.traceX, r2.traceY]).toEqual([10, 1]);
+    expect(r2.baseId).toBe("p1");
+    expect(r2.offsetX).toBe(10);
+    expect(r2.offsetY).toBe(1);
+    expect(r3).toEqual(p3);
+    // 並べると図面の位置（p1 は基準なし＋なぞり位置、p2 は p1 からの差）
+    const rects = layoutPits([r1, r2, r3]);
+    expect(rects[0]).toMatchObject({ left: 0, top: 0 });
+    expect(rects[1]).toMatchObject({ left: 10, top: 1 });
+    // 2回実行しても同じ（何度開いても結果が変わらない）
+    expect(retracePits([r1, r2, r3], { traced, underlay })).toEqual([
+      r1,
+      r2,
+      r3,
+    ]);
+  });
+
+  it("基準にしていたピットがなぞっていなければ、基準を外して図面の位置に置く", () => {
+    const underlay = { image: "plan.png", metersPerPixel: 0.1, x: 0, y: 0 };
+    const traced = [
+      {
+        id: "p2",
+        points: [
+          { x: 100, y: 50 },
+          { x: 140, y: 80 },
+        ],
+      },
+    ];
+    const manual = mk("p1", "P1");
+    const p2: PitShape = {
+      ...mk("p2", "P2"),
+      direction: "free",
+      baseId: "p1",
+      offsetX: 2,
+      offsetY: 1,
+    };
+    const [, r2] = retracePits([manual, p2], { traced, underlay });
+    expect(r2.traceX).toBe(10);
+    expect(r2.traceY).toBe(5);
+    expect(r2.baseId).toBeUndefined();
+    expect(r2.offsetX).toBeUndefined();
+    const rects = layoutPits([manual, r2]);
+    expect(rects[1]).toMatchObject({ left: 10, top: 5 });
+  });
+
+  it("なぞった形が無い・下敷きが無いときは何も変えない", () => {
+    const p1: PitShape = { ...mk("p1", "P1"), traceX: 1, traceY: 2 };
+    expect(
+      retracePits([p1], {
+        traced: [],
+        underlay: { image: "a", metersPerPixel: 1, x: 0, y: 0 },
+      })[0],
+    ).toEqual(p1);
+    expect(
+      retracePits([p1], {
+        traced: [{ id: "p1", points: [{ x: 1, y: 1 }] }],
+        underlay: { image: "", metersPerPixel: 1, x: 0, y: 0 },
+      })[0],
+    ).toEqual(p1);
+    expect(
+      retracePits([p1], {
+        traced: [{ id: "p1", points: [{ x: 1, y: 1 }] }],
+        underlay: { image: "a", metersPerPixel: 0, x: 0, y: 0 },
+      })[0],
+    ).toEqual(p1);
   });
 });
 
@@ -1195,5 +1355,25 @@ describe("followUnderlay（下敷きの縮尺合わせ・移動に、なぞっ�
       { x: 0, y: 0, metersPerPixel: 0.02 },
     );
     expect(got).toEqual([traced]);
+  });
+});
+
+describe("深さと天井高さ（部位別入力表）", () => {
+  const pit = (id: string, depth: number, depthManual?: boolean) => ({
+    id,
+    symbol: "P1",
+    x: 2,
+    y: 2,
+    depth,
+    depthManual,
+    direction: "right" as const,
+    gap: 0.5,
+  });
+  it("手で書き換えていないピットの深さは天井高さにそろう", () => {
+    const pits = syncPitDepths(
+      [pit("a", 1), pit("b", 3, true), pit("c", 1.5)],
+      1.85,
+    );
+    expect(pits.map((each) => each.depth)).toEqual([1.85, 3, 1.85]);
   });
 });

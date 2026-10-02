@@ -3,10 +3,17 @@ import type {
   FormworkSourceItem,
   FormworkTransferRule,
   FormworkTransferView,
+  MasterOptions,
   ProjectSummary,
   Subject,
 } from "@shared/types";
-import { buildFormworkRulesFromSources } from "../../../../core/aggregate/formworkTransfer";
+import { resolveMasterName } from "@shared/masters";
+import {
+  buildFormworkRulesFromSources,
+  moveFormworkRow,
+  sortFormworkRowsByName,
+} from "../../../../core/aggregate/formworkTransfer";
+import PickInput, { type PickEntry } from "../../components/PickInput";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -71,9 +78,10 @@ export default function FormworkTransferPage({
   onBack,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-formwork-rules-v3");
-  const tableRef1 = useTableResize("table-widths-formwork-rows-v3");
+  const tableRef1 = useTableResize("table-widths-formwork-rows-v4");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [options, setOptions] = useState<MasterOptions | null>(null);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -83,7 +91,6 @@ export default function FormworkTransferPage({
   );
   const [bulkUnit, setBulkUnit] = useState("");
   const [bulkCoefficient, setBulkCoefficient] = useState(1);
-  const [bulkCategory, setBulkCategory] = useState("");
   const [copyDescription, setCopyDescription] = useState(true);
 
   const reload = useCallback(async () => {
@@ -93,9 +100,24 @@ export default function FormworkTransferPage({
   useEffect(() => {
     void (async () => {
       setSubjects(await window.sekisan.listSubjects());
+      setOptions(await window.sekisan.getMasterOptions(project.id));
       await reload();
     })();
-  }, [reload]);
+  }, [reload, project.id]);
+
+  /** 単位欄は番号入力で単位マスターの名称に変わる（全画面共通の入力方式） */
+  const unitOf = (text: string): string =>
+    resolveMasterName(options?.units ?? [], text);
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      (options?.units ?? []).map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [options],
+  );
 
   /** 名称で探した元明細（空欄なら全部） */
   const shown = useMemo(() => {
@@ -138,7 +160,6 @@ export default function FormworkTransferPage({
         name: bulkName,
         unit: bulkUnit,
         coefficient: bulkCoefficient,
-        materialCategory: bulkCategory,
         copyDescription,
       },
       `型枠-${Date.now()}`,
@@ -181,15 +202,38 @@ export default function FormworkTransferPage({
     );
   };
 
+  /** ④の表の並び替え（↑↓・名称順）。並びは転記入力表へそのまま反映する */
+  const reorder = async (
+    rows: typeof view.rows,
+    note: string,
+  ): Promise<void> => {
+    setView(
+      await window.sekisan.reorderFormworkRows({
+        projectId: project.id,
+        rows,
+      }),
+    );
+    setMessage(note);
+  };
+
+  /** 画面を閉じるときは今の内容を自動で保存してから戻る（失敗しても戻る） */
+  const back = async (): Promise<void> => {
+    try {
+      await save();
+    } finally {
+      onBack();
+    }
+  };
+
   const sourcesOf = (keys: readonly string[]): FormworkSourceItem[] =>
     keys
       .map((key) => view.sources.find((source) => source.masterKey === key))
       .filter((item): item is FormworkSourceItem => item !== undefined);
 
   return (
-    <div className="estimate-page check-sheet-page">
+    <div className="estimate-page check-sheet-page formwork-transfer-page">
       <div className="toolbar">
-        <button type="button" onClick={onBack}>
+        <button type="button" onClick={() => void back()}>
           ← 工事管理画面へ
         </button>
         <h2>型枠転記（拾った明細を型枠明細に変える）</h2>
@@ -198,9 +242,6 @@ export default function FormworkTransferPage({
         </span>
         <button type="button" onClick={() => void save()}>
           保存
-        </button>
-        <button type="button" onClick={() => void run()}>
-          ▶ 算出して転記入力表へ
         </button>
         <span className="message">
           {view.sources.length === 0
@@ -307,27 +348,22 @@ export default function FormworkTransferPage({
         </label>
         <label>
           単位{" "}
-          <TextInput
+          <PickInput
             className="num"
+            entries={unitEntries}
+            halfWidth
             value={bulkUnit}
             placeholder="空欄＝元の単位"
-            onCommit={setBulkUnit}
+            title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+            onCommit={(value) => setBulkUnit(unitOf(value))}
           />
         </label>
         <label>
-          掛け率（あとで明細ごとに直せます）{" "}
-          <input
-            className="num"
-            value={bulkCoefficient}
-            onChange={(e) => setBulkCoefficient(Number(e.target.value) || 0)}
-          />
-        </label>
-        <label>
-          材種区分{" "}
+          掛け率（あとで明細ごとに直せます。小数2桁まで可）{" "}
           <TextInput
-            value={bulkCategory}
-            placeholder="空欄＝元のまま"
-            onCommit={setBulkCategory}
+            className="num"
+            value={String(bulkCoefficient)}
+            onCommit={(value) => setBulkCoefficient(numberOrNull(value) ?? 0)}
           />
         </label>
         <label>
@@ -350,7 +386,7 @@ export default function FormworkTransferPage({
         <thead>
           <tr>
             <th colSpan={5}>変換元明細</th>
-            <th colSpan={6}>変換後の型枠明細</th>
+            <th colSpan={5}>変換後の型枠明細</th>
             <th rowSpan={2}>取消</th>
           </tr>
           <tr>
@@ -360,10 +396,9 @@ export default function FormworkTransferPage({
             <th>単位</th>
             <th>掛け率</th>
             <th>科目</th>
-            <th>材種区分</th>
             <th>名称</th>
-            <th>摘要 上段</th>
             <th>摘要 下段</th>
+            <th>摘要 上段</th>
             <th>単位</th>
           </tr>
         </thead>
@@ -399,11 +434,12 @@ export default function FormworkTransferPage({
                 <td className="number">{quantity.toFixed(2)}</td>
                 <td>{sources[0]?.unit ?? ""}</td>
                 <td className="number">
-                  <input
-                    value={rule.coefficient}
-                    onChange={(e) =>
+                  <TextInput
+                    className="num"
+                    value={String(rule.coefficient)}
+                    onCommit={(value) =>
                       update(index, {
-                        coefficient: Number(e.target.value) || 0,
+                        coefficient: numberOrNull(value) ?? 0,
                       })
                     }
                   />
@@ -425,22 +461,8 @@ export default function FormworkTransferPage({
                 </td>
                 <td>
                   <TextInput
-                    value={rule.materialCategory}
-                    onCommit={(value) =>
-                      update(index, { materialCategory: value })
-                    }
-                  />
-                </td>
-                <td>
-                  <TextInput
                     value={rule.name}
                     onCommit={(value) => update(index, { name: value })}
-                  />
-                </td>
-                <td>
-                  <TextInput
-                    value={rule.description}
-                    onCommit={(value) => update(index, { description: value })}
                   />
                 </td>
                 <td>
@@ -453,8 +475,19 @@ export default function FormworkTransferPage({
                 </td>
                 <td>
                   <TextInput
+                    value={rule.description}
+                    onCommit={(value) => update(index, { description: value })}
+                  />
+                </td>
+                <td>
+                  <PickInput
+                    entries={unitEntries}
+                    halfWidth
                     value={rule.unit}
-                    onCommit={(value) => update(index, { unit: value })}
+                    title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                    onCommit={(value) =>
+                      update(index, { unit: unitOf(value) })
+                    }
                   />
                 </td>
                 <td>
@@ -468,31 +501,96 @@ export default function FormworkTransferPage({
         </tbody>
       </table>
 
+      <div className="toolbar">
+        <button type="button" onClick={() => void run()}>
+          ▶ 算出して転記入力表へ
+        </button>
+        <span className="note">
+          ①で元の明細を選び、②で型枠の内容を決めて変え、③の一覧で摘要・掛け率を直してから押してください。
+          転記入力表の最後に部位Ⅰ「仕上転記数量」として入ります（④の表で並びも変えられます）。
+        </span>
+      </div>
+
       <h3 className="section">
         ④ 算出結果（型枠分類ごとにタイトル行を置き、転記入力表へ入れます）
       </h3>
+      <div className="toolbar">
+        <button
+          type="button"
+          onClick={() =>
+            void reorder(
+              sortFormworkRowsByName(view.rows),
+              "分類ごとに名称の昇順に並び替えました",
+            )
+          }
+        >
+          名称の昇順に並び替える
+        </button>
+        <span className="note">
+          明細は↑↓で上下へ移せます（明細番号はそのまま連番）。並びは転記入力表にも反映されます。
+        </span>
+      </div>
       <table className="parts check-sheet" ref={tableRef1}>
         <thead>
           <tr>
+            <th className="flag">並び</th>
             <th>明細番号</th>
             <th>名称</th>
-            <th>摘要 上段</th>
             <th>摘要 下段</th>
+            <th>摘要 上段</th>
             <th>元数量</th>
             <th>転記数量</th>
             <th>単位</th>
           </tr>
         </thead>
         <tbody>
-          {view.rows.map((row) => (
+          {view.rows.map((row, index) => (
             <tr
-              key={`${row.formwork}|${row.detailNumber}`}
+              key={`${row.formwork}|${row.detailNumber}|${row.name}`}
               className={row.title ? "title-row" : undefined}
             >
+              <td className="flag">
+                {row.title ? (
+                  ""
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={
+                        !view.rows.slice(0, index).some((above) => !above.title)
+                      }
+                      onClick={() =>
+                        void reorder(
+                          moveFormworkRow(view.rows, index, -1),
+                          "並びを変えました（転記入力表へも反映しました）",
+                        )
+                      }
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        !view.rows
+                          .slice(index + 1)
+                          .some((below) => !below.title)
+                      }
+                      onClick={() =>
+                        void reorder(
+                          moveFormworkRow(view.rows, index, 1),
+                          "並びを変えました（転記入力表へも反映しました）",
+                        )
+                      }
+                    >
+                      ↓
+                    </button>
+                  </>
+                )}
+              </td>
               <td className="number">{row.detailNumber}</td>
               <td>{row.name}</td>
-              <td>{row.description}</td>
               <td>{row.descriptionLower}</td>
+              <td>{row.description}</td>
               <td className="number">
                 {row.title ? "" : row.sourceQuantity.toFixed(2)}
               </td>

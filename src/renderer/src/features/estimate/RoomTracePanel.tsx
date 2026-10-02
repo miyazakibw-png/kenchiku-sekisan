@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import type { Point, RoomShape } from "../../../../core/room/shape";
 import {
@@ -11,6 +11,7 @@ import {
   toMeters,
   traceArea,
   type RoomTrace,
+  type TraceUnderlay,
 } from "../../../../core/room/trace";
 import { pdfPageImage } from "./pdfPage";
 import "./RoomTracePanel.css";
@@ -29,6 +30,11 @@ interface Props {
     pixels: Point[],
     perPixel: number,
   ) => void;
+  /**
+   * なぞらずに、読み込んだ図面を図形の下敷きにする（perPixel＝いまの縮尺。0は未設定）。
+   * 図面の取り込みをこの画面にまとめているときに渡す
+   */
+  onUnderlay?: (perPixel: number) => void;
   onClose: () => void;
   /** 見出しの名前（部屋・ピットなど） */
   targetName?: string;
@@ -38,6 +44,10 @@ interface Props {
   subject?: string;
   /** 開いたときに「□なぞり（対角の2点）」を入れておく（ピットのように四角が基本のもの） */
   rectFirst?: boolean;
+  /** 図形欄に置いてある図面全部。なぞる図面以外も計算書で合わせた位置・縮尺・濃さで映して、2枚にまたがる部屋をなぞれるようにする */
+  underlays?: TraceUnderlay[];
+  /** 開いたときに図形欄で選んでいた図面の番号（他の図面を映す基準にする） */
+  activeIndex?: number;
 }
 
 /** 画像の大きさ（画素）。読み込むまでは仮の大きさ */
@@ -63,11 +73,14 @@ export default function RoomTracePanel({
   trace,
   onChange,
   onApply,
+  onUnderlay,
   onClose,
   targetName = "部屋",
   done = [],
   subject,
   rectFirst = false,
+  underlays,
+  activeIndex,
 }: Props): JSX.Element {
   const [size, setSize] = useState<ImageSize>({ width: 1000, height: 700 });
   const [mode, setMode] = useState<"scale" | "trace">(
@@ -104,6 +117,96 @@ export default function RoomTracePanel({
       setSize({ width: image.naturalWidth, height: image.naturalHeight });
     image.src = trace.image;
   }, [trace.image]);
+
+  // なぞる図面以外に計算書へ置いてある図面。なぞる図面（同じ画像の下敷き）を基準にして、置いた位置・縮尺のまま薄く映す
+  const [otherSizes, setOtherSizes] = useState<Record<string, ImageSize>>({});
+  // 基準は「いま選んでいる図面」。画像データが違う経路で貼られて一致しないときも、その図面を基準にする
+  const anchorList = underlays ?? [];
+  const anchor =
+    anchorList.find(
+      (item) => item.image === trace.image && item.metersPerPixel > 0,
+    ) ??
+    (activeIndex !== undefined
+      ? (() => {
+          const picked =
+            anchorList[
+              Math.min(
+                Math.max(activeIndex, 0),
+                Math.max(anchorList.length - 1, 0),
+              )
+            ];
+          return picked !== undefined &&
+            picked.image !== "" &&
+            picked.metersPerPixel > 0
+            ? picked
+            : undefined;
+        })()
+      : undefined);
+  // 基準の図面はなぞる図面がその場所を映すので、他の図面には入れない（同じ図面が2重に重ならないように）
+  const others = useMemo(
+    () =>
+      (underlays ?? []).filter(
+        (item) =>
+          item.image !== "" &&
+          item.image !== trace.image &&
+          item.metersPerPixel > 0 &&
+          item !== anchor,
+      ),
+    [anchor, underlays, trace.image],
+  );
+  useEffect(() => {
+    others.forEach((item) => {
+      if (otherSizes[item.image] !== undefined) return;
+      const image = new Image();
+      image.onload = () =>
+        setOtherSizes((current) =>
+          current[item.image] !== undefined
+            ? current
+            : {
+                ...current,
+                [item.image]: {
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                },
+              },
+        );
+      image.src = item.image;
+    });
+  }, [others, otherSizes]);
+  /** 他の図面をなぞる画面の座標（なぞる図面の画素）に直したもの */
+  const otherImages =
+    anchor === undefined
+      ? []
+      : others
+          .map((item) => {
+            const natural = otherSizes[item.image];
+            if (natural === undefined) return null;
+            const scale = item.metersPerPixel / anchor.metersPerPixel;
+            return {
+              key: item.image,
+              image: item.image,
+              x: (item.x - anchor.x) / anchor.metersPerPixel,
+              y: (item.y - anchor.y) / anchor.metersPerPixel,
+              width: natural.width * scale,
+              height: natural.height * scale,
+              opacity: item.opacity,
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
+  /** なぞる図面と他の図面が全部入る範囲（他の図面が無いときはなぞる図面だけの範囲） */
+  const frame = useMemo(() => {
+    let left = 0;
+    let top = 0;
+    let right = size.width;
+    let bottom = size.height;
+    otherImages.forEach((item) => {
+      left = Math.min(left, item.x);
+      top = Math.min(top, item.y);
+      right = Math.max(right, item.x + item.width);
+      bottom = Math.max(bottom, item.y + item.height);
+    });
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }, [otherImages, size.height, size.width]);
 
   const setImage = useCallback(
     (dataUrl: string) => {
@@ -238,7 +341,9 @@ export default function RoomTracePanel({
       }
       const rect = rectFromCorners(points[0], point);
       if (rect === null) {
-        setMessage("同じ横位置・縦位置では四角になりません。斜め向かいの角をクリックしてください");
+        setMessage(
+          "同じ横位置・縦位置では四角になりません。斜め向かいの角をクリックしてください",
+        );
         return;
       }
       setPoints(rect);
@@ -393,6 +498,16 @@ export default function RoomTracePanel({
         >
           🗑 画像を消す
         </button>
+        {onUnderlay !== undefined && (
+          <button
+            type="button"
+            title="この図面を、なぞらずにそのまま図形の下敷きにします（図形はそのまま残ります。位置・縮尺・濃さは図の上のボタンで調整できます）"
+            disabled={trace.image === ""}
+            onClick={() => onUnderlay(perPixel)}
+          >
+            📥 図面を下に敷く
+          </button>
+        )}
         <button type="button" onClick={() => setZoom(Math.min(zoom * 1.25, 8))}>
           ＋
         </button>
@@ -474,7 +589,11 @@ export default function RoomTracePanel({
             <button
               type="button"
               onClick={() =>
-                keep(rectMode && points.length === 4 ? [points[0]] : points.slice(0, -1))
+                keep(
+                  rectMode && points.length === 4
+                    ? [points[0]]
+                    : points.slice(0, -1),
+                )
               }
               disabled={points.length === 0}
             >
@@ -535,10 +654,21 @@ export default function RoomTracePanel({
           </p>
         ) : (
           <svg
-            viewBox={`0 0 ${size.width} ${size.height}`}
-            style={{ width: `${size.width * zoom}px` }}
+            viewBox={`${frame.x} ${frame.y} ${frame.width} ${frame.height}`}
+            style={{ width: `${frame.width * zoom}px` }}
             onClick={click}
           >
+            {otherImages.map((item) => (
+              <image
+                key={item.key}
+                href={item.image}
+                x={item.x}
+                y={item.y}
+                width={item.width}
+                height={item.height}
+                opacity={item.opacity}
+              />
+            ))}
             <image href={trace.image} width={size.width} height={size.height} />
             {done.map((shape, index) =>
               shape.points.length < 3 ? null : (

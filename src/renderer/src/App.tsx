@@ -11,7 +11,9 @@ import { useGridKeyNav } from "./features/grid/useGridKeyNav";
 import { useHalfWidthFields } from "./hooks/useHalfWidthFields";
 import { refocusWindow, useInputRecovery } from "./hooks/useInputRecovery";
 import { useImeMode } from "./hooks/useImeMode";
+import { useLineStyles } from "./hooks/useLineStyles";
 import { useStickyHeaders } from "./features/grid/useStickyHeaders";
+import { useDisplayZoom, ZOOM_STEPS } from "./hooks/useDisplayZoom";
 import SettingsPage from "./features/settings/SettingsPage";
 import CalcWindowPage from "./features/estimate/CalcWindowPage";
 
@@ -51,10 +53,12 @@ export default function App(): JSX.Element {
   );
   const onGridKeyDown = useGridKeyNav();
   const mainRef = useRef<HTMLElement>(null);
+  const [zoom, setZoom] = useDisplayZoom();
   useStickyHeaders(mainRef);
   useHalfWidthFields();
   useInputRecovery();
   useImeMode();
+  useLineStyles();
 
   // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
   // 工事の画面ではその工事専用のマスター（無い種類は基本マスター）を使う
@@ -91,6 +95,22 @@ export default function App(): JSX.Element {
           >
             ⌨ 入力復帰
           </button>
+          <label
+            className="display-zoom"
+            title="画面全体の表示倍率です（Ctrl＋−／＋でも変えられます。全部のウィンドウに同じ倍率がかかります）"
+          >
+            表示
+            <select
+              value={Math.round(zoom * 100)}
+              onChange={(event) => setZoom(Number(event.target.value) / 100)}
+            >
+              {ZOOM_STEPS.map((step) => (
+                <option key={step} value={Math.round(step * 100)}>
+                  {Math.round(step * 100)}%
+                </option>
+              ))}
+            </select>
+          </label>
           <PrintBar projectName={projectName} />
         </header>
         {projectId === null && (
