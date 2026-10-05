@@ -587,14 +587,33 @@ export default function FrameSheetPage({
   }, [drawStart, scalePoints, selectedLineId, fittingTargetId, curveTargetId]);
 
   // 別窓で開いているときは Esc で閉じられるようにする
+  // （線を引く途中・連続線の入れている間は Esc が引き作業の終了に専念するので、窓は閉じない）
   useEffect(() => {
     if (!expanded) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setExpanded(false);
+      if (event.key !== "Escape") return;
+      if (
+        drawStart !== null ||
+        scalePoints.length > 0 ||
+        selectedLineId !== null ||
+        fittingTargetId !== null ||
+        curveTargetId !== null ||
+        chainDraw
+      )
+        return;
+      setExpanded(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded]);
+  }, [
+    expanded,
+    drawStart,
+    scalePoints,
+    selectedLineId,
+    fittingTargetId,
+    curveTargetId,
+    chainDraw,
+  ]);
 
   /** 置いた部屋の平面図（部屋計算書の形をそのまま使う） */
   const shapes = useMemo(() => {
