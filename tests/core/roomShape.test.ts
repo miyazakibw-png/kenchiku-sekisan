@@ -971,3 +971,23 @@ describe("独立柱（部屋の中に置くＷ×Ｄの柱）", () => {
     expect(quantities.moldingLength).toBe(20);
   });
 });
+
+describe("反転で一緒に裏返るもの", () => {
+  it("独立柱も形と同じ向きに裏返る（2回で元に戻る）", () => {
+    const shape = {
+      ...lShape(6, 4, 2, 1.5),
+      columns: [freeColumn(2, 2, 0.6, 0.6), freeColumn(4.5, 1, 0.5, 0.8)],
+    };
+    const once = mirrorShape(shape, "x");
+    expect(once.columns?.[0].x).toBe(-2);
+    expect(once.columns?.[0].y).toBe(2);
+    expect(once.columns?.[1].x).toBe(-4.5);
+    const twice = mirrorShape(once, "x");
+    expect(twice.columns?.map((col) => [col.x, col.y])).toEqual(
+      shape.columns.map((col) => [col.x, col.y]),
+    );
+    const flippedY = mirrorShape(shape, "y");
+    expect(flippedY.columns?.[0].y).toBe(-2);
+    expect(flippedY.columns?.[0].x).toBe(2);
+  });
+});

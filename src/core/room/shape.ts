@@ -258,7 +258,13 @@ export function mirrorShape(shape: RoomShape, axis: "x" | "y"): RoomShape {
     }
     return { ...row, direction: map[row.direction as AxisDirection] };
   });
-  return { edges };
+  // 形は始点を通る軸で裏返る（左右反転なら x の符号、上下反転なら y の符号が変わる）
+  const columns = (shape.columns ?? []).map((col) =>
+    axis === "x"
+      ? { ...col, x: round2(-col.x) }
+      : { ...col, y: round2(-col.y) },
+  );
+  return { edges, columns };
 }
 
 /** 辺を進む向きから見た内側の向き（E→S→W→N の並びで一周する形が前提） */

@@ -30,6 +30,7 @@ import {
 } from "../../../../core/room/trace";
 import RoomTracePanel from "./RoomTracePanel";
 import {
+  mirrorUnderlay,
   rotateUnderlay,
   UnderlayImage,
   UnderlayScaleMarks,
@@ -77,6 +78,7 @@ import {
 import {
   ceilingElement,
   beamFootprintArea,
+  mirrorCeiling,
   ceilingQuantities,
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
@@ -2037,16 +2039,42 @@ export default function RoomSheetPage({
     );
   };
 
-  /** いまの図形を左右（x）・上下（y）に反転する */
-  const flipShape = (axis: "x" | "y"): void => {
+  /**
+   * いまの図形を左右（x）・上下（y）に反転する。
+   * 形と一緒に、梁型・下がり天井・自由線・独立柱・C番号の位置・貼った図面も
+   * 裏返す（建具の取付面は辺のIDで覚えるので、そのまま同じ壁に付く）
+   */
+  const flipShape = async (axis: "x" | "y"): Promise<void> => {
     if (shape.edges.length === 0) {
       setMessage("先に部屋の形を作ってください");
       return;
     }
     applyShape(mirrorShape(shape, axis));
+    const mirrored = mirrorCeiling(ceiling, codes, solved, axis);
+    changeCeiling(mirrored.ceiling);
+    changeCodes(mirrored.codes);
+    setFreeDraw(null);
+    setFreeCursor(null);
+    setBeamDraw(null);
+    setBeamCursor(null);
     setSelectedEdge(null);
     pickCorners([]);
-    setMessage(axis === "x" ? "左右に反転しました" : "上下に反転しました");
+    let imageNote = "";
+    if (underlays.length > 0) {
+      const flipped = await Promise.all(
+        underlays.map((item) => mirrorUnderlay(item, axis)),
+      );
+      if (flipped.some((item) => item !== null)) {
+        setUnderlays(
+          underlays.map((item, index) => flipped[index] ?? item),
+          underlayTool.active,
+        );
+        imageNote = "（貼った図面も一緒に裏返りました）";
+      }
+    }
+    setMessage(
+      `${axis === "x" ? "左右" : "上下"}に反転しました（梁型・下がり天井・柱・貼った図面も一緒です）${imageNote}`,
+    );
   };
 
   const undoShape = (): void => {
@@ -3326,16 +3354,16 @@ export default function RoomSheetPage({
             <button
               type="button"
               disabled={shape.edges.length === 0}
-              title="今の図形を左右に反転します（寸法はそのまま）"
-              onClick={() => flipShape("x")}
+              title="今の図形を左右に反転します（寸法はそのまま。梁型・下がり天井・柱・貼った図面も一緒に裏返ります）"
+              onClick={() => void flipShape("x")}
             >
               ⇔ 左右反転
             </button>
             <button
               type="button"
               disabled={shape.edges.length === 0}
-              title="今の図形を上下に反転します（寸法はそのまま）"
-              onClick={() => flipShape("y")}
+              title="今の図形を上下に反転します（寸法はそのまま。梁型・下がり天井・柱・貼った図面も一緒に裏返ります）"
+              onClick={() => void flipShape("y")}
             >
               ⇕ 上下反転
             </button>

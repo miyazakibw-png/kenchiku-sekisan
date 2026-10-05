@@ -10,6 +10,7 @@ import {
   resolveCeilingAnchor,
   ceilingQuantities,
   ceilingRegions,
+  mirrorCeiling,
   ceilingSymbols,
   normalizeCeilingHeights,
   noteRegionHeight,
@@ -21,6 +22,7 @@ import {
 import {
   edge,
   lShape,
+  mirrorShape,
   rectangleShape,
   roomQuantities,
   roomSymbols,
@@ -1461,5 +1463,77 @@ describe("梁型に付く自由線", () => {
     // どちらも辺の上の位置で線が出る（無限ループしない）
     expect(lines.filter((line) => line.elementId === first.id).length).toBe(1);
     expect(lines.filter((line) => line.elementId === second.id).length).toBe(1);
+  });
+});
+
+describe("部屋の反転で一緒に裏返す", () => {
+  it("自由線の端点・折れ点・下がる側が形と一緒に裏返る", () => {
+    const room = rectangleShape(4, 3);
+    const solved = solveShape(room); // 4×3 の四角
+    const free = element("dropCeiling", null, {
+      height: 0.3,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.5 }, // (2,0)
+        via: [{ x: 2, y: 1.5 }],
+        b: { edgeId: solved.edges[1].id, rate: 0.5 }, // (4,1.5)
+      },
+    });
+    const before = ceilingRegions([free], solved, 2.7);
+    const flippedShape = solveShape(mirrorShape(room, "x"));
+    const mirrored = mirrorCeiling(
+      [free],
+      { moves: {}, heights: [] },
+      solved,
+      "x",
+    );
+    const after = ceilingRegions(mirrored.ceiling, flippedShape, 2.7);
+    // 下がる側の区画面積・区画数が変わらない（形と線が揃って裏返った証拠）
+    expect(after.map((row) => row.drop).sort()).toEqual(
+      before.map((row) => row.drop).sort(),
+    );
+    expect(
+      after.find((row) => row.drop === 0.3)?.area,
+    ).toBeCloseTo(before.find((row) => row.drop === 0.3)?.area ?? -1, 6);
+    // 辺の上の位置は反対側から測る（0.5→0.5、0→1）
+    expect(mirrored.ceiling[0].free?.a.rate).toBe(0.5);
+    expect(mirrored.ceiling[0].free?.via?.[0]).toEqual({ x: -2, y: 1.5 });
+    // 進行方向の左右が入れ替わるので下がる側の指定も反対になる
+    expect(mirrored.ceiling[0].inner).toBe(true);
+    // 2回反転すれば線の引き方が元に戻る
+    const back = mirrorCeiling(
+      mirrored.ceiling,
+      { moves: {}, heights: [] },
+      flippedShape,
+      "x",
+    );
+    expect(back.ceiling[0].inner).toBe(false);
+    expect(back.ceiling[0].free?.a.rate).toBe(0.5);
+    expect(back.ceiling[0].free?.via?.[0]).toEqual({ x: 2, y: 1.5 });
+  });
+
+  it("辺に沿う範囲・C番号の位置・区画高さの点も裏返る", () => {
+    const room = rectangleShape(4, 3);
+    const solved = solveShape(room);
+    const drop = element("dropCeiling", solved.edges[0].id, {
+      height: 0.4,
+      range: { from: 0.5, to: 3 },
+    });
+    const codes = {
+      moves: { C2: { x: 0.5, y: -0.2 } },
+      heights: [{ at: { x: 2, y: 1 }, drop: 0.5 }],
+    };
+    const flippedShape = solveShape(mirrorShape(room, "x"));
+    const mirrored = mirrorCeiling([drop], codes, solved, "x");
+    // 壁4mの上の0.5〜3mは、反対側から測ると1〜3.5m（4−3〜4−0.5）
+    expect(mirrored.ceiling[0].range).toEqual({ from: 1, to: 3.5 });
+    expect(mirrored.codes.moves.C2).toEqual({ x: -0.5, y: -0.2 });
+    expect(mirrored.codes.heights[0].at).toEqual({ x: -2, y: 1 });
+    // 上下反転なら y が変わる
+    const solvedY = solveShape(mirrorShape(room, "y"));
+    const mirroredY = mirrorCeiling([drop], codes, solved, "y");
+    expect(mirroredY.ceiling[0].range).toEqual({ from: 1, to: 3.5 });
+    expect(mirroredY.codes.moves.C2).toEqual({ x: 0.5, y: 0.2 });
+    expect(flippedShape.edges.length).toBe(4);
+    expect(solvedY.edges.length).toBe(4);
   });
 });

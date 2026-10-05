@@ -2929,3 +2929,59 @@ export function dropCeilingAreas(
   );
   return areas;
 }
+
+/**
+ * 部屋の形を反転（mirrorShape）したとき、天井伏図の線・区画高さ・C番号の位置も
+ * 同じように裏返す。形は始点を通る軸で裏返るので、図の中の点は x（左右反転）か
+ * y（上下反転）の符号が変わる。
+ * 辺は反転後も同じIDだが進む向きが逆になるので、辺の上の位置（rate・範囲）は
+ * 反対側から測り直す（rate→1−rate、範囲→壁の長さ−範囲）。
+ */
+export function mirrorCeiling(
+  elements: CeilingElement[],
+  codes: CeilingCodes,
+  solved: SolvedShape,
+  axis: "x" | "y",
+): { ceiling: CeilingElement[]; codes: CeilingCodes } {
+  const flip = (point: CeilingPoint): CeilingPoint =>
+    axis === "x"
+      ? { x: round2(-point.x), y: point.y }
+      : { x: point.x, y: round2(-point.y) };
+  const edgeLength = (edgeId: string | null): number | null =>
+    solved.edges.find((row) => row.id === edgeId)?.resolved ?? null;
+  const anchor = (a: CeilingAnchor): CeilingAnchor => ({
+    ...a,
+    rate: round2(1 - a.rate),
+  });
+  const ceiling = elements.map((element) => {
+    const next = { ...element };
+    if (next.range !== null && next.range !== undefined) {
+      const length = edgeLength(next.edgeId);
+      if (length !== null && length > 0) {
+        next.range = {
+          from: round2(length - next.range.to),
+          to: round2(length - next.range.from),
+        };
+      }
+    }
+    if (next.free !== null && next.free !== undefined) {
+      next.free = {
+        a: anchor(next.free.a),
+        b: anchor(next.free.b),
+        ...(next.free.via !== undefined && next.free.via.length > 0
+          ? { via: next.free.via.map(flip) }
+          : {}),
+      };
+      // 自由線は「①→②の進行方向左側が下がる」。裏返ると左右が入れ替わるので
+      // 下がる側の指定（inner）を反対にする
+      next.inner = !(next.inner ?? false);
+    }
+    return next;
+  });
+  const moves: CeilingCodes["moves"] = {};
+  Object.entries(codes.moves).forEach(([code, at]) => {
+    moves[code] = flip(at);
+  });
+  const heights = codes.heights.map((row) => ({ ...row, at: flip(row.at) }));
+  return { ceiling, codes: { moves, heights } };
+}

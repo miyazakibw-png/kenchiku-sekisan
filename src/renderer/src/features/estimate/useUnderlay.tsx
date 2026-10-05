@@ -1019,3 +1019,44 @@ export function UnderlayScaleMarks({
     </g>
   );
 }
+
+/**
+ * 貼った図面を、図形と同じ反転（左右＝x、上下上下＝y）で裏返した下敷きに作り直す。
+ * 形は始点を通る軸で裏返る（x→−x / y→−y）ので、画像も裏返して置き場所を合わせる。
+ */
+export async function mirrorUnderlay(
+  underlay: TraceUnderlay,
+  axis: "x" | "y",
+): Promise<TraceUnderlay | null> {
+  if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("画像を読めませんでした"));
+    el.src = underlay.image;
+  }).catch(() => null);
+  if (img === null) return null;
+  const mpp = underlay.metersPerPixel;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return null;
+  if (axis === "x") {
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+  } else {
+    ctx.translate(0, h);
+    ctx.scale(1, -1);
+  }
+  ctx.drawImage(img, 0, 0);
+  // 図と同じ変形（x→−x / y→−y）を画像の枠に掛けた置き場所
+  return {
+    ...underlay,
+    image: canvas.toDataURL("image/png"),
+    x: axis === "x" ? -underlay.x - w * mpp : underlay.x,
+    y: axis === "x" ? underlay.y : -underlay.y - h * mpp,
+  };
+}
