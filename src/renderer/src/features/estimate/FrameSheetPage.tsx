@@ -3384,18 +3384,19 @@ export default function FrameSheetPage({
             )}
             {crosshairOn && drawCursor !== null && (
               <g pointerEvents="none">
+                {/* 画面の左右・上下のはしまで届くよう、見えている範囲よりたっぷり長く引く */}
                 <line
-                  x1={viewOrigin.x}
+                  x1={viewOrigin.x - view.span * 10}
                   y1={drawCursor.y}
-                  x2={viewOrigin.x + view.span}
+                  x2={viewOrigin.x + view.span * 11}
                   y2={drawCursor.y}
                   className="crosshair-line"
                 />
                 <line
                   x1={drawCursor.x}
-                  y1={viewOrigin.y}
+                  y1={viewOrigin.y - view.span * 10}
                   x2={drawCursor.x}
-                  y2={viewOrigin.y + view.span}
+                  y2={viewOrigin.y + view.span * 11}
                   className="crosshair-line"
                 />
               </g>
