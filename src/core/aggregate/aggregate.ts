@@ -215,7 +215,7 @@ function numberOrder(value: number | null): string {
 
 /**
  * 集計詳細データをまとめて集計書兼工事マスターの行にする。
- * 並びは 科目ID→部位Ⅰ→部位Ⅱ（入力順）→部位ID→明細ID→部位名→名称→摘要（下）→摘要（上）。
+ * 並びは 科目ID→部位Ⅰ（入力順）→部位Ⅱ（入力順）→部位ID→明細ID→部位名→名称→摘要（下）→摘要（上）。
  */
 export function aggregateItems(
   entries: AggregateEntry[],
@@ -274,15 +274,20 @@ export function aggregateItems(
     map.set(masterKey, item);
   });
 
-  // 部位Ⅰは部位別入力表にあるものを今までどおりに並べ、表に無い新しい部位Ⅰはその後ろ（出てきた順）
+  // 部位Ⅰは部位別入力表の入力順（先に入力行が出る方が前）。表に無い新しい部位Ⅰはその後ろ（出てきた順）
   const estimatePart1s = new Set<string>();
+  const part1Order = new Map<string, number>();
   const newPart1Order = new Map<string, number>();
   entries.forEach((entry) => {
     if (entry.estimateRowId !== null) estimatePart1s.add(entry.part1);
   });
   entries.forEach((entry) => {
-    if (!estimatePart1s.has(entry.part1) && !newPart1Order.has(entry.part1))
+    if (estimatePart1s.has(entry.part1)) {
+      if (!part1Order.has(entry.part1))
+        part1Order.set(entry.part1, part1Order.size);
+    } else if (!newPart1Order.has(entry.part1)) {
       newPart1Order.set(entry.part1, newPart1Order.size);
+    }
   });
 
   return [...map.values()].sort((a, b) => {
@@ -292,7 +297,7 @@ export function aggregateItems(
         // 不要明細は工種科目の最後にまとめる
         item.unused ? "9" : "0",
         item.part1 === "" || estimatePart1s.has(item.part1)
-          ? `0|${item.part1}`
+          ? `0|${String(part1Order.get(item.part1) ?? 0).padStart(5, "0")}`
           : `1|${String(newPart1Order.get(item.part1) ?? 0).padStart(5, "0")}`,
         item.part2 === "" ? " " : String(item.part2Order).padStart(5, "0"),
         item.part2,

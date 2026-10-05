@@ -230,7 +230,7 @@ describe("集計処理", () => {
     expect(items[0].traceIds).toContain("furniture:3:r2");
   });
 
-  it("部位Ⅰは部位別入力表にあるものが先。表に無い新しい部位Ⅰはその後ろ（出てきた順）", () => {
+  it("部位Ⅰは部位別入力表の入力順。表に無い新しい部位Ⅰはその後ろ（出てきた順）", () => {
     const z = entriesFromCalcSheet(
       context({ estimateRowId: 1, part1: "Z床" }),
       [set("s1", 1)],
@@ -252,8 +252,8 @@ describe("集計処理", () => {
       quantity: 1,
     };
     const items = aggregateItems([...z, newPart1, ...a]);
-    // 部位別入力表の部位Ⅰは今までどおり（A天井→Z床）、新しい部位Ⅰは後ろ
-    expect(items.map((item) => item.part1)).toEqual(["A天井", "Z床", "A新設"]);
+    // 部位別入力表の部位Ⅰは入力行順（Z床→A天井）、新しい部位Ⅰは後ろ
+    expect(items.map((item) => item.part1)).toEqual(["Z床", "A天井", "A新設"]);
   });
 
   it("並びは科目ID→部位Ⅰ→部位Ⅱの入力順→部位ID→明細ID", () => {
