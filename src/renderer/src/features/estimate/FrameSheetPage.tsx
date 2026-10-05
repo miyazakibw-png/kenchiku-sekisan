@@ -1113,6 +1113,9 @@ export default function FrameSheetPage({
     (drawings: TraceUnderlay[]) => {
       if (drawings.length === 0) return;
       pushDiagram();
+      // 線だけに合わせた範囲の外へ貼られて見えなくならないよう、いったん図面も入る範囲に合わせ直す
+      setHeldView(null);
+      setFitTrace(true);
       setTraces((current) => [
         ...current,
         ...drawings.map((item) => ({
