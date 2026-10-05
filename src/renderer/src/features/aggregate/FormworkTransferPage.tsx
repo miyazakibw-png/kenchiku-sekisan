@@ -85,7 +85,7 @@ export default function FormworkTransferPage({
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [bulkName, setBulkName] = useState("");
+  const [bulkName, setBulkName] = useState("打放型枠");
   const [bulkSubject, setBulkSubject] = useState<number | null>(
     FORMWORK_SUBJECT,
   );
@@ -130,6 +130,22 @@ export default function FormworkTransferPage({
         );
   }, [search, view.sources]);
 
+  /** ①の検索欄のプルダウンに出す、集計に載っている明細の一覧 */
+  const sourceEntries: PickEntry[] = useMemo(
+    () =>
+      view.sources.map((item) => ({
+        value: item.masterKey,
+        label: `${item.part1} ${item.part2} ${item.partName}｜${item.name} ${item.descriptionUpper}${item.descriptionLower === "" ? "" : ` / ${item.descriptionLower}`}｜${item.quantity.toFixed(2)}${item.unit}`,
+      })),
+    [view.sources],
+  );
+
+  /** すでに型枠明細に登録してある元明細（再び変換を押すと入れ替わる） */
+  const covered = useMemo(
+    () => new Set(view.rules.flatMap((rule) => rule.sourceKeys)),
+    [view.rules],
+  );
+
   const update = (
     index: number,
     patch: Partial<FormworkTransferRule>,
@@ -164,10 +180,16 @@ export default function FormworkTransferPage({
       },
       `型枠-${Date.now()}`,
     );
-    setView({ ...view, rules: [...view.rules, ...rules] });
+    // すでに登録済みの元明細を選んだときは、古い決まりを消して入れ替える（二重登録を防ぐ）
+    const pickedSet = new Set(picked);
+    const cleared = view.rules.filter(
+      (rule) => !rule.sourceKeys.some((key) => pickedSet.has(key)),
+    );
+    const replaced = view.rules.length - cleared.length;
+    setView({ ...view, rules: [...cleared, ...rules] });
     setPicked([]);
     setMessage(
-      `${rules.length} 件を型枠明細に変えました（右側で摘要・掛け率を直せます）`,
+      `${rules.length} 件を型枠明細に変えました${replaced > 0 ? `（登録済みの ${replaced} 件は入れ替えました）` : ""}（右側で摘要・掛け率を直せます）`,
     );
   };
 
@@ -256,10 +278,22 @@ export default function FormworkTransferPage({
       <div className="toolbar">
         <label>
           名称で検索{" "}
-          <TextInput
-            value={search}
+          <PickInput
+            japanese
+            value=""
             placeholder="例：打放補修"
-            onCommit={setSearch}
+            title="集計に載っている明細を一覧から選びます（打つと絞り込み、クリックで下の表にチェックが入ります）"
+            entries={sourceEntries}
+            onCommit={(text, pickedFlag) => {
+              if (pickedFlag) {
+                setPicked((prev) =>
+                  prev.includes(text) ? prev : [...prev, text],
+                );
+                setSearch("");
+                return;
+              }
+              setSearch(text);
+            }}
           />
         </label>
         <button
@@ -299,6 +333,9 @@ export default function FormworkTransferPage({
                     )
                   }
                 />
+                {covered.has(item.masterKey) && (
+                  <div className="registered">登録済</div>
+                )}
               </td>
               <td>{item.part1}</td>
               <td>{item.part2}</td>
@@ -409,6 +446,9 @@ export default function FormworkTransferPage({
               (sum, item) => sum + item.quantity,
               0,
             );
+            const unitMismatch = sources.some(
+              (item) => item.unit !== rule.unit,
+            );
             return (
               <tr key={rule.key}>
                 <td>
@@ -479,7 +519,14 @@ export default function FormworkTransferPage({
                     onCommit={(value) => update(index, { description: value })}
                   />
                 </td>
-                <td>
+                <td
+                  className={unitMismatch ? "unit-mismatch" : undefined}
+                  title={
+                    unitMismatch
+                      ? `元明細の単位（${sources.map((item) => item.unit).join("／")}）と違います`
+                      : undefined
+                  }
+                >
                   <PickInput
                     entries={unitEntries}
                     halfWidth

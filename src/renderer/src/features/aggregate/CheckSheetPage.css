@@ -74,3 +74,13 @@ table.check-sheet tr.spacer td {
 .check-sheet-page table.part-rules td.flag input {
   width: auto;
 }
+
+/* 型枠転記：すでに登録済みの元明細の印（①の表） */
+.formwork-transfer-page .registered {
+  color: #b45309;
+}
+
+/* 型枠転記：変換後の単位が元明細と違う明細（③の表） */
+.formwork-transfer-page td.unit-mismatch {
+  background: #ffffcc;
+}
