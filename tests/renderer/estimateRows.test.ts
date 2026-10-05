@@ -89,10 +89,12 @@ describe("行操作", () => {
     expect(merged[1].copySourceId).toBe(12);
   });
 
-  it("倍率は -99〜99 の範囲", () => {
+  it("倍率は -999.99〜999.99 の範囲", () => {
     expect(parseMultiplier("2").value).toBe(2);
     expect(parseMultiplier("-3").value).toBe(-3);
-    expect(parseMultiplier("100").error).toBeTruthy();
+    expect(parseMultiplier("100").value).toBe(100);
+    expect(parseMultiplier("999.99").value).toBe(999.99);
+    expect(parseMultiplier("1000").error).toBeTruthy();
   });
 
   it("部屋を入力した行の倍率は既定で1", () => {

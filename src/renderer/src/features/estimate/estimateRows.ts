@@ -113,15 +113,15 @@ export function parseNumber(text: string): {
   return { value: Math.round(value * 100) / 100 };
 }
 
-/** 倍率は -99〜99 の範囲 */
+/** 倍率は -999.99〜999.99 の範囲 */
 export function parseMultiplier(text: string): {
   value: number | null;
   error?: string;
 } {
   const parsed = parseNumber(text);
   if (parsed.error || parsed.value === null) return parsed;
-  if (parsed.value < -99 || parsed.value > 99) {
-    return { value: null, error: "倍率は -99〜99 で入力してください" };
+  if (parsed.value < -999.99 || parsed.value > 999.99) {
+    return { value: null, error: "倍率は -999.99〜999.99 で入力してください" };
   }
   return parsed;
 }

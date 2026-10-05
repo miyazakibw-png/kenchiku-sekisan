@@ -611,6 +611,67 @@ export default function FrameSheetPage({
     [attributes, manualLines, placements, shapes],
   );
 
+  // 図で選んだ線は ↑↓←→ で少しずつ動かせる（自分で引いた線はその線、部屋の壁は部屋ごと）
+  useEffect(() => {
+    if (selectedLineId === null) return;
+    const fine = (value: number): number => Math.round(value * 1000) / 1000;
+    const onKey = (event: KeyboardEvent): void => {
+      // ふつうは10mmずつ、Shiftを押しながらは1mmずつ動く
+      const step = event.shiftKey ? 0.001 : 0.01;
+      const move =
+        event.key === "ArrowLeft"
+          ? { x: -step, y: 0 }
+          : event.key === "ArrowRight"
+            ? { x: step, y: 0 }
+            : event.key === "ArrowUp"
+              ? { x: 0, y: -step }
+              : event.key === "ArrowDown"
+                ? { x: 0, y: step }
+                : null;
+      if (move === null) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (target?.isContentEditable === true) return;
+      event.preventDefault();
+      const line = lines.find((each) => each.id === selectedLineId);
+      if (line === undefined) return;
+      pushDiagram();
+      if (line.source === "room" && line.placementId !== null) {
+        const placementId = line.placementId;
+        setPlacements((current) =>
+          current.map((placement) =>
+            placement.id === placementId
+              ? {
+                  ...placement,
+                  x: fine(placement.x + move.x),
+                  y: fine(placement.y + move.y),
+                }
+              : placement,
+          ),
+        );
+        setMessage("部屋ごと動かしました（1mmずつは Shift＋矢印）");
+        return;
+      }
+      setManualLines((current) =>
+        current.map((item) =>
+          item.id === selectedLineId
+            ? {
+                ...item,
+                x1: fine(item.x1 + move.x),
+                y1: fine(item.y1 + move.y),
+                x2: fine(item.x2 + move.x),
+                y2: fine(item.y2 + move.y),
+              }
+            : item,
+        ),
+      );
+      setMessage("選んだ線を動かしました（1mmずつは Shift＋矢印）");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lines, pushDiagram, selectedLineId]);
+
   /** 建具表から寸法を引用した、この軸組の建具 */
   const resolvedFittings = useMemo<FrameFitting[]>(
     () =>
@@ -1595,10 +1656,28 @@ export default function FrameSheetPage({
   } | null>(null);
   /** 端をつまんで離した直後のクリックで、線を引き始めないための印 */
   const endMovedRef = useRef(false);
+  /** 選んだ線をそのままつかんで動かしているときの、つかみ始めの状態 */
+  const lineMoveRef = useRef<{
+    lineId: string;
+    clientX: number;
+    clientY: number;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    /** 実際に動いたか（動いていないクリックでは履歴に残さない） */
+    moved: boolean;
+  } | null>(null);
 
   const finishDrag = useCallback(() => {
     panDragRef.current = null;
     traceDragRef.current = null;
+    const moved = lineMoveRef.current;
+    lineMoveRef.current = null;
+    if (moved !== null && moved.moved) {
+      // つかんで動かした直後のクリックで線を引き始めないための印
+      endMovedRef.current = true;
+    }
     const grabbed = endRef.current;
     if (grabbed) {
       endRef.current = null;
@@ -1727,6 +1806,34 @@ export default function FrameSheetPage({
               ? { ...line, x1: x, y1: y }
               : { ...line, x2: x, y2: y };
           }),
+        );
+        return;
+      }
+      const moveLine = lineMoveRef.current;
+      if (moveLine) {
+        const svg = svgRef.current;
+        if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        const size = Math.min(rect.width, rect.height) || 1;
+        const scale = view.span / size;
+        const dx = (event.clientX - moveLine.clientX) * scale;
+        const dy = (event.clientY - moveLine.clientY) * scale;
+        const fine = (value: number): number => Math.round(value * 1000) / 1000;
+        if (!moveLine.moved && Math.abs(dx) + Math.abs(dy) < 0.001) return;
+        if (!moveLine.moved) pushDiagram();
+        moveLine.moved = true;
+        setManualLines((current) =>
+          current.map((item) =>
+            item.id === moveLine.lineId
+              ? {
+                  ...item,
+                  x1: fine(moveLine.x1 + dx),
+                  y1: fine(moveLine.y1 + dy),
+                  x2: fine(moveLine.x2 + dx),
+                  y2: fine(moveLine.y2 + dy),
+                }
+              : item,
+          ),
         );
         return;
       }
@@ -3139,8 +3246,19 @@ export default function FrameSheetPage({
                     setSelectedLineId(line.id);
                     if (line.source === "manual") {
                       setMessage("この線は Delete キーで消せます");
+                      // そのままつかんで動かせる（クリックだけなら動かない）
+                      lineMoveRef.current = {
+                        lineId: line.id,
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        x1: line.x1,
+                        y1: line.y1,
+                        x2: line.x2,
+                        y2: line.y2,
+                        moved: false,
+                      };
                     }
-                    if (mode !== "layout" || drawing || !placement) return;
+                    if (mode === "check" || drawing || !placement) return;
                     setSelectedPlacementId(placement.id);
                     pushDiagram();
                     dragRef.current = {
