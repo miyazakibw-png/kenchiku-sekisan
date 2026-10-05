@@ -702,6 +702,39 @@ export default function FrameSheetPage({
     [pushDiagram, traceBox],
   );
 
+  /** 拡大・縮小のあとに動かす先（見えていた所の真ん中が同じ所を指し続けるよう、描き直しのあとで動かす） */
+  const zoomScrollRef = useRef<{ left: number; top: number } | null>(null);
+  /** 図を大きく・小さくする（真ん中の見えている所が飛ばないよう、倍率に合わせてスクロールも動かす） */
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const canvas = canvasRef.current;
+      const next = Math.min(Math.max(zoom * factor, 0.25), 8);
+      if (canvas && next !== zoom) {
+        const ratio = next / zoom;
+        zoomScrollRef.current = {
+          left:
+            (canvas.scrollLeft + canvas.clientWidth / 2) * ratio -
+            canvas.clientWidth / 2,
+          top:
+            (canvas.scrollTop + canvas.clientHeight / 2) * ratio -
+            canvas.clientHeight / 2,
+        };
+      }
+      setZoom(next);
+    },
+    [zoom],
+  );
+  useEffect(() => {
+    const target = zoomScrollRef.current;
+    if (target === null) return;
+    zoomScrollRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.scrollLeft = target.left;
+      canvas.scrollTop = target.top;
+    }
+  }, [zoom]);
+
   const points = useMemo(
     () => [
       ...lines.flatMap((line) => [
@@ -2101,13 +2134,13 @@ export default function FrameSheetPage({
           <button
             type="button"
             title="図を大きくします（大きくしたら「✋ 図を動かす」で端まで見られます）"
-            onClick={() => setZoom(Math.min(zoom * 1.25, 8))}
+            onClick={() => zoomBy(1.25)}
           >
             ＋
           </button>
           <button
             type="button"
-            onClick={() => setZoom(Math.max(zoom / 1.25, 0.25))}
+            onClick={() => zoomBy(1 / 1.25)}
           >
             －
           </button>
@@ -2795,9 +2828,10 @@ export default function FrameSheetPage({
                     height={box.height}
                     opacity={manualOnly ? 0.12 : (item.opacity ?? 0.75)}
                     style={{
-                      // 図面はいつでもつかんで動かせる（縮尺合わせ・線引き・建具入力のときはその操作を優先）
-                      cursor:
-                        traceMode === "scale" || drawing || fittingMode
+                      // 図面はいつでもつかんで動かせる（縮尺合わせ・線引き・建具入力・画面を動かすときはその操作を優先）
+                      cursor: panMode
+                        ? "grab"
+                        : traceMode === "scale" || drawing || fittingMode
                           ? "default"
                           : "move",
                       pointerEvents: "auto",
@@ -2806,6 +2840,8 @@ export default function FrameSheetPage({
                       // 縮尺合わせ・線引き・建具入力のときは図面の上のクリックをその操作へ通す
                       if (traceMode === "scale" || drawing || fittingMode)
                         return;
+                      // 画面を動かすときは図面の上でも図全体を動かす（図面だけが動かないよう下の図のつかみへ渡す）
+                      if (panMode) return;
                       event.stopPropagation();
                       pushDiagram();
                       // つかんだ図面を操作対象にして動かす（まとめて動かす中は全員が動く）
@@ -3041,6 +3077,8 @@ export default function FrameSheetPage({
                     r={view.span * 0.012}
                     className="line-handle"
                     onPointerDown={(event) => {
+                      // 画面を動かすときはつまみの上でも図全体を動かす
+                      if (panMode) return;
                       event.stopPropagation();
                       // つまんでいる間に表示範囲が変わって図面が動かないよう止める
                       setHeldView(baseView);
