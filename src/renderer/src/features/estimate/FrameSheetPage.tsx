@@ -280,6 +280,8 @@ export default function FrameSheetPage({
   );
   /** レイアウトの上から線を引く（すき間をつなぐ） */
   const [drawing, setDrawing] = useState(false);
+  /** 「⌁ 連続線」：ONの間、引き終わった線の終点がそのまま次の線の始点になる */
+  const [chainDraw, setChainDraw] = useState(false);
   /** 十字線カーソルの位置（図の座標m）。線を引ける間だけ動く */
   const [drawCursor, setDrawCursor] = useState<{ x: number; y: number } | null>(
     null,
@@ -1900,7 +1902,6 @@ export default function FrameSheetPage({
       const snap = (value: number): number => Math.round(value * 20) / 20;
       const next = snapPoint({ x: snap(point.x), y: snap(point.y) });
       if (drawStart === null) {
-        pushDiagram();
         setDrawStart(next);
         setMessage(
           "終点をクリックしてください（Shiftを押しながらだと斜め線になります）",
@@ -1919,12 +1920,19 @@ export default function FrameSheetPage({
         setDrawStart(null);
         return;
       }
+      pushDiagram();
       const id = newId("l");
       setManualLines((current) => [
         ...current,
         { id, x1: drawStart.x, y1: drawStart.y, x2: end.x, y2: end.y },
       ]);
       if (drawKindId !== "") updateAttribute(id, { kindId: drawKindId }, true);
+      if (chainDraw) {
+        // 連続線：引き終わった終点がそのまま次の線の始点になる（Esc・⌁連続線OFFで終わる）
+        setDrawStart(end);
+        setMessage("次の終点をクリックしてください（Escキーで連続線を終わります）");
+        return;
+      }
       setDrawStart(null);
       setMessage(
         drawKindId === ""
@@ -1933,6 +1941,7 @@ export default function FrameSheetPage({
       );
     },
     [
+      chainDraw,
       curveMode,
       drawKindId,
       drawStart,
@@ -2418,6 +2427,25 @@ export default function FrameSheetPage({
               }}
             >
               ✎ 線を引く
+            </button>
+          )}
+          {mode !== "check" && !printMode && (
+            <button
+              type="button"
+              className={chainDraw ? "on" : ""}
+              title="線をつないで引きます（引いた線の終点がそのまま次の線の始点になります。Escキーか、もう一度押すと終わります）"
+              onClick={() => {
+                const next = !chainDraw;
+                setChainDraw(next);
+                if (!next) setDrawStart(null);
+                setMessage(
+                  next
+                    ? "終点を次々クリックすると、つながった線が引けます（Escキーで終わります）"
+                    : "連続線をやめました",
+                );
+              }}
+            >
+              ⌁ 連続線
             </button>
           )}
           {mode === "layout" && manualLines.length > 0 && !printMode && (
