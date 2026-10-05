@@ -1670,8 +1670,20 @@ export default function FrameSheetPage({
     /** 実際に動いたか（動いていないクリックでは履歴に残さない） */
     moved: boolean;
   } | null>(null);
+  /** つかんで動かす間、表示範囲を自分で止めたか（つかんだものだけが動いて見えるようにする） */
+  const dragViewHeldRef = useRef(false);
+  /** つかんで動かす間は表示範囲を止める。止まっていなければ残りの線も動いて見えてしまう */
+  const holdViewForDrag = (): void => {
+    if (heldView !== null || dragViewHeldRef.current) return;
+    dragViewHeldRef.current = true;
+    setHeldView(baseView);
+  };
 
   const finishDrag = useCallback(() => {
+    if (dragViewHeldRef.current) {
+      dragViewHeldRef.current = false;
+      setHeldView(null);
+    }
     panDragRef.current = null;
     traceDragRef.current = null;
     const moved = lineMoveRef.current;
@@ -3169,6 +3181,7 @@ export default function FrameSheetPage({
                         setSelectedPlacementId(placement.id);
                         if (drawing) return;
                         pushDiagram();
+                        holdViewForDrag();
                         dragRef.current = {
                           placementId: placement.id,
                           clientX: event.clientX,
@@ -3275,6 +3288,7 @@ export default function FrameSheetPage({
                     if (line.source === "manual") {
                       setMessage("この線は Delete キーで消せます");
                       // そのままつかんで動かせる（クリックだけなら動かない）
+                      holdViewForDrag();
                       lineMoveRef.current = {
                         lineId: line.id,
                         clientX: event.clientX,
@@ -3289,6 +3303,7 @@ export default function FrameSheetPage({
                     if (mode === "check" || drawing || !placement) return;
                     setSelectedPlacementId(placement.id);
                     pushDiagram();
+                    holdViewForDrag();
                     dragRef.current = {
                       placementId: placement.id,
                       clientX: event.clientX,
