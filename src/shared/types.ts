@@ -8,9 +8,27 @@ import type {
   FormworkTransferRule,
 } from "../core/aggregate/formworkTransfer";
 import type { TraceUnderlay } from "../core/room/trace";
+import type {
+  FrameFitting,
+  FrameKind,
+  FrameLineAttribute,
+  FrameManualLine,
+} from "../core/frame/frame";
 
 export type { BasicMasterKind, BasicMasterRow };
 export type { TraceUnderlay };
+
+/** 軸組計算書に引いてある線一式（他の軸組計算書へ呼び出す一覧に使う） */
+export interface FrameDrawingSource {
+  /** 直接引いた軸組ライン */
+  lines: FrameManualLine[];
+  /** ラインごとの指定（線ID→指定） */
+  attributes: Record<string, FrameLineAttribute>;
+  /** 線に付けた建具 */
+  fittings: FrameFitting[];
+  /** 軸組種類 */
+  kinds: FrameKind[];
+}
 
 /** 計算書に置いてある図面一式（他の計算書へ呼び出す一覧に使う） */
 export interface SheetDrawingSource {
@@ -18,6 +36,8 @@ export interface SheetDrawingSource {
   /** 図面を置いた計算書の種類（room/frame/pit） */
   calcType: CalcType;
   drawings: TraceUnderlay[];
+  /** 軸組計算書だけ：引いた線一式（線の呼び出しに使う） */
+  frame?: FrameDrawingSource;
 }
 export type { FormworkSourceGroup, FormworkTransferRow, FormworkTransferRule };
 

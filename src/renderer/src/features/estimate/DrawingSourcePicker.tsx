@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   EstimateRow,
+  FrameDrawingSource,
   SheetDrawingSource,
   TraceUnderlay,
 } from "@shared/types";
 import "./DrawingSourcePicker.css";
+
+/** 呼び出すものの種類（軸組計算書だけ線を選べる） */
+type PickKind = "drawings" | "lines" | "both";
 
 interface Props {
   /** 今開いている物件 */
@@ -13,8 +17,13 @@ interface Props {
   excludeRowId: number | null;
   /** 呼び出し元の計算書の種類（room/frame/pit） */
   excludeCalcType: string;
-  /** 選んだ計算書の図面をまとめて受け取る */
-  onPick: (drawings: TraceUnderlay[]) => void;
+  /** 選んだ計算書の中身をまとめて受け取る（図面と、軸組計算書なら引いた線一式） */
+  onPick: (
+    drawings: TraceUnderlay[],
+    frames: FrameDrawingSource[],
+  ) => void;
+  /** 軸組計算書のとき true：引いた線も呼び出せる */
+  withLines?: boolean;
   onClose: () => void;
 }
 
@@ -47,6 +56,7 @@ export default function DrawingSourcePicker({
   excludeRowId,
   excludeCalcType,
   onPick,
+  withLines = false,
   onClose,
 }: Props): JSX.Element {
   const [sources, setSources] = useState<SheetDrawingSource[]>([]);
@@ -90,19 +100,42 @@ export default function DrawingSourcePicker({
     setChecked(next);
   };
 
-  const pick = async (): Promise<void> => {
-    const drawings = sources
-      .filter((_, index) => checked.has(index))
-      .flatMap((source) => source.drawings);
-    if (drawings.length === 0) return;
+  /** 選んだ計算書から、指定の種類の中身を集めて渡す */
+  const pick = (kind: PickKind): void => {
+    const chosen = sources.filter((_, index) => checked.has(index));
+    const drawings =
+      kind === "lines"
+        ? []
+        : chosen.flatMap((source) => source.drawings);
+    const frames =
+      kind === "drawings"
+        ? []
+        : chosen.flatMap((source) =>
+            source.frame && source.frame.lines.length > 0
+              ? [source.frame]
+              : [],
+          );
+    if (drawings.length === 0 && frames.length === 0) return;
     setBusy(true);
     try {
-      onPick(drawings);
+      onPick(drawings, frames);
       onClose();
     } finally {
       setBusy(false);
     }
   };
+
+  /** 選んだ計算書にある図面・線の数 */
+  const totals = useMemo(() => {
+    let drawingCount = 0;
+    let lineCount = 0;
+    sources.forEach((source, index) => {
+      if (!checked.has(index)) return;
+      drawingCount += source.drawings.length;
+      lineCount += source.frame?.lines.length ?? 0;
+    });
+    return { drawingCount, lineCount };
+  }, [sources, checked]);
 
   return (
     <div className="drawing-source-backdrop" onClick={onClose}>
@@ -138,18 +171,52 @@ export default function DrawingSourcePicker({
               </span>
               <span className="picker-count">
                 図面{source.drawings.length}枚
+                {withLines && source.calcType === "frame"
+                  ? `・線${source.frame?.lines.length ?? 0}本`
+                  : ""}
               </span>
             </label>
           ))}
         </div>
         <div className="picker-foot">
-          <button
-            type="button"
-            disabled={busy || checked.size === 0}
-            onClick={() => void pick()}
-          >
-            📥 呼び出す（{checked.size}件）
-          </button>
+          {withLines ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || totals.drawingCount === 0}
+                title="選んだ計算書の図面だけを、縮尺・位置・濃さごと貼ります"
+                onClick={() => pick("drawings")}
+              >
+                📥 図面（{totals.drawingCount}枚）
+              </button>
+              <button
+                type="button"
+                disabled={busy || totals.lineCount === 0}
+                title="選んだ軸組計算書で引いた線（色・種類・付けた建具ごと）を貼ります。図面は付きません"
+                onClick={() => pick("lines")}
+              >
+                📥 線（{totals.lineCount}本）
+              </button>
+              <button
+                type="button"
+                disabled={
+                  busy || (totals.drawingCount === 0 && totals.lineCount === 0)
+                }
+                title="選んだ軸組計算書の図面と引いた線を両方貼ります"
+                onClick={() => pick("both")}
+              >
+                📥 線＋図面
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || checked.size === 0}
+              onClick={() => pick("drawings")}
+            >
+              📥 呼び出す（{checked.size}件）
+            </button>
+          )}
         </div>
       </div>
     </div>

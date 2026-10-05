@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 import type {
   EstimateRowDraft,
   Fitting,
+  FrameDrawingSource,
   FrameRoomOption,
   FrameSheet,
   MasterOptions,
@@ -1108,30 +1109,90 @@ export default function FrameSheetPage({
   /** 他の計算書の図面を呼び出す窓を出しているか */
   const [importPicker, setImportPicker] = useState(false);
 
-  /** 他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さごとこの計算書へ貼る */
+  /** 他の計算書（部屋・軸組・ピット）で置いた図面を縮尺・位置・濃さごと、
+   *  軸組計算書なら引いた線（色・種類・付けた建具ごと）もこの計算書へ貼る */
   const importDrawings = useCallback(
-    (drawings: TraceUnderlay[]) => {
-      if (drawings.length === 0) return;
+    (drawings: TraceUnderlay[], frames: FrameDrawingSource[] = []) => {
+      if (drawings.length === 0 && frames.length === 0) return;
       pushDiagram();
       // 線だけに合わせた範囲の外へ貼られて見えなくならないよう、いったん図面も入る範囲に合わせ直す
       setHeldView(null);
       setFitTrace(true);
-      setTraces((current) => [
-        ...current,
-        ...drawings.map((item) => ({
-          image: item.image,
-          metersPerPixel: item.metersPerPixel,
-          x: item.x,
-          y: item.y,
-          opacity: item.opacity,
-        })),
-      ]);
-      setActiveTrace(traces.length);
-      // 縮尺未調整の図面を呼び出したときは「縮尺合わせがまだ」の印を残す
-      if (drawings.some((drawing) => drawing.scaled !== true))
-        setScalePending(true);
+      if (drawings.length > 0) {
+        setTraces((current) => [
+          ...current,
+          ...drawings.map((item) => ({
+            image: item.image,
+            metersPerPixel: item.metersPerPixel,
+            x: item.x,
+            y: item.y,
+            opacity: item.opacity,
+          })),
+        ]);
+        setActiveTrace(traces.length);
+        // 縮尺未調整の図面を呼び出したときは「縮尺合わせがまだ」の印を残す
+        if (drawings.some((drawing) => drawing.scaled !== true))
+          setScalePending(true);
+      }
+      let lineCount = 0;
+      let fittingCount = 0;
+      frames.forEach((part) => {
+        // 線のIDはこの計算書のものとかぶらないよう振り直す
+        const idMap = new Map<string, string>();
+        const newLines = part.lines.map((line) => {
+          const id = newId("l");
+          idMap.set(line.id, id);
+          return { ...line, id };
+        });
+        lineCount += newLines.length;
+        setManualLines((current) => [...current, ...newLines]);
+        // 線ごとの指定（種類・拾う・壁共有）は新しいIDへ付け替えて持ってくる
+        setAttributes((current) => {
+          const next = { ...current };
+          part.lines.forEach((line) => {
+            const attr = part.attributes[line.id];
+            const mapped = idMap.get(line.id);
+            if (attr === undefined || mapped === undefined) return;
+            next[mapped] = {
+              ...attr,
+              // 壁を共有した相手は、同じ組で持ってきた線だけに限る
+              sharedWithId:
+                attr.sharedWithId !== null
+                  ? (idMap.get(attr.sharedWithId) ?? null)
+                  : null,
+            };
+          });
+          return next;
+        });
+        // 線に付けてあった建具も新しい線に付け替える（線に付かない建具は持ってこない）
+        const newFittings = part.fittings
+          .filter(
+            (item) => item.lineId !== null && idMap.has(item.lineId),
+          )
+          .map((item) => ({
+            ...item,
+            id: newId("ff"),
+            lineId: idMap.get(item.lineId ?? "") ?? null,
+          }));
+        fittingCount += newFittings.length;
+        if (newFittings.length > 0)
+          setFrameFittings((current) => [...current, ...newFittings]);
+        // 軸組種類は、この計算書に無いIDのものだけ足す（同じIDはこちらの名前・色を優先）
+        setKinds((current) => [
+          ...current,
+          ...part.kinds.filter(
+            (kind) => !current.some((each) => each.id === kind.id),
+          ),
+        ]);
+      });
+      const pieces: string[] = [];
+      if (drawings.length > 0) pieces.push(`図面${drawings.length}枚`);
+      if (lineCount > 0)
+        pieces.push(
+          `線${lineCount}本${fittingCount > 0 ? `（建具${fittingCount}件ごと）` : ""}`,
+        );
       setMessage(
-        `${drawings.length}枚の図面を呼び出しました（縮尺・位置・濃さごと。動かす・濃さはこの画面のボタンで変えられます）`,
+        `${pieces.join("・")}を呼び出しました（縮尺・位置・濃さ・線の指定はそのまま。動かす・濃さはこの画面のボタンで変えられます）`,
       );
     },
     [pushDiagram, traces.length],
@@ -2701,10 +2762,10 @@ export default function FrameSheetPage({
               </label>
               <button
                 type="button"
-                title="他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さのまま呼び出して貼ります"
+                title="他の計算書（部屋・軸組・ピット）で置いた図面、または他の軸組計算書で引いた線を呼び出して貼ります"
                 onClick={() => setImportPicker(true)}
               >
-                📥 図面を呼び出す
+                📥 図面・線を呼び出す
               </button>
             </>
           )}
@@ -4258,6 +4319,7 @@ export default function FrameSheetPage({
           excludeRowId={row.id}
           excludeCalcType="frame"
           onPick={importDrawings}
+          withLines
           onClose={() => setImportPicker(false)}
         />
       )}

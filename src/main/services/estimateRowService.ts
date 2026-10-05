@@ -16,7 +16,24 @@ import type {
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
 import { needsScaleAdjustment, parseUnderlays } from "../../core/room/trace";
+import type {
+  FrameFitting,
+  FrameKind,
+  FrameLineAttribute,
+  FrameManualLine,
+} from "../../core/frame/frame";
 import { listCalcErrors } from "./aggregationService";
+
+/** JSON文字列を安全に読む。壊れている・空なら fallback を返す */
+function parseJson<T>(json: string, fallback: T): T {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (parsed === null || parsed === undefined) return fallback;
+    return parsed as T;
+  } catch {
+    return fallback;
+  }
+}
 
 function toRow(row: typeof projectEstimateRows.$inferSelect): EstimateRow {
   return { ...row, rowType: row.rowType === "subtotal" ? "subtotal" : "room" };
@@ -135,17 +152,41 @@ export function listSheetDrawingSources(
       .all(),
     "room",
   );
-  collect(
-    db
-      .select({
-        estimateRowId: projectFrameSheets.estimateRowId,
-        traceJson: projectFrameSheets.traceJson,
-      })
-      .from(projectFrameSheets)
-      .where(eq(projectFrameSheets.projectId, projectId))
-      .all(),
-    "frame",
-  );
+  // 軸組計算書は引いた線（＋指定・建具・種類）も一緒に返す。線だけの呼び出しに使う
+  for (const sheet of db
+    .select({
+      estimateRowId: projectFrameSheets.estimateRowId,
+      traceJson: projectFrameSheets.traceJson,
+      linesJson: projectFrameSheets.linesJson,
+      attributesJson: projectFrameSheets.attributesJson,
+      fittingsJson: projectFrameSheets.fittingsJson,
+      kindsJson: projectFrameSheets.kindsJson,
+    })
+    .from(projectFrameSheets)
+    .where(eq(projectFrameSheets.projectId, projectId))
+    .all()) {
+    const unscaled = needsScaleAdjustment(sheet.traceJson);
+    const drawings = parseUnderlays(sheet.traceJson)
+      .filter((item) => item.image !== "")
+      .map((item) => (unscaled ? { ...item, scaled: false } : item));
+    const lines = parseJson<FrameManualLine[]>(sheet.linesJson, []);
+    if (drawings.length > 0 || lines.length > 0) {
+      sources.push({
+        estimateRowId: sheet.estimateRowId,
+        calcType: "frame",
+        drawings,
+        frame: {
+          lines,
+          attributes: parseJson<Record<string, FrameLineAttribute>>(
+            sheet.attributesJson,
+            {},
+          ),
+          fittings: parseJson<FrameFitting[]>(sheet.fittingsJson, []),
+          kinds: parseJson<FrameKind[]>(sheet.kindsJson, []),
+        },
+      });
+    }
+  }
   collect(
     db
       .select({
