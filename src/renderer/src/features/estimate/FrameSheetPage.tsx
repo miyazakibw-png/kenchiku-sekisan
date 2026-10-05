@@ -2728,18 +2728,21 @@ export default function FrameSheetPage({
                 付ける
               </button>
             </form>
-            {fittingTargetId !== null &&
-              fittingCandidates.map((fitting) => (
-                <button
-                  key={fitting.id}
-                  type="button"
-                  className="chip"
-                  title="押すとこの線に付きます"
-                  onClick={() => addFittingToTarget(fitting.symbol)}
-                >
-                  {fitting.symbol}
-                </button>
-              ))}
+            {fittingTargetId !== null && fittingCandidates.length > 0 && (
+              <div className="candidate-row">
+                {fittingCandidates.map((fitting) => (
+                  <button
+                    key={fitting.id}
+                    type="button"
+                    className="chip"
+                    title="押すとこの線に付きます"
+                    onClick={() => addFittingToTarget(fitting.symbol)}
+                  >
+                    {fitting.symbol}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {curveMode && !printMode && (

@@ -430,6 +430,15 @@
   color: #1e3a8a;
 }
 
+/* 建具の記号ボタンは2段目から（1段目の付ける幅・記号入力が変わってもボタンの位置が動かないように） */
+.frame-sheet-page .frame-draw-bar .candidate-row {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 自分で引いた線は下敷きの図面より目立たせる */
 .frame-sheet-page .frame-line.hand {
   stroke-width: 5;
