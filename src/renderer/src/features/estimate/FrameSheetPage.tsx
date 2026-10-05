@@ -2491,14 +2491,27 @@ export default function FrameSheetPage({
                 const next = !fittingMode;
                 setFittingMode(next);
                 setFittingTargetId(null);
+                // 先に線を選んであるときは、その線をそのまま付ける先に使う
+                const preset =
+                  next && selectedLineId !== null
+                    ? (manualLines.find((line) => line.id === selectedLineId)
+                        ?.id ?? null)
+                    : null;
                 if (next) {
                   // 線引き中はクリックが点になるのでやめる
                   setDrawing(false);
                   setDrawStart(null);
                   setTraceMode("off");
                   setScalePoints([]);
+                  setFittingTargetId(preset);
                 }
-                setMessage(next ? "建具を付ける線をクリックしてください" : "");
+                setMessage(
+                  next
+                    ? preset === null
+                      ? "建具を付ける線をクリックしてください"
+                      : "付ける建具の記号を入れてください"
+                    : "",
+                );
               }}
             >
               🚪 建具入力
