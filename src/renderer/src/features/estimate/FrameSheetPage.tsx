@@ -31,6 +31,7 @@ import {
   reinforcementKind,
   reinforcementLength,
   snapPlacement,
+  turnPoint,
   type FrameFitting,
   type FrameKind,
   type FrameLineAttribute,
@@ -41,6 +42,7 @@ import {
 } from "../../../../core/frame/frame";
 import {
   floorArea,
+  round2,
   solveShape,
   type RoomShape,
   type SolvedShape,
@@ -66,7 +68,7 @@ import DrawingSourcePicker from "./DrawingSourcePicker";
 import { pdfPageImage } from "./pdfPage";
 import {
   loadImageSize,
-  rotateUnderlaySelf,
+  rotateUnderlay,
   spotBesideBoxes,
   type UnderlayBox,
 } from "./useUnderlay";
@@ -694,7 +696,7 @@ export default function FrameSheetPage({
 
   /** 図面を回す角度（度。右回転・左回転で使う） */
   const [traceAngleText, setTraceAngleText] = useState("90");
-  /** いま選んでいる図面を真ん中を軸に回す（プラス＝右回り・マイナス＝左回り） */
+  /** いま選んでいる図面の真ん中を軸に、図面・置いた部屋・引いた線を一緒に回す（プラス＝右回り） */
   const rotateTrace = useCallback(
     async (sign: 1 | -1) => {
       const degrees = Number(traceAngleText);
@@ -702,18 +704,73 @@ export default function FrameSheetPage({
         setMessage("回す角度（度）を入れてください");
         return;
       }
-      const rotated = await rotateUnderlaySelf(trace, sign * degrees);
-      if (rotated === null) {
+      if (trace.image === "" || trace.metersPerPixel <= 0) {
         setMessage("回す図面がありません");
         return;
       }
+      // 回転軸＝選んだ図面の真ん中。図面も部屋も線も同じ軸で回すのでずれない
+      const size = await loadImageSize(trace.image).catch(() => null);
+      if (size === null) {
+        setMessage("回す図面が読めませんでした");
+        return;
+      }
+      const pivot = {
+        x: trace.x + (size.width * trace.metersPerPixel) / 2,
+        y: trace.y + (size.height * trace.metersPerPixel) / 2,
+      };
+      const turn = (point: { x: number; y: number }) => {
+        const moved = turnPoint(
+          { x: point.x - pivot.x, y: point.y - pivot.y },
+          sign * degrees,
+        );
+        return {
+          x: round2(moved.x + pivot.x),
+          y: round2(moved.y + pivot.y),
+        };
+      };
+      const radians = (sign * degrees * Math.PI) / 180;
+      // 選んだ図面は必ず回す。「まとめて動かす」ONのときは他の図面も同じ軸で回す
+      const rotatedTraces = await Promise.all(
+        traces.map((item) =>
+          item === trace || traceLocked
+            ? rotateUnderlay(
+                { ...item, opacity: item.opacity ?? 0.75 },
+                pivot,
+                pivot,
+                radians,
+              )
+            : Promise.resolve(item),
+        ),
+      );
+      if (rotatedTraces.some((item) => item === null)) {
+        setMessage("回せない図面がありました");
+        return;
+      }
       pushDiagram();
-      setTrace(rotated);
+      setTraces(rotatedTraces as FrameTrace[]);
+      setPlacements((current) =>
+        current.map((placement) => {
+          const at = turn({ x: placement.x, y: placement.y });
+          return {
+            ...placement,
+            x: at.x,
+            y: at.y,
+            rotation: round2((placement.rotation ?? 0) + sign * degrees),
+          };
+        }),
+      );
+      setManualLines((current) =>
+        current.map((line) => {
+          const a = turn({ x: line.x1, y: line.y1 });
+          const b = turn({ x: line.x2, y: line.y2 });
+          return { ...line, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+        }),
+      );
       setMessage(
-        `図面を${sign > 0 ? "右" : "左"}へ ${formatNumber(degrees, 2)}° 回しました`,
+        `図面と部屋・線を${sign > 0 ? "右" : "左"}へ ${formatNumber(degrees, 2)}° 回しました`,
       );
     },
-    [pushDiagram, trace, traceAngleText],
+    [pushDiagram, trace, traces, traceLocked, traceAngleText],
   );
 
   /** 拡大・縮小のあとに動かす先（見えていた所の真ん中が同じ所を指し続けるよう、描き直しのあとで動かす） */
@@ -1578,7 +1635,16 @@ export default function FrameSheetPage({
           (line) => line.placementId !== placement.id,
         );
         const snapped = snapPlacement(
-          { x: placement.x, y: placement.y, solved },
+          {
+            x: placement.x,
+            y: placement.y,
+            solved: {
+              ...solved,
+              points: solved.points.map((point) =>
+                turnPoint(point, placement.rotation ?? 0),
+              ),
+            },
+          },
           others,
           snapMm / 1000,
         );
@@ -2557,7 +2623,7 @@ export default function FrameSheetPage({
               </button>
               <label
                 className="snap-field"
-                title="図面を回す角度（度。図面の真ん中を軸に回ります。引いた線はそのままです）"
+                title="回す角度（度。図面の真ん中を軸に、図面も部屋も線も一緒に回ります）"
               >
                 角度
                 <input
@@ -2571,7 +2637,7 @@ export default function FrameSheetPage({
               <button
                 type="button"
                 disabled={traces.length === 0}
-                title="いま選んでいる図面を、真ん中を軸に右へ回します（引いた線はそのまま）"
+                title="いま選んでいる図面の真ん中を軸に、図面・部屋・線をまとめて右へ回します"
                 onClick={() => void rotateTrace(1)}
               >
                 ↻ 右回転
@@ -2579,7 +2645,7 @@ export default function FrameSheetPage({
               <button
                 type="button"
                 disabled={traces.length === 0}
-                title="いま選んでいる図面を、真ん中を軸に左へ回します（引いた線はそのまま）"
+                title="いま選んでいる図面の真ん中を軸に、図面・部屋・線をまとめて左へ回します"
                 onClick={() => void rotateTrace(-1)}
               >
                 ↺ 左回転
@@ -2937,11 +3003,12 @@ export default function FrameSheetPage({
               placements.map((placement) => {
                 const solved = shapes.get(placement.estimateRowId);
                 if (!solved || solved.points.length === 0) return null;
+                const rotation = placement.rotation ?? 0;
                 const points = solved.points
-                  .map(
-                    (point) =>
-                      `${point.x + placement.x},${point.y + placement.y}`,
-                  )
+                  .map((point) => {
+                    const turned = turnPoint(point, rotation);
+                    return `${turned.x + placement.x},${turned.y + placement.y}`;
+                  })
                   .join(" ");
                 const center = solved.points.reduce(
                   (total, point) => ({
@@ -2950,6 +3017,7 @@ export default function FrameSheetPage({
                   }),
                   { x: 0, y: 0 },
                 );
+                const centerAt = turnPoint(center, rotation);
                 return (
                   <g key={`p-${placement.id}`}>
                     <polygon
@@ -2977,8 +3045,8 @@ export default function FrameSheetPage({
                     />
                     <text
                       className="frame-room-name"
-                      x={center.x + placement.x}
-                      y={center.y + placement.y}
+                      x={centerAt.x + placement.x}
+                      y={centerAt.y + placement.y}
                       fontSize={view.span * 0.035}
                     >
                       {placement.roomName}

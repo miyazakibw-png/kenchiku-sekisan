@@ -24,8 +24,24 @@ export interface FramePlacement {
   /** 配置位置（m） */
   x: number;
   y: number;
+  /** 部屋の向き（度。右回りがプラス。無いときは0＝部屋計算書どおりの向き） */
+  rotation?: number;
   /** 輪郭の色（計算には使わないが見分けに使う） */
   color: string;
+}
+
+/** 点を角度（度。画面で右回りがプラス）だけ回す。レイアウトの部屋の向き・図面の回転で使う */
+export function turnPoint(
+  point: { x: number; y: number },
+  degrees: number,
+): { x: number; y: number } {
+  const angle = (degrees * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos,
+  };
 }
 
 /** レイアウトを使わずに直接引いた軸組ライン（始点クリック→終点クリック） */
@@ -323,8 +339,12 @@ export function buildFrameLines(input: BuildLinesInput): FrameLine[] {
     if (!solved || solved.points.length === 0) return;
     solved.edges.forEach((edge, index) => {
       if (edge.kind !== "wall" || edge.resolved === null) return;
-      const from = solved.points[index];
-      const to = solved.points[(index + 1) % solved.points.length];
+      const rotation = placement.rotation ?? 0;
+      const from = turnPoint(solved.points[index], rotation);
+      const to = turnPoint(
+        solved.points[(index + 1) % solved.points.length],
+        rotation,
+      );
       const id = roomLineId(placement.id, edge.id);
       lines.push({
         ...frameLineAttribute(input.attributes[id]),
