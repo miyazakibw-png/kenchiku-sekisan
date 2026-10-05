@@ -284,3 +284,17 @@
 .breakdown-page .compare-toolbar .note {
   color: #666;
 }
+
+/* 取り消し線を付けた明細は行全体に線を引く（比較では無いものとして扱う） */
+.breakdown-page table.compare td.struck,
+.breakdown-page table.parts.breakdown tr.struck td,
+.breakdown-page table.compare td.struck input {
+  text-decoration: line-through;
+  color: #9a9a9a;
+}
+
+/* 取り消し線を付けている明細の操作ボタンは押した状態に見せる */
+.breakdown-page table.compare td.ops button.struck-on {
+  background: #4a90d9;
+  color: #fff;
+}

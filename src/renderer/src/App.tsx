@@ -41,6 +41,12 @@ function calcWindowParentId(): number | null {
   return matched ? Number(matched[1]) : null;
 }
 
+/** 物件専用ウィンドウを最初に開く画面は #project=<ID>&menu=<画面> で指定できる */
+function openedMenu(): string | null {
+  const matched = /menu=(\w+)/.exec(window.location.hash);
+  return matched ? matched[1] : null;
+}
+
 export default function App(): JSX.Element {
   const projectId = openedProjectId();
   const calcParentId = calcWindowParentId();
@@ -132,7 +138,11 @@ export default function App(): JSX.Element {
           {!options ? (
             <div className="placeholder">読み込み中…</div>
           ) : projectId !== null ? (
-            <ProjectLedgerPage options={options} initialProjectId={projectId} />
+            <ProjectLedgerPage
+              options={options}
+              initialProjectId={projectId}
+              initialMenu={openedMenu()}
+            />
           ) : nav === "subjects" ? (
             <SubjectMasterPage />
           ) : nav === "details" ? (

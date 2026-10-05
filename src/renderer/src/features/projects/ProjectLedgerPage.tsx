@@ -78,11 +78,14 @@ interface LedgerProps {
   options: MasterOptions;
   /** 物件専用ウィンドウのときは、その工事を最初から開く */
   initialProjectId?: number | null;
+  /** 最初から開く画面（#project=N&menu=… で別窓を特定の画面で開くとき） */
+  initialMenu?: string | null;
 }
 
 export default function ProjectLedgerPage({
   options,
   initialProjectId = null,
+  initialMenu = null,
 }: LedgerProps): JSX.Element {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [fields, setFields] = useState<ProjectField[]>([]);
@@ -319,6 +322,7 @@ export default function ProjectLedgerPage({
         project={opened}
         fields={fields}
         options={options}
+        initialMenu={initialMenu}
         onSave={(project) => void saveProject(project)}
         onBack={() => {
           if (projectWindow) void window.sekisan.closeWindow();

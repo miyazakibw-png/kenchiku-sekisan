@@ -230,6 +230,7 @@ function blankRow(): BreakdownRowRecord {
     amount: null,
     remarksUpper: "",
     remarksLower: "",
+    struck: 0,
   };
 }
 
@@ -613,6 +614,24 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       rows.filter((_row, at) => at < index || at >= index + span),
     );
 
+  /** 取り消し線を付けた明細か（1明細＝1かたまりのどれか1行に付いていれば付けた扱い） */
+  const isStruck = (block: CompareBlock<BreakdownRowRecord>): boolean =>
+    block.lower.struck === 1 || block.upper?.struck === 1;
+
+  /** その明細に取り消し線を付ける／消す（付けた明細は無いものとして比較の色づけに出る） */
+  const toggleStruck = (
+    side: "left" | "right",
+    block: CompareBlock<BreakdownRowRecord>,
+  ) =>
+    editCompare(side, (rows) => {
+      const struck = isStruck(block) ? 0 : 1;
+      return rows.map((row, at) =>
+        at >= block.start && at < block.start + block.span
+          ? { ...row, struck }
+          : row,
+      );
+    });
+
   /** 明細を1つ動かす（上下2行1明細のときは2行1組で、隣の明細をまたいで動かす） */
   const moveRows = (
     side: "left" | "right",
@@ -714,6 +733,15 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           >
             📋
           </button>
+          <button
+            type="button"
+            title="この明細に取り消し線を付けます（無いものとして色づけに出ます。もう一度押すと戻ります）"
+            className={isStruck(block) ? "struck-on" : ""}
+            disabled={block.heading || block.lower.rowKind === "blank"}
+            onClick={() => toggleStruck(side, block)}
+          >
+            <s>消</s>
+          </button>
         </div>
       </td>
     );
@@ -753,6 +781,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     const pairRow = block.span === 2;
     const twoStageText = twoStage(settings.layout);
     const lower = block.lower;
+    /** 取り消し線を付けた明細は行全体に線を引く（色づけでは無いものとして扱う） */
+    const struckClass = isStruck(block) ? " struck" : "";
     /** 上段の文字（2段2行では上の行の下段欄に入っている） */
     const upperText = (field: "name" | "description" | "remarks"): string => {
       if (block.upper === null)
@@ -802,7 +832,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       lowerValue: string,
       onLower: (value: string) => void,
     ): JSX.Element => (
-      <td key={key} className={twoStageText ? tdOnly : mark(`${part}Lower`)}>
+      <td
+        key={key}
+        className={`${twoStageText ? tdOnly : mark(`${part}Lower`)}${struckClass}`}
+      >
         {twoStageText && (
           <div className={`upper ${partMark(`${part}Upper`)}`}>
             <TextInput
@@ -841,7 +874,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       value: number | null,
       onCommit: (value: number | null) => void,
     ): JSX.Element => (
-      <td key={key} className="qty">
+      <td key={key} className={`qty${struckClass}`}>
         {twoStageText && <div className="upper" />}
         <div className={twoStageText ? "lower" : ""}>
           <NumberInput value={value} onCommit={onCommit} />
@@ -855,7 +888,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       textCell("d", "description", lower.descriptionLower, (value) =>
         setLower({ descriptionLower: value }),
       ),
-      <td key="q" className={`qty ${mark("quantity")}`}>
+      <td key="q" className={`qty ${mark("quantity")}${struckClass}`}>
         {twoStageText && <div className="upper" />}
         <div className={twoStageText ? "lower" : ""}>
           <NumberInput
@@ -864,7 +897,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
           />
         </div>
       </td>,
-      <td key="u" className={`unit ${mark("unit")}`}>
+      <td key="u" className={`unit ${mark("unit")}${struckClass}`}>
         {twoStageText && <div className="upper" />}
         <div className={twoStageText ? "lower" : ""}>
           <TextInput
@@ -1266,7 +1299,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               🗑 この回を削除
             </button>
             <span className="note">
-              左右それぞれ「＋（空き1行）」「－（消す）」「↑」「↓」で行を合わせ、「⧉」でコピーして「📋」で貼り付けます。欄はそのまま直せ、少し待つと自動で保存します（空行も残ります）。
+              左右それぞれ「＋（空き1行）」「－（消す）」「↑」「↓」で行を合わせ、「⧉」でコピーして「📋」で貼り付けます。「消̶」はその明細に取り消し線を付け、無いものとして色づけに出します。欄はそのまま直せ、少し待つと自動で保存します（空行も残ります）。
             </span>
           </div>
           <table
@@ -1473,7 +1506,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     settings.layout === BREAKDOWN_LAYOUT.twoRow ||
                     settings.layout === BREAKDOWN_LAYOUT.excel ? (
                     <tr
-                      className={pairClass(shownRows, index, settings.layout)}
+                      className={`${pairClass(shownRows, index, settings.layout)}${row.struck === 1 ? " struck" : ""}`}
                     >
                       <td className="mark" data-noexport />
                       <td>
@@ -1534,7 +1567,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                       </td>
                     </tr>
                   ) : (
-                    <tr className="two-line">
+                    <tr
+                      className={`two-line${row.struck === 1 ? " struck" : ""}`}
+                    >
                       <td className="mark" data-noexport />
                       <td>
                         <div className="upper">

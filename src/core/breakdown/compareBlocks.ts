@@ -18,6 +18,8 @@ export interface BlockSourceRow extends ComparableRow {
   rowKind: string;
   subjectId: number | null;
   subjectName: string;
+  /** 取り消し線（1＝この明細は無いものとして比較に出す。無い欄は0と同じ） */
+  struck?: number;
 }
 
 /** 比較の1かたまり（1明細分） */
@@ -222,10 +224,18 @@ export function compareBlocksBySubject<T extends BlockSourceRow>(
   left: readonly CompareBlock<T>[],
   right: readonly CompareBlock<T>[],
 ): SubjectBlockDiff[] {
+  // 取り消し線を付けた明細は「無いもの」として突き合わせる（比べる側だけ「無い方にだけある」色になる）
+  const struck = (block: CompareBlock<T>): boolean =>
+    (block.lower.struck ?? 0) === 1 || (block.upper?.struck ?? 0) === 1;
   return pairBlocksBySubject(left, right).map((pair, index) => {
-    const leftValue = pair.left === null ? null : blockValue(left[pair.left]);
+    const leftBlock = pair.left === null ? null : left[pair.left];
+    const rightBlock = pair.right === null ? null : right[pair.right];
+    const leftValue =
+      leftBlock === null || struck(leftBlock) ? null : blockValue(leftBlock);
     const rightValue =
-      pair.right === null ? null : blockValue(right[pair.right]);
+      rightBlock === null || struck(rightBlock)
+        ? null
+        : blockValue(rightBlock);
     return {
       index,
       left: leftValue,

@@ -439,9 +439,9 @@ const api = {
     ipcRenderer.invoke(IPC.projectReorder, orderedIds),
   saveProjectFields: (fields: ProjectField[]): Promise<ProjectField[]> =>
     ipcRenderer.invoke(IPC.projectFieldsSave, fields),
-  /** 物件を別ウィンドウで開く（複数物件の同時作業） */
-  openProjectWindow: (projectId: number): Promise<void> =>
-    ipcRenderer.invoke(IPC.projectOpenWindow, projectId),
+  /** 物件を別ウィンドウで開く（複数物件の同時作業）。menu を渡すとその画面を開いた状態で出す */
+  openProjectWindow: (projectId: number, menu?: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.projectOpenWindow, projectId, menu),
   /** 積算データの保存場所と件数 */
   getBackupInfo: (): Promise<BackupInfo> => ipcRenderer.invoke(IPC.backupInfo),
   /** 積算データを1ファイルに保存（バックアップ） */

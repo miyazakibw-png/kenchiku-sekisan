@@ -58,6 +58,8 @@ interface Props {
   onBack: () => void;
   /** 物件専用ウィンドウでは「閉じる」になる */
   backLabel?: string;
+  /** 最初から開く画面（#project=N&menu=… で別窓を特定の画面で開くとき） */
+  initialMenu?: string | null;
 }
 
 interface HeaderField {
@@ -88,6 +90,7 @@ export default function ProjectWorkspacePage({
   onSave,
   onBack,
   backLabel = "← 物件管理台帳",
+  initialMenu = null,
 }: Props): JSX.Element {
   const [draft, setDraft] = useState<ProjectSummary>(project);
   // 表示項目・並びは物件管理台帳の「列の表示・並び」と同じ設定を使う
@@ -112,7 +115,7 @@ export default function ProjectWorkspacePage({
   const [showPicker, setShowPicker] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
   const [message, setMessage] = useState("");
-  const [openedMenu, setOpenedMenu] = useState<string | null>(null);
+  const [openedMenu, setOpenedMenu] = useState<string | null>(initialMenu);
   /** 部位別雑・金物入力表の管理表で選んで開いている表 */
   const [miscSheetId, setMiscSheetId] = useState<number | null>(null);
   /** 家具・設備入力表の一覧で選んで開いている表 */

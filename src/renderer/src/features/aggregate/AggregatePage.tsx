@@ -550,6 +550,15 @@ export default function AggregatePage({
         </button>
         <button
           type="button"
+          title="この画面を開いたまま、内訳書を別の窓で開きます（内訳書を見ながらこちらを直すときに使います）"
+          onClick={() =>
+            void window.sekisan.openProjectWindow(project.id, "breakdown")
+          }
+        >
+          📑 内訳書を開く
+        </button>
+        <button
+          type="button"
           disabled={Object.keys(edits).length === 0}
           onClick={() => void saveEdits()}
           title="直した内容を元の計算書と工事の明細マスターへ書き戻し、集計をかけ直します"

@@ -230,8 +230,9 @@ import type {
 } from "../shared/types";
 import { rememberWindowState, savedBounds, wasMaximized } from "./windowState";
 
-/** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用） */
-function createWindow(projectId?: number): void {
+/** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用）。
+ *  menu を渡すとその画面を開いた状態で出す（例：集計書を開いたまま内訳書を別窓で見る） */
+function createWindow(projectId?: number, menu?: string): void {
   const window = new BrowserWindow({
     ...savedBounds("main", { width: 1440, height: 900 }),
     show: false,
@@ -259,7 +260,10 @@ function createWindow(projectId?: number): void {
     return { action: "deny" };
   });
 
-  const hash = projectId === undefined ? "" : `project=${projectId}`;
+  const hash =
+    projectId === undefined
+      ? ""
+      : `project=${projectId}${menu === undefined ? "" : `&menu=${menu}`}`;
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     window.loadURL(
@@ -811,8 +815,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.projectFieldsSave, (_event, fields: ProjectField[]) =>
     saveProjectFields(getDatabase(), fields),
   );
-  ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
-    createWindow(projectId),
+  ipcMain.handle(
+    IPC.projectOpenWindow,
+    (_event, projectId: number, menu?: string) => createWindow(projectId, menu),
   );
   ipcMain.handle(IPC.calcWindowOpen, (event, title: string) =>
     openCalcWindow(event.sender, title),

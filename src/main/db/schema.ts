@@ -976,6 +976,8 @@ export const projectBreakdownRows = sqliteTable(
     amount: real("amount"),
     remarksUpper: text("remarks_upper").notNull().default(""),
     remarksLower: text("remarks_lower").notNull().default(""),
+    /** 取り消し線（1＝この明細は無いものとして比較に出す） */
+    struck: integer("struck").notNull().default(0),
   },
   (t) => ({
     versionIdx: index("idx_breakdown_rows_version").on(

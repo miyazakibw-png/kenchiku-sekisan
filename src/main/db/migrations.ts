@@ -1082,4 +1082,6 @@ DROP TABLE project_transfer_rows;
 ALTER TABLE project_transfer_rows_new RENAME TO project_transfer_rows;
 CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, display_order);
 `,
+  // 内訳書の行に取り消し線（その明細は無いものとして比較に出す印）
+  `ALTER TABLE project_breakdown_rows ADD COLUMN struck INTEGER NOT NULL DEFAULT 0;`,
 ];

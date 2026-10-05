@@ -989,6 +989,8 @@ export interface BreakdownRowRecord {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 取り消し線（1＝この明細は無いものとして比較に出す） */
+  struck: number;
 }
 
 export interface BreakdownView {

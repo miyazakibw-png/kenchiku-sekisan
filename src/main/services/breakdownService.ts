@@ -364,6 +364,7 @@ export function transferBreakdown(
         amount: row.amount,
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
+        struck: 0,
       })
       .run();
   });
@@ -401,6 +402,7 @@ export function saveBreakdownRows(
         amount: row.amount,
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
+        struck: row.struck,
       })
       .run();
   });
