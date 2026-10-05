@@ -66,6 +66,7 @@ import DrawingSourcePicker from "./DrawingSourcePicker";
 import { pdfPageImage } from "./pdfPage";
 import {
   loadImageSize,
+  rotateUnderlaySelf,
   spotBesideBoxes,
   type UnderlayBox,
 } from "./useUnderlay";
@@ -691,19 +692,28 @@ export default function FrameSheetPage({
   const traceBox =
     traceBoxes[Math.min(activeTrace, Math.max(traces.length - 1, 0))] ?? null;
 
-  /** 図面だけを大きく／小さくする（真ん中を動かさず、引いた線はそのまま） */
-  const resizeTrace = useCallback(
-    (factor: number) => {
-      if (traceBox === null) return;
+  /** 図面を回す角度（度。右回転・左回転で使う） */
+  const [traceAngleText, setTraceAngleText] = useState("90");
+  /** いま選んでいる図面を真ん中を軸に回す（プラス＝右回り・マイナス＝左回り） */
+  const rotateTrace = useCallback(
+    async (sign: 1 | -1) => {
+      const degrees = Number(traceAngleText);
+      if (!Number.isFinite(degrees) || degrees === 0) {
+        setMessage("回す角度（度）を入れてください");
+        return;
+      }
+      const rotated = await rotateUnderlaySelf(trace, sign * degrees);
+      if (rotated === null) {
+        setMessage("回す図面がありません");
+        return;
+      }
       pushDiagram();
-      setTrace((current) => ({
-        ...current,
-        metersPerPixel: current.metersPerPixel * factor,
-        x: current.x + (traceBox.width * (1 - factor)) / 2,
-        y: current.y + (traceBox.height * (1 - factor)) / 2,
-      }));
+      setTrace(rotated);
+      setMessage(
+        `図面を${sign > 0 ? "右" : "左"}へ ${formatNumber(degrees, 2)}° 回しました`,
+      );
     },
-    [pushDiagram, traceBox],
+    [pushDiagram, trace, traceAngleText],
   );
 
   /** 拡大・縮小のあとに動かす先（見えていた所の真ん中が同じ所を指し続けるよう、描き直しのあとで動かす） */
@@ -2545,19 +2555,34 @@ export default function FrameSheetPage({
               >
                 ✥ 図面を動かす
               </button>
+              <label
+                className="snap-field"
+                title="図面を回す角度（度。図面の真ん中を軸に回ります。引いた線はそのままです）"
+              >
+                角度
+                <input
+                  className="num"
+                  style={{ width: "3.5em" }}
+                  value={traceAngleText}
+                  onChange={(e) => setTraceAngleText(e.target.value)}
+                />
+                °
+              </label>
               <button
                 type="button"
-                title="図面だけを少し小さくします（引いた線はそのまま）"
-                onClick={() => resizeTrace(1 / 1.05)}
+                disabled={traces.length === 0}
+                title="いま選んでいる図面を、真ん中を軸に右へ回します（引いた線はそのまま）"
+                onClick={() => void rotateTrace(1)}
               >
-                図面 −
+                ↻ 右回転
               </button>
               <button
                 type="button"
-                title="図面だけを少し大きくします（引いた線はそのまま）"
-                onClick={() => resizeTrace(1.05)}
+                disabled={traces.length === 0}
+                title="いま選んでいる図面を、真ん中を軸に左へ回します（引いた線はそのまま）"
+                onClick={() => void rotateTrace(-1)}
               >
-                図面 ＋
+                ↺ 左回転
               </button>
               <label
                 className="snap-field"

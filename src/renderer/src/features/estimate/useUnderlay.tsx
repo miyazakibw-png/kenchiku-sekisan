@@ -1060,3 +1060,57 @@ export async function mirrorUnderlay(
     y: axis === "x" ? underlay.y : -underlay.y - h * mpp,
   };
 }
+
+/**
+ * 貼った図面を真ん中を軸に回す（角度は度。プラス＝右回り・マイナス＝左回り）。
+ * 回った画像は外接枠で貼り直すので、真ん中が動かず位置・縮尺は保ったままになる。
+ */
+export async function rotateUnderlaySelf<
+  T extends { image: string; metersPerPixel: number; x: number; y: number },
+>(underlay: T, degrees: number): Promise<T | null> {
+  if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("画像を読めませんでした"));
+    el.src = underlay.image;
+  }).catch(() => null);
+  if (img === null) return null;
+  const mpp = underlay.metersPerPixel;
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const angle = (degrees * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // 画像の真ん中（図の座標m）。そこを軸に4隅を回す
+  const cx = underlay.x + (w * mpp) / 2;
+  const cy = underlay.y + (h * mpp) / 2;
+  const turn = (x: number, y: number): Point => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+  };
+  const corners = [
+    turn(underlay.x, underlay.y),
+    turn(underlay.x + w * mpp, underlay.y),
+    turn(underlay.x, underlay.y + h * mpp),
+    turn(underlay.x + w * mpp, underlay.y + h * mpp),
+  ];
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = (Math.max(...xs) - left) / mpp;
+  const height = (Math.max(...ys) - top) / mpp;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width));
+  canvas.height = Math.max(1, Math.round(height));
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return null;
+  // 新しい外接枠の中で、画像の真ん中を回転軸（cx, cy）に写して回す
+  ctx.translate((cx - left) / mpp, (cy - top) / mpp);
+  ctx.rotate(angle);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.drawImage(img, 0, 0);
+  return { ...underlay, image: canvas.toDataURL("image/png"), x: left, y: top };
+}
