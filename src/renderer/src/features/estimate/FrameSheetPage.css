@@ -504,3 +504,15 @@
 .frame-sheet-page > .upper > section.rooms.kind-apply {
   grid-column: -2;
 }
+
+/* 線を引くとき、矢印カーソルの代わりに画面全体へ広がる細い十字線を出す */
+.frame-sheet-page svg.crosshair-on,
+.frame-sheet-page svg.crosshair-on * {
+  cursor: none !important;
+}
+.frame-sheet-page .crosshair-line {
+  stroke: #2563eb;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-opacity: 0.7;
+}

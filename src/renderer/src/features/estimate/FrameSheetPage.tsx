@@ -277,6 +277,10 @@ export default function FrameSheetPage({
   );
   /** レイアウトの上から線を引く（すき間をつなぐ） */
   const [drawing, setDrawing] = useState(false);
+  /** 十字線カーソルの位置（図の座標m）。線を引ける間だけ動く */
+  const [drawCursor, setDrawCursor] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   /** 線をクリックして建具を付ける入力モード */
   const [fittingMode, setFittingMode] = useState(false);
   /** 建具を付ける対象の線 */
@@ -770,6 +774,18 @@ export default function FrameSheetPage({
     setHeldView(autoView);
   }, [autoView, heldView, traceBox]);
   const view = baseView;
+
+  /** 線を引けるときは、矢印カーソルの代わりに画面全体へ広がる細い十字線を出す */
+  const crosshairOn =
+    !printMode &&
+    traceMode === "off" &&
+    !fittingMode &&
+    !curveMode &&
+    (mode === "frame" || (mode === "layout" && drawing));
+  const viewOrigin = useMemo(() => {
+    const [x, y] = view.box.split(" ").map(Number);
+    return { x, y };
+  }, [view.box]);
 
   /** 計算式に使える数量（軸組の記号＋建具表の記号） */
   const calcVariables = useMemo(() => {
@@ -1563,6 +1579,8 @@ export default function FrameSheetPage({
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      if (crosshairOn)
+        setDrawCursor(toModel(event.clientX, event.clientY));
       const movePan = panDragRef.current;
       if (movePan) {
         const canvas = canvasRef.current;
@@ -1657,7 +1675,7 @@ export default function FrameSheetPage({
         ),
       );
     },
-    [toModel, traceLocked, view.span],
+    [crosshairOn, toModel, traceLocked, view.span],
   );
 
   /** 始点クリック → 終点ク���ックで1本引く（軸組モード／レイアウトの「線を引く」） */
@@ -2789,6 +2807,7 @@ export default function FrameSheetPage({
           <svg
             ref={svgRef}
             viewBox={view.box}
+            className={crosshairOn ? "crosshair-on" : undefined}
             style={{
               width: `${zoom * 100}%`,
               height: `${zoom * 100}%`,
@@ -2808,7 +2827,10 @@ export default function FrameSheetPage({
             }}
             onPointerMove={onPointerMove}
             onPointerUp={finishDrag}
-            onPointerLeave={finishDrag}
+            onPointerLeave={() => {
+              finishDrag();
+              setDrawCursor(null);
+            }}
             onClick={onCanvasClick}
             onContextMenu={(event) => {
               if (drawStart === null && scalePoints.length === 0) return;
@@ -3105,6 +3127,24 @@ export default function FrameSheetPage({
                 r={view.span * 0.01}
                 className="draw-start"
               />
+            )}
+            {crosshairOn && drawCursor !== null && (
+              <g pointerEvents="none">
+                <line
+                  x1={viewOrigin.x}
+                  y1={drawCursor.y}
+                  x2={viewOrigin.x + view.span}
+                  y2={drawCursor.y}
+                  className="crosshair-line"
+                />
+                <line
+                  x1={drawCursor.x}
+                  y1={viewOrigin.y}
+                  x2={drawCursor.x}
+                  y2={viewOrigin.y + view.span}
+                  className="crosshair-line"
+                />
+              </g>
             )}
           </svg>
           {lines.length === 0 && (
