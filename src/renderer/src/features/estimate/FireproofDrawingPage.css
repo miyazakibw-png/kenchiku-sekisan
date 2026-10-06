@@ -1,0 +1,205 @@
+/* 鉄骨伏図の作成：左に寸法線・柱・大梁の入力、右に図面 */
+
+.fireproof-drawing-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fireproof-drawing-page .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs .tab {
+  padding: 4px 12px;
+  border: 1px solid #9aa4b2;
+  border-radius: 4px;
+  background: #f4f6f9;
+  cursor: pointer;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs .tab.on {
+  background: #1f4e79;
+  border-color: #1f4e79;
+  color: #fff;
+}
+
+.fireproof-drawing-page .toolbar .status {
+  font-size: 12px;
+  color: #2f7d32;
+}
+
+.fireproof-drawing-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 6px;
+}
+
+/* 左の入力欄 */
+.fireproof-drawing-body .drawing-side {
+  display: flex;
+  flex: 0 0 340px;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .drawing-section {
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.fireproof-drawing-body .drawing-section h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #1f4e79;
+}
+
+.fireproof-drawing-body .section-bar {
+  margin-bottom: 4px;
+}
+
+.fireproof-drawing-body .span-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.fireproof-drawing-body .span-inputs input {
+  flex: 1 1 0;
+  padding: 3px 6px;
+}
+
+.fireproof-drawing-body .hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+.fireproof-drawing-body .symbol-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+
+.fireproof-drawing-body .symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .symbol-row .no {
+  flex: 0 0 2.4em;
+  text-align: right;
+  color: #888;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .symbol-row .at {
+  flex: 0 0 7.5em;
+  font-size: 12px;
+  color: #444;
+}
+
+.fireproof-drawing-body .symbol-row input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 2px 6px;
+}
+
+/* 右の図面 */
+.fireproof-drawing-body .drawing-canvas {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  background: #fbfcfe;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.fireproof-drawing-body .drawing-canvas .empty {
+  color: #9aa4b2;
+  margin: 40px auto;
+}
+
+.fireproof-drawing-svg {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+
+/* 図面の線（座標はmmなので太さもmm） */
+.fireproof-drawing-svg .grid line {
+  stroke: #666;
+  stroke-width: 32;
+  stroke-dasharray: 1500 260 280 260;
+}
+
+.fireproof-drawing-svg .dim line {
+  stroke: #333;
+  stroke-width: 30;
+}
+
+.fireproof-drawing-svg .dim text {
+  fill: #333;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .axis circle {
+  fill: #fff;
+  stroke: #333;
+  stroke-width: 40;
+}
+
+.fireproof-drawing-svg .axis text {
+  fill: #333;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .column rect {
+  fill: #dcdcdc;
+  stroke: #333;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .column text {
+  fill: #1f3b66;
+  font-weight: bold;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .girder line {
+  stroke: #c43d3d;
+  stroke-width: 55;
+}
+
+.fireproof-drawing-svg .girder text {
+  fill: #c43d3d;
+  font-weight: bold;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .number text {
+  fill: #aaa;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}

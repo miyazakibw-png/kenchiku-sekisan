@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import {
   projectEstimateRows,
+  projectFireproofSheets,
   projectFrameSheets,
   projectGeneralSheets,
   projectPitSheets,
@@ -16,6 +17,7 @@ import type {
 import { normalizeSets, type CalcSet } from "../../core/room/calcSheet";
 import { hasLowerContent } from "../../core/room/lowerTemplate";
 import { needsScaleAdjustment, parseUnderlays } from "../../core/room/trace";
+import { parseDrawing } from "../../core/fireproof/fireproofDrawing";
 import type {
   FrameFitting,
   FrameKind,
@@ -198,6 +200,35 @@ export function listSheetDrawingSources(
       .all(),
     "pit",
   );
+  // 耐火被覆・塗装積算入力の鉄骨伏図（階ごとに書き出した図面）。
+  // 計算書の行に結び付かないので estimateRowId は負の仮番号にする
+  const fireproof = db
+    .select({ drawingJson: projectFireproofSheets.drawingJson })
+    .from(projectFireproofSheets)
+    .where(eq(projectFireproofSheets.projectId, projectId))
+    .get();
+  if (fireproof !== undefined) {
+    Object.entries(parseDrawing(fireproof.drawingJson).floors).forEach(
+      ([name, floor], index) => {
+        if (floor.image === "" || floor.pixelsPerMm <= 0) return;
+        sources.push({
+          estimateRowId: -(index + 1),
+          calcType: "fireproof",
+          name: `鉄骨伏図 ${name === "R" ? "R" : `${name}F`}`,
+          drawings: [
+            {
+              image: floor.image,
+              metersPerPixel: 1 / (floor.pixelsPerMm * 1000),
+              x: 0,
+              y: 0,
+              opacity: 0.9,
+              scaled: true,
+            },
+          ],
+        });
+      },
+    );
+  }
   return sources;
 }
 

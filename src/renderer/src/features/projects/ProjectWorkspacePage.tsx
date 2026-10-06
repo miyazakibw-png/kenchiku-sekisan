@@ -39,6 +39,7 @@ import FurnitureSheetPage from "../estimate/FurnitureSheetPage";
 import TransferSheetPage from "../estimate/TransferSheetPage";
 import FireproofListPage from "../estimate/FireproofListPage";
 import FireproofEstimatePage from "../estimate/FireproofEstimatePage";
+import FireproofDrawingPage from "../estimate/FireproofDrawingPage";
 import CalcPrintLauncher from "../estimate/CalcPrintLauncher";
 import AggregatePrintLauncher from "../aggregate/AggregatePrintLauncher";
 import AggregatePage from "../aggregate/AggregatePage";
@@ -480,6 +481,15 @@ export default function ProjectWorkspacePage({
           if (leaveSource()) return;
           setOpenedMenu(null);
         }}
+      />
+    );
+  }
+
+  if (openedMenu === "fireproofDrawing") {
+    return (
+      <FireproofDrawingPage
+        project={draft}
+        onBack={() => setOpenedMenu(null)}
       />
     );
   }

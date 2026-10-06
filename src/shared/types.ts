@@ -33,8 +33,10 @@ export interface FrameDrawingSource {
 /** 計算書に置いてある図面一式（他の計算書へ呼び出す一覧に使う） */
 export interface SheetDrawingSource {
   estimateRowId: number;
-  /** 図面を置いた計算書の種類（room/frame/pit） */
+  /** 図面を置いた計算書の種類（room/frame/pit/fireproof） */
   calcType: CalcType;
+  /** 行に結び付かない図面（鉄骨伏図）の表示名。あるときは行名の代わりに出す */
+  name?: string;
   drawings: TraceUnderlay[];
   /** 軸組計算書だけ：引いた線一式（線の呼び出しに使う） */
   frame?: FrameDrawingSource;
@@ -497,6 +499,8 @@ export interface FireproofSheetRecord {
   commonJson: string;
   /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
   estimateJson: string;
+  /** 鉄骨伏図（階ごとの図面一式。core/fireproof/fireproofDrawing の FireproofDrawing） */
+  drawingJson: string;
   note: string;
 }
 
@@ -507,6 +511,7 @@ export interface SaveFireproofSheetRequest {
   beamsJson: string;
   commonJson: string;
   estimateJson: string;
+  drawingJson: string;
   note: string;
 }
 

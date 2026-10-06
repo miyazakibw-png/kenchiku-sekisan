@@ -191,12 +191,14 @@ export default function FireproofEstimatePage({
     columnsJson: string;
     beamsJson: string;
     commonJson: string;
+    drawingJson: string;
     note: string;
   }>({
     floorCount: 0,
     columnsJson: "{}",
     beamsJson: "{}",
     commonJson: "[]",
+    drawingJson: "{}",
     note: "",
   });
   const [columnsList, setColumnsList] = useState<FireproofFloorList>({
@@ -232,6 +234,7 @@ export default function FireproofEstimatePage({
         columnsJson: record.columnsJson,
         beamsJson: record.beamsJson,
         commonJson: record.commonJson,
+        drawingJson: record.drawingJson,
         note: record.note,
       };
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
@@ -251,6 +254,7 @@ export default function FireproofEstimatePage({
         beamsJson: base.beamsJson,
         commonJson: base.commonJson,
         estimateJson: JSON.stringify(rowsRef.current),
+        drawingJson: base.drawingJson,
         note: base.note,
       });
       markSaved(rowsRef.current);

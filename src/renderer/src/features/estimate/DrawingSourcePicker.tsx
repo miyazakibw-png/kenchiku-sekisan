@@ -31,6 +31,7 @@ const CALC_LABEL: Record<string, string> = {
   room: "部屋計算書",
   frame: "軸組計算書",
   pit: "ピット・面積計算書",
+  fireproof: "鉄骨伏図",
 };
 
 /** 計算書の行の名前（部位Ⅱは空欄なら上の行から引き継ぐ。計算書の見出しと同じ出し方） */
@@ -88,7 +89,10 @@ export default function DrawingSourcePicker({
       sources.map((source, index) => ({
         index,
         source,
-        name: names.get(source.estimateRowId) ?? `行${source.estimateRowId}`,
+        name:
+          source.name ??
+          names.get(source.estimateRowId) ??
+          `行${source.estimateRowId}`,
       })),
     [sources, names],
   );

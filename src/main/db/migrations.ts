@@ -1084,4 +1084,6 @@ CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, disp
 `,
   // 内訳書の行に取り消し線（その明細は無いものとして比較に出す印）
   `ALTER TABLE project_breakdown_rows ADD COLUMN struck INTEGER NOT NULL DEFAULT 0;`,
+  // 耐火被覆・塗装積算入力の鉄骨伏図（階ごとの図面一式）
+  `ALTER TABLE project_fireproof_sheets ADD COLUMN drawing_json TEXT NOT NULL DEFAULT '{}';`,
 ];

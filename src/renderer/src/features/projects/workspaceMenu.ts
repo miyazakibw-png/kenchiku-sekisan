@@ -58,6 +58,13 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
+    key: "fireproofDrawing",
+    label: "伏図作成",
+    group: "fireproof",
+    note: "柱線寸法線を引いて柱・大梁を記号で置く鉄骨伏図。階ごとに描いて各計算書から呼び出せる",
+    ready: true,
+  },
+  {
     key: "fittings",
     label: "建具入力",
     group: "input",
