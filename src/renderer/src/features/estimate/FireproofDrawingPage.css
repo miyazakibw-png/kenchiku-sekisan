@@ -105,6 +105,35 @@
   gap: 6px;
 }
 
+/* 通りが替わるところは少し間を空ける */
+.fireproof-drawing-body .symbol-row.gap {
+  margin-top: 7px;
+  padding-top: 4px;
+  border-top: 1px dashed #d8dde5;
+}
+
+/* 番号・通りのラベル（ドラッグで範囲選択） */
+.fireproof-drawing-body .symbol-row .row-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: cell;
+  user-select: none;
+}
+
+/* 範囲選択した行 */
+.fireproof-drawing-body .symbol-row.sel {
+  background: #dbe8fb;
+  border-radius: 3px;
+}
+
+.fireproof-drawing-body .symbol-row.sel input {
+  background: #eef5ff;
+}
+
+.fireproof-drawing-body .symbol-list:focus {
+  outline: none;
+}
+
 .fireproof-drawing-body .symbol-row .no {
   flex: 0 0 2.4em;
   text-align: right;
@@ -135,6 +164,37 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
+  position: relative;
+}
+
+/* 図面の拡大縮小（右上に浮かせる） */
+.fireproof-drawing-body .drawing-canvas .zoom-bar {
+  position: sticky;
+  top: 6px;
+  right: 6px;
+  margin-left: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 3;
+  order: 2;
+}
+
+.fireproof-drawing-body .drawing-canvas .zoom-bar button {
+  padding: 1px 7px;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .drawing-canvas .zoom-bar span {
+  min-width: 3em;
+  text-align: center;
+  color: #555;
 }
 
 .fireproof-drawing-body .drawing-canvas .empty {
@@ -148,16 +208,22 @@
   max-height: none;
 }
 
+/* 大梁の記号に添える寸法 */
+.fireproof-drawing-svg .girder text .size,
+.fireproof-drawing-svg .beam text .size {
+  font-weight: normal;
+}
+
 /* 図面の線（座標はmmなので太さもmm） */
 .fireproof-drawing-svg .grid line {
   stroke: #666;
-  stroke-width: 32;
+  stroke-width: 16;
   stroke-dasharray: 1500 260 280 260;
 }
 
 .fireproof-drawing-svg .dim line {
   stroke: #333;
-  stroke-width: 30;
+  stroke-width: 16;
 }
 
 .fireproof-drawing-svg .dim text {
@@ -186,6 +252,12 @@
   fill: #1f3b66;
   font-weight: bold;
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+/* リストから読んだ寸法（柱＝□-500*500、梁＝300など）は薄めに出す） */
+.fireproof-drawing-svg .size {
+  fill: #6a7180;
+  font-weight: normal;
 }
 
 .fireproof-drawing-svg .girder line {

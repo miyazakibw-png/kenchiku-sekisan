@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectSummary } from "@shared/types";
 import {
   columnFloorLabels,
   normalizeFloorList,
+  resolveSize,
+  SHAPE_LABEL,
+  type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
 import {
   beamLength,
@@ -126,6 +129,210 @@ function YDimension({ ys }: { ys: number[] }): JSX.Element {
   );
 }
 
+/** 記号リストの1行（通りが替わるところは gap で少し間を空ける） */
+interface SymbolRow {
+  no: number;
+  at: string;
+  key: string;
+  gap: boolean;
+}
+
+/** クリップボードへ書き出す（Electron環境で確実な textarea+execCommand 方式） */
+function copyToClipboard(text: string): void {
+  if (navigator.clipboard !== undefined) {
+    void navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+/**
+ * 記号の入力欄（柱・大梁共通）。
+ * 番号・通りのラベルをドラッグするとエクセルのように範囲選択でき、
+ * Ctrl+Cで写し・貼る欄でCtrl+V（複数行は下へ続けて入る）・Deleteで消せる。
+ */
+function SymbolList({
+  rows,
+  values,
+  onValues,
+  emptyHint,
+}: {
+  rows: SymbolRow[];
+  values: Record<string, string>;
+  onValues: (next: Record<string, string>) => void;
+  emptyHint: string;
+}): JSX.Element {
+  const [sel, setSel] = useState<{ from: number; to: number } | null>(null);
+  const dragSel = useRef(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const up = () => {
+      dragSel.current = false;
+    };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
+
+  const inSel = (index: number): boolean =>
+    sel !== null &&
+    index >= Math.min(sel.from, sel.to) &&
+    index <= Math.max(sel.from, sel.to);
+
+  const selRows = (): SymbolRow[] => {
+    if (sel === null) return [];
+    const a = Math.min(sel.from, sel.to);
+    const b = Math.max(sel.from, sel.to);
+    return rows.slice(a, b + 1);
+  };
+
+  const pick = (index: number) => {
+    dragSel.current = true;
+    setSel({ from: index, to: index });
+    boxRef.current?.focus();
+  };
+
+  const extend = (index: number) => {
+    if (!dragSel.current) return;
+    setSel((before) =>
+      before === null ? { from: index, to: index } : { ...before, to: index },
+    );
+  };
+
+  const pasteAt = (start: number, text: string) => {
+    const lines = text.replace(/\r\n?/g, "\n").split("\n");
+    if (lines[lines.length - 1] === "") lines.pop(); // エクセル由来の末尾改行
+    if (lines.length === 0) return;
+    const next = { ...values };
+    if (lines.length === 1 && sel !== null && sel.from !== sel.to) {
+      // 選択範囲へ1つの値を一括で入れる（エクセルと同じ）
+      const only = (lines[0] ?? "").split("\t")[0] ?? "";
+      selRows().forEach((row) => {
+        next[row.key] = only.trim();
+      });
+    } else {
+      lines.forEach((line, i) => {
+        const row = rows[start + i];
+        if (row === undefined) return;
+        next[row.key] = line.split("\t")[0].trim();
+      });
+    }
+    onValues(next);
+    setSel(null);
+  };
+
+  const handleKey = (event: React.KeyboardEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.tagName === "INPUT" || sel === null) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+      copyToClipboard(
+        selRows()
+          .map((row) => values[row.key] ?? "")
+          .join("\n"),
+      );
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace") {
+      const next = { ...values };
+      selRows().forEach((row) => {
+        delete next[row.key];
+      });
+      onValues(next);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Escape") {
+      setSel(null);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const d = event.key === "ArrowDown" ? 1 : -1;
+      if (event.shiftKey) {
+        setSel({
+          ...sel,
+          to: Math.min(rows.length - 1, Math.max(0, sel.to + d)),
+        });
+      } else {
+        const i = Math.min(rows.length - 1, Math.max(0, sel.to + d));
+        setSel({ from: i, to: i });
+      }
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Enter") {
+      const i = Math.min(rows.length - 1, sel.to + 1);
+      setSel({ from: i, to: i });
+      event.preventDefault();
+    }
+  };
+
+  const handlePaste = (event: React.ClipboardEvent) => {
+    const text = event.clipboardData.getData("text");
+    if (text === "") return;
+    let start = sel?.from ?? 0;
+    const target = event.target as HTMLElement;
+    if (target.tagName === "INPUT") {
+      const index = Number((target as HTMLInputElement).dataset.row ?? -1);
+      if (index >= 0) start = index;
+    }
+    event.preventDefault();
+    pasteAt(start, text);
+  };
+
+  return (
+    <div
+      className="symbol-list"
+      ref={boxRef}
+      tabIndex={-1}
+      onKeyDown={handleKey}
+      onPaste={handlePaste}
+    >
+      {rows.length === 0 && <p className="hint">{emptyHint}</p>}
+      {rows.map((row, index) => (
+        <div
+          className={`symbol-row${row.gap ? " gap" : ""}${inSel(index) ? " sel" : ""}`}
+          key={row.key}
+        >
+          <span
+            className="row-label"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              pick(index);
+            }}
+            onMouseEnter={() => extend(index)}
+          >
+            <span className="no">{row.no}</span>
+            <span className="at">{row.at}</span>
+          </span>
+          <input
+            data-row={index}
+            value={values[row.key] ?? ""}
+            placeholder={row.key.startsWith("x:") || row.key.startsWith("y:") ? "G1" : "C1"}
+            onFocus={() => setSel(null)}
+            onChange={(event) =>
+              onValues({ ...values, [row.key]: event.target.value })
+            }
+          />
+        </div>
+      ))}
+      {rows.length > 0 && (
+        <p className="hint">
+          番号のところをドラッグすると範囲を選べます（Ctrl+Cで写す・Ctrl+Vで入れる・Deleteで消す）
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** 柱がある交点なら true */
 function hasColumn(
   floor: FireproofDrawingFloor,
@@ -148,6 +355,9 @@ function FloorSvg({
   onBeamPointerDown,
   onPointerMove,
   onPointerUp,
+  columnSizes,
+  beamSizes,
+  displaySize,
   svgRef,
 }: {
   floor: FireproofDrawingFloor;
@@ -157,6 +367,11 @@ function FloorSvg({
   onBeamPointerDown: (index: number, event: React.PointerEvent) => void;
   onPointerMove: (event: React.PointerEvent) => void;
   onPointerUp: () => void;
+  /** 柱記号→「□-500*500」、梁記号→「300」（リストから読んだ寸法） */
+  columnSizes: Map<string, string>;
+  beamSizes: Map<string, string>;
+  /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
+  displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
 }): JSX.Element {
   const xs = positions(floor.xSpans);
@@ -219,12 +434,16 @@ function FloorSvg({
             const x2 = xs[xi + 1] - (hasColumn(floor, xi + 1, yi) ? COL_HALF : 0);
             const y = ys[yi];
             const mx = (x1 + x2) / 2;
+            const size = beamSizes.get(symbol.trim());
             return (
               <g key={key}>
                 <line x1={x1} y1={y - GIRDER_HALF} x2={x2} y2={y - GIRDER_HALF} />
                 <line x1={x1} y1={y + GIRDER_HALF} x2={x2} y2={y + GIRDER_HALF} />
                 <text x={mx} y={y - GIRDER_HALF - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
                   {symbol}
+                  {size !== undefined && (
+                    <tspan className="size" dx="220">{size}</tspan>
+                  )}
                 </text>
               </g>
             );
@@ -234,6 +453,7 @@ function FloorSvg({
             const y2 = ys[yi + 1] - (hasColumn(floor, xi, yi + 1) ? COL_HALF : 0);
             const x = xs[xi];
             const my = (y1 + y2) / 2;
+            const size = beamSizes.get(symbol.trim());
             return (
               <g key={key}>
                 <line x1={x - GIRDER_HALF} y1={y1} x2={x - GIRDER_HALF} y2={y2} />
@@ -246,6 +466,9 @@ function FloorSvg({
                   transform={`rotate(-90 ${x + GIRDER_HALF + 160} ${my})`}
                 >
                   {symbol}
+                  {size !== undefined && (
+                    <tspan className="size" dx="220">{size}</tspan>
+                  )}
                 </text>
               </g>
             );
@@ -281,6 +504,11 @@ function FloorSvg({
                     transform={`rotate(-90 ${mx + 140} ${my})`}
                   >
                     {beam.symbol}
+                    {beamSizes.get(beam.symbol.trim()) !== undefined && (
+                      <tspan className="size" dx="180">
+                        {beamSizes.get(beam.symbol.trim())}
+                      </tspan>
+                    )}
                   </text>
                 </>
               ) : (
@@ -289,6 +517,11 @@ function FloorSvg({
                   <line x1={beam.x1} y1={beam.y1 + 60} x2={beam.x2} y2={beam.y2 + 60} />
                   <text x={mx} y={my - 140} textAnchor="middle" fontSize={FONT_SYMBOL * 0.85}>
                     {beam.symbol}
+                    {beamSizes.get(beam.symbol.trim()) !== undefined && (
+                      <tspan className="size" dx="180">
+                        {beamSizes.get(beam.symbol.trim())}
+                      </tspan>
+                    )}
                   </text>
                 </>
               )}
@@ -311,12 +544,23 @@ function FloorSvg({
           if (xi < 0 || yi < 0 || xi >= xs.length || yi >= ys.length) return null;
           const x = xs[xi];
           const y = ys[yi];
+          const size = columnSizes.get(symbol.trim());
           return (
             <g key={key}>
               <rect x={x - COL_HALF} y={y - COL_HALF} width={COL_HALF * 2} height={COL_HALF * 2} />
               <text x={x + COL_HALF + 90} y={y + FONT_SYMBOL * 0.38} fontSize={FONT_SYMBOL}>
                 {symbol}
               </text>
+              {size !== undefined && (
+                <text
+                  className="size"
+                  x={x + COL_HALF + 90}
+                  y={y + FONT_SYMBOL * 0.38 + FONT_SYMBOL * 0.85}
+                  fontSize={FONT_SYMBOL * 0.72}
+                >
+                  {size}
+                </text>
+              )}
             </g>
           );
         })}
@@ -362,6 +606,11 @@ function FloorSvg({
       xmlns="http://www.w3.org/2000/svg"
       data-width={width}
       data-height={height}
+      style={
+        displaySize !== undefined
+          ? { width: displaySize.width, height: displaySize.height }
+          : undefined
+      }
       onClick={(event) => {
         const svg = event.currentTarget;
         const point = svg.createSVGPoint();
@@ -464,6 +713,11 @@ export default function FireproofDrawingPage({
     estimateJson: "[]",
     note: "",
   });
+  /** 柱・梁リスト（図に寸法を出すために読む。この画面では書き換えない） */
+  const [memberLists, setMemberLists] = useState<{
+    columns: FireproofFloorList;
+    beams: FireproofFloorList;
+  }>({ columns: { floors: [], members: [] }, beams: { floors: [], members: [] } });
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -496,6 +750,10 @@ export default function FireproofDrawingPage({
       if (labels.length === 0) labels.push("1");
       setFloors(labels);
       setFloor(labels[0]);
+      setMemberLists({
+        columns: normalizeFloorList(parseJson(record.columnsJson, {})),
+        beams: normalizeFloorList(parseJson(record.beamsJson, {})),
+      });
       const loaded = parseDrawing(record.drawingJson);
       setDrawing(loaded);
       markSaved(loaded);
@@ -538,6 +796,60 @@ export default function FireproofDrawingPage({
     },
     [floor],
   );
+
+  /* 表示倍率（1＝画面内に図形がぜんたい入る大きさ）と画面の計り方 */
+  const [zoom, setZoom] = useState(1);
+  const [viewSize, setViewSize] = useState<{ width: number; height: number } | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (el === null) return;
+    const measure = () =>
+      setViewSize({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setZoom((z) =>
+        Math.min(8, Math.max(0.2, z * (event.deltaY < 0 ? 1.15 : 1 / 1.15))),
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, []);
+
+  /* 入力欄共通：Enterは次の欄、↑↓は上下の欄へ（←→はカーソル移動のまま） */
+  const handleNavKey = useCallback((event: React.KeyboardEvent) => {
+    const el = event.target as HTMLElement;
+    if (el.tagName !== "INPUT" && el.tagName !== "SELECT") return;
+    if (
+      event.key !== "Enter" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "ArrowDown"
+    )
+      return;
+    const root = pageRef.current;
+    if (root === null) return;
+    const fields = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        "input:not([disabled]), select:not([disabled])",
+      ),
+    ).filter((f) => f.offsetParent !== null);
+    const i = fields.indexOf(el);
+    if (i < 0) return;
+    const next = event.key === "ArrowUp" ? fields[i - 1] : fields[i + 1];
+    if (next === undefined) return;
+    event.preventDefault();
+    next.focus();
+    if (next instanceof HTMLInputElement) next.select();
+  }, []);
 
   /** 階を移るときは選んでいるものを外す */
   useEffect(() => {
@@ -738,34 +1050,103 @@ export default function FireproofDrawingPage({
   const ny = current.ySpans.length;
   const numbers = columnNumbers(current);
 
-  const columnRows: { no: number; at: string; key: string }[] = [];
+  /* 階タブは左から 1F・2F…の順、数字でない階（Rなど）は後ろ */
+  const floorTabs = [...floors].sort((a, b) => {
+    const an = /^\d+$/.test(a) ? Number(a) : null;
+    const bn = /^\d+$/.test(b) ? Number(b) : null;
+    if (an !== null && bn !== null) return an - bn;
+    if (an !== null) return -1;
+    if (bn !== null) return 1;
+    return 0;
+  });
+
+  /* 柱・大梁のリストは横の通り優先。通りが替わるところで少し間を空ける */
+  const columnRows: { no: number; at: string; key: string; gap: boolean }[] = [];
   numbers.forEach((row, yi) =>
     row.forEach((no, xi) =>
       columnRows.push({
         no,
-        at: `${xGridLabel(xi)}-${yGridLabel(yi)}`,
+        at: `${yGridLabel(yi)}-${xGridLabel(xi)}`,
         key: columnKey(xi, yi),
+        gap: xi === 0 && yi > 0,
       }),
     ),
   );
-  const girderRows: { no: number; at: string; key: string }[] = [];
+  const girderRows: { no: number; at: string; key: string; gap: boolean }[] = [];
   for (let yi = 0; yi <= ny; yi += 1)
     for (let xi = 0; xi < nx; xi += 1)
       girderRows.push({
         no: girderNumber("x", xi, yi, current),
-        at: `${xGridLabel(xi)}〜${xGridLabel(xi + 1)}／${yGridLabel(yi)}`,
+        at: `${yGridLabel(yi)}／${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`,
         key: girderKey("x", xi, yi),
+        gap: xi === 0,
       });
   for (let xi = 0; xi <= nx; xi += 1)
     for (let yi = 0; yi < ny; yi += 1)
       girderRows.push({
         no: girderNumber("y", xi, yi, current),
-        at: `${yGridLabel(yi)}〜${yGridLabel(yi + 1)}／${xGridLabel(xi)}`,
+        at: `${xGridLabel(xi)}／${yGridLabel(yi)}〜${yGridLabel(yi + 1)}`,
         key: girderKey("y", xi, yi),
+        gap: yi === 0,
       });
 
+  /* 記号→図に出す寸法の文字。柱は「□-500*500」、梁は「500*300」の後ろの数字「300」 */
+  const sizeTexts = useMemo(() => {
+    const columnAt = memberLists.columns.floors.findIndex(
+      (f) => f.label === floor,
+    );
+    const col = new Map<string, string>();
+    memberLists.columns.members.forEach((member) => {
+      const symbol = member.symbol.trim();
+      if (symbol === "") return;
+      const size = resolveSize(
+        member,
+        memberLists.columns.floors,
+        Math.max(0, columnAt),
+        "column",
+      );
+      const dims = [size.first, size.second].filter(
+        (v): v is number => v !== null,
+      );
+      if (dims.length > 0) col.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
+    });
+    const beamAt = memberLists.beams.floors.findIndex((f) => f.label === floor);
+    const bem = new Map<string, string>();
+    memberLists.beams.members.forEach((member) => {
+      const symbol = member.symbol.trim();
+      if (symbol === "") return;
+      const size = resolveSize(
+        member,
+        memberLists.beams.floors,
+        Math.max(0, beamAt),
+        "beam",
+      );
+      const value = size.second ?? size.first;
+      if (value !== null) bem.set(symbol, String(value));
+    });
+    return { column: col, beam: bem };
+  }, [memberLists, floor]);
+
+  /* 図形の全体（mm）→ 画面に収まる大きさ（px）×倍率 */
+  const xs = positions(current.xSpans);
+  const ys = positions(current.ySpans);
+  const drawingW = (xs[xs.length - 1] ?? 0) + MARGIN_LEFT + MARGIN_RIGHT;
+  const drawingH = (ys[ys.length - 1] ?? 0) + MARGIN_TOP + MARGIN_BOTTOM;
+  const pad = 48;
+  const availW = Math.max(160, (viewSize?.width ?? 1100) - pad);
+  const availH = Math.max(160, (viewSize?.height ?? 620) - pad);
+  const fitW = Math.min(availW, availH * (drawingW / Math.max(1, drawingH)));
+  const displaySize =
+    drawingW > 0 && drawingH > 0
+      ? { width: fitW * zoom, height: (fitW * zoom * drawingH) / drawingW }
+      : undefined;
+
   return (
-    <div className="estimate-page fireproof-drawing-page">
+    <div
+      className="estimate-page fireproof-drawing-page"
+      ref={pageRef}
+      onKeyDown={handleNavKey}
+    >
       <div className="toolbar">
         <button type="button" onClick={onBack}>
           ← 工事管理画面へ
@@ -775,7 +1156,7 @@ export default function FireproofDrawingPage({
           {project.managementNo} {project.name}
         </span>
         <span className="floor-tabs">
-          {floors.map((name) => (
+          {floorTabs.map((name) => (
             <button
               key={name}
               type="button"
@@ -829,58 +1210,24 @@ export default function FireproofDrawingPage({
             <div className="section-bar">
               <h3>② 柱（交点の番号に記号）</h3>
             </div>
-            <div className="symbol-list">
-              {columnRows.length === 0 && (
-                <p className="hint">先にX軸・Y軸の寸法を入れてください</p>
-              )}
-              {columnRows.map((row) => (
-                <div className="symbol-row" key={row.key}>
-                  <span className="no">{row.no}</span>
-                  <span className="at">{row.at}</span>
-                  <input
-                    value={current.columns[row.key] ?? ""}
-                    placeholder="C1"
-                    onChange={(event) =>
-                      updateFloor({
-                        columns: {
-                          ...current.columns,
-                          [row.key]: event.target.value,
-                        },
-                      })
-                    }
-                  />
-                </div>
-              ))}
-            </div>
+            <SymbolList
+              rows={columnRows}
+              values={current.columns}
+              onValues={(next) => updateFloor({ columns: next })}
+              emptyHint="先にX軸・Y軸の寸法を入れてください"
+            />
           </section>
 
           <section className="drawing-section">
             <div className="section-bar">
               <h3>③ 大梁（柱間の番号に記号）</h3>
             </div>
-            <div className="symbol-list">
-              {girderRows.length === 0 && (
-                <p className="hint">先にX軸・Y軸の寸法を入れてください</p>
-              )}
-              {girderRows.map((row) => (
-                <div className="symbol-row" key={row.key}>
-                  <span className="no">{row.no}</span>
-                  <span className="at">{row.at}</span>
-                  <input
-                    value={current.girders[row.key] ?? ""}
-                    placeholder="G1"
-                    onChange={(event) =>
-                      updateFloor({
-                        girders: {
-                          ...current.girders,
-                          [row.key]: event.target.value,
-                        },
-                      })
-                    }
-                  />
-                </div>
-              ))}
-            </div>
+            <SymbolList
+              rows={girderRows}
+              values={current.girders}
+              onValues={(next) => updateFloor({ girders: next })}
+              emptyHint="先にX軸・Y軸の寸法を入れてください"
+            />
           </section>
 
           <section className="drawing-section">
@@ -990,22 +1337,54 @@ export default function FireproofDrawingPage({
           </section>
         </div>
 
-        <div className="drawing-canvas">
+        <div
+          className="drawing-canvas"
+          ref={canvasRef}
+          style={{
+            justifyContent:
+              displaySize !== undefined && displaySize.width >= availW
+                ? "flex-start"
+                : "center",
+          }}
+        >
           {nx === 0 || ny === 0 ? (
             <p className="empty">
               X軸・Y軸の寸法を入れると、ここに伏図ができます
             </p>
           ) : (
-            <FloorSvg
-              floor={current}
-              region={region}
-              selectedBeam={selBeam}
-              onRegionClick={handleRegionClick}
-              onBeamPointerDown={handleBeamPointerDown}
-              onPointerMove={handleBeamPointerMove}
-              onPointerUp={endBeamDrag}
-              svgRef={svgRef}
-            />
+            <>
+              <FloorSvg
+                floor={current}
+                region={region}
+                selectedBeam={selBeam}
+                onRegionClick={handleRegionClick}
+                onBeamPointerDown={handleBeamPointerDown}
+                onPointerMove={handleBeamPointerMove}
+                onPointerUp={endBeamDrag}
+                columnSizes={sizeTexts.column}
+                beamSizes={sizeTexts.beam}
+                displaySize={displaySize}
+                svgRef={svgRef}
+              />
+              <div className="zoom-bar">
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.2, z / 1.25))}
+                >
+                  図面−
+                </button>
+                <span>{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(8, z * 1.25))}
+                >
+                  図面＋
+                </button>
+                <button type="button" onClick={() => setZoom(1)}>
+                  全体
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
