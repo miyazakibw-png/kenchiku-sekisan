@@ -5,6 +5,7 @@ import {
   normalizeCommonRows,
   normalizeFloorList,
   resolveCommonRow,
+  resolveFloorHeight,
   resolveSize,
   SHAPE_LABEL,
   type FireproofCommonRow,
@@ -13,6 +14,7 @@ import {
 import {
   BEAM_HALF,
   beamLength,
+  beamSlopeLength,
   columnKey,
   columnNumbers,
   dividedBeams,
@@ -72,6 +74,8 @@ const FONT_DIM = 400;
 const FONT_BUBBLE = 420;
 const FONT_SYMBOL = 430;
 const FONT_NO = 260;
+const JOINT_R = 150; // 取合記号の○印の半径
+const FONT_JOINT = 280;
 
 /** X軸方向の寸法線（上側） */
 function XDimension({ xs }: { xs: number[] }): JSX.Element {
@@ -413,6 +417,7 @@ function FloorSvg({
   halfWidthOf,
   columnHalfOf,
   girderOffsetOf,
+  onJointClick,
   displaySize,
   svgRef,
 }: {
@@ -438,6 +443,8 @@ function FloorSvg({
   columnHalfOf?: (symbol: string) => { hw: number; hd: number } | null;
   /** 大梁キー→芯からのずらし量（mm。端寄せした梁の位置） */
   girderOffsetOf?: (key: string) => number;
+  /** 取合記号の○印をクリックしたとき（キー "g:大梁キー:端"・"b:小梁番号:端"） */
+  onJointClick?: (key: string) => void;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
@@ -449,6 +456,40 @@ function FloorSvg({
   const width = totalX + MARGIN_LEFT + MARGIN_RIGHT;
   const height = totalY + MARGIN_TOP + MARGIN_BOTTOM;
   const numbers = columnNumbers(floor);
+
+  /* 取合記号の○印（梁の端のそばに出す。クリックで記号を入れ直せる） */
+  const Joint = ({
+    jointKey,
+    x,
+    y,
+  }: {
+    jointKey: string;
+    x: number;
+    y: number;
+  }) => {
+    const symbol = floor.jointSymbols?.[jointKey] ?? "";
+    return (
+      <g
+        className={`joint${symbol !== "" ? " on" : ""}`}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onJointClick?.(jointKey);
+        }}
+      >
+        <circle cx={x} cy={y} r={JOINT_R} />
+        {symbol !== "" && (
+          <text
+            x={x}
+            y={y + FONT_JOINT * 0.36}
+            textAnchor="middle"
+            fontSize={FONT_JOINT}
+          >
+            {symbol}
+          </text>
+        )}
+      </g>
+    );
+  };
 
   const content = (
     <g transform={`translate(${MARGIN_LEFT} ${MARGIN_TOP})`}>
@@ -592,6 +633,8 @@ function FloorSvg({
                     <tspan className="size" dx="220">{size}</tspan>
                   )}
                 </text>
+                <Joint jointKey={`g:${key}:0`} x={x1 + 220} y={y - gh - 110} />
+                <Joint jointKey={`g:${key}:1`} x={x2 - 220} y={y - gh - 110} />
               </g>
             );
           }
@@ -621,6 +664,8 @@ function FloorSvg({
                     <tspan className="size" dx="220">{size}</tspan>
                   )}
                 </text>
+                <Joint jointKey={`g:${key}:0`} x={x + gh + 110} y={y1 + 220} />
+                <Joint jointKey={`g:${key}:1`} x={x + gh + 110} y={y2 - 220} />
               </g>
             );
           }
@@ -636,6 +681,7 @@ function FloorSvg({
           const bad =
             beam.symbol.trim() !== "" && !knownBeams.has(beam.symbol.trim());
           const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
+          const beamId = beam.id ?? `#${index}`;
           return (
             <g
               key={index}
@@ -646,6 +692,16 @@ function FloorSvg({
               }}
               onClick={(event) => event.stopPropagation()}
             >
+              <Joint
+                jointKey={`b:${beamId}:0`}
+                x={vertical ? mx + bh + 120 : beam.x1 + 200}
+                y={vertical ? beam.y1 + 200 : my - bh - 120}
+              />
+              <Joint
+                jointKey={`b:${beamId}:1`}
+                x={vertical ? mx + bh + 120 : beam.x2 - 200}
+                y={vertical ? beam.y2 - 200 : my - bh - 120}
+              />
               {vertical ? (
                 <>
                   <line x1={beam.x1 - bh} y1={beam.y1} x2={beam.x2 - bh} y2={beam.y2} />
@@ -877,6 +933,8 @@ export default function FireproofDrawingPage({
   const beamRowDragRef = useRef(false);
   const rowClickSuppressRef = useRef(false);
   const [beamSymbol, setBeamSymbol] = useState("B40");
+  /* 取合記号：選んでいる記号（""＝消す）。図の梁の端の○印をクリックで入れ直す */
+  const [jointSymbol, setJointSymbol] = useState("3");
   const [beamAxis, setBeamAxis] = useState<"v" | "h">("v");
   const [beamParts, setBeamParts] = useState(3);
   /** 入力欄・一覧で触った行に対応する図の場所（色付け用） */
@@ -1069,6 +1127,49 @@ export default function FireproofDrawingPage({
     [clipFloor, drawing],
   );
 
+  /* 取合記号：図の梁の端の○印をクリック。選んだ記号を入れる。同じ記号か「消す」なら外す */
+  const clickJoint = useCallback(
+    (key: string) => {
+      const next = { ...(current.jointSymbols ?? {}) };
+      if (jointSymbol === "" || next[key] === jointSymbol) delete next[key];
+      else next[key] = jointSymbol;
+      updateFloor({
+        jointSymbols: Object.keys(next).length > 0 ? next : undefined,
+      });
+    },
+    [current, jointSymbol, updateFloor],
+  );
+
+  /* 取合記号のまとめて指定：柱・大梁の端全部、または小梁の端全部に同じ記号を入れる */
+  const fillJoints = useCallback(
+    (target: "girder" | "beam") => {
+      const next = { ...(current.jointSymbols ?? {}) };
+      const keys: string[] = [];
+      if (target === "girder")
+        Object.keys(current.girders).forEach((key) =>
+          keys.push(`g:${key}:0`, `g:${key}:1`),
+        );
+      else
+        current.beams.forEach((beam, index) => {
+          const id = beam.id ?? `#${index}`;
+          keys.push(`b:${id}:0`, `b:${id}:1`);
+        });
+      keys.forEach((key) => {
+        if (jointSymbol === "") delete next[key];
+        else next[key] = jointSymbol;
+      });
+      updateFloor({
+        jointSymbols: Object.keys(next).length > 0 ? next : undefined,
+      });
+      setMessage(
+        jointSymbol === ""
+          ? "記号を消しました"
+          : `${target === "girder" ? "柱・大梁" : "小梁"}の端に「${jointSymbol}」を入れました（違うところだけ図で直せます）`,
+      );
+    },
+    [current, jointSymbol, updateFloor],
+  );
+
   const undo = useCallback(() => {
     const previous = past[past.length - 1];
     if (previous === undefined) return;
@@ -1175,6 +1276,12 @@ export default function FireproofDrawingPage({
   /** その階の図で使う梁の階（柱はその階・梁はひとつ上。一番上はRF） */
   const beamFloorLabel =
     floorTabs[floorTabs.indexOf(floor) + 1] ?? "R";
+
+  /* この階の階高（mm）。通りごとの柱の高さの空欄・勾配の計算に使う */
+  const floorHeight = useMemo(() => {
+    const at = memberLists.columns.floors.findIndex((f) => f.label === floor);
+    return resolveFloorHeight(memberLists.columns.floors, Math.max(0, at));
+  }, [memberLists, floor]);
 
   /* 記号→部材幅の半分（mm）。梁リストの後ろの数字（幅）の半分。
      小梁を囲む線の内側に止める量（内内寸法）と、2本線の開きに使う */
@@ -1364,17 +1471,23 @@ export default function FireproofDrawingPage({
     }, 0);
   }, []);
 
+  /** 新しい小梁の取合記号用の番号 */
+  const newBeamId = useCallback(
+    () => `b${Math.random().toString(36).slice(2, 10)}`,
+    [],
+  );
+
   /** ④小梁：選んだ区画（複数も可）へ分割配置・区画の中身をコピー＆貼付 */
   const placeBeams = useCallback(() => {
     if (regions.length === 0) return;
     const symbol = beamSymbol.trim();
-    const placed = regions.flatMap((part) =>
-      dividedBeams(part, beamAxis, beamParts, symbol),
-    );
+    const placed = regions
+      .flatMap((part) => dividedBeams(part, beamAxis, beamParts, symbol))
+      .map((beam) => ({ ...beam, id: newBeamId() }));
     if (placed.length === 0) return;
     updateFloor({ beams: [...current.beams, ...placed] });
     setMessage(`${regions.length}か所に入れました`);
-  }, [regions, beamAxis, beamParts, beamSymbol, current, updateFloor]);
+  }, [regions, beamAxis, beamParts, beamSymbol, current, updateFloor, newBeamId]);
 
   /** 区画とその中の小梁から「貼り付けの種」を覚える（区画コピー・入力行コピーの共通） */
   const learnFromBeams = useCallback(
@@ -1548,9 +1661,14 @@ export default function FireproofDrawingPage({
       });
     }
     if (placed.length === 0) return;
-    updateFloor({ beams: [...current.beams, ...placed] });
+    updateFloor({
+      beams: [
+        ...current.beams,
+        ...placed.map((beam) => ({ ...beam, id: newBeamId() })),
+      ],
+    });
     setMessage(`${regions.length}か所に貼り付けました`);
-  }, [regions, clipBeams, clipRule, current, updateFloor]);
+  }, [regions, clipBeams, clipRule, current, updateFloor, newBeamId]);
 
   /* 区画を選んでいるあいだは Ctrl+C（最後の区画の形をコピー）・Ctrl+V（選んだ全部の区画へ貼り付け）も効く。
      入力欄の中の操作はそのまま（input/textareaのときは動かさない） */
@@ -1788,8 +1906,11 @@ export default function FireproofDrawingPage({
         Math.max(0, beamAt),
         "beam",
       );
-      const value = size.second ?? size.first;
-      if (value !== null) bem.set(symbol, String(value));
+      const dims = [size.first, size.second].filter(
+        (v): v is number => v !== null,
+      );
+      if (dims.length > 0)
+        bem.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
     });
     memberLists.common.forEach((row) => {
       const symbol = row.symbol.trim();
@@ -1800,9 +1921,8 @@ export default function FireproofDrawingPage({
       );
       if (!col.has(symbol) && dims.length > 0)
         col.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
-      const value = size.second ?? size.first;
-      if (!bem.has(symbol) && value !== null)
-        bem.set(symbol, String(value));
+      if (!bem.has(symbol) && dims.length > 0)
+        bem.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
     });
     return { column: col, beam: bem };
   }, [memberLists, floor, beamFloorLabel]);
@@ -1948,7 +2068,7 @@ export default function FireproofDrawingPage({
             setFloorPasteOpen((open) => !open);
           }}
         >
-          階へ貼り付け
+          指定階に貼付
         </button>
         <button
           type="button"
@@ -2048,6 +2168,47 @@ export default function FireproofDrawingPage({
                 寸法を「,」区切りで入れると一点鎖線の柱線ができます（全角の「、」や空白でも切れます）
               </p>
             </div>
+            {current.ySpans.length > 0 && (
+              <div className="span-inputs axis-heights">
+                <p className="hint">
+                  通りごとの柱の高さ（mm。屋根勾配など高さが違うときだけ入れます。空欄は鉄骨リストの階高
+                  {floorHeight !== null ? `（${floorHeight.toLocaleString("ja-JP")}）` : ""}）
+                </p>
+                <div className="axis-height-list">
+                  {positions(current.ySpans).map((_, yi) => {
+                    const label = yGridLabel(
+                      current.ySpans.length - yi,
+                    );
+                    const value = current.axisHeights?.[String(yi)];
+                    return (
+                      <label key={yi}>
+                        {label}
+                        <input
+                          value={
+                            value === undefined ? "" : String(value)
+                          }
+                          placeholder={
+                            floorHeight !== null ? String(floorHeight) : ""
+                          }
+                          onChange={(event) => {
+                            const next = { ...(current.axisHeights ?? {}) };
+                            const num = Number(event.target.value);
+                            if (
+                              event.target.value.trim() === "" ||
+                              !Number.isFinite(num) ||
+                              num <= 0
+                            )
+                              delete next[String(yi)];
+                            else next[String(yi)] = num;
+                            updateFloor({ axisHeights: next });
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="drawing-section">
@@ -2256,7 +2417,19 @@ export default function FireproofDrawingPage({
                       <span className="at">{beam.symbol}</span>
                       <span className="len">
                         {beam.x1 === beam.x2 ? "縦" : "横"}{" "}
-                        {Math.round(beamLength(beam)).toLocaleString("ja-JP")}mm
+                        {Math.round(
+                          beamSlopeLength(beam, current, floorHeight ?? 0),
+                        ).toLocaleString("ja-JP")}
+                        mm
+                        {beam.x1 === beam.x2 &&
+                          Math.round(
+                            beamSlopeLength(beam, current, floorHeight ?? 0) -
+                              beamLength(beam),
+                          ) > 0 &&
+                          `（勾配＋${Math.round(
+                            beamSlopeLength(beam, current, floorHeight ?? 0) -
+                              beamLength(beam),
+                          ).toLocaleString("ja-JP")}）`}
                       </span>
                       {(index === selBeam || selBeamSet.has(index)) && (
                         <span
@@ -2276,6 +2449,60 @@ export default function FireproofDrawingPage({
               <p className="hint">
                 行の番号を押して動かすかShift+クリックで範囲指定（選んだ行はCtrl+Cでコピー・消すでまとめて消せます）。
                 小梁はつかんで動かせます。選んで←→（横の梁は↑↓）で10mm・Shiftで1mmずつ動きます
+              </p>
+            </div>
+          </section>
+
+          <section className="drawing-section">
+            <div className="section-bar">
+              <h3>⑤ 取合記号</h3>
+            </div>
+            <div className="joint-form">
+              <div className="joint-picks">
+                {["2", "3", "4"].map((pick) => (
+                  <button
+                    key={pick}
+                    type="button"
+                    className={jointSymbol === pick ? "on" : ""}
+                    onClick={() => setJointSymbol(pick)}
+                  >
+                    {pick}
+                  </button>
+                ))}
+                <input
+                  value={jointSymbol === "" ? "" : jointSymbol}
+                  placeholder="その他"
+                  title="2・3・4以外の記号を入れるときはここに打ってください"
+                  onChange={(event) => setJointSymbol(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className={jointSymbol === "" ? "on" : ""}
+                  onClick={() => setJointSymbol("")}
+                >
+                  消す
+                </button>
+              </div>
+              <div className="joint-ops">
+                <button
+                  type="button"
+                  disabled={Object.keys(current.girders).length === 0}
+                  onClick={() => fillJoints("girder")}
+                >
+                  柱・大梁の端に全部
+                </button>
+                <button
+                  type="button"
+                  disabled={current.beams.length === 0}
+                  onClick={() => fillJoints("beam")}
+                >
+                  小梁の端に全部
+                </button>
+              </div>
+              <p className="hint">
+                図の梁の端の○印をクリックすると、いま選んでいる記号になります。
+                同じ記号をもう一度押すか「消す」を選んで押すと記号が消えます。
+                いちばん多い記号を全部に入れてから、違うところだけ図で直す入れ方が早いです
               </p>
             </div>
           </section>
@@ -2314,6 +2541,7 @@ export default function FireproofDrawingPage({
                 halfWidthOf={halfWidthOf}
                 columnHalfOf={columnHalfOf}
                 girderOffsetOf={girderOffsetOf}
+                onJointClick={clickJoint}
                 displaySize={displaySize}
                 svgRef={svgRef}
               />

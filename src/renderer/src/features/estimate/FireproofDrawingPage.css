@@ -370,6 +370,80 @@
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
 }
 
+/* 取合記号の○印（未入力は薄い点線、記号ありは紺地に白字） */
+.fireproof-drawing-svg .joint circle {
+  fill: rgba(255, 255, 255, 0.55);
+  stroke: #9db4cc;
+  stroke-width: 10;
+  stroke-dasharray: 26 14;
+  cursor: pointer;
+}
+.fireproof-drawing-svg .joint.on circle {
+  fill: #1f4e79;
+  stroke: none;
+}
+.fireproof-drawing-svg .joint.on text {
+  fill: #fff;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+  pointer-events: none;
+}
+
+/* 通りごとの柱の高さ（勾配用） */
+.fireproof-drawing-body .span-inputs.axis-heights {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 3px solid #dfe4ea;
+}
+.fireproof-drawing-body .axis-height-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 20vh;
+  overflow-y: auto;
+}
+.fireproof-drawing-body .axis-height-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.fireproof-drawing-body .axis-height-list input {
+  width: 7ch;
+  padding: 2px 4px;
+}
+
+/* ⑤取合記号の入力欄 */
+.fireproof-drawing-body .joint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fireproof-drawing-body .joint-picks {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fireproof-drawing-body .joint-picks button {
+  min-width: 30px;
+  padding: 3px 6px;
+}
+.fireproof-drawing-body .joint-picks button.on {
+  background: #1f4e79;
+  color: #fff;
+  border-color: #1f4e79;
+}
+.fireproof-drawing-body .joint-picks input {
+  width: 5ch;
+  padding: 2px 4px;
+}
+.fireproof-drawing-body .joint-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* ④小梁の入力欄 */
 .fireproof-drawing-body .beam-form {
   display: flex;

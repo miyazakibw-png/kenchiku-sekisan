@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  axisHeightAt,
   beamLength,
+  beamSlopeLength,
   columnKey,
   columnNumbers,
   dividedBeams,
@@ -417,5 +419,55 @@ describe("parseDrawing / serializeDrawing", () => {
     );
     expect(parsed.floors["1"].xSpans).toEqual([7300]);
     expect(parsed.floors["1"].columns).toEqual({ "1,1": "C9" });
+  });
+});
+
+describe("勾配（通りごとの柱高さ）", () => {
+  const slopeFloor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000],
+    ySpans: [6000, 6000],
+  };
+
+  it("空欄の通りはその階の階高を使う", () => {
+    expect(axisHeightAt(slopeFloor, 1, 4000)).toBe(4000);
+    const withAxis = { ...slopeFloor, axisHeights: { "1": 4500 } };
+    expect(axisHeightAt(withAxis, 1, 4000)).toBe(4500);
+    expect(axisHeightAt(withAxis, 0, 4000)).toBe(4000);
+  });
+
+  it("縦の梁は両端の通りの高さ差ぶん長くなる", () => {
+    // 通り0↔1の縦の梁（平面6000）。高さ 4000↔4500 → dh=500
+    const f = { ...slopeFloor, axisHeights: { "0": 4000, "1": 4500, "2": 4500 } };
+    const beam = { x1: 3000, y1: 500, x2: 3000, y2: 6500, symbol: "B1" };
+    expect(Math.round(beamSlopeLength(beam, f, 4000))).toBe(
+      Math.round(Math.hypot(6000, 500)),
+    );
+  });
+
+  it("横の梁は勾配に乗らない（平図の長さのまま）", () => {
+    const f = { ...slopeFloor, axisHeights: { "0": 3000, "1": 5000 } };
+    const beam = { x1: 500, y1: 3000, x2: 5500, y2: 3000, symbol: "B1" };
+    expect(beamSlopeLength(beam, f, 4000)).toBe(5000);
+  });
+
+  it("高さ差が無いときは平図の長さのまま", () => {
+    const beam = { x1: 3000, y1: 500, x2: 3000, y2: 6500, symbol: "B1" };
+    expect(beamSlopeLength(beam, slopeFloor, 4000)).toBe(6000);
+  });
+});
+
+describe("取合記号・通り高さの保存", () => {
+  it("jointSymbols・axisHeights・小梁idも往復で残る", () => {
+    const floor: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000],
+      ySpans: [6000],
+      beams: [{ x1: 100, y1: 100, x2: 100, y2: 5900, symbol: "B1", id: "b12ab" }],
+      jointSymbols: { "g:x:0,0:0": "3", "b:b12ab:1": "2" },
+      axisHeights: { "0": 4500 },
+    };
+    const back = parseDrawing(serializeDrawing({ floors: { "1": floor } }));
+    expect(back.floors["1"]).toEqual(floor);
   });
 });

@@ -11,6 +11,8 @@ export interface FireproofDrawingBeam {
   y2: number;
   /** 記号（B40 など） */
   symbol: string;
+  /** 取合記号のキーに使う番号。無いものは行番号で代用する */
+  id?: string;
 }
 
 /** 線の描き幅の半分（mm）。部材の幅（リストの後ろの数字）が分からないときの既定値。
@@ -57,6 +59,12 @@ export interface FireproofDrawingFloor {
   girders: Record<string, string>;
   /** 大梁の位置合わせ（キーはgirdersと同じ）。無い区間は中央（柱芯どおり） */
   girderAlign?: Record<string, GirderAlign>;
+  /** 取合記号。キーは大梁の端 "g:x:0,0:0"（端0=小さいほうの交点側・1=大きいほう）
+     と小梁の端 "b:小梁id:0/1" */
+  jointSymbols?: Record<string, string>;
+  /** 縦の通りごとの柱の高さ（mm）。キーは通りの番号（"0"が図のいちばん上の通り）。
+     入っていない通りはその階の階高を使う */
+  axisHeights?: Record<string, number>;
   /** 小梁（区画を分割して置く線） */
   beams: FireproofDrawingBeam[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
@@ -125,6 +133,21 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
       });
       return Object.keys(out).length > 0 ? out : undefined;
     })(),
+    jointSymbols: (() => {
+      const map = stringMap(row.jointSymbols);
+      return Object.keys(map).length > 0 ? map : undefined;
+    })(),
+    axisHeights: (() => {
+      const map = row.axisHeights;
+      if (map === null || typeof map !== "object" || Array.isArray(map))
+        return undefined;
+      const out: Record<string, number> = {};
+      Object.entries(map).forEach(([key, value]) => {
+        const num = Number(value);
+        if (Number.isFinite(num) && num > 0) out[key] = num;
+      });
+      return Object.keys(out).length > 0 ? out : undefined;
+    })(),
     beams: Array.isArray(row.beams)
       ? row.beams
           .map((beam) => {
@@ -139,6 +162,9 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
               x2: row2.x2 as number,
               y2: row2.y2 as number,
               symbol: typeof row2.symbol === "string" ? row2.symbol.trim() : "",
+              ...(typeof row2.id === "string" && row2.id !== ""
+                ? { id: row2.id }
+                : {}),
             };
           })
           .filter((beam): beam is FireproofDrawingBeam => beam !== null)
@@ -449,6 +475,45 @@ export function dividedBeams(
 /** 小梁の長さ（mm） */
 export function beamLength(beam: FireproofDrawingBeam): number {
   return Math.hypot(beam.x2 - beam.x1, beam.y2 - beam.y1);
+}
+
+/** その通りの柱の高さ（mm）。軸に入っていなければ階高を使う */
+export function axisHeightAt(
+  floor: FireproofDrawingFloor,
+  yi: number,
+  defaultHeight: number,
+): number {
+  return floor.axisHeights?.[String(yi)] ?? defaultHeight;
+}
+
+/** 勾配を含む小梁の実長（mm）。縦の梁は両端の通りの柱高さ差ぶん長くなる。
+   横の梁は勾配に乗らないので平図上の長さのまま */
+export function beamSlopeLength(
+  beam: FireproofDrawingBeam,
+  floor: FireproofDrawingFloor,
+  floorHeight: number,
+): number {
+  const plan = beamLength(beam);
+  if (beam.x1 !== beam.x2) return plan;
+  const ys = positions(floor.ySpans);
+  if (ys.length === 0) return plan;
+  const nearAxis = (y: number): number => {
+    let best = 0;
+    let dist = Number.POSITIVE_INFINITY;
+    ys.forEach((pos, index) => {
+      const d = Math.abs(pos - y);
+      if (d < dist) {
+        dist = d;
+        best = index;
+      }
+    });
+    return best;
+  };
+  const dh = Math.abs(
+    axisHeightAt(floor, nearAxis(beam.y1), floorHeight) -
+      axisHeightAt(floor, nearAxis(beam.y2), floorHeight),
+  );
+  return Math.hypot(plan, dh);
 }
 
 /**
