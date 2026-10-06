@@ -599,7 +599,11 @@ export function nudgeBeam(
 
 /** 柱入力表へ取り込む1本分の中身（伏図の柱から作る） */
 export interface ColumnImportItem {
-  /** 階数・柱位置（例 "1F 1-A"） */
+  /**
+   * コメント欄。取り込んだブロックの最初の行だけ
+   * 「柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）」
+   * 2行目以降は柱位置（例 "1-C"）。
+   */
   comment: string;
   /** 柱記号 */
   symbol: string;
@@ -608,6 +612,10 @@ export interface ColumnImportItem {
   /** その柱の高さの計算式（m。"3.8" のような小数。高さが不明なときは空） */
   lengthFormula: string;
 }
+
+/** 伏図から取り込んだブロックの先頭に入れる案内文 */
+export const COLUMN_IMPORT_HEAD_COMMENT =
+  "柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）";
 
 /**
  * 取合記号が入っていない部材のキー（"c:…"・"g:…"・"b:…" の形）。
@@ -640,11 +648,11 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
 
 /**
  * 伏図1階分の柱を、柱入力表へ取り込む順（上の通り→下へ、各行は左→右）に並べる。
+ * コメントはブロックの最初だけ案内文、あとは柱位置（階数は表の階欄が持つので付けない）。
  * 柱の高さは縦通りの値 → 横通りの値 → 階高 の順で使う。
  */
 export function columnImportItems(
   floor: FireproofDrawingFloor,
-  floorLabel: string,
   floorHeight: number | null,
 ): ColumnImportItem[] {
   const ys = positions(floor.ySpans);
@@ -655,7 +663,7 @@ export function columnImportItems(
       const [bx, by] = b.split(",").map(Number);
       return ay === by ? ax - bx : ay - by;
     });
-  return keys.map((key) => {
+  return keys.map((key, index) => {
     const [xi, yi] = key.split(",").map(Number);
     const position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
     const height =
@@ -663,7 +671,7 @@ export function columnImportItems(
       floor.axisHeightsX?.[String(xi)] ??
       floorHeight;
     return {
-      comment: `${floorLabel} ${position}`,
+      comment: index === 0 ? COLUMN_IMPORT_HEAD_COMMENT : position,
       symbol: floor.columns[key].trim(),
       mark: floor.jointSymbols?.[`c:${key}`] ?? "",
       lengthFormula: height === null ? "" : String(height / 1000),

@@ -6,6 +6,7 @@ import {
   columnImportItems,
   columnKey,
   columnNumbers,
+  COLUMN_IMPORT_HEAD_COMMENT,
   dividedBeams,
   emptyFloor,
   enclosingRegion,
@@ -511,13 +512,22 @@ describe("columnImportItems", () => {
   };
 
   it("上の通りから順に、位置・記号・取合番号・高さを入れた行を作る（縦通りの記号は図の下がA）", () => {
-    const items = columnImportItems(floor, "1F", 4000);
+    const items = columnImportItems(floor, 4000);
+    // コメントはブロックの最初だけ案内文、あとは柱位置だけ（階数は階欄が持つ）
     expect(items).toEqual([
-      { comment: "1F 1-B", symbol: "C1", mark: "3", lengthFormula: "4" },
-      { comment: "1F 2-B", symbol: "C2", mark: "", lengthFormula: "4" },
-      { comment: "1F 1-A", symbol: "C1", mark: "", lengthFormula: "4" },
-      { comment: "1F 3-A", symbol: "C3", mark: "2", lengthFormula: "4" },
+      {
+        comment: COLUMN_IMPORT_HEAD_COMMENT,
+        symbol: "C1",
+        mark: "3",
+        lengthFormula: "4",
+      },
+      { comment: "2-B", symbol: "C2", mark: "", lengthFormula: "4" },
+      { comment: "1-A", symbol: "C1", mark: "", lengthFormula: "4" },
+      { comment: "3-A", symbol: "C3", mark: "2", lengthFormula: "4" },
     ]);
+    expect(COLUMN_IMPORT_HEAD_COMMENT).toBe(
+      "柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
+    );
   });
 
   it("通りごとの高さが入っているときはその値を使う（縦通りが先、横通りはその次）", () => {
@@ -526,7 +536,7 @@ describe("columnImportItems", () => {
       axisHeights: { "0": 5000 },
       axisHeightsX: { "1": 4500 },
     };
-    const items = columnImportItems(slope, "1F", 4000);
+    const items = columnImportItems(slope, 4000);
     // yi=0 の2本は縦通り"0"の5000、yi=1 の2本は階高4000（横通りの値は縦通りが無い交点だけ）
     expect(items.map((each) => each.lengthFormula)).toEqual([
       "5", "5", "4", "4",
@@ -538,7 +548,7 @@ describe("columnImportItems", () => {
       ...floor,
       axisHeightsX: { "1": 4500 },
     };
-    const items = columnImportItems(slope, "1F", 4000);
+    const items = columnImportItems(slope, 4000);
     expect(items[1]?.lengthFormula).toBe("4.5");
   });
 
@@ -547,8 +557,8 @@ describe("columnImportItems", () => {
       ...floor,
       columns: { "0,0": "C1", "1,0": "" },
     };
-    expect(columnImportItems(sparse, "1F", 4000)).toHaveLength(1);
-    expect(columnImportItems(sparse, "1F", null)[0]?.lengthFormula).toBe("");
+    expect(columnImportItems(sparse, 4000)).toHaveLength(1);
+    expect(columnImportItems(sparse, null)[0]?.lengthFormula).toBe("");
   });
 });
 

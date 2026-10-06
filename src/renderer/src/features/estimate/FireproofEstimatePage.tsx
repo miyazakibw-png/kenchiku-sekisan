@@ -1026,7 +1026,7 @@ function ColumnSheetView({
     );
     const height =
       at >= 0 ? resolveFloorHeight(list.floors, at) : null;
-    const items = columnImportItems(floorData, label, height);
+    const items = columnImportItems(floorData, height);
     if (items.length === 0) {
       onMessage(`${config.title}：${label} の伏図に柱がありません`);
       return;
