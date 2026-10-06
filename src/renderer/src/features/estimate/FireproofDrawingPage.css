@@ -536,3 +536,33 @@
   color: #b32020;
   padding: 0 4px;
 }
+
+/* 階ボタン：取合記号が入っていない部材がある階に出す注意 */
+.floor-tabs .joint-warn {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 3px;
+}
+
+/* 未入力表示：取合記号の無い部材を点滅させる */
+@keyframes jointMiss {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.fireproof-drawing-svg .miss {
+  animation: jointMiss 0.9s ease-in-out infinite;
+}
+
+.fireproof-drawing-svg .miss rect,
+.fireproof-drawing-svg .miss line,
+.fireproof-drawing-svg .miss text {
+  stroke: #dc2626;
+  fill: #dc2626;
+}

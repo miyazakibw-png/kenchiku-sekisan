@@ -25,6 +25,7 @@ import {
   girderKey,
   girderNumber,
   girderOffset,
+  missingJointKeys,
   nudgeBeam,
   parseDrawing,
   refitBeams,
@@ -466,6 +467,7 @@ function FloorSvg({
   columnHalfOf,
   girderOffsetOf,
   onJointClick,
+  jointMissing,
   displaySize,
   svgRef,
 }: {
@@ -490,6 +492,8 @@ function FloorSvg({
   girderOffsetOf?: (key: string) => number;
   /** 取合記号の○印をクリックしたとき（キー "c:柱キー"・"g:大梁キー"・"b:小梁番号"） */
   onJointClick?: (key: string) => void;
+  /** 取合記号が入っていない部材のキー（未入力表示のときだけ入れる。該当部材を点滅させる） */
+  jointMissing?: ReadonlySet<string>;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
@@ -667,8 +671,9 @@ function FloorSvg({
             const mx = (x1 + x2) / 2;
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
+            const miss = jointMissing?.has(`g:${key}`) === true;
             return (
-              <g key={key} className={bad ? "bad" : ""}>
+              <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
                 <line x1={x1} y1={y - gh} x2={x2} y2={y - gh} />
                 <line x1={x1} y1={y + gh} x2={x2} y2={y + gh} />
                 <text x={mx} y={y - gh - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
@@ -686,8 +691,9 @@ function FloorSvg({
             const my = (y1 + y2) / 2;
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
+            const miss = jointMissing?.has(`g:${key}`) === true;
             return (
-              <g key={key} className={bad ? "bad" : ""}>
+              <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
                 <line x1={x - gh} y1={y1} x2={x - gh} y2={y2} />
                 <line x1={x + gh} y1={y1} x2={x + gh} y2={y2} />
                 <text
@@ -714,10 +720,12 @@ function FloorSvg({
           const bad =
             beam.symbol.trim() !== "" && !knownBeams.has(beam.symbol.trim());
           const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
+          const miss =
+            jointMissing?.has(`b:${beam.id ?? `#${index}`}`) === true;
           return (
             <g
               key={index}
-              className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}`}
+              className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}`}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 onBeamPointerDown(index, event);
@@ -771,8 +779,9 @@ function FloorSvg({
             hw: COL_HALF,
             hd: COL_HALF,
           };
+          const miss = jointMissing?.has(`c:${key}`) === true;
           return (
-            <g key={key} className={bad ? "bad" : ""}>
+            <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
               <rect
                 x={x - half.hw}
                 y={y - half.hd}
@@ -1013,6 +1022,8 @@ export default function FireproofDrawingPage({
   const [beamSymbol, setBeamSymbol] = useState("B40");
   /* 取合記号：選んでいる記号（""＝消す）。図の梁の端の○印をクリックで入れ直す */
   const [jointSymbol, setJointSymbol] = useState("3");
+  /* 取合記号の未入力表示：入っていない部材を図の中で点滅させる */
+  const [showMissing, setShowMissing] = useState(false);
   const [beamAxis, setBeamAxis] = useState<"v" | "h">("v");
   const [beamParts, setBeamParts] = useState(3);
   /** 入力欄・一覧で触った行に対応する図の場所（色付け用） */
@@ -1147,6 +1158,18 @@ export default function FireproofDrawingPage({
   const { markSaved } = useSaveOnLeave(drawing, () => save(true));
 
   const current = drawing.floors[floor] ?? emptyFloor();
+  /** 取合記号が入っていない部材（未入力表示中は点滅させるキー、階ボタンには階ごとの有無を出す） */
+  const missingNow = useMemo(
+    () => (showMissing ? new Set(missingJointKeys(current)) : undefined),
+    [current, showMissing],
+  );
+  const missingByFloor = useMemo(() => {
+    const set = new Set<string>();
+    Object.entries(drawing.floors).forEach(([name, each]) => {
+      if (missingJointKeys(each).length > 0) set.add(name);
+    });
+    return set;
+  }, [drawing]);
 
   /* 小梁一覧の範囲指定。選んだ行番号の集まり（図の色付けにも使う） */
   const selBeamSet = useMemo(() => {
@@ -2065,6 +2088,9 @@ export default function FireproofDrawingPage({
                 }}
               >
                 {label}
+                {missingByFloor.has(name) && (
+                  <span className="joint-warn">取合(未)</span>
+                )}
               </button>
             );
           })}
@@ -2550,6 +2576,14 @@ export default function FireproofDrawingPage({
                 >
                   小梁に全部
                 </button>
+                <button
+                  type="button"
+                  className={showMissing ? "on" : ""}
+                  title="取合記号が入っていない柱・大梁・小梁を図の中で点滅させます（もう一度押すと消えます）"
+                  onClick={() => setShowMissing((on) => !on)}
+                >
+                  未入力表示
+                </button>
               </div>
               <p className="hint">
                 耐火被覆の断面積算出用の記号を、柱・大梁・小梁のそれぞれに1つずつ入れます。
@@ -2593,6 +2627,7 @@ export default function FireproofDrawingPage({
                 columnHalfOf={columnHalfOf}
                 girderOffsetOf={girderOffsetOf}
                 onJointClick={clickJoint}
+                jointMissing={missingNow}
                 displaySize={displaySize}
                 svgRef={svgRef}
               />

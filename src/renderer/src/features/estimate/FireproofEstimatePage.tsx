@@ -34,10 +34,17 @@ import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { findBeamSize } from "../../../../core/fireproof/fireproofEstimate";
 import {
   normalizeFloorList,
+  resolveFloorHeight,
   SHAPE_LABEL,
   toHalfWidth,
   type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
+import {
+  columnImportItems,
+  EMPTY_DRAWING,
+  parseDrawing,
+  type FireproofDrawing,
+} from "../../../../core/fireproof/fireproofDrawing";
 import { findColumnSize } from "../../../../core/fireproof/fireproofEstimate";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
@@ -209,6 +216,8 @@ export default function FireproofEstimatePage({
     floors: [],
     members: [],
   });
+  /** 伏図（この画面では読むだけ。柱の取り込みに使う） */
+  const [drawing, setDrawing] = useState<FireproofDrawing>(EMPTY_DRAWING);
   const [rows, setRows] = useState<FireproofManageRow[]>([]);
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
@@ -239,6 +248,7 @@ export default function FireproofEstimatePage({
       };
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
       setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
+      setDrawing(parseDrawing(record.drawingJson));
       setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
     })();
   }, [project.id]);
@@ -541,6 +551,7 @@ export default function FireproofEstimatePage({
         part1={inheritedPart1[index] ?? ""}
         list={kind === "beam" ? beamsList : columnsList}
         options={options}
+        drawing={drawing}
         detailCell={(key, className) => detailInput(index, key, className)}
         onChange={(next) => change(index, next)}
         onCommit={(next) =>
@@ -937,6 +948,7 @@ function ColumnSheetView({
   row,
   part1,
   list,
+  drawing,
   onChange,
   onCommit,
   onBack,
@@ -949,6 +961,8 @@ function ColumnSheetView({
   part1: string;
   list: FireproofFloorList;
   options: MasterOptions;
+  /** 伏図（柱を取り込むのに使う） */
+  drawing: FireproofDrawing;
   onChange: (patch: Partial<FireproofManageRow>) => void;
   onCommit: (next: FireproofManageRow) => void;
   onBack: () => void;
@@ -975,6 +989,8 @@ function ColumnSheetView({
   const calcRow = kind === "beam" ? calcBeamRow : calcColumnRow;
   const findSize = kind === "beam" ? findBeamSize : findColumnSize;
   const newRow = kind === "beam" ? newBeamRow : newColumnRow;
+  /** 「伏図から取込」を押したあとの階選びを開いているか */
+  const [importPick, setImportPick] = useState(false);
 
   const { widths: columnWidths, startResize: startColumnResize } =
     useColumnWidths(config.storageKey, config.widths);
@@ -989,6 +1005,57 @@ function ColumnSheetView({
   const wallLabels = normalizeWallLabels(sheet.wallLabels, config.markCount);
   /** 階が空欄の行は上の行と同じ階（薄いグレーで出す） */
   const sheetFloors = inheritedFloors(sheet.rows);
+
+  /** 伏図の階名（"1","R"…）から入力表の階名（鉄骨リストの柱リストの階と合わせる）を出す */
+  const floorLabelFor = (name: string): string => {
+    const labels = list.floors.map((floor) => floor.label.trim());
+    const candidates = [name, `${name}F`, name === "R" ? "RF" : ""];
+    const found = candidates.find(
+      (text) => text !== "" && labels.includes(text),
+    );
+    if (found !== undefined) return found;
+    return name === "R" ? "RF" : `${name}F`;
+  };
+
+  /** 伏図の柱を1階分まとめて取り込む（1本1行・倍数は1・断面計算式は空欄＝自動） */
+  const importFloor = (name: string): void => {
+    const floorData = drawing.floors[name];
+    const label = floorLabelFor(name);
+    const at = list.floors.findIndex(
+      (floor) => floor.label.trim() === label,
+    );
+    const height =
+      at >= 0 ? resolveFloorHeight(list.floors, at) : null;
+    const items = columnImportItems(floorData, label, height);
+    if (items.length === 0) {
+      onMessage(`${config.title}：${label} の伏図に柱がありません`);
+      return;
+    }
+    const imported = items.map((item, index) => ({
+      ...newRow(),
+      floor: index === 0 ? label : "",
+      comment: item.comment,
+      symbol: item.symbol,
+      count: 1,
+      mark: item.mark,
+      lengthFormula: item.lengthFormula,
+    }));
+    commitRows([...sheet.rows, ...imported]);
+    setImportPick(false);
+    onMessage(`${config.title}：${label} の柱を ${items.length} 本取り込みました`);
+  };
+
+  /** 階ごとの必要数㎡の合計（集計根拠。先頭明細の右に出す） */
+  const floorTotals = useMemo((): [string, number][] => {
+    const totals = new Map<string, number>();
+    sheet.rows.forEach((each, index) => {
+      const floor = sheetFloors[index] ?? "";
+      const calc = calcRow({ ...each, floor }, list, sheet.thickness);
+      totals.set(floor, (totals.get(floor) ?? 0) + (calc.needed ?? 0));
+    });
+    return [...totals.entries()];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheet.rows, sheet.thickness, list]);
 
   const commitRows = (rows: FireproofColumnRow[]): void => {
     history.push(rowRef.current);
@@ -1118,10 +1185,63 @@ function ColumnSheetView({
         >
           📋 追加貼付
         </button>
+        {kind === "column" && (
+          <button
+            type="button"
+            title="伏図に置いた柱を、階ごとにこの表へ取り込みます（コメント＝階・位置、倍数＝1、取合＝図面で打った番号、有効長＝柱の高さ）"
+            onClick={() => setImportPick((open) => !open)}
+          >
+            ⤵ 伏図から取込
+          </button>
+        )}
       </div>
 
-      {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映） */}
-      <HeadDetailTable detailCell={detailCell} />
+      {kind === "column" && importPick && (
+        <div className="fireproof-import-pick">
+          <span>取り込む階：</span>
+          {Object.keys(drawing.floors).length === 0 && (
+            <span>伏図がまだありません（伏図作成で描いてください）</span>
+          )}
+          {Object.keys(drawing.floors).map((name) => {
+            const label = name === "R" ? "RF" : `${name}F`;
+            const count = Object.values(
+              drawing.floors[name]?.columns ?? {},
+            ).filter((symbol) => symbol.trim() !== "").length;
+            return (
+              <button
+                type="button"
+                key={name}
+                onClick={() => importFloor(name)}
+              >
+                {label}（{count}本）
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setImportPick(false)}>
+            やめる
+          </button>
+        </div>
+      )}
+
+      {/* 先頭行：管理表と同じ明細（どちらで直しても両方に反映）＋右に階ごとの数量 */}
+      <div className="fireproof-head">
+        <HeadDetailTable detailCell={detailCell} />
+        <table className="grid fireproof-floor-totals">
+          <thead>
+            <tr>
+              <th colSpan={2}>階ごとの数量</th>
+            </tr>
+          </thead>
+          <tbody>
+            {floorTotals.map(([floor, value]) => (
+              <tr key={floor || "empty"}>
+                <td>{floor === "" ? "（階なし）" : floor}</td>
+                <td className="number">{formatNumber(value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <div className="fireproof-thickness">
         <span>耐火被覆厚み→</span>

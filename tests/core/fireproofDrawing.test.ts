@@ -3,6 +3,7 @@ import {
   axisHeightAt,
   beamLength,
   beamSlopeLength,
+  columnImportItems,
   columnKey,
   columnNumbers,
   dividedBeams,
@@ -11,6 +12,7 @@ import {
   girderKey,
   girderNumber,
   girderOffset,
+  missingJointKeys,
   nudgeBeam,
   parseDrawing,
   parseSpanList,
@@ -496,5 +498,92 @@ describe("取合記号・通り高さの保存", () => {
       "b:b12ab": "4",
       "c:0,0": "3",
     });
+  });
+});
+
+describe("columnImportItems", () => {
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000],
+    columns: { "0,0": "C1", "1,0": "C2", "0,1": "C1", "2,1": "C3" },
+    jointSymbols: { "c:0,0": "3", "c:2,1": "2" },
+  };
+
+  it("上の通りから順に、位置・記号・取合番号・高さを入れた行を作る（縦通りの記号は図の下がA）", () => {
+    const items = columnImportItems(floor, "1F", 4000);
+    expect(items).toEqual([
+      { comment: "1F 1-B", symbol: "C1", mark: "3", lengthFormula: "4" },
+      { comment: "1F 2-B", symbol: "C2", mark: "", lengthFormula: "4" },
+      { comment: "1F 1-A", symbol: "C1", mark: "", lengthFormula: "4" },
+      { comment: "1F 3-A", symbol: "C3", mark: "2", lengthFormula: "4" },
+    ]);
+  });
+
+  it("通りごとの高さが入っているときはその値を使う（縦通りが先、横通りはその次）", () => {
+    const slope: FireproofDrawingFloor = {
+      ...floor,
+      axisHeights: { "0": 5000 },
+      axisHeightsX: { "1": 4500 },
+    };
+    const items = columnImportItems(slope, "1F", 4000);
+    // yi=0 の2本は縦通り"0"の5000、yi=1 の2本は階高4000（横通りの値は縦通りが無い交点だけ）
+    expect(items.map((each) => each.lengthFormula)).toEqual([
+      "5", "5", "4", "4",
+    ]);
+  });
+
+  it("縦通りが無い交点は横通りの高さを使う", () => {
+    const slope: FireproofDrawingFloor = {
+      ...floor,
+      axisHeightsX: { "1": 4500 },
+    };
+    const items = columnImportItems(slope, "1F", 4000);
+    expect(items[1]?.lengthFormula).toBe("4.5");
+  });
+
+  it("記号の無い交点・階高不明は行を作らない・式は空欄", () => {
+    const sparse: FireproofDrawingFloor = {
+      ...floor,
+      columns: { "0,0": "C1", "1,0": "" },
+    };
+    expect(columnImportItems(sparse, "1F", 4000)).toHaveLength(1);
+    expect(columnImportItems(sparse, "1F", null)[0]?.lengthFormula).toBe("");
+  });
+});
+
+describe("missingJointKeys", () => {
+  it("記号の入った柱・大梁・小梁で記号未入力のものだけのキーを返す", () => {
+    const floor: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [6000],
+      columns: { "0,0": "C1", "1,0": "C2", "2,0": "" },
+      girders: { "x:0,0": "G1", "x:1,0": "" },
+      beams: [
+        { x1: 0, y1: 0, x2: 0, y2: 100, symbol: "B1", id: "b1" },
+        { x1: 0, y1: 0, x2: 100, y2: 0, symbol: "B2" },
+      ],
+      jointSymbols: { "c:0,0": "3", "b:b1": "2" },
+    };
+    expect(missingJointKeys(floor)).toEqual([
+      "c:1,0",
+      "g:x:0,0",
+      "b:#1",
+    ]);
+  });
+
+  it("全部入っていれば空・jointSymbols自体が無くても動く", () => {
+    const floor: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      columns: { "0,0": "C1" },
+      jointSymbols: { "c:0,0": "3" },
+    };
+    expect(missingJointKeys(floor)).toEqual([]);
+    const bare: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      columns: { "0,0": "C1" },
+    };
+    expect(missingJointKeys(bare)).toEqual(["c:0,0"]);
   });
 });

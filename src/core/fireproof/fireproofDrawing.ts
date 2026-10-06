@@ -596,3 +596,77 @@ export function nudgeBeam(
   if (beam.x1 === beam.x2) return { ...beam, x1: beam.x1 + delta, x2: beam.x2 + delta };
   return { ...beam, y1: beam.y1 + delta, y2: beam.y2 + delta };
 }
+
+/** 柱入力表へ取り込む1本分の中身（伏図の柱から作る） */
+export interface ColumnImportItem {
+  /** 階数・柱位置（例 "1F 1-A"） */
+  comment: string;
+  /** 柱記号 */
+  symbol: string;
+  /** 図面で打ち込んだ取合番号（無いときは空） */
+  mark: string;
+  /** その柱の高さの計算式（m。"3.8" のような小数。高さが不明なときは空） */
+  lengthFormula: string;
+}
+
+/**
+ * 取合記号が入っていない部材のキー（"c:…"・"g:…"・"b:…" の形）。
+ * 記号の入っていない柱の交点・大梁の区間は部材ではないので数えない。
+ * 小梁のキーは図面と同じく「idか行番号」で作る。
+ */
+export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
+  const joints = floor.jointSymbols ?? {};
+  const missing: string[] = [];
+  Object.keys(floor.columns).forEach((key) => {
+    if (
+      floor.columns[key].trim() !== "" &&
+      (joints[`c:${key}`] ?? "") === ""
+    )
+      missing.push(`c:${key}`);
+  });
+  Object.keys(floor.girders).forEach((key) => {
+    if (
+      floor.girders[key].trim() !== "" &&
+      (joints[`g:${key}`] ?? "") === ""
+    )
+      missing.push(`g:${key}`);
+  });
+  floor.beams.forEach((beam, index) => {
+    const key = `b:${beam.id ?? `#${index}`}`;
+    if ((joints[key] ?? "") === "") missing.push(key);
+  });
+  return missing;
+}
+
+/**
+ * 伏図1階分の柱を、柱入力表へ取り込む順（上の通り→下へ、各行は左→右）に並べる。
+ * 柱の高さは縦通りの値 → 横通りの値 → 階高 の順で使う。
+ */
+export function columnImportItems(
+  floor: FireproofDrawingFloor,
+  floorLabel: string,
+  floorHeight: number | null,
+): ColumnImportItem[] {
+  const ys = positions(floor.ySpans);
+  const keys = Object.keys(floor.columns)
+    .filter((key) => floor.columns[key].trim() !== "")
+    .sort((a, b) => {
+      const [ax, ay] = a.split(",").map(Number);
+      const [bx, by] = b.split(",").map(Number);
+      return ay === by ? ax - bx : ay - by;
+    });
+  return keys.map((key) => {
+    const [xi, yi] = key.split(",").map(Number);
+    const position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
+    const height =
+      floor.axisHeights?.[String(yi)] ??
+      floor.axisHeightsX?.[String(xi)] ??
+      floorHeight;
+    return {
+      comment: `${floorLabel} ${position}`,
+      symbol: floor.columns[key].trim(),
+      mark: floor.jointSymbols?.[`c:${key}`] ?? "",
+      lengthFormula: height === null ? "" : String(height / 1000),
+    };
+  });
+}

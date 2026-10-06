@@ -211,3 +211,40 @@
   font-size: 12px;
   color: #374151;
 }
+
+/* 伏図から取り込む階を選ぶ行 */
+.fireproof-estimate-page .fireproof-import-pick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 8px;
+  padding: 6px 8px;
+  border: var(--line-thin);
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+/* 先頭明細の右に出す階ごとの数量 */
+.fireproof-estimate-page .fireproof-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.fireproof-estimate-page table.fireproof-floor-totals {
+  width: auto;
+  margin: 8px 8px 0;
+  font-size: 12px;
+  background: #fff;
+}
+
+.fireproof-estimate-page table.fireproof-floor-totals th,
+.fireproof-estimate-page table.fireproof-floor-totals td {
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.fireproof-estimate-page table.fireproof-floor-totals td.number {
+  text-align: right;
+}
