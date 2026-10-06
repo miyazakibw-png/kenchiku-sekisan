@@ -201,9 +201,17 @@ function SymbolList({
     return rows.slice(a, b + 1);
   };
 
-  const pick = (index: number) => {
+  /* まとめて選ぶときの基準（ふつうに押した行。Shift+クリックはここから先までを選ぶ） */
+  const anchorRef = useRef(0);
+
+  const pick = (index: number, shift: boolean) => {
     dragSel.current = true;
-    setSel({ from: index, to: index });
+    if (shift) {
+      setSel({ from: anchorRef.current, to: index });
+    } else {
+      anchorRef.current = index;
+      setSel({ from: index, to: index });
+    }
     boxRef.current?.focus();
     const row = rows[index];
     if (row !== undefined) onActiveRow?.(row);
@@ -316,7 +324,7 @@ function SymbolList({
             className="row-label"
             onMouseDown={(event) => {
               event.preventDefault();
-              pick(index);
+              pick(index, event.shiftKey);
             }}
             onMouseEnter={() => extend(index)}
           >
