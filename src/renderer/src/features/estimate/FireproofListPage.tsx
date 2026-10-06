@@ -51,10 +51,60 @@ const SHAPE_OPTIONS: { value: SteelShape | ""; label: string }[] = [
   { value: "h", label: "Ｈ" },
 ];
 
-/** 階高はmmで保存、画面ではmで見せる・受け取る（3800 ↔ "3.8"） */
+/** 階高はmmで保存、画面ではmで見せる・受け取る。表示は小数第2位まで
+   （整数も 3→3.00、3.075のようなmm精度はそのまま） */
 function heightMetersText(mm: number): string {
-  const m = mm / 1000;
-  return Number.isInteger(m) ? String(m) : String(Math.round(m * 1000) / 1000);
+  return (mm / 1000).toFixed(3).replace(/(\.\d\d)0$/, "$1");
+}
+
+interface HeightInputProps {
+  height: number | null;
+  placeholder: string;
+  onChange: (mm: number | null) => void;
+}
+
+/**
+ * 階高の1マス入力（m）。入力中は打った文字をそのまま残し、欄から出たときに
+ * きれいな形へ直す — 直打ちだと「3.」が即座に「3」へ消えて小数が打てないため。
+ */
+function HeightInput({
+  height,
+  placeholder,
+  onChange,
+}: HeightInputProps): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(() =>
+    height === null ? "" : heightMetersText(height),
+  );
+  useEffect(() => {
+    if (!editing) setText(height === null ? "" : heightMetersText(height));
+  }, [height, editing]);
+  return (
+    <input
+      lang="en"
+      inputMode="decimal"
+      value={text}
+      placeholder={placeholder}
+      title="階高（m、例 3.80）。空欄は下の階の数字を使います"
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        setText(height === null ? "" : heightMetersText(height));
+      }}
+      onChange={(event) => {
+        const typed = toHalfWidth(event.target.value).replaceAll(",", ".");
+        setText(typed);
+        const t = typed.trim();
+        if (t === "") {
+          onChange(null);
+          return;
+        }
+        const meters = Number(t);
+        if (Number.isFinite(meters) && meters >= 0)
+          onChange(Math.round(meters * 1000));
+      }}
+    />
+  );
 }
 
 interface SizeInputProps {
@@ -658,14 +708,8 @@ function FloorListSection({
                 </td>
                 {kind === "column" && (
                   <td className="height">
-                    <input
-                      lang="en"
-                      inputMode="decimal"
-                      value={
-                        floor.height === null || floor.height === undefined
-                          ? ""
-                          : heightMetersText(floor.height)
-                      }
+                    <HeightInput
+                      height={floor.height ?? null}
                       placeholder={(() => {
                         const inherited = resolveFloorHeight(
                           list.floors,
@@ -675,22 +719,7 @@ function FloorListSection({
                           ? "m"
                           : heightMetersText(inherited);
                       })()}
-                      title="階高（m、例 3.8）。空欄は下の階の数字を使います"
-                      onChange={(event) => {
-                        const text = toHalfWidth(
-                          event.target.value,
-                        ).trim().replaceAll(",", ".");
-                        if (text === "") {
-                          changeFloorHeight(floorIndex, null);
-                          return;
-                        }
-                        const meters = Number(text);
-                        if (Number.isFinite(meters) && meters >= 0)
-                          changeFloorHeight(
-                            floorIndex,
-                            Math.round(meters * 1000),
-                          );
-                      }}
+                      onChange={(mm) => changeFloorHeight(floorIndex, mm)}
                     />
                   </td>
                 )}
