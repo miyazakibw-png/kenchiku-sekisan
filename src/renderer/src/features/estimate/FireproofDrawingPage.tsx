@@ -7,7 +7,6 @@ import {
   resolveCommonRow,
   resolveFloorHeight,
   resolveSize,
-  SHAPE_LABEL,
   type FireproofCommonRow,
   type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
@@ -461,8 +460,6 @@ function FloorSvg({
   onBeamPointerDown,
   onPointerMove,
   onPointerUp,
-  columnSizes,
-  beamSizes,
   knownColumns,
   knownBeams,
   halfWidthOf,
@@ -482,9 +479,6 @@ function FloorSvg({
   onBeamPointerDown: (index: number, event: React.PointerEvent) => void;
   onPointerMove: (event: React.PointerEvent) => void;
   onPointerUp: () => void;
-  /** 柱記号→「□-500*500」、梁記号→「300」（リストから読んだ寸法） */
-  columnSizes: Map<string, string>;
-  beamSizes: Map<string, string>;
   /** リストに登録済みの記号（無い記号は赤で示す） */
   knownColumns: ReadonlySet<string>;
   knownBeams: ReadonlySet<string>;
@@ -671,7 +665,6 @@ function FloorSvg({
             const x2 = xs[xi + 1] - (c2 === 0 ? 0 : c2.hw);
             const y = ys[yi] + (girderOffsetOf?.(key) ?? 0);
             const mx = (x1 + x2) / 2;
-            const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             return (
@@ -680,11 +673,6 @@ function FloorSvg({
                 <line x1={x1} y1={y + gh} x2={x2} y2={y + gh} />
                 <text x={mx} y={y - gh - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
                   {symbol}
-                  {size !== undefined && (
-                    <tspan className="size" dx="220" fontSize={FONT_SYMBOL * 0.72}>
-                      {size}
-                    </tspan>
-                  )}
                 </text>
               </g>
             );
@@ -696,7 +684,6 @@ function FloorSvg({
             const y2 = ys[yi + 1] - (c2 === 0 ? 0 : c2.hd);
             const x = xs[xi] + (girderOffsetOf?.(key) ?? 0);
             const my = (y1 + y2) / 2;
-            const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             return (
@@ -711,11 +698,6 @@ function FloorSvg({
                   transform={`rotate(-90 ${x + gh + 160} ${my})`}
                 >
                   {symbol}
-                  {size !== undefined && (
-                    <tspan className="size" dx="220" fontSize={FONT_SYMBOL * 0.72}>
-                      {size}
-                    </tspan>
-                  )}
                 </text>
               </g>
             );
@@ -754,11 +736,6 @@ function FloorSvg({
                     transform={`rotate(-90 ${mx + bh + 60} ${my})`}
                   >
                     {beam.symbol}
-                    {beamSizes.get(beam.symbol.trim()) !== undefined && (
-                      <tspan className="size" dx="180">
-                        {beamSizes.get(beam.symbol.trim())}
-                      </tspan>
-                    )}
                   </text>
                 </>
               ) : (
@@ -767,11 +744,6 @@ function FloorSvg({
                   <line x1={beam.x1} y1={beam.y1 + bh} x2={beam.x2} y2={beam.y2 + bh} />
                   <text x={mx} y={my - bh - 60} textAnchor="middle" fontSize={FONT_SYMBOL * 0.85}>
                     {beam.symbol}
-                    {beamSizes.get(beam.symbol.trim()) !== undefined && (
-                      <tspan className="size" dx="180">
-                        {beamSizes.get(beam.symbol.trim())}
-                      </tspan>
-                    )}
                   </text>
                 </>
               )}
@@ -794,7 +766,6 @@ function FloorSvg({
           if (xi < 0 || yi < 0 || xi >= xs.length || yi >= ys.length) return null;
           const x = xs[xi];
           const y = ys[yi];
-          const size = columnSizes.get(symbol.trim());
           const bad = symbol.trim() !== "" && !knownColumns.has(symbol.trim());
           const half = columnHalfOf?.(symbol.trim()) ?? {
             hw: COL_HALF,
@@ -811,16 +782,6 @@ function FloorSvg({
               <text x={x + half.hw + 90} y={y + FONT_SYMBOL * 0.38} fontSize={FONT_SYMBOL}>
                 {symbol}
               </text>
-              {size !== undefined && (
-                <text
-                  className="size"
-                  x={x + half.hw + 90}
-                  y={y + FONT_SYMBOL * 0.38 + FONT_SYMBOL * 0.85}
-                  fontSize={FONT_SYMBOL * 0.72}
-                >
-                  {size}
-                </text>
-              )}
             </g>
           );
         })}
@@ -1988,60 +1949,6 @@ export default function FireproofDrawingPage({
     [girderSel, current, updateFloor],
   );
 
-  /* 記号→図に出す寸法の文字。柱は「□-500*500」（その階の柱リスト）、
-     梁は「500*300」の後ろの数字「300」（ひとつ上の階の梁リスト：1Fの図は梁2F） */
-  const sizeTexts = useMemo(() => {
-    const columnAt = memberLists.columns.floors.findIndex(
-      (f) => f.label === floor,
-    );
-    const col = new Map<string, string>();
-    memberLists.columns.members.forEach((member) => {
-      const symbol = member.symbol.trim();
-      if (symbol === "") return;
-      const size = resolveSize(
-        member,
-        memberLists.columns.floors,
-        Math.max(0, columnAt),
-        "column",
-      );
-      const dims = [size.first, size.second].filter(
-        (v): v is number => v !== null,
-      );
-      if (dims.length > 0) col.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
-    });
-    const beamAt = memberLists.beams.floors.findIndex(
-      (f) => f.label === beamFloorLabel,
-    );
-    const bem = new Map<string, string>();
-    memberLists.beams.members.forEach((member) => {
-      const symbol = member.symbol.trim();
-      if (symbol === "") return;
-      const size = resolveSize(
-        member,
-        memberLists.beams.floors,
-        Math.max(0, beamAt),
-        "beam",
-      );
-      const dims = [size.first, size.second].filter(
-        (v): v is number => v !== null,
-      );
-      if (dims.length > 0)
-        bem.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
-    });
-    memberLists.common.forEach((row) => {
-      const symbol = row.symbol.trim();
-      if (symbol === "") return;
-      const size = resolveCommonRow(row);
-      const dims = [size.first, size.second].filter(
-        (v): v is number => v !== null,
-      );
-      if (!col.has(symbol) && dims.length > 0)
-        col.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
-      if (!bem.has(symbol) && dims.length > 0)
-        bem.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
-    });
-    return { column: col, beam: bem };
-  }, [memberLists, floor, beamFloorLabel]);
 
   /* リストにある記号（入った記号がリストに無いとき赤で示すため） */
   const knownColumns = useMemo(
@@ -2680,8 +2587,6 @@ export default function FireproofDrawingPage({
                 onBeamPointerDown={handleBeamPointerDown}
                 onPointerMove={handleBeamPointerMove}
                 onPointerUp={endBeamDrag}
-                columnSizes={sizeTexts.column}
-                beamSizes={sizeTexts.beam}
                 knownColumns={knownColumns}
                 knownBeams={knownBeams}
                 halfWidthOf={halfWidthOf}
