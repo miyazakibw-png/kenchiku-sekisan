@@ -991,6 +991,8 @@ function ColumnSheetView({
   const newRow = kind === "beam" ? newBeamRow : newColumnRow;
   /** 「伏図から取込」を押したあとの階選びを開いているか */
   const [importPick, setImportPick] = useState(false);
+  /** 「階まとめて削除」の階選びを開いているか */
+  const [deletePick, setDeletePick] = useState(false);
 
   const { widths: columnWidths, startResize: startColumnResize } =
     useColumnWidths(config.storageKey, config.widths);
@@ -1153,9 +1155,24 @@ function ColumnSheetView({
         </button>
         <button
           type="button"
-          onClick={() => commitRows(sheet.rows.filter((_, at) => at !== start))}
+          title="カーソルの行（Shift+クリックで範囲）を消します"
+          onClick={() => {
+            commitRows(
+              sheet.rows.filter((_, at) => at < start || at > end),
+            );
+            onMessage(
+              `${config.title}：${end - start + 1} 行を消しました`,
+            );
+          }}
         >
           🗑 行削除
+        </button>
+        <button
+          type="button"
+          title="同じ階の行をまとめて消します（伏図から取り込んだ分の消去に使います）"
+          onClick={() => setDeletePick((open) => !open)}
+        >
+          🗑 階まとめて削除
         </button>
         <button
           type="button"
@@ -1218,6 +1235,41 @@ function ColumnSheetView({
             );
           })}
           <button type="button" onClick={() => setImportPick(false)}>
+            やめる
+          </button>
+        </div>
+      )}
+
+      {deletePick && (
+        <div className="fireproof-import-pick">
+          <span>消す階：</span>
+          {sheet.rows.length === 0 && <span>行がありません</span>}
+          {[...new Set(sheetFloors)].map((floor) => {
+            const count = sheetFloors.filter(
+              (each) => each === floor,
+            ).length;
+            const label = floor === "" ? "（階なし）" : floor;
+            return (
+              <button
+                type="button"
+                key={floor}
+                onClick={() => {
+                  commitRows(
+                    sheet.rows.filter(
+                      (_, at) => sheetFloors[at] !== floor,
+                    ),
+                  );
+                  setDeletePick(false);
+                  onMessage(
+                    `${config.title}：${label} の ${count} 行を消しました`,
+                  );
+                }}
+              >
+                {label}（{count}行）
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => setDeletePick(false)}>
             やめる
           </button>
         </div>
