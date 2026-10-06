@@ -46,6 +46,7 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
     amount: row.amount,
     remarksUpper: row.remarksUpper,
     remarksLower: row.remarksLower,
+    struck: row.struck,
   };
 }
 

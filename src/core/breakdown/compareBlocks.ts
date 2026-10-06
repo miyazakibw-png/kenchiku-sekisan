@@ -224,16 +224,19 @@ export function compareBlocksBySubject<T extends BlockSourceRow>(
   left: readonly CompareBlock<T>[],
   right: readonly CompareBlock<T>[],
 ): SubjectBlockDiff[] {
-  // 取り消し線を付けた明細は「無いもの」として突き合わせる（比べる側だけ「無い方にだけある」色になる）
-  const struck = (block: CompareBlock<T>): boolean =>
-    (block.lower.struck ?? 0) === 1 || (block.upper?.struck ?? 0) === 1;
+  // 取り消し線を付けた明細・行を合わせるために開けた空白行は「無いもの」として
+  // 突き合わせる（比べる側が「片方にだけある」色になる）
+  const absent = (block: CompareBlock<T>): boolean =>
+    (block.lower.struck ?? 0) === 1 ||
+    (block.upper?.struck ?? 0) === 1 ||
+    block.lower.rowKind === "blank";
   return pairBlocksBySubject(left, right).map((pair, index) => {
     const leftBlock = pair.left === null ? null : left[pair.left];
     const rightBlock = pair.right === null ? null : right[pair.right];
     const leftValue =
-      leftBlock === null || struck(leftBlock) ? null : blockValue(leftBlock);
+      leftBlock === null || absent(leftBlock) ? null : blockValue(leftBlock);
     const rightValue =
-      rightBlock === null || struck(rightBlock)
+      rightBlock === null || absent(rightBlock)
         ? null
         : blockValue(rightBlock);
     return {
