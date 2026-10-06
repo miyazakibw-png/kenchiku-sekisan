@@ -922,6 +922,9 @@ export default function FireproofDrawingPage({
   const [clipFloor, setClipFloor] = useState<FireproofDrawingFloor | null>(
     null,
   );
+  /* 階の貼り付け先をまとめて選ぶ欄。開いているときだけ見せる */
+  const [floorPasteOpen, setFloorPasteOpen] = useState(false);
+  const [floorPastePick, setFloorPastePick] = useState<Set<string>>(new Set());
   /** この画面では触らない他の欄（保存時にそのまま戻す） */
   const baseRef = useRef({
     floorCount: 0,
@@ -1036,6 +1039,34 @@ export default function FireproofDrawingPage({
       setDrawing(next);
     },
     [drawing, floor],
+  );
+
+  /* 階コピーした図面を、選んだ階ぜんぶに貼り付ける（戻るでもまとめて戻せるよう1回分の履歴にする） */
+  const pasteFloorTo = useCallback(
+    (names: string[]) => {
+      if (clipFloor === null || names.length === 0) return;
+      const next: FireproofDrawing = { floors: { ...drawing.floors } };
+      names.forEach((name) => {
+        next.floors[name] = JSON.parse(JSON.stringify(clipFloor));
+      });
+      if (JSON.stringify(next) === JSON.stringify(drawing)) {
+        setFloorPasteOpen(false);
+        return;
+      }
+      setPast((rows) => [...rows.slice(-49), drawing]);
+      setFuture([]);
+      setDrawing(next);
+      setRegions([]);
+      setSelBeam(null);
+      setSelBeamRange(null);
+      setFocusTarget(null);
+      dragRef.current = null;
+      setFloorPasteOpen(false);
+      setMessage(
+        `${names.length}か所の階に貼り付けました（それぞれの階の鉄骨リストの寸法で描きます）`,
+      );
+    },
+    [clipFloor, drawing],
   );
 
   const undo = useCallback(() => {
@@ -1908,15 +1939,13 @@ export default function FireproofDrawingPage({
         <button
           type="button"
           disabled={clipFloor === null}
-          title="コピーした階の図面をこの階に貼り付けます（この階の鉄骨リストの寸法で描きます）"
+          title="コピーした階の図面を、選んだ階に貼り付けます（貼り先の階の鉄骨リストの寸法で描きます）"
           onClick={() => {
             if (clipFloor === null) return;
-            updateFloor(JSON.parse(JSON.stringify(clipFloor)));
-            setRegions([]);
-            setSelBeam(null);
-            setMessage(
-              `${floor === "R" ? "RF" : `${floor}F`}に貼り付けました（この階の鉄骨リストの寸法で描きます）`,
+            setFloorPastePick((pick) =>
+              pick.size === 0 ? new Set([floor]) : pick,
             );
+            setFloorPasteOpen((open) => !open);
           }}
         >
           階へ貼り付け
@@ -1942,6 +1971,51 @@ export default function FireproofDrawingPage({
         </button>
         <span className="status">{message}</span>
       </div>
+
+      {floorPasteOpen && clipFloor !== null && (
+        <div className="floor-paste">
+          <span>貼り付け先：</span>
+          {floorTabs.map((name, index) => {
+            const beamAtTab = floorTabs[index + 1] ?? "R";
+            const label =
+              name === "R"
+                ? "RF"
+                : `${name}F(${beamAtTab === "R" ? "RF" : `梁${beamAtTab}F`})`;
+            const on = floorPastePick.has(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                className={on ? "tab on" : "tab"}
+                onClick={() =>
+                  setFloorPastePick((pick) => {
+                    const next = new Set(pick);
+                    if (next.has(name)) next.delete(name);
+                    else next.add(name);
+                    return next;
+                  })
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            disabled={floorPastePick.size === 0}
+            onClick={() =>
+              pasteFloorTo(
+                floorTabs.filter((name) => floorPastePick.has(name)),
+              )
+            }
+          >
+            まとめて貼り付け
+          </button>
+          <button type="button" onClick={() => setFloorPasteOpen(false)}>
+            やめる
+          </button>
+        </div>
+      )}
 
       <div className="fireproof-drawing-body">
         <div className="drawing-side">

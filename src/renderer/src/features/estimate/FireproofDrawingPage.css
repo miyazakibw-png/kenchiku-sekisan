@@ -38,6 +38,30 @@
   color: #2f7d32;
 }
 
+/* 階の貼り付け先をまとめて選ぶ欄 */
+.fireproof-drawing-page .floor-paste {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #eef4fb;
+  border-bottom: 1px solid #cdd8e6;
+}
+.fireproof-drawing-page .floor-paste .tab {
+  padding: 2px 8px;
+  border: 1px solid #9db4cc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.fireproof-drawing-page .floor-paste .tab.on {
+  background: #1f4e79;
+  border-color: #1f4e79;
+  color: #fff;
+}
+
 .fireproof-drawing-body {
   display: flex;
   flex: 1 1 0;
