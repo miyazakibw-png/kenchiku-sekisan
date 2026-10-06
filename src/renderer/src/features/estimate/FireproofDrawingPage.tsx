@@ -19,9 +19,11 @@ import {
   emptyFloor,
   enclosingRegion,
   GIRDER_HALF,
+  type ColumnHalfOf,
   type HalfWidthOf,
   girderKey,
   girderNumber,
+  girderOffset,
   nudgeBeam,
   parseDrawing,
   refitBeams,
@@ -410,6 +412,7 @@ function FloorSvg({
   knownBeams,
   halfWidthOf,
   columnHalfOf,
+  girderOffsetOf,
   displaySize,
   svgRef,
 }: {
@@ -433,6 +436,8 @@ function FloorSvg({
   halfWidthOf?: HalfWidthOf;
   /** 柱記号→柱の四角の半分（横×縦 mm）。大梁の端を柱の面に合わせる */
   columnHalfOf?: (symbol: string) => { hw: number; hd: number } | null;
+  /** 大梁キー→芯からのずらし量（mm。端寄せした梁の位置） */
+  girderOffsetOf?: (key: string) => number;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
@@ -502,6 +507,7 @@ function FloorSvg({
         [...girderSel].map((key) => {
           const [axis, point] = key.split(":");
           const [xi, yi] = point.split(",").map(Number);
+          const off = girderOffsetOf?.(key) ?? 0;
           if (
             axis === "x" &&
             xi >= 0 &&
@@ -514,7 +520,7 @@ function FloorSvg({
                 key={`gs${key}`}
                 className="selection girder-sel"
                 x={xs[xi]}
-                y={ys[yi] - 500}
+                y={ys[yi] + off - 500}
                 width={xs[xi + 1] - xs[xi]}
                 height={1000}
               />
@@ -530,7 +536,7 @@ function FloorSvg({
               <rect
                 key={`gs${key}`}
                 className="selection girder-sel"
-                x={xs[xi] - 500}
+                x={xs[xi] + off - 500}
                 y={ys[yi]}
                 width={1000}
                 height={ys[yi + 1] - ys[yi]}
@@ -571,7 +577,7 @@ function FloorSvg({
             const c2 = colAt(xi + 1, yi);
             const x1 = xs[xi] + (c1 === 0 ? 0 : c1.hw);
             const x2 = xs[xi + 1] - (c2 === 0 ? 0 : c2.hw);
-            const y = ys[yi];
+            const y = ys[yi] + (girderOffsetOf?.(key) ?? 0);
             const mx = (x1 + x2) / 2;
             const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
@@ -594,7 +600,7 @@ function FloorSvg({
             const c2 = colAt(xi, yi + 1);
             const y1 = ys[yi] + (c1 === 0 ? 0 : c1.hd);
             const y2 = ys[yi + 1] - (c2 === 0 ? 0 : c2.hd);
-            const x = xs[xi];
+            const x = xs[xi] + (girderOffsetOf?.(key) ?? 0);
             const my = (y1 + y2) / 2;
             const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
@@ -1174,7 +1180,7 @@ export default function FireproofDrawingPage({
 
   /* 柱記号→柱の四角の半分（横×縦 mm）。柱リストの寸法（Ｗ×Ｄの半分）。
      柱の四角を実際の大きさで描き、大梁の端をその面に合わせる */
-  const columnHalfOf = useCallback(
+  const columnHalfOf = useCallback<ColumnHalfOf>(
     (symbol: string): { hw: number; hd: number } | null => {
       const columnAt = memberLists.columns.floors.findIndex(
         (f) => f.label === floor,
@@ -1207,23 +1213,37 @@ export default function FireproofDrawingPage({
     [memberLists, floor],
   );
 
-  /* 寸法・大梁の記号・鉄骨リストの幅が変わったら、置いてある小梁の端を
+  /* 大梁キー→芯からのずらし量（端寄せ。区画・小梁の内内・点線も同じ位置） */
+  const girderOffsetOf = useCallback(
+    (key: string): number =>
+      girderOffset(current, key, halfWidthOf, columnHalfOf),
+    [current, halfWidthOf, columnHalfOf],
+  );
+
+  /* 寸法・大梁の記号・鉄骨リストの幅・大梁の端寄せが変わったら、置いてある小梁の端を
      その区画の内内寸法に入れ直す（長さ表示が図面に連動する） */
   useEffect(() => {
     const target = drawingRef.current.floors[floor];
     if (target === undefined || target.beams.length === 0) return;
-    const refit = refitBeams(target, halfWidthOf);
+    const refit = refitBeams(target, halfWidthOf, columnHalfOf);
     if (JSON.stringify(refit) === JSON.stringify(target.beams)) return;
     updateFloor({ beams: refit });
     setMessage("寸法に合わせて小梁を入れ直しました");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floor, memberLists, current.xSpans, current.ySpans, current.girders]);
+  }, [floor, memberLists, current.xSpans, current.ySpans, current.girders, current.girderAlign]);
 
   /** ④小梁：図をクリック → まわりの線で囲まれた区画を選ぶ（Shift+クリックで追加・再押しで外す） */
   const handleRegionClick = useCallback(
     (x: number, y: number, additive: boolean) => {
       if (dragRef.current !== null) return; // ドラッグの離しクリックは区画変更にしない
-      const part = enclosingRegion(current, x, y, halfWidthOf);
+      const part = enclosingRegion(
+        current,
+        x,
+        y,
+        halfWidthOf,
+        true,
+        columnHalfOf,
+      );
       setRegions((before) => {
         if (!additive) return part === null ? [] : [part];
         if (part === null) return before;
@@ -1236,7 +1256,7 @@ export default function FireproofDrawingPage({
       selFocusRef.current = "region";
       setFocusTarget(null);
     },
-    [current, halfWidthOf],
+    [current, halfWidthOf, columnHalfOf],
   );
 
   const svgPoint = (
@@ -1420,6 +1440,7 @@ export default function FireproofDrawingPage({
         picked.y + picked.height / 2,
         halfWidthOf,
         false,
+        columnHalfOf,
       ) ?? picked;
     const inside = current.beams.filter(
       (beam) =>
@@ -1434,7 +1455,7 @@ export default function FireproofDrawingPage({
           (beam.y1 > part.y + 1 && beam.y1 < part.y + part.height - 1)),
     );
     learnFromBeams(part, inside);
-  }, [regions, current, halfWidthOf, learnFromBeams]);
+  }, [regions, current, halfWidthOf, columnHalfOf, learnFromBeams]);
 
   /** 入力行側：一覧で選んだ小梁をまとめてコピー（その行を囲む大梁区画の条件で覚える） */
   const copySelBeams = useCallback(() => {
@@ -1449,7 +1470,14 @@ export default function FireproofDrawingPage({
     const my =
       beams.reduce((sum, beam) => sum + (beam.y1 + beam.y2) / 2, 0) /
       beams.length;
-    const cell = enclosingRegion(current, mx, my, halfWidthOf, false);
+    const cell = enclosingRegion(
+      current,
+      mx,
+      my,
+      halfWidthOf,
+      false,
+      columnHalfOf,
+    );
     const part: DrawingRegion =
       cell ?? {
         x: Math.min(...beams.map((beam) => Math.min(beam.x1, beam.x2))),
@@ -1462,7 +1490,7 @@ export default function FireproofDrawingPage({
           Math.min(...beams.map((beam) => Math.min(beam.y1, beam.y2))),
       };
     learnFromBeams(part, beams);
-  }, [current, selBeamSet, halfWidthOf, learnFromBeams]);
+  }, [current, selBeamSet, halfWidthOf, columnHalfOf, learnFromBeams]);
 
   const pasteBeams = useCallback(() => {
     if (regions.length === 0) return;
@@ -1661,7 +1689,7 @@ export default function FireproofDrawingPage({
   /* ③大梁リストで範囲指定した行のキー（図に点線の範囲を出す） */
   const girderSel =
     girderSelRange === null
-      ? undefined
+      ? new Set<string>()
       : new Set(
           girderRows
             .slice(
@@ -1670,6 +1698,30 @@ export default function FireproofDrawingPage({
             )
             .map((row) => row.key),
         );
+
+  /* ③大梁：行で範囲指定した大梁をまとめて動かす（上・左へ寄せ／中央／下・右へ寄せ）。
+     梁の面が柱の面（両端で小さいほうの柱）に付く位置へ */
+  const alignGirders = useCallback(
+    (mode: "min" | "center" | "max") => {
+      if (girderSel.size === 0) return;
+      const next = { ...(current.girderAlign ?? {}) };
+      girderSel.forEach((key) => {
+        if (mode === "center") delete next[key];
+        else next[key] = mode;
+      });
+      updateFloor({ girderAlign: next });
+      const place =
+        mode === "center"
+          ? "中央（柱芯どおり）"
+          : mode === "min"
+            ? "上・左端"
+            : "下・右端";
+      setMessage(
+        `${girderSel.size}本の大梁を${place}に動かしました（梁の面が小さいほうの柱の面に付きます）`,
+      );
+    },
+    [girderSel, current, updateFloor],
+  );
 
   /* 記号→図に出す寸法の文字。柱は「□-500*500」（その階の柱リスト）、
      梁は「500*300」の後ろの数字「300」（ひとつ上の階の梁リスト：1Fの図は梁2F） */
@@ -1764,11 +1816,12 @@ export default function FireproofDrawingPage({
     }
     const [axis, point] = focusTarget.key.split(":");
     const [xi, yi] = point.split(",").map(Number);
+    const off = girderOffset(current, focusTarget.key, halfWidthOf, columnHalfOf);
     if (axis === "x" && xi < xsNow.length - 1 && yi < ysNow.length) {
       const x1 = xsNow[xi] + (hasColumn(current, xi, yi) ? COL_HALF : 0);
       const x2 =
         xsNow[xi + 1] - (hasColumn(current, xi + 1, yi) ? COL_HALF : 0);
-      const y = ysNow[yi];
+      const y = ysNow[yi] + off;
       return {
         x: x1,
         y: y - 450,
@@ -1780,7 +1833,7 @@ export default function FireproofDrawingPage({
       const y1 = ysNow[yi] + (hasColumn(current, xi, yi) ? COL_HALF : 0);
       const y2 =
         ysNow[yi + 1] - (hasColumn(current, xi, yi + 1) ? COL_HALF : 0);
-      const x = xsNow[xi];
+      const x = xsNow[xi] + off;
       return {
         x: x - 450,
         y: y1,
@@ -1942,6 +1995,33 @@ export default function FireproofDrawingPage({
           <section className="drawing-section">
             <div className="section-bar">
               <h3>③ 大梁（柱間の番号に記号）</h3>
+              <div className="beam-ops">
+                <span className="hint">位置：</span>
+                <button
+                  type="button"
+                  disabled={girderSel.size === 0}
+                  title="行で選んだ大梁をまとめて動かします：横の梁は上端、縦の梁は左端に、梁の面が柱の面（小さいほうの柱）に付く位置へ"
+                  onClick={() => alignGirders("min")}
+                >
+                  上・左へ寄せ
+                </button>
+                <button
+                  type="button"
+                  disabled={girderSel.size === 0}
+                  title="行で選んだ大梁を柱芯どおり（中央）に戻します"
+                  onClick={() => alignGirders("center")}
+                >
+                  中央
+                </button>
+                <button
+                  type="button"
+                  disabled={girderSel.size === 0}
+                  title="行で選んだ大梁をまとめて動かします：横の梁は下端、縦の梁は右端に、梁の面が柱の面（小さいほうの柱）に付く位置へ"
+                  onClick={() => alignGirders("max")}
+                >
+                  下・右へ寄せ
+                </button>
+              </div>
             </div>
             <SymbolList
               rows={girderRows}
@@ -2159,6 +2239,7 @@ export default function FireproofDrawingPage({
                 knownBeams={knownBeams}
                 halfWidthOf={halfWidthOf}
                 columnHalfOf={columnHalfOf}
+                girderOffsetOf={girderOffsetOf}
                 displaySize={displaySize}
                 svgRef={svgRef}
               />

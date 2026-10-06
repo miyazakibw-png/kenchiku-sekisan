@@ -8,6 +8,7 @@ import {
   enclosingRegion,
   girderKey,
   girderNumber,
+  girderOffset,
   nudgeBeam,
   parseDrawing,
   parseSpanList,
@@ -282,6 +283,105 @@ describe("小梁の配置・調整", () => {
     // いったん内内なら二回目は変わらない（連動のあと動かない）
     const again = refitBeams({ ...floor, beams: refit }, () => 150);
     expect(again).toEqual(refit);
+  });
+});
+
+describe("大梁の端寄せ（柱の面に合わせる）", () => {
+  // 2列の柱（左550×550・右400×400）のあいだの大梁。小さいほうの柱の面に合わせる
+  const colHalf = (symbol: string) =>
+    symbol === "C1"
+      ? { hw: 275, hd: 275 }
+      : symbol === "C2"
+        ? { hw: 200, hd: 200 }
+        : null;
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000],
+    ySpans: [6000],
+    columns: { "0,0": "C1", "1,0": "C2", "0,1": "C1", "1,1": "C2" },
+    girders: {
+      "x:0,0": "G1",
+      "x:0,1": "G1",
+      "y:0,0": "G1",
+      "y:1,0": "G1",
+    },
+  };
+  const girderHalf = () => 150; // G1：300幅→半分150
+
+  it("中央（寄せ無し）はずらし量0", () => {
+    expect(
+      girderOffset(floor, "x:0,0", girderHalf, colHalf),
+    ).toBe(0);
+  });
+
+  it("上・左へ寄せ（min）：梁の外側の面が小さい柱の面（-200）に付く", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girderAlign: { "x:0,0": "min" },
+    };
+    // 梁の上面が -200 の面に付く → 芯から 150-200 = -50（上へ50）
+    expect(girderOffset(f, "x:0,0", girderHalf, colHalf)).toBe(-50);
+    // 縦の梁（y:0,0）は左端寄せ：C1 の面 -275 に付く → 150-275 = -125
+    const f2: FireproofDrawingFloor = {
+      ...floor,
+      girderAlign: { "y:0,0": "min" },
+    };
+    expect(girderOffset(f2, "y:0,0", girderHalf, colHalf)).toBe(-125);
+  });
+
+  it("下・右へ寄せ（max）：反対側の面に付く", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girderAlign: { "x:0,1": "max", "y:1,0": "max" },
+    };
+    expect(girderOffset(f, "x:0,1", girderHalf, colHalf)).toBe(50);
+    // 縦の梁は右端の面＝ C2の面 +200 → 200-150 = +50
+    expect(girderOffset(f, "y:1,0", girderHalf, colHalf)).toBe(50);
+  });
+
+  it("寸法が分からない柱は、図に描かれる面（半幅120）に合わせる", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girderAlign: { "x:0,0": "max" },
+    };
+    const unknown = () => null;
+    // 両端とも寸法不明 → 面は ±120 → 芯から 120-150 = -30
+    expect(girderOffset(f, "x:0,0", girderHalf, unknown)).toBe(-30);
+    // 柱がまったく無い端だけは芯（0）
+    const noCol: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000],
+      ySpans: [6000],
+      girders: { "x:0,0": "G1" },
+      girderAlign: { "x:0,0": "max" },
+    };
+    expect(girderOffset(noCol, "x:0,0", girderHalf, unknown)).toBe(-150);
+    // 片端にだけ柱があるときは、その柱の面に合わせる
+    const oneCol: FireproofDrawingFloor = {
+      ...noCol,
+      columns: { "0,0": "C1" },
+    };
+    const c1 = (s: string) =>
+      s === "C1" ? { hw: 200, hd: 200 } : null;
+    expect(girderOffset(oneCol, "x:0,0", girderHalf, c1)).toBe(50);
+  });
+
+  it("端寄せした大梁は区画の境界もその位置になる（小梁の内内も連動）", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girderAlign: { "x:0,0": "max" }, // 上辺の梁が下へ50
+      beams: [{ x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B40" }],
+    };
+    const region = enclosingRegion(f, 3000, 3000, girderHalf, true, colHalf);
+    expect(region).toMatchObject({ y: 50, height: 5950 });
+    const refit = refitBeams(f, girderHalf, colHalf);
+    expect(refit[0]).toEqual({
+      x1: 3000,
+      y1: 200, // 上辺の梁（芯50・半幅150）の内側の面に止まる
+      x2: 3000,
+      y2: 5850,
+      symbol: "B40",
+    });
   });
 });
 

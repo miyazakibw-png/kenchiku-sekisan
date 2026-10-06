@@ -17,9 +17,21 @@ export interface FireproofDrawingBeam {
     小梁の端を線の内側（内内寸法）に寄せる量としても使う */
 export const GIRDER_HALF = 75; // 大梁（幅が不明なとき150mm幅で描く）
 export const BEAM_HALF = 60; // 小梁（幅が不明なとき120mm幅で描く）
+/** 柱の四角の半幅（mm）。寸法が分からない柱の描き幅・端寄せの面に使う */
+export const COLUMN_HALF = 120;
 
 /** 区画の境界線の半幅（mm）→ 内内寸法を出す量。部材幅の半分 */
 export type HalfWidthOf = (symbol: string) => number | null;
+
+/** 柱記号→柱の四角の半分（横×縦 mm）。大梁の端寄せの面の位置に使う */
+export type ColumnHalfOf = (
+  symbol: string,
+) => { hw: number; hd: number } | null;
+
+/** 大梁の位置合わせ。無い・"center"は柱芯どおり（中央）。
+   "min"：横の梁は上端寄せ・縦の梁は左端寄せ（梁の外側の面が柱の面に付く）
+   "max"：下端寄せ・右端寄せ。両端の柱の大きさが違うときは小さいほうの面に合わせる */
+export type GirderAlign = "min" | "max";
 
 /** まわりを囲む線でできた区画（大梁・小梁の線を境界とする） */
 export interface DrawingRegion {
@@ -43,6 +55,8 @@ export interface FireproofDrawingFloor {
   columns: Record<string, string>;
   /** 柱間区間ごとの大梁記号。キー "x:xi,yi"（xi,yiの交点から右へ1区間）・"y:xi,yi"（下へ1区間）→ "G1" など */
   girders: Record<string, string>;
+  /** 大梁の位置合わせ（キーはgirdersと同じ）。無い区間は中央（柱芯どおり） */
+  girderAlign?: Record<string, GirderAlign>;
   /** 小梁（区画を分割して置く線） */
   beams: FireproofDrawingBeam[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
@@ -101,6 +115,16 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
     ySpans: numberList(row.ySpans),
     columns: stringMap(row.columns),
     girders: stringMap(row.girders),
+    girderAlign: (() => {
+      const map = row.girderAlign;
+      if (map === null || typeof map !== "object" || Array.isArray(map))
+        return undefined;
+      const out: Record<string, GirderAlign> = {};
+      Object.entries(map).forEach(([key, value]) => {
+        if (value === "min" || value === "max") out[key] = value;
+      });
+      return Object.keys(out).length > 0 ? out : undefined;
+    })(),
     beams: Array.isArray(row.beams)
       ? row.beams
           .map((beam) => {
@@ -207,6 +231,55 @@ export function girderNumber(
   return nx * (ny + 1) + xi * ny + yi + 1;
 }
 
+/**
+ * 大梁の軸からのずらし量（mm。0＝中央／柱芯どおり）。
+ * "min"（上・左へ寄せ）：梁の外側の面が、両端の柱のうち小さいほうの面に付く位置へ。
+ * "max"（下・右へ寄せ）：反対側も同じ。柱が無い端・寸法が分からない柱は芯（0）として扱う。
+ */
+export function girderOffset(
+  floor: FireproofDrawingFloor,
+  key: string,
+  halfWidthOf?: HalfWidthOf,
+  columnHalfOf?: ColumnHalfOf,
+): number {
+  const align = floor.girderAlign?.[key];
+  const symbol = floor.girders[key];
+  if (
+    align === undefined ||
+    symbol === undefined ||
+    columnHalfOf === undefined
+  )
+    return 0;
+  const [axis, point] = key.split(":");
+  const [xi, yi] = point.split(",").map(Number);
+  const ends =
+    axis === "x"
+      ? [
+          [xi, yi],
+          [xi + 1, yi],
+        ]
+      : [
+          [xi, yi],
+          [xi, yi + 1],
+        ];
+  const faces = ends
+    .map(([ax, ay]) => {
+      const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
+      if (sym === "") return null;
+      // 寸法が分からない柱も図には描かれるので、その面に合わせる
+      const size = columnHalfOf(sym) ?? {
+        hw: COLUMN_HALF,
+        hd: COLUMN_HALF,
+      };
+      return axis === "x" ? size.hd : size.hw;
+    })
+    .filter((v): v is number => v !== null);
+  // 柱の無い端は除き、両端にある場合は小さいほうの柱の面に合わせる
+  const face = faces.length === 0 ? 0 : Math.min(...faces);
+  const gh = halfWidthOf?.(symbol) ?? GIRDER_HALF;
+  return align === "min" ? gh - face : face - gh;
+}
+
 /** X軸の柱線につける通し番号（左から 1,2,3…。数は柱線＝寸法+1本） */
 export function xGridLabel(index: number): string {
   return String(index + 1);
@@ -237,6 +310,8 @@ export function enclosingRegion(
   halfWidthOf?: HalfWidthOf,
   /** false にすると小梁を境界に使わない（大梁だけで囲まれた区画） */
   includeBeams = true,
+  /** 柱記号→柱の四角の半分。端寄せした大梁の位置（区画の境界）に使う */
+  columnHalfOf?: ColumnHalfOf,
 ): DrawingRegion | null {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
@@ -258,7 +333,9 @@ export function enclosingRegion(
       yi < ys.length
     )
       hLines.push({
-        y: ys[yi],
+        y:
+          ys[yi] +
+          girderOffset(floor, key, halfWidthOf, columnHalfOf),
         x1: xs[xi],
         x2: xs[xi + 1],
         half: girderHalf(symbol),
@@ -271,7 +348,9 @@ export function enclosingRegion(
       xi < xs.length
     )
       vLines.push({
-        x: xs[xi],
+        x:
+          xs[xi] +
+          girderOffset(floor, key, halfWidthOf, columnHalfOf),
         y1: ys[yi],
         y2: ys[yi + 1],
         half: girderHalf(symbol),
@@ -380,11 +459,19 @@ export function beamLength(beam: FireproofDrawingBeam): number {
 export function refitBeams(
   floor: FireproofDrawingFloor,
   halfWidthOf?: HalfWidthOf,
+  columnHalfOf?: ColumnHalfOf,
 ): FireproofDrawingBeam[] {
   return floor.beams.map((beam) => {
     const mx = (beam.x1 + beam.x2) / 2;
     const my = (beam.y1 + beam.y2) / 2;
-    const region = enclosingRegion(floor, mx, my, halfWidthOf);
+    const region = enclosingRegion(
+      floor,
+      mx,
+      my,
+      halfWidthOf,
+      true,
+      columnHalfOf,
+    );
     if (region === null) return beam;
     if (beam.x1 === beam.x2)
       return {
