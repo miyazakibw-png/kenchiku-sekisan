@@ -70,9 +70,9 @@ describe("交点・区間の番号付け", () => {
 
 describe("通し芯ラベル", () => {
   it("X軸は丸数字、Y軸はアルファベット", () => {
-    expect(xGridLabel(0)).toBe("①");
-    expect(xGridLabel(9)).toBe("⑩");
-    expect(xGridLabel(20)).toBe("(21)");
+    expect(xGridLabel(0)).toBe("1");
+    expect(xGridLabel(9)).toBe("10");
+    expect(xGridLabel(20)).toBe("21");
     expect(yGridLabel(0)).toBe("A");
     expect(yGridLabel(25)).toBe("Z");
     expect(yGridLabel(26)).toBe("AA");
@@ -108,12 +108,20 @@ describe("区画の検出（まわりを囲む線）", () => {
       y: 0,
       width: 6000,
       height: 5000,
+      insetLeft: 75,
+      insetRight: 75,
+      insetTop: 75,
+      insetBottom: 75,
     });
     expect(enclosingRegion(floor, 9000, 7500)).toEqual({
       x: 6000,
       y: 5000,
       width: 6000,
       height: 5000,
+      insetLeft: 75,
+      insetRight: 75,
+      insetTop: 75,
+      insetBottom: 75,
     });
   });
 
@@ -130,12 +138,20 @@ describe("区画の検出（まわりを囲む線）", () => {
       y: 0,
       width: 4000,
       height: 5000,
+      insetLeft: 75,
+      insetRight: 60,
+      insetTop: 75,
+      insetBottom: 75,
     });
     expect(enclosingRegion(withBeam, 5000, 2500)).toEqual({
       x: 4000,
       y: 0,
       width: 2000,
       height: 5000,
+      insetLeft: 60,
+      insetRight: 75,
+      insetTop: 75,
+      insetBottom: 75,
     });
   });
 
@@ -167,6 +183,24 @@ describe("小梁の配置・調整", () => {
       { x1: 0, y1: 3000, x2: 9000, y2: 3000, symbol: "B25" },
     ]);
     expect(dividedBeams(region, "v", 1, "B40")).toEqual([]);
+  });
+
+  it("境界の半幅がある区画では小梁の端を線の内側（内内寸法）に寄せる", () => {
+    const inset = {
+      ...region,
+      insetLeft: 75,
+      insetRight: 75,
+      insetTop: 75,
+      insetBottom: 60,
+    };
+    const v = dividedBeams(inset, "v", 2, "B40");
+    expect(v).toEqual([
+      { x1: 4500, y1: 75, x2: 4500, y2: 5940, symbol: "B40" },
+    ]);
+    const h = dividedBeams(inset, "h", 2, "B25");
+    expect(h).toEqual([
+      { x1: 75, y1: 3000, x2: 8925, y2: 3000, symbol: "B25" },
+    ]);
   });
 
   it("長さと微調整（縦は左右・横は上下）", () => {

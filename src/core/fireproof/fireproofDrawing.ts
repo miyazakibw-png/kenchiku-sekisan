@@ -13,12 +13,21 @@ export interface FireproofDrawingBeam {
   symbol: string;
 }
 
+/** 線の描き幅の半分（mm）。小梁の端を線の内側（内内寸法）に寄せる量としても使う */
+export const GIRDER_HALF = 75; // 大梁
+export const BEAM_HALF = 60; // 小梁
+
 /** まわりを囲む線でできた区画（大梁・小梁の線を境界とする） */
 export interface DrawingRegion {
   x: number;
   y: number;
   width: number;
   height: number;
+  /** 各辺を作った線の半幅。左の境界線の半幅が insetLeft に入る（小梁の端は中心線ではなく線の内側） */
+  insetLeft?: number;
+  insetRight?: number;
+  insetTop?: number;
+  insetBottom?: number;
 }
 
 export interface FireproofDrawingFloor {
@@ -194,10 +203,9 @@ export function girderNumber(
   return nx * (ny + 1) + xi * ny + yi + 1;
 }
 
-/** X軸の柱線につける通し番号（①②③…。数は柱線＝寸法+1本） */
+/** X軸の柱線につける通し番号（左から 1,2,3…。数は柱線＝寸法+1本） */
 export function xGridLabel(index: number): string {
-  const circled = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
-  return index < circled.length ? circled[index] : `(${index + 1})`;
+  return String(index + 1);
 }
 
 /** Y軸の柱線につける記号（A,B,C…Z,AA,AB…） */
@@ -224,10 +232,10 @@ export function enclosingRegion(
 ): DrawingRegion | null {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
-  /** 縦の境界線（xの位置とその線があるy区間） */
-  const vLines: { x: number; y1: number; y2: number }[] = [];
+  /** 縦の境界線（xの位置・その線があるy区間・線の半幅） */
+  const vLines: { x: number; y1: number; y2: number; half: number }[] = [];
   /** 横の境界線 */
-  const hLines: { y: number; x1: number; x2: number }[] = [];
+  const hLines: { y: number; x1: number; x2: number; half: number }[] = [];
   Object.keys(floor.girders).forEach((key) => {
     const [axis, point] = key.split(":");
     const [xi, yi] = point.split(",").map(Number);
@@ -238,7 +246,7 @@ export function enclosingRegion(
       yi >= 0 &&
       yi < ys.length
     )
-      hLines.push({ y: ys[yi], x1: xs[xi], x2: xs[xi + 1] });
+      hLines.push({ y: ys[yi], x1: xs[xi], x2: xs[xi + 1], half: GIRDER_HALF });
     if (
       axis === "y" &&
       yi >= 0 &&
@@ -246,7 +254,7 @@ export function enclosingRegion(
       xi >= 0 &&
       xi < xs.length
     )
-      vLines.push({ x: xs[xi], y1: ys[yi], y2: ys[yi + 1] });
+      vLines.push({ x: xs[xi], y1: ys[yi], y2: ys[yi + 1], half: GIRDER_HALF });
   });
   floor.beams.forEach((beam) => {
     if (beam.x1 === beam.x2)
@@ -254,36 +262,64 @@ export function enclosingRegion(
         x: beam.x1,
         y1: Math.min(beam.y1, beam.y2),
         y2: Math.max(beam.y1, beam.y2),
+        half: BEAM_HALF,
       });
     if (beam.y1 === beam.y2)
       hLines.push({
         y: beam.y1,
         x1: Math.min(beam.x1, beam.x2),
         x2: Math.max(beam.x1, beam.x2),
+        half: BEAM_HALF,
       });
   });
   let left = -Infinity;
   let right = Infinity;
   let top = -Infinity;
   let bottom = Infinity;
+  let insetLeft = 0;
+  let insetRight = 0;
+  let insetTop = 0;
+  let insetBottom = 0;
   vLines.forEach((line) => {
     if (line.y1 > py || py > line.y2) return;
-    if (line.x < px && line.x > left) left = line.x;
-    if (line.x > px && line.x < right) right = line.x;
+    if (line.x < px && line.x > left) {
+      left = line.x;
+      insetLeft = line.half;
+    }
+    if (line.x > px && line.x < right) {
+      right = line.x;
+      insetRight = line.half;
+    }
   });
   hLines.forEach((line) => {
     if (line.x1 > px || px > line.x2) return;
-    if (line.y < py && line.y > top) top = line.y;
-    if (line.y > py && line.y < bottom) bottom = line.y;
+    if (line.y < py && line.y > top) {
+      top = line.y;
+      insetTop = line.half;
+    }
+    if (line.y > py && line.y < bottom) {
+      bottom = line.y;
+      insetBottom = line.half;
+    }
   });
   if (!Number.isFinite(left + right + top + bottom)) return null;
-  return { x: left, y: top, width: right - left, height: bottom - top };
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+    insetLeft,
+    insetRight,
+    insetTop,
+    insetBottom,
+  };
 }
 
 /**
  * 区画を等分割する小梁の並びを返す。
  * parts は「でき上がる区画の数」。置く線は parts-1 本。
  * axis "v"：縦の小梁で横に分ける、"h"：横の小梁で縦に分ける。
+ * 小梁の端は区画を囲む線の内側（内内寸法。境界の半幅ぶんだけ中へ寄せる）。
  */
 export function dividedBeams(
   region: DrawingRegion,
@@ -292,26 +328,18 @@ export function dividedBeams(
   symbol: string,
 ): FireproofDrawingBeam[] {
   if (parts < 2) return [];
+  const left = region.x + (region.insetLeft ?? 0);
+  const right = region.x + region.width - (region.insetRight ?? 0);
+  const top = region.y + (region.insetTop ?? 0);
+  const bottom = region.y + region.height - (region.insetBottom ?? 0);
   const beams: FireproofDrawingBeam[] = [];
   for (let i = 1; i < parts; i += 1) {
     if (axis === "v") {
       const x = region.x + (region.width * i) / parts;
-      beams.push({
-        x1: x,
-        y1: region.y,
-        x2: x,
-        y2: region.y + region.height,
-        symbol,
-      });
+      beams.push({ x1: x, y1: top, x2: x, y2: bottom, symbol });
     } else {
       const y = region.y + (region.height * i) / parts;
-      beams.push({
-        x1: region.x,
-        y1: y,
-        x2: region.x + region.width,
-        y2: y,
-        symbol,
-      });
+      beams.push({ x1: left, y1: y, x2: right, y2: y, symbol });
     }
   }
   return beams;

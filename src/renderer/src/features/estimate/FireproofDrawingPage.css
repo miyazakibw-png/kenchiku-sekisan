@@ -298,12 +298,30 @@
   font-weight: bold;
 }
 
-/* 選んだ区画の色付け */
+/* 選んだ区画・入力欄に対応する場所の色付け */
 .fireproof-drawing-svg .selection {
   fill: rgba(255, 224, 138, 0.35);
   stroke: #d9a400;
   stroke-width: 50;
   stroke-dasharray: 320 180;
+}
+
+/* リストに無い記号（エラー） */
+.fireproof-drawing-svg .bad line {
+  stroke: #d03030;
+}
+.fireproof-drawing-svg .bad text {
+  fill: #d03030;
+  font-weight: bold;
+}
+.fireproof-drawing-svg .bad rect {
+  stroke: #d03030;
+  fill: rgba(208, 48, 48, 0.12);
+}
+.fireproof-drawing-page .symbol-row input.bad {
+  color: #d03030;
+  border-color: #d03030;
+  background: #fff5f5;
 }
 
 .fireproof-drawing-svg .number text {
