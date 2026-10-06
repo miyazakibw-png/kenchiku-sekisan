@@ -51,6 +51,12 @@ const SHAPE_OPTIONS: { value: SteelShape | ""; label: string }[] = [
   { value: "h", label: "Ｈ" },
 ];
 
+/** 階高はmmで保存、画面ではmで見せる・受け取る（3800 ↔ "3.8"） */
+function heightMetersText(mm: number): string {
+  const m = mm / 1000;
+  return Number.isInteger(m) ? String(m) : String(Math.round(m * 1000) / 1000);
+}
+
 interface SizeInputProps {
   size: { shape: SteelShape | ""; first: number | null; second: number | null };
   placeholder: string;
@@ -655,23 +661,35 @@ function FloorListSection({
                     <input
                       lang="en"
                       inputMode="decimal"
-                      value={floor.height ?? ""}
-                      placeholder={
-                        resolveFloorHeight(list.floors, floorIndex)
-                          ?.toLocaleString("ja-JP") ?? "mm"
+                      value={
+                        floor.height === null || floor.height === undefined
+                          ? ""
+                          : heightMetersText(floor.height)
                       }
-                      title="階高（mm）。空欄は下の階の数字を使います"
+                      placeholder={(() => {
+                        const inherited = resolveFloorHeight(
+                          list.floors,
+                          floorIndex,
+                        );
+                        return inherited === null
+                          ? "m"
+                          : heightMetersText(inherited);
+                      })()}
+                      title="階高（m、例 3.8）。空欄は下の階の数字を使います"
                       onChange={(event) => {
                         const text = toHalfWidth(
                           event.target.value,
-                        ).trim();
+                        ).trim().replaceAll(",", ".");
                         if (text === "") {
                           changeFloorHeight(floorIndex, null);
                           return;
                         }
-                        const num = Number(text.replaceAll(",", ""));
-                        if (Number.isFinite(num) && num >= 0)
-                          changeFloorHeight(floorIndex, num);
+                        const meters = Number(text);
+                        if (Number.isFinite(meters) && meters >= 0)
+                          changeFloorHeight(
+                            floorIndex,
+                            Math.round(meters * 1000),
+                          );
                       }}
                     />
                   </td>
@@ -682,7 +700,7 @@ function FloorListSection({
                     title="この行の上へ行を足す"
                     onClick={() => addFloor(floorIndex)}
                   >
-                    ⇤
+                    ↑
                   </button>
                   <button
                     type="button"
@@ -852,7 +870,7 @@ function CommonListSection({
             commit(next);
           }}
         >
-          ⇤ リスト行挿入
+          ↑ リスト行挿入
         </button>
         <button
           type="button"
