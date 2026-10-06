@@ -312,6 +312,13 @@
   stroke-dasharray: 320 180;
 }
 
+/* 大梁リストで範囲指定した分（青系の点線） */
+.fireproof-drawing-svg .selection.girder-sel {
+  fill: rgba(150, 195, 255, 0.25);
+  stroke: #4a80c0;
+  stroke-dasharray: 240 160;
+}
+
 /* リストに無い記号（エラー） */
 .fireproof-drawing-svg .bad line {
   stroke: #d03030;

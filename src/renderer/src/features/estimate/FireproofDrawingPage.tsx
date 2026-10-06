@@ -169,6 +169,7 @@ function SymbolList({
   emptyHint,
   onActiveRow,
   known,
+  onSelChange,
 }: {
   rows: SymbolRow[];
   values: Record<string, string>;
@@ -178,6 +179,8 @@ function SymbolList({
   onActiveRow?: (row: SymbolRow) => void;
   /** リストに登録済みの記号。これに無い記号は入力欄を赤くする */
   known?: ReadonlySet<string>;
+  /** 範囲指定の変化を外へ知らせる（図に点線の範囲を出す用） */
+  onSelChange?: (sel: { from: number; to: number } | null) => void;
 }): JSX.Element {
   const [sel, setSel] = useState<{ from: number; to: number } | null>(null);
   const dragSel = useRef(false);
@@ -190,6 +193,10 @@ function SymbolList({
     window.addEventListener("mouseup", up);
     return () => window.removeEventListener("mouseup", up);
   }, []);
+
+  useEffect(() => {
+    onSelChange?.(sel);
+  }, [sel, onSelChange]);
 
   const inSel = (index: number): boolean =>
     sel !== null &&
@@ -389,6 +396,7 @@ function FloorSvg({
   regions,
   focus,
   selectedBeams,
+  girderSel,
   onRegionClick,
   onBeamPointerDown,
   onPointerMove,
@@ -404,6 +412,8 @@ function FloorSvg({
 }: {
   floor: FireproofDrawingFloor;
   regions: DrawingRegion[];
+  /** ③大梁リストで範囲指定した梁（点線で図に出す） */
+  girderSel?: ReadonlySet<string>;
   focus: { x: number; y: number; width: number; height: number } | null;
   selectedBeams: ReadonlySet<number>;
   onRegionClick: (x: number, y: number, additive: boolean) => void;
@@ -484,6 +494,47 @@ function FloorSvg({
           height={focus.height}
         />
       )}
+      {/* ③大梁リストで範囲指定した分を点線で示す */}
+      {girderSel !== undefined &&
+        [...girderSel].map((key) => {
+          const [axis, point] = key.split(":");
+          const [xi, yi] = point.split(",").map(Number);
+          if (
+            axis === "x" &&
+            xi >= 0 &&
+            xi < xs.length - 1 &&
+            yi >= 0 &&
+            yi < ys.length
+          )
+            return (
+              <rect
+                key={`gs${key}`}
+                className="selection girder-sel"
+                x={xs[xi]}
+                y={ys[yi] - 500}
+                width={xs[xi + 1] - xs[xi]}
+                height={1000}
+              />
+            );
+          if (
+            axis === "y" &&
+            yi >= 0 &&
+            yi < ys.length - 1 &&
+            xi >= 0 &&
+            xi < xs.length
+          )
+            return (
+              <rect
+                key={`gs${key}`}
+                className="selection girder-sel"
+                x={xs[xi] - 500}
+                y={ys[yi]}
+                width={1000}
+                height={ys[yi + 1] - ys[yi]}
+              />
+            );
+          return null;
+        })}
       {/* 大梁（柱間の区間。2本線で描く。端は柱の面＝柱の四角の端。
           柱の大きさはリストの寸法で、無いときは決まった大きさ） */}
       <g className="girder">
@@ -701,6 +752,10 @@ function FloorSvg({
           : undefined
       }
       onClick={(event) => {
+        // 梁・柱・寸法・芯記号など部品の上のクリックは区画選びにしない
+        // （区画を選ぶ途中でうっかり線を触っても選択が消えないように）
+        const hit = event.target as Element;
+        if (hit.closest(".beam, .girder, .column, .axis, .dim")) return;
         const svg = event.currentTarget;
         const point = svg.createSVGPoint();
         point.x = event.clientX;
@@ -782,6 +837,13 @@ export default function FireproofDrawingPage({
   /* 小梁の一覧で範囲指定（番号のところを押して動かす・Shift+クリックで広げる）。
      fromが押した基点・toが広げた先 */
   const [selBeamRange, setSelBeamRange] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  /* 最後に触ったのが「区画」か「小梁」か。Ctrl+Cでどちらを写すかの目安にする */
+  const selFocusRef = useRef<"region" | "beam">("region");
+  /* ③大梁リストで範囲指定した分。図に点線の範囲を出す */
+  const [girderSelRange, setGirderSelRange] = useState<{
     from: number;
     to: number;
   } | null>(null);
@@ -1128,6 +1190,7 @@ export default function FireproofDrawingPage({
       });
       setSelBeam(null);
       setSelBeamRange(null);
+      selFocusRef.current = "region";
       setFocusTarget(null);
     },
     [current, halfWidthOf],
@@ -1163,7 +1226,7 @@ export default function FireproofDrawingPage({
       };
       setSelBeam(index);
       setSelBeamRange(null);
-      setRegions([]);
+      selFocusRef.current = "beam"; // 区画を選んでいる途中でも小梁を触れる（区画の選択は残す）
       setFocusTarget({ kind: "beam", index });
     },
     [current, drawing],
@@ -1395,12 +1458,18 @@ export default function FireproofDrawingPage({
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
-      if (key === "c" && regions.length > 0) {
-        copyRegion();
-        event.preventDefault();
-      } else if (key === "c" && selBeamSet.size > 0) {
-        copySelBeams();
-        event.preventDefault();
+      if (key === "c") {
+        // 最後に触ったほうを写す（入力行を範囲指定したあとは小梁を写す）
+        if (selFocusRef.current === "beam" && selBeamSet.size > 0) {
+          copySelBeams();
+          event.preventDefault();
+        } else if (regions.length > 0) {
+          copyRegion();
+          event.preventDefault();
+        } else if (selBeamSet.size > 0) {
+          copySelBeams();
+          event.preventDefault();
+        }
       }
       if (key === "v" && regions.length > 0 && clipBeams.length > 0) {
         pasteBeams();
@@ -1545,6 +1614,19 @@ export default function FireproofDrawingPage({
         key: girderKey("y", xi, yi),
         gap: yi === ny - 1,
       });
+
+  /* ③大梁リストで範囲指定した行のキー（図に点線の範囲を出す） */
+  const girderSel =
+    girderSelRange === null
+      ? undefined
+      : new Set(
+          girderRows
+            .slice(
+              Math.min(girderSelRange.from, girderSelRange.to),
+              Math.max(girderSelRange.from, girderSelRange.to) + 1,
+            )
+            .map((row) => row.key),
+        );
 
   /* 記号→図に出す寸法の文字。柱は「□-500*500」（その階の柱リスト）、
      梁は「500*300」の後ろの数字「300」（ひとつ上の階の梁リスト：1Fの図は梁2F） */
@@ -1703,7 +1785,10 @@ export default function FireproofDrawingPage({
                 key={name}
                 type="button"
                 className={name === floor ? "tab on" : "tab"}
-                onClick={() => setFloor(name)}
+                onClick={() => {
+                  setFloor(name);
+                  setGirderSelRange(null);
+                }}
               >
                 {label}
               </button>
@@ -1819,6 +1904,7 @@ export default function FireproofDrawingPage({
               onActiveRow={(row) =>
                 setFocusTarget({ kind: "girder", key: row.key })
               }
+              onSelChange={setGirderSelRange}
               known={knownBeams}
             />
           </section>
@@ -1920,6 +2006,7 @@ export default function FireproofDrawingPage({
                           rowClickSuppressRef.current = false;
                           return;
                         }
+                        selFocusRef.current = "beam";
                         if (event.shiftKey) {
                           setSelBeamRange({
                             from: beamAnchorRef.current ?? selBeam ?? index,
@@ -1944,6 +2031,7 @@ export default function FireproofDrawingPage({
                           beamAnchorRef.current = index;
                           setSelBeam(index);
                           setSelBeamRange({ from: index, to: index });
+                          selFocusRef.current = "beam";
                           setFocusTarget({ kind: "beam", index });
                         }}
                       >
@@ -1998,6 +2086,7 @@ export default function FireproofDrawingPage({
                 regions={regions}
                 focus={focusRect}
                 selectedBeams={selBeamSet}
+                girderSel={girderSel}
                 onRegionClick={handleRegionClick}
                 onBeamPointerDown={handleBeamPointerDown}
                 onPointerMove={handleBeamPointerMove}
