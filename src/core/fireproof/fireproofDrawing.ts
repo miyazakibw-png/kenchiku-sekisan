@@ -3,6 +3,24 @@
  * 柱線寸法線 → 交点の柱 → 柱間の大梁 を「番号に記号を入れる」だけで描く作り。
  */
 
+/** 小梁1本。大梁に囲まれた区画を等分割して置く（端点はmm） */
+export interface FireproofDrawingBeam {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** 記号（B40 など） */
+  symbol: string;
+}
+
+/** まわりを囲む線でできた区画（大梁・小梁の線を境界とする） */
+export interface DrawingRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface FireproofDrawingFloor {
   /** X軸方向の柱線寸法（mm）。例 [7300, 7650, 7300] */
   xSpans: number[];
@@ -12,6 +30,8 @@ export interface FireproofDrawingFloor {
   columns: Record<string, string>;
   /** 柱間区間ごとの大梁記号。キー "x:xi,yi"（xi,yiの交点から右へ1区間）・"y:xi,yi"（下へ1区間）→ "G1" など */
   girders: Record<string, string>;
+  /** 小梁（区画を分割して置く線） */
+  beams: FireproofDrawingBeam[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
   image: string;
   /** 書き出した画像の 1mm あたり画素数（呼び出す側の縮尺に使う） */
@@ -34,6 +54,7 @@ export function emptyFloor(): FireproofDrawingFloor {
     ySpans: [],
     columns: {},
     girders: {},
+    beams: [],
     image: "",
     pixelsPerMm: 0,
     imageWidth: 0,
@@ -67,6 +88,24 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
     ySpans: numberList(row.ySpans),
     columns: stringMap(row.columns),
     girders: stringMap(row.girders),
+    beams: Array.isArray(row.beams)
+      ? row.beams
+          .map((beam) => {
+            if (beam === null || typeof beam !== "object") return null;
+            const row2 = beam as Partial<FireproofDrawingBeam>;
+            const ends = [row2.x1, row2.y1, row2.x2, row2.y2];
+            if (!ends.every((end) => typeof end === "number" && Number.isFinite(end)))
+              return null;
+            return {
+              x1: row2.x1 as number,
+              y1: row2.y1 as number,
+              x2: row2.x2 as number,
+              y2: row2.y2 as number,
+              symbol: typeof row2.symbol === "string" ? row2.symbol.trim() : "",
+            };
+          })
+          .filter((beam): beam is FireproofDrawingBeam => beam !== null)
+      : [],
     image: typeof row.image === "string" ? row.image : "",
     pixelsPerMm:
       typeof row.pixelsPerMm === "number" && row.pixelsPerMm > 0
@@ -170,4 +209,124 @@ export function yGridLabel(index: number): string {
     rest = Math.floor(rest / 26) - 1;
     if (rest < 0) return label;
   }
+}
+
+/**
+ * クリックした点をまわりで囲んでいる区画を返す。
+ * 境界に使う線は大梁（記号を入れた区間）と、すでに置いた小梁。
+ * 点に一番近い線を上下左右に探して、4辺そろったときだけ区画になる。
+ * （小梁が作る小さい区画も同じ手順で選べる）
+ */
+export function enclosingRegion(
+  floor: FireproofDrawingFloor,
+  px: number,
+  py: number,
+): DrawingRegion | null {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  /** 縦の境界線（xの位置とその線があるy区間） */
+  const vLines: { x: number; y1: number; y2: number }[] = [];
+  /** 横の境界線 */
+  const hLines: { y: number; x1: number; x2: number }[] = [];
+  Object.keys(floor.girders).forEach((key) => {
+    const [axis, point] = key.split(":");
+    const [xi, yi] = point.split(",").map(Number);
+    if (
+      axis === "x" &&
+      xi >= 0 &&
+      xi < xs.length - 1 &&
+      yi >= 0 &&
+      yi < ys.length
+    )
+      hLines.push({ y: ys[yi], x1: xs[xi], x2: xs[xi + 1] });
+    if (
+      axis === "y" &&
+      yi >= 0 &&
+      yi < ys.length - 1 &&
+      xi >= 0 &&
+      xi < xs.length
+    )
+      vLines.push({ x: xs[xi], y1: ys[yi], y2: ys[yi + 1] });
+  });
+  floor.beams.forEach((beam) => {
+    if (beam.x1 === beam.x2)
+      vLines.push({
+        x: beam.x1,
+        y1: Math.min(beam.y1, beam.y2),
+        y2: Math.max(beam.y1, beam.y2),
+      });
+    if (beam.y1 === beam.y2)
+      hLines.push({
+        y: beam.y1,
+        x1: Math.min(beam.x1, beam.x2),
+        x2: Math.max(beam.x1, beam.x2),
+      });
+  });
+  let left = -Infinity;
+  let right = Infinity;
+  let top = -Infinity;
+  let bottom = Infinity;
+  vLines.forEach((line) => {
+    if (line.y1 > py || py > line.y2) return;
+    if (line.x < px && line.x > left) left = line.x;
+    if (line.x > px && line.x < right) right = line.x;
+  });
+  hLines.forEach((line) => {
+    if (line.x1 > px || px > line.x2) return;
+    if (line.y < py && line.y > top) top = line.y;
+    if (line.y > py && line.y < bottom) bottom = line.y;
+  });
+  if (!Number.isFinite(left + right + top + bottom)) return null;
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * 区画を等分割する小梁の並びを返す。
+ * parts は「でき上がる区画の数」。置く線は parts-1 本。
+ * axis "v"：縦の小梁で横に分ける、"h"：横の小梁で縦に分ける。
+ */
+export function dividedBeams(
+  region: DrawingRegion,
+  axis: "v" | "h",
+  parts: number,
+  symbol: string,
+): FireproofDrawingBeam[] {
+  if (parts < 2) return [];
+  const beams: FireproofDrawingBeam[] = [];
+  for (let i = 1; i < parts; i += 1) {
+    if (axis === "v") {
+      const x = region.x + (region.width * i) / parts;
+      beams.push({
+        x1: x,
+        y1: region.y,
+        x2: x,
+        y2: region.y + region.height,
+        symbol,
+      });
+    } else {
+      const y = region.y + (region.height * i) / parts;
+      beams.push({
+        x1: region.x,
+        y1: y,
+        x2: region.x + region.width,
+        y2: y,
+        symbol,
+      });
+    }
+  }
+  return beams;
+}
+
+/** 小梁の長さ（mm） */
+export function beamLength(beam: FireproofDrawingBeam): number {
+  return Math.hypot(beam.x2 - beam.x1, beam.y2 - beam.y1);
+}
+
+/** 小梁を軸と直角の方向へ delta mm 動かす（縦の梁は左右・横の梁は上下） */
+export function nudgeBeam(
+  beam: FireproofDrawingBeam,
+  delta: number,
+): FireproofDrawingBeam {
+  if (beam.x1 === beam.x2) return { ...beam, x1: beam.x1 + delta, x2: beam.x2 + delta };
+  return { ...beam, y1: beam.y1 + delta, y2: beam.y2 + delta };
 }

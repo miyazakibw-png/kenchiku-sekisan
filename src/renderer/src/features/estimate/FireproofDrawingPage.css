@@ -199,7 +199,129 @@
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
 }
 
+/* 小梁（区画を分割する線） */
+.fireproof-drawing-svg .beam line {
+  stroke: #7a4fc4;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .beam text {
+  fill: #5b34a8;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .beam .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.fireproof-drawing-svg .beam.on line {
+  stroke: #2f7dd1;
+}
+
+.fireproof-drawing-svg .beam.on text {
+  fill: #2f7dd1;
+  font-weight: bold;
+}
+
+/* 選んだ区画の色付け */
+.fireproof-drawing-svg .selection {
+  fill: rgba(255, 224, 138, 0.35);
+  stroke: #d9a400;
+  stroke-width: 50;
+  stroke-dasharray: 320 180;
+}
+
 .fireproof-drawing-svg .number text {
   fill: #aaa;
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+/* ④小梁の入力欄 */
+.fireproof-drawing-body .beam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fireproof-drawing-body .beam-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fireproof-drawing-body .beam-inputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.fireproof-drawing-body .beam-inputs input {
+  width: 6ch;
+  padding: 2px 4px;
+}
+
+.fireproof-drawing-body .beam-inputs input[type="number"] {
+  width: 4ch;
+}
+
+.fireproof-drawing-body .beam-inputs select {
+  padding: 2px 4px;
+}
+
+.fireproof-drawing-body .beam-ops {
+  display: flex;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .beam-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 26vh;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.fireproof-drawing-body .beam-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 1px solid #dde2ea;
+  border-radius: 3px;
+  background: #fafbfc;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .beam-row.on {
+  background: #e2eeff;
+  border-color: #2f7dd1;
+}
+
+.fireproof-drawing-body .beam-row .no {
+  flex: 0 0 2em;
+  text-align: right;
+  color: #888;
+}
+
+.fireproof-drawing-body .beam-row .at {
+  flex: 0 0 4.5em;
+  font-weight: bold;
+}
+
+.fireproof-drawing-body .beam-row .len {
+  flex: 1 1 0;
+  color: #444;
+}
+
+.fireproof-drawing-body .beam-row .del {
+  color: #b32020;
+  padding: 0 4px;
 }
