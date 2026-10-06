@@ -403,3 +403,86 @@ describe("耐火被覆・塗装入力表", () => {
     expect(rows[0].beamSheet.wallLabels).toHaveLength(BEAM_MARK_COUNT);
   });
 });
+
+describe("管理表の階ごとの数量内訳（集計書の根拠）", () => {
+  it("柱入力表の必要数を階ごとに合計し倍率をかける", async () => {
+    const { manageRowFloorQuantities } = await import(
+      "../../src/core/fireproof/fireproofEstimate"
+    );
+    const row: FireproofManageRow = {
+      ...newManageRow(),
+      multiplier: 2,
+      detail: { ...emptyManageDetail(), partName: "柱", name: "耐火被覆" },
+      sheet: {
+        thickness: 25,
+        rows: [
+          // 断面1×長さ3.42×倍数（リストに無い階でも計算できるよう断面は式で入れる）
+          columnRow({
+            floor: "1",
+            sectionFormula: "1",
+            count: 4,
+            mark: "3",
+            lengthFormula: "3.42",
+          }),
+          columnRow({
+            floor: "",
+            sectionFormula: "1",
+            count: 1,
+            mark: "3",
+            lengthFormula: "3.42",
+          }),
+          columnRow({
+            floor: "2",
+            sectionFormula: "1",
+            count: 2,
+            mark: "3",
+            lengthFormula: "3.42",
+          }),
+        ],
+      },
+    };
+    const basis = manageRowFloorQuantities(row, list());
+    // 1階＝(4+1)×3.42=17.1、2階＝2×3.42=6.84、倍率2
+    expect(basis).toEqual([
+      { floor: "1", quantity: 34.2 },
+      { floor: "2", quantity: 13.68 },
+    ]);
+  });
+
+  it("集計書の根拠の行が階別になる（汎用計算書や計算の無い行は今までどおり）", async () => {
+    const { aggregateItems } = await import(
+      "../../src/core/aggregate/aggregate"
+    );
+    const row: FireproofManageRow = {
+      ...newManageRow(),
+      part1: "内部",
+      detail: { ...emptyManageDetail(), partName: "柱", name: "耐火被覆" },
+      sheet: {
+        thickness: 25,
+        rows: [
+          columnRow({
+            floor: "1",
+            sectionFormula: "1",
+            count: 4,
+            mark: "3",
+            lengthFormula: "3.42",
+          }),
+          columnRow({
+            floor: "2",
+            sectionFormula: "1",
+            count: 4,
+            mark: "3",
+            lengthFormula: "3.42",
+          }),
+        ],
+      },
+    };
+    const entries = entriesFromFireproofSheet([row], list(), new Map());
+    const items = aggregateItems(entries);
+    expect(items).toHaveLength(1);
+    expect(items[0].rooms).toEqual([
+      { roomName: "1", quantity: 13.68 },
+      { roomName: "2", quantity: 13.68 },
+    ]);
+  });
+});

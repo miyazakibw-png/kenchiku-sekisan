@@ -65,6 +65,8 @@ export interface AggregateEntry {
   includeInRooms?: boolean;
   /** 根拠の部屋名に「× N」を付ける数（建具明細作成表＝行の数量。無いときは倍率） */
   roomCount?: number;
+  /** 階ごとの根拠（耐火被覆の数量を拾った階の内訳。あれば部屋別の根拠の代わりにこれを出す） */
+  floorBasis?: { floor: string; quantity: number }[];
 }
 
 /** 集計後の1明細（集計書兼工事マスターの1行＝画面では上下2行） */
@@ -266,10 +268,24 @@ export function aggregateItems(
       (entry.sourceKind !== "furniture" || entry.includeInRooms === true) &&
       entry.quantity !== 0
     ) {
-      const roomName = traceRoomName(entry);
-      const room = item.rooms.find((current) => current.roomName === roomName);
-      if (room) room.quantity = displayedValue(room.quantity + entry.quantity);
-      else item.rooms.push({ roomName, quantity: entry.quantity });
+      if (entry.floorBasis !== undefined) {
+        // 耐火被覆の分は階ごとの内訳を根拠に出す
+        entry.floorBasis.forEach(({ floor, quantity }) => {
+          const room = item.rooms.find(
+            (current) => current.roomName === floor,
+          );
+          if (room) room.quantity = displayedValue(room.quantity + quantity);
+          else item.rooms.push({ roomName: floor, quantity });
+        });
+      } else {
+        const roomName = traceRoomName(entry);
+        const room = item.rooms.find(
+          (current) => current.roomName === roomName,
+        );
+        if (room)
+          room.quantity = displayedValue(room.quantity + entry.quantity);
+        else item.rooms.push({ roomName, quantity: entry.quantity });
+      }
     }
     map.set(masterKey, item);
   });

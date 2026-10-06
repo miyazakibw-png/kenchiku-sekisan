@@ -622,6 +622,7 @@ export function entriesFromFireproofSheet(
       setTotal: quantity,
       quantity: displayedValue(quantity),
       sourceDetailId: null,
+      floorBasis: manageRowFloorQuantities(row, list, beamsList) ?? undefined,
     });
   });
   return entries;
@@ -659,6 +660,41 @@ export function adjacencyVariables(
     SC: slab[2],
     SD: slab[3],
   };
+}
+
+/**
+ * 管理表の行の階ごとの数量内訳（集計書の根拠表示用）。
+ * その行で選んだ計算書の必要数㎡を階ごとに合計し、倍率をかけた値を階の出た順で返す。
+ * 汎用計算書の行や計算が無い行は null（根拠は今までどおり1行で出す）。
+ */
+export function manageRowFloorQuantities(
+  row: FireproofManageRow,
+  columnsList: FireproofFloorList,
+  beamsList: FireproofFloorList = { floors: [], members: [] },
+): { floor: string; quantity: number }[] | null {
+  if (row.calcType === "general") return null;
+  const kind: FireproofSheetKind = row.calcType === "beam" ? "beam" : "column";
+  const sheet = row.calcType === "beam" ? row.beamSheet : row.sheet;
+  const list = row.calcType === "beam" ? beamsList : columnsList;
+  const floors = inheritedFloors(sheet.rows);
+  const byFloor = new Map<string, number>();
+  sheet.rows.forEach((raw, index) => {
+    const calc = calcSheetRow(
+      { ...raw, floor: floors[index] },
+      list,
+      sheet.thickness,
+      kind,
+    );
+    if (calc.needed === null) return;
+    const floor = floors[index];
+    byFloor.set(floor, (byFloor.get(floor) ?? 0) + calc.needed);
+  });
+  if (byFloor.size === 0) return null;
+  const multiplier = row.multiplier ?? 1;
+  return [...byFloor.entries()].map(([floor, needed]) => ({
+    floor: floor === "" ? "（階なし）" : floor,
+    quantity: needed * multiplier,
+  }));
 }
 
 /** 管理表の行の数量（その行で選んだ計算書の必要数合計×倍率。計算が無ければnull） */
