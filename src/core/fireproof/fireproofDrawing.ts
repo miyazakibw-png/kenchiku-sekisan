@@ -59,12 +59,15 @@ export interface FireproofDrawingFloor {
   girders: Record<string, string>;
   /** 大梁の位置合わせ（キーはgirdersと同じ）。無い区間は中央（柱芯どおり） */
   girderAlign?: Record<string, GirderAlign>;
-  /** 取合記号。キーは大梁の端 "g:x:0,0:0"（端0=小さいほうの交点側・1=大きいほう）
-     と小梁の端 "b:小梁id:0/1" */
+  /** 取合記号（耐火被覆の断面積算出用）。1部材に1記号。
+     キーは柱 "c:xi,yi"・大梁 "g:x:0,0"（girdersと同じ）・小梁 "b:小梁id" */
   jointSymbols?: Record<string, string>;
   /** 縦の通りごとの柱の高さ（mm）。キーは通りの番号（"0"が図のいちばん上の通り）。
      入っていない通りはその階の階高を使う */
   axisHeights?: Record<string, number>;
+  /** 横の通りごとの柱の高さ（mm）。キーは通りの番号（"0"が図のいちばん左の通り）。
+     入っていない通りはその階の階高を使う */
+  axisHeightsX?: Record<string, number>;
   /** 小梁（区画を分割して置く線） */
   beams: FireproofDrawingBeam[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
@@ -104,6 +107,17 @@ const numberList = (value: unknown): number[] =>
         .filter((item) => Number.isFinite(item) && item > 0)
     : [];
 
+const numberMap = (value: unknown): Record<string, number> | undefined => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const out: Record<string, number> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+    const num = Number(item);
+    if (Number.isFinite(num) && num > 0) out[key] = num;
+  });
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
 const stringMap = (value: unknown): Record<string, string> => {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     return {};
@@ -135,19 +149,17 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
     })(),
     jointSymbols: (() => {
       const map = stringMap(row.jointSymbols);
-      return Object.keys(map).length > 0 ? map : undefined;
-    })(),
-    axisHeights: (() => {
-      const map = row.axisHeights;
-      if (map === null || typeof map !== "object" || Array.isArray(map))
-        return undefined;
-      const out: Record<string, number> = {};
-      Object.entries(map).forEach(([key, value]) => {
-        const num = Number(value);
-        if (Number.isFinite(num) && num > 0) out[key] = num;
+      // 以前は端ごとのキー（"g:…:端"・"b:…:端"）だったが、今は1部材1記号。
+      // 端の番号を落として読み替える（両端で違ったら先に見つかったほうを使う）
+      const out: Record<string, string> = {};
+      Object.entries(map).forEach(([key, symbol]) => {
+        const member = key.replace(/:\d+$/, "");
+        if (!(member in out)) out[member] = symbol;
       });
       return Object.keys(out).length > 0 ? out : undefined;
     })(),
+    axisHeights: numberMap(row.axisHeights),
+    axisHeightsX: numberMap(row.axisHeightsX),
     beams: Array.isArray(row.beams)
       ? row.beams
           .map((beam) => {
@@ -486,34 +498,56 @@ export function axisHeightAt(
   return floor.axisHeights?.[String(yi)] ?? defaultHeight;
 }
 
-/** 勾配を含む小梁の実長（mm）。縦の梁は両端の通りの柱高さ差ぶん長くなる。
-   横の梁は勾配に乗らないので平図上の長さのまま */
+/** その横通りの柱の高さ（mm）。軸に入っていなければ階高を使う */
+export function axisHeightXAt(
+  floor: FireproofDrawingFloor,
+  xi: number,
+  defaultHeight: number,
+): number {
+  return floor.axisHeightsX?.[String(xi)] ?? defaultHeight;
+}
+
+/** pos にいちばん近い通りの番号 */
+function nearestAxis(axis: number[], pos: number): number {
+  let best = 0;
+  let dist = Number.POSITIVE_INFINITY;
+  axis.forEach((p, index) => {
+    const d = Math.abs(p - pos);
+    if (d < dist) {
+      dist = d;
+      best = index;
+    }
+  });
+  return best;
+}
+
+/** 勾配を含む小梁の実長（mm）。両端の通りで柱の高さが違うとき、その差ぶん長くなる。
+   縦の梁は縦通り同士・横の梁は横通り同士の高さ差を見る */
 export function beamSlopeLength(
   beam: FireproofDrawingBeam,
   floor: FireproofDrawingFloor,
   floorHeight: number,
 ): number {
   const plan = beamLength(beam);
-  if (beam.x1 !== beam.x2) return plan;
-  const ys = positions(floor.ySpans);
-  if (ys.length === 0) return plan;
-  const nearAxis = (y: number): number => {
-    let best = 0;
-    let dist = Number.POSITIVE_INFINITY;
-    ys.forEach((pos, index) => {
-      const d = Math.abs(pos - y);
-      if (d < dist) {
-        dist = d;
-        best = index;
-      }
-    });
-    return best;
-  };
-  const dh = Math.abs(
-    axisHeightAt(floor, nearAxis(beam.y1), floorHeight) -
-      axisHeightAt(floor, nearAxis(beam.y2), floorHeight),
-  );
-  return Math.hypot(plan, dh);
+  if (beam.x1 === beam.x2) {
+    const ys = positions(floor.ySpans);
+    if (ys.length === 0) return plan;
+    const dh = Math.abs(
+      axisHeightAt(floor, nearestAxis(ys, beam.y1), floorHeight) -
+        axisHeightAt(floor, nearestAxis(ys, beam.y2), floorHeight),
+    );
+    return Math.hypot(plan, dh);
+  }
+  if (beam.y1 === beam.y2) {
+    const xs = positions(floor.xSpans);
+    if (xs.length === 0) return plan;
+    const dh = Math.abs(
+      axisHeightXAt(floor, nearestAxis(xs, beam.x1), floorHeight) -
+        axisHeightXAt(floor, nearestAxis(xs, beam.x2), floorHeight),
+    );
+    return Math.hypot(plan, dh);
+  }
+  return plan;
 }
 
 /**

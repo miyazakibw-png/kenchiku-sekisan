@@ -238,10 +238,10 @@
   max-height: none;
 }
 
-/* 大梁の記号に添える寸法 */
+/* 大梁・小梁の記号に添える寸法（記号と同じく太字） */
 .fireproof-drawing-svg .girder text .size,
 .fireproof-drawing-svg .beam text .size {
-  font-weight: normal;
+  font-weight: bold;
 }
 
 /* 図面の線（座標はmmなので太さもmm） */
@@ -309,6 +309,7 @@
 
 .fireproof-drawing-svg .beam text {
   fill: #1c3f8f;
+  font-weight: bold;
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
 }
 

@@ -445,10 +445,15 @@ describe("勾配（通りごとの柱高さ）", () => {
     );
   });
 
-  it("横の梁は勾配に乗らない（平図の長さのまま）", () => {
-    const f = { ...slopeFloor, axisHeights: { "0": 3000, "1": 5000 } };
+  it("横の梁は横通り同士の高さ差ぶん長くなる", () => {
+    // 横通り0↔1の横の梁（平面5000）。高さ 3000↔4000 → dh=1000
+    const f = { ...slopeFloor, axisHeightsX: { "0": 3000 } };
     const beam = { x1: 500, y1: 3000, x2: 5500, y2: 3000, symbol: "B1" };
-    expect(beamSlopeLength(beam, f, 4000)).toBe(5000);
+    expect(Math.round(beamSlopeLength(beam, f, 4000))).toBe(
+      Math.round(Math.hypot(5000, 1000)),
+    );
+    // axisHeightsXが無いときは平図の長さのまま
+    expect(beamSlopeLength(beam, slopeFloor, 4000)).toBe(5000);
   });
 
   it("高さ差が無いときは平図の長さのまま", () => {
@@ -464,10 +469,32 @@ describe("取合記号・通り高さの保存", () => {
       xSpans: [6000],
       ySpans: [6000],
       beams: [{ x1: 100, y1: 100, x2: 100, y2: 5900, symbol: "B1", id: "b12ab" }],
-      jointSymbols: { "g:x:0,0:0": "3", "b:b12ab:1": "2" },
+      jointSymbols: { "g:x:0,0": "3", "b:b12ab": "2", "c:0,0": "4" },
       axisHeights: { "0": 4500 },
+      axisHeightsX: { "1": 4200 },
     };
     const back = parseDrawing(serializeDrawing({ floors: { "1": floor } }));
     expect(back.floors["1"]).toEqual(floor);
+  });
+
+  it("古い端ごとの取合記号キーは部材ごとのキーに読み替える", () => {
+    const drawing = parseDrawing(
+      `{
+        "floors": {
+          "1": {
+            "xSpans": [6000], "ySpans": [6000],
+            "jointSymbols": {
+              "g:x:0,0:0": "3", "g:x:0,0:1": "2",
+              "b:b12ab:1": "4", "c:0,0": "3"
+            }
+          }
+        }
+      }`,
+    );
+    expect(drawing.floors["1"]?.jointSymbols).toEqual({
+      "g:x:0,0": "3",
+      "b:b12ab": "4",
+      "c:0,0": "3",
+    });
   });
 });

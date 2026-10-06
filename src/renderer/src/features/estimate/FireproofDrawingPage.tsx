@@ -40,6 +40,7 @@ import {
   type FireproofDrawingFloor,
 } from "../../../../core/fireproof/fireproofDrawing";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { toHalfWidth } from "@shared/tsv";
 import "./EstimatePartsPage.css";
 import "./FireproofDrawingPage.css";
 
@@ -76,6 +77,56 @@ const FONT_SYMBOL = 430;
 const FONT_NO = 260;
 const JOINT_R = 150; // 取合記号の○印の半径
 const FONT_JOINT = 280;
+
+/** 高さのmmをm表示に（整数も小数第2位まで 3000→3.00、mm精度はそのまま） */
+function heightMetersText(mm: number): string {
+  return (mm / 1000).toFixed(3).replace(/(\.\d\d)0$/, "$1");
+}
+
+/** 通りごとの柱の高さの1マス入力（m）。入力中は打った文字をそのまま残し、
+   欄から出たときにきれいな形へ直す（直打ちだと「3.」が即座に消えるため） */
+function AxisHeightInput({
+  mm,
+  placeholder,
+  onChange,
+}: {
+  mm: number | undefined;
+  placeholder: string;
+  onChange: (mm: number | null) => void;
+}): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(() =>
+    mm === undefined ? "" : heightMetersText(mm),
+  );
+  useEffect(() => {
+    if (!editing) setText(mm === undefined ? "" : heightMetersText(mm));
+  }, [mm, editing]);
+  return (
+    <input
+      lang="en"
+      inputMode="decimal"
+      value={text}
+      placeholder={placeholder}
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        setText(mm === undefined ? "" : heightMetersText(mm));
+      }}
+      onChange={(event) => {
+        const typed = toHalfWidth(event.target.value).replaceAll(",", ".");
+        setText(typed);
+        const t = typed.trim();
+        if (t === "") {
+          onChange(null);
+          return;
+        }
+        const meters = Number(t);
+        if (Number.isFinite(meters) && meters > 0)
+          onChange(Math.round(meters * 1000));
+      }}
+    />
+  );
+}
 
 /** X軸方向の寸法線（上側） */
 function XDimension({ xs }: { xs: number[] }): JSX.Element {
@@ -443,7 +494,7 @@ function FloorSvg({
   columnHalfOf?: (symbol: string) => { hw: number; hd: number } | null;
   /** 大梁キー→芯からのずらし量（mm。端寄せした梁の位置） */
   girderOffsetOf?: (key: string) => number;
-  /** 取合記号の○印をクリックしたとき（キー "g:大梁キー:端"・"b:小梁番号:端"） */
+  /** 取合記号の○印をクリックしたとき（キー "c:柱キー"・"g:大梁キー"・"b:小梁番号"） */
   onJointClick?: (key: string) => void;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
@@ -630,11 +681,11 @@ function FloorSvg({
                 <text x={mx} y={y - gh - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
                   {symbol}
                   {size !== undefined && (
-                    <tspan className="size" dx="220">{size}</tspan>
+                    <tspan className="size" dx="220" fontSize={FONT_SYMBOL * 0.72}>
+                      {size}
+                    </tspan>
                   )}
                 </text>
-                <Joint jointKey={`g:${key}:0`} x={x1 + 220} y={y - gh - 110} />
-                <Joint jointKey={`g:${key}:1`} x={x2 - 220} y={y - gh - 110} />
               </g>
             );
           }
@@ -661,11 +712,11 @@ function FloorSvg({
                 >
                   {symbol}
                   {size !== undefined && (
-                    <tspan className="size" dx="220">{size}</tspan>
+                    <tspan className="size" dx="220" fontSize={FONT_SYMBOL * 0.72}>
+                      {size}
+                    </tspan>
                   )}
                 </text>
-                <Joint jointKey={`g:${key}:0`} x={x + gh + 110} y={y1 + 220} />
-                <Joint jointKey={`g:${key}:1`} x={x + gh + 110} y={y2 - 220} />
               </g>
             );
           }
@@ -681,7 +732,6 @@ function FloorSvg({
           const bad =
             beam.symbol.trim() !== "" && !knownBeams.has(beam.symbol.trim());
           const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
-          const beamId = beam.id ?? `#${index}`;
           return (
             <g
               key={index}
@@ -692,16 +742,6 @@ function FloorSvg({
               }}
               onClick={(event) => event.stopPropagation()}
             >
-              <Joint
-                jointKey={`b:${beamId}:0`}
-                x={vertical ? mx + bh + 120 : beam.x1 + 200}
-                y={vertical ? beam.y1 + 200 : my - bh - 120}
-              />
-              <Joint
-                jointKey={`b:${beamId}:1`}
-                x={vertical ? mx + bh + 120 : beam.x2 - 200}
-                y={vertical ? beam.y2 - 200 : my - bh - 120}
-              />
               {vertical ? (
                 <>
                   <line x1={beam.x1 - bh} y1={beam.y1} x2={beam.x2 - bh} y2={beam.y2} />
@@ -817,6 +857,83 @@ function FloorSvg({
           }),
         )}
       </g>
+      {/* 取合記号（いちばん手前に描いて、文字と重なってもクリックできるようにする） */}
+      <g className="joints">
+        {Object.entries(floor.columns).map(([key, symbol]) => {
+          const [xi, yi] = key.split(",").map(Number);
+          if (xi < 0 || yi < 0 || xi >= xs.length || yi >= ys.length) return null;
+          const half = columnHalfOf?.(symbol.trim()) ?? {
+            hw: COL_HALF,
+            hd: COL_HALF,
+          };
+          return (
+            <Joint
+              key={`jc${key}`}
+              jointKey={`c:${key}`}
+              x={xs[xi] + half.hw + JOINT_R + 60}
+              y={ys[yi] - half.hd - JOINT_R - 60}
+            />
+          );
+        })}
+        {Object.keys(floor.girders).map((key) => {
+          const [axis, coord] = key.split(":");
+          const [xi, yi] = (coord ?? "").split(",").map(Number);
+          if (axis === "x" && yi >= 0 && yi < ys.length && xi >= 0 && xi < xs.length - 1) {
+            const colAt = (ax: number, ay: number) => {
+              const symbol = floor.columns[`${ax},${ay}`];
+              return symbol !== undefined
+                ? (columnHalfOf?.(symbol.trim())?.hw ?? COL_HALF)
+                : 0;
+            };
+            const x1 = xs[xi] + colAt(xi, yi);
+            const x2 = xs[xi + 1] - colAt(xi + 1, yi);
+            const gh = halfWidthOf?.(floor.girders[key].trim()) ?? GIRDER_HALF;
+            return (
+              <Joint
+                key={`jg${key}`}
+                jointKey={`g:${key}`}
+                x={(x1 + x2) / 2}
+                y={ys[yi] + gh + 110}
+              />
+            );
+          }
+          if (axis === "y" && yi >= 0 && yi < ys.length - 1 && xi >= 0 && xi < xs.length) {
+            const colAt = (ax: number, ay: number) => {
+              const symbol = floor.columns[`${ax},${ay}`];
+              return symbol !== undefined
+                ? (columnHalfOf?.(symbol.trim())?.hd ?? COL_HALF)
+                : 0;
+            };
+            const y1 = ys[yi] + colAt(xi, yi);
+            const y2 = ys[yi + 1] - colAt(xi, yi + 1);
+            const gh = halfWidthOf?.(floor.girders[key].trim()) ?? GIRDER_HALF;
+            const x = xs[xi] + (girderOffsetOf?.(key) ?? 0);
+            return (
+              <Joint
+                key={`jg${key}`}
+                jointKey={`g:${key}`}
+                x={x - gh - 110}
+                y={(y1 + y2) / 2}
+              />
+            );
+          }
+          return null;
+        })}
+        {floor.beams.map((beam, index) => {
+          const vertical = beam.x1 === beam.x2;
+          const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
+          const mx = (beam.x1 + beam.x2) / 2;
+          const my = (beam.y1 + beam.y2) / 2;
+          return (
+            <Joint
+              key={`jb${beam.id ?? index}`}
+              jointKey={`b:${beam.id ?? `#${index}`}`}
+              x={vertical ? mx - bh - 120 : mx}
+              y={vertical ? my : my + bh + 120}
+            />
+          );
+        })}
+      </g>
     </g>
   );
 
@@ -837,7 +954,7 @@ function FloorSvg({
         // 梁・柱・寸法・芯記号など部品の上のクリックは区画選びにしない
         // （区画を選ぶ途中でうっかり線を触っても選択が消えないように）
         const hit = event.target as Element;
-        if (hit.closest(".beam, .girder, .column, .axis, .dim")) return;
+        if (hit.closest(".beam, .girder, .column, .axis, .dim, .joint")) return;
         const svg = event.currentTarget;
         const point = svg.createSVGPoint();
         point.x = event.clientX;
@@ -1140,20 +1257,19 @@ export default function FireproofDrawingPage({
     [current, jointSymbol, updateFloor],
   );
 
-  /* 取合記号のまとめて指定：柱・大梁の端全部、または小梁の端全部に同じ記号を入れる */
+  /* 取合記号のまとめて指定：柱・大梁・小梁のどれか全部に同じ記号を入れる */
   const fillJoints = useCallback(
-    (target: "girder" | "beam") => {
+    (target: "column" | "girder" | "beam") => {
       const next = { ...(current.jointSymbols ?? {}) };
       const keys: string[] = [];
-      if (target === "girder")
-        Object.keys(current.girders).forEach((key) =>
-          keys.push(`g:${key}:0`, `g:${key}:1`),
-        );
+      if (target === "column")
+        Object.keys(current.columns).forEach((key) => keys.push(`c:${key}`));
+      else if (target === "girder")
+        Object.keys(current.girders).forEach((key) => keys.push(`g:${key}`));
       else
-        current.beams.forEach((beam, index) => {
-          const id = beam.id ?? `#${index}`;
-          keys.push(`b:${id}:0`, `b:${id}:1`);
-        });
+        current.beams.forEach((beam, index) =>
+          keys.push(`b:${beam.id ?? `#${index}`}`),
+        );
       keys.forEach((key) => {
         if (jointSymbol === "") delete next[key];
         else next[key] = jointSymbol;
@@ -1164,7 +1280,7 @@ export default function FireproofDrawingPage({
       setMessage(
         jointSymbol === ""
           ? "記号を消しました"
-          : `${target === "girder" ? "柱・大梁" : "小梁"}の端に「${jointSymbol}」を入れました（違うところだけ図で直せます）`,
+          : `${target === "column" ? "柱" : target === "girder" ? "大梁" : "小梁"}全部に「${jointSymbol}」を入れました（違うところだけ図で直せます）`,
       );
     },
     [current, jointSymbol, updateFloor],
@@ -2171,9 +2287,38 @@ export default function FireproofDrawingPage({
             {current.ySpans.length > 0 && (
               <div className="span-inputs axis-heights">
                 <p className="hint">
-                  通りごとの柱の高さ（mm。屋根勾配など高さが違うときだけ入れます。空欄は鉄骨リストの階高
-                  {floorHeight !== null ? `（${floorHeight.toLocaleString("ja-JP")}）` : ""}）
+                  通りごとの柱の高さ（m。屋根勾配など高さが違うときだけ入れます。空欄は鉄骨リストの階高
+                  {floorHeight !== null
+                    ? `（${heightMetersText(floorHeight)}）`
+                    : ""}
+                  ）
                 </p>
+                {current.xSpans.length > 0 && (
+                  <div className="axis-height-list">
+                    {positions(current.xSpans).map((_, xi) => {
+                      const value = current.axisHeightsX?.[String(xi)];
+                      return (
+                        <label key={xi}>
+                          {xGridLabel(xi)}
+                          <AxisHeightInput
+                            mm={value}
+                            placeholder={
+                              floorHeight !== null
+                                ? heightMetersText(floorHeight)
+                                : ""
+                            }
+                            onChange={(mm) => {
+                              const next = { ...(current.axisHeightsX ?? {}) };
+                              if (mm === null) delete next[String(xi)];
+                              else next[String(xi)] = mm;
+                              updateFloor({ axisHeightsX: next });
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="axis-height-list">
                   {positions(current.ySpans).map((_, yi) => {
                     const label = yGridLabel(
@@ -2183,23 +2328,17 @@ export default function FireproofDrawingPage({
                     return (
                       <label key={yi}>
                         {label}
-                        <input
-                          value={
-                            value === undefined ? "" : String(value)
-                          }
+                        <AxisHeightInput
+                          mm={value}
                           placeholder={
-                            floorHeight !== null ? String(floorHeight) : ""
+                            floorHeight !== null
+                              ? heightMetersText(floorHeight)
+                              : ""
                           }
-                          onChange={(event) => {
+                          onChange={(mm) => {
                             const next = { ...(current.axisHeights ?? {}) };
-                            const num = Number(event.target.value);
-                            if (
-                              event.target.value.trim() === "" ||
-                              !Number.isFinite(num) ||
-                              num <= 0
-                            )
-                              delete next[String(yi)];
-                            else next[String(yi)] = num;
+                            if (mm === null) delete next[String(yi)];
+                            else next[String(yi)] = mm;
                             updateFloor({ axisHeights: next });
                           }}
                         />
@@ -2421,11 +2560,10 @@ export default function FireproofDrawingPage({
                           beamSlopeLength(beam, current, floorHeight ?? 0),
                         ).toLocaleString("ja-JP")}
                         mm
-                        {beam.x1 === beam.x2 &&
-                          Math.round(
-                            beamSlopeLength(beam, current, floorHeight ?? 0) -
-                              beamLength(beam),
-                          ) > 0 &&
+                        {Math.round(
+                          beamSlopeLength(beam, current, floorHeight ?? 0) -
+                            beamLength(beam),
+                        ) > 0 &&
                           `（勾配＋${Math.round(
                             beamSlopeLength(beam, current, floorHeight ?? 0) -
                               beamLength(beam),
@@ -2486,21 +2624,29 @@ export default function FireproofDrawingPage({
               <div className="joint-ops">
                 <button
                   type="button"
+                  disabled={Object.keys(current.columns).length === 0}
+                  onClick={() => fillJoints("column")}
+                >
+                  柱に全部
+                </button>
+                <button
+                  type="button"
                   disabled={Object.keys(current.girders).length === 0}
                   onClick={() => fillJoints("girder")}
                 >
-                  柱・大梁の端に全部
+                  大梁に全部
                 </button>
                 <button
                   type="button"
                   disabled={current.beams.length === 0}
                   onClick={() => fillJoints("beam")}
                 >
-                  小梁の端に全部
+                  小梁に全部
                 </button>
               </div>
               <p className="hint">
-                図の梁の端の○印をクリックすると、いま選んでいる記号になります。
+                耐火被覆の断面積算出用の記号を、柱・大梁・小梁のそれぞれに1つずつ入れます。
+                図の○印をクリックすると、いま選んでいる記号になります。
                 同じ記号をもう一度押すか「消す」を選んで押すと記号が消えます。
                 いちばん多い記号を全部に入れてから、違うところだけ図で直す入れ方が早いです
               </p>
