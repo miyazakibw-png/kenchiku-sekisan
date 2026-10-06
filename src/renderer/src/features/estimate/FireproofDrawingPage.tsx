@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProjectSummary } from "@shared/types";
 import {
   columnFloorLabels,
+  normalizeCommonRows,
   normalizeFloorList,
+  resolveCommonRow,
   resolveSize,
   SHAPE_LABEL,
+  type FireproofCommonRow,
   type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
 import {
@@ -535,6 +538,23 @@ function FloorSvg({
             );
           return null;
         })}
+      {/* ④小梁の入力行で選んだ分を点線で囲む */}
+      {[...selectedBeams].map((index) => {
+        const beam = floor.beams[index];
+        if (beam === undefined) return null;
+        const x = Math.min(beam.x1, beam.x2) - 500;
+        const y = Math.min(beam.y1, beam.y2) - 500;
+        return (
+          <rect
+            key={`bs${index}`}
+            className="selection girder-sel"
+            x={x}
+            y={y}
+            width={Math.abs(beam.x2 - beam.x1) + 1000}
+            height={Math.abs(beam.y2 - beam.y1) + 1000}
+          />
+        );
+      })}
       {/* 大梁（柱間の区間。2本線で描く。端は柱の面＝柱の四角の端。
           柱の大きさはリストの寸法で、無いときは決まった大きさ） */}
       <g className="girder">
@@ -909,7 +929,12 @@ export default function FireproofDrawingPage({
   const [memberLists, setMemberLists] = useState<{
     columns: FireproofFloorList;
     beams: FireproofFloorList;
-  }>({ columns: { floors: [], members: [] }, beams: { floors: [], members: [] } });
+    common: FireproofCommonRow[];
+  }>({
+    columns: { floors: [], members: [] },
+    beams: { floors: [], members: [] },
+    common: [],
+  });
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -945,6 +970,7 @@ export default function FireproofDrawingPage({
       setMemberLists({
         columns: normalizeFloorList(parseJson(record.columnsJson, {})),
         beams: normalizeFloorList(parseJson(record.beamsJson, {})),
+        common: normalizeCommonRows(parseJson(record.commonJson, [])),
       });
       const loaded = parseDrawing(record.drawingJson);
       setDrawing(loaded);
@@ -1132,6 +1158,13 @@ export default function FireproofDrawingPage({
       const width = size.second ?? size.first;
       if (width !== null && width > 0) map.set(symbol, width / 2);
     });
+    memberLists.common.forEach((row) => {
+      const symbol = row.symbol.trim();
+      if (symbol === "" || map.has(symbol)) return;
+      const size = resolveCommonRow(row);
+      const width = size.second ?? size.first;
+      if (width !== null && width > 0) map.set(symbol, width / 2);
+    });
     return map;
   }, [memberLists, beamFloorLabel]);
   const halfWidthOf = useCallback<HalfWidthOf>(
@@ -1149,7 +1182,17 @@ export default function FireproofDrawingPage({
       const member = memberLists.columns.members.find(
         (m) => m.symbol.trim() === symbol.trim(),
       );
-      if (member === undefined) return null;
+      if (member === undefined) {
+        const row = memberLists.common.find(
+          (r) => r.symbol.trim() === symbol.trim(),
+        );
+        if (row === undefined) return null;
+        const size = resolveCommonRow(row);
+        const w = size.first;
+        const d = size.second ?? size.first;
+        if (w === null || w <= 0) return null;
+        return { hw: w / 2, hd: (d ?? w) / 2 };
+      }
       const size = resolveSize(
         member,
         memberLists.columns.floors,
@@ -1665,6 +1708,19 @@ export default function FireproofDrawingPage({
       const value = size.second ?? size.first;
       if (value !== null) bem.set(symbol, String(value));
     });
+    memberLists.common.forEach((row) => {
+      const symbol = row.symbol.trim();
+      if (symbol === "") return;
+      const size = resolveCommonRow(row);
+      const dims = [size.first, size.second].filter(
+        (v): v is number => v !== null,
+      );
+      if (!col.has(symbol) && dims.length > 0)
+        col.set(symbol, `${SHAPE_LABEL[size.shape]}-${dims.join("*")}`);
+      const value = size.second ?? size.first;
+      if (!bem.has(symbol) && value !== null)
+        bem.set(symbol, String(value));
+    });
     return { column: col, beam: bem };
   }, [memberLists, floor, beamFloorLabel]);
 
@@ -1674,6 +1730,7 @@ export default function FireproofDrawingPage({
       new Set(
         memberLists.columns.members
           .map((member) => member.symbol.trim())
+          .concat(memberLists.common.map((row) => row.symbol.trim()))
           .filter((symbol) => symbol !== ""),
       ),
     [memberLists],
@@ -1683,6 +1740,7 @@ export default function FireproofDrawingPage({
       new Set(
         memberLists.beams.members
           .map((member) => member.symbol.trim())
+          .concat(memberLists.common.map((row) => row.symbol.trim()))
           .filter((symbol) => symbol !== ""),
       ),
     [memberLists],
@@ -1696,18 +1754,7 @@ export default function FireproofDrawingPage({
     | null => {
     if (focusTarget === null) return null;
     const pad = 700;
-    if (focusTarget.kind === "beam") {
-      const beam = current.beams[focusTarget.index];
-      if (beam === undefined) return null;
-      const x = Math.min(beam.x1, beam.x2) - pad;
-      const y = Math.min(beam.y1, beam.y2) - pad;
-      return {
-        x,
-        y,
-        width: Math.abs(beam.x2 - beam.x1) + pad * 2,
-        height: Math.abs(beam.y2 - beam.y1) + pad * 2,
-      };
-    }
+    if (focusTarget.kind === "beam") return null; // 小梁は選んだ全部を点線で囲む
     if (focusTarget.kind === "column") {
       const [xi, yi] = focusTarget.key.split(",").map(Number);
       const x = xsNow[xi];
@@ -1922,6 +1969,12 @@ export default function FireproofDrawingPage({
                 <label>
                   記号
                   <input
+                    className={
+                      beamSymbol.trim() !== "" &&
+                      !knownBeams.has(beamSymbol.trim())
+                        ? "bad"
+                        : undefined
+                    }
                     value={beamSymbol}
                     onChange={(event) => setBeamSymbol(event.target.value)}
                   />
@@ -1967,6 +2020,15 @@ export default function FireproofDrawingPage({
                   onClick={copyRegion}
                 >
                   区画コピー
+                </button>
+                <button
+                  type="button"
+                  disabled={selBeamSet.size === 0}
+                  title="一覧で選んだ行の小梁をコピーします（貼る先の区画を選んで「区画へ貼り付け」）"
+                  onClick={copySelBeams}
+                >
+                  行をコピー
+                  {selBeamSet.size > 1 ? `（${selBeamSet.size}本）` : ""}
                 </button>
                 <button
                   type="button"

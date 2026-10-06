@@ -327,6 +327,10 @@
   fill: #d03030;
   font-weight: bold;
 }
+/* 小梁は記号がリストに無くても線は紺色のまま（記号の文字だけ赤） */
+.fireproof-drawing-svg .beam .bad line {
+  stroke: #1c3f8f;
+}
 .fireproof-drawing-svg .bad rect {
   stroke: #d03030;
   fill: rgba(208, 48, 48, 0.12);
