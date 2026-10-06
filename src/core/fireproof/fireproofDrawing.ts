@@ -235,6 +235,8 @@ export function enclosingRegion(
   py: number,
   /** 記号→部材幅の半分（mm）。内内寸法に使う。渡さないときは描き幅の半分（GIRDER_HALF/BEAM_HALF） */
   halfWidthOf?: HalfWidthOf,
+  /** false にすると小梁を境界に使わない（大梁だけで囲まれた区画） */
+  includeBeams = true,
 ): DrawingRegion | null {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
@@ -275,22 +277,23 @@ export function enclosingRegion(
         half: girderHalf(symbol),
       });
   });
-  floor.beams.forEach((beam) => {
-    if (beam.x1 === beam.x2)
-      vLines.push({
-        x: beam.x1,
-        y1: Math.min(beam.y1, beam.y2),
-        y2: Math.max(beam.y1, beam.y2),
-        half: beamHalf(beam.symbol),
-      });
-    if (beam.y1 === beam.y2)
-      hLines.push({
-        y: beam.y1,
-        x1: Math.min(beam.x1, beam.x2),
-        x2: Math.max(beam.x1, beam.x2),
-        half: beamHalf(beam.symbol),
-      });
-  });
+  if (includeBeams)
+    floor.beams.forEach((beam) => {
+      if (beam.x1 === beam.x2)
+        vLines.push({
+          x: beam.x1,
+          y1: Math.min(beam.y1, beam.y2),
+          y2: Math.max(beam.y1, beam.y2),
+          half: beamHalf(beam.symbol),
+        });
+      if (beam.y1 === beam.y2)
+        hLines.push({
+          y: beam.y1,
+          x1: Math.min(beam.x1, beam.x2),
+          x2: Math.max(beam.x1, beam.x2),
+          half: beamHalf(beam.symbol),
+        });
+    });
   let left = -Infinity;
   let right = Infinity;
   let top = -Infinity;

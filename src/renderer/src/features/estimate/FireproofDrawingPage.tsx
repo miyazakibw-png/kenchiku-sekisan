@@ -388,7 +388,7 @@ function FloorSvg({
   floor,
   regions,
   focus,
-  selectedBeam,
+  selectedBeams,
   onRegionClick,
   onBeamPointerDown,
   onPointerMove,
@@ -405,7 +405,7 @@ function FloorSvg({
   floor: FireproofDrawingFloor;
   regions: DrawingRegion[];
   focus: { x: number; y: number; width: number; height: number } | null;
-  selectedBeam: number | null;
+  selectedBeams: ReadonlySet<number>;
   onRegionClick: (x: number, y: number, additive: boolean) => void;
   onBeamPointerDown: (index: number, event: React.PointerEvent) => void;
   onPointerMove: (event: React.PointerEvent) => void;
@@ -562,7 +562,7 @@ function FloorSvg({
           return (
             <g
               key={index}
-              className={`${index === selectedBeam ? "on" : ""}${bad ? " bad" : ""}`}
+              className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}`}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 onBeamPointerDown(index, event);
@@ -779,6 +779,15 @@ export default function FireproofDrawingPage({
   /** ④小梁：選んだ区画（Shift+クリックで複数）・選んだ小梁・入力する記号と分割の仕方 */
   const [regions, setRegions] = useState<DrawingRegion[]>([]);
   const [selBeam, setSelBeam] = useState<number | null>(null);
+  /* 小梁の一覧で範囲指定（番号のところを押して動かす・Shift+クリックで広げる）。
+     fromが押した基点・toが広げた先 */
+  const [selBeamRange, setSelBeamRange] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const beamAnchorRef = useRef<number | null>(null);
+  const beamRowDragRef = useRef(false);
+  const rowClickSuppressRef = useRef(false);
   const [beamSymbol, setBeamSymbol] = useState("B40");
   const [beamAxis, setBeamAxis] = useState<"v" | "h">("v");
   const [beamParts, setBeamParts] = useState(3);
@@ -906,6 +915,17 @@ export default function FireproofDrawingPage({
 
   const current = drawing.floors[floor] ?? emptyFloor();
 
+  /* 小梁一覧の範囲指定。選んだ行番号の集まり（図の色付けにも使う） */
+  const selBeamSet = useMemo(() => {
+    const set = new Set<number>();
+    if (selBeamRange !== null) {
+      const lo = Math.min(selBeamRange.from, selBeamRange.to);
+      const hi = Math.max(selBeamRange.from, selBeamRange.to);
+      for (let i = lo; i <= hi; i += 1) set.add(i);
+    } else if (selBeam !== null) set.add(selBeam);
+    return set;
+  }, [selBeamRange, selBeam]);
+
   const updateFloor = useCallback(
     (patch: Partial<FireproofDrawingFloor>) => {
       const target = drawing.floors[floor] ?? emptyFloor();
@@ -932,6 +952,7 @@ export default function FireproofDrawingPage({
     setDrawing(previous);
     setRegions([]);
     setSelBeam(null);
+    setSelBeamRange(null);
     setFocusTarget(null);
     dragRef.current = null;
   }, [drawing, past]);
@@ -944,6 +965,7 @@ export default function FireproofDrawingPage({
     setDrawing(next);
     setRegions([]);
     setSelBeam(null);
+    setSelBeamRange(null);
     setFocusTarget(null);
     dragRef.current = null;
   }, [drawing, future]);
@@ -1006,6 +1028,7 @@ export default function FireproofDrawingPage({
   useEffect(() => {
     setRegions([]);
     setSelBeam(null);
+    setSelBeamRange(null);
     setFocusTarget(null);
     dragRef.current = null;
   }, [floor]);
@@ -1104,6 +1127,7 @@ export default function FireproofDrawingPage({
           : [...before, part];
       });
       setSelBeam(null);
+      setSelBeamRange(null);
       setFocusTarget(null);
     },
     [current, halfWidthOf],
@@ -1138,6 +1162,7 @@ export default function FireproofDrawingPage({
         before: drawing,
       };
       setSelBeam(index);
+      setSelBeamRange(null);
       setRegions([]);
       setFocusTarget({ kind: "beam", index });
     },
@@ -1194,16 +1219,9 @@ export default function FireproofDrawingPage({
     setMessage(`${regions.length}か所に入れました`);
   }, [regions, beamAxis, beamParts, beamSymbol, current, updateFloor]);
 
-  const copyRegion = useCallback(() => {
-    const part = regions[regions.length - 1];
-    if (part === undefined) return;
-    const inside = current.beams.filter(
-      (beam) =>
-        beam.x1 >= part.x - 1 &&
-        beam.x2 <= part.x + part.width + 1 &&
-        beam.y1 >= part.y - 1 &&
-        beam.y2 <= part.y + part.height + 1,
-    );
+  /** 区画とその中の小梁から「貼り付けの種」を覚える（区画コピー・入力行コピーの共通） */
+  const learnFromBeams = useCallback(
+    (part: DrawingRegion, inside: FireproofDrawingBeam[]) => {
     // 端が区画の辺（その内側＝梁の内内の面）に付いているか。貼る側でも内内に合わせる目印。
     // 端ごとに「左辺・右辺・上辺・下辺」のどれに付いているかを覚える
     // （片端だけ見ると、辺に沿った梁が斜めに化けるので同じ辺の端は両方に付ける）
@@ -1278,7 +1296,67 @@ export default function FireproofDrawingPage({
           ? `区画の小梁をコピーしました（${rule.axis === "v" ? "縦" : "横"}${rule.parts}分割の${rule.symbol}。貼る先の大きさに合わせて入れます）`
           : `区画の小梁${inside.length}本をコピーしました`,
       );
-  }, [regions, current]);
+    else
+      setMessage("その区画には小梁が入っていません（中に小梁がある区画でコピーしてください）");
+    },
+    [],
+  );
+
+  const copyRegion = useCallback(() => {
+    const picked = regions[regions.length - 1];
+    if (picked === undefined) return;
+    /* 小梁で分かれた小区画をクリックしていても、大梁で囲まれた区画全体の
+       「入力条件」を読み取る（小区画の辺に付いた小梁は境界で、内容ではない） */
+    const part =
+      enclosingRegion(
+        current,
+        picked.x + picked.width / 2,
+        picked.y + picked.height / 2,
+        halfWidthOf,
+        false,
+      ) ?? picked;
+    const inside = current.beams.filter(
+      (beam) =>
+        beam.x1 >= part.x - 1 &&
+        beam.x2 <= part.x + part.width + 1 &&
+        beam.y1 >= part.y - 1 &&
+        beam.y2 <= part.y + part.height + 1 &&
+        // 区画の辺のうえに乗っている小梁は境界なので写す内容に含めない
+        (beam.x1 !== beam.x2 ||
+          (beam.x1 > part.x + 1 && beam.x1 < part.x + part.width - 1)) &&
+        (beam.y1 !== beam.y2 ||
+          (beam.y1 > part.y + 1 && beam.y1 < part.y + part.height - 1)),
+    );
+    learnFromBeams(part, inside);
+  }, [regions, current, halfWidthOf, learnFromBeams]);
+
+  /** 入力行側：一覧で選んだ小梁をまとめてコピー（その行を囲む大梁区画の条件で覚える） */
+  const copySelBeams = useCallback(() => {
+    const indices = [...selBeamSet].filter(
+      (index) => index >= 0 && index < current.beams.length,
+    );
+    if (indices.length === 0) return;
+    const beams = indices.map((index) => current.beams[index]);
+    const mx =
+      beams.reduce((sum, beam) => sum + (beam.x1 + beam.x2) / 2, 0) /
+      beams.length;
+    const my =
+      beams.reduce((sum, beam) => sum + (beam.y1 + beam.y2) / 2, 0) /
+      beams.length;
+    const cell = enclosingRegion(current, mx, my, halfWidthOf, false);
+    const part: DrawingRegion =
+      cell ?? {
+        x: Math.min(...beams.map((beam) => Math.min(beam.x1, beam.x2))),
+        y: Math.min(...beams.map((beam) => Math.min(beam.y1, beam.y2))),
+        width:
+          Math.max(...beams.map((beam) => Math.max(beam.x1, beam.x2))) -
+          Math.min(...beams.map((beam) => Math.min(beam.x1, beam.x2))),
+        height:
+          Math.max(...beams.map((beam) => Math.max(beam.y1, beam.y2))) -
+          Math.min(...beams.map((beam) => Math.min(beam.y1, beam.y2))),
+      };
+    learnFromBeams(part, beams);
+  }, [current, selBeamSet, halfWidthOf, learnFromBeams]);
 
   const pasteBeams = useCallback(() => {
     if (regions.length === 0) return;
@@ -1320,6 +1398,9 @@ export default function FireproofDrawingPage({
       if (key === "c" && regions.length > 0) {
         copyRegion();
         event.preventDefault();
+      } else if (key === "c" && selBeamSet.size > 0) {
+        copySelBeams();
+        event.preventDefault();
       }
       if (key === "v" && regions.length > 0 && clipBeams.length > 0) {
         pasteBeams();
@@ -1336,15 +1417,33 @@ export default function FireproofDrawingPage({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [regions, clipBeams, copyRegion, pasteBeams, undo, redo]);
+  }, [regions, clipBeams, selBeamSet, copyRegion, copySelBeams, pasteBeams, undo, redo]);
+
+  /* 小梁一覧の番号欄を押したまま動かす範囲指定の終わり（ボタンを離したとき） */
+  useEffect(() => {
+    const up = () => {
+      beamRowDragRef.current = false;
+    };
+    window.addEventListener("mouseup", up);
+    return () => window.removeEventListener("mouseup", up);
+  }, []);
 
   const deleteBeam = useCallback(
     (index: number) => {
-      updateFloor({ beams: current.beams.filter((_, i) => i !== index) });
+      /* 範囲指定の中の行を消すときは、選んだ全部をまとめて消す */
+      if (selBeamRange !== null && selBeamSet.has(index)) {
+        updateFloor({
+          beams: current.beams.filter((_, i) => !selBeamSet.has(i)),
+        });
+        setMessage(`${selBeamSet.size}本消しました`);
+      } else {
+        updateFloor({ beams: current.beams.filter((_, i) => i !== index) });
+      }
       setSelBeam(null);
+      setSelBeamRange(null);
       setFocusTarget(null);
     },
-    [current, updateFloor],
+    [current, updateFloor, selBeamRange, selBeamSet],
   );
 
   /** ④小梁：矢印キーで微調整（10mm。Shiftで1mm）、Delete/Backspaceで消す */
@@ -1807,19 +1906,55 @@ export default function FireproofDrawingPage({
                     <button
                       key={index}
                       type="button"
-                      className={index === selBeam ? "beam-row on" : "beam-row"}
-                      onClick={() => {
-                        setSelBeam(index);
-                        setFocusTarget({ kind: "beam", index });
+                      className={`beam-row${index === selBeam ? " on" : ""}${selBeamSet.has(index) && selBeamRange !== null ? " sel" : ""}`}
+                      onMouseEnter={() => {
+                        if (beamRowDragRef.current)
+                          setSelBeamRange((before) =>
+                            before === null
+                              ? { from: index, to: index }
+                              : { ...before, to: index },
+                          );
+                      }}
+                      onClick={(event) => {
+                        if (rowClickSuppressRef.current) {
+                          rowClickSuppressRef.current = false;
+                          return;
+                        }
+                        if (event.shiftKey) {
+                          setSelBeamRange({
+                            from: beamAnchorRef.current ?? selBeam ?? index,
+                            to: index,
+                          });
+                          setSelBeam(index);
+                          setFocusTarget({ kind: "beam", index });
+                        } else {
+                          setSelBeam(index);
+                          setSelBeamRange(null);
+                          beamAnchorRef.current = index;
+                          setFocusTarget({ kind: "beam", index });
+                        }
                       }}
                     >
-                      <span className="no">{index + 1}</span>
+                      <span
+                        className="no"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          rowClickSuppressRef.current = true;
+                          beamRowDragRef.current = true;
+                          beamAnchorRef.current = index;
+                          setSelBeam(index);
+                          setSelBeamRange({ from: index, to: index });
+                          setFocusTarget({ kind: "beam", index });
+                        }}
+                      >
+                        {index + 1}
+                      </span>
                       <span className="at">{beam.symbol}</span>
                       <span className="len">
                         {beam.x1 === beam.x2 ? "縦" : "横"}{" "}
                         {Math.round(beamLength(beam)).toLocaleString("ja-JP")}mm
                       </span>
-                      {index === selBeam && (
+                      {(index === selBeam || selBeamSet.has(index)) && (
                         <span
                           className="del"
                           onClick={(event) => {
@@ -1835,6 +1970,7 @@ export default function FireproofDrawingPage({
                 </div>
               )}
               <p className="hint">
+                行の番号を押して動かすかShift+クリックで範囲指定（選んだ行はCtrl+Cでコピー・消すでまとめて消せます）。
                 小梁はつかんで動かせます。選んで←→（横の梁は↑↓）で10mm・Shiftで1mmずつ動きます
               </p>
             </div>
@@ -1861,7 +1997,7 @@ export default function FireproofDrawingPage({
                 floor={current}
                 regions={regions}
                 focus={focusRect}
-                selectedBeam={selBeam}
+                selectedBeams={selBeamSet}
                 onRegionClick={handleRegionClick}
                 onBeamPointerDown={handleBeamPointerDown}
                 onPointerMove={handleBeamPointerMove}

@@ -279,12 +279,12 @@
 
 /* 小梁（区画を分割する線） */
 .fireproof-drawing-svg .beam line {
-  stroke: #7a4fc4;
+  stroke: #1c3f8f;
   stroke-width: 45;
 }
 
 .fireproof-drawing-svg .beam text {
-  fill: #5b34a8;
+  fill: #1c3f8f;
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
 }
 
@@ -399,6 +399,11 @@
 .fireproof-drawing-body .beam-row.on {
   background: #e2eeff;
   border-color: #2f7dd1;
+}
+
+.fireproof-drawing-body .beam-row.sel {
+  background: #fff3c8;
+  border-color: #d9a900;
 }
 
 .fireproof-drawing-body .beam-row .no {
