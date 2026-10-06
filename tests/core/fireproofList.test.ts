@@ -8,8 +8,10 @@ import {
   newCommonRow,
   newMember,
   normalizeCommonRows,
+  normalizeFloorList,
   parseSizeInput,
   resolveCommonRow,
+  resolveFloorHeight,
   resolveSize,
   sizeFromInput,
   toHalfWidth,
@@ -155,5 +157,33 @@ describe("耐火被覆・塗装のリスト", () => {
     expect(toHalfWidth("Ｃ１")).toBe("C1");
     expect(toHalfWidth("２５０＊１２５")).toBe("250*125");
     expect(parseSizeInput("２５０＊１２５")).toEqual([250, 125]);
+  });
+});
+
+describe("階高の引き継ぎ（resolveFloorHeight）", () => {
+  const floors = [
+    { id: "f13", label: "13" },
+    { id: "f12", label: "12" },
+    { id: "f11", label: "11", height: 3600 },
+    { id: "f10", label: "10" },
+    { id: "f9", label: "9", height: 3400 },
+    { id: "f1", label: "1", height: 4000 },
+  ];
+
+  it("空欄は下の階へ順に見て、最初に入っている値を使う", () => {
+    expect(resolveFloorHeight(floors, 0)).toBe(3600);
+    expect(resolveFloorHeight(floors, 1)).toBe(3600);
+    expect(resolveFloorHeight(floors, 2)).toBe(3600);
+    expect(resolveFloorHeight(floors, 3)).toBe(3400);
+    expect(resolveFloorHeight(floors, 5)).toBe(4000);
+  });
+
+  it("どの階にも入っていなければnull、保存・再読み込みでも残る", () => {
+    expect(resolveFloorHeight([{ id: "f1", label: "1" }], 0)).toBeNull();
+    const list = normalizeFloorList({
+      floors: [{ id: "f1", label: "1", height: 3800 }],
+      members: [],
+    });
+    expect(list.floors[0].height).toBe(3800);
   });
 });

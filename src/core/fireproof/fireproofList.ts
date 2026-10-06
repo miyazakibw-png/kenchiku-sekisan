@@ -22,6 +22,8 @@ export interface FireproofFloor {
   label: string;
   /** 手で足した行（中2階・塔屋など）。階数を直しても消さない */
   manual?: boolean;
+  /** 階高（mm）。空欄は下の階の数字を使う */
+  height?: number | null;
 }
 
 /** 部材記号1つ分（画面ではヨコに「形・寸法・寸法」の3列） */
@@ -71,6 +73,7 @@ export function normalizeFloorList(value: unknown): FireproofFloorList {
           id: floor.id ?? fireproofId("f"),
           label: floor.label ?? "",
           ...(floor.manual === true ? { manual: true } : {}),
+          ...(typeof floor.height === "number" ? { height: floor.height } : {}),
         }))
       : [],
     members: Array.isArray(list.members)
@@ -259,6 +262,18 @@ export function resolveSize(
     (own.first === null && first !== null) ||
     (own.second === null && second !== null);
   return { shape, first, second, inherited };
+}
+
+/** 階高（mm）の引き継ぎ。空欄は下の階へ順に見て、最初に入っている値を使う */
+export function resolveFloorHeight(
+  floors: readonly FireproofFloor[],
+  index: number,
+): number | null {
+  for (let at = index; at < floors.length; at += 1) {
+    const height = floors[at].height;
+    if (height !== null && height !== undefined) return height;
+  }
+  return null;
 }
 
 /** 階共通リストの寸法（引き継ぎは無い。形の初期はＨ） */

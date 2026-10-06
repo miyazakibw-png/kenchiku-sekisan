@@ -12,6 +12,7 @@ import {
   normalizeCommonRows,
   normalizeFloorList,
   resolveCommonRow,
+  resolveFloorHeight,
   resolveSize,
   sizeFromInput,
   toHalfWidth,
@@ -431,6 +432,13 @@ function FloorListSection({
     onChange({ ...list, floors });
   };
 
+  const changeFloorHeight = (index: number, height: number | null): void => {
+    const floors = list.floors.map((floor, at) =>
+      at === index ? { ...floor, height } : floor,
+    );
+    onChange({ ...list, floors });
+  };
+
   const changeSize = (
     memberIndex: number,
     floorId: string,
@@ -532,12 +540,19 @@ function FloorListSection({
       )}
 
       <div className="section-scroll">
-        <table className="grid fireproof">
+        <table
+          className={`grid fireproof${kind === "column" ? " with-height" : ""}`}
+        >
           <thead>
             <tr>
               <th className="floor" rowSpan={3}>
                 階
               </th>
+              {kind === "column" && (
+                <th className="height" rowSpan={3}>
+                  階高
+                </th>
+              )}
               <th className="ops" rowSpan={3}>
                 操作
               </th>
@@ -635,6 +650,32 @@ function FloorListSection({
                     }
                   />
                 </td>
+                {kind === "column" && (
+                  <td className="height">
+                    <input
+                      lang="en"
+                      inputMode="decimal"
+                      value={floor.height ?? ""}
+                      placeholder={
+                        resolveFloorHeight(list.floors, floorIndex)
+                          ?.toLocaleString("ja-JP") ?? "mm"
+                      }
+                      title="階高（mm）。空欄は下の階の数字を使います"
+                      onChange={(event) => {
+                        const text = toHalfWidth(
+                          event.target.value,
+                        ).trim();
+                        if (text === "") {
+                          changeFloorHeight(floorIndex, null);
+                          return;
+                        }
+                        const num = Number(text.replaceAll(",", ""));
+                        if (Number.isFinite(num) && num >= 0)
+                          changeFloorHeight(floorIndex, num);
+                      }}
+                    />
+                  </td>
+                )}
                 <td className="ops">
                   <button
                     type="button"
