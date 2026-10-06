@@ -14,6 +14,8 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  /* 表が画面左端に付かないよう、汎用入力表と同じく左はじに余白を開ける */
+  padding-left: 5mm;
 }
 
 /* 計算書の欄（種類を選ぶ欄）と、その右の「開く」の欄 */
@@ -218,7 +220,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 4px 8px;
+  margin: 4px 8px 4px 5mm;
   padding: 6px 8px;
   border: var(--line-thin);
   background: #f8fafc;
@@ -230,6 +232,7 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  padding-left: 5mm;
 }
 
 .fireproof-estimate-page table.fireproof-floor-totals {
