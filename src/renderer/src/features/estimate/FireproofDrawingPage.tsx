@@ -21,6 +21,7 @@ import {
   girderNumber,
   nudgeBeam,
   parseDrawing,
+  refitBeams,
   parseSpanList,
   positions,
   spanListText,
@@ -28,6 +29,7 @@ import {
   yGridLabel,
   type DrawingRegion,
   type FireproofDrawing,
+  type FireproofDrawingBeam,
   type FireproofDrawingFloor,
 } from "../../../../core/fireproof/fireproofDrawing";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -396,6 +398,7 @@ function FloorSvg({
   knownColumns,
   knownBeams,
   halfWidthOf,
+  columnHalfOf,
   displaySize,
   svgRef,
 }: {
@@ -415,6 +418,8 @@ function FloorSvg({
   knownBeams: ReadonlySet<string>;
   /** 記号→部材幅の半分（mm）。梁を実際の幅で2本線に描き、内内寸法にも使う */
   halfWidthOf?: HalfWidthOf;
+  /** 柱記号→柱の四角の半分（横×縦 mm）。大梁の端を柱の面に合わせる */
+  columnHalfOf?: (symbol: string) => { hw: number; hd: number } | null;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
@@ -479,14 +484,22 @@ function FloorSvg({
           height={focus.height}
         />
       )}
-      {/* 大梁（柱間の区間。2本線で描く。端は柱面中心＝柱の四角の端） */}
+      {/* 大梁（柱間の区間。2本線で描く。端は柱の面＝柱の四角の端。
+          柱の大きさはリストの寸法で、無いときは決まった大きさ） */}
       <g className="girder">
         {Object.entries(floor.girders).map(([key, symbol]) => {
           const [axis, point] = key.split(":");
           const [xi, yi] = point.split(",").map(Number);
+          const colAt = (ax: number, ay: number) => {
+            const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
+            if (sym === "") return 0;
+            return columnHalfOf?.(sym) ?? { hw: COL_HALF, hd: COL_HALF };
+          };
           if (axis === "x" && xi >= 0 && xi < xs.length - 1 && yi >= 0 && yi < ys.length) {
-            const x1 = xs[xi] + (hasColumn(floor, xi, yi) ? COL_HALF : 0);
-            const x2 = xs[xi + 1] - (hasColumn(floor, xi + 1, yi) ? COL_HALF : 0);
+            const c1 = colAt(xi, yi);
+            const c2 = colAt(xi + 1, yi);
+            const x1 = xs[xi] + (c1 === 0 ? 0 : c1.hw);
+            const x2 = xs[xi + 1] - (c2 === 0 ? 0 : c2.hw);
             const y = ys[yi];
             const mx = (x1 + x2) / 2;
             const size = beamSizes.get(symbol.trim());
@@ -506,8 +519,10 @@ function FloorSvg({
             );
           }
           if (axis === "y" && yi >= 0 && yi < ys.length - 1 && xi >= 0 && xi < xs.length) {
-            const y1 = ys[yi] + (hasColumn(floor, xi, yi) ? COL_HALF : 0);
-            const y2 = ys[yi + 1] - (hasColumn(floor, xi, yi + 1) ? COL_HALF : 0);
+            const c1 = colAt(xi, yi);
+            const c2 = colAt(xi, yi + 1);
+            const y1 = ys[yi] + (c1 === 0 ? 0 : c1.hd);
+            const y2 = ys[yi + 1] - (c2 === 0 ? 0 : c2.hd);
             const x = xs[xi];
             const my = (y1 + y2) / 2;
             const size = beamSizes.get(symbol.trim());
@@ -608,16 +623,25 @@ function FloorSvg({
           const y = ys[yi];
           const size = columnSizes.get(symbol.trim());
           const bad = symbol.trim() !== "" && !knownColumns.has(symbol.trim());
+          const half = columnHalfOf?.(symbol.trim()) ?? {
+            hw: COL_HALF,
+            hd: COL_HALF,
+          };
           return (
             <g key={key} className={bad ? "bad" : ""}>
-              <rect x={x - COL_HALF} y={y - COL_HALF} width={COL_HALF * 2} height={COL_HALF * 2} />
-              <text x={x + COL_HALF + 90} y={y + FONT_SYMBOL * 0.38} fontSize={FONT_SYMBOL}>
+              <rect
+                x={x - half.hw}
+                y={y - half.hd}
+                width={half.hw * 2}
+                height={half.hd * 2}
+              />
+              <text x={x + half.hw + 90} y={y + FONT_SYMBOL * 0.38} fontSize={FONT_SYMBOL}>
                 {symbol}
               </text>
               {size !== undefined && (
                 <text
                   className="size"
-                  x={x + COL_HALF + 90}
+                  x={x + half.hw + 90}
                   y={y + FONT_SYMBOL * 0.38 + FONT_SYMBOL * 0.85}
                   fontSize={FONT_SYMBOL * 0.72}
                 >
@@ -790,6 +814,17 @@ export default function FireproofDrawingPage({
   /* 戻る・進む：書き換える前の図面を積む（他の計算書と同じく50件まで） */
   const [past, setPast] = useState<FireproofDrawing[]>([]);
   const [future, setFuture] = useState<FireproofDrawing[]>([]);
+  /* 区画コピーで読み取った「分割条件」（写し元の小梁が同じ向き・記号で等間隔のとき）。
+     あれば貼る先の大きさに合わせて同じ分割で入れ直す */
+  const [clipRule, setClipRule] = useState<{
+    axis: "v" | "h";
+    symbol: string;
+    parts: number;
+  } | null>(null);
+  /* 階まるごとのコピー：記号だけが写るので、貼った先の階の鉄骨リストの寸法で描かれる */
+  const [clipFloor, setClipFloor] = useState<FireproofDrawingFloor | null>(
+    null,
+  );
   /** この画面では触らない他の欄（保存時にそのまま戻す） */
   const baseRef = useRef({
     floorCount: 0,
@@ -1019,6 +1054,43 @@ export default function FireproofDrawingPage({
     [beamHalfWidths],
   );
 
+  /* 柱記号→柱の四角の半分（横×縦 mm）。柱リストの寸法（Ｗ×Ｄの半分）。
+     柱の四角を実際の大きさで描き、大梁の端をその面に合わせる */
+  const columnHalfOf = useCallback(
+    (symbol: string): { hw: number; hd: number } | null => {
+      const columnAt = memberLists.columns.floors.findIndex(
+        (f) => f.label === floor,
+      );
+      const member = memberLists.columns.members.find(
+        (m) => m.symbol.trim() === symbol.trim(),
+      );
+      if (member === undefined) return null;
+      const size = resolveSize(
+        member,
+        memberLists.columns.floors,
+        Math.max(0, columnAt),
+        "column",
+      );
+      const w = size.first;
+      const d = size.second ?? size.first;
+      if (w === null || w <= 0) return null;
+      return { hw: w / 2, hd: (d ?? w) / 2 };
+    },
+    [memberLists, floor],
+  );
+
+  /* 寸法・大梁の記号・鉄骨リストの幅が変わったら、置いてある小梁の端を
+     その区画の内内寸法に入れ直す（長さ表示が図面に連動する） */
+  useEffect(() => {
+    const target = drawingRef.current.floors[floor];
+    if (target === undefined || target.beams.length === 0) return;
+    const refit = refitBeams(target, halfWidthOf);
+    if (JSON.stringify(refit) === JSON.stringify(target.beams)) return;
+    updateFloor({ beams: refit });
+    setMessage("寸法に合わせて小梁を入れ直しました");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, memberLists, current.xSpans, current.ySpans, current.girders]);
+
   /** ④小梁：図をクリック → まわりの線で囲まれた区画を選ぶ（Shift+クリックで追加・再押しで外す） */
   const handleRegionClick = useCallback(
     (x: number, y: number, additive: boolean) => {
@@ -1172,28 +1244,70 @@ export default function FireproofDrawingPage({
         yEdge2: edgeY(beam.y2),
       })),
     );
+    /* 写し元の小梁が「同じ向き・同じ記号で等間隔」なら分割条件として覚える。
+       貼る先の区画の大きさに合わせて同じ条件で入れ直せる（大きさが違っても等分になる） */
+    const verticals = inside.every((beam) => beam.x1 === beam.x2);
+    const horizontals = inside.every((beam) => beam.y1 === beam.y2);
+    const symbols = new Set(inside.map((beam) => beam.symbol));
+    let rule: { axis: "v" | "h"; symbol: string; parts: number } | null = null;
+    if (
+      inside.length > 0 &&
+      symbols.size === 1 &&
+      (verticals || horizontals)
+    ) {
+      const along = inside
+        .map((beam) => (verticals ? beam.x1 : beam.y1))
+        .sort((a, b) => a - b);
+      const span = verticals ? part.width : part.height;
+      const step = span / (inside.length + 1);
+      const evenly = along.every(
+        (value, i) =>
+          Math.abs(value - (verticals ? part.x : part.y) - step * (i + 1)) <= 2,
+      );
+      if (evenly)
+        rule = {
+          axis: verticals ? "v" : "h",
+          symbol: inside[0].symbol,
+          parts: inside.length + 1,
+        };
+    }
+    setClipRule(rule);
     if (inside.length > 0)
-      setMessage(`区画の小梁${inside.length}本をコピーしました`);
+      setMessage(
+        rule !== null
+          ? `区画の小梁をコピーしました（${rule.axis === "v" ? "縦" : "横"}${rule.parts}分割の${rule.symbol}。貼る先の大きさに合わせて入れます）`
+          : `区画の小梁${inside.length}本をコピーしました`,
+      );
   }, [regions, current]);
 
   const pasteBeams = useCallback(() => {
-    if (regions.length === 0 || clipBeams.length === 0) return;
-    const placed = regions.flatMap((part) => {
-      const left = part.x + (part.insetLeft ?? 0);
-      const right = part.x + part.width - (part.insetRight ?? 0);
-      const top = part.y + (part.insetTop ?? 0);
-      const bottom = part.y + part.height - (part.insetBottom ?? 0);
-      return clipBeams.map((clip) => ({
-        x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
-        x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
-        y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
-        y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
-        symbol: clip.symbol,
-      }));
-    });
+    if (regions.length === 0) return;
+    let placed: FireproofDrawingBeam[] = [];
+    if (clipRule !== null) {
+      // 分割条件で入れ直す（貼る先の区画の大きさに合わせて等分）
+      placed = regions.flatMap((part) =>
+        dividedBeams(part, clipRule.axis, clipRule.parts, clipRule.symbol),
+      );
+    } else if (clipBeams.length > 0) {
+      // 条件が読めない（向き・記号が混ざる、等間隔でない）ときは、写し元の位置のまま貼る
+      placed = regions.flatMap((part) => {
+        const left = part.x + (part.insetLeft ?? 0);
+        const right = part.x + part.width - (part.insetRight ?? 0);
+        const top = part.y + (part.insetTop ?? 0);
+        const bottom = part.y + part.height - (part.insetBottom ?? 0);
+        return clipBeams.map((clip) => ({
+          x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
+          x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
+          y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
+          y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
+          symbol: clip.symbol,
+        }));
+      });
+    }
+    if (placed.length === 0) return;
     updateFloor({ beams: [...current.beams, ...placed] });
     setMessage(`${regions.length}か所に貼り付けました`);
-  }, [regions, clipBeams, current, updateFloor]);
+  }, [regions, clipBeams, clipRule, current, updateFloor]);
 
   /* 区画を選んでいるあいだは Ctrl+C（最後の区画の形をコピー）・Ctrl+V（選んだ全部の区画へ貼り付け）も効く。
      入力欄の中の操作はそのまま（input/textareaのときは動かさない） */
@@ -1499,6 +1613,32 @@ export default function FireproofDrawingPage({
         </span>
         <button
           type="button"
+          title="表示中の階の図面をまるごとコピーします"
+          onClick={() => {
+            setClipFloor(JSON.parse(JSON.stringify(current)));
+            setMessage(`${floor === "R" ? "RF" : `${floor}F`}の図面をコピーしました`);
+          }}
+        >
+          階コピー
+        </button>
+        <button
+          type="button"
+          disabled={clipFloor === null}
+          title="コピーした階の図面をこの階に貼り付けます（この階の鉄骨リストの寸法で描きます）"
+          onClick={() => {
+            if (clipFloor === null) return;
+            updateFloor(JSON.parse(JSON.stringify(clipFloor)));
+            setRegions([]);
+            setSelBeam(null);
+            setMessage(
+              `${floor === "R" ? "RF" : `${floor}F`}に貼り付けました（この階の鉄骨リストの寸法で描きます）`,
+            );
+          }}
+        >
+          階へ貼り付け
+        </button>
+        <button
+          type="button"
           disabled={past.length === 0}
           title="ひとつ前に戻す（Ctrl+Z）"
           onClick={undo}
@@ -1645,10 +1785,15 @@ export default function FireproofDrawingPage({
                 </button>
                 <button
                   type="button"
-                  disabled={regions.length === 0 || clipBeams.length === 0}
+                  disabled={regions.length === 0 || (clipRule === null && clipBeams.length === 0)}
                   onClick={pasteBeams}
                 >
-                  区画へ貼り付け{clipBeams.length > 0 ? `（${clipBeams.length}本）` : ""}
+                  区画へ貼り付け
+                  {clipRule !== null
+                    ? `（${clipRule.axis === "v" ? "縦" : "横"}${clipRule.parts}分割 ${clipRule.symbol}）`
+                    : clipBeams.length > 0
+                      ? `（${clipBeams.length}本）`
+                      : ""}
                 </button>
               </div>
               {regions.length > 1 && (
@@ -1726,6 +1871,7 @@ export default function FireproofDrawingPage({
                 knownColumns={knownColumns}
                 knownBeams={knownBeams}
                 halfWidthOf={halfWidthOf}
+                columnHalfOf={columnHalfOf}
                 displaySize={displaySize}
                 svgRef={svgRef}
               />

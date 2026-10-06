@@ -369,6 +369,36 @@ export function beamLength(beam: FireproofDrawingBeam): number {
   return Math.hypot(beam.x2 - beam.x1, beam.y2 - beam.y1);
 }
 
+/**
+ * 小梁の端を、今の図面（大梁・柱線・部材の幅）に合わせて入れ直す。
+ * 中点を囲む区画を拾い直して、軸方向の両端をその区画の内内寸法に止める。
+ * 寸法や記号の幅が変わったときに呼ぶと、長さ表示が図面に連動する。
+ */
+export function refitBeams(
+  floor: FireproofDrawingFloor,
+  halfWidthOf?: HalfWidthOf,
+): FireproofDrawingBeam[] {
+  return floor.beams.map((beam) => {
+    const mx = (beam.x1 + beam.x2) / 2;
+    const my = (beam.y1 + beam.y2) / 2;
+    const region = enclosingRegion(floor, mx, my, halfWidthOf);
+    if (region === null) return beam;
+    if (beam.x1 === beam.x2)
+      return {
+        ...beam,
+        y1: region.y + (region.insetTop ?? 0),
+        y2: region.y + region.height - (region.insetBottom ?? 0),
+      };
+    if (beam.y1 === beam.y2)
+      return {
+        ...beam,
+        x1: region.x + (region.insetLeft ?? 0),
+        x2: region.x + region.width - (region.insetRight ?? 0),
+      };
+    return beam;
+  });
+}
+
 /** 小梁を軸と直角の方向へ delta mm 動かす（縦の梁は左右・横の梁は上下） */
 export function nudgeBeam(
   beam: FireproofDrawingBeam,

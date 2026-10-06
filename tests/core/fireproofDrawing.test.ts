@@ -11,6 +11,7 @@ import {
   nudgeBeam,
   parseDrawing,
   parseSpanList,
+  refitBeams,
   positions,
   serializeDrawing,
   spanListText,
@@ -258,6 +259,29 @@ describe("小梁の配置・調整", () => {
     expect(nudgeBeam(beam, 250)).toEqual({ ...beam, x1: 3250, x2: 3250 });
     const flat = { x1: 0, y1: 3000, x2: 9000, y2: 3000, symbol: "B25" };
     expect(nudgeBeam(flat, -100)).toEqual({ ...flat, y1: 2900, y2: 2900 });
+  });
+
+  it("refitBeams：芯まで伸びた小梁を、その区画の内内寸法に入れ直す", () => {
+    const floor: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000],
+      ySpans: [6000],
+      girders: {
+        "x:0,0": "G1",
+        "x:0,1": "G1",
+        "y:0,0": "G1",
+        "y:1,0": "G1",
+      },
+      // 芯から芯まで伸びた縦の小梁（古い置き方）
+      beams: [{ x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B40" }],
+    };
+    const refit = refitBeams(floor, () => 150);
+    expect(refit).toEqual([
+      { x1: 3000, y1: 150, x2: 3000, y2: 5850, symbol: "B40" },
+    ]);
+    // いったん内内なら二回目は変わらない（連動のあと動かない）
+    const again = refitBeams({ ...floor, beams: refit }, () => 150);
+    expect(again).toEqual(refit);
   });
 });
 
