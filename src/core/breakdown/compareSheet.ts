@@ -108,6 +108,7 @@ function sideLines(
       kind: heading ? "header" : part.wrap ? "wrap" : "text",
       border,
       mark: heading ? headMark : textMark(field, half),
+      strike: struckAll,
     });
     /** 数量・単位・単価・金額は下段の行にだけあるので、上段の行は色を付けない。
      *  追加行・取り消し行・見出し行は行の全部を色付けする */
@@ -125,15 +126,22 @@ function sideLines(
       field: "quantity" | "unit" | null,
     ): XlsxCell => ({
       value,
-      kind: value === null ? "text" : "number",
+      kind: heading ? "header" : value === null ? "text" : "number",
       border,
       mark: numMark(field),
+      strike: struckAll,
     });
     return [
       text(name, "name"),
       text(description, "description"),
       number(quantity, "quantity"),
-      { value: unit, kind: "text", border, mark: numMark("unit") },
+      {
+        value: unit,
+        kind: heading ? "header" : "text",
+        border,
+        mark: numMark("unit"),
+        strike: struckAll,
+      },
       number(unitPrice, null),
       number(amount, null),
       text(remarks, "remarks"),

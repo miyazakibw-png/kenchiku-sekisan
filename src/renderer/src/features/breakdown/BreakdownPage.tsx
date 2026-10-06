@@ -252,6 +252,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const compareScrollRef = useRef<HTMLDivElement | null>(null);
   const [panel, setPanel] = useState<"none" | "settings" | "compare">("none");
   const [message, setMessage] = useState("");
   const [leftRows, setLeftRows] = useState<BreakdownRowRecord[]>([]);
@@ -467,17 +468,19 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
 
   const showSubject = (subjectId: number | null): void => {
     setSelectedSubject(subjectId);
+    const container =
+      panel === "compare" ? compareScrollRef.current : bodyRef.current;
     if (subjectId === null) {
-      bodyRef.current?.scrollTo({ top: 0 });
+      container?.scrollTo({ top: 0 });
       return;
     }
-    const heading = bodyRef.current?.querySelector(
+    const heading = container?.querySelector(
       `tr.subject[data-subject="${subjectId}"]`,
     );
-    if (heading instanceof HTMLElement && bodyRef.current)
-      bodyRef.current.scrollTop +=
+    if (heading instanceof HTMLElement && container)
+      container.scrollTop +=
         heading.getBoundingClientRect().top -
-        bodyRef.current.getBoundingClientRect().top;
+        container.getBoundingClientRect().top;
   };
 
   const moveSubject = async (
@@ -856,7 +859,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     if (block.heading) {
       // 工種科目・タイトルの見出しは文字だけ出す（高さは1明細分そろえる）。
       // 色が付くときは行の全部（数量・単位・単価・金額の欄も）同じ色にする
-      const headClass = `${mark("nameLower")}${struckClass}`;
+      // 色が付かない見出し行は薄い灰色の地にする（色が付くときはその色）
+      const headClass = `${mark("nameLower") || "head"}${struckClass}`;
       return [
         <td key="n" className={headClass}>
           {twoStageText
@@ -1251,7 +1255,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       )}
 
       {panel === "compare" ? (
-        <div className="breakdown-compare">
+        <div className="breakdown-compare" ref={compareScrollRef}>
           <div className="compare-toolbar">
             <span>
               左：{view.version?.round ?? "-"}回目（新しい方）／右：
@@ -1304,11 +1308,34 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               左右それぞれ「＋（空き1行）」「－（消す）」「↑」「↓」で行を合わせ、「⧉」でコピーして「📋」で貼り付けます。「消̶」はその明細に取り消し線を付け、無いものとして色づけに出します。欄はそのまま直せ、少し待つと自動で保存します（空行も残ります）。
             </span>
           </div>
-          <table
-            className={`parts compare${twoStage(settings.layout) ? " two-stage" : ""}`}
-            ref={tableRef}
-            onKeyDown={navKeyDown}
-          >
+          <div className="compare-body">
+            <div className="subject-list">
+              <button
+                type="button"
+                className={selectedSubject === null ? "selected" : ""}
+                onClick={() => showSubject(null)}
+              >
+                すべて
+              </button>
+              {usedSubjects.map(([subjectId, name]) => (
+                <div key={subjectId ?? "none"} className="subject-row">
+                  <button
+                    type="button"
+                    className={selectedSubject === subjectId ? "selected" : ""}
+                    title="この科目の見出しへ移動します"
+                    onClick={() => showSubject(subjectId)}
+                  >
+                    {name}
+                  </button>
+                </div>
+              ))}
+              <div className="hint">選んだ科目の見出しへ移動します</div>
+            </div>
+            <table
+              className={`parts compare${twoStage(settings.layout) ? " two-stage" : ""}`}
+              ref={tableRef}
+              onKeyDown={navKeyDown}
+            >
             <thead>
               <tr>
                 {["left", "right"].map((side) =>
@@ -1333,10 +1360,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                   diff.rightIndex === null
                     ? null
                     : rightBlocks[diff.rightIndex];
+                // 科目の見出しの行は科目一覧から飛んで来られるよう印を付ける
+                const subjectId =
+                  (left?.lower.rowKind === "subject"
+                    ? left.lower.subjectId
+                    : right?.lower.rowKind === "subject"
+                      ? right.lower.subjectId
+                      : null) ?? null;
                 return (
                   <tr
                     key={diff.index}
-                    className={twoStage(settings.layout) ? "two-line" : ""}
+                    className={`${twoStage(settings.layout) ? "two-line" : ""}${subjectId === null ? "" : " subject"}`}
+                    data-subject={subjectId === null ? undefined : subjectId}
                   >
                     {opsCell("left", left)}
                     {compareCells(
@@ -1356,7 +1391,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="breakdown-body" ref={bodyRef}>

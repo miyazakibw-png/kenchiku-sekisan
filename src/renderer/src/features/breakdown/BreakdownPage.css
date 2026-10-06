@@ -200,6 +200,25 @@
   overflow: auto;
 }
 
+/* 比較画面でも科目の一覧を左に出す（表を横に動かしても左に残る） */
+.breakdown-page .breakdown-compare .compare-body {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.breakdown-page .breakdown-compare .subject-list {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 2;
+}
+
+/* 比較画面の見出し行（科目・部位Ⅰのタイトル）は薄い灰色の地にする（色のあるときはその色） */
+.breakdown-page table.compare td.head {
+  background: #eee;
+}
+
 .breakdown-page table.compare {
   border-collapse: collapse;
   font-size: 12px;
