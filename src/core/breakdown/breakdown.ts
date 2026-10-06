@@ -141,6 +141,8 @@ export interface BreakdownRow {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 取り消し線（1＝この明細は無いものとして比較に出す。無い欄は0と同じ） */
+  struck?: number;
   /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
   subtotal?: boolean;
 }

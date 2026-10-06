@@ -854,19 +854,21 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       </td>
     );
     if (block.heading) {
-      // 工種科目・タイトルの見出しは文字だけ出す（高さは1明細分そろえる）
+      // 工種科目・タイトルの見出しは文字だけ出す（高さは1明細分そろえる）。
+      // 色が付くときは行の全部（数量・単位・単価・金額の欄も）同じ色にする
+      const headClass = `${mark("nameLower")}${struckClass}`;
       return [
-        <td key="n" className={mark("nameLower")}>
+        <td key="n" className={headClass}>
           {twoStageText
             ? subjectLines(headingTextOf(lower))
             : headingTextOf(lower)}
         </td>,
-        <td key="d" />,
-        <td key="q" className="qty" />,
-        <td key="u" className="unit" />,
-        <td key="p" className="qty" />,
-        <td key="a" className="qty" />,
-        <td key="r" />,
+        <td key="d" className={headClass} />,
+        <td key="q" className={`qty ${headClass}`} />,
+        <td key="u" className={`unit ${headClass}`} />,
+        <td key="p" className={`qty ${headClass}`} />,
+        <td key="a" className={`qty ${headClass}`} />,
+        <td key="r" className={headClass} />,
       ];
     }
     const numberCell = (
@@ -874,7 +876,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       value: number | null,
       onCommit: (value: number | null) => void,
     ): JSX.Element => (
-      <td key={key} className={`qty${struckClass}`}>
+      <td key={key} className={`qty ${tdOnly}${struckClass}`}>
         {twoStageText && <div className="upper" />}
         <div className={twoStageText ? "lower" : ""}>
           <NumberInput value={value} onCommit={onCommit} />

@@ -285,12 +285,14 @@
   color: #666;
 }
 
-/* 取り消し線を付けた明細は行全体に線を引く（比較では無いものとして扱う） */
+/* 取り消し線を付けた明細は行全体に線を引き、黄色＋赤文字で示す（比較では無いものとして扱う） */
 .breakdown-page table.compare td.struck,
 .breakdown-page table.parts.breakdown tr.struck td,
 .breakdown-page table.compare td.struck input {
   text-decoration: line-through;
-  color: #9a9a9a;
+  background: #ffe08a;
+  color: #a03000;
+  font-weight: bold;
 }
 
 /* 取り消し線を付けている明細の操作ボタンは押した状態に見せる */

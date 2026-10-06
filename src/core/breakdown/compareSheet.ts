@@ -58,9 +58,22 @@ function sideLines(
   changed: readonly BreakdownHalfField[] | null,
   onlySide: boolean,
 ): XlsxCell[][] {
+  /** 取り消し線を付けた明細は行の全部を色付けする（無いものとして扱う印） */
+  const struckAll =
+    block !== null &&
+    ((block.lower.struck ?? 0) === 1 || (block.upper?.struck ?? 0) === 1);
+  const heading = block !== null && block.heading;
+  /** 見出し行（工種科目・部位Ⅰのタイトル）の色。片方だけ・取り消し・名前が違うとき行の全部を色付けする */
+  const headMark: "plain" | "diff" =
+    heading &&
+    (struckAll ||
+      onlySide ||
+      (changed !== null && changed.includes("nameLower")))
+      ? "diff"
+      : "plain";
   const mark = (field: BreakdownHalfField): "plain" | "diff" => {
     if (changed === null) return "plain";
-    if (onlySide) return "diff";
+    if (struckAll || onlySide) return "diff";
     return changed.includes(field) ? "diff" : "plain";
   };
   /** 文字欄の色。上段・下段を別に見て、1行にまとめる書式はどちらか違えば付ける */
@@ -76,7 +89,6 @@ function sideLines(
     }
     return mark(`${field}${half}`);
   };
-  const heading = block !== null && block.heading;
   const line = (
     border: XlsxBorder,
     half: "Upper" | "Lower" | "Both",
@@ -95,11 +107,16 @@ function sideLines(
       value: part.value,
       kind: heading ? "header" : part.wrap ? "wrap" : "text",
       border,
-      mark: heading ? "plain" : textMark(field, half),
+      mark: heading ? headMark : textMark(field, half),
     });
-    /** 数量・単位は下段の行にだけあるので、上段の行は色を付けない */
-    const numMark = (field: "quantity" | "unit" | null): "plain" | "diff" => {
-      if (field === null) return "plain";
+    /** 数量・単位・単価・金額は下段の行にだけあるので、上段の行は色を付けない。
+     *  追加行・取り消し行・見出し行は行の全部を色付けする */
+    const numMark = (
+      field: "quantity" | "unit" | null,
+    ): "plain" | "diff" => {
+      if (heading) return headMark;
+      if (struckAll) return "diff";
+      if (field === null) return onlySide ? "diff" : "plain";
       if (half === "Upper" && !onlySide) return "plain";
       return mark(field);
     };
