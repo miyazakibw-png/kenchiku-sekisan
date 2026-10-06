@@ -13,9 +13,13 @@ export interface FireproofDrawingBeam {
   symbol: string;
 }
 
-/** 線の描き幅の半分（mm）。小梁の端を線の内側（内内寸法）に寄せる量としても使う */
-export const GIRDER_HALF = 75; // 大梁
-export const BEAM_HALF = 60; // 小梁
+/** 線の描き幅の半分（mm）。部材の幅（リストの後ろの数字）が分からないときの既定値。
+    小梁の端を線の内側（内内寸法）に寄せる量としても使う */
+export const GIRDER_HALF = 75; // 大梁（幅が不明なとき150mm幅で描く）
+export const BEAM_HALF = 60; // 小梁（幅が不明なとき120mm幅で描く）
+
+/** 区画の境界線の半幅（mm）→ 内内寸法を出す量。部材幅の半分 */
+export type HalfWidthOf = (symbol: string) => number | null;
 
 /** まわりを囲む線でできた区画（大梁・小梁の線を境界とする） */
 export interface DrawingRegion {
@@ -229,14 +233,19 @@ export function enclosingRegion(
   floor: FireproofDrawingFloor,
   px: number,
   py: number,
+  /** 記号→部材幅の半分（mm）。内内寸法に使う。渡さないときは描き幅の半分（GIRDER_HALF/BEAM_HALF） */
+  halfWidthOf?: HalfWidthOf,
 ): DrawingRegion | null {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
+  const girderHalf = (symbol: string) =>
+    halfWidthOf?.(symbol) ?? GIRDER_HALF;
+  const beamHalf = (symbol: string) => halfWidthOf?.(symbol) ?? BEAM_HALF;
   /** 縦の境界線（xの位置・その線があるy区間・線の半幅） */
   const vLines: { x: number; y1: number; y2: number; half: number }[] = [];
   /** 横の境界線 */
   const hLines: { y: number; x1: number; x2: number; half: number }[] = [];
-  Object.keys(floor.girders).forEach((key) => {
+  Object.entries(floor.girders).forEach(([key, symbol]) => {
     const [axis, point] = key.split(":");
     const [xi, yi] = point.split(",").map(Number);
     if (
@@ -246,7 +255,12 @@ export function enclosingRegion(
       yi >= 0 &&
       yi < ys.length
     )
-      hLines.push({ y: ys[yi], x1: xs[xi], x2: xs[xi + 1], half: GIRDER_HALF });
+      hLines.push({
+        y: ys[yi],
+        x1: xs[xi],
+        x2: xs[xi + 1],
+        half: girderHalf(symbol),
+      });
     if (
       axis === "y" &&
       yi >= 0 &&
@@ -254,7 +268,12 @@ export function enclosingRegion(
       xi >= 0 &&
       xi < xs.length
     )
-      vLines.push({ x: xs[xi], y1: ys[yi], y2: ys[yi + 1], half: GIRDER_HALF });
+      vLines.push({
+        x: xs[xi],
+        y1: ys[yi],
+        y2: ys[yi + 1],
+        half: girderHalf(symbol),
+      });
   });
   floor.beams.forEach((beam) => {
     if (beam.x1 === beam.x2)
@@ -262,14 +281,14 @@ export function enclosingRegion(
         x: beam.x1,
         y1: Math.min(beam.y1, beam.y2),
         y2: Math.max(beam.y1, beam.y2),
-        half: BEAM_HALF,
+        half: beamHalf(beam.symbol),
       });
     if (beam.y1 === beam.y2)
       hLines.push({
         y: beam.y1,
         x1: Math.min(beam.x1, beam.x2),
         x2: Math.max(beam.x1, beam.x2),
-        half: BEAM_HALF,
+        half: beamHalf(beam.symbol),
       });
   });
   let left = -Infinity;

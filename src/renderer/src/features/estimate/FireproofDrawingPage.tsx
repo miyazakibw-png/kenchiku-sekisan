@@ -16,6 +16,7 @@ import {
   emptyFloor,
   enclosingRegion,
   GIRDER_HALF,
+  type HalfWidthOf,
   girderKey,
   girderNumber,
   nudgeBeam,
@@ -386,6 +387,7 @@ function FloorSvg({
   beamSizes,
   knownColumns,
   knownBeams,
+  halfWidthOf,
   displaySize,
   svgRef,
 }: {
@@ -403,6 +405,8 @@ function FloorSvg({
   /** リストに登録済みの記号（無い記号は赤で示す） */
   knownColumns: ReadonlySet<string>;
   knownBeams: ReadonlySet<string>;
+  /** 記号→部材幅の半分（mm）。梁を実際の幅で2本線に描き、内内寸法にも使う */
+  halfWidthOf?: HalfWidthOf;
   /** 表示サイズ（px）。画面に収める大きさ×拡大率を外から渡す */
   displaySize?: { width: number; height: number };
   svgRef: React.Ref<SVGSVGElement>;
@@ -479,11 +483,12 @@ function FloorSvg({
             const mx = (x1 + x2) / 2;
             const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
+            const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             return (
               <g key={key} className={bad ? "bad" : ""}>
-                <line x1={x1} y1={y - GIRDER_HALF} x2={x2} y2={y - GIRDER_HALF} />
-                <line x1={x1} y1={y + GIRDER_HALF} x2={x2} y2={y + GIRDER_HALF} />
-                <text x={mx} y={y - GIRDER_HALF - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
+                <line x1={x1} y1={y - gh} x2={x2} y2={y - gh} />
+                <line x1={x1} y1={y + gh} x2={x2} y2={y + gh} />
+                <text x={mx} y={y - gh - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
                   {symbol}
                   {size !== undefined && (
                     <tspan className="size" dx="220">{size}</tspan>
@@ -499,16 +504,17 @@ function FloorSvg({
             const my = (y1 + y2) / 2;
             const size = beamSizes.get(symbol.trim());
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
+            const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             return (
               <g key={key} className={bad ? "bad" : ""}>
-                <line x1={x - GIRDER_HALF} y1={y1} x2={x - GIRDER_HALF} y2={y2} />
-                <line x1={x + GIRDER_HALF} y1={y1} x2={x + GIRDER_HALF} y2={y2} />
+                <line x1={x - gh} y1={y1} x2={x - gh} y2={y2} />
+                <line x1={x + gh} y1={y1} x2={x + gh} y2={y2} />
                 <text
-                  x={x + GIRDER_HALF + 160}
+                  x={x + gh + 160}
                   y={my}
                   textAnchor="middle"
                   fontSize={FONT_SYMBOL}
-                  transform={`rotate(-90 ${x + GIRDER_HALF + 160} ${my})`}
+                  transform={`rotate(-90 ${x + gh + 160} ${my})`}
                 >
                   {symbol}
                   {size !== undefined && (
@@ -529,6 +535,7 @@ function FloorSvg({
           const my = (beam.y1 + beam.y2) / 2;
           const bad =
             beam.symbol.trim() !== "" && !knownBeams.has(beam.symbol.trim());
+          const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
           return (
             <g
               key={index}
@@ -541,14 +548,14 @@ function FloorSvg({
             >
               {vertical ? (
                 <>
-                  <line x1={beam.x1 - BEAM_HALF} y1={beam.y1} x2={beam.x2 - BEAM_HALF} y2={beam.y2} />
-                  <line x1={beam.x1 + BEAM_HALF} y1={beam.y1} x2={beam.x2 + BEAM_HALF} y2={beam.y2} />
+                  <line x1={beam.x1 - bh} y1={beam.y1} x2={beam.x2 - bh} y2={beam.y2} />
+                  <line x1={beam.x1 + bh} y1={beam.y1} x2={beam.x2 + bh} y2={beam.y2} />
                   <text
-                    x={mx + 140}
+                    x={mx + bh + 60}
                     y={my}
                     textAnchor="middle"
                     fontSize={FONT_SYMBOL * 0.85}
-                    transform={`rotate(-90 ${mx + 140} ${my})`}
+                    transform={`rotate(-90 ${mx + bh + 60} ${my})`}
                   >
                     {beam.symbol}
                     {beamSizes.get(beam.symbol.trim()) !== undefined && (
@@ -560,9 +567,9 @@ function FloorSvg({
                 </>
               ) : (
                 <>
-                  <line x1={beam.x1} y1={beam.y1 - BEAM_HALF} x2={beam.x2} y2={beam.y2 - BEAM_HALF} />
-                  <line x1={beam.x1} y1={beam.y1 + BEAM_HALF} x2={beam.x2} y2={beam.y2 + BEAM_HALF} />
-                  <text x={mx} y={my - 140} textAnchor="middle" fontSize={FONT_SYMBOL * 0.85}>
+                  <line x1={beam.x1} y1={beam.y1 - bh} x2={beam.x2} y2={beam.y2 - bh} />
+                  <line x1={beam.x1} y1={beam.y1 + bh} x2={beam.x2} y2={beam.y2 + bh} />
+                  <text x={mx} y={my - bh - 60} textAnchor="middle" fontSize={FONT_SYMBOL * 0.85}>
                     {beam.symbol}
                     {beamSizes.get(beam.symbol.trim()) !== undefined && (
                       <tspan className="size" dx="180">
@@ -625,8 +632,9 @@ function FloorSvg({
         {ys.map((y, yi) =>
           xs.slice(0, -1).map((x, xi) => {
             const no = girderNumber("x", xi, yi, floor);
+            const gh = halfWidthOf?.((floor.girders[`x:${xi},${yi}`] ?? "").trim()) ?? GIRDER_HALF;
             return (
-              <text key={`gnx${xi},${yi}`} x={(x + xs[xi + 1]) / 2} y={y + GIRDER_HALF + FONT_NO + 120} textAnchor="middle" fontSize={FONT_NO}>
+              <text key={`gnx${xi},${yi}`} x={(x + xs[xi + 1]) / 2} y={y + gh + FONT_NO + 120} textAnchor="middle" fontSize={FONT_NO}>
                 {no}
               </text>
             );
@@ -635,8 +643,9 @@ function FloorSvg({
         {xs.map((x, xi) =>
           ys.slice(0, -1).map((y, yi) => {
             const no = girderNumber("y", xi, yi, floor);
+            const gh = halfWidthOf?.((floor.girders[`y:${xi},${yi}`] ?? "").trim()) ?? GIRDER_HALF;
             return (
-              <text key={`gny${xi},${yi}`} x={x + GIRDER_HALF + 140} y={(y + ys[yi + 1]) / 2 - GIRDER_HALF - 60} fontSize={FONT_NO}>
+              <text key={`gny${xi},${yi}`} x={x + gh + 140} y={(y + ys[yi + 1]) / 2 - gh - 60} fontSize={FONT_NO}>
                 {no}
               </text>
             );
@@ -747,7 +756,7 @@ export default function FireproofDrawingPage({
     | { kind: "beam"; index: number }
     | null
   >(null);
-  /** 区画コピーした小梁。aLなどは「端が区画の辺（の内側）に付いている」印で、貼る側の辺へ合わせる */
+  /** 区画コピーした小梁。xEdge/yEdgeは「その端が区画のどの辺（の内側）に付いているか」の印で、貼る側の辺へ合わせる */
   const [clipBeams, setClipBeams] = useState<
     {
       dx1: number;
@@ -755,10 +764,10 @@ export default function FireproofDrawingPage({
       dx2: number;
       dy2: number;
       symbol: string;
-      aL: boolean;
-      aR: boolean;
-      aT: boolean;
-      aB: boolean;
+      xEdge1: "left" | "right" | null;
+      xEdge2: "left" | "right" | null;
+      yEdge1: "top" | "bottom" | null;
+      yEdge2: "top" | "bottom" | null;
     }[]
   >([]);
   /** 小梁をつかんでいる最中の持ち場 */
@@ -768,7 +777,11 @@ export default function FireproofDrawingPage({
     originX: number;
     originY: number;
     applied: number;
+    before: FireproofDrawing;
   } | null>(null);
+  /* 戻る・進む：書き換える前の図面を積む（他の計算書と同じく50件まで） */
+  const [past, setPast] = useState<FireproofDrawing[]>([]);
+  const [future, setFuture] = useState<FireproofDrawing[]>([]);
   /** この画面では触らない他の欄（保存時にそのまま戻す） */
   const baseRef = useRef({
     floorCount: 0,
@@ -852,15 +865,45 @@ export default function FireproofDrawingPage({
 
   const updateFloor = useCallback(
     (patch: Partial<FireproofDrawingFloor>) => {
-      setDrawing((before) => ({
-        floors: {
-          ...before.floors,
-          [floor]: { ...(before.floors[floor] ?? emptyFloor()), ...patch },
-        },
-      }));
+      const target = drawing.floors[floor] ?? emptyFloor();
+      const next: FireproofDrawing = {
+        floors: { ...drawing.floors, [floor]: { ...target, ...patch } },
+      };
+      // 欄を離れただけなどの変わらない入力で履歴が埋まると、「戻る」が効かなくなる
+      if (JSON.stringify(next) === JSON.stringify(drawing)) {
+        setDrawing(next);
+        return;
+      }
+      setPast((rows) => [...rows.slice(-49), drawing]);
+      setFuture([]);
+      setDrawing(next);
     },
-    [floor],
+    [drawing, floor],
   );
+
+  const undo = useCallback(() => {
+    const previous = past[past.length - 1];
+    if (previous === undefined) return;
+    setPast((rows) => rows.slice(0, -1));
+    setFuture((rows) => [...rows, drawing]);
+    setDrawing(previous);
+    setRegions([]);
+    setSelBeam(null);
+    setFocusTarget(null);
+    dragRef.current = null;
+  }, [drawing, past]);
+
+  const redo = useCallback(() => {
+    const next = future[future.length - 1];
+    if (next === undefined) return;
+    setFuture((rows) => rows.slice(0, -1));
+    setPast((rows) => [...rows, drawing]);
+    setDrawing(next);
+    setRegions([]);
+    setSelBeam(null);
+    setFocusTarget(null);
+    dragRef.current = null;
+  }, [drawing, future]);
 
   /* 表示倍率（1＝画面内に図形がぜんたい入る大きさ）と画面の計り方 */
   const [zoom, setZoom] = useState(1);
@@ -924,11 +967,55 @@ export default function FireproofDrawingPage({
     dragRef.current = null;
   }, [floor]);
 
+  /* 階タブは左から 1F・2F…の順（数字でない階＝Rは伏図では一番上の階の梁なのでタブには出さない）。
+     柱は1Fから・梁は2Fからの対応なので、タブは「1F(梁2F)」のように隣の階を添える */
+  const sortedFloors = [...floors].sort((a, b) => {
+    const an = /^\d+$/.test(a) ? Number(a) : null;
+    const bn = /^\d+$/.test(b) ? Number(b) : null;
+    if (an !== null && bn !== null) return an - bn;
+    if (an !== null) return -1;
+    if (bn !== null) return 1;
+    return 0;
+  });
+  const floorTabs =
+    sortedFloors.filter((label) => label !== "R").length > 0
+      ? sortedFloors.filter((label) => label !== "R")
+      : sortedFloors;
+  /** その階の図で使う梁の階（柱はその階・梁はひとつ上。一番上はRF） */
+  const beamFloorLabel =
+    floorTabs[floorTabs.indexOf(floor) + 1] ?? "R";
+
+  /* 記号→部材幅の半分（mm）。梁リストの後ろの数字（幅）の半分。
+     小梁を囲む線の内側に止める量（内内寸法）と、2本線の開きに使う */
+  const beamHalfWidths = useMemo(() => {
+    const beamAt = memberLists.beams.floors.findIndex(
+      (f) => f.label === beamFloorLabel,
+    );
+    const map = new Map<string, number>();
+    memberLists.beams.members.forEach((member) => {
+      const symbol = member.symbol.trim();
+      if (symbol === "") return;
+      const size = resolveSize(
+        member,
+        memberLists.beams.floors,
+        Math.max(0, beamAt),
+        "beam",
+      );
+      const width = size.second ?? size.first;
+      if (width !== null && width > 0) map.set(symbol, width / 2);
+    });
+    return map;
+  }, [memberLists, beamFloorLabel]);
+  const halfWidthOf = useCallback<HalfWidthOf>(
+    (symbol) => beamHalfWidths.get(symbol.trim()) ?? null,
+    [beamHalfWidths],
+  );
+
   /** ④小梁：図をクリック → まわりの線で囲まれた区画を選ぶ（Shift+クリックで追加・再押しで外す） */
   const handleRegionClick = useCallback(
     (x: number, y: number, additive: boolean) => {
       if (dragRef.current !== null) return; // ドラッグの離しクリックは区画変更にしない
-      const part = enclosingRegion(current, x, y);
+      const part = enclosingRegion(current, x, y, halfWidthOf);
       setRegions((before) => {
         if (!additive) return part === null ? [] : [part];
         if (part === null) return before;
@@ -939,7 +1026,7 @@ export default function FireproofDrawingPage({
       setSelBeam(null);
       setFocusTarget(null);
     },
-    [current],
+    [current, halfWidthOf],
   );
 
   const svgPoint = (
@@ -968,12 +1055,13 @@ export default function FireproofDrawingPage({
         originX: at.x - MARGIN_LEFT,
         originY: at.y - MARGIN_TOP,
         applied: 0,
+        before: drawing,
       };
       setSelBeam(index);
       setRegions([]);
       setFocusTarget({ kind: "beam", index });
     },
-    [current],
+    [current, drawing],
   );
 
   /** ④小梁：つかんで動かす（縦の梁は左右・横の梁は上下へ） */
@@ -1002,6 +1090,12 @@ export default function FireproofDrawingPage({
   );
 
   const endBeamDrag = useCallback(() => {
+    // つかんで動かしたときは、動かす前の図面を履歴に残す（戻るで元に戻せる）
+    const drag = dragRef.current;
+    if (drag !== null && drag.applied !== 0) {
+      setPast((rows) => [...rows.slice(-49), drag.before]);
+      setFuture([]);
+    }
     // つかんで離すと発生するクリックで区画選択に化けないよう、少しの間だけ持ち場を残す
     window.setTimeout(() => {
       dragRef.current = null;
@@ -1030,9 +1124,33 @@ export default function FireproofDrawingPage({
         beam.y1 >= part.y - 1 &&
         beam.y2 <= part.y + part.height + 1,
     );
-    // 端が区画の辺（その内側＝梁の内内の面）に付いているか。貼る側でも内内に合わせる目印
-    const near = (value: number, inner: number, edge: number): boolean =>
-      Math.abs(value - inner) <= 1.5 || Math.abs(value - edge) <= 1.5;
+    // 端が区画の辺（その内側＝梁の内内の面）に付いているか。貼る側でも内内に合わせる目印。
+    // 端ごとに「左辺・右辺・上辺・下辺」のどれに付いているかを覚える
+    // （片端だけ見ると、辺に沿った梁が斜めに化けるので同じ辺の端は両方に付ける）
+    const edgeX = (value: number): "left" | "right" | null => {
+      const left = part.x + (part.insetLeft ?? 0);
+      const right = part.x + part.width - (part.insetRight ?? 0);
+      if (Math.abs(value - left) <= 1.5 || Math.abs(value - part.x) <= 1.5)
+        return "left";
+      if (
+        Math.abs(value - right) <= 1.5 ||
+        Math.abs(value - (part.x + part.width)) <= 1.5
+      )
+        return "right";
+      return null;
+    };
+    const edgeY = (value: number): "top" | "bottom" | null => {
+      const top = part.y + (part.insetTop ?? 0);
+      const bottom = part.y + part.height - (part.insetBottom ?? 0);
+      if (Math.abs(value - top) <= 1.5 || Math.abs(value - part.y) <= 1.5)
+        return "top";
+      if (
+        Math.abs(value - bottom) <= 1.5 ||
+        Math.abs(value - (part.y + part.height)) <= 1.5
+      )
+        return "bottom";
+      return null;
+    };
     setClipBeams(
       inside.map((beam) => ({
         dx1: beam.x1 - part.x,
@@ -1040,18 +1158,10 @@ export default function FireproofDrawingPage({
         dx2: beam.x2 - part.x,
         dy2: beam.y2 - part.y,
         symbol: beam.symbol,
-        aL: near(beam.x1, part.x + (part.insetLeft ?? 0), part.x),
-        aR: near(
-          beam.x2,
-          part.x + part.width - (part.insetRight ?? 0),
-          part.x + part.width,
-        ),
-        aT: near(beam.y1, part.y + (part.insetTop ?? 0), part.y),
-        aB: near(
-          beam.y2,
-          part.y + part.height - (part.insetBottom ?? 0),
-          part.y + part.height,
-        ),
+        xEdge1: edgeX(beam.x1),
+        xEdge2: edgeX(beam.x2),
+        yEdge1: edgeY(beam.y1),
+        yEdge2: edgeY(beam.y2),
       })),
     );
     if (inside.length > 0)
@@ -1060,22 +1170,51 @@ export default function FireproofDrawingPage({
 
   const pasteBeams = useCallback(() => {
     if (regions.length === 0 || clipBeams.length === 0) return;
-    const placed = regions.flatMap((part) =>
-      clipBeams.map((clip) => ({
-        x1: clip.aL ? part.x + (part.insetLeft ?? 0) : part.x + clip.dx1,
-        y1: clip.aT ? part.y + (part.insetTop ?? 0) : part.y + clip.dy1,
-        x2: clip.aR
-          ? part.x + part.width - (part.insetRight ?? 0)
-          : part.x + clip.dx2,
-        y2: clip.aB
-          ? part.y + part.height - (part.insetBottom ?? 0)
-          : part.y + clip.dy2,
+    const placed = regions.flatMap((part) => {
+      const left = part.x + (part.insetLeft ?? 0);
+      const right = part.x + part.width - (part.insetRight ?? 0);
+      const top = part.y + (part.insetTop ?? 0);
+      const bottom = part.y + part.height - (part.insetBottom ?? 0);
+      return clipBeams.map((clip) => ({
+        x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
+        x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
+        y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
+        y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
         symbol: clip.symbol,
-      })),
-    );
+      }));
+    });
     updateFloor({ beams: [...current.beams, ...placed] });
     setMessage(`${regions.length}か所に貼り付けました`);
   }, [regions, clipBeams, current, updateFloor]);
+
+  /* 区画を選んでいるあいだは Ctrl+C（最後の区画の形をコピー）・Ctrl+V（選んだ全部の区画へ貼り付け）も効く。
+     入力欄の中の操作はそのまま（input/textareaのときは動かさない） */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "c" && regions.length > 0) {
+        copyRegion();
+        event.preventDefault();
+      }
+      if (key === "v" && regions.length > 0 && clipBeams.length > 0) {
+        pasteBeams();
+        event.preventDefault();
+      }
+      if (key === "z") {
+        undo();
+        event.preventDefault();
+      }
+      if (key === "y") {
+        redo();
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [regions, clipBeams, copyRegion, pasteBeams, undo, redo]);
 
   const deleteBeam = useCallback(
     (index: number) => {
@@ -1154,25 +1293,8 @@ export default function FireproofDrawingPage({
   const ny = current.ySpans.length;
   const numbers = columnNumbers(current);
 
-  /* 階タブは左から 1F・2F…の順（数字でない階＝Rは伏図では一番上の階の梁なのでタブには出さない）。
-     柱は1Fから・梁は2Fからの対応なので、タブは「1F(梁2F)」のように隣の階を添える */
-  const sortedFloors = [...floors].sort((a, b) => {
-    const an = /^\d+$/.test(a) ? Number(a) : null;
-    const bn = /^\d+$/.test(b) ? Number(b) : null;
-    if (an !== null && bn !== null) return an - bn;
-    if (an !== null) return -1;
-    if (bn !== null) return 1;
-    return 0;
-  });
-  const floorTabs =
-    sortedFloors.filter((label) => label !== "R").length > 0
-      ? sortedFloors.filter((label) => label !== "R")
-      : sortedFloors;
-  /** その階の図で使う梁の階（柱はその階・梁はひとつ上。一番上はRF） */
-  const beamFloorLabel =
-    floorTabs[floorTabs.indexOf(floor) + 1] ?? "R";
-
   /* 柱・大梁のリストは横の通り優先（A-1 の形・今までの並びのまま）。
+
      縦の通りは下の線から A,B,C… とふるので、下の線側（A）から順に並べる。
      通りが替わるところで少し間を空ける */
   const columnRows: { no: number; at: string; key: string; gap: boolean }[] = [];
@@ -1270,7 +1392,7 @@ export default function FireproofDrawingPage({
     | { x: number; y: number; width: number; height: number }
     | null => {
     if (focusTarget === null) return null;
-    const pad = 380;
+    const pad = 700;
     if (focusTarget.kind === "beam") {
       const beam = current.beams[focusTarget.index];
       if (beam === undefined) return null;
@@ -1299,9 +1421,9 @@ export default function FireproofDrawingPage({
       const y = ysNow[yi];
       return {
         x: x1,
-        y: y - GIRDER_HALF * 1.8,
+        y: y - 450,
         width: x2 - x1,
-        height: GIRDER_HALF * 3.6,
+        height: 900,
       };
     }
     if (axis === "y" && xi < xsNow.length && yi < ysNow.length - 1) {
@@ -1310,9 +1432,9 @@ export default function FireproofDrawingPage({
         ysNow[yi + 1] - (hasColumn(current, xi, yi + 1) ? COL_HALF : 0);
       const x = xsNow[xi];
       return {
-        x: x - GIRDER_HALF * 1.8,
+        x: x - 450,
         y: y1,
-        width: GIRDER_HALF * 3.6,
+        width: 900,
         height: y2 - y1,
       };
     }
@@ -1367,6 +1489,22 @@ export default function FireproofDrawingPage({
             );
           })}
         </span>
+        <button
+          type="button"
+          disabled={past.length === 0}
+          title="ひとつ前に戻す（Ctrl+Z）"
+          onClick={undo}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={future.length === 0}
+          title="戻したものをやり直す（Ctrl+Y）"
+          onClick={redo}
+        >
+          ↷ 進む
+        </button>
         <button type="button" onClick={() => void save()}>
           💾 保存
         </button>
@@ -1579,6 +1717,7 @@ export default function FireproofDrawingPage({
                 beamSizes={sizeTexts.beam}
                 knownColumns={knownColumns}
                 knownBeams={knownBeams}
+                halfWidthOf={halfWidthOf}
                 displaySize={displaySize}
                 svgRef={svgRef}
               />

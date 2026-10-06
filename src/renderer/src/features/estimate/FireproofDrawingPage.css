@@ -116,6 +116,7 @@
 .fireproof-drawing-body .symbol-row .row-label {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   cursor: cell;
   user-select: none;
 }
@@ -142,13 +143,17 @@
 }
 
 .fireproof-drawing-body .symbol-row .at {
-  flex: 0 0 7.5em;
+  flex: 0 0 auto;
   font-size: 12px;
   color: #444;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid #ddd;
+  white-space: nowrap;
 }
 
 .fireproof-drawing-body .symbol-row input {
-  flex: 1 1 0;
+  flex: 0 1 46px;
   min-width: 0;
   padding: 2px 6px;
 }
@@ -356,7 +361,7 @@
 }
 
 .fireproof-drawing-body .beam-inputs input[type="number"] {
-  width: 4ch;
+  width: 8ch;
 }
 
 .fireproof-drawing-body .beam-inputs select {

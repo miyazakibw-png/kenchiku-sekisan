@@ -203,6 +203,55 @@ describe("小梁の配置・調整", () => {
     ]);
   });
 
+  it("部材幅の半分を渡すと内内寸法がその幅で出る（リストの後ろの数字の半分）", () => {
+    // G1 は 500*300 → 幅300 → 半分150。囲む線の内側（内内）に小梁の端が止まる
+    const inset = {
+      ...region,
+      insetLeft: 150,
+      insetRight: 150,
+      insetTop: 150,
+      insetBottom: 150,
+    };
+    const v = dividedBeams(inset, "v", 2, "B40");
+    expect(v).toEqual([
+      { x1: 4500, y1: 150, x2: 4500, y2: 5850, symbol: "B40" },
+    ]);
+    const h = dividedBeams(inset, "h", 2, "B25");
+    expect(h).toEqual([
+      { x1: 150, y1: 3000, x2: 8850, y2: 3000, symbol: "B25" },
+    ]);
+  });
+
+  it("enclosingRegionに部材幅を渡すと境界の半幅がその部材幅になる", () => {
+    const floor = {
+      ...emptyFloor(),
+      xSpans: [6000],
+      ySpans: [6000],
+      girders: {
+        "x:0,0": "G1",
+        "x:0,1": "G1",
+        "y:0,0": "G2",
+        "y:1,0": "G2",
+      },
+    };
+    const widthOf = (symbol: string) =>
+      symbol === "G1" ? 150 : symbol === "G2" ? 125 : null;
+    const found = enclosingRegion(floor, 3000, 3000, widthOf);
+    expect(found).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 6000,
+      height: 6000,
+      insetLeft: 125,
+      insetRight: 125,
+      insetTop: 150,
+      insetBottom: 150,
+    });
+    // 渡さないときは描き幅の半分（75）のまま
+    const plain = enclosingRegion(floor, 3000, 3000);
+    expect(plain).toMatchObject({ insetLeft: 75, insetTop: 75 });
+  });
+
   it("長さと微調整（縦は左右・横は上下）", () => {
     const beam = { x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B40" };
     expect(beamLength(beam)).toBe(6000);
