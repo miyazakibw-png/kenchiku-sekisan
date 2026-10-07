@@ -765,6 +765,80 @@ describe("斜梁（2交点どうしの大梁）", () => {
     const unmarked: FireproofDrawingFloor = { ...floor, jointSymbols: {} };
     expect(missingJointKeys(unmarked)).toContain("d:d1");
   });
+
+  it("寄せ（offset）は保存に残る", () => {
+    const withOff: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        { fx: 1, fy: 0, tx: 2, ty: 1, symbol: "G1", id: "d1", offset: 120 },
+      ],
+    };
+    const round = parseDrawing(
+      serializeDrawing({ floors: { "1": withOff } }),
+    );
+    expect(round.floors["1"]?.diagGirders).toEqual([
+      { fx: 1, fy: 0, tx: 2, ty: 1, symbol: "G1", id: "d1", offset: 120 },
+    ]);
+  });
+
+  it("斜めの線で囲まれた区画も選べて、置く小梁は斜め線で切られる", () => {
+    // 三角形の区画：左の縦大梁 (0,0)-(0,1)、下の横大梁 (0,1)-(2,1)、斜め (0,0)-(2,1)
+    const tri: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [6000],
+      columns: {},
+      girders: { "y:0,0": "G1", "x:0,1": "G1", "x:1,1": "G1" },
+      diagGirders: [{ fx: 0, fy: 0, tx: 2, ty: 1, symbol: "G1", id: "d1" }],
+    };
+    // 三角形の内側（斜め線の下）をクリック
+    const region = enclosingRegion(tri, 3000, 4500);
+    expect(region).not.toBeNull();
+    expect(region?.diagEdges?.map((e) => e.side).sort()).toEqual([
+      "right",
+      "top",
+    ]);
+    expect(region?.y).toBe(1500); // 斜め線が上の境界（x=3000 で y=1500）
+    expect(region?.x + region!.width).toBe(9000); // 右の境界は y=4500 で x=9000
+    // 縦に4分割 → 右のほうの小梁は上端が斜め線ではみ出るので切られる
+    const beams = dividedBeams(region!, "v", 4, "B40");
+    expect(beams).toHaveLength(3);
+    const sin = 12000 / Math.hypot(12000, 6000); // 縦梁と斜め線のなす角
+    const inset = 75 / sin;
+    // x=2250 の梁：斜め線の下に全部入るので切られない（上端は区画の上端）
+    expect(beams[0]?.x1).toBe(2250);
+    expect(beams[0]?.y1).toBe(1500);
+    // x=6750 の梁：斜め線（その x では y=3375）より上は外 → 上端を交点+内内ぶんへ
+    expect(beams[2]?.x1).toBe(6750);
+    expect(beams[2]?.y1).toBeCloseTo(3375 + inset, 1);
+    expect(beams[2]?.y2).toBe(region!.y + region!.height - 75);
+  });
+
+  it("縦・横に引いた線は普通の境界線として区画を囲む", () => {
+    // 横の引き梁 (0,0)-(2,0) と縦の引き梁 (0,0)-(0,1)＋通常の大梁で区画
+    const f: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [6000],
+      columns: {},
+      girders: { "x:0,1": "G1", "x:1,1": "G1", "y:2,0": "G1" },
+      diagGirders: [
+        { fx: 0, fy: 0, tx: 2, ty: 0, symbol: "G1", id: "d1" },
+        { fx: 0, fy: 0, tx: 0, ty: 1, symbol: "G1", id: "d2" },
+      ],
+    };
+    const region = enclosingRegion(f, 3000, 3000);
+    expect(region).toEqual({
+      x: 0,
+      y: 0,
+      width: 12000,
+      height: 6000,
+      insetLeft: 75,
+      insetRight: 75,
+      insetTop: 75,
+      insetBottom: 75,
+    });
+  });
 });
 
 describe("missingJointKeys", () => {

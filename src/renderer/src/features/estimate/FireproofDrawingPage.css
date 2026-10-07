@@ -277,6 +277,29 @@
   background: #fff5f5;
 }
 
+/* 引き梁の寄せボタン（柱の面に合わせる） */
+.fireproof-drawing-body .diag-row .diag-align {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.fireproof-drawing-body .diag-row .diag-align button {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 1.6;
+  border: 1px solid #c8c8c8;
+  border-radius: 3px;
+  background: #fff;
+  color: #444;
+}
+
+.fireproof-drawing-body .diag-row .diag-align button.on {
+  border-color: #2f7dd1;
+  color: #1c5f9e;
+  background: #e8f2fc;
+}
+
 /* 右の図面 */
 .fireproof-drawing-body .drawing-canvas {
   flex: 1 1 0;
@@ -343,6 +366,13 @@
   stroke: #666;
   stroke-width: 16;
   stroke-dasharray: 1500 260 280 260;
+}
+
+/* 補助寸法線（柱線とは別にずらして引く線。破線で出す） */
+.fireproof-drawing-svg .aux line {
+  stroke: #b07000;
+  stroke-width: 14;
+  stroke-dasharray: 260 140;
 }
 
 .fireproof-drawing-svg .dim line {
@@ -435,11 +465,34 @@
   pointer-events: all;
 }
 
-/* 斜梁モード：交点につける押せる印（透明）。始点は青い輪で出す */
+/* 引き梁（自分で引いた線）は小梁と同じ紺色にする */
+.fireproof-drawing-svg .girder .diag line {
+  stroke: #1c3f8f;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .girder .diag text {
+  fill: #1c3f8f;
+}
+
+.fireproof-drawing-svg .girder .diag .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+}
+
+/* 斜梁モード：交点・線上につける押せる印（透明）。始点は青い輪で出す */
 .fireproof-drawing-svg .diag-pick circle {
   fill: rgba(0, 0, 0, 0);
   cursor: crosshair;
   pointer-events: all;
+}
+
+/* 線上の点・柱線の基線選びにつける押せる印（透明の太線） */
+.fireproof-drawing-svg .diag-pick line {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 380;
+  cursor: crosshair;
+  pointer-events: stroke;
 }
 
 .fireproof-drawing-svg .diag-pick .start {
@@ -508,6 +561,27 @@
   fill: #fff;
   font-family: "MS Gothic", "Yu Gothic", sans-serif;
   pointer-events: none;
+}
+
+/* 補助寸法線の追加入力 */
+.fireproof-drawing-body .aux-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fireproof-drawing-body .aux-add .dist {
+  width: 5.5em;
+}
+.fireproof-drawing-body .aux-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fireproof-drawing-body .aux-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 /* 通りごとの柱の高さ（勾配用） */

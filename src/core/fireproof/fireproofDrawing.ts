@@ -29,6 +29,45 @@ export interface FireproofDrawingDiagGirder {
   symbol: string;
   /** 取合記号のキーに使う番号。無いものは行番号で代用する */
   id?: string;
+  /** 部材を法線方向にずらす量（mm。柱の面に合わせる寄せ。正＝法線 +n 側） */
+  offset?: number;
+  /** 始点が交点以外（引いてある梁・柱の線上の点）のときの実座標（mm）。あるときはグリッドより優先。
+     その場合の fx,fy は一番近い交点の番号（位置表記・拾い用） */
+  fromMm?: { x: number; y: number };
+  /** 終点が交点以外のときの実座標（mm） */
+  toMm?: { x: number; y: number };
+}
+
+/** 補助寸法線の位置（mm）。基になる寸法線の位置に離れ寸法を足したもの */
+export function auxLinePosition(
+  floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans">,
+  line: FireproofDrawingAuxLine,
+): number | null {
+  const base = positions(line.axis === "x" ? floor.xSpans : floor.ySpans)[
+    line.base
+  ];
+  if (base === undefined) return null;
+  return base + line.offset;
+}
+
+/** 引き梁の両端の実座標（mm。交点のときはグリッドの位置） */
+export function diagEnds(
+  xs: number[],
+  ys: number[],
+  g: FireproofDrawingDiagGirder,
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  const x1 = g.fromMm?.x ?? xs[g.fx];
+  const y1 = g.fromMm?.y ?? ys[g.fy];
+  const x2 = g.toMm?.x ?? xs[g.tx];
+  const y2 = g.toMm?.y ?? ys[g.ty];
+  if (
+    x1 === undefined ||
+    y1 === undefined ||
+    x2 === undefined ||
+    y2 === undefined
+  )
+    return null;
+  return { x1, y1, x2, y2 };
 }
 
 /** 線の描き幅の半分（mm）。部材の幅（リストの後ろの数字）が分からないときの既定値。
@@ -62,6 +101,18 @@ export interface DrawingRegion {
   insetRight?: number;
   insetTop?: number;
   insetBottom?: number;
+  /** 境界になった斜めの線（この線で区切られた側を区画の外側にはみ出さないよう、置く小梁を切る） */
+  diagEdges?: DiagEdge[];
+}
+
+/** 区画の境界になった斜めの線（中心線・その線の半幅・囲む側） */
+export interface DiagEdge {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  half: number;
+  side: "left" | "right" | "top" | "bottom";
 }
 
 export interface FireproofDrawingFloor {
@@ -93,6 +144,8 @@ export interface FireproofDrawingFloor {
   beams: FireproofDrawingBeam[];
   /** 斜梁（通り芯にそわない大梁。2つの交点を結ぶ線） */
   diagGirders?: FireproofDrawingDiagGirder[];
+  /** 補助寸法線（①柱線寸法線とは別に、寸法線からずらして引く平行な線） */
+  auxLines?: FireproofDrawingAuxLine[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
   image: string;
   /** 書き出した画像の 1mm あたり画素数（呼び出す側の縮尺に使う） */
@@ -100,6 +153,15 @@ export interface FireproofDrawingFloor {
   /** 書き出した画像の幅・高さ（画素） */
   imageWidth: number;
   imageHeight: number;
+}
+
+/** 補助寸法線。axis の基になる寸法線（base＝通りの番号）から offset mm 離れた平行な線
+   （offset は添字が増える向き＝右・下が正）。梁を引くための端のとり場になる */
+export interface FireproofDrawingAuxLine {
+  axis: "x" | "y";
+  base: number;
+  offset: number;
+  id?: string;
 }
 
 /** 工事ごとの鉄骨伏図。キーは階の表示名（耐火被覆の階リストと同じ "R","3","2","1" など） */
@@ -216,9 +278,57 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
           ty: Math.trunc(r.ty as number),
           symbol: typeof r.symbol === "string" ? r.symbol.trim() : "",
           ...(typeof r.id === "string" && r.id !== "" ? { id: r.id } : {}),
+          ...(typeof r.offset === "number" && Number.isFinite(r.offset)
+            ? { offset: r.offset }
+            : {}),
+          ...(() => {
+            const point = (v: unknown): { x: number; y: number } | undefined => {
+              if (v === null || typeof v !== "object") return undefined;
+              const p = v as { x?: unknown; y?: unknown };
+              if (
+                typeof p.x !== "number" ||
+                !Number.isFinite(p.x) ||
+                typeof p.y !== "number" ||
+                !Number.isFinite(p.y)
+              )
+                return undefined;
+              return { x: p.x, y: p.y };
+            };
+            const fromMm = point(r.fromMm);
+            const toMm = point(r.toMm);
+            return {
+              ...(fromMm !== undefined ? { fromMm } : {}),
+              ...(toMm !== undefined ? { toMm } : {}),
+            };
+          })(),
         };
         if (g.fx === g.tx && g.fy === g.ty) return;
         out.push(g);
+      });
+      return out.length > 0 ? out : undefined;
+    })(),
+    auxLines: (() => {
+      if (!Array.isArray(row.auxLines)) return undefined;
+      const out: FireproofDrawingAuxLine[] = [];
+      row.auxLines.forEach((item: unknown) => {
+        if (item === null || typeof item !== "object") return;
+        const r = item as Partial<FireproofDrawingAuxLine>;
+        if (r.axis !== "x" && r.axis !== "y") return;
+        if (
+          typeof r.base !== "number" ||
+          !Number.isInteger(r.base) ||
+          r.base < 0 ||
+          typeof r.offset !== "number" ||
+          !Number.isFinite(r.offset) ||
+          r.offset === 0
+        )
+          return;
+        out.push({
+          axis: r.axis,
+          base: r.base,
+          offset: r.offset,
+          ...(typeof r.id === "string" && r.id !== "" ? { id: r.id } : {}),
+        });
       });
       return out.length > 0 ? out : undefined;
     })(),
@@ -495,10 +605,109 @@ export function enclosingRegion(
           half: beamHalf(beam.symbol),
         });
     });
+  /* 補助寸法線（部材ではないので半幅0。同じ場所に部材が引かれているときは部材の境界が勝る） */
+  (floor.auxLines ?? []).forEach((line) => {
+    const pos = auxLinePosition(floor, line);
+    if (pos === null) return;
+    if (line.axis === "x") {
+      if (vLines.some((v) => Math.abs(v.x - pos) <= 1)) return;
+      vLines.push({
+        x: pos,
+        y1: ys[0] ?? 0,
+        y2: ys[ys.length - 1] ?? 0,
+        half: 0,
+      });
+    } else {
+      if (hLines.some((h) => Math.abs(h.y - pos) <= 1)) return;
+      hLines.push({
+        y: pos,
+        x1: xs[0] ?? 0,
+        x2: xs[xs.length - 1] ?? 0,
+        half: 0,
+      });
+    }
+  });
   let left = -Infinity;
   let right = Infinity;
   let top = -Infinity;
   let bottom = Infinity;
+  /** 斜めの線が境界になった側（区画の外側に小梁がはみ出さないよう記録する） */
+  const edgeOf = (side: DiagEdge["side"], x1: number, y1: number, x2: number, y2: number, half: number): DiagEdge => ({
+    x1, y1, x2, y2, half, side,
+  });
+  const edges: DiagEdge[] = [];
+  const setEdge = (edge: DiagEdge): void => {
+    const i = edges.findIndex((e) => e.side === edge.side);
+    if (i >= 0) edges.splice(i, 1);
+    edges.push(edge);
+  };
+  /** 斜め・引き梁の線（軸にそわないものは斜めの境界に、軸にそうものは普通の境界にする） */
+  (floor.diagGirders ?? []).forEach((g) => {
+    const ends = diagEnds(xs, ys, g);
+    if (ends === null) return;
+    const sx = ends.x1;
+    const sy = ends.y1;
+    const ex = ends.x2;
+    const ey = ends.y2;
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const plan = Math.hypot(dx, dy);
+    if (plan <= 0) return;
+    const ux = dx / plan;
+    const uy = dy / plan;
+    const off = g.offset ?? 0;
+    const nx = -uy;
+    const ny = ux;
+    const x1 = sx + nx * off;
+    const y1 = sy + ny * off;
+    const x2 = ex + nx * off;
+    const y2 = ey + ny * off;
+    const half = girderHalf(g.symbol);
+    if (x1 === x2) {
+      vLines.push({
+        x: x1,
+        y1: Math.min(y1, y2),
+        y2: Math.max(y1, y2),
+        half,
+      });
+      return;
+    }
+    if (y1 === y2) {
+      hLines.push({
+        y: y1,
+        x1: Math.min(x1, x2),
+        x2: Math.max(x1, x2),
+        half,
+      });
+      return;
+    }
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    if (px >= minX && px <= maxX) {
+      const yAt = y1 + ((y2 - y1) * (px - x1)) / (x2 - x1);
+      if (yAt < py && yAt > top) {
+        top = yAt;
+        setEdge(edgeOf("top", x1, y1, x2, y2, half));
+      }
+      if (yAt > py && yAt < bottom) {
+        bottom = yAt;
+        setEdge(edgeOf("bottom", x1, y1, x2, y2, half));
+      }
+    }
+    if (py >= minY && py <= maxY) {
+      const xAt = x1 + ((x2 - x1) * (py - y1)) / (y2 - y1);
+      if (xAt < px && xAt > left) {
+        left = xAt;
+        setEdge(edgeOf("left", x1, y1, x2, y2, half));
+      }
+      if (xAt > px && xAt < right) {
+        right = xAt;
+        setEdge(edgeOf("right", x1, y1, x2, y2, half));
+      }
+    }
+  });
   let insetLeft = 0;
   let insetRight = 0;
   let insetTop = 0;
@@ -535,6 +744,7 @@ export function enclosingRegion(
     insetRight,
     insetTop,
     insetBottom,
+    ...(edges.length > 0 ? { diagEdges: edges } : {}),
   };
 }
 
@@ -565,7 +775,65 @@ export function dividedBeams(
       beams.push({ x1: left, y1: y, x2: right, y2: y, symbol });
     }
   }
-  return beams;
+  return beams
+    .map((beam) => clipBeamAtDiagEdges(beam, region))
+    .filter((beam): beam is FireproofDrawingBeam => beam !== null);
+}
+
+/**
+ * 区画の斜めの境界をまたぐ小梁を、その線で切る（外側にはみ出さない）。
+ * 区画の中心がある側を内側として、はみ出た端を斜め線との交点へ寄せ、
+ * 斜め線の半幅ぶんだけ梁の向きに引く（内内寸法）。
+ */
+function clipBeamAtDiagEdges(
+  beam: FireproofDrawingBeam,
+  region: DrawingRegion,
+): FireproofDrawingBeam | null {
+  const edges = region.diagEdges;
+  if (edges === undefined || edges.length === 0) return beam;
+  const cx = region.x + region.width / 2;
+  const cy = region.y + region.height / 2;
+  let x1 = beam.x1;
+  let y1 = beam.y1;
+  let x2 = beam.x2;
+  let y2 = beam.y2;
+  for (const edge of edges) {
+    const bdx = x2 - x1;
+    const bdy = y2 - y1;
+    const edx = edge.x2 - edge.x1;
+    const edy = edge.y2 - edge.y1;
+    const den = bdx * edy - bdy * edx;
+    const eLen = Math.hypot(edx, edy);
+    const bLen = Math.hypot(bdx, bdy);
+    if (Math.abs(den) < 1e-6 || eLen === 0 || bLen === 0) continue; // 平行・長さなし
+    const sideC = (cx - edge.x1) * edy - (cy - edge.y1) * edx;
+    if (sideC === 0) continue;
+    const inSign = sideC > 0 ? 1 : -1;
+    const s1 = inSign * ((x1 - edge.x1) * edy - (y1 - edge.y1) * edx);
+    const s2 = inSign * ((x2 - edge.x1) * edy - (y2 - edge.y1) * edx);
+    const out1 = s1 < -1e-6;
+    const out2 = s2 < -1e-6;
+    if (!out1 && !out2) continue;
+    if (out1 && out2) return null; // 線の外側に全部ある
+    const t =
+      ((edge.x1 - x1) * edy - (edge.y1 - y1) * edx) / den;
+    const ix = x1 + bdx * t;
+    const iy = y1 + bdy * t;
+    // 斜め線とのなす角の sin で半幅を梁の向きに割り戻す
+    const sin = Math.abs(den) / (bLen * eLen);
+    const inset = edge.half / Math.max(0.3, sin);
+    const ux = bdx / bLen;
+    const uy = bdy / bLen;
+    if (out1) {
+      x1 = ix + ux * inset;
+      y1 = iy + uy * inset;
+    } else {
+      x2 = ix - ux * inset;
+      y2 = iy - uy * inset;
+    }
+  }
+  if (Math.hypot(x2 - x1, y2 - y1) < 1) return null;
+  return { ...beam, x1, y1, x2, y2 };
 }
 
 /** 小梁の長さ（mm） */
@@ -782,7 +1050,9 @@ export function diagGirderPosition(
   const ys = positions(floor.ySpans);
   const at = (xi: number, yi: number) =>
     `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
-  return `${at(g.fx, g.fy)}〜${at(g.tx, g.ty)}`;
+  const from = g.fromMm !== undefined ? "線上" : at(g.fx, g.fy);
+  const to = g.toMm !== undefined ? "線上" : at(g.tx, g.ty);
+  return `${from}〜${to}`;
 }
 
 /** 「無し」の柱をまたいでつなぐ大梁の1部材分 */
@@ -1213,20 +1483,19 @@ export function beamImportItems(
   (floor.diagGirders ?? []).forEach((g, index) => {
     const symbol = g.symbol.trim();
     if (symbol === "") return;
-    const x1 = xs[g.fx];
-    const y1 = ys[g.fy];
-    const x2 = xs[g.tx];
-    const y2 = ys[g.ty];
-    if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined)
-      return;
+    const ends = diagEnds(xs, ys, g);
+    if (ends === null) return;
+    const { x1, y1, x2, y2 } = ends;
     const dx = x2 - x1;
     const dy = y2 - y1;
     const plan = Math.hypot(dx, dy);
     if (plan <= 0) return;
     const ux = dx / plan;
     const uy = dy / plan;
-    /** 交点の柱の、斜め方向の面までの量（四角の半分を方向に写す） */
-    const faceAt = (xi: number, yi: number): number => {
+    /** 交点の柱の、斜め方向の面までの量（四角の半分を方向に写す）。
+       線上の点を端にしたときはその場所が端なので面ぶんは引かない */
+    const faceAt = (xi: number, yi: number, free?: { x: number; y: number }): number => {
+      if (free !== undefined) return 0;
       if (!columnExists(floor, xi, yi)) return 0;
       const sym = (floor.columns[columnKey(xi, yi)] ?? "").trim();
       const half = columnHalfOf?.(sym) ?? {
@@ -1235,7 +1504,10 @@ export function beamImportItems(
       };
       return half.hw * Math.abs(ux) + half.hd * Math.abs(uy);
     };
-    const len = Math.max(0, plan - faceAt(g.fx, g.fy) - faceAt(g.tx, g.ty));
+    const len = Math.max(
+      0,
+      plan - faceAt(g.fx, g.fy, g.fromMm) - faceAt(g.tx, g.ty, g.toMm),
+    );
     const h1 = colHeight(g.fx, g.fy);
     const h2 = colHeight(g.tx, g.ty);
     const dh =
