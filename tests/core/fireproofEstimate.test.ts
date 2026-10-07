@@ -12,6 +12,7 @@ import {
   defaultWallLabels,
   emptyManageDetail,
   entriesFromFireproofSheet,
+  findBeamSize,
   findColumnSize,
   inheritedFloors,
   beamMarkFaces,
@@ -26,7 +27,9 @@ import {
 } from "../../src/core/fireproof/fireproofEstimate";
 import {
   fireproofId,
+  newCommonRow,
   newMember,
+  type FireproofCommonRow,
   type FireproofFloorList,
 } from "../../src/core/fireproof/fireproofList";
 import { calcLine, calcSet } from "../../src/core/room/calcSheet";
@@ -52,6 +55,59 @@ describe("耐火被覆・塗装入力表", () => {
     });
     expect(findColumnSize(list(), "2", "C1")).toBeNull();
     expect(findColumnSize(list(), "1", "C9")).toBeNull();
+  });
+
+  it("鉄骨リストに無い記号は階共通リストから拾う（柱・梁型どちらも）", () => {
+    const common: FireproofCommonRow[] = [
+      { ...newCommonRow("B25"), shape: "h", first: 250, second: 125 },
+    ];
+    // リストに無い記号だけ階共通から拾う（リストにある記号は階を見るまま）
+    expect(findBeamSize(list(), "1", "B25", common)).toMatchObject({
+      shape: "h",
+      first: 250,
+      second: 125,
+    });
+    expect(findColumnSize(list(), "1", "B25", common)).toMatchObject({
+      shape: "h",
+      first: 250,
+    });
+    expect(findBeamSize(list(), "1", "B25")).toBeNull();
+    expect(findBeamSize(list(), "1", "B99", common)).toBeNull();
+    // 階共通の行は階を見ない（どの階名でも同じ寸法）
+    expect(findBeamSize(list(), "99", "B25", common)).toMatchObject({
+      first: 250,
+    });
+    // 階共通だけに入っている記号でも計算・合計は出る
+    const calc = calcBeamRow(
+      {
+        ...newBeamRow("1", "B25"),
+        count: 1,
+        mark: "3",
+        lengthFormula: "2",
+      },
+      list(),
+      null,
+      common,
+    );
+    expect(calc.sectionText).toBe("0.25*2+0.125*3");
+    expect(calc.needed).toBeCloseTo((0.25 * 2 + 0.125 * 3) * 2, 6);
+    const totals = beamSheetTotals(
+      {
+        thickness: null,
+        wallLabels: defaultWallLabels(BEAM_MARK_COUNT),
+        rows: [
+          {
+            ...newBeamRow("1", "B25"),
+            count: 1,
+            mark: "3",
+            lengthFormula: "2",
+          },
+        ],
+      },
+      list(),
+      common,
+    );
+    expect(totals.needed).toBeCloseTo((0.25 * 2 + 0.125 * 3) * 2, 6);
   });
 
   it("□型の断面必要計算式を自動で作る（資料の図どおり・厚みは小数3桁）", () => {

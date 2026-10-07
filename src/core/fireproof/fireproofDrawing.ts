@@ -650,7 +650,7 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
 
 /**
  * 伏図1階分の柱を、柱入力表へ取り込む順（上の通り→下へ、各行は左→右）に並べる。
- * コメントはブロックの最初だけ案内文、あとは柱位置（階数は表の階欄が持つので付けない）。
+ * コメントは柱位置（階数は表の階欄が持つので付けない。案内文の行は画面側で足す）。
  * 柱の高さは縦通りの値 → 横通りの値 → 階高 の順で使う。
  */
 export function columnImportItems(
@@ -665,7 +665,7 @@ export function columnImportItems(
       const [bx, by] = b.split(",").map(Number);
       return ay === by ? ax - bx : ay - by;
     });
-  return keys.map((key, index) => {
+  return keys.map((key) => {
     const [xi, yi] = key.split(",").map(Number);
     const position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
     const height =
@@ -673,7 +673,7 @@ export function columnImportItems(
       floor.axisHeightsX?.[String(xi)] ??
       floorHeight;
     return {
-      comment: index === 0 ? COLUMN_IMPORT_HEAD_COMMENT : position,
+      comment: position,
       symbol: floor.columns[key].trim(),
       mark: floor.jointSymbols?.[`c:${key}`] ?? "",
       lengthFormula: height === null ? "" : String(height / 1000),
@@ -727,7 +727,7 @@ export function drawingColumnHalfOf(
 /**
  * 伏図1階分の大梁・小梁を、梁型入力表へ取り込む行にする。
  * 大梁は通し番号どおり（X方向→Y方向）、小梁は上→下・左→右の見え方で並べる。
- * コメントはブロックの最初だけ案内文、あとは位置（大：軸-区間・小：区画）。
+ * コメントは位置だけ（大梁は軸-区間・小梁は区画。案内文の行は画面側で足す）。
  * 有効長は図に描かれている長さ（大梁は柱の面どうし・小梁は内内寸法。勾配ぶんも入れる）。
  */
 export function beamImportItems(
@@ -784,14 +784,14 @@ export function beamImportItems(
         plan = xs[xi + 1] - face(xi + 1, yi) - (xs[xi] + face(xi, yi));
         h1 = colHeight(xi, yi);
         h2 = colHeight(xi + 1, yi);
-        position = `大:${yGridLabel(ys.length - 1 - yi)}-${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`;
+        position = `${yGridLabel(ys.length - 1 - yi)}-${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`;
       } else {
         if (yi < 0 || yi >= ys.length - 1 || xi < 0 || xi >= xs.length)
           return;
         plan = ys[yi + 1] - face(xi, yi + 1) - (ys[yi] + face(xi, yi));
         h1 = colHeight(xi, yi);
         h2 = colHeight(xi, yi + 1);
-        position = `大:${xGridLabel(xi)}-${yGridLabel(ys.length - 2 - yi)}〜${yGridLabel(ys.length - 1 - yi)}`;
+        position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 2 - yi)}〜${yGridLabel(ys.length - 1 - yi)}`;
       }
       const dh =
         floorHeight !== null && h1 !== null && h2 !== null
@@ -834,7 +834,7 @@ export function beamImportItems(
     const yb = bay(my, ys);
     const position =
       xb !== null && yb !== null
-        ? `小:${xGridLabel(xb.from)}〜${xGridLabel(xb.to)}-${yGridLabel(ys.length - 1 - yb.to)}〜${yGridLabel(ys.length - 1 - yb.from)}`
+        ? `${xGridLabel(xb.from)}〜${xGridLabel(xb.to)}-${yGridLabel(ys.length - 1 - yb.to)}〜${yGridLabel(ys.length - 1 - yb.from)}`
         : "小";
     const mm =
       floorHeight === null
@@ -850,8 +850,8 @@ export function beamImportItems(
   });
   beams.sort((a, b) => a.sort - b.sort);
 
-  return [...girders, ...beams].map((item, index) => ({
-    comment: index === 0 ? BEAM_IMPORT_HEAD_COMMENT : item.position,
+  return [...girders, ...beams].map((item) => ({
+    comment: item.position,
     symbol: item.symbol,
     mark: item.mark,
     lengthFormula: String(Math.round(item.mm) / 1000),

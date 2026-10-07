@@ -14,7 +14,9 @@ import {
 } from "../../../../core/fireproof/fireproofEstimate";
 import { evaluateCalcSheet } from "../../../../core/room/calcSheet";
 import {
+  normalizeCommonRows,
   normalizeFloorList,
+  type FireproofCommonRow,
   type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
 import CalcPrintSheet from "../print/CalcPrintSheet";
@@ -138,11 +140,13 @@ function TablePage({
   kind,
   row,
   list,
+  common,
   title,
 }: {
   kind: FireproofTableKind;
   row: FireproofManageRow;
   list: FireproofFloorList;
+  common: FireproofCommonRow[];
   title: string;
 }): JSX.Element {
   const config = SHEET_KIND[kind];
@@ -150,8 +154,8 @@ function TablePage({
   const calcRow = kind === "beam" ? calcBeamRow : calcColumnRow;
   const totals =
     kind === "beam"
-      ? beamSheetTotals(sheet, list)
-      : columnSheetTotals(sheet, list);
+      ? beamSheetTotals(sheet, list, common)
+      : columnSheetTotals(sheet, list, common);
   const wallLabels = normalizeWallLabels(sheet.wallLabels, config.markCount);
   const floors = inheritedFloors(sheet.rows);
   /** 画面で動かした列幅をそのまま紙に使い、A3横の幅へ縮める */
@@ -288,8 +292,15 @@ function TablePage({
                       { ...each, floor },
                       list,
                       sheet.thickness,
+                      common,
                     );
-                    const hint = sizeHint(list, floor, each.symbol, kind);
+                    const hint = sizeHint(
+                      list,
+                      floor,
+                      each.symbol,
+                      kind,
+                      common,
+                    );
                     return (
                       <tr key={each.id} style={{ height: `${ROW_HEIGHT}px` }}>
                         <td>{floor}</td>
@@ -361,6 +372,7 @@ export default function FireproofPrintSheet({
     floors: [],
     members: [],
   });
+  const [common, setCommon] = useState<FireproofCommonRow[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -368,6 +380,7 @@ export default function FireproofPrintSheet({
       setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
       setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
+      setCommon(normalizeCommonRows(parseJson(record.commonJson, [])));
     })();
   }, [project.id]);
 
@@ -385,7 +398,12 @@ export default function FireproofPrintSheet({
         const { row, index } = found;
         const part1 = part1List[index] ?? "";
         if (row.calcType === "general") {
-          const variables = adjacencyVariables(rows, columnsList, beamsList);
+          const variables = adjacencyVariables(
+            rows,
+            columnsList,
+            beamsList,
+            common,
+          );
           return (
             <CalcPrintSheet
               key={rowId}
@@ -402,6 +420,7 @@ export default function FireproofPrintSheet({
               kind={row.calcType === "beam" ? "beam" : "column"}
               row={row}
               list={row.calcType === "beam" ? beamsList : columnsList}
+              common={common}
               title={`${project.managementNo} ${project.name}${part1 ? `　${part1}` : ""}`}
             />
           </div>

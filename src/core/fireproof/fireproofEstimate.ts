@@ -16,7 +16,9 @@ import {
 } from "../room/calcSheet";
 import { evaluateFormula } from "../formula/evaluate";
 import {
+  resolveCommonRow,
   resolveSize,
+  type FireproofCommonRow,
   type FireproofFloorList,
   type SteelShape,
 } from "./fireproofList";
@@ -257,11 +259,27 @@ export function normalizeManageRows(value: unknown): FireproofManageRow[] {
   }));
 }
 
-/** 記号と階名から鉄骨リスト（柱）の寸法を探す。階名が合わないときは空を返す */
+/** 鉄骨リストに無い記号を階共通リストから拾う（柱・梁で共通） */
+function findCommonSize(
+  common: readonly FireproofCommonRow[],
+  symbol: string,
+): {
+  shape: SteelShape | "";
+  first: number | null;
+  second: number | null;
+} | null {
+  const row = common.find(
+    (each) => each.symbol.trim() !== "" && each.symbol.trim() === symbol.trim(),
+  );
+  return row === undefined ? null : resolveCommonRow(row);
+}
+
+/** 記号と階名から鉄骨リスト（柱）の寸法を探す。リストに無い記号は階共通リストから拾う。階名が合わないときは空を返す */
 export function findColumnSize(
   list: FireproofFloorList,
   floor: string,
   symbol: string,
+  common: readonly FireproofCommonRow[] = [],
 ): {
   shape: SteelShape | "";
   first: number | null;
@@ -270,7 +288,7 @@ export function findColumnSize(
   const member = list.members.find(
     (each) => each.symbol.trim() !== "" && each.symbol.trim() === symbol.trim(),
   );
-  if (!member) return null;
+  if (!member) return findCommonSize(common, symbol);
   const index = list.floors.findIndex(
     (each) => each.label.trim() === floor.trim(),
   );
@@ -278,11 +296,12 @@ export function findColumnSize(
   return resolveSize(member, list.floors, index, "column");
 }
 
-/** 記号と階名から鉄骨リスト（梁）の寸法を探す。階名が合わないときは空を返す */
+/** 記号と階名から鉄骨リスト（梁）の寸法を探す。リストに無い記号は階共通リストから拾う。階名が合わないときは空を返す */
 export function findBeamSize(
   list: FireproofFloorList,
   floor: string,
   symbol: string,
+  common: readonly FireproofCommonRow[] = [],
 ): {
   shape: SteelShape | "";
   first: number | null;
@@ -291,7 +310,7 @@ export function findBeamSize(
   const member = list.members.find(
     (each) => each.symbol.trim() !== "" && each.symbol.trim() === symbol.trim(),
   );
-  if (!member) return null;
+  if (!member) return findCommonSize(common, symbol);
   const index = list.floors.findIndex(
     (each) => each.label.trim() === floor.trim(),
   );
@@ -417,11 +436,12 @@ function calcSheetRow(
   list: FireproofFloorList,
   thicknessMm: number | null,
   kind: FireproofSheetKind,
+  common: readonly FireproofCommonRow[] = [],
 ): FireproofColumnCalc {
   const size =
     kind === "beam"
-      ? findBeamSize(list, row.floor, row.symbol)
-      : findColumnSize(list, row.floor, row.symbol);
+      ? findBeamSize(list, row.floor, row.symbol, common)
+      : findColumnSize(list, row.floor, row.symbol, common);
   const faces = kind === "beam" ? beamMarkFaces(row.mark) : markFaces(row.mark);
   const auto = autoSectionFormula(
     size?.shape ?? "",
@@ -452,8 +472,9 @@ export function calcColumnRow(
   row: FireproofColumnRow,
   list: FireproofFloorList,
   thicknessMm: number | null,
+  common: readonly FireproofCommonRow[] = [],
 ): FireproofColumnCalc {
-  return calcSheetRow(row, list, thicknessMm, "column");
+  return calcSheetRow(row, list, thicknessMm, "column", common);
 }
 
 /** 梁型入力表の1行を計算する */
@@ -461,8 +482,9 @@ export function calcBeamRow(
   row: FireproofColumnRow,
   list: FireproofFloorList,
   thicknessMm: number | null,
+  common: readonly FireproofCommonRow[] = [],
 ): FireproofColumnCalc {
-  return calcSheetRow(row, list, thicknessMm, "beam");
+  return calcSheetRow(row, list, thicknessMm, "beam", common);
 }
 
 /** 階が空欄の行は上の行と同じ階として扱う。行ごとの階を返す */
@@ -479,6 +501,7 @@ export function sheetTotals(
   sheet: FireproofColumnSheet,
   list: FireproofFloorList,
   kind: FireproofSheetKind,
+  common: readonly FireproofCommonRow[] = [],
 ): {
   needed: number | null;
   wall: number | null;
@@ -502,6 +525,7 @@ export function sheetTotals(
       list,
       sheet.thickness,
       kind,
+      common,
     );
     if (calc.needed !== null) {
       needed += calc.needed;
@@ -528,24 +552,26 @@ export function sheetTotals(
 export function columnSheetTotals(
   sheet: FireproofColumnSheet,
   list: FireproofFloorList,
+  common: readonly FireproofCommonRow[] = [],
 ): {
   needed: number | null;
   wall: number | null;
   wallMarks: (number | null)[];
 } {
-  return sheetTotals(sheet, list, "column");
+  return sheetTotals(sheet, list, "column", common);
 }
 
 /** 梁型入力表の合計（必要数㎡・床取合m） */
 export function beamSheetTotals(
   sheet: FireproofColumnSheet,
   list: FireproofFloorList,
+  common: readonly FireproofCommonRow[] = [],
 ): {
   needed: number | null;
   wall: number | null;
   wallMarks: (number | null)[];
 } {
-  return sheetTotals(sheet, list, "beam");
+  return sheetTotals(sheet, list, "beam", common);
 }
 
 /**
@@ -557,10 +583,11 @@ export function entriesFromFireproofSheet(
   list: FireproofFloorList,
   part2Order: Map<string, number>,
   beamsList: FireproofFloorList = { floors: [], members: [] },
+  common: readonly FireproofCommonRow[] = [],
 ): AggregateEntry[] {
   const entries: AggregateEntry[] = [];
   let part1 = "";
-  const variables = adjacencyVariables(rows, list, beamsList);
+  const variables = adjacencyVariables(rows, list, beamsList, common);
   rows.forEach((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
     if (!part2Order.has("")) part2Order.set("", part2Order.size);
@@ -592,7 +619,8 @@ export function entriesFromFireproofSheet(
     }
     const detail = row.detail;
     if (detail.name.trim() === "" && detail.partName.trim() === "") return;
-    const quantity = manageRowQuantity(row, list, beamsList, rows) ?? 0;
+    const quantity =
+      manageRowQuantity(row, list, beamsList, rows, common) ?? 0;
     entries.push({
       traceId: `fireproof:${row.id}`,
       sourceKind: "fireproof",
@@ -622,7 +650,8 @@ export function entriesFromFireproofSheet(
       setTotal: quantity,
       quantity: displayedValue(quantity),
       sourceDetailId: null,
-      floorBasis: manageRowFloorQuantities(row, list, beamsList) ?? undefined,
+      floorBasis:
+      manageRowFloorQuantities(row, list, beamsList, common) ?? undefined,
     });
   });
   return entries;
@@ -636,16 +665,17 @@ export function adjacencyVariables(
   rows: FireproofManageRow[],
   columnsList: FireproofFloorList,
   beamsList: FireproofFloorList = { floors: [], members: [] },
+  common: readonly FireproofCommonRow[] = [],
 ): Record<string, number> {
   const wall = [0, 0, 0];
   const slab = [0, 0, 0, 0];
   rows.forEach((row) => {
-    columnSheetTotals(row.sheet, columnsList).wallMarks.forEach(
+    columnSheetTotals(row.sheet, columnsList, common).wallMarks.forEach(
       (total, mark) => {
         if (mark < wall.length) wall[mark] += total ?? 0;
       },
     );
-    beamSheetTotals(row.beamSheet, beamsList).wallMarks.forEach(
+    beamSheetTotals(row.beamSheet, beamsList, common).wallMarks.forEach(
       (total, mark) => {
         if (mark < slab.length) slab[mark] += total ?? 0;
       },
@@ -671,6 +701,7 @@ export function manageRowFloorQuantities(
   row: FireproofManageRow,
   columnsList: FireproofFloorList,
   beamsList: FireproofFloorList = { floors: [], members: [] },
+  common: readonly FireproofCommonRow[] = [],
 ): { floor: string; quantity: number }[] | null {
   if (row.calcType === "general") return null;
   const kind: FireproofSheetKind = row.calcType === "beam" ? "beam" : "column";
@@ -684,6 +715,7 @@ export function manageRowFloorQuantities(
       list,
       sheet.thickness,
       kind,
+      common,
     );
     if (calc.needed === null) return;
     const floor = floors[index];
@@ -704,13 +736,14 @@ export function manageRowQuantity(
   beamsList: FireproofFloorList = { floors: [], members: [] },
   /** 記号WA〜SDは入力表全体の取合を拾うので、管理表の全行を渡す */
   rows: FireproofManageRow[] = [row],
+  common: readonly FireproofCommonRow[] = [],
 ): number | null {
   // 選んだ計算書の分だけ数量にする（もう片方の入力は残るが数量には入れない）
   if (row.calcType === "general") {
     // 汎用計算書はセット明細の合計を数量にする（WA〜WC・SA〜SD・B1〜の記号が使える）
     const result = evaluateCalcSheet(
       row.generalSheet,
-      adjacencyVariables(rows, columnsList, beamsList),
+      adjacencyVariables(rows, columnsList, beamsList, common),
     );
     const hasValue = [...result.lines.values()].some(
       (line) => line.value !== null,
@@ -724,8 +757,8 @@ export function manageRowQuantity(
   }
   const needed =
     row.calcType === "beam"
-      ? beamSheetTotals(row.beamSheet, beamsList).needed
-      : columnSheetTotals(row.sheet, columnsList).needed;
+      ? beamSheetTotals(row.beamSheet, beamsList, common).needed
+      : columnSheetTotals(row.sheet, columnsList, common).needed;
   if (needed === null) return null;
   return needed * (row.multiplier ?? 1);
 }

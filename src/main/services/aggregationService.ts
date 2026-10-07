@@ -60,7 +60,10 @@ import {
   entriesFromFireproofSheet,
   normalizeManageRows,
 } from "../../core/fireproof/fireproofEstimate";
-import { normalizeFloorList } from "../../core/fireproof/fireproofList";
+import {
+  normalizeCommonRows,
+  normalizeFloorList,
+} from "../../core/fireproof/fireproofList";
 import { inheritTransferRows } from "../../core/aggregate/transferInherit";
 import { getFittingPartValues, listFittings } from "./fittingService";
 import { fittingPartVariables } from "../../core/fittings/partValue";
@@ -860,6 +863,7 @@ function fireproofEntries(
     normalizeFloorList(parseJson<unknown>(sheet.columnsJson, {})),
     part2Order,
     normalizeFloorList(parseJson<unknown>(sheet.beamsJson, {})),
+    normalizeCommonRows(parseJson<unknown>(sheet.commonJson, [])),
   );
 }
 

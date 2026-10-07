@@ -35,6 +35,7 @@ import { findBeamSize } from "../../../../core/fireproof/fireproofEstimate";
 import {
   normalizeCommonRows,
   normalizeFloorList,
+  resolveCommonRow,
   resolveFloorHeight,
   SHAPE_LABEL,
   toHalfWidth,
@@ -43,7 +44,9 @@ import {
 } from "../../../../core/fireproof/fireproofList";
 import {
   beamImportItems,
+  BEAM_IMPORT_HEAD_COMMENT,
   columnImportItems,
+  COLUMN_IMPORT_HEAD_COMMENT,
   drawingColumnHalfOf,
   EMPTY_DRAWING,
   parseDrawing,
@@ -167,12 +170,21 @@ export function sizeHint(
   floor: string,
   symbol: string,
   kind: FireproofTableKind = "column",
+  common: readonly FireproofCommonRow[] = [],
 ): string {
   if (symbol.trim() === "") return "";
   const member = list.members.find(
     (each) => each.symbol.trim() === symbol.trim(),
   );
-  if (!member) return "リストにこの記号がありません";
+  if (!member) {
+    const row = common.find(
+      (each) => each.symbol.trim() === symbol.trim(),
+    );
+    if (row === undefined) return "リストにこの記号がありません";
+    const size = resolveCommonRow(row);
+    const shape = SHAPE_LABEL[size.shape];
+    return `${shape}${size.first ?? ""}${size.second === null ? "" : `*${size.second}`}`;
+  }
   if (floor.trim() === "") return "階を入れてください";
   if (!list.floors.some((each) => each.label.trim() === floor.trim()))
     return "リストにこの階がありません";
@@ -533,6 +545,7 @@ export default function FireproofEstimatePage({
     if (kind === "general") {
       return (
         <GeneralSheetView
+          common={commonList}
           project={project}
           row={rows[index]}
           rows={rows}
@@ -913,7 +926,13 @@ export default function FireproofEstimatePage({
                 </td>
                 <td className="num number">
                   {formatNumber(
-                    manageRowQuantity(row, columnsList, beamsList, rows),
+                    manageRowQuantity(
+                      row,
+                      columnsList,
+                      beamsList,
+                      rows,
+                      commonList,
+                    ),
                   )}
                 </td>
                 <td className="material">
@@ -1015,8 +1034,8 @@ function ColumnSheetView({
 
   const totals =
     kind === "beam"
-      ? beamSheetTotals(sheet, list)
-      : columnSheetTotals(sheet, list);
+      ? beamSheetTotals(sheet, list, common)
+      : columnSheetTotals(sheet, list, common);
   /** 取合mを分ける欄の見出し（柱＝Ａ・Ｂ・Ｃ／梁型＝Ａ・Ｂ・Ｃ・Ｄ） */
   const wallLabels = normalizeWallLabels(sheet.wallLabels, config.markCount);
   /** 階が空欄の行は上の行と同じ階（薄いグレーで出す） */
@@ -1024,7 +1043,7 @@ function ColumnSheetView({
 
   /** 伏図の階名（"1","R"…）から入力表の階名（鉄骨リストの柱リストの階と合わせる）を出す */
   const floorLabelFor = (name: string): string => {
-    const labels = list.floors.map((floor) => floor.label.trim());
+    const labels = columnsList.floors.map((floor) => floor.label.trim());
     const candidates = [name, `${name}F`, name === "R" ? "RF" : ""];
     const found = candidates.find(
       (text) => text !== "" && labels.includes(text),
@@ -1033,13 +1052,35 @@ function ColumnSheetView({
     return name === "R" ? "RF" : `${name}F`;
   };
 
+  /* 取り込む階の並び（伏図の階タブと同じ：数字順、数字があるときＲは出さない） */
+  const pickFloorNames = useMemo(() => {
+    const sorted = Object.keys(drawing.floors).sort((a, b) => {
+      const an = /^\d+$/.test(a) ? Number(a) : null;
+      const bn = /^\d+$/.test(b) ? Number(b) : null;
+      if (an !== null && bn !== null) return an - bn;
+      if (an !== null) return -1;
+      if (bn !== null) return 1;
+      return 0;
+    });
+    const numeric = sorted.filter((name) => name !== "R");
+    return numeric.length > 0 ? numeric : sorted;
+  }, [drawing]);
+
+  /* 梁の階名（図の階のひとつ上の梁リストの階。伏図の階タブと同じ決め方） */
+  const beamFloorLabelFor = (name: string): string => {
+    const at = pickFloorNames.indexOf(name);
+    return at >= 0 ? (pickFloorNames[at + 1] ?? "R") : name;
+  };
+
   /** 伏図から1階分まとめて取り込む（1本1行・倍数は1・断面計算式は空欄＝自動） */
   const importFloor = (name: string): void => {
     const floorData = drawing.floors[name];
-    const label = floorLabelFor(name);
+    /* 柱の高さ・柱の面は柱リストの階で拾う（梁は柱より一階上の階名を付ける） */
+    const columnLabel = floorLabelFor(name);
+    const label = kind === "beam" ? beamFloorLabelFor(name) : columnLabel;
     // 柱の高さは柱リスト側の階高欄で見る（梁リストには高さ欄が無い）
     const heightAt = columnsList.floors.findIndex(
-      (floor) => floor.label.trim() === label,
+      (floor) => floor.label.trim() === columnLabel,
     );
     const height =
       heightAt >= 0 ? resolveFloorHeight(columnsList.floors, heightAt) : null;
@@ -1048,7 +1089,7 @@ function ColumnSheetView({
         ? beamImportItems(
             floorData,
             height,
-            drawingColumnHalfOf(columnsList, common, label),
+            drawingColumnHalfOf(columnsList, common, columnLabel),
           )
         : columnImportItems(floorData, height);
     const memberName = kind === "beam" ? "梁" : "柱";
@@ -1056,15 +1097,26 @@ function ColumnSheetView({
       onMessage(`${config.title}：${label} の伏図に${memberName}がありません`);
       return;
     }
-    const imported = items.map((item, index) => ({
-      ...newRow(),
-      floor: index === 0 ? label : "",
-      comment: item.comment,
-      symbol: item.symbol,
-      count: 1,
-      mark: item.mark,
-      lengthFormula: item.lengthFormula,
-    }));
+    const imported = [
+      // 先頭は案内文だけの行（階名はここが持つ。位置は各部材の行に入る）
+      {
+        ...newRow(),
+        floor: label,
+        comment:
+          kind === "beam"
+            ? BEAM_IMPORT_HEAD_COMMENT
+            : COLUMN_IMPORT_HEAD_COMMENT,
+      },
+      ...items.map((item) => ({
+        ...newRow(),
+        floor: "",
+        comment: item.comment,
+        symbol: item.symbol,
+        count: 1,
+        mark: item.mark,
+        lengthFormula: item.lengthFormula,
+      })),
+    ];
     commitRows([...sheet.rows, ...imported]);
     setImportPick(false);
     onMessage(
@@ -1077,7 +1129,12 @@ function ColumnSheetView({
     const totals = new Map<string, number>();
     sheet.rows.forEach((each, index) => {
       const floor = sheetFloors[index] ?? "";
-      const calc = calcRow({ ...each, floor }, list, sheet.thickness);
+      const calc = calcRow(
+      { ...each, floor },
+      list,
+      sheet.thickness,
+      common,
+    );
       totals.set(floor, (totals.get(floor) ?? 0) + (calc.needed ?? 0));
     });
     return [...totals.entries()];
@@ -1246,8 +1303,16 @@ function ColumnSheetView({
           {Object.keys(drawing.floors).length === 0 && (
             <span>伏図がまだありません（伏図作成で描いてください）</span>
           )}
-          {Object.keys(drawing.floors).map((name) => {
-            const label = name === "R" ? "RF" : `${name}F`;
+          {pickFloorNames.map((name, index) => {
+            const beamNext = pickFloorNames[index + 1] ?? "R";
+            const label =
+              kind === "beam"
+                ? name === "R"
+                  ? "RF"
+                  : `${name}F(${beamNext === "R" ? "RF" : `梁${beamNext}F`})`
+                : name === "R"
+                  ? "RF"
+                  : `${name}F`;
             const floorData = drawing.floors[name];
             const count =
               kind === "beam"
@@ -1430,8 +1495,13 @@ function ColumnSheetView({
             {sheet.rows.map((each, index) => {
               // 階が空欄の行は上の行と同じ階として計算する
               const floor = sheetFloors[index] ?? "";
-              const calc = calcRow({ ...each, floor }, list, sheet.thickness);
-              const size = findSize(list, floor, each.symbol);
+              const calc = calcRow(
+                { ...each, floor },
+                list,
+                sheet.thickness,
+                common,
+              );
+              const size = findSize(list, floor, each.symbol, common);
               return (
                 <tr
                   key={each.id}
@@ -1487,7 +1557,7 @@ function ColumnSheetView({
                       }
                     />
                     <span className="size-hint">
-                      {sizeHint(list, floor, each.symbol, kind)}
+                      {sizeHint(list, floor, each.symbol, kind, common)}
                     </span>
                   </td>
                   <td className="count">
@@ -1719,6 +1789,7 @@ function GeneralSheetView({
   part1,
   columnsList,
   beamsList,
+  common,
   options,
   onChange,
   onBack,
@@ -1731,6 +1802,7 @@ function GeneralSheetView({
   part1: string;
   columnsList: FireproofFloorList;
   beamsList: FireproofFloorList;
+  common: FireproofCommonRow[];
   options: MasterOptions;
   onChange: (patch: Partial<FireproofManageRow>) => void;
   onBack: () => void;
@@ -1742,8 +1814,8 @@ function GeneralSheetView({
   const [warnedKey, setWarnedKey] = useState("");
   /** 取合記号（WA〜WC・SA〜SD）にはめ込む数量＝入力表全体の柱入力表・梁型入力表の欄ごとの合計 */
   const variables = useMemo(
-    () => adjacencyVariables(rows, columnsList, beamsList),
-    [beamsList, columnsList, rows],
+    () => adjacencyVariables(rows, columnsList, beamsList, common),
+    [beamsList, columnsList, common, rows],
   );
   const result = useMemo(
     () => evaluateCalcSheet(row.generalSheet, variables),

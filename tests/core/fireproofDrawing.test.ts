@@ -4,7 +4,6 @@ import {
   beamImportItems,
   beamLength,
   beamSlopeLength,
-  BEAM_IMPORT_HEAD_COMMENT,
   columnImportItems,
   columnKey,
   columnNumbers,
@@ -515,14 +514,9 @@ describe("columnImportItems", () => {
 
   it("上の通りから順に、位置・記号・取合番号・高さを入れた行を作る（縦通りの記号は図の下がA）", () => {
     const items = columnImportItems(floor, 4000);
-    // コメントはブロックの最初だけ案内文、あとは柱位置だけ（階数は階欄が持つ）
+    // コメントは各行に柱位置だけ（案内文の先頭行は画面側で足す・階数は階欄が持つ）
     expect(items).toEqual([
-      {
-        comment: COLUMN_IMPORT_HEAD_COMMENT,
-        symbol: "C1",
-        mark: "3",
-        lengthFormula: "4",
-      },
+      { comment: "1-B", symbol: "C1", mark: "3", lengthFormula: "4" },
       { comment: "2-B", symbol: "C2", mark: "", lengthFormula: "4" },
       { comment: "1-A", symbol: "C1", mark: "", lengthFormula: "4" },
       { comment: "3-A", symbol: "C3", mark: "2", lengthFormula: "4" },
@@ -584,16 +578,11 @@ describe("beamImportItems", () => {
     const items = beamImportItems(floor, 4000);
     // 柱の半幅120を両端から引いた 5760mm（柱の寸法を渡さないときは描き幅の半分で計算）
     expect(items).toEqual([
-      {
-        comment: BEAM_IMPORT_HEAD_COMMENT,
-        symbol: "G1",
-        mark: "3",
-        lengthFormula: "5.76",
-      },
-      { comment: "大:B-2〜3", symbol: "G2", mark: "", lengthFormula: "5.76" },
-      { comment: "大:1-A〜B", symbol: "G3", mark: "", lengthFormula: "5.76" },
-      { comment: "大:2-A〜B", symbol: "G4", mark: "", lengthFormula: "5.76" },
-      { comment: "小:1〜2-A〜B", symbol: "B1", mark: "2", lengthFormula: "5.8" },
+      { comment: "B-1〜2", symbol: "G1", mark: "3", lengthFormula: "5.76" },
+      { comment: "B-2〜3", symbol: "G2", mark: "", lengthFormula: "5.76" },
+      { comment: "1-A〜B", symbol: "G3", mark: "", lengthFormula: "5.76" },
+      { comment: "2-A〜B", symbol: "G4", mark: "", lengthFormula: "5.76" },
+      { comment: "1〜2-A〜B", symbol: "B1", mark: "2", lengthFormula: "5.8" },
     ]);
   });
 
