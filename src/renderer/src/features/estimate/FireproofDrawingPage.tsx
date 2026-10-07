@@ -1645,6 +1645,8 @@ export default function FireproofDrawingPage({
   } | null>(null);
   const [auxDist, setAuxDist] = useState("");
   const [auxDir, setAuxDir] = useState<1 | -1>(1);
+  /* 「線を引く」を離れ寸法の入力が無いまま押したとき、欄の下に赤く知らせる */
+  const [auxDistErr, setAuxDistErr] = useState(false);
   const beamAnchorRef = useRef<number | null>(null);
   const beamRowDragRef = useRef(false);
   const rowClickSuppressRef = useRef(false);
@@ -1957,6 +1959,7 @@ export default function FireproofDrawingPage({
       setAuxBase({ axis, base, baseOffset, label });
       setAuxDir(1);
       setAuxDist("");
+      setAuxDistErr(false);
       setMessage(`基の線：${label}。向きと離れ寸法を入れて「線を引く」`);
     },
     [],
@@ -1984,6 +1987,7 @@ export default function FireproofDrawingPage({
     if (auxBase === null) return;
     const dist = Math.round(Number(toHalfWidth(auxDist).replaceAll(",", ".")));
     if (!Number.isFinite(dist) || dist <= 0) {
+      setAuxDistErr(true);
       setMessage("離れ寸法をmmで入れてください");
       return;
     }
@@ -3163,13 +3167,14 @@ export default function FireproofDrawingPage({
                   <input
                     className="dist"
                     value={auxDist}
-                    placeholder="1500"
+                    autoFocus
                     inputMode="decimal"
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      setAuxDistErr(false);
                       setAuxDist(
                         toHalfWidth(event.target.value).replaceAll(",", "."),
-                      )
-                    }
+                      );
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") addAuxLine();
                     }}
@@ -3186,6 +3191,9 @@ export default function FireproofDrawingPage({
                     選び直す
                   </button>
                 </div>
+              )}
+              {auxMode && auxBase !== null && auxDistErr && (
+                <p className="aux-err">離れ寸法をmmで入れてください</p>
               )}
               {(current.auxLines ?? []).length > 0 && (
                 <div className="aux-list">

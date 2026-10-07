@@ -587,6 +587,13 @@
 .fireproof-drawing-body .aux-add .dist {
   width: 5.5em;
 }
+/* 離れ寸法が無いまま「線を引く」を押したときの知らせ（欄のすぐ下に赤く） */
+.fireproof-drawing-body .aux-err {
+  color: #c43d3d;
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
 .fireproof-drawing-body .aux-list {
   display: flex;
   flex-direction: column;
