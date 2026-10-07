@@ -50,6 +50,26 @@ export function auxLinePosition(
   return base + line.offset;
 }
 
+/** 補助寸法線の「基の線」の位置（mm）。補助線から引いた線はその補助線の位置、なければ柱線 */
+export function auxLineBasePosition(
+  floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "auxLines">,
+  line: FireproofDrawingAuxLine,
+): number | null {
+  if (line.baseAuxId !== undefined) {
+    const baseAux = (floor.auxLines ?? []).find(
+      (l) => l.id === line.baseAuxId,
+    );
+    if (baseAux !== undefined) {
+      const pos = auxLinePosition(floor, baseAux);
+      if (pos !== null) return pos;
+    }
+  }
+  const base = positions(line.axis === "x" ? floor.xSpans : floor.ySpans)[
+    line.base
+  ];
+  return base === undefined ? null : base;
+}
+
 /** 引き梁の両端の実座標（mm。交点のときはグリッドの位置） */
 export function diagEnds(
   xs: number[],
@@ -165,6 +185,8 @@ export interface FireproofDrawingAuxLine {
   base: number;
   offset: number;
   id?: string;
+  /** 引いた補助線から連続して引いたときの基の補助線の id（無いときは柱線基準） */
+  baseAuxId?: string;
 }
 
 /** 工事ごとの鉄骨伏図。キーは階の表示名（耐火被覆の階リストと同じ "R","3","2","1" など） */
@@ -331,6 +353,9 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
           base: r.base,
           offset: r.offset,
           ...(typeof r.id === "string" && r.id !== "" ? { id: r.id } : {}),
+          ...(typeof r.baseAuxId === "string" && r.baseAuxId !== ""
+            ? { baseAuxId: r.baseAuxId }
+            : {}),
         });
       });
       return out.length > 0 ? out : undefined;
@@ -863,7 +888,7 @@ export function dividedBeams(
  * 区画の中心がある側を内側として、はみ出た端を斜め線との交点へ寄せ、
  * 斜め線の半幅ぶんだけ梁の向きに引く（内内寸法）。
  */
-function clipBeamAtDiagEdges(
+export function clipBeamAtDiagEdges(
   beam: FireproofDrawingBeam,
   region: DrawingRegion,
 ): FireproofDrawingBeam | null {

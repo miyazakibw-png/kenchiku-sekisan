@@ -24,6 +24,8 @@ import {
   type HalfWidthOf,
   columnExists,
   auxLinePosition,
+  auxLineBasePosition,
+  clipBeamAtDiagEdges,
   diagEnds,
   diagGirderPosition,
   girderEndCuts,
@@ -86,6 +88,35 @@ const FONT_NO = 260;
 const JOINT_R = 150; // 取合記号の○印の半径
 const FONT_JOINT = 280;
 
+/** 補助寸法線の読み方（例「1の右に1,500」。補助線から引いた線は「1の右1,500から右に3,500」） */
+function auxLineLabel(
+  floor: FireproofDrawingFloor,
+  line: FireproofDrawingAuxLine,
+): string {
+  const gridLabel = (l: FireproofDrawingAuxLine): string =>
+    l.axis === "x"
+      ? xGridLabel(l.base)
+      : yGridLabel(floor.ySpans.length - l.base);
+  const dirWord = (axis: "x" | "y", positive: boolean): string =>
+    positive ? (axis === "x" ? "右" : "下") : axis === "x" ? "左" : "上";
+  if (line.baseAuxId !== undefined) {
+    const baseAux = (floor.auxLines ?? []).find(
+      (l) => l.id === line.baseAuxId,
+    );
+    if (baseAux !== undefined) {
+      const diff = line.offset - baseAux.offset;
+      return `${gridLabel(baseAux)}の${dirWord(baseAux.axis, baseAux.offset > 0)}${Math.abs(
+        baseAux.offset,
+      ).toLocaleString("ja-JP")}から${dirWord(line.axis, diff > 0)}に${Math.abs(
+        diff,
+      ).toLocaleString("ja-JP")}`;
+    }
+  }
+  return `${gridLabel(line)}の${dirWord(line.axis, line.offset > 0)}に${Math.abs(
+    line.offset,
+  ).toLocaleString("ja-JP")}`;
+}
+
 /** 高さのmmをm表示に（整数も小数第2位まで 3000→3.00、mm精度はそのまま） */
 function heightMetersText(mm: number): string {
   return (mm / 1000).toFixed(3).replace(/(\.\d\d)0$/, "$1");
@@ -142,7 +173,8 @@ function XDimension({
   extra,
 }: {
   xs: number[];
-  extra?: { pos: number; offset: number }[];
+  /** extra は補助線：図の中の位置・基の線の位置・その間の寸法 */
+  extra?: { pos: number; from: number; dist: number }[];
 }): JSX.Element {
   const first = xs[0];
   const last = Math.max(xs[xs.length - 1] ?? 0, ...(extra ?? []).map((e) => e.pos));
@@ -171,10 +203,10 @@ function XDimension({
         );
       })}
       {(extra ?? []).map((e, i) => {
-        // 補助寸法は一段内側に、基の線と引いた線の間だけの寸法線として出す
-        const yAux = y + 500;
-        const lo = Math.min(e.pos - e.offset, e.pos);
-        const hi = Math.max(e.pos - e.offset, e.pos);
+        // 補助寸法は一本ごとに内側へ段違いに、基の線と引いた線の間だけの寸法線として出す
+        const yAux = y + Math.min(500 + i * 550, 1600);
+        const lo = Math.min(e.from, e.pos);
+        const hi = Math.max(e.from, e.pos);
         return (
           <g key={`ex${i}`}>
             <line
@@ -192,7 +224,7 @@ function XDimension({
               textAnchor="middle"
               fontSize={FONT_DIM}
             >
-              {Math.abs(e.offset).toLocaleString("ja-JP")}
+              {Math.abs(e.dist).toLocaleString("ja-JP")}
             </text>
           </g>
         );
@@ -207,7 +239,8 @@ function YDimension({
   extra,
 }: {
   ys: number[];
-  extra?: { pos: number; offset: number }[];
+  /** extra は補助線：図の中の位置・基の線の位置・その間の寸法 */
+  extra?: { pos: number; from: number; dist: number }[];
 }): JSX.Element {
   const first = ys[0];
   const last = Math.max(ys[ys.length - 1] ?? 0, ...(extra ?? []).map((e) => e.pos));
@@ -237,10 +270,10 @@ function YDimension({
         );
       })}
       {(extra ?? []).map((e, i) => {
-        // 補助寸法は一段内側に、基の線と引いた線の間だけの寸法線として出す
-        const xAux = x + 500;
-        const lo = Math.min(e.pos - e.offset, e.pos);
-        const hi = Math.max(e.pos - e.offset, e.pos);
+        // 補助寸法は一本ごとに内側へ段違いに、基の線と引いた線の間だけの寸法線として出す
+        const xAux = x + Math.min(500 + i * 550, 1600);
+        const lo = Math.min(e.from, e.pos);
+        const hi = Math.max(e.from, e.pos);
         return (
           <g key={`ey${i}`}>
             <line
@@ -259,7 +292,7 @@ function YDimension({
               fontSize={FONT_DIM}
               transform={`rotate(-90 ${xAux - 200} ${(lo + hi) / 2})`}
             >
-              {Math.abs(e.offset).toLocaleString("ja-JP")}
+              {Math.abs(e.dist).toLocaleString("ja-JP")}
             </text>
           </g>
         );
@@ -628,12 +661,13 @@ function FloorSvg({
   onDiagHover?: (pt: { x: number; y: number } | null) => void;
   /** 「寸法線を足す」モード中（寸法線をクリックして基になる線を選ぶ） */
   auxMode?: boolean;
-  /** 寸法線を足すモードで柱線・補助線をクリックしたとき（向き・通り番号・基からのずれmm・読み方） */
+  /** 寸法線を足すモードで柱線・補助線をクリックしたとき（向き・通り番号・基からのずれmm・読み方・基の補助線id） */
   onAuxBasePick?: (
     axis: "x" | "y",
     base: number,
     baseOffset: number,
     label: string,
+    baseAuxId?: string,
   ) => void;
   /** 寸法線を足す：選んだ基の線の位置（図に青く示す） */
   auxPick?: { axis: "x" | "y"; pos: number } | null;
@@ -685,22 +719,7 @@ function FloorSvg({
   const width = totalX + MARGIN_LEFT + MARGIN_RIGHT;
   const height = totalY + MARGIN_TOP + MARGIN_BOTTOM;
   const numbers = columnNumbers(floor);
-  /* 補助寸法線を足す：基の線の読み方（例「1の右に1,500」） */
-  const auxBaseLabel = (line: FireproofDrawingAuxLine): string => {
-    const baseLabel =
-      line.axis === "x"
-        ? xGridLabel(line.base)
-        : yGridLabel(floor.ySpans.length - line.base);
-    const dir =
-      line.offset > 0
-        ? line.axis === "x"
-          ? "右"
-          : "下"
-        : line.axis === "x"
-          ? "左"
-          : "上";
-    return `${baseLabel}の${dir}に${Math.abs(line.offset).toLocaleString("ja-JP")}`;
-  };
+
   /* 「無し」の柱を挟んで十字になる大梁：負けた側の区間端の詰め（優先側の面までで止める） */
   const gCuts = girderEndCuts(floor, halfWidthOf);
 
@@ -809,13 +828,21 @@ function FloorSvg({
       {floor.xSpans.length > 0 && (
         <XDimension
           xs={xs}
-          extra={auxX.map((e) => ({ pos: e.pos, offset: e.line.offset }))}
+          extra={auxX.map((e) => {
+            const from =
+              auxLineBasePosition(floor, e.line) ?? e.pos - e.line.offset;
+            return { pos: e.pos, from, dist: e.pos - from };
+          })}
         />
       )}
       {floor.ySpans.length > 0 && (
         <YDimension
           ys={ys}
-          extra={auxY.map((e) => ({ pos: e.pos, offset: e.line.offset }))}
+          extra={auxY.map((e) => {
+            const from =
+              auxLineBasePosition(floor, e.line) ?? e.pos - e.line.offset;
+            return { pos: e.pos, from, dist: e.pos - from };
+          })}
         />
       )}
       {/* 通し芯ラベル（Xは左から1,2,3…・Yは下からA,B,C…） */}
@@ -1363,9 +1390,23 @@ function FloorSvg({
               ends.y2 + (dx / plan) * off,
             );
           });
-          /* 補助寸法線 */
-          auxX.forEach((e) => seg(e.pos, 0, e.pos, totalY));
-          auxY.forEach((e) => seg(0, e.pos, totalX, e.pos));
+          /* 補助寸法線（延長と寸法線のあたりまで入れて、寸法線との交わりも取れるようにする） */
+          auxX.forEach((e, i) => {
+            seg(e.pos, -2600, e.pos, totalY);
+            const from =
+              auxLineBasePosition(floor, e.line) ??
+              (xs[e.line.base] ?? e.pos - e.line.offset);
+            const yDim = Math.min(-1400 + i * 550, -300);
+            seg(Math.min(from, e.pos), yDim, Math.max(from, e.pos), yDim);
+          });
+          auxY.forEach((e, i) => {
+            seg(-2600, e.pos, totalX, e.pos);
+            const from =
+              auxLineBasePosition(floor, e.line) ??
+              (ys[e.line.base] ?? e.pos - e.line.offset);
+            const xDim = Math.min(-1400 + i * 550, -300);
+            seg(xDim, Math.min(from, e.pos), xDim, Math.max(from, e.pos));
+          });
           /* 柱の四角の辺 */
           Object.entries(floor.columns).forEach(([key, symbol]) => {
             const [xi, yi] = key.split(",").map(Number);
@@ -1498,9 +1539,9 @@ function FloorSvg({
               <rect
                 className="pick-cover"
                 x={-200}
-                y={-200}
+                y={-1650}
                 width={totalX + 400}
-                height={totalY + 400}
+                height={totalY + 1850}
                 onPointerDown={(event) => {
                   event.stopPropagation();
                   const at = eventAt(event);
@@ -1608,7 +1649,7 @@ function FloorSvg({
               y2={totalY}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("x", e.line.base, e.line.offset, auxBaseLabel(e.line));
+                onAuxBasePick?.("x", e.line.base, e.line.offset, auxLineLabel(floor, e.line), e.line.id);
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1622,7 +1663,7 @@ function FloorSvg({
               y2={e.pos}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("y", e.line.base, e.line.offset, auxBaseLabel(e.line));
+                onAuxBasePick?.("y", e.line.base, e.line.offset, auxLineLabel(floor, e.line), e.line.id);
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1762,6 +1803,7 @@ export default function FireproofDrawingPage({
     base: number;
     baseOffset: number;
     label: string;
+    baseAuxId?: string;
   } | null>(null);
   const [auxDist, setAuxDist] = useState("");
   const [auxDir, setAuxDir] = useState<1 | -1>(1);
@@ -2075,8 +2117,14 @@ export default function FireproofDrawingPage({
   );
   /* 補助寸法線：基の柱線・補助線を選ぶ（baseOffsetは基の柱線からのずれ。補助線から連続して引ける） */
   const pickAuxBase = useCallback(
-    (axis: "x" | "y", base: number, baseOffset: number, label: string) => {
-      setAuxBase({ axis, base, baseOffset, label });
+    (
+      axis: "x" | "y",
+      base: number,
+      baseOffset: number,
+      label: string,
+      baseAuxId?: string,
+    ) => {
+      setAuxBase({ axis, base, baseOffset, label, baseAuxId });
       setAuxDir(1);
       setAuxDist("");
       setAuxDistErr(false);
@@ -2116,6 +2164,9 @@ export default function FireproofDrawingPage({
       base: auxBase.base,
       offset: auxBase.baseOffset + dist * auxDir,
       id: `a${Date.now().toString(36)}${(current.auxLines ?? []).length}`,
+      ...(auxBase.baseAuxId !== undefined
+        ? { baseAuxId: auxBase.baseAuxId }
+        : {}),
     };
     updateFloor({ auxLines: [...(current.auxLines ?? []), line] });
     setAuxBase(null);
@@ -2499,7 +2550,7 @@ export default function FireproofDrawingPage({
     updateFloor({ beams: refit });
     setMessage("寸法に合わせて小梁を入れ直しました");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floor, memberLists, current.xSpans, current.ySpans, current.girders, current.girderAlign]);
+  }, [floor, memberLists, current.xSpans, current.ySpans, current.girders, current.girderAlign, current.diagGirders, current.auxLines]);
 
   /** ④小梁：図をクリック → まわりの線で囲まれた区画を選ぶ（Shift+クリックで追加・再押しで外す） */
   const handleRegionClick = useCallback(
@@ -2782,13 +2833,16 @@ export default function FireproofDrawingPage({
         const right = part.x + part.width - (part.insetRight ?? 0);
         const top = part.y + (part.insetTop ?? 0);
         const bottom = part.y + part.height - (part.insetBottom ?? 0);
-        return clipBeams.map((clip) => ({
-          x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
-          x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
-          y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
-          y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
-          symbol: clip.symbol,
-        }));
+        return clipBeams
+          .map((clip) => ({
+            x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
+            x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
+            y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
+            y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
+            symbol: clip.symbol,
+          }))
+          .map((beam) => clipBeamAtDiagEdges(beam, part))
+          .filter((beam): beam is FireproofDrawingBeam => beam !== null);
       });
     }
     if (placed.length === 0) return;
@@ -3320,23 +3374,10 @@ export default function FireproofDrawingPage({
                   {(current.auxLines ?? []).map((line, index) => {
                     const pos = auxLinePosition(current, line);
                     if (pos === null) return null;
-                    const baseLabel =
-                      line.axis === "x"
-                        ? xGridLabel(line.base)
-                        : yGridLabel(current.ySpans.length - line.base);
-                    const dir =
-                      line.offset > 0
-                        ? line.axis === "x"
-                          ? "右"
-                          : "下"
-                        : line.axis === "x"
-                          ? "左"
-                          : "上";
                     return (
                       <div key={line.id ?? `a${index}`} className="aux-row">
                         <span>
-                          {baseLabel}の{dir}に
-                          {Math.abs(line.offset).toLocaleString("ja-JP")}
+                          {auxLineLabel(current, line)}
                           （{line.axis === "x" ? "縦" : "横"}の線）
                         </span>
                         <button
@@ -3344,9 +3385,25 @@ export default function FireproofDrawingPage({
                           className="flat"
                           onClick={() =>
                             updateFloor({
-                              auxLines: (current.auxLines ?? []).filter(
-                                (_, i) => i !== index,
-                              ),
+                              /* 基の補助線を消したときは、その線から引いた線の基を
+                                 消した線の基へ付け替える（「3の右5,000から右に1,500」の基が柱線に戻る） */
+                              auxLines: (current.auxLines ?? [])
+                                .filter((_, i) => i !== index)
+                                .map((l) => {
+                                  if (
+                                    line.id !== undefined &&
+                                    l.baseAuxId === line.id
+                                  ) {
+                                    const { baseAuxId: _drop, ...rest } = l;
+                                    return {
+                                      ...rest,
+                                      ...(line.baseAuxId !== undefined
+                                        ? { baseAuxId: line.baseAuxId }
+                                        : {}),
+                                    };
+                                  }
+                                  return l;
+                                }),
                             })
                           }
                         >
