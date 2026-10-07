@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   axisHeightAt,
+  beamImportItems,
   beamLength,
   beamSlopeLength,
+  BEAM_IMPORT_HEAD_COMMENT,
   columnImportItems,
   columnKey,
   columnNumbers,
@@ -559,6 +561,72 @@ describe("columnImportItems", () => {
     };
     expect(columnImportItems(sparse, 4000)).toHaveLength(1);
     expect(columnImportItems(sparse, null)[0]?.lengthFormula).toBe("");
+  });
+});
+
+describe("beamImportItems", () => {
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000],
+    columns: { "0,0": "C1", "1,0": "C1", "2,0": "C1", "0,1": "C1", "1,1": "C1" },
+    girders: {
+      "x:0,0": "G1",
+      "x:1,0": "G2",
+      "y:0,0": "G3",
+      "y:1,0": "G4",
+    },
+    beams: [{ x1: 3000, y1: 100, x2: 3000, y2: 5900, symbol: "B1", id: "b12ab" }],
+    jointSymbols: { "g:x:0,0": "3", "b:b12ab": "2" },
+  };
+
+  it("大梁は通し番号どおり・小梁はそのあとに並ぶ（柱の面どうしの長さ）", () => {
+    const items = beamImportItems(floor, 4000);
+    // 柱の半幅120を両端から引いた 5760mm（柱の寸法を渡さないときは描き幅の半分で計算）
+    expect(items).toEqual([
+      {
+        comment: BEAM_IMPORT_HEAD_COMMENT,
+        symbol: "G1",
+        mark: "3",
+        lengthFormula: "5.76",
+      },
+      { comment: "大:B-2〜3", symbol: "G2", mark: "", lengthFormula: "5.76" },
+      { comment: "大:1-A〜B", symbol: "G3", mark: "", lengthFormula: "5.76" },
+      { comment: "大:2-A〜B", symbol: "G4", mark: "", lengthFormula: "5.76" },
+      { comment: "小:1〜2-A〜B", symbol: "B1", mark: "2", lengthFormula: "5.8" },
+    ]);
+  });
+
+  it("柱の大きさを渡すとその面どうしの長さになる", () => {
+    const items = beamImportItems(floor, 4000, () => ({
+      hw: 250,
+      hd: 250,
+    }));
+    expect(items[0]?.lengthFormula).toBe("5.5");
+  });
+
+  it("横通りの高さ差は勾配ぶん長くなる", () => {
+    const slope: FireproofDrawingFloor = {
+      ...floor,
+      axisHeightsX: { "0": 3000 },
+    };
+    const items = beamImportItems(slope, 4000);
+    // 左端の大梁は両端の高さが 3000↔4000 → hypot(5760, 1000)
+    expect(items[0]?.lengthFormula).toBe(
+      String(Math.round(Math.hypot(5760, 1000)) / 1000),
+    );
+    // そのとなりの大梁は両端とも階高のまま
+    expect(items[1]?.lengthFormula).toBe("5.76");
+  });
+
+  it("記号の無い区間は行を作らない・階高不明は勾配を入れない", () => {
+    const sparse: FireproofDrawingFloor = {
+      ...floor,
+      girders: { "x:0,0": "G1", "x:1,0": "" },
+      beams: [],
+    };
+    expect(beamImportItems(sparse, 4000)).toHaveLength(1);
+    expect(beamImportItems(sparse, null)[0]?.lengthFormula).toBe("5.76");
   });
 });
 

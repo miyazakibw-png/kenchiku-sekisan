@@ -51,17 +51,17 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
-    key: "fireproofEstimate",
-    label: "耐火被覆・塗装入力表",
-    group: "fireproof",
-    note: "入力管理表（1行＝1明細）と柱入力表（鉄骨リストの寸法から必要数㎡を出す）",
-    ready: true,
-  },
-  {
     key: "fireproofDrawing",
     label: "伏図作成",
     group: "fireproof",
     note: "柱線寸法線を引いて柱・大梁を記号で置く鉄骨伏図。階ごとに描いて各計算書から呼び出せる",
+    ready: true,
+  },
+  {
+    key: "fireproofEstimate",
+    label: "耐火被覆・塗装入力表",
+    group: "fireproof",
+    note: "入力管理表（1行＝1明細）と柱入力表（鉄骨リストの寸法から必要数㎡を出す）",
     ready: true,
   },
   {

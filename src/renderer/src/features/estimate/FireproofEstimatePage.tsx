@@ -33,14 +33,18 @@ import {
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { findBeamSize } from "../../../../core/fireproof/fireproofEstimate";
 import {
+  normalizeCommonRows,
   normalizeFloorList,
   resolveFloorHeight,
   SHAPE_LABEL,
   toHalfWidth,
+  type FireproofCommonRow,
   type FireproofFloorList,
 } from "../../../../core/fireproof/fireproofList";
 import {
+  beamImportItems,
   columnImportItems,
+  drawingColumnHalfOf,
   EMPTY_DRAWING,
   parseDrawing,
   type FireproofDrawing,
@@ -216,8 +220,10 @@ export default function FireproofEstimatePage({
     floors: [],
     members: [],
   });
-  /** 伏図（この画面では読むだけ。柱の取り込みに使う） */
+  /** 伏図（この画面では読むだけ。柱・梁の取り込みに使う） */
   const [drawing, setDrawing] = useState<FireproofDrawing>(EMPTY_DRAWING);
+  /** 階共通リスト（読むだけ。梁の取り込みで部材の幅を拾う） */
+  const [commonList, setCommonList] = useState<FireproofCommonRow[]>([]);
   const [rows, setRows] = useState<FireproofManageRow[]>([]);
   const [selected, setSelected] = useState(0);
   const [selectedEnd, setSelectedEnd] = useState(0);
@@ -248,6 +254,7 @@ export default function FireproofEstimatePage({
       };
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
       setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
+      setCommonList(normalizeCommonRows(parseJson(record.commonJson, [])));
       setDrawing(parseDrawing(record.drawingJson));
       setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
     })();
@@ -550,6 +557,8 @@ export default function FireproofEstimatePage({
         row={rows[index]}
         part1={inheritedPart1[index] ?? ""}
         list={kind === "beam" ? beamsList : columnsList}
+        columnsList={columnsList}
+        common={commonList}
         options={options}
         drawing={drawing}
         detailCell={(key, className) => detailInput(index, key, className)}
@@ -948,6 +957,8 @@ function ColumnSheetView({
   row,
   part1,
   list,
+  columnsList,
+  common,
   drawing,
   onChange,
   onCommit,
@@ -960,8 +971,11 @@ function ColumnSheetView({
   row: FireproofManageRow;
   part1: string;
   list: FireproofFloorList;
+  /** 梁の取り込みで柱の面・階高を拾うために使う（柱入力表では参照しない） */
+  columnsList: FireproofFloorList;
+  common: FireproofCommonRow[];
   options: MasterOptions;
-  /** 伏図（柱を取り込むのに使う） */
+  /** 伏図（柱・梁を取り込むのに使う） */
   drawing: FireproofDrawing;
   onChange: (patch: Partial<FireproofManageRow>) => void;
   onCommit: (next: FireproofManageRow) => void;
@@ -1019,18 +1033,27 @@ function ColumnSheetView({
     return name === "R" ? "RF" : `${name}F`;
   };
 
-  /** 伏図の柱を1階分まとめて取り込む（1本1行・倍数は1・断面計算式は空欄＝自動） */
+  /** 伏図から1階分まとめて取り込む（1本1行・倍数は1・断面計算式は空欄＝自動） */
   const importFloor = (name: string): void => {
     const floorData = drawing.floors[name];
     const label = floorLabelFor(name);
-    const at = list.floors.findIndex(
+    // 柱の高さは柱リスト側の階高欄で見る（梁リストには高さ欄が無い）
+    const heightAt = columnsList.floors.findIndex(
       (floor) => floor.label.trim() === label,
     );
     const height =
-      at >= 0 ? resolveFloorHeight(list.floors, at) : null;
-    const items = columnImportItems(floorData, height);
+      heightAt >= 0 ? resolveFloorHeight(columnsList.floors, heightAt) : null;
+    const items =
+      kind === "beam"
+        ? beamImportItems(
+            floorData,
+            height,
+            drawingColumnHalfOf(columnsList, common, label),
+          )
+        : columnImportItems(floorData, height);
+    const memberName = kind === "beam" ? "梁" : "柱";
     if (items.length === 0) {
-      onMessage(`${config.title}：${label} の伏図に柱がありません`);
+      onMessage(`${config.title}：${label} の伏図に${memberName}がありません`);
       return;
     }
     const imported = items.map((item, index) => ({
@@ -1044,7 +1067,9 @@ function ColumnSheetView({
     }));
     commitRows([...sheet.rows, ...imported]);
     setImportPick(false);
-    onMessage(`${config.title}：${label} の柱を ${items.length} 本取り込みました`);
+    onMessage(
+      `${config.title}：${label} の${memberName}を ${items.length} 本取り込みました`,
+    );
   };
 
   /** 階ごとの必要数㎡の合計（集計根拠。先頭明細の右に出す） */
@@ -1202,18 +1227,20 @@ function ColumnSheetView({
         >
           📋 追加貼付
         </button>
-        {kind === "column" && (
-          <button
-            type="button"
-            title="伏図に置いた柱を、階ごとにこの表へ取り込みます（コメント＝階・位置、倍数＝1、取合＝図面で打った番号、有効長＝柱の高さ）"
-            onClick={() => setImportPick((open) => !open)}
-          >
-            ⤵ 伏図から取込
-          </button>
-        )}
+        <button
+          type="button"
+          title={
+            kind === "beam"
+              ? "伏図に置いた大梁・小梁を、階ごとにこの表へ取り込みます（コメント＝位置、倍数＝1、取合＝図面で打った番号、有効長＝図に描いた長さ）"
+              : "伏図に置いた柱を、階ごとにこの表へ取り込みます（コメント＝階・位置、倍数＝1、取合＝図面で打った番号、有効長＝柱の高さ）"
+          }
+          onClick={() => setImportPick((open) => !open)}
+        >
+          ⤵ 伏図から取込
+        </button>
       </div>
 
-      {kind === "column" && importPick && (
+      {importPick && (
         <div className="fireproof-import-pick">
           <span>取り込む階：</span>
           {Object.keys(drawing.floors).length === 0 && (
@@ -1221,9 +1248,15 @@ function ColumnSheetView({
           )}
           {Object.keys(drawing.floors).map((name) => {
             const label = name === "R" ? "RF" : `${name}F`;
-            const count = Object.values(
-              drawing.floors[name]?.columns ?? {},
-            ).filter((symbol) => symbol.trim() !== "").length;
+            const floorData = drawing.floors[name];
+            const count =
+              kind === "beam"
+                ? Object.values(floorData?.girders ?? {}).filter(
+                    (symbol) => symbol.trim() !== "",
+                  ).length + (floorData?.beams.length ?? 0)
+                : Object.values(floorData?.columns ?? {}).filter(
+                    (symbol) => symbol.trim() !== "",
+                  ).length;
             return (
               <button
                 type="button"

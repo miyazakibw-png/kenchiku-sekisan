@@ -2,6 +2,8 @@
  * 鉄骨伏図（耐火被覆・塗装積算入力の図面）1階分の中身。
  * 柱線寸法線 → 交点の柱 → 柱間の大梁 を「番号に記号を入れる」だけで描く作り。
  */
+import { resolveCommonRow, resolveSize } from "./fireproofList";
+import type { FireproofCommonRow, FireproofFloorList } from "./fireproofList";
 
 /** 小梁1本。大梁に囲まれた区画を等分割して置く（端点はmm） */
 export interface FireproofDrawingBeam {
@@ -677,4 +679,181 @@ export function columnImportItems(
       lengthFormula: height === null ? "" : String(height / 1000),
     };
   });
+}
+
+/** 伏図から取り込んだ梁ブロックの先頭に入れる案内文 */
+export const BEAM_IMPORT_HEAD_COMMENT =
+  "梁位置表示（大＝大梁は通り芯の区間・小＝小梁は区画。軸の表記は柱と同じ）";
+
+/**
+ * 柱記号→柱の四角の半分（mm）を伏図と同じルールで引く関数を作る。
+ * 記号は柱リスト（その階の寸法）・階共通リストから拾う。
+ * 梁型入力表への取り込みで、大梁の端を柱の面どうしの長さにするために使う。
+ */
+export function drawingColumnHalfOf(
+  columnsList: FireproofFloorList,
+  common: readonly FireproofCommonRow[],
+  floorLabel: string,
+): ColumnHalfOf {
+  const columnAt = columnsList.floors.findIndex(
+    (f) => f.label === floorLabel,
+  );
+  return (symbol) => {
+    const member = columnsList.members.find(
+      (m) => m.symbol.trim() === symbol.trim(),
+    );
+    const size =
+      member !== undefined
+        ? resolveSize(
+            member,
+            columnsList.floors,
+            Math.max(0, columnAt),
+            "column",
+          )
+        : (() => {
+            const row = common.find(
+              (r) => r.symbol.trim() === symbol.trim(),
+            );
+            return row === undefined ? null : resolveCommonRow(row);
+          })();
+    if (size === null) return null;
+    const width = size.first;
+    const depth = size.second ?? size.first;
+    if (width === null || width <= 0) return null;
+    return { hw: width / 2, hd: (depth ?? width) / 2 };
+  };
+}
+
+/**
+ * 伏図1階分の大梁・小梁を、梁型入力表へ取り込む行にする。
+ * 大梁は通し番号どおり（X方向→Y方向）、小梁は上→下・左→右の見え方で並べる。
+ * コメントはブロックの最初だけ案内文、あとは位置（大：軸-区間・小：区画）。
+ * 有効長は図に描かれている長さ（大梁は柱の面どうし・小梁は内内寸法。勾配ぶんも入れる）。
+ */
+export function beamImportItems(
+  floor: FireproofDrawingFloor,
+  floorHeight: number | null,
+  columnHalfOf?: ColumnHalfOf,
+): ColumnImportItem[] {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+
+  /** 交点の柱の高さ（mm）。縦通り → 横通り → 階高 の順（柱の取り込みと同じ） */
+  const colHeight = (xi: number, yi: number): number | null =>
+    floor.axisHeights?.[String(yi)] ??
+    floor.axisHeightsX?.[String(xi)] ??
+    floorHeight;
+
+  const girders: {
+    no: number;
+    position: string;
+    symbol: string;
+    mark: string;
+    mm: number;
+  }[] = [];
+  const beams: {
+    sort: number;
+    position: string;
+    symbol: string;
+    mark: string;
+    mm: number;
+  }[] = [];
+
+  Object.keys(floor.girders)
+    .filter((key) => floor.girders[key].trim() !== "")
+    .forEach((key) => {
+      const [axis, point] = key.split(":");
+      const [xi, yi] = point.split(",").map(Number);
+      /** 端の柱の半幅（梁の軸方向の面）。柱が無い端は柱線まで */
+      const face = (ax: number, ay: number): number => {
+        const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
+        if (sym === "") return 0;
+        const size = columnHalfOf?.(sym) ?? {
+          hw: COLUMN_HALF,
+          hd: COLUMN_HALF,
+        };
+        return axis === "x" ? size.hw : size.hd;
+      };
+      let plan: number;
+      let position: string;
+      let h1: number | null;
+      let h2: number | null;
+      if (axis === "x") {
+        if (xi < 0 || xi >= xs.length - 1 || yi < 0 || yi >= ys.length)
+          return;
+        plan = xs[xi + 1] - face(xi + 1, yi) - (xs[xi] + face(xi, yi));
+        h1 = colHeight(xi, yi);
+        h2 = colHeight(xi + 1, yi);
+        position = `大:${yGridLabel(ys.length - 1 - yi)}-${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`;
+      } else {
+        if (yi < 0 || yi >= ys.length - 1 || xi < 0 || xi >= xs.length)
+          return;
+        plan = ys[yi + 1] - face(xi, yi + 1) - (ys[yi] + face(xi, yi));
+        h1 = colHeight(xi, yi);
+        h2 = colHeight(xi, yi + 1);
+        position = `大:${xGridLabel(xi)}-${yGridLabel(ys.length - 2 - yi)}〜${yGridLabel(ys.length - 1 - yi)}`;
+      }
+      const dh =
+        floorHeight !== null && h1 !== null && h2 !== null
+          ? Math.abs(h1 - h2)
+          : 0;
+      girders.push({
+        no: girderNumber(axis as "x" | "y", xi, yi, floor),
+        position,
+        symbol: floor.girders[key].trim(),
+        mark: floor.jointSymbols?.[`g:${key}`] ?? "",
+        mm: Math.hypot(Math.max(0, plan), dh),
+      });
+    });
+  girders.sort((a, b) => a.no - b.no);
+
+  floor.beams.forEach((beam, index) => {
+    const mx = (beam.x1 + beam.x2) / 2;
+    const my = (beam.y1 + beam.y2) / 2;
+    /** 中点が入る区画の軸（柱線の間の番号） */
+    const bay = (
+      pos: number,
+      lines: number[],
+    ): { from: number; to: number } | null => {
+      if (lines.length < 2) return null;
+      const at = Math.min(
+        Math.max(
+          lines.findIndex(
+            (_v, i) =>
+              i < lines.length - 1 &&
+              pos >= (lines[i] ?? 0) &&
+              pos < (lines[i + 1] ?? 0),
+          ),
+          0,
+        ),
+        lines.length - 2,
+      );
+      return { from: at, to: at + 1 };
+    };
+    const xb = bay(mx, xs);
+    const yb = bay(my, ys);
+    const position =
+      xb !== null && yb !== null
+        ? `小:${xGridLabel(xb.from)}〜${xGridLabel(xb.to)}-${yGridLabel(ys.length - 1 - yb.to)}〜${yGridLabel(ys.length - 1 - yb.from)}`
+        : "小";
+    const mm =
+      floorHeight === null
+        ? beamLength(beam)
+        : beamSlopeLength(beam, floor, floorHeight);
+    beams.push({
+      sort: index,
+      position,
+      symbol: beam.symbol.trim(),
+      mark: floor.jointSymbols?.[`b:${beam.id ?? `#${index}`}`] ?? "",
+      mm,
+    });
+  });
+  beams.sort((a, b) => a.sort - b.sort);
+
+  return [...girders, ...beams].map((item, index) => ({
+    comment: index === 0 ? BEAM_IMPORT_HEAD_COMMENT : item.position,
+    symbol: item.symbol,
+    mark: item.mark,
+    lengthFormula: String(Math.round(item.mm) / 1000),
+  }));
 }
