@@ -22,6 +22,9 @@ import {
   GIRDER_HALF,
   type ColumnHalfOf,
   type HalfWidthOf,
+  columnExists,
+  girderEndCuts,
+  girderExists,
   girderKey,
   girderNumber,
   girderOffset,
@@ -230,6 +233,8 @@ function SymbolList({
   onActiveRow,
   known,
   onSelChange,
+  none,
+  onToggleNone,
 }: {
   rows: SymbolRow[];
   values: Record<string, string>;
@@ -241,6 +246,10 @@ function SymbolList({
   known?: ReadonlySet<string>;
   /** 範囲指定の変化を外へ知らせる（図に点線の範囲を出す用） */
   onSelChange?: (sel: { from: number; to: number } | null) => void;
+  /** 「無し」チェックの行のキー（記号は残るがその場所に部材は置かない） */
+  none?: ReadonlySet<string>;
+  /** 「無し」チェックの切替 */
+  onToggleNone?: (key: string, on: boolean) => void;
 }): JSX.Element {
   const [sel, setSel] = useState<{ from: number; to: number } | null>(null);
   const dragSel = useRef(false);
@@ -419,6 +428,21 @@ function SymbolList({
               onValues({ ...values, [row.key]: event.target.value })
             }
           />
+          {onToggleNone !== undefined && (
+            <label
+              className={`none${none?.has(row.key) === true ? " on" : ""}`}
+              title="この場所には部材を置きません（記号は残ります）"
+            >
+              <input
+                type="checkbox"
+                checked={none?.has(row.key) === true}
+                onChange={(event) =>
+                  onToggleNone(row.key, event.target.checked)
+                }
+              />
+              無
+            </label>
+          )}
         </div>
       ))}
       {rows.length > 0 && (
@@ -443,7 +467,7 @@ function hasColumn(
   xi: number,
   yi: number,
 ): boolean {
-  return (floor.columns[columnKey(xi, yi)] ?? "").trim() !== "";
+  return columnExists(floor, xi, yi);
 }
 
 /**
@@ -505,6 +529,8 @@ function FloorSvg({
   const width = totalX + MARGIN_LEFT + MARGIN_RIGHT;
   const height = totalY + MARGIN_TOP + MARGIN_BOTTOM;
   const numbers = columnNumbers(floor);
+  /* 「無し」の柱を挟んで十字になる大梁：負けた側の区間端の詰め（優先側の面までで止める） */
+  const gCuts = girderEndCuts(floor, halfWidthOf);
 
   /* 取合記号の○印（梁の端のそばに出す。クリックで記号を入れ直せる） */
   const Joint = ({
@@ -655,18 +681,20 @@ function FloorSvg({
           柱の大きさはリストの寸法で、無いときは決まった大きさ） */}
       <g className="girder">
         {Object.entries(floor.girders).map(([key, symbol]) => {
+          if (!girderExists(floor, key)) return null;
           const [axis, point] = key.split(":");
           const [xi, yi] = point.split(",").map(Number);
+          const cut = gCuts[key];
           const colAt = (ax: number, ay: number) => {
+            if (!hasColumn(floor, ax, ay)) return 0;
             const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
-            if (sym === "") return 0;
             return columnHalfOf?.(sym) ?? { hw: COL_HALF, hd: COL_HALF };
           };
           if (axis === "x" && xi >= 0 && xi < xs.length - 1 && yi >= 0 && yi < ys.length) {
             const c1 = colAt(xi, yi);
             const c2 = colAt(xi + 1, yi);
-            const x1 = xs[xi] + (c1 === 0 ? 0 : c1.hw);
-            const x2 = xs[xi + 1] - (c2 === 0 ? 0 : c2.hw);
+            const x1 = xs[xi] + (c1 === 0 ? 0 : c1.hw) + (cut?.start ?? 0);
+            const x2 = xs[xi + 1] - (c2 === 0 ? 0 : c2.hw) - (cut?.end ?? 0);
             const y = ys[yi] + (girderOffsetOf?.(key) ?? 0);
             const mx = (x1 + x2) / 2;
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
@@ -685,8 +713,8 @@ function FloorSvg({
           if (axis === "y" && yi >= 0 && yi < ys.length - 1 && xi >= 0 && xi < xs.length) {
             const c1 = colAt(xi, yi);
             const c2 = colAt(xi, yi + 1);
-            const y1 = ys[yi] + (c1 === 0 ? 0 : c1.hd);
-            const y2 = ys[yi + 1] - (c2 === 0 ? 0 : c2.hd);
+            const y1 = ys[yi] + (c1 === 0 ? 0 : c1.hd) + (cut?.start ?? 0);
+            const y2 = ys[yi + 1] - (c2 === 0 ? 0 : c2.hd) - (cut?.end ?? 0);
             const x = xs[xi] + (girderOffsetOf?.(key) ?? 0);
             const my = (y1 + y2) / 2;
             const bad = symbol.trim() !== "" && !knownBeams.has(symbol.trim());
@@ -772,6 +800,7 @@ function FloorSvg({
         {Object.entries(floor.columns).map(([key, symbol]) => {
           const [xi, yi] = key.split(",").map(Number);
           if (xi < 0 || yi < 0 || xi >= xs.length || yi >= ys.length) return null;
+          if (floor.noColumns?.[key] === true) return null;
           const x = xs[xi];
           const y = ys[yi];
           const bad = symbol.trim() !== "" && !knownColumns.has(symbol.trim());
@@ -832,6 +861,7 @@ function FloorSvg({
         {Object.entries(floor.columns).map(([key, symbol]) => {
           const [xi, yi] = key.split(",").map(Number);
           if (xi < 0 || yi < 0 || xi >= xs.length || yi >= ys.length) return null;
+          if (floor.noColumns?.[key] === true) return null;
           const half = columnHalfOf?.(symbol.trim()) ?? {
             hw: COL_HALF,
             hd: COL_HALF,
@@ -846,12 +876,13 @@ function FloorSvg({
           );
         })}
         {Object.keys(floor.girders).map((key) => {
+          if (!girderExists(floor, key)) return null;
           const [axis, coord] = key.split(":");
           const [xi, yi] = (coord ?? "").split(",").map(Number);
           if (axis === "x" && yi >= 0 && yi < ys.length && xi >= 0 && xi < xs.length - 1) {
             const colAt = (ax: number, ay: number) => {
               const symbol = floor.columns[`${ax},${ay}`];
-              return symbol !== undefined
+              return symbol !== undefined && columnExists(floor, ax, ay)
                 ? (columnHalfOf?.(symbol.trim())?.hw ?? COL_HALF)
                 : 0;
             };
@@ -870,7 +901,7 @@ function FloorSvg({
           if (axis === "y" && yi >= 0 && yi < ys.length - 1 && xi >= 0 && xi < xs.length) {
             const colAt = (ax: number, ay: number) => {
               const symbol = floor.columns[`${ax},${ay}`];
-              return symbol !== undefined
+              return symbol !== undefined && columnExists(floor, ax, ay)
                 ? (columnHalfOf?.(symbol.trim())?.hd ?? COL_HALF)
                 : 0;
             };
@@ -1198,6 +1229,39 @@ export default function FireproofDrawingPage({
       setDrawing(next);
     },
     [drawing, floor],
+  );
+
+  /* ②柱の「無し」チェック（その交点に柱を置かない。大梁はまたいでつなぐ） */
+  const toggleNoColumn = useCallback(
+    (key: string, on: boolean) => {
+      const next = { ...(current.noColumns ?? {}) };
+      if (on) next[key] = true;
+      else delete next[key];
+      updateFloor({
+        noColumns: Object.keys(next).length > 0 ? next : undefined,
+      });
+    },
+    [current, updateFloor],
+  );
+  /* ③大梁の「無し」チェック（その区間に大梁を置かない） */
+  const toggleNoGirder = useCallback(
+    (key: string, on: boolean) => {
+      const next = { ...(current.noGirders ?? {}) };
+      if (on) next[key] = true;
+      else delete next[key];
+      updateFloor({
+        noGirders: Object.keys(next).length > 0 ? next : undefined,
+      });
+    },
+    [current, updateFloor],
+  );
+  const noColumnSet = useMemo(
+    () => new Set(Object.keys(current.noColumns ?? {})),
+    [current],
+  );
+  const noGirderSet = useMemo(
+    () => new Set(Object.keys(current.noGirders ?? {})),
+    [current],
   );
 
   /* 階コピーした図面を、選んだ階ぜんぶに貼り付ける（戻るでもまとめて戻せるよう1回分の履歴にする） */
@@ -2296,6 +2360,8 @@ export default function FireproofDrawingPage({
                 setFocusTarget({ kind: "column", key: row.key })
               }
               known={knownColumns}
+              none={noColumnSet}
+              onToggleNone={toggleNoColumn}
             />
           </section>
 
@@ -2340,6 +2406,8 @@ export default function FireproofDrawingPage({
               }
               onSelChange={setGirderSelRange}
               known={knownBeams}
+              none={noGirderSet}
+              onToggleNone={toggleNoGirder}
             />
           </section>
 

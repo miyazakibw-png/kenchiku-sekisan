@@ -619,6 +619,91 @@ describe("beamImportItems", () => {
   });
 });
 
+describe("「無し」チェック（柱・大梁）", () => {
+  const cross: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [5000, 5000],
+    columns: {
+      "0,0": "C1", "1,0": "C1", "2,0": "C1",
+      "0,1": "C1", "1,1": "C1", "2,1": "C1",
+      "0,2": "C1", "1,2": "C1", "2,2": "C1",
+    },
+    noColumns: { "1,1": true },
+    girders: {
+      "x:0,1": "G1",
+      "x:1,1": "G1",
+      "y:1,0": "G2",
+      "y:1,1": "G2",
+    },
+  };
+
+  it("「無し」の柱は描かず・取り込まない", () => {
+    const items = columnImportItems(cross, 4000);
+    // 9交点のうち中央(1,1)は「無し」→8本
+    expect(items).toHaveLength(8);
+    expect(items.some((item) => item.comment === "2-B")).toBe(false);
+  });
+
+  it("「無し」の交点をまたぐ同じ記号の大梁は1部材につなぐ（端は両端の柱の面）", () => {
+    const items = beamImportItems(cross, 4000);
+    // X方向の大梁は十字で負けたので…先に入れたX方向が優先かは入力順
+    // girdersの先頭はx区間 → X優先：Xは 1〜3 まるごと1本、Yは切れて2本
+    const xs = items.filter((item) => item.symbol === "G1");
+    const ys = items.filter((item) => item.symbol === "G2");
+    expect(xs).toHaveLength(1);
+    expect(xs[0]?.comment).toBe("B-1〜3");
+    expect(ys).toHaveLength(2);
+  });
+
+  it("十字のとき先に入力した向きが優先（負けた側はその大梁の面まで）", () => {
+    // Yのキーを先に書いた並び → Y優先
+    const yFirst: FireproofDrawingFloor = {
+      ...cross,
+      girders: {
+        "y:1,0": "G2",
+        "y:1,1": "G2",
+        "x:0,1": "G1",
+        "x:1,1": "G1",
+      },
+    };
+    const items = beamImportItems(yFirst, 4000);
+    const xs = items.filter((item) => item.symbol === "G1");
+    const ys = items.filter((item) => item.symbol === "G2");
+    // Yが通し：1本。Xは交点で切れて2本、それぞれ中央までは柱面からYの面まで
+    expect(ys).toHaveLength(1);
+    expect(xs).toHaveLength(2);
+    // memberHalfOf を渡したときは負け側の端が優先側の面ぶん短くなる
+    const withHalf = beamImportItems(yFirst, 4000, undefined, () => 250);
+    const xs2 = withHalf.filter((item) => item.symbol === "G1");
+    // 6000-120(柱面)-250(優先G2の面) = 5630
+    expect(xs2.map((item) => item.lengthFormula)).toEqual(["5.63", "5.63"]);
+  });
+
+  it("「無し」の大梁区間は部材ではない（図・取り込み・取合の未入力から外れる）", () => {
+    const floor: FireproofDrawingFloor = {
+      ...cross,
+      noGirders: { "x:0,1": true },
+    };
+    const items = beamImportItems(floor, 4000);
+    expect(items.some((item) => item.comment === "B-1〜2")).toBe(false);
+    expect(missingJointKeys(floor).some((key) => key === "g:x:0,1")).toBe(
+      false,
+    );
+  });
+
+  it("「無し」の柱をまたぐ通しの大梁は、どれか1区間に取合があれば未入力にならない", () => {
+    const floor: FireproofDrawingFloor = {
+      ...cross,
+      jointSymbols: { "g:x:0,1": "3", "c:0,0": "3" },
+      girders: { "x:0,1": "G1", "x:1,1": "G1" }, // Y側を消して十字にならない形
+    };
+    expect(
+      missingJointKeys(floor).filter((key) => key.startsWith("g:")),
+    ).toEqual([]);
+  });
+});
+
 describe("missingJointKeys", () => {
   it("記号の入った柱・大梁・小梁で記号未入力のものだけのキーを返す", () => {
     const floor: FireproofDrawingFloor = {

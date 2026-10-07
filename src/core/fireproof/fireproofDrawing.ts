@@ -57,8 +57,13 @@ export interface FireproofDrawingFloor {
   ySpans: number[];
   /** 交点ごとの柱記号。キー "xi,yi"（x軸xi番目・y軸yi番目の交点）→ "C1" など */
   columns: Record<string, string>;
+  /** 「無し」チェックの交点（キーはcolumnsと同じ）。柱を置かないことを表す。
+     記号は残るが部材として置かず、この位置を通る大梁はつなげる */
+  noColumns?: Record<string, true>;
   /** 柱間区間ごとの大梁記号。キー "x:xi,yi"（xi,yiの交点から右へ1区間）・"y:xi,yi"（下へ1区間）→ "G1" など */
   girders: Record<string, string>;
+  /** 「無し」チェックの大梁区間（キーはgirdersと同じ）。記号は残るが部材として置かない */
+  noGirders?: Record<string, true>;
   /** 大梁の位置合わせ（キーはgirdersと同じ）。無い区間は中央（柱芯どおり） */
   girderAlign?: Record<string, GirderAlign>;
   /** 取合記号（耐火被覆の断面積算出用）。1部材に1記号。
@@ -130,6 +135,17 @@ const stringMap = (value: unknown): Record<string, string> => {
   return map;
 };
 
+/** 「無し」チェックのキーの集まりを読む（値が true のキーだけ残す） */
+const keySet = (value: unknown): Record<string, true> | undefined => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const out: Record<string, true> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+    if (item === true) out[key] = true;
+  });
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
 function normalizeFloor(raw: unknown): FireproofDrawingFloor {
   const floor = emptyFloor();
   if (raw === null || typeof raw !== "object") return floor;
@@ -138,7 +154,9 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
     xSpans: numberList(row.xSpans),
     ySpans: numberList(row.ySpans),
     columns: stringMap(row.columns),
+    noColumns: keySet(row.noColumns),
     girders: stringMap(row.girders),
+    noGirders: keySet(row.noGirders),
     girderAlign: (() => {
       const map = row.girderAlign;
       if (map === null || typeof map !== "object" || Array.isArray(map))
@@ -271,6 +289,27 @@ export function girderNumber(
   return nx * (ny + 1) + xi * ny + yi + 1;
 }
 
+/** 交点に柱があるか（「無し」チェックの交点は柱が無い扱い） */
+export function columnExists(
+  floor: FireproofDrawingFloor,
+  xi: number,
+  yi: number,
+): boolean {
+  const key = columnKey(xi, yi);
+  return (
+    (floor.columns[key] ?? "").trim() !== "" &&
+    floor.noColumns?.[key] !== true
+  );
+}
+
+/** 区間に大梁があるか（「無し」チェックの区間は無い扱い） */
+export function girderExists(floor: FireproofDrawingFloor, key: string): boolean {
+  return (
+    (floor.girders[key] ?? "").trim() !== "" &&
+    floor.noGirders?.[key] !== true
+  );
+}
+
 /**
  * 大梁の軸からのずらし量（mm。0＝中央／柱芯どおり）。
  * "min"（上・左へ寄せ）：梁の外側の面が、両端の柱のうち小さいほうの面に付く位置へ。
@@ -304,8 +343,8 @@ export function girderOffset(
         ];
   const faces = ends
     .map(([ax, ay]) => {
+      if (!columnExists(floor, ax, ay)) return null;
       const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
-      if (sym === "") return null;
       // 寸法が分からない柱も図には描かれるので、その面に合わせる
       const size = columnHalfOf(sym) ?? {
         hw: COLUMN_HALF,
@@ -363,6 +402,7 @@ export function enclosingRegion(
   /** 横の境界線 */
   const hLines: { y: number; x1: number; x2: number; half: number }[] = [];
   Object.entries(floor.girders).forEach(([key, symbol]) => {
+    if (!girderExists(floor, key)) return;
     const [axis, point] = key.split(":");
     const [xi, yi] = point.split(",").map(Number);
     if (
@@ -630,16 +670,15 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
   Object.keys(floor.columns).forEach((key) => {
     if (
       floor.columns[key].trim() !== "" &&
+      floor.noColumns?.[key] !== true &&
       (joints[`c:${key}`] ?? "") === ""
     )
       missing.push(`c:${key}`);
   });
-  Object.keys(floor.girders).forEach((key) => {
-    if (
-      floor.girders[key].trim() !== "" &&
-      (joints[`g:${key}`] ?? "") === ""
-    )
-      missing.push(`g:${key}`);
+  girderMembers(floor).forEach((member) => {
+    // 「無し」の柱をまたぐ通しの大梁は1部材：どれか1区間に記号があればよい
+    if (member.keys.every((key) => (joints[`g:${key}`] ?? "") === ""))
+      member.keys.forEach((key) => missing.push(`g:${key}`));
   });
   floor.beams.forEach((beam, index) => {
     const key = `b:${beam.id ?? `#${index}`}`;
@@ -659,7 +698,10 @@ export function columnImportItems(
 ): ColumnImportItem[] {
   const ys = positions(floor.ySpans);
   const keys = Object.keys(floor.columns)
-    .filter((key) => floor.columns[key].trim() !== "")
+    .filter(
+      (key) =>
+        floor.columns[key].trim() !== "" && floor.noColumns?.[key] !== true,
+    )
     .sort((a, b) => {
       const [ax, ay] = a.split(",").map(Number);
       const [bx, by] = b.split(",").map(Number);
@@ -684,6 +726,322 @@ export function columnImportItems(
 /** 伏図から取り込んだ梁ブロックの先頭に入れる案内文 */
 export const BEAM_IMPORT_HEAD_COMMENT =
   "梁位置表示（大＝大梁は通り芯の区間・小＝小梁は区画。軸の表記は柱と同じ）";
+
+/** 「無し」の柱をまたいでつなぐ大梁の1部材分 */
+export interface GirderMember {
+  axis: "x" | "y";
+  /** 含まれる区間キー（順どおり） */
+  keys: string[];
+  symbol: string;
+  /** 両端の交点（グリッドの番号） */
+  fromXi: number;
+  fromYi: number;
+  toXi: number;
+  toYi: number;
+  /** 端の詰め（mm。柱の面・交差した優先側大梁の面ぶん引く） */
+  startCut: number;
+  endCut: number;
+}
+
+/**
+ * 「無し」の交点をまたぐ大梁を、通しの1部材（または交差で切れた部材）にまとめる。
+ * 同じ向きで同じ記号が「無し」の交点を挟んで続くときつなぐ。
+ * 「無し」の交点で縦・横の大梁が十字に交差するときは、先に入力した向き（girdersのキーの出現順が早い方）を優先
+ * ＝通しにし、もう一方はその交点で切れて、その大梁の面までの長さになる。
+ */
+export function girderMembers(
+  floor: FireproofDrawingFloor,
+  columnHalfOf?: ColumnHalfOf,
+  memberHalfOf?: HalfWidthOf,
+): GirderMember[] {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const nx = xs.length;
+  const ny = ys.length;
+  if (nx < 2 || ny < 1) return [];
+
+  const sym = (key: string) => (floor.girders[key] ?? "").trim();
+  const present = (key: string) =>
+    girderExists(floor, key);
+
+  /** 「無し」の交点（xi,yi）で、向き axis の大梁がつなぐか（両側に同じ記号が入っている） */
+  const mergeAt = (axis: "x" | "y", xi: number, yi: number): boolean => {
+    const point = columnKey(xi, yi);
+    if (floor.noColumns?.[point] !== true) return false;
+    if (axis === "x") {
+      const left = `x:${xi - 1},${yi}`;
+      const right = `x:${xi},${yi}`;
+      return present(left) && present(right) && sym(left) === sym(right);
+    }
+    const above = `y:${xi},${yi - 1}`;
+    const below = `y:${xi},${yi}`;
+    return present(above) && present(below) && sym(above) === sym(below);
+  };
+
+  /** 大梁キーの入力順（先に入れた方が交差で優先） */
+  const order = new Map(
+    Object.keys(floor.girders).map((key, index) => [key, index] as const),
+  );
+
+  /** 交点 (xi,yi) を通る向き axis の連続区間のうち、いちばん早く入れたキーの順位 */
+  const runOrder = (axis: "x" | "y", xi: number, yi: number): number => {
+    const keys: string[] = [];
+    if (axis === "x") {
+      keys.push(`x:${xi - 1},${yi}`, `x:${xi},${yi}`);
+      let j = xi + 1;
+      while (mergeAt("x", j, yi)) {
+        keys.push(`x:${j},${yi}`);
+        j += 1;
+      }
+      j = xi - 1;
+      while (mergeAt("x", j, yi)) {
+        keys.push(`x:${j - 1},${yi}`);
+        j -= 1;
+      }
+    } else {
+      keys.push(`y:${xi},${yi - 1}`, `y:${xi},${yi}`);
+      let j = yi + 1;
+      while (mergeAt("y", xi, j)) {
+        keys.push(`y:${xi},${j}`);
+        j += 1;
+      }
+      j = yi - 1;
+      while (mergeAt("y", xi, j)) {
+        keys.push(`y:${xi},${j - 1}`);
+        j -= 1;
+      }
+    }
+    return Math.min(
+      ...keys.map((key) => order.get(key) ?? Number.MAX_SAFE_INTEGER),
+    );
+  };
+
+  /**
+   * 十字に交差する点（「無し」の交点を縦・横の両方がつなぐ）で負けた側の区間端の詰め（mm）。
+   * キーは負けた側の区間キー。start＝図の上・左側の端、end＝下・右側の端。
+   */
+  const crossCuts = new Map<string, { start: number; end: number }>();
+  const cutAt = (key: string, end: "start" | "end", mm: number) => {
+    const cur = crossCuts.get(key) ?? { start: 0, end: 0 };
+    cur[end] = Math.max(cur[end], mm);
+    crossCuts.set(key, cur);
+  };
+  for (let yi = 0; yi < ny; yi++) {
+    for (let xi = 0; xi < nx; xi++) {
+      if (!mergeAt("x", xi, yi) || !mergeAt("y", xi, yi)) continue;
+      const xFirst = runOrder("x", xi, yi) < runOrder("y", xi, yi);
+      const [winner, loser] = xFirst ? (["x", "y"] as const) : (["y", "x"] as const);
+      const winnerSym =
+        winner === "x" ? sym(`x:${xi - 1},${yi}`) : sym(`y:${xi},${yi - 1}`);
+      const half = memberHalfOf?.(winnerSym) ?? GIRDER_HALF;
+      if (loser === "x") {
+        cutAt(`x:${xi - 1},${yi}`, "end", half);
+        cutAt(`x:${xi},${yi}`, "start", half);
+      } else {
+        cutAt(`y:${xi},${yi - 1}`, "end", half);
+        cutAt(`y:${xi},${yi}`, "start", half);
+      }
+    }
+  }
+
+  /** 区間キーの start 端の交点が crossCuts で切れているか（負けた側の端） */
+  const startCutOf = (key: string) => crossCuts.get(key)?.start ?? 0;
+  const endCutOf = (key: string) => crossCuts.get(key)?.end ?? 0;
+
+  /** 交点の柱の面の詰め（mm。柱が無い端は0＝柱線まで）。向き axis の梁の軸方向の面 */
+  const faceAt = (axis: "x" | "y", ax: number, ay: number): number => {
+    if (!columnExists(floor, ax, ay)) return 0;
+    const symbol = (floor.columns[columnKey(ax, ay)] ?? "").trim();
+    const size = columnHalfOf?.(symbol) ?? {
+      hw: COLUMN_HALF,
+      hd: COLUMN_HALF,
+    };
+    return axis === "x" ? size.hw : size.hd;
+  };
+
+  /** 境界（交点）をまたぐか。つなぐのは「無し」の交点で両側に同じ記号があり、十字で負けていない場合 */
+  const joins = (axis: "x" | "y", xi: number, yi: number): boolean => {
+    if (!mergeAt(axis, xi, yi)) return false;
+    // 十字で負けた側はここで切れる（詰めは crossCuts が持つ）
+    const beforeKey = axis === "x" ? `x:${xi - 1},${yi}` : `y:${xi},${yi - 1}`;
+    const afterKey = axis === "x" ? `x:${xi},${yi}` : `y:${xi},${yi}`;
+    return endCutOf(beforeKey) === 0 && startCutOf(afterKey) === 0;
+  };
+
+  const members: GirderMember[] = [];
+
+  // X方向（横の大梁）：通り yi ごとに xi を走査
+  for (let yi = 0; yi < ny; yi++) {
+    let run: string[] = [];
+    const flush = () => {
+      if (run.length === 0) return;
+      const first = run[0];
+      const last = run[run.length - 1];
+      const f = Number(first.split(":")[1].split(",")[0]);
+      const t = Number(last.split(":")[1].split(",")[0]) + 1;
+      members.push({
+        axis: "x",
+        keys: run,
+        symbol: sym(first),
+        fromXi: f,
+        fromYi: yi,
+        toXi: t,
+        toYi: yi,
+        startCut: columnExists(floor, f, yi)
+          ? faceAt("x", f, yi)
+          : startCutOf(first),
+        endCut: columnExists(floor, t, yi)
+          ? faceAt("x", t, yi)
+          : endCutOf(last),
+      });
+      run = [];
+    };
+    for (let xi = 0; xi < nx - 1; xi++) {
+      const key = `x:${xi},${yi}`;
+      if (present(key)) {
+        run.push(key);
+      } else {
+        flush();
+      }
+      if (present(key) && !joins("x", xi + 1, yi)) flush();
+    }
+    flush();
+  }
+
+  // Y方向（縦の大梁）：通り xi ごとに yi を走査
+  for (let xi = 0; xi < nx; xi++) {
+    let run: string[] = [];
+    const flush = () => {
+      if (run.length === 0) return;
+      const first = run[0];
+      const last = run[run.length - 1];
+      const f = Number(first.split(":")[1].split(",")[1]);
+      const t = Number(last.split(":")[1].split(",")[1]) + 1;
+      members.push({
+        axis: "y",
+        keys: run,
+        symbol: sym(first),
+        fromXi: xi,
+        fromYi: f,
+        toXi: xi,
+        toYi: t,
+        startCut: columnExists(floor, xi, f)
+          ? faceAt("y", xi, f)
+          : startCutOf(first),
+        endCut: columnExists(floor, xi, t)
+          ? faceAt("y", xi, t)
+          : endCutOf(last),
+      });
+      run = [];
+    };
+    for (let yi = 0; yi < ny - 1; yi++) {
+      const key = `y:${xi},${yi}`;
+      if (present(key)) {
+        run.push(key);
+      } else {
+        flush();
+      }
+      if (present(key) && !joins("y", xi, yi + 1)) flush();
+    }
+    flush();
+  }
+
+  return members;
+}
+
+/**
+ * 図に描くときの大梁の区間端の詰め（mm）。
+ * 「無し」の交点で十字に交差して負けた側の区間は、優先側の大梁の面までで止める。
+ */
+export function girderEndCuts(
+  floor: FireproofDrawingFloor,
+  memberHalfOf?: HalfWidthOf,
+): Record<string, { start: number; end: number }> {
+  // girderMembers と同じ判定で、区間ごとの端の詰めだけを返す
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const nx = xs.length;
+  const ny = ys.length;
+  if (nx < 2 || ny < 1) return {};
+
+  const sym = (key: string) => (floor.girders[key] ?? "").trim();
+  const present = (key: string) => girderExists(floor, key);
+
+  const mergeAt = (axis: "x" | "y", xi: number, yi: number): boolean => {
+    const point = columnKey(xi, yi);
+    if (floor.noColumns?.[point] !== true) return false;
+    if (axis === "x") {
+      const left = `x:${xi - 1},${yi}`;
+      const right = `x:${xi},${yi}`;
+      return present(left) && present(right) && sym(left) === sym(right);
+    }
+    const above = `y:${xi},${yi - 1}`;
+    const below = `y:${xi},${yi}`;
+    return present(above) && present(below) && sym(above) === sym(below);
+  };
+
+  const order = new Map(
+    Object.keys(floor.girders).map((key, index) => [key, index] as const),
+  );
+  const runOrder = (axis: "x" | "y", xi: number, yi: number): number => {
+    const keys: string[] = [];
+    if (axis === "x") {
+      keys.push(`x:${xi - 1},${yi}`, `x:${xi},${yi}`);
+      let j = xi + 1;
+      while (mergeAt("x", j, yi)) {
+        keys.push(`x:${j},${yi}`);
+        j += 1;
+      }
+      j = xi - 1;
+      while (mergeAt("x", j, yi)) {
+        keys.push(`x:${j - 1},${yi}`);
+        j -= 1;
+      }
+    } else {
+      keys.push(`y:${xi},${yi - 1}`, `y:${xi},${yi}`);
+      let j = yi + 1;
+      while (mergeAt("y", xi, j)) {
+        keys.push(`y:${xi},${j}`);
+        j += 1;
+      }
+      j = yi - 1;
+      while (mergeAt("y", xi, j)) {
+        keys.push(`y:${xi},${j - 1}`);
+        j -= 1;
+      }
+    }
+    return Math.min(
+      ...keys.map((key) => order.get(key) ?? Number.MAX_SAFE_INTEGER),
+    );
+  };
+
+  const out: Record<string, { start: number; end: number }> = {};
+  const cutAt = (key: string, end: "start" | "end", mm: number) => {
+    const cur = out[key] ?? { start: 0, end: 0 };
+    cur[end] = Math.max(cur[end], mm);
+    out[key] = cur;
+  };
+  for (let yi = 0; yi < ny; yi++) {
+    for (let xi = 0; xi < nx; xi++) {
+      if (!mergeAt("x", xi, yi) || !mergeAt("y", xi, yi)) continue;
+      const xFirst = runOrder("x", xi, yi) < runOrder("y", xi, yi);
+      const [winner, loser] = xFirst
+        ? (["x", "y"] as const)
+        : (["y", "x"] as const);
+      const winnerSym =
+        winner === "x" ? sym(`x:${xi - 1},${yi}`) : sym(`y:${xi},${yi - 1}`);
+      const half = memberHalfOf?.(winnerSym) ?? GIRDER_HALF;
+      if (loser === "x") {
+        cutAt(`x:${xi - 1},${yi}`, "end", half);
+        cutAt(`x:${xi},${yi}`, "start", half);
+      } else {
+        cutAt(`y:${xi},${yi - 1}`, "end", half);
+        cutAt(`y:${xi},${yi}`, "start", half);
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * 柱記号→柱の四角の半分（mm）を伏図と同じルールで引く関数を作る。
@@ -727,6 +1085,7 @@ export function drawingColumnHalfOf(
 /**
  * 伏図1階分の大梁・小梁を、梁型入力表へ取り込む行にする。
  * 大梁は通し番号どおり（X方向→Y方向）、小梁は上→下・左→右の見え方で並べる。
+ * 「無し」の柱をまたぐ大梁は1部材にまとめ、十字になるところは先に入力した向きを優先（通し）にする。
  * コメントは位置だけ（大梁は軸-区間・小梁は区画。案内文の行は画面側で足す）。
  * 有効長は図に描かれている長さ（大梁は柱の面どうし・小梁は内内寸法。勾配ぶんも入れる）。
  */
@@ -734,6 +1093,7 @@ export function beamImportItems(
   floor: FireproofDrawingFloor,
   floorHeight: number | null,
   columnHalfOf?: ColumnHalfOf,
+  memberHalfOf?: HalfWidthOf,
 ): ColumnImportItem[] {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
@@ -759,52 +1119,38 @@ export function beamImportItems(
     mm: number;
   }[] = [];
 
-  Object.keys(floor.girders)
-    .filter((key) => floor.girders[key].trim() !== "")
-    .forEach((key) => {
-      const [axis, point] = key.split(":");
-      const [xi, yi] = point.split(",").map(Number);
-      /** 端の柱の半幅（梁の軸方向の面）。柱が無い端は柱線まで */
-      const face = (ax: number, ay: number): number => {
-        const sym = (floor.columns[columnKey(ax, ay)] ?? "").trim();
-        if (sym === "") return 0;
-        const size = columnHalfOf?.(sym) ?? {
-          hw: COLUMN_HALF,
-          hd: COLUMN_HALF,
-        };
-        return axis === "x" ? size.hw : size.hd;
-      };
-      let plan: number;
-      let position: string;
-      let h1: number | null;
-      let h2: number | null;
-      if (axis === "x") {
-        if (xi < 0 || xi >= xs.length - 1 || yi < 0 || yi >= ys.length)
-          return;
-        plan = xs[xi + 1] - face(xi + 1, yi) - (xs[xi] + face(xi, yi));
-        h1 = colHeight(xi, yi);
-        h2 = colHeight(xi + 1, yi);
-        position = `${yGridLabel(ys.length - 1 - yi)}-${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`;
-      } else {
-        if (yi < 0 || yi >= ys.length - 1 || xi < 0 || xi >= xs.length)
-          return;
-        plan = ys[yi + 1] - face(xi, yi + 1) - (ys[yi] + face(xi, yi));
-        h1 = colHeight(xi, yi);
-        h2 = colHeight(xi, yi + 1);
-        position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 2 - yi)}〜${yGridLabel(ys.length - 1 - yi)}`;
-      }
-      const dh =
-        floorHeight !== null && h1 !== null && h2 !== null
-          ? Math.abs(h1 - h2)
-          : 0;
-      girders.push({
-        no: girderNumber(axis as "x" | "y", xi, yi, floor),
-        position,
-        symbol: floor.girders[key].trim(),
-        mark: floor.jointSymbols?.[`g:${key}`] ?? "",
-        mm: Math.hypot(Math.max(0, plan), dh),
-      });
+  girderMembers(floor, columnHalfOf, memberHalfOf).forEach((member) => {
+    const start =
+      member.axis === "x"
+        ? xs[member.fromXi] + member.startCut
+        : ys[member.fromYi] + member.startCut;
+    const end =
+      member.axis === "x"
+        ? xs[member.toXi] - member.endCut
+        : ys[member.toYi] - member.endCut;
+    const plan = Math.max(0, end - start);
+    const h1 = colHeight(member.fromXi, member.fromYi);
+    const h2 = colHeight(member.toXi, member.toYi);
+    const dh =
+      floorHeight !== null && h1 !== null && h2 !== null
+        ? Math.abs(h1 - h2)
+        : 0;
+    /** 位置（大梁は軸-区間。区間は通しのとき繋げて出す） */
+    const position =
+      member.axis === "x"
+        ? `${yGridLabel(ys.length - 1 - member.fromYi)}-${xGridLabel(member.fromXi)}〜${xGridLabel(member.toXi)}`
+        : `${xGridLabel(member.fromXi)}-${yGridLabel(ys.length - 1 - member.toYi)}〜${yGridLabel(ys.length - 1 - member.fromYi)}`;
+    girders.push({
+      no: girderNumber(member.axis, member.fromXi, member.fromYi, floor),
+      position,
+      symbol: member.symbol,
+      mark:
+        member.keys
+          .map((key) => floor.jointSymbols?.[`g:${key}`] ?? "")
+          .find((mark) => mark !== "") ?? "",
+      mm: Math.hypot(plan, dh),
     });
+  });
   girders.sort((a, b) => a.no - b.no);
 
   floor.beams.forEach((beam, index) => {

@@ -183,6 +183,29 @@
   padding: 2px 6px;
 }
 
+/* 「無」チェック（記号入力欄の右。入れた場所には部材を置かない） */
+.fireproof-drawing-body .none {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.fireproof-drawing-body .none input {
+  flex: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fireproof-drawing-body .none.on {
+  color: #c0392b;
+  font-weight: 700;
+}
+
 /* 右の図面 */
 .fireproof-drawing-body .drawing-canvas {
   flex: 1 1 0;

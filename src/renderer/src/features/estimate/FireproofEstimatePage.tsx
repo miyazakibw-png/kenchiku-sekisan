@@ -51,6 +51,7 @@ import {
   EMPTY_DRAWING,
   parseDrawing,
   type FireproofDrawing,
+  type HalfWidthOf,
 } from "../../../../core/fireproof/fireproofDrawing";
 import { findColumnSize } from "../../../../core/fireproof/fireproofEstimate";
 import PickInput, { type PickEntry } from "../../components/PickInput";
@@ -1084,12 +1085,19 @@ function ColumnSheetView({
     );
     const height =
       heightAt >= 0 ? resolveFloorHeight(columnsList.floors, heightAt) : null;
+    /** 記号→梁の幅の半分（mm）。「無し」の交点で十字になる大梁の、優先側の面までの長さに使う */
+    const beamHalfOf: HalfWidthOf = (symbol) => {
+      const size = findBeamSize(list, label, symbol, common);
+      const w = size?.second ?? size?.first ?? null;
+      return w !== null && w > 0 ? w / 2 : null;
+    };
     const items =
       kind === "beam"
         ? beamImportItems(
             floorData,
             height,
             drawingColumnHalfOf(columnsList, common, columnLabel),
+            beamHalfOf,
           )
         : columnImportItems(floorData, height);
     const memberName = kind === "beam" ? "梁" : "柱";
