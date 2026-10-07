@@ -170,21 +170,33 @@ function XDimension({
           </text>
         );
       })}
-      {(extra ?? []).map((e, i) => (
-        <g key={`ex${i}`}>
-          <line x1={e.pos} y1={y - 300} x2={e.pos} y2={-BUBBLE_Y - BUBBLE_R - 80} />
-          <line x1={e.pos - 90} y1={y + 90} x2={e.pos + 90} y2={y - 90} />
-          {/* 寸法の字は基の線と引いた線の間の中央に置く */}
-          <text
-            x={e.pos - e.offset / 2}
-            y={y - 140}
-            textAnchor="middle"
-            fontSize={FONT_DIM}
-          >
-            {Math.abs(e.offset).toLocaleString("ja-JP")}
-          </text>
-        </g>
-      ))}
+      {(extra ?? []).map((e, i) => {
+        // 補助寸法は一段内側に、基の線と引いた線の間だけの寸法線として出す
+        const yAux = y + 500;
+        const lo = Math.min(e.pos - e.offset, e.pos);
+        const hi = Math.max(e.pos - e.offset, e.pos);
+        return (
+          <g key={`ex${i}`}>
+            <line
+              x1={e.pos}
+              y1={yAux - 100}
+              x2={e.pos}
+              y2={-BUBBLE_Y - BUBBLE_R - 80}
+            />
+            <line x1={lo} y1={yAux} x2={hi} y2={yAux} />
+            <line x1={lo - 90} y1={yAux + 90} x2={lo + 90} y2={yAux - 90} />
+            <line x1={hi - 90} y1={yAux + 90} x2={hi + 90} y2={yAux - 90} />
+            <text
+              x={(lo + hi) / 2}
+              y={yAux - 140}
+              textAnchor="middle"
+              fontSize={FONT_DIM}
+            >
+              {Math.abs(e.offset).toLocaleString("ja-JP")}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -224,22 +236,34 @@ function YDimension({
           </text>
         );
       })}
-      {(extra ?? []).map((e, i) => (
-        <g key={`ey${i}`}>
-          <line x1={x - 300} y1={e.pos} x2={-BUBBLE_Y - BUBBLE_R - 80} y2={e.pos} />
-          <line x1={x - 90} y1={e.pos + 90} x2={x + 90} y2={e.pos - 90} />
-          {/* 寸法の字は基の線と引いた線の間の中央に置く */}
-          <text
-            x={x - 200}
-            y={e.pos - e.offset / 2}
-            textAnchor="middle"
-            fontSize={FONT_DIM}
-            transform={`rotate(-90 ${x - 200} ${e.pos - e.offset / 2})`}
-          >
-            {Math.abs(e.offset).toLocaleString("ja-JP")}
-          </text>
-        </g>
-      ))}
+      {(extra ?? []).map((e, i) => {
+        // 補助寸法は一段内側に、基の線と引いた線の間だけの寸法線として出す
+        const xAux = x + 500;
+        const lo = Math.min(e.pos - e.offset, e.pos);
+        const hi = Math.max(e.pos - e.offset, e.pos);
+        return (
+          <g key={`ey${i}`}>
+            <line
+              x1={xAux - 100}
+              y1={e.pos}
+              x2={-BUBBLE_Y - BUBBLE_R - 80}
+              y2={e.pos}
+            />
+            <line x1={xAux} y1={lo} x2={xAux} y2={hi} />
+            <line x1={xAux - 90} y1={lo + 90} x2={xAux + 90} y2={lo - 90} />
+            <line x1={xAux - 90} y1={hi + 90} x2={xAux + 90} y2={hi - 90} />
+            <text
+              x={xAux - 200}
+              y={(lo + hi) / 2}
+              textAnchor="middle"
+              fontSize={FONT_DIM}
+              transform={`rotate(-90 ${xAux - 200} ${(lo + hi) / 2})`}
+            >
+              {Math.abs(e.offset).toLocaleString("ja-JP")}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -557,6 +581,8 @@ function FloorSvg({
   diagStart,
   onIntersectionPick,
   onLinePick,
+  diagHover,
+  onDiagHover,
   auxMode,
   onAuxBasePick,
   auxPick,
@@ -597,6 +623,9 @@ function FloorSvg({
   onIntersectionPick?: (xi: number, yi: number) => void;
   /** 斜梁モードで引いた梁・柱の線上の点をクリックしたとき（mm） */
   onLinePick?: (x: number, y: number) => void;
+  /** 斜梁モードでカーソルが今取っている点（吸い付き先の下見） */
+  diagHover?: { x: number; y: number } | null;
+  onDiagHover?: (pt: { x: number; y: number } | null) => void;
   /** 「寸法線を足す」モード中（寸法線をクリックして基になる線を選ぶ） */
   auxMode?: boolean;
   /** 寸法線を足すモードで柱線・補助線をクリックしたとき（向き・通り番号・基からのずれmm・読み方） */
@@ -707,6 +736,42 @@ function FloorSvg({
         )}
       </g>
     );
+  };
+
+  /* つかむ用の太い透明線を押したとき：線の芯から近い（部材の面＋少しの余裕）ならつかみ、
+     遠ければ区画選びに回す（三角の内側など線のそばの区画を押せるように） */
+  const grabOrRegion = (
+    event: React.PointerEvent<SVGElement>,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    grab: number,
+    onGrab: () => void,
+  ): void => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (svg === null) return;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const matrix = svg.getScreenCTM();
+    if (matrix === null) return;
+    const at = point.matrixTransform(matrix.inverse());
+    const px = at.x - MARGIN_LEFT;
+    const py = at.y - MARGIN_TOP;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    const t =
+      len2 <= 0
+        ? 0
+        : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+    if (Math.hypot(x1 + dx * t - px, y1 + dy * t - py) <= grab) {
+      event.stopPropagation();
+      onGrab();
+      return;
+    }
+    onRegionClick(px, py, event.shiftKey);
   };
 
   const content = (
@@ -878,10 +943,11 @@ function FloorSvg({
               <g
                 key={key}
                 className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  onGirderPick?.(key);
-                }}
+                onPointerDown={(event) =>
+                  grabOrRegion(event, x1, y, x2, y, gh + 60, () =>
+                    onGirderPick?.(key),
+                  )
+                }
                 onClick={(event) => event.stopPropagation()}
               >
                 <line x1={x1} y1={y - gh} x2={x2} y2={y - gh} />
@@ -908,10 +974,11 @@ function FloorSvg({
               <g
                 key={key}
                 className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}
-                onPointerDown={(event) => {
-                  event.stopPropagation();
-                  onGirderPick?.(key);
-                }}
+                onPointerDown={(event) =>
+                  grabOrRegion(event, x, y1, x, y2, gh + 60, () =>
+                    onGirderPick?.(key),
+                  )
+                }
                 onClick={(event) => event.stopPropagation()}
               >
                 <line x1={x - gh} y1={y1} x2={x - gh} y2={y2} />
@@ -974,10 +1041,17 @@ function FloorSvg({
             <g
               key={`d${index}`}
               className={`diag${bad ? " bad" : ""}${miss ? " miss" : ""}`}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                onDiagPick?.(index);
-              }}
+              onPointerDown={(event) =>
+                grabOrRegion(
+                  event,
+                  ax1 + ox,
+                  ay1 + oy,
+                  ax2 + ox,
+                  ay2 + oy,
+                  gh + 60,
+                  () => onDiagPick?.(index),
+                )
+              }
               onClick={(event) => event.stopPropagation()}
             >
               <line
@@ -1037,10 +1111,17 @@ function FloorSvg({
             <g
               key={index}
               className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}`}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                onBeamPointerDown(index, event);
-              }}
+              onPointerDown={(event) =>
+                grabOrRegion(
+                  event,
+                  beam.x1,
+                  beam.y1,
+                  beam.x2,
+                  beam.y2,
+                  bh + 60,
+                  () => onBeamPointerDown(index, event),
+                )
+              }
               onClick={(event) => event.stopPropagation()}
             >
               {vertical ? (
@@ -1247,33 +1328,99 @@ function FloorSvg({
         })}
       </g>
       {/* 斜梁モード：交点・引いた線の上をクリックして始点→終点を選ぶ（いちばん手前に置いて確実に押せる） */}
-      {diagMode === true && (
-        <g className="diag-pick">
-          {/* 引いてある線（大梁・小梁・引き梁）と柱の線上の点を端にできる */}
-          {(() => {
-            /* 点取りに使う線分の一覧（線どうしの交わりを拾うために集める） */
-            const segs: { x1: number; y1: number; x2: number; y2: number }[] =
-              [];
-            const pickAt = (
-              event: React.PointerEvent<SVGLineElement>,
-              x1: number,
-              y1: number,
-              x2: number,
-              y2: number,
-            ): void => {
-              event.stopPropagation();
-              const svg = event.currentTarget.ownerSVGElement;
-              if (svg === null) return;
-              const point = svg.createSVGPoint();
-              point.x = event.clientX;
-              point.y = event.clientY;
-              const matrix = svg.getScreenCTM();
-              if (matrix === null) return;
-              const at = point.matrixTransform(matrix.inverse());
-              const px = at.x - MARGIN_LEFT;
-              const py = at.y - MARGIN_TOP;
-              const dx = x2 - x1;
-              const dy = y2 - y1;
+      {diagMode === true &&
+        (() => {
+          /* 点取りに使う線分の一覧（線どうしの交わりを拾うために集める） */
+          const segs: { x1: number; y1: number; x2: number; y2: number }[] = [];
+          const seg = (x1: number, y1: number, x2: number, y2: number): void => {
+            segs.push({ x1, y1, x2, y2 });
+          };
+          Object.entries(floor.girders).forEach(([key]) => {
+            if (!girderExists(floor, key)) return;
+            const [axis, point] = key.split(":");
+            const [xi, yi] = point.split(",").map(Number);
+            const off = girderOffsetOf?.(key) ?? 0;
+            if (axis === "x" && xs[xi] !== undefined && xs[xi + 1] !== undefined && ys[yi] !== undefined)
+              seg(xs[xi], ys[yi] + off, xs[xi + 1], ys[yi] + off);
+            if (axis === "y" && xs[xi] !== undefined && ys[yi] !== undefined && ys[yi + 1] !== undefined)
+              seg(xs[xi] + off, ys[yi], xs[xi] + off, ys[yi + 1]);
+          });
+          floor.beams.forEach((beam) =>
+            seg(beam.x1, beam.y1, beam.x2, beam.y2),
+          );
+          (floor.diagGirders ?? []).forEach((g) => {
+            const ends = diagEnds(xs, ys, g);
+            if (ends === null) return;
+            const dx = ends.x2 - ends.x1;
+            const dy = ends.y2 - ends.y1;
+            const plan = Math.hypot(dx, dy);
+            if (plan <= 0) return;
+            const off = g.offset ?? 0;
+            seg(
+              ends.x1 + (-dy / plan) * off,
+              ends.y1 + (dx / plan) * off,
+              ends.x2 + (-dy / plan) * off,
+              ends.y2 + (dx / plan) * off,
+            );
+          });
+          /* 補助寸法線 */
+          auxX.forEach((e) => seg(e.pos, 0, e.pos, totalY));
+          auxY.forEach((e) => seg(0, e.pos, totalX, e.pos));
+          /* 柱の四角の辺 */
+          Object.entries(floor.columns).forEach(([key, symbol]) => {
+            const [xi, yi] = key.split(",").map(Number);
+            if (!columnExists(floor, xi, yi)) return;
+            const x = xs[xi];
+            const y = ys[yi];
+            if (x === undefined || y === undefined) return;
+            const half = columnHalfOf?.(symbol.trim()) ?? {
+              hw: COL_HALF,
+              hd: COL_HALF,
+            };
+            seg(x - half.hw, y - half.hd, x + half.hw, y - half.hd);
+            seg(x + half.hw, y - half.hd, x + half.hw, y + half.hd);
+            seg(x + half.hw, y + half.hd, x - half.hw, y + half.hd);
+            seg(x - half.hw, y + half.hd, x - half.hw, y - half.hd);
+          });
+          /* 押した場所が取られる点：芯の交点の近くは交点、線の近くは線上の点
+             （線どうしの交わりの近くは交点そのもの） */
+          const snapAt = (
+            px: number,
+            py: number,
+          ): { x: number; y: number; xi?: number; yi?: number } | null => {
+            const grid = {
+              pick: null as { xi: number; yi: number } | null,
+              d: 450,
+            };
+            xs.forEach((x, xi) =>
+              ys.forEach((y, yi) => {
+                const d = Math.hypot(x - px, y - py);
+                if (d < grid.d) {
+                  grid.d = d;
+                  grid.pick = { xi, yi };
+                }
+              }),
+            );
+            const gi = grid.pick;
+            if (gi !== null) {
+              const gx = xs[gi.xi];
+              const gy = ys[gi.yi];
+              if (gx !== undefined && gy !== undefined)
+                return { x: gx, y: gy, xi: gi.xi, yi: gi.yi };
+            }
+            /* いちばん近い線（押せる印の太さ 380 → 芯から190以内） */
+            const segHit = {
+              pick: null as {
+                x1: number;
+                y1: number;
+                x2: number;
+                y2: number;
+              } | null,
+              d: 190,
+            };
+            segs.forEach((s) => {
+              const dx = s.x2 - s.x1;
+              const dy = s.y2 - s.y1;
               const len2 = dx * dx + dy * dy;
               const t =
                 len2 <= 0
@@ -1282,189 +1429,125 @@ function FloorSvg({
                       0,
                       Math.min(
                         1,
-                        ((px - x1) * dx + (py - y1) * dy) / len2,
+                        ((px - s.x1) * dx + (py - s.y1) * dy) / len2,
                       ),
                     );
-              let bx = x1 + dx * t;
-              let by = y1 + dy * t;
-              /* 線どうしの交わりの近くを押したときは交点そのものを端にする
-                 （寸法線と梁の線の交わりが打てず水平な梁が引けないのを直す） */
-              let best = 400;
-              segs.forEach((s) => {
-                const ex = s.x2 - s.x1;
-                const ey = s.y2 - s.y1;
-                const den = dx * ey - dy * ex;
-                if (Math.abs(den) < 1e-9) return;
-                const tt = ((s.x1 - x1) * ey - (s.y1 - y1) * ex) / den;
-                const uu = ((s.x1 - x1) * dy - (s.y1 - y1) * dx) / den;
-                if (tt < -0.05 || tt > 1.05 || uu < -0.05 || uu > 1.05)
-                  return;
-                const ix = x1 + dx * tt;
-                const iy = y1 + dy * tt;
-                const d = Math.hypot(ix - bx, iy - by);
-                if (d < best) {
-                  best = d;
-                  bx = ix;
-                  by = iy;
-                }
-              });
-              onLinePick?.(bx, by);
-            };
-            const HitLine = (p: {
-              x1: number;
-              y1: number;
-              x2: number;
-              y2: number;
-              k: string;
-            }) => (
-              <line
-                key={p.k}
-                x1={p.x1}
-                y1={p.y1}
-                x2={p.x2}
-                y2={p.y2}
-                onPointerDown={(event) =>
-                  pickAt(event, p.x1, p.y1, p.x2, p.y2)
-                }
-                onClick={(event) => event.stopPropagation()}
-              />
-            );
-            const lines: JSX.Element[] = [];
-            const pushSeg = (
-              k: string,
-              x1: number,
-              y1: number,
-              x2: number,
-              y2: number,
-            ): JSX.Element => {
-              segs.push({ x1, y1, x2, y2 });
-              return <HitLine k={k} x1={x1} y1={y1} x2={x2} y2={y2} />;
-            };
-            Object.entries(floor.girders).forEach(([key]) => {
-              if (!girderExists(floor, key)) return;
-              const [axis, point] = key.split(":");
-              const [xi, yi] = point.split(",").map(Number);
-              const off = girderOffsetOf?.(key) ?? 0;
-              if (axis === "x" && xs[xi] !== undefined && xs[xi + 1] !== undefined && ys[yi] !== undefined)
-                lines.push(
-                  pushSeg(
-                    `h${key}`,
-                    xs[xi],
-                    ys[yi] + off,
-                    xs[xi + 1],
-                    ys[yi] + off,
-                  ),
-                );
-              if (axis === "y" && xs[xi] !== undefined && ys[yi] !== undefined && ys[yi + 1] !== undefined)
-                lines.push(
-                  pushSeg(
-                    `h${key}`,
-                    xs[xi] + off,
-                    ys[yi],
-                    xs[xi] + off,
-                    ys[yi + 1],
-                  ),
-                );
+              const d = Math.hypot(s.x1 + dx * t - px, s.y1 + dy * t - py);
+              if (d < segHit.d) {
+                segHit.d = d;
+                segHit.pick = s;
+              }
             });
-            floor.beams.forEach((beam, index) =>
-              lines.push(
-                pushSeg(
-                  `hb${index}`,
-                  beam.x1,
-                  beam.y1,
-                  beam.x2,
-                  beam.y2,
-                ),
-              ),
-            );
-            (floor.diagGirders ?? []).forEach((g, index) => {
-              const ends = diagEnds(xs, ys, g);
-              if (ends === null) return;
-              const dx = ends.x2 - ends.x1;
-              const dy = ends.y2 - ends.y1;
-              const plan = Math.hypot(dx, dy);
-              if (plan <= 0) return;
-              const off = g.offset ?? 0;
-              lines.push(
-                pushSeg(
-                  `hd${index}`,
-                  ends.x1 + (-dy / plan) * off,
-                  ends.y1 + (dx / plan) * off,
-                  ends.x2 + (-dy / plan) * off,
-                  ends.y2 + (dx / plan) * off,
-                ),
-              );
+            const near = segHit.pick;
+            if (near === null) return null;
+            const x1 = near.x1;
+            const y1 = near.y1;
+            const dx = near.x2 - x1;
+            const dy = near.y2 - y1;
+            const len2 = dx * dx + dy * dy;
+            const t =
+              len2 <= 0
+                ? 0
+                : Math.max(
+                    0,
+                    Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2),
+                  );
+            let bx = x1 + dx * t;
+            let by = y1 + dy * t;
+            let best = 400;
+            segs.forEach((s) => {
+              const ex = s.x2 - s.x1;
+              const ey = s.y2 - s.y1;
+              const den = dx * ey - dy * ex;
+              if (Math.abs(den) < 1e-9) return;
+              const tt = ((s.x1 - x1) * ey - (s.y1 - y1) * ex) / den;
+              const uu = ((s.x1 - x1) * dy - (s.y1 - y1) * dx) / den;
+              if (tt < -0.05 || tt > 1.05 || uu < -0.05 || uu > 1.05) return;
+              const ix = x1 + dx * tt;
+              const iy = y1 + dy * tt;
+              const d = Math.hypot(ix - bx, iy - by);
+              if (d < best) {
+                best = d;
+                bx = ix;
+                by = iy;
+              }
             });
-            /* 補助寸法線 */
-            auxX.forEach((e, i) =>
-              lines.push(
-                pushSeg(`hax${i}`, e.pos, 0, e.pos, totalY),
-              ),
-            );
-            auxY.forEach((e, i) =>
-              lines.push(
-                pushSeg(`hay${i}`, 0, e.pos, totalX, e.pos),
-              ),
-            );
-            /* 柱の四角の辺 */
-            Object.entries(floor.columns).forEach(([key, symbol]) => {
-              const [xi, yi] = key.split(",").map(Number);
-              if (!columnExists(floor, xi, yi)) return;
-              const x = xs[xi];
-              const y = ys[yi];
-              if (x === undefined || y === undefined) return;
-              const half = columnHalfOf?.(symbol.trim()) ?? {
-                hw: COL_HALF,
-                hd: COL_HALF,
-              };
-              const edges: [number, number, number, number][] = [
-                [x - half.hw, y - half.hd, x + half.hw, y - half.hd],
-                [x + half.hw, y - half.hd, x + half.hw, y + half.hd],
-                [x + half.hw, y + half.hd, x - half.hw, y + half.hd],
-                [x - half.hw, y + half.hd, x - half.hw, y - half.hd],
-              ];
-              edges.forEach(([x1, y1, x2, y2], ei) =>
-                lines.push(
-                  pushSeg(`hc${key}-${ei}`, x1, y1, x2, y2),
-                ),
-              );
-            });
-            return lines;
-          })()}
-          {xs.map((x, xi) =>
-            ys.map((y, yi) => (
-              <circle
-                key={`dp${xi},${yi}`}
-                cx={x}
-                cy={y}
-                r={450}
+            return { x: bx, y: by };
+          };
+          const eventAt = (
+            event: React.PointerEvent<SVGElement>,
+          ): { x: number; y: number } | null => {
+            const svg = event.currentTarget.ownerSVGElement;
+            if (svg === null) return null;
+            const point = svg.createSVGPoint();
+            point.x = event.clientX;
+            point.y = event.clientY;
+            const matrix = svg.getScreenCTM();
+            if (matrix === null) return null;
+            const at = point.matrixTransform(matrix.inverse());
+            return { x: at.x - MARGIN_LEFT, y: at.y - MARGIN_TOP };
+          };
+          const start =
+            diagStart !== null && diagStart !== undefined
+              ? "pt" in diagStart
+                ? diagStart.pt
+                : { x: xs[diagStart.xi], y: ys[diagStart.yi] }
+              : null;
+          return (
+            <g className="diag-pick">
+              <rect
+                className="pick-cover"
+                x={-200}
+                y={-200}
+                width={totalX + 400}
+                height={totalY + 400}
                 onPointerDown={(event) => {
                   event.stopPropagation();
-                  onIntersectionPick?.(xi, yi);
+                  const at = eventAt(event);
+                  if (at === null) return;
+                  const s = snapAt(at.x, at.y);
+                  if (s === null) return;
+                  if (s.xi !== undefined && s.yi !== undefined)
+                    onIntersectionPick?.(s.xi, s.yi);
+                  else onLinePick?.(s.x, s.y);
                 }}
+                onPointerMove={(event) => {
+                  const at = eventAt(event);
+                  onDiagHover?.(at === null ? null : snapAt(at.x, at.y));
+                }}
+                onPointerLeave={() => onDiagHover?.(null)}
                 onClick={(event) => event.stopPropagation()}
               />
-            )),
-          )}
-          {diagStart !== null &&
-            diagStart !== undefined &&
-            (() => {
-              const at =
-                "pt" in diagStart
-                  ? diagStart.pt
-                  : { x: xs[diagStart.xi], y: ys[diagStart.yi] };
-              if (at.x === undefined || at.y === undefined) return null;
-              return (
+              {/* カーソルが今取っている点（吸い付き先の下見） */}
+              {diagHover != null && (
                 <circle
-                  className="start"
-                  cx={at.x}
-                  cy={at.y}
-                  r={600}
+                  className="hover"
+                  cx={diagHover.x}
+                  cy={diagHover.y}
+                  r={260}
                 />
-              );
-            })()}
-        </g>
-      )}
+              )}
+              {start !== null &&
+                start.x !== undefined &&
+                start.y !== undefined && (
+                  <circle className="start" cx={start.x} cy={start.y} r={600} />
+                )}
+              {/* 始点から終点の下見の線 */}
+              {start !== null &&
+                start.x !== undefined &&
+                start.y !== undefined &&
+                diagHover != null && (
+                  <line
+                    className="preview"
+                    x1={start.x}
+                    y1={start.y}
+                    x2={diagHover.x}
+                    y2={diagHover.y}
+                  />
+                )}
+            </g>
+          );
+        })()}
       {/* 寸法線を足すモード：柱線・補助線をクリックして基になる線を選ぶ */}
       {auxMode === true && (
         <g className="diag-pick">
@@ -1668,6 +1751,10 @@ export default function FireproofDrawingPage({
   const [diagStart, setDiagStart] = useState<
     { xi: number; yi: number } | { pt: { x: number; y: number } } | null
   >(null);
+  /* 斜梁モードでカーソルが今取っている点（吸い付き先の下見） */
+  const [diagHover, setDiagHover] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   /* 補助寸法線：柱線とは別に寸法線からずらして引く線。モード中に柱線・補助線を押して基の線を選ぶ */
   const [auxMode, setAuxMode] = useState(false);
   const [auxBase, setAuxBase] = useState<{
@@ -3411,6 +3498,7 @@ export default function FireproofDrawingPage({
                   onClick={() => {
                     setDiagMode((on) => !on);
                     setDiagStart(null);
+                    setDiagHover(null);
                   }}
                 >
                   {diagMode ? "やめる" : "梁を足す"}
@@ -3789,6 +3877,8 @@ export default function FireproofDrawingPage({
                 diagStart={diagStart}
                 onIntersectionPick={pickIntersection}
                 onLinePick={pickLinePoint}
+                diagHover={diagHover}
+                onDiagHover={setDiagHover}
                 auxMode={auxMode}
                 onAuxBasePick={pickAuxBase}
                 auxPick={auxPickPos}

@@ -487,6 +487,13 @@
   pointer-events: all;
 }
 
+/* 点取りの受け面（透明な全面。カーソル位置の吸い付き先を下見する） */
+.fireproof-drawing-svg .diag-pick .pick-cover {
+  fill: rgba(0, 0, 0, 0);
+  cursor: crosshair;
+  pointer-events: all;
+}
+
 /* 線上の点・柱線の基線選びにつける押せる印（透明の太線） */
 .fireproof-drawing-svg .diag-pick line {
   stroke: rgba(0, 0, 0, 0);
@@ -500,6 +507,22 @@
   stroke: #2f7dd1;
   stroke-width: 45;
   stroke-dasharray: 200 120;
+  pointer-events: none;
+}
+
+/* カーソルが今取っている点（吸い付き先に小さい青い点） */
+.fireproof-drawing-svg .diag-pick .hover {
+  fill: #2f7dd1;
+  stroke: #ffffff;
+  stroke-width: 60;
+  pointer-events: none;
+}
+
+/* 始点から終点の下見の線（青い破線） */
+.fireproof-drawing-svg .diag-pick .preview {
+  stroke: rgba(47, 125, 209, 0.75);
+  stroke-width: 55;
+  stroke-dasharray: 320 200;
   pointer-events: none;
 }
 
