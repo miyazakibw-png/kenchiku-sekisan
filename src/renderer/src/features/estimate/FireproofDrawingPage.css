@@ -503,6 +503,21 @@
   pointer-events: none;
 }
 
+/* 寸法線を足す：選んだ基の線を青く示す（クリックは通す） */
+.fireproof-drawing-svg .diag-pick .aux-sel {
+  stroke: #2f7dd1;
+  stroke-width: 60;
+  pointer-events: none;
+}
+
+/* 寸法線を足す：これから引く線の位置を青い破線で示す（クリックは通す） */
+.fireproof-drawing-svg .diag-pick .aux-preview {
+  stroke: rgba(47, 125, 209, 0.65);
+  stroke-width: 40;
+  stroke-dasharray: 300 180;
+  pointer-events: none;
+}
+
 /* 選んだ区画・入力欄に対応する場所の色付け */
 .fireproof-drawing-svg .selection {
   fill: rgba(255, 224, 138, 0.35);

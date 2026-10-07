@@ -556,6 +556,8 @@ function FloorSvg({
   onLinePick,
   auxMode,
   onAuxBasePick,
+  auxPick,
+  auxPreview,
   knownColumns,
   knownBeams,
   halfWidthOf,
@@ -592,8 +594,17 @@ function FloorSvg({
   onLinePick?: (x: number, y: number) => void;
   /** 「寸法線を足す」モード中（寸法線をクリックして基になる線を選ぶ） */
   auxMode?: boolean;
-  /** 寸法線を足すモードで柱線をクリックしたとき（向きとその通りの番号） */
-  onAuxBasePick?: (axis: "x" | "y", base: number) => void;
+  /** 寸法線を足すモードで柱線・補助線をクリックしたとき（向き・通り番号・基からのずれmm・読み方） */
+  onAuxBasePick?: (
+    axis: "x" | "y",
+    base: number,
+    baseOffset: number,
+    label: string,
+  ) => void;
+  /** 寸法線を足す：選んだ基の線の位置（図に青く示す） */
+  auxPick?: { axis: "x" | "y"; pos: number } | null;
+  /** 寸法線を足す：これから引く線の位置（図に破線で示す） */
+  auxPreview?: { axis: "x" | "y"; pos: number } | null;
   /** リストに登録済みの記号（無い記号は赤で示す） */
   knownColumns: ReadonlySet<string>;
   knownBeams: ReadonlySet<string>;
@@ -630,14 +641,32 @@ function FloorSvg({
   const totalX = Math.max(
     xs[xs.length - 1] ?? 0,
     ...auxX.map((e) => e.pos),
+    auxPreview != null && auxPreview.axis === "x" ? auxPreview.pos : 0,
   );
   const totalY = Math.max(
     ys[ys.length - 1] ?? 0,
     ...auxY.map((e) => e.pos),
+    auxPreview != null && auxPreview.axis === "y" ? auxPreview.pos : 0,
   );
   const width = totalX + MARGIN_LEFT + MARGIN_RIGHT;
   const height = totalY + MARGIN_TOP + MARGIN_BOTTOM;
   const numbers = columnNumbers(floor);
+  /* 補助寸法線を足す：基の線の読み方（例「1の右に1,500」） */
+  const auxBaseLabel = (line: FireproofDrawingAuxLine): string => {
+    const baseLabel =
+      line.axis === "x"
+        ? xGridLabel(line.base)
+        : yGridLabel(floor.ySpans.length - line.base);
+    const dir =
+      line.offset > 0
+        ? line.axis === "x"
+          ? "右"
+          : "下"
+        : line.axis === "x"
+          ? "左"
+          : "上";
+    return `${baseLabel}の${dir}に${Math.abs(line.offset).toLocaleString("ja-JP")}`;
+  };
   /* 「無し」の柱を挟んで十字になる大梁：負けた側の区間端の詰め（優先側の面までで止める） */
   const gCuts = girderEndCuts(floor, halfWidthOf);
 
@@ -1403,9 +1432,28 @@ function FloorSvg({
             })()}
         </g>
       )}
-      {/* 寸法線を足すモード：柱線をクリックして基になる線を選ぶ */}
+      {/* 寸法線を足すモード：柱線・補助線をクリックして基になる線を選ぶ */}
       {auxMode === true && (
         <g className="diag-pick">
+          {/* 選んだ基の線を青く、引く先を青い破線で出す */}
+          {auxPick != null && (
+            <line
+              className="aux-sel"
+              x1={auxPick.axis === "x" ? auxPick.pos : -GRID_EXT}
+              y1={auxPick.axis === "x" ? -GRID_EXT : auxPick.pos}
+              x2={auxPick.axis === "x" ? auxPick.pos : totalX + GRID_EXT}
+              y2={auxPick.axis === "x" ? totalY + GRID_EXT : auxPick.pos}
+            />
+          )}
+          {auxPreview != null && (
+            <line
+              className="aux-preview"
+              x1={auxPreview.axis === "x" ? auxPreview.pos : -GRID_EXT}
+              y1={auxPreview.axis === "x" ? -GRID_EXT : auxPreview.pos}
+              x2={auxPreview.axis === "x" ? auxPreview.pos : totalX + GRID_EXT}
+              y2={auxPreview.axis === "x" ? totalY + GRID_EXT : auxPreview.pos}
+            />
+          )}
           {xs.map((x, xi) => (
             <line
               key={`apx${xi}`}
@@ -1415,7 +1463,7 @@ function FloorSvg({
               y2={totalY}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("x", xi);
+                onAuxBasePick?.("x", xi, 0, xGridLabel(xi));
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1429,7 +1477,36 @@ function FloorSvg({
               y2={y}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("y", yi);
+                onAuxBasePick?.("y", yi, 0, yGridLabel(ys.length - yi));
+              }}
+              onClick={(event) => event.stopPropagation()}
+            />
+          ))}
+          {/* すでに引いた補助線も次の基の線にできる */}
+          {auxX.map((e, i) => (
+            <line
+              key={`apax${i}`}
+              x1={e.pos}
+              y1={0}
+              x2={e.pos}
+              y2={totalY}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onAuxBasePick?.("x", e.line.base, e.line.offset, auxBaseLabel(e.line));
+              }}
+              onClick={(event) => event.stopPropagation()}
+            />
+          ))}
+          {auxY.map((e, i) => (
+            <line
+              key={`apay${i}`}
+              x1={0}
+              y1={e.pos}
+              x2={totalX}
+              y2={e.pos}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onAuxBasePick?.("y", e.line.base, e.line.offset, auxBaseLabel(e.line));
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1558,11 +1635,14 @@ export default function FireproofDrawingPage({
   const [diagStart, setDiagStart] = useState<
     { xi: number; yi: number } | { pt: { x: number; y: number } } | null
   >(null);
-  /* 補助寸法線：柱線とは別に寸法線からずらして引く線。モード中に柱線を押して基の線を選ぶ */
+  /* 補助寸法線：柱線とは別に寸法線からずらして引く線。モード中に柱線・補助線を押して基の線を選ぶ */
   const [auxMode, setAuxMode] = useState(false);
-  const [auxBase, setAuxBase] = useState<
-    { axis: "x" | "y"; base: number } | null
-  >(null);
+  const [auxBase, setAuxBase] = useState<{
+    axis: "x" | "y";
+    base: number;
+    baseOffset: number;
+    label: string;
+  } | null>(null);
   const [auxDist, setAuxDist] = useState("");
   const [auxDir, setAuxDir] = useState<1 | -1>(1);
   const beamAnchorRef = useRef<number | null>(null);
@@ -1871,27 +1951,54 @@ export default function FireproofDrawingPage({
     (x: number, y: number) => pickDiag({ pt: { x, y } }),
     [pickDiag],
   );
-  /* 補助寸法線：基の柱線を選ぶ */
-  const pickAuxBase = useCallback((axis: "x" | "y", base: number) => {
-    setAuxBase({ axis, base });
-    setAuxDir(1);
-    setAuxDist("");
-  }, []);
+  /* 補助寸法線：基の柱線・補助線を選ぶ（baseOffsetは基の柱線からのずれ。補助線から連続して引ける） */
+  const pickAuxBase = useCallback(
+    (axis: "x" | "y", base: number, baseOffset: number, label: string) => {
+      setAuxBase({ axis, base, baseOffset, label });
+      setAuxDir(1);
+      setAuxDist("");
+      setMessage(`基の線：${label}。向きと離れ寸法を入れて「線を引く」`);
+    },
+    [],
+  );
+  /* 補助寸法線：選んだ基の線・これから引く線の位置（図に色を付けて示す） */
+  const auxPickPos = useMemo(() => {
+    if (auxBase === null) return null;
+    const at =
+      auxBase.axis === "x"
+        ? positions(current.xSpans)[auxBase.base]
+        : positions(current.ySpans)[auxBase.base];
+    if (at === undefined) return null;
+    return { axis: auxBase.axis, pos: at + auxBase.baseOffset };
+  }, [auxBase, current.xSpans, current.ySpans]);
+  const auxPreviewPos = useMemo(() => {
+    if (auxPickPos === null) return null;
+    const dist = Math.round(
+      Number(toHalfWidth(auxDist).replaceAll(",", ".")),
+    );
+    if (!Number.isFinite(dist) || dist <= 0) return null;
+    return { axis: auxPickPos.axis, pos: auxPickPos.pos + dist * auxDir };
+  }, [auxPickPos, auxDist, auxDir]);
   /* 補助寸法線：向き・離れ寸法を決めて線を足す */
   const addAuxLine = useCallback(() => {
     if (auxBase === null) return;
     const dist = Math.round(Number(toHalfWidth(auxDist).replaceAll(",", ".")));
-    if (!Number.isFinite(dist) || dist <= 0) return;
+    if (!Number.isFinite(dist) || dist <= 0) {
+      setMessage("離れ寸法をmmで入れてください");
+      return;
+    }
     const line: FireproofDrawingAuxLine = {
       axis: auxBase.axis,
       base: auxBase.base,
-      offset: dist * auxDir,
+      offset: auxBase.baseOffset + dist * auxDir,
       id: `a${Date.now().toString(36)}${(current.auxLines ?? []).length}`,
     };
     updateFloor({ auxLines: [...(current.auxLines ?? []), line] });
     setAuxBase(null);
     setAuxDist("");
-    setMessage("補助線を入れました。必要なだけ繰り返せます。閉じるときは「やめる」");
+    setMessage(
+      "補助線を入れました。続けて次の基の線（柱線・補助線）を押せます。閉じるときは「やめる」",
+    );
   }, [auxBase, auxDist, auxDir, current.auxLines, updateFloor]);
 
   /* 斜梁の行：記号の書き換え・行の消去 */
@@ -3033,17 +3140,12 @@ export default function FireproofDrawingPage({
               </div>
               {auxMode && auxBase === null && (
                 <p className="hint">
-                  図の柱線をクリックすると基の線になります（縦の線→縦にずらした線、横の線→横にずらした線ができます）
+                  図の柱線・補助線をクリックすると基の線になります（選んだ線は青く出ます。縦の線→縦にずらした線、横の線→横にずらした線ができます）
                 </p>
               )}
               {auxMode && auxBase !== null && (
                 <div className="aux-add">
-                  <span>
-                    {auxBase.axis === "x"
-                      ? xGridLabel(auxBase.base)
-                      : yGridLabel(current.ySpans.length - auxBase.base)}
-                    の線から
-                  </span>
+                  <span>{auxBase.label}の線から</span>
                   <select
                     value={auxDir}
                     onChange={(event) =>
@@ -3644,6 +3746,8 @@ export default function FireproofDrawingPage({
                 onLinePick={pickLinePoint}
                 auxMode={auxMode}
                 onAuxBasePick={pickAuxBase}
+                auxPick={auxPickPos}
+                auxPreview={auxPreviewPos}
                 knownColumns={knownColumns}
                 knownBeams={knownBeams}
                 halfWidthOf={halfWidthOf}
