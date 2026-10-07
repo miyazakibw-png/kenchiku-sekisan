@@ -999,6 +999,8 @@ describe("梁をつなぐ", () => {
   it("端が重なっていれば印は出ない", () => {
     const f: FireproofDrawingFloor = {
       ...floor,
+      /* 端が柱のある交点に付いていれば付いている扱い（柱の無い交点の端は未接続として出る） */
+      columns: { "1,0": "C1", "0,1": "C1" },
       diagGirders: [
         { fx: 1, fy: 0, tx: 0, ty: 0, symbol: "G1", toMm: { x: 1500, y: 0 } },
         { fx: 0, fy: 0, tx: 0, ty: 1, symbol: "G1", fromMm: { x: 1500, y: 0 } },
@@ -1044,5 +1046,38 @@ describe("梁をつなぐ", () => {
     };
     const out = joinDiagGirders(f, 0, 1);
     expect(out).toEqual({ error: "parallel" });
+  });
+
+  it("線上の点で引いた梁は、両端の一番近い交点が同じでも保存して残る", () => {
+    /* 線の途中の点どうしで引いた梁は、始点・終点ともに同じ交点を近い交点として持つ
+       ことがある（例：同じ桝内の2点）。グリッドの番号だけで見ると消えた梁に見えるが、
+       実座標（fromMm/toMm）で引くので保存・読み込みで残す */
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        {
+          fx: 1,
+          fy: 1,
+          tx: 1,
+          ty: 1,
+          symbol: "B4",
+          fromMm: { x: 5500, y: 5200 },
+          toMm: { x: 6800, y: 6400 },
+        },
+      ],
+    };
+    const back = parseDrawing(serializeDrawing({ floors: { "1": f } }));
+    expect(back.floors["1"].diagGirders).toHaveLength(1);
+    expect(back.floors["1"].diagGirders[0].fromMm).toEqual({
+      x: 5500,
+      y: 5200,
+    });
+    /* mm の無い同一点の梁は消えた梁として捨てる（今までどおり） */
+    const g: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [{ fx: 1, fy: 1, tx: 1, ty: 1, symbol: "B4" }],
+    };
+    const back2 = parseDrawing(serializeDrawing({ floors: { "1": g } }));
+    expect(back2.floors["1"].diagGirders ?? []).toHaveLength(0);
   });
 });

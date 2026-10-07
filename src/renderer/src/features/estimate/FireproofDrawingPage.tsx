@@ -27,6 +27,7 @@ import {
   auxLineBasePosition,
   clipBeamAtDiagEdges,
   joinDiagGirders,
+  piercingDiagPoints,
   unconnectedDiagEnds,
   diagEnds,
   diagGirderPosition,
@@ -730,8 +731,9 @@ function FloorSvg({
 
   /* 「無し」の柱を挟んで十字になる大梁：負けた側の区間端の詰め（優先側の面までで止める） */
   const gCuts = girderEndCuts(floor, halfWidthOf);
-  /* 「梁をつなぐ」モード中：つなぐはずなのに離れている端の印 */
+  /* 「梁をつなぐ」モード中：つなぐはずなのに離れている端の印・斜め梁を突き抜けている部材の印 */
   const joinWarns = joinMode === true ? unconnectedDiagEnds(floor) : [];
+  const joinPierce = joinMode === true ? piercingDiagPoints(floor) : [];
 
   /* 取合記号の○印（梁の端のそばに出す。クリックで記号を入れ直せる） */
   const Joint = ({
@@ -1137,6 +1139,13 @@ function FloorSvg({
       {joinWarns.map((p, i) => (
         <g key={`jw${i}`} className="miss">
           <circle cx={p.x} cy={p.y} r={JOINT_R + 60} fill="#dc2626" />
+        </g>
+      ))}
+      {/* 斜め梁を突き抜けている（突き抜けられている）箇所の✕印 */}
+      {joinPierce.map((p, i) => (
+        <g key={`jp${i}`} className="miss">
+          <line x1={p.x - 200} y1={p.y - 200} x2={p.x + 200} y2={p.y + 200} stroke="#dc2626" strokeWidth={60} />
+          <line x1={p.x + 200} y1={p.y - 200} x2={p.x - 200} y2={p.y + 200} stroke="#dc2626" strokeWidth={60} />
         </g>
       ))}
       {/* 小梁（区画を分割する2本線。つかんで動かせる） */}
@@ -3617,12 +3626,15 @@ export default function FireproofDrawingPage({
                     const on = !joinMode;
                     setJoinMode(on);
                     setJoinFirst(null);
-                    if (on)
+                    if (on) {
+                      const warns = unconnectedDiagEnds(current).length;
+                      const pierce = piercingDiagPoints(current).length;
                       setMessage(
-                        unconnectedDiagEnds(current).length === 0
-                          ? "つなぐはずなのに離れている端は見つかりませんでした。端どうしが2.5m以内にあれば印が出ます"
-                          : "赤い印の端がつなぐはずなのに離れている端です。優先の梁→つなぐ梁の順に図でクリックしてください",
+                        warns + pierce === 0
+                          ? "離れている端・突き抜けている梁は見つかりませんでした"
+                          : "赤い○はつなぐはずなのに離れている端、赤い✕は斜め梁を突き抜けている（突き抜けられている）箇所です。優先の梁→つなぐ梁の順に図でクリックすると2本が交わる点でつながります",
                       );
+                    }
                   }}
                 >
                   {joinMode ? "やめる" : "梁をつなぐ"}
@@ -3635,7 +3647,7 @@ export default function FireproofDrawingPage({
               )}
               {joinMode && (
                 <p className="hint">
-                  赤い印はつなぐはずなのに離れている端です。優先の梁→つなぐ梁の順に図でクリックすると、2本が交わる点でつながります（優先の梁は縮まず、足りなければ伸びます）
+                  赤い○はつなぐはずなのに離れている端、赤い✕は斜め梁を突き抜けている（突き抜けられている）箇所です。優先の梁→つなぐ梁の順に図でクリックすると、2本が交わる点でつながります（優先の梁は縮まず、足りなければ伸びます）
                 </p>
               )}
               {(current.diagGirders ?? []).map((g, index) => {

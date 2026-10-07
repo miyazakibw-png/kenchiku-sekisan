@@ -327,7 +327,15 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
             };
           })(),
         };
-        if (g.fx === g.tx && g.fy === g.ty) return;
+        /* グリッド位置だけの梁で始点と終点が同じ交点なら消えた梁として捨てる。
+           線上の点（fromMm/toMm）を持つ梁は実座標で引くので、一番近い交点が同じでも残す */
+        if (
+          g.fx === g.tx &&
+          g.fy === g.ty &&
+          g.fromMm === undefined &&
+          g.toMm === undefined
+        )
+          return;
         out.push(g);
       });
       return out.length > 0 ? out : undefined;
@@ -471,7 +479,7 @@ export function girderNumber(
 
 /** 交点に柱があるか（「無し」チェックの交点は柱が無い扱い） */
 export function columnExists(
-  floor: FireproofDrawingFloor,
+  floor: Pick<FireproofDrawingFloor, "columns" | "noColumns">,
   xi: number,
   yi: number,
 ): boolean {
@@ -483,7 +491,10 @@ export function columnExists(
 }
 
 /** 区間に大梁があるか（「無し」チェックの区間は無い扱い） */
-export function girderExists(floor: FireproofDrawingFloor, key: string): boolean {
+export function girderExists(
+  floor: Pick<FireproofDrawingFloor, "girders" | "noGirders">,
+  key: string,
+): boolean {
   return (
     (floor.girders[key] ?? "").trim() !== "" &&
     floor.noGirders?.[key] !== true
@@ -949,43 +960,232 @@ export function clipBeamAtDiagEdges(
   return { ...beam, x1, y1, x2, y2 };
 }
 
-/** つなぐはずなのに離れている斜め梁の端の点（他の梁の線・端に近いが付いていない端）。「梁をつなぐ」の注意表示に使う。
-   near は「つなぐ」を掛けられる上限（2500mm）と同じにして、つなげる範囲の端には全部印が出るようにする */
+interface LineSeg {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** 斜め梁の番号（自分自身の線は除くため） */
+  diag?: number;
+}
+
+function distToSeg(px: number, py: number, e: LineSeg): number {
+  const dx = e.x2 - e.x1;
+  const dy = e.y2 - e.y1;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return Math.hypot(px - e.x1, py - e.y1);
+  let t = ((px - e.x1) * dx + (py - e.y1) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (e.x1 + dx * t), py - (e.y1 + dy * t));
+}
+
+/** 描いてある大梁の各区間の実座標（girderExists のものだけ） */
+function girderSegments(
+  floor: Pick<FireproofDrawingFloor, "girders" | "noGirders">,
+  xs: number[],
+  ys: number[],
+): LineSeg[] {
+  const segs: LineSeg[] = [];
+  for (const key of Object.keys(floor.girders)) {
+    if (!girderExists(floor, key)) continue;
+    const [axis, pt] = key.split(":");
+    const [xi, yi] = pt.split(",").map(Number);
+    if (axis === "x") {
+      const x1 = xs[xi];
+      const x2 = xs[xi + 1];
+      const y = ys[yi];
+      if (x1 !== undefined && x2 !== undefined && y !== undefined)
+        segs.push({ x1, y1: y, x2, y2: y });
+    } else {
+      const y1 = ys[yi];
+      const y2 = ys[yi + 1];
+      const x = xs[xi];
+      if (y1 !== undefined && y2 !== undefined && x !== undefined)
+        segs.push({ x1: x, y1, x2: x, y2 });
+    }
+  }
+  return segs;
+}
+
+/** 図の中の線全部を2組に分けて集める。
+   members＝部材の線（大梁・小梁・斜め梁・柱。端がここに付いていれば「つながっている」）
+   refs＝部材の線＋柱線・補助線（「近くに線があるか」の判定用） */
+function structuralLines(
+  floor: Pick<
+    FireproofDrawingFloor,
+    | "xSpans"
+    | "ySpans"
+    | "columns"
+    | "noColumns"
+    | "girders"
+    | "noGirders"
+    | "beams"
+    | "diagGirders"
+    | "auxLines"
+  >,
+  xs: number[],
+  ys: number[],
+): { members: LineSeg[]; refs: LineSeg[] } {
+  const refs: LineSeg[] = [];
+  const maxX = xs[xs.length - 1] ?? 0;
+  const maxY = ys[ys.length - 1] ?? 0;
+  xs.forEach((x) => refs.push({ x1: x, y1: 0, x2: x, y2: maxY }));
+  ys.forEach((y) => refs.push({ x1: 0, y1: y, x2: maxX, y2: y }));
+  (floor.auxLines ?? []).forEach((l) => {
+    const pos = auxLinePosition(floor, l);
+    if (pos === null) return;
+    if (l.axis === "x") refs.push({ x1: pos, y1: 0, x2: pos, y2: maxY });
+    else refs.push({ x1: 0, y1: pos, x2: maxX, y2: pos });
+  });
+  const members: LineSeg[] = [];
+  members.push(...girderSegments(floor, xs, ys));
+  floor.beams.forEach((b) =>
+    members.push({ x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 }),
+  );
+  /* 柱は点なので、ごく短い線分として扱う（端が柱のそばにあれば付いていると見なす） */
+  xs.forEach((x, xi) =>
+    ys.forEach((y, yi) => {
+      if (!columnExists(floor, xi, yi)) return;
+      members.push({ x1: x, y1: y, x2: x, y2: y });
+    }),
+  );
+  (floor.diagGirders ?? []).forEach((g, i) => {
+    const e = diagEnds(xs, ys, g);
+    if (e !== null)
+      members.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, diag: i });
+  });
+  refs.push(...members);
+  return { members, refs };
+}
+
+/** つなぐはずなのに離れている斜め梁の端の点。
+   端が他の部材（斜め梁・大梁・小梁・柱）に付いていれば付いていると見なし、
+   付いていなくて snap より外・near 以内に何かの線（部材・柱線・補助線）がある端に印を出す。
+   near は「つなぐ」を掛けられる上限と同じ */
 export function unconnectedDiagEnds(
-  floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "diagGirders">,
+  floor: Pick<
+    FireproofDrawingFloor,
+    | "xSpans"
+    | "ySpans"
+    | "columns"
+    | "noColumns"
+    | "girders"
+    | "noGirders"
+    | "beams"
+    | "diagGirders"
+    | "auxLines"
+  >,
   near = 2500,
   snap = 30,
 ): { x: number; y: number }[] {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
-  const list = floor.diagGirders ?? [];
-  const ends = list.map((g) => diagEnds(xs, ys, g));
+  const { members, refs } = structuralLines(floor, xs, ys);
   const points: { x: number; y: number }[] = [];
-  const distToSeg = (
-    px: number,
-    py: number,
-    e: { x1: number; y1: number; x2: number; y2: number },
-  ): number => {
-    const dx = e.x2 - e.x1;
-    const dy = e.y2 - e.y1;
-    const l2 = dx * dx + dy * dy;
-    if (l2 === 0) return Math.hypot(px - e.x1, py - e.y1);
-    let t = ((px - e.x1) * dx + (py - e.y1) * dy) / l2;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(px - (e.x1 + dx * t), py - (e.y1 + dy * t));
-  };
-  ends.forEach((e, i) => {
+  (floor.diagGirders ?? []).forEach((g, i) => {
+    const e = diagEnds(xs, ys, g);
     if (e === null) return;
     [0, 1].forEach((k) => {
       const px = k === 0 ? e.x1 : e.x2;
       const py = k === 0 ? e.y1 : e.y2;
-      let best = Number.POSITIVE_INFINITY;
-      ends.forEach((o, j) => {
-        if (o === null || i === j) return;
-        best = Math.min(best, distToSeg(px, py, o));
+      let memberDist = Number.POSITIVE_INFINITY;
+      members.forEach((l) => {
+        if (l.diag === i) return;
+        memberDist = Math.min(memberDist, distToSeg(px, py, l));
       });
-      if (best > snap && best <= near) points.push({ x: px, y: py });
+      if (memberDist <= snap) return;
+      let refDist = Number.POSITIVE_INFINITY;
+      refs.forEach((l) => {
+        if (l.diag === i) return;
+        refDist = Math.min(refDist, distToSeg(px, py, l));
+      });
+      if (refDist <= near) points.push({ x: px, y: py });
     });
+  });
+  return points;
+}
+
+/** 斜め梁を突き抜けている部材・斜め梁が突き抜けている大梁との交点（チェック表示用）。
+   斜め梁の両端が部材の面の外側で交わる、または部材の両端が斜め梁の面の外側で交わるとき
+   その交点を返す（端が線に付くT字の付き方は突き抜けとみなさない） */
+export function piercingDiagPoints(
+  floor: Pick<
+    FireproofDrawingFloor,
+    "xSpans" | "ySpans" | "girders" | "noGirders" | "beams" | "diagGirders"
+  >,
+  halfOf?: (symbol: string) => number | undefined,
+): { x: number; y: number }[] {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const diagList = floor.diagGirders ?? [];
+  const diagSegs = diagList
+    .map((g) => diagEnds(xs, ys, g))
+    .filter(
+      (e): e is { x1: number; y1: number; x2: number; y2: number } => e !== null,
+    );
+  /* チェックする部材：小梁・大梁・斜め梁（自分自身との対は除く） */
+  const members: { seg: LineSeg; half: number; diag?: number }[] = [];
+  floor.beams.forEach((b) =>
+    members.push({
+      seg: { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 },
+      half: halfOf?.(b.symbol) ?? 60,
+    }),
+  );
+  girderSegments(floor, xs, ys).forEach((s) =>
+    members.push({ seg: s, half: 75 }),
+  );
+  diagSegs.forEach((s, i) =>
+    members.push({
+      seg: { ...s, diag: i },
+      half: halfOf?.(diagList[i]?.symbol ?? "") ?? 75,
+      diag: i,
+    }),
+  );
+
+  const raw: { x: number; y: number }[] = [];
+  diagSegs.forEach((d, di) => {
+    const dHalf = halfOf?.(diagList[di]?.symbol ?? "") ?? 75;
+    const edx = d.x2 - d.x1;
+    const edy = d.y2 - d.y1;
+    const eLen = Math.hypot(edx, edy);
+    if (eLen === 0) return;
+    members.forEach((m) => {
+      if (m.diag === di) return;
+      const s = m.seg;
+      const bdx = s.x2 - s.x1;
+      const bdy = s.y2 - s.y1;
+      const bLen = Math.hypot(bdx, bdy);
+      const den = bdx * edy - bdy * edx;
+      if (bLen === 0 || Math.abs(den) < 1e-6 * bLen * eLen) return;
+      const t = ((d.x1 - s.x1) * edy - (d.y1 - s.y1) * edx) / den;
+      if (t < 0 || t > 1) return;
+      const ix = s.x1 + bdx * t;
+      const iy = s.y1 + bdy * t;
+      const tE = ((ix - d.x1) * edx + (iy - d.y1) * edy) / (eLen * eLen);
+      if (tE < 0 || tE > 1) return;
+      /* 部材の両端が斜め梁の面の外側で分かれる → 部材が斜め梁を突き抜け */
+      const side = (x: number, y: number) =>
+        ((x - d.x1) * edy - (y - d.y1) * edx) / eLen;
+      const d1 = side(s.x1, s.y1);
+      const d2 = side(s.x2, s.y2);
+      const memberPierces =
+        (d1 > dHalf && d2 < -dHalf) || (d1 < -dHalf && d2 > dHalf);
+      /* 斜め梁の両端が部材の面の外側で分かれる → 斜め梁が部材を突き抜け */
+      const mSide = (x: number, y: number) =>
+        ((x - s.x1) * bdy - (y - s.y1) * bdx) / bLen;
+      const e1 = mSide(d.x1, d.y1);
+      const e2 = mSide(d.x2, d.y2);
+      const diagPierces =
+        (e1 > m.half && e2 < -m.half) || (e1 < -m.half && e2 > m.half);
+      if (memberPierces || diagPierces)
+        raw.push({ x: Math.round(ix), y: Math.round(iy) });
+    });
+  });
+  /* 斜め梁どうしの対は両側から数えて重複するので近い点をまとめる */
+  const points: { x: number; y: number }[] = [];
+  raw.forEach((p) => {
+    if (!points.some((u) => Math.hypot(u.x - p.x, u.y - p.y) < 100))
+      points.push(p);
   });
   return points;
 }
