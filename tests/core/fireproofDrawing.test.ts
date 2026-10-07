@@ -20,6 +20,7 @@ import {
   nudgeBeam,
   parseDrawing,
   parseSpanList,
+  piercingDiagPoints,
   refitBeams,
   positions,
   serializeDrawing,
@@ -1079,5 +1080,54 @@ describe("梁をつなぐ", () => {
     };
     const back2 = parseDrawing(serializeDrawing({ floors: { "1": g } }));
     expect(back2.floors["1"].diagGirders ?? []).toHaveLength(0);
+  });
+});
+
+describe("突き抜けチェック", () => {
+  const base: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000, 6000],
+  };
+
+  it("部材が斜め梁を貫いて続いている場所に印が出る", () => {
+    /* 斜め梁 (0,0)-(12000,12000) を横の小梁が貫く（両端が面の外側まで出ている） */
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [{ fx: 0, fy: 0, tx: 2, ty: 2, symbol: "G1" }],
+      beams: [{ x1: 0, y1: 6000, x2: 9000, y2: 6000, symbol: "B1" }],
+    };
+    const pts = piercingDiagPoints(f);
+    expect(pts).toHaveLength(1);
+    expect(pts[0]).toEqual({ x: 6000, y: 6000 });
+  });
+
+  it("部材の端が斜め梁の面あたりで止まっている（T字の付き方）は印が出ない", () => {
+    /* 小梁の端が斜め梁の芯を少しだけ超えて止まる：面に付く止まりなので対象外 */
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [{ fx: 0, fy: 0, tx: 2, ty: 2, symbol: "G1" }],
+      beams: [{ x1: 0, y1: 6000, x2: 6150, y2: 6000, symbol: "B1" }],
+    };
+    expect(piercingDiagPoints(f)).toEqual([]);
+  });
+
+  it("斜め梁の端が部材の面あたりで止まっているときも印が出ない", () => {
+    /* 斜め梁の端が小梁の少し先で止まる */
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [
+        {
+          fx: 0,
+          fy: 0,
+          tx: 2,
+          ty: 2,
+          symbol: "G1",
+          toMm: { x: 6100, y: 6100 },
+        },
+      ],
+      beams: [{ x1: 0, y1: 6000, x2: 12000, y2: 6000, symbol: "B1" }],
+    };
+    expect(piercingDiagPoints(f)).toEqual([]);
   });
 });

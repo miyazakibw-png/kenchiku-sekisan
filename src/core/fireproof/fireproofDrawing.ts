@@ -1163,20 +1163,27 @@ export function piercingDiagPoints(
       const iy = s.y1 + bdy * t;
       const tE = ((ix - d.x1) * edx + (iy - d.y1) * edy) / (eLen * eLen);
       if (tE < 0 || tE > 1) return;
+      /* 端が相手の面のあたりで止まっている付き方（T字）は突き抜けとみなさない。
+         交点がどちらかの部材の端の近く（「面＋部材の半幅」より手前）にあるなら止まりの扱い */
+      const band = dHalf + m.half + 30;
+      const clearOfEnds =
+        Math.min(t * bLen, (1 - t) * bLen) > band &&
+        Math.min(tE * eLen, (1 - tE) * eLen) > band;
+      if (!clearOfEnds) return;
       /* 部材の両端が斜め梁の面の外側で分かれる → 部材が斜め梁を突き抜け */
       const side = (x: number, y: number) =>
         ((x - d.x1) * edy - (y - d.y1) * edx) / eLen;
       const d1 = side(s.x1, s.y1);
       const d2 = side(s.x2, s.y2);
       const memberPierces =
-        (d1 > dHalf && d2 < -dHalf) || (d1 < -dHalf && d2 > dHalf);
+        (d1 > band && d2 < -band) || (d1 < -band && d2 > band);
       /* 斜め梁の両端が部材の面の外側で分かれる → 斜め梁が部材を突き抜け */
       const mSide = (x: number, y: number) =>
         ((x - s.x1) * bdy - (y - s.y1) * bdx) / bLen;
       const e1 = mSide(d.x1, d.y1);
       const e2 = mSide(d.x2, d.y2);
       const diagPierces =
-        (e1 > m.half && e2 < -m.half) || (e1 < -m.half && e2 > m.half);
+        (e1 > band && e2 < -band) || (e1 < -band && e2 > band);
       if (memberPierces || diagPierces)
         raw.push({ x: Math.round(ix), y: Math.round(iy) });
     });
