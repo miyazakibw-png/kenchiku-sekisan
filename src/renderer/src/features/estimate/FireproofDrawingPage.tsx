@@ -174,8 +174,9 @@ function XDimension({
         <g key={`ex${i}`}>
           <line x1={e.pos} y1={y - 300} x2={e.pos} y2={-BUBBLE_Y - BUBBLE_R - 80} />
           <line x1={e.pos - 90} y1={y + 90} x2={e.pos + 90} y2={y - 90} />
+          {/* 寸法の字は基の線と引いた線の間の中央に置く */}
           <text
-            x={e.pos}
+            x={e.pos - e.offset / 2}
             y={y - 140}
             textAnchor="middle"
             fontSize={FONT_DIM}
@@ -227,12 +228,13 @@ function YDimension({
         <g key={`ey${i}`}>
           <line x1={x - 300} y1={e.pos} x2={-BUBBLE_Y - BUBBLE_R - 80} y2={e.pos} />
           <line x1={x - 90} y1={e.pos + 90} x2={x + 90} y2={e.pos - 90} />
+          {/* 寸法の字は基の線と引いた線の間の中央に置く */}
           <text
             x={x - 200}
-            y={e.pos}
+            y={e.pos - e.offset / 2}
             textAnchor="middle"
             fontSize={FONT_DIM}
-            transform={`rotate(-90 ${x - 200} ${e.pos})`}
+            transform={`rotate(-90 ${x - 200} ${e.pos - e.offset / 2})`}
           >
             {Math.abs(e.offset).toLocaleString("ja-JP")}
           </text>
@@ -550,6 +552,7 @@ function FloorSvg({
   onColumnPick,
   onGirderPick,
   onDiagPick,
+  selDiag,
   diagMode,
   diagStart,
   onIntersectionPick,
@@ -584,6 +587,8 @@ function FloorSvg({
   onGirderPick?: (key: string) => void;
   /** 図の斜梁をクリックしたとき（斜梁の行番号） */
   onDiagPick?: (index: number) => void;
+  /** 引き梁の一覧で選んでいる行（その梁の位置を点線で図に出す） */
+  selDiag?: number | null;
   /** 「斜梁を足す」モード中（交点をクリックして2点を選ぶ） */
   diagMode?: boolean;
   /** 斜梁の始点に選んだ点（交点、または線上の点 mm） */
@@ -1003,6 +1008,16 @@ function FloorSvg({
                 x2={ax2 + ox}
                 y2={ay2 + oy}
               />
+              {/* 一覧で選んだ引き梁の位置を点線で示す */}
+              {index === selDiag && (
+                <line
+                  className="diag-sel"
+                  x1={ax1 + ox}
+                  y1={ay1 + oy}
+                  x2={ax2 + ox}
+                  y2={ay2 + oy}
+                />
+              )}
             </g>
           );
         })}
@@ -1236,6 +1251,9 @@ function FloorSvg({
         <g className="diag-pick">
           {/* 引いてある線（大梁・小梁・引き梁）と柱の線上の点を端にできる */}
           {(() => {
+            /* 点取りに使う線分の一覧（線どうしの交わりを拾うために集める） */
+            const segs: { x1: number; y1: number; x2: number; y2: number }[] =
+              [];
             const pickAt = (
               event: React.PointerEvent<SVGLineElement>,
               x1: number,
@@ -1267,7 +1285,30 @@ function FloorSvg({
                         ((px - x1) * dx + (py - y1) * dy) / len2,
                       ),
                     );
-              onLinePick?.(x1 + dx * t, y1 + dy * t);
+              let bx = x1 + dx * t;
+              let by = y1 + dy * t;
+              /* 線どうしの交わりの近くを押したときは交点そのものを端にする
+                 （寸法線と梁の線の交わりが打てず水平な梁が引けないのを直す） */
+              let best = 400;
+              segs.forEach((s) => {
+                const ex = s.x2 - s.x1;
+                const ey = s.y2 - s.y1;
+                const den = dx * ey - dy * ex;
+                if (Math.abs(den) < 1e-9) return;
+                const tt = ((s.x1 - x1) * ey - (s.y1 - y1) * ex) / den;
+                const uu = ((s.x1 - x1) * dy - (s.y1 - y1) * dx) / den;
+                if (tt < -0.05 || tt > 1.05 || uu < -0.05 || uu > 1.05)
+                  return;
+                const ix = x1 + dx * tt;
+                const iy = y1 + dy * tt;
+                const d = Math.hypot(ix - bx, iy - by);
+                if (d < best) {
+                  best = d;
+                  bx = ix;
+                  by = iy;
+                }
+              });
+              onLinePick?.(bx, by);
             };
             const HitLine = (p: {
               x1: number;
@@ -1289,6 +1330,16 @@ function FloorSvg({
               />
             );
             const lines: JSX.Element[] = [];
+            const pushSeg = (
+              k: string,
+              x1: number,
+              y1: number,
+              x2: number,
+              y2: number,
+            ): JSX.Element => {
+              segs.push({ x1, y1, x2, y2 });
+              return <HitLine k={k} x1={x1} y1={y1} x2={x2} y2={y2} />;
+            };
             Object.entries(floor.girders).forEach(([key]) => {
               if (!girderExists(floor, key)) return;
               const [axis, point] = key.split(":");
@@ -1296,34 +1347,34 @@ function FloorSvg({
               const off = girderOffsetOf?.(key) ?? 0;
               if (axis === "x" && xs[xi] !== undefined && xs[xi + 1] !== undefined && ys[yi] !== undefined)
                 lines.push(
-                  <HitLine
-                    k={`h${key}`}
-                    x1={xs[xi]}
-                    y1={ys[yi] + off}
-                    x2={xs[xi + 1]}
-                    y2={ys[yi] + off}
-                  />,
+                  pushSeg(
+                    `h${key}`,
+                    xs[xi],
+                    ys[yi] + off,
+                    xs[xi + 1],
+                    ys[yi] + off,
+                  ),
                 );
               if (axis === "y" && xs[xi] !== undefined && ys[yi] !== undefined && ys[yi + 1] !== undefined)
                 lines.push(
-                  <HitLine
-                    k={`h${key}`}
-                    x1={xs[xi] + off}
-                    y1={ys[yi]}
-                    x2={xs[xi] + off}
-                    y2={ys[yi + 1]}
-                  />,
+                  pushSeg(
+                    `h${key}`,
+                    xs[xi] + off,
+                    ys[yi],
+                    xs[xi] + off,
+                    ys[yi + 1],
+                  ),
                 );
             });
             floor.beams.forEach((beam, index) =>
               lines.push(
-                <HitLine
-                  k={`hb${index}`}
-                  x1={beam.x1}
-                  y1={beam.y1}
-                  x2={beam.x2}
-                  y2={beam.y2}
-                />,
+                pushSeg(
+                  `hb${index}`,
+                  beam.x1,
+                  beam.y1,
+                  beam.x2,
+                  beam.y2,
+                ),
               ),
             );
             (floor.diagGirders ?? []).forEach((g, index) => {
@@ -1335,36 +1386,24 @@ function FloorSvg({
               if (plan <= 0) return;
               const off = g.offset ?? 0;
               lines.push(
-                <HitLine
-                  k={`hd${index}`}
-                  x1={ends.x1 + (-dy / plan) * off}
-                  y1={ends.y1 + (dx / plan) * off}
-                  x2={ends.x2 + (-dy / plan) * off}
-                  y2={ends.y2 + (dx / plan) * off}
-                />,
+                pushSeg(
+                  `hd${index}`,
+                  ends.x1 + (-dy / plan) * off,
+                  ends.y1 + (dx / plan) * off,
+                  ends.x2 + (-dy / plan) * off,
+                  ends.y2 + (dx / plan) * off,
+                ),
               );
             });
             /* 補助寸法線 */
             auxX.forEach((e, i) =>
               lines.push(
-                <HitLine
-                  k={`hax${i}`}
-                  x1={e.pos}
-                  y1={0}
-                  x2={e.pos}
-                  y2={totalY}
-                />,
+                pushSeg(`hax${i}`, e.pos, 0, e.pos, totalY),
               ),
             );
             auxY.forEach((e, i) =>
               lines.push(
-                <HitLine
-                  k={`hay${i}`}
-                  x1={0}
-                  y1={e.pos}
-                  x2={totalX}
-                  y2={e.pos}
-                />,
+                pushSeg(`hay${i}`, 0, e.pos, totalX, e.pos),
               ),
             );
             /* 柱の四角の辺 */
@@ -1386,13 +1425,7 @@ function FloorSvg({
               ];
               edges.forEach(([x1, y1, x2, y2], ei) =>
                 lines.push(
-                  <HitLine
-                    k={`hc${key}-${ei}`}
-                    x1={x1}
-                    y1={y1}
-                    x2={x2}
-                    y2={y2}
-                  />,
+                  pushSeg(`hc${key}-${ei}`, x1, y1, x2, y2),
                 ),
               );
             });
@@ -3390,6 +3423,9 @@ export default function FireproofDrawingPage({
               )}
               {(current.diagGirders ?? []).map((g, index) => {
                 const align = diagAlign(g);
+                const gHalf =
+                  halfWidthOf(g.symbol.trim()) ?? GIRDER_HALF;
+                const edgeOff = (align?.proj ?? 0) - gHalf;
                 return (
                   <div
                     key={g.id ?? index}
@@ -3416,12 +3452,12 @@ export default function FireproofDrawingPage({
                         <button
                           type="button"
                           className={
-                            (g.offset ?? 0) === -align.proj ? "on" : ""
+                            (g.offset ?? 0) === -edgeOff ? "on" : ""
                           }
                           title={`柱の面に合わせる（${align.minus}）`}
                           onClick={(event) => {
                             event.stopPropagation();
-                            alignDiag(index, -align.proj);
+                            alignDiag(index, -edgeOff);
                           }}
                         >
                           {align.minus}
@@ -3439,11 +3475,11 @@ export default function FireproofDrawingPage({
                         </button>
                         <button
                           type="button"
-                          className={(g.offset ?? 0) === align.proj ? "on" : ""}
+                          className={(g.offset ?? 0) === edgeOff ? "on" : ""}
                           title={`柱の面に合わせる（${align.plus}）`}
                           onClick={(event) => {
                             event.stopPropagation();
-                            alignDiag(index, align.proj);
+                            alignDiag(index, edgeOff);
                           }}
                         >
                           {align.plus}
@@ -3748,6 +3784,7 @@ export default function FireproofDrawingPage({
                 onColumnPick={setSelColumn}
                 onGirderPick={setSelGirder}
                 onDiagPick={setSelDiag}
+                selDiag={selDiag}
                 diagMode={diagMode}
                 diagStart={diagStart}
                 onIntersectionPick={pickIntersection}

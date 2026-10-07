@@ -533,6 +533,14 @@
   stroke-dasharray: 240 160;
 }
 
+/* 引き梁の一覧で選んだ分（その梁の芯に青い点線） */
+.fireproof-drawing-svg .diag-sel {
+  stroke: #4a80c0;
+  stroke-width: 60;
+  stroke-dasharray: 240 160;
+  pointer-events: none;
+}
+
 /* リストに無い記号（エラー） */
 .fireproof-drawing-svg .bad line {
   stroke: #d03030;

@@ -120,6 +120,8 @@ describe("区画の検出（まわりを囲む線）", () => {
       insetRight: 75,
       insetTop: 75,
       insetBottom: 75,
+      pinX: 3000,
+      pinY: 2500,
     });
     expect(enclosingRegion(floor, 9000, 7500)).toEqual({
       x: 6000,
@@ -130,6 +132,8 @@ describe("区画の検出（まわりを囲む線）", () => {
       insetRight: 75,
       insetTop: 75,
       insetBottom: 75,
+      pinX: 9000,
+      pinY: 7500,
     });
   });
 
@@ -150,6 +154,8 @@ describe("区画の検出（まわりを囲む線）", () => {
       insetRight: 60,
       insetTop: 75,
       insetBottom: 75,
+      pinX: 2000,
+      pinY: 2500,
     });
     expect(enclosingRegion(withBeam, 5000, 2500)).toEqual({
       x: 4000,
@@ -160,6 +166,8 @@ describe("区画の検出（まわりを囲む線）", () => {
       insetRight: 75,
       insetTop: 75,
       insetBottom: 75,
+      pinX: 5000,
+      pinY: 2500,
     });
   });
 
@@ -814,6 +822,54 @@ describe("斜梁（2交点どうしの大梁）", () => {
     expect(beams[2]?.y2).toBe(region!.y + region!.height - 75);
   });
 
+  it("区画の角だけ切る斜め梁でも、置く小梁はその線よりはみ出ない", () => {
+    // 正方形の区画。右上の角だけを斜めに切る引き梁（クリック点の縦横軸とは交わらない）
+    const f: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000],
+      ySpans: [6000],
+      columns: {},
+      girders: {
+        "x:0,0": "G1",
+        "x:0,1": "G1",
+        "y:0,0": "G1",
+        "y:1,0": "G1",
+      },
+      diagGirders: [
+        {
+          fx: 0,
+          fy: 0,
+          tx: 1,
+          ty: 0,
+          symbol: "G1",
+          id: "d1",
+          fromMm: { x: 4000, y: 0 },
+          toMm: { x: 6000, y: 2000 },
+        },
+      ],
+    };
+    // 左下寄りをクリック（斜め線はクリックの縦横を通らないが、右上の角を切っている）
+    const region = enclosingRegion(f, 3000, 4500);
+    expect(region).not.toBeNull();
+    expect(region?.diagEdges?.map((e) => e.side)).toEqual(["diag"]);
+    // 縦に5分割 → いちばん右の小梁は斜め線の外（角側）にはみ出るので上端を切られる
+    const beams = dividedBeams(region!, "v", 5, "B40");
+    expect(beams).toHaveLength(4);
+    const sin = 2000 / Math.hypot(2000, 2000); // 縦梁と斜め線（45度）のなす角
+    const inset = 75 / sin;
+    expect(beams[3]?.x1).toBe(4800);
+    expect(beams[3]?.y1).toBeCloseTo(800 + inset, 1); // x=4800 で斜め線は y=800
+    expect(beams[3]?.y2).toBe(6000 - 75);
+    // すでに置いてある小梁も refitBeams で同じく切られる（ここでは半幅150で計算）
+    const laid: FireproofDrawingFloor = {
+      ...f,
+      beams: [{ x1: 4800, y1: 75, x2: 4800, y2: 5925, symbol: "B40" }],
+    };
+    const refit = refitBeams(laid, () => 150);
+    expect(refit[0]?.y1).toBeCloseTo(800 + 150 / sin, 1);
+    expect(refit[0]?.y2).toBe(6000 - 150);
+  });
+
   it("縦・横に引いた線は普通の境界線として区画を囲む", () => {
     // 横の引き梁 (0,0)-(2,0) と縦の引き梁 (0,0)-(0,1)＋通常の大梁で区画
     const f: FireproofDrawingFloor = {
@@ -837,6 +893,8 @@ describe("斜梁（2交点どうしの大梁）", () => {
       insetRight: 75,
       insetTop: 75,
       insetBottom: 75,
+      pinX: 3000,
+      pinY: 3000,
     });
   });
 });

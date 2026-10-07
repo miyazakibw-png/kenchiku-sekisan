@@ -103,16 +103,19 @@ export interface DrawingRegion {
   insetBottom?: number;
   /** 境界になった斜めの線（この線で区切られた側を区画の外側にはみ出さないよう、置く小梁を切る） */
   diagEdges?: DiagEdge[];
+  /** この区画を選ぶために押した点（斜めの線の内側がこの点のある側） */
+  pinX?: number;
+  pinY?: number;
 }
 
-/** 区画の境界になった斜めの線（中心線・その線の半幅・囲む側） */
+/** 区画の境界になった斜めの線（中心線・その線の半幅・囲む側。区画の角を切るだけのときは "diag"） */
 export interface DiagEdge {
   x1: number;
   y1: number;
   x2: number;
   y2: number;
   half: number;
-  side: "left" | "right" | "top" | "bottom";
+  side: "left" | "right" | "top" | "bottom" | "diag";
 }
 
 export interface FireproofDrawingFloor {
@@ -735,6 +738,79 @@ export function enclosingRegion(
     }
   });
   if (!Number.isFinite(left + right + top + bottom)) return null;
+  /* クリック点の縦横を通らない斜め線でも、できた区画の角をまたぐなら境界に足す。
+     （斜めの梁が区画の角だけ切っているとき、四角で判断して小梁が斜め梁をはみ出すのを防ぐ） */
+  (floor.diagGirders ?? []).forEach((g) => {
+    const ends = diagEnds(xs, ys, g);
+    if (ends === null) return;
+    const sx = ends.x1;
+    const sy = ends.y1;
+    const ex = ends.x2;
+    const ey = ends.y2;
+    const dx = ex - sx;
+    const dy = ey - sy;
+    const plan = Math.hypot(dx, dy);
+    if (plan <= 0) return;
+    const off = g.offset ?? 0;
+    const x1 = sx + (-dy / plan) * off;
+    const y1 = sy + (dx / plan) * off;
+    const x2 = ex + (-dy / plan) * off;
+    const y2 = ey + (dx / plan) * off;
+    if (x1 === x2 || y1 === y2) return; // 軸にそう線は縦横の境界で扱い済み
+    if (
+      edges.some(
+        (e) => e.x1 === x1 && e.y1 === y1 && e.x2 === x2 && e.y2 === y2,
+      )
+    )
+      return; // クリック点をまたぐ線として拾い済み
+    const edx = x2 - x1;
+    const edy = y2 - y1;
+    const inSign =
+      (px - x1) * edy - (py - y1) * edx >= 0 ? 1 : -1;
+    const corners: [number, number][] = [
+      [left, top],
+      [right, top],
+      [left, bottom],
+      [right, bottom],
+    ];
+    const outside = corners.some(
+      ([cx, cy]) => inSign * ((cx - x1) * edy - (cy - y1) * edx) < -1e-6,
+    );
+    if (!outside) return;
+    /* 線分が区画の中を本当に通るか（無限直線がまたぐだけのものは外す） */
+    const inRect = (x: number, y: number) =>
+      x >= left && x <= right && y >= top && y <= bottom;
+    const segCross = (
+      ax: number,
+      ay: number,
+      bx: number,
+      by: number,
+    ): boolean => {
+      const adx = bx - ax;
+      const ady = by - ay;
+      const den = edx * ady - edy * adx;
+      if (Math.abs(den) < 1e-9) return false;
+      const tt = ((ax - x1) * ady - (ay - y1) * adx) / den;
+      const uu = ((ax - x1) * edy - (ay - y1) * edx) / den;
+      return tt >= 0 && tt <= 1 && uu >= 0 && uu <= 1;
+    };
+    const cuts =
+      inRect(x1, y1) ||
+      inRect(x2, y2) ||
+      segCross(left, top, right, top) ||
+      segCross(right, top, right, bottom) ||
+      segCross(right, bottom, left, bottom) ||
+      segCross(left, bottom, left, top);
+    if (!cuts) return;
+    edges.push({
+      x1,
+      y1,
+      x2,
+      y2,
+      half: girderHalf(g.symbol),
+      side: "diag",
+    });
+  });
   return {
     x: left,
     y: top,
@@ -745,6 +821,8 @@ export function enclosingRegion(
     insetTop,
     insetBottom,
     ...(edges.length > 0 ? { diagEdges: edges } : {}),
+    pinX: px,
+    pinY: py,
   };
 }
 
@@ -791,8 +869,9 @@ function clipBeamAtDiagEdges(
 ): FireproofDrawingBeam | null {
   const edges = region.diagEdges;
   if (edges === undefined || edges.length === 0) return beam;
-  const cx = region.x + region.width / 2;
-  const cy = region.y + region.height / 2;
+  /* 斜め線の内側は「区画を選んだときに押した点」がある側（無いときは区画の中央） */
+  const cx = region.pinX ?? region.x + region.width / 2;
+  const cy = region.pinY ?? region.y + region.height / 2;
   let x1 = beam.x1;
   let y1 = beam.y1;
   let x2 = beam.x2;
@@ -809,12 +888,16 @@ function clipBeamAtDiagEdges(
     const sideC = (cx - edge.x1) * edy - (cy - edge.y1) * edx;
     if (sideC === 0) continue;
     const inSign = sideC > 0 ? 1 : -1;
-    const s1 = inSign * ((x1 - edge.x1) * edy - (y1 - edge.y1) * edx);
-    const s2 = inSign * ((x2 - edge.x1) * edy - (y2 - edge.y1) * edx);
-    const out1 = s1 < -1e-6;
-    const out2 = s2 < -1e-6;
-    if (!out1 && !out2) continue;
-    if (out1 && out2) return null; // 線の外側に全部ある
+    /* 内側向きの直交距離（線の内側＝正）。端が梁の幅の中（芯から面のあいだ）に
+       あれば、その端を交点＋内内ぶんへ寄せる */
+    const dist = (x: number, y: number) =>
+      (inSign * ((x - edge.x1) * edy - (y - edge.y1) * edx)) / eLen;
+    const d1 = dist(x1, y1);
+    const d2 = dist(x2, y2);
+    const in1 = d1 < edge.half - 1e-6;
+    const in2 = d2 < edge.half - 1e-6;
+    if (!in1 && !in2) continue;
+    if (in1 && in2) return null; // 線の幅の中か外側に全部ある
     const t =
       ((edge.x1 - x1) * edy - (edge.y1 - y1) * edx) / den;
     const ix = x1 + bdx * t;
@@ -824,7 +907,7 @@ function clipBeamAtDiagEdges(
     const inset = edge.half / Math.max(0.3, sin);
     const ux = bdx / bLen;
     const uy = bdy / bLen;
-    if (out1) {
+    if (in1) {
       x1 = ix + ux * inset;
       y1 = iy + uy * inset;
     } else {
@@ -925,17 +1008,27 @@ export function refitBeams(
     );
     if (region === null) return beam;
     if (beam.x1 === beam.x2)
-      return {
-        ...beam,
-        y1: region.y + (region.insetTop ?? 0),
-        y2: region.y + region.height - (region.insetBottom ?? 0),
-      };
+      return (
+        clipBeamAtDiagEdges(
+          {
+            ...beam,
+            y1: region.y + (region.insetTop ?? 0),
+            y2: region.y + region.height - (region.insetBottom ?? 0),
+          },
+          region,
+        ) ?? beam
+      );
     if (beam.y1 === beam.y2)
-      return {
-        ...beam,
-        x1: region.x + (region.insetLeft ?? 0),
-        x2: region.x + region.width - (region.insetRight ?? 0),
-      };
+      return (
+        clipBeamAtDiagEdges(
+          {
+            ...beam,
+            x1: region.x + (region.insetLeft ?? 0),
+            x2: region.x + region.width - (region.insetRight ?? 0),
+          },
+          region,
+        ) ?? beam
+      );
     return beam;
   });
 }
