@@ -92,6 +92,10 @@ export default function FormworkTransferPage({
   const [bulkUnit, setBulkUnit] = useState("");
   const [bulkCoefficient, setBulkCoefficient] = useState(1);
   const [copyDescription, setCopyDescription] = useState(true);
+  /** ①の表に出す工種科目（localStorageに残す。未設定は左官工事のみ・無ければ全部） */
+  const [subjectSel, setSubjectSel] = useState<ReadonlySet<string> | null>(
+    null,
+  );
 
   const reload = useCallback(async () => {
     setView(await window.sekisan.getFormworkTransfer(project.id));
@@ -119,26 +123,99 @@ export default function FormworkTransferPage({
     [options],
   );
 
-  /** 名称で探した元明細（空欄なら全部） */
+  const subjectKeyOf = (subjectId: number | null): string =>
+    subjectId === null ? "none" : String(subjectId);
+
+  /** ①の表に出る明細に載っている工種科目（科目マスターの並び。科目なしは最後） */
+  const subjectOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    view.sources.forEach((item) => {
+      const key = subjectKeyOf(item.subjectId);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    const options: { key: string; label: string; count: number }[] = [];
+    subjects.forEach((subject) => {
+      const count = counts.get(String(subject.id));
+      if (count !== undefined && count > 0) {
+        options.push({
+          key: String(subject.id),
+          label: `${subject.id} ${subject.name}`,
+          count,
+        });
+        counts.delete(String(subject.id));
+      }
+    });
+    counts.forEach((count, key) => {
+      options.push({
+        key,
+        label: key === "none" ? "（科目なし）" : key,
+        count,
+      });
+    });
+    return options;
+  }, [view.sources, subjects]);
+
+  /** 表示する工種科目の初期値：前回の選びを復元、初めては左官工事のみ（無ければ全部） */
+  useEffect(() => {
+    if (subjectSel !== null || subjectOptions.length === 0) return;
+    const valid = new Set(subjectOptions.map((option) => option.key));
+    const stored = window.localStorage.getItem("formwork-source-subjects");
+    if (stored !== null) {
+      try {
+        const keys = (JSON.parse(stored) as string[]).filter((key) =>
+          valid.has(key),
+        );
+        if (keys.length > 0) {
+          setSubjectSel(new Set(keys));
+          return;
+        }
+      } catch {
+        // 読めないときは初期値へ
+      }
+    }
+    const plaster = subjectOptions
+      .filter((option) => option.label.includes("左官"))
+      .map((option) => option.key);
+    setSubjectSel(
+      new Set(plaster.length > 0 ? plaster : [...valid]),
+    );
+  }, [subjectOptions, subjectSel]);
+
+  const toggleSubject = (key: string, on: boolean): void => {
+    const next = new Set(subjectSel ?? []);
+    if (on) next.add(key);
+    else next.delete(key);
+    setSubjectSel(next);
+    window.localStorage.setItem(
+      "formwork-source-subjects",
+      JSON.stringify([...next]),
+    );
+  };
+
+  const selectAllSubjects = (): void => {
+    const next = new Set(subjectOptions.map((option) => option.key));
+    setSubjectSel(next);
+    window.localStorage.setItem(
+      "formwork-source-subjects",
+      JSON.stringify([...next]),
+    );
+  };
+
+  /** 名称で探した元明細（空欄なら全部）＋表示する工種科目で絞る */
   const shown = useMemo(() => {
     const word = search.trim();
-    return word === ""
-      ? view.sources
-      : view.sources.filter(
-          (item) =>
-            item.name.includes(word) || item.descriptionUpper.includes(word),
-        );
-  }, [search, view.sources]);
-
-  /** ①の検索欄のプルダウンに出す、集計に載っている明細の一覧 */
-  const sourceEntries: PickEntry[] = useMemo(
-    () =>
-      view.sources.map((item) => ({
-        value: item.masterKey,
-        label: `${item.part1} ${item.part2} ${item.partName}｜${item.name} ${item.descriptionUpper}${item.descriptionLower === "" ? "" : ` / ${item.descriptionLower}`}｜${item.quantity.toFixed(2)}${item.unit}`,
-      })),
-    [view.sources],
-  );
+    return view.sources.filter((item) => {
+      if (
+        subjectSel !== null &&
+        !subjectSel.has(subjectKeyOf(item.subjectId))
+      )
+        return false;
+      if (word === "") return true;
+      return (
+        item.name.includes(word) || item.descriptionUpper.includes(word)
+      );
+    });
+  }, [search, view.sources, subjectSel]);
 
   /** すでに型枠明細に登録してある元明細（再び変換を押すと入れ替わる） */
   const covered = useMemo(
@@ -278,22 +355,10 @@ export default function FormworkTransferPage({
       <div className="toolbar">
         <label>
           名称で検索{" "}
-          <PickInput
-            japanese
-            value=""
+          <TextInput
+            value={search}
             placeholder="例：打放補修"
-            title="集計に載っている明細を一覧から選びます（打つと絞り込み、クリックで下の表にチェックが入ります）"
-            entries={sourceEntries}
-            onCommit={(text, pickedFlag) => {
-              if (pickedFlag) {
-                setPicked((prev) =>
-                  prev.includes(text) ? prev : [...prev, text],
-                );
-                setSearch("");
-                return;
-              }
-              setSearch(text);
-            }}
+            onCommit={setSearch}
           />
         </label>
         <button
@@ -306,6 +371,26 @@ export default function FormworkTransferPage({
           選択を外す
         </button>
       </div>
+      {subjectOptions.length > 1 && (
+        <div className="toolbar subject-filter">
+          <span>表示する工種：</span>
+          {subjectOptions.map((option) => (
+            <label key={option.key}>
+              <input
+                type="checkbox"
+                checked={subjectSel?.has(option.key) === true}
+                onChange={(event) =>
+                  toggleSubject(option.key, event.target.checked)
+                }
+              />{" "}
+              {option.label}（{option.count}）
+            </label>
+          ))}
+          <button type="button" onClick={selectAllSubjects}>
+            全部
+          </button>
+        </div>
+      )}
       <table className="parts check-sheet">
         <thead>
           <tr>
