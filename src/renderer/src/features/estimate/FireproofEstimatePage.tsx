@@ -1118,9 +1118,9 @@ function ColumnSheetView({
       })),
     ];
     commitRows([...sheet.rows, ...imported]);
-    setImportPick(false);
+    // 選びボタンは消さず残す（「やめる」を押すまで続けて別の階を取り込める）
     onMessage(
-      `${config.title}：${label} の${memberName}を ${items.length} 本取り込みました`,
+      `${config.title}：${label} の${memberName}を ${items.length} 本取り込みました（続けて別の階を選べます）`,
     );
   };
 
@@ -1357,9 +1357,9 @@ function ColumnSheetView({
                       (_, at) => sheetFloors[at] !== floor,
                     ),
                   );
-                  setDeletePick(false);
+                  // 選びボタンは消さず残す（「やめる」を押すまで続けて使える）
                   onMessage(
-                    `${config.title}：${label} の ${count} 行を消しました`,
+                    `${config.title}：${label} の ${count} 行を消しました（続けて別の階を選べます）`,
                   );
                 }}
               >
