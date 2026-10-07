@@ -17,6 +17,20 @@ export interface FireproofDrawingBeam {
   id?: string;
 }
 
+/** 斜梁（通り芯にそわない大梁。始点・終点は交点のグリッド番号） */
+export interface FireproofDrawingDiagGirder {
+  /** 始点の交点（グリッドの番号） */
+  fx: number;
+  fy: number;
+  /** 終点の交点 */
+  tx: number;
+  ty: number;
+  /** 記号（大梁リストのもの） */
+  symbol: string;
+  /** 取合記号のキーに使う番号。無いものは行番号で代用する */
+  id?: string;
+}
+
 /** 線の描き幅の半分（mm）。部材の幅（リストの後ろの数字）が分からないときの既定値。
     小梁の端を線の内側（内内寸法）に寄せる量としても使う */
 export const GIRDER_HALF = 75; // 大梁（幅が不明なとき150mm幅で描く）
@@ -77,6 +91,8 @@ export interface FireproofDrawingFloor {
   axisHeightsX?: Record<string, number>;
   /** 小梁（区画を分割して置く線） */
   beams: FireproofDrawingBeam[];
+  /** 斜梁（通り芯にそわない大梁。2つの交点を結ぶ線） */
+  diagGirders?: FireproofDrawingDiagGirder[];
   /** 他の計算書へ呼び出せるように書き出した画像（データURL）。無いときは空文字 */
   image: string;
   /** 書き出した画像の 1mm あたり画素数（呼び出す側の縮尺に使う） */
@@ -180,6 +196,32 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
     })(),
     axisHeights: numberMap(row.axisHeights),
     axisHeightsX: numberMap(row.axisHeightsX),
+    diagGirders: (() => {
+      if (!Array.isArray(row.diagGirders)) return undefined;
+      const out: FireproofDrawingDiagGirder[] = [];
+      row.diagGirders.forEach((item: unknown) => {
+        if (item === null || typeof item !== "object") return;
+        const r = item as Partial<FireproofDrawingDiagGirder>;
+        const ends = [r.fx, r.fy, r.tx, r.ty];
+        if (
+          !ends.every(
+            (end) => typeof end === "number" && Number.isFinite(end) && end >= 0,
+          )
+        )
+          return;
+        const g: FireproofDrawingDiagGirder = {
+          fx: Math.trunc(r.fx as number),
+          fy: Math.trunc(r.fy as number),
+          tx: Math.trunc(r.tx as number),
+          ty: Math.trunc(r.ty as number),
+          symbol: typeof r.symbol === "string" ? r.symbol.trim() : "",
+          ...(typeof r.id === "string" && r.id !== "" ? { id: r.id } : {}),
+        };
+        if (g.fx === g.tx && g.fy === g.ty) return;
+        out.push(g);
+      });
+      return out.length > 0 ? out : undefined;
+    })(),
     beams: Array.isArray(row.beams)
       ? row.beams
           .map((beam) => {
@@ -684,6 +726,11 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
     const key = `b:${beam.id ?? `#${index}`}`;
     if ((joints[key] ?? "") === "") missing.push(key);
   });
+  (floor.diagGirders ?? []).forEach((g, index) => {
+    const key = `d:${g.id ?? `#${index}`}`;
+    if (g.symbol.trim() !== "" && (joints[key] ?? "") === "")
+      missing.push(key);
+  });
   return missing;
 }
 
@@ -726,6 +773,17 @@ export function columnImportItems(
 /** 伏図から取り込んだ梁ブロックの先頭に入れる案内文 */
 export const BEAM_IMPORT_HEAD_COMMENT =
   "梁位置表示（大＝大梁は通り芯の区間・小＝小梁は区画。軸の表記は柱と同じ）";
+
+/** 斜梁の位置表示（例「4-A〜5-C」。始点→終点の交点ラベル） */
+export function diagGirderPosition(
+  floor: FireproofDrawingFloor,
+  g: FireproofDrawingDiagGirder,
+): string {
+  const ys = positions(floor.ySpans);
+  const at = (xi: number, yi: number) =>
+    `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
+  return `${at(g.fx, g.fy)}〜${at(g.tx, g.ty)}`;
+}
 
 /** 「無し」の柱をまたいでつなぐ大梁の1部材分 */
 export interface GirderMember {
@@ -1149,6 +1207,49 @@ export function beamImportItems(
           .map((key) => floor.jointSymbols?.[`g:${key}`] ?? "")
           .find((mark) => mark !== "") ?? "",
       mm: Math.hypot(plan, dh),
+    });
+  });
+  /* 斜梁（2交点どうしを結ぶ大梁。端は両端の柱の、斜め方向の面ぶん詰める） */
+  const girderTotal =
+    ys.length * (xs.length - 1) + xs.length * (ys.length - 1);
+  (floor.diagGirders ?? []).forEach((g, index) => {
+    const symbol = g.symbol.trim();
+    if (symbol === "") return;
+    const x1 = xs[g.fx];
+    const y1 = ys[g.fy];
+    const x2 = xs[g.tx];
+    const y2 = ys[g.ty];
+    if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined)
+      return;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const plan = Math.hypot(dx, dy);
+    if (plan <= 0) return;
+    const ux = dx / plan;
+    const uy = dy / plan;
+    /** 交点の柱の、斜め方向の面までの量（四角の半分を方向に写す） */
+    const faceAt = (xi: number, yi: number): number => {
+      if (!columnExists(floor, xi, yi)) return 0;
+      const sym = (floor.columns[columnKey(xi, yi)] ?? "").trim();
+      const half = columnHalfOf?.(sym) ?? {
+        hw: COLUMN_HALF,
+        hd: COLUMN_HALF,
+      };
+      return half.hw * Math.abs(ux) + half.hd * Math.abs(uy);
+    };
+    const len = Math.max(0, plan - faceAt(g.fx, g.fy) - faceAt(g.tx, g.ty));
+    const h1 = colHeight(g.fx, g.fy);
+    const h2 = colHeight(g.tx, g.ty);
+    const dh =
+      floorHeight !== null && h1 !== null && h2 !== null
+        ? Math.abs(h1 - h2)
+        : 0;
+    girders.push({
+      no: girderTotal + 1 + index,
+      position: diagGirderPosition(floor, g),
+      symbol,
+      mark: floor.jointSymbols?.[`d:${g.id ?? `#${index}`}`] ?? "",
+      mm: Math.hypot(len, dh),
     });
   });
   girders.sort((a, b) => a.no - b.no);

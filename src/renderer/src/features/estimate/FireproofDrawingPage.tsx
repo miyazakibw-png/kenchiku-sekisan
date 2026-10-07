@@ -23,6 +23,7 @@ import {
   type ColumnHalfOf,
   type HalfWidthOf,
   columnExists,
+  diagGirderPosition,
   girderEndCuts,
   girderExists,
   girderKey,
@@ -40,6 +41,7 @@ import {
   type DrawingRegion,
   type FireproofDrawing,
   type FireproofDrawingBeam,
+  type FireproofDrawingDiagGirder,
   type FireproofDrawingFloor,
 } from "../../../../core/fireproof/fireproofDrawing";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -235,6 +237,7 @@ function SymbolList({
   onSelChange,
   none,
   onToggleNone,
+  selectedKey,
 }: {
   rows: SymbolRow[];
   values: Record<string, string>;
@@ -250,6 +253,8 @@ function SymbolList({
   none?: ReadonlySet<string>;
   /** 「無し」チェックの切替 */
   onToggleNone?: (key: string, on: boolean) => void;
+  /** 図で選んだ行（その行までスクロールして入力欄に移る） */
+  selectedKey?: string | null;
 }): JSX.Element {
   const [sel, setSel] = useState<{ from: number; to: number } | null>(null);
   const dragSel = useRef(false);
@@ -266,6 +271,19 @@ function SymbolList({
   useEffect(() => {
     onSelChange?.(sel);
   }, [sel, onSelChange]);
+
+  /* 図で部材をクリックしたとき、その行が見える位置まで動き・入力欄に移る */
+  useEffect(() => {
+    if (selectedKey === undefined || selectedKey === null) return;
+    const index = rows.findIndex((row) => row.key === selectedKey);
+    if (index < 0) return;
+    const input = boxRef.current?.querySelector<HTMLInputElement>(
+      `input[data-row="${index}"]`,
+    );
+    input?.scrollIntoView({ block: "nearest" });
+    input?.focus({ preventScroll: true });
+    input?.select();
+  }, [selectedKey]);
 
   const inSel = (index: number): boolean =>
     sel !== null &&
@@ -395,7 +413,7 @@ function SymbolList({
       {rows.length === 0 && <p className="hint">{emptyHint}</p>}
       {rows.map((row, index) => (
         <div
-          className={`symbol-row${row.gap ? " gap" : ""}${inSel(index) ? " sel" : ""}`}
+          className={`symbol-row${row.gap ? " gap" : ""}${inSel(index) ? " sel" : ""}${row.key === selectedKey ? " pick" : ""}`}
           key={row.key}
         >
           <span
@@ -485,6 +503,13 @@ function FloorSvg({
   onBeamPointerDown,
   onPointerMove,
   onPointerUp,
+  onColumnPick,
+  onGirderPick,
+  onDiagPick,
+  selDiag,
+  diagMode,
+  diagStart,
+  onIntersectionPick,
   knownColumns,
   knownBeams,
   halfWidthOf,
@@ -505,6 +530,20 @@ function FloorSvg({
   onBeamPointerDown: (index: number, event: React.PointerEvent) => void;
   onPointerMove: (event: React.PointerEvent) => void;
   onPointerUp: () => void;
+  /** 図の柱をクリックしたとき（柱のキー "xi,yi"） */
+  onColumnPick?: (key: string) => void;
+  /** 図の大梁をクリックしたとき（大梁のキー "x:0,0" など） */
+  onGirderPick?: (key: string) => void;
+  /** 図の斜梁をクリックしたとき（斜梁の行番号） */
+  onDiagPick?: (index: number) => void;
+  /** 斜梁リストで選んだ行 */
+  selDiag?: number | null;
+  /** 「斜梁を足す」モード中（交点をクリックして2点を選ぶ） */
+  diagMode?: boolean;
+  /** 斜梁の始点に選んだ交点 */
+  diagStart?: { xi: number; yi: number } | null;
+  /** 斜梁モードで交点をクリックしたとき */
+  onIntersectionPick?: (xi: number, yi: number) => void;
   /** リストに登録済みの記号（無い記号は赤で示す） */
   knownColumns: ReadonlySet<string>;
   knownBeams: ReadonlySet<string>;
@@ -701,12 +740,22 @@ function FloorSvg({
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             const miss = jointMissing?.has(`g:${key}`) === true;
             return (
-              <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
+              <g
+                key={key}
+                className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  onGirderPick?.(key);
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
                 <line x1={x1} y1={y - gh} x2={x2} y2={y - gh} />
                 <line x1={x1} y1={y + gh} x2={x2} y2={y + gh} />
                 <text x={mx} y={y - gh - 120} textAnchor="middle" fontSize={FONT_SYMBOL}>
                   {symbol}
                 </text>
+                {/* つかみやすくするための太い透明な線 */}
+                <line className="hit" x1={x1} y1={y} x2={x2} y2={y} />
               </g>
             );
           }
@@ -721,7 +770,15 @@ function FloorSvg({
             const gh = halfWidthOf?.(symbol.trim()) ?? GIRDER_HALF;
             const miss = jointMissing?.has(`g:${key}`) === true;
             return (
-              <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
+              <g
+                key={key}
+                className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  onGirderPick?.(key);
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
                 <line x1={x - gh} y1={y1} x2={x - gh} y2={y2} />
                 <line x1={x + gh} y1={y1} x2={x + gh} y2={y2} />
                 <text
@@ -733,10 +790,85 @@ function FloorSvg({
                 >
                   {symbol}
                 </text>
+                {/* つかみやすくするための太い透明な線 */}
+                <line className="hit" x1={x} y1={y1} x2={x} y2={y2} />
               </g>
             );
           }
           return null;
+        })}
+        {/* 斜梁（2つの交点どうしを結ぶ大梁。端は柱の面） */}
+        {(floor.diagGirders ?? []).map((g, index) => {
+          const x1 = xs[g.fx];
+          const y1 = ys[g.fy];
+          const x2 = xs[g.tx];
+          const y2 = ys[g.ty];
+          if (
+            x1 === undefined ||
+            y1 === undefined ||
+            x2 === undefined ||
+            y2 === undefined
+          )
+            return null;
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const plan = Math.hypot(dx, dy);
+          if (plan <= 0) return null;
+          const ux = dx / plan;
+          const uy = dy / plan;
+          const nx = -uy;
+          const ny = ux;
+          const gh = halfWidthOf?.(g.symbol.trim()) ?? GIRDER_HALF;
+          /** 両端の柱の、斜め方向の面ぶん */
+          const faceAt = (xi: number, yi: number): number => {
+            if (!hasColumn(floor, xi, yi)) return 0;
+            const sym = (floor.columns[columnKey(xi, yi)] ?? "").trim();
+            const h = columnHalfOf?.(sym) ?? { hw: COL_HALF, hd: COL_HALF };
+            return h.hw * Math.abs(ux) + h.hd * Math.abs(uy);
+          };
+          const ax1 = x1 + ux * faceAt(g.fx, g.fy);
+          const ay1 = y1 + uy * faceAt(g.fx, g.fy);
+          const ax2 = x2 - ux * faceAt(g.tx, g.ty);
+          const ay2 = y2 - uy * faceAt(g.tx, g.ty);
+          const mx = (ax1 + ax2) / 2;
+          const my = (ay1 + ay2) / 2;
+          const bad = g.symbol.trim() !== "" && !knownBeams.has(g.symbol.trim());
+          const miss =
+            jointMissing?.has(`d:${g.id ?? `#${index}`}`) === true;
+          return (
+            <g
+              key={`d${index}`}
+              className={`diag${index === selDiag ? " on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}`}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onDiagPick?.(index);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <line
+                x1={ax1 + nx * gh}
+                y1={ay1 + ny * gh}
+                x2={ax2 + nx * gh}
+                y2={ay2 + ny * gh}
+              />
+              <line
+                x1={ax1 - nx * gh}
+                y1={ay1 - ny * gh}
+                x2={ax2 - nx * gh}
+                y2={ay2 - ny * gh}
+              />
+              <text
+                x={mx + nx * (gh + 260)}
+                y={my + ny * (gh + 260)}
+                textAnchor="middle"
+                fontSize={FONT_SYMBOL}
+              >
+                {g.symbol}
+              </text>
+              {/* つかみやすくするための太い透明な線 */}
+              <line className="hit" x1={ax1} y1={ay1} x2={ax2} y2={ay2} />
+            </g>
+          );
         })}
       </g>
       {/* 小梁（区画を分割する2本線。つかんで動かせる） */}
@@ -810,7 +942,15 @@ function FloorSvg({
           };
           const miss = jointMissing?.has(`c:${key}`) === true;
           return (
-            <g key={key} className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}>
+            <g
+              key={key}
+              className={`${bad ? "bad" : ""}${miss ? " miss" : ""}`}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                onColumnPick?.(key);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
               <rect
                 x={x - half.hw}
                 y={y - half.hd}
@@ -934,7 +1074,59 @@ function FloorSvg({
             />
           );
         })}
+        {(floor.diagGirders ?? []).map((g, index) => {
+          const x1 = xs[g.fx];
+          const y1 = ys[g.fy];
+          const x2 = xs[g.tx];
+          const y2 = ys[g.ty];
+          if (
+            x1 === undefined ||
+            y1 === undefined ||
+            x2 === undefined ||
+            y2 === undefined
+          )
+            return null;
+          return (
+            <Joint
+              key={`jd${index}`}
+              jointKey={`d:${g.id ?? `#${index}`}`}
+              x={(x1 + x2) / 2}
+              y={(y1 + y2) / 2 - 140}
+            />
+          );
+        })}
       </g>
+      {/* 斜梁モード：交点をクリックして始点→終点を選ぶ（いちばん手前に置いて確実に押せる） */}
+      {diagMode === true && (
+        <g className="diag-pick">
+          {xs.map((x, xi) =>
+            ys.map((y, yi) => (
+              <circle
+                key={`dp${xi},${yi}`}
+                cx={x}
+                cy={y}
+                r={450}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  onIntersectionPick?.(xi, yi);
+                }}
+                onClick={(event) => event.stopPropagation()}
+              />
+            )),
+          )}
+          {diagStart !== null &&
+            diagStart !== undefined &&
+            xs[diagStart.xi] !== undefined &&
+            ys[diagStart.yi] !== undefined && (
+              <circle
+                className="start"
+                cx={xs[diagStart.xi]}
+                cy={ys[diagStart.yi]}
+                r={600}
+              />
+            )}
+        </g>
+      )}
     </g>
   );
 
@@ -955,7 +1147,7 @@ function FloorSvg({
         // 梁・柱・寸法・芯記号など部品の上のクリックは区画選びにしない
         // （区画を選ぶ途中でうっかり線を触っても選択が消えないように）
         const hit = event.target as Element;
-        if (hit.closest(".beam, .girder, .column, .axis, .dim, .joint")) return;
+        if (hit.closest(".beam, .girder, .column, .axis, .dim, .joint, .diag-pick")) return;
         const svg = event.currentTarget;
         const point = svg.createSVGPoint();
         point.x = event.clientX;
@@ -1014,6 +1206,7 @@ function floorSignature(floor: FireproofDrawingFloor): string {
     c: floor.columns,
     g: floor.girders,
     b: floor.beams,
+    d: floor.diagGirders,
   });
 }
 
@@ -1047,6 +1240,15 @@ export default function FireproofDrawingPage({
     from: number;
     to: number;
   } | null>(null);
+  /* 図でクリックした柱・大梁・斜梁（左の記号欄のその行に飛ぶ） */
+  const [selColumn, setSelColumn] = useState<string | null>(null);
+  const [selGirder, setSelGirder] = useState<string | null>(null);
+  const [selDiag, setSelDiag] = useState<number | null>(null);
+  /* 斜梁の入力モード（交点を2か所クリックして入れる）と始点 */
+  const [diagMode, setDiagMode] = useState(false);
+  const [diagStart, setDiagStart] = useState<{ xi: number; yi: number } | null>(
+    null,
+  );
   const beamAnchorRef = useRef<number | null>(null);
   const beamRowDragRef = useRef(false);
   const rowClickSuppressRef = useRef(false);
@@ -1264,6 +1466,58 @@ export default function FireproofDrawingPage({
     [current],
   );
 
+  /* 斜梁：モード中に交点を押す→始点、もう1か所→終点で1本入る */
+  const pickIntersection = useCallback(
+    (xi: number, yi: number) => {
+      if (diagStart === null) {
+        setDiagStart({ xi, yi });
+        return;
+      }
+      if (diagStart.xi === xi && diagStart.yi === yi) {
+        setDiagStart(null);
+        return;
+      }
+      const next: FireproofDrawingDiagGirder[] = [
+        ...(current.diagGirders ?? []),
+        {
+          fx: diagStart.xi,
+          fy: diagStart.yi,
+          tx: xi,
+          ty: yi,
+          symbol: "",
+          id: `d${Date.now().toString(36)}${(current.diagGirders ?? []).length}`,
+        },
+      ];
+      updateFloor({ diagGirders: next });
+      setSelDiag(next.length - 1);
+      setDiagStart(null);
+      setMessage(
+        `斜梁を入れました（${xGridLabel(diagStart.xi)}-${yGridLabel(positions(current.ySpans).length - 1 - diagStart.yi)}〜${xGridLabel(xi)}-${yGridLabel(positions(current.ySpans).length - 1 - yi)}）。左の斜梁の欄に記号を入れてください`,
+      );
+    },
+    [current, diagStart, updateFloor],
+  );
+
+  /* 斜梁の行：記号の書き換え・行の消去 */
+  const changeDiagSymbol = useCallback(
+    (index: number, symbol: string) => {
+      updateFloor({
+        diagGirders: (current.diagGirders ?? []).map((g, i) =>
+          i === index ? { ...g, symbol } : g,
+        ),
+      });
+    },
+    [current, updateFloor],
+  );
+  const deleteDiag = useCallback(
+    (index: number) => {
+      const next = (current.diagGirders ?? []).filter((_, i) => i !== index);
+      updateFloor({ diagGirders: next.length > 0 ? next : undefined });
+      setSelDiag(null);
+    },
+    [current, updateFloor],
+  );
+
   /* 階コピーした図面を、選んだ階ぜんぶに貼り付ける（戻るでもまとめて戻せるよう1回分の履歴にする） */
   const pasteFloorTo = useCallback(
     (names: string[]) => {
@@ -1312,9 +1566,12 @@ export default function FireproofDrawingPage({
       const keys: string[] = [];
       if (target === "column")
         Object.keys(current.columns).forEach((key) => keys.push(`c:${key}`));
-      else if (target === "girder")
+      else if (target === "girder") {
         Object.keys(current.girders).forEach((key) => keys.push(`g:${key}`));
-      else
+        (current.diagGirders ?? []).forEach((g, index) =>
+          keys.push(`d:${g.id ?? `#${index}`}`),
+        );
+      } else
         current.beams.forEach((beam, index) =>
           keys.push(`b:${beam.id ?? `#${index}`}`),
         );
@@ -2362,6 +2619,7 @@ export default function FireproofDrawingPage({
               known={knownColumns}
               none={noColumnSet}
               onToggleNone={toggleNoColumn}
+              selectedKey={selColumn}
             />
           </section>
 
@@ -2408,7 +2666,63 @@ export default function FireproofDrawingPage({
               known={knownBeams}
               none={noGirderSet}
               onToggleNone={toggleNoGirder}
+              selectedKey={selGirder}
             />
+            <div className="diag-block">
+              <div className="diag-head">
+                <span>斜梁（通り芯にそわない大梁）</span>
+                <button
+                  type="button"
+                  className={diagMode ? "on" : ""}
+                  disabled={nx === 0 || ny === 0}
+                  onClick={() => {
+                    setDiagMode((on) => !on);
+                    setDiagStart(null);
+                  }}
+                >
+                  {diagMode ? "やめる" : "斜梁を足す"}
+                </button>
+              </div>
+              {diagMode && (
+                <p className="hint">
+                  図の交点を2か所クリック（始点→終点）すると斜めの梁が入ります
+                </p>
+              )}
+              {(current.diagGirders ?? []).map((g, index) => (
+                <div
+                  key={g.id ?? index}
+                  className={`diag-row${index === selDiag ? " on" : ""}`}
+                  onClick={() => setSelDiag(index)}
+                >
+                  <span className="at">{diagGirderPosition(current, g)}</span>
+                  <input
+                    className={
+                      g.symbol.trim() !== "" &&
+                      !knownBeams.has(g.symbol.trim())
+                        ? "bad"
+                        : undefined
+                    }
+                    value={g.symbol}
+                    placeholder="G1"
+                    onFocus={() => setSelDiag(index)}
+                    onChange={(event) =>
+                      changeDiagSymbol(index, event.target.value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="diag-del"
+                    title="この斜梁を消す"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deleteDiag(index);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
           </section>
 
           <section className="drawing-section">
@@ -2689,6 +3003,13 @@ export default function FireproofDrawingPage({
                 onBeamPointerDown={handleBeamPointerDown}
                 onPointerMove={handleBeamPointerMove}
                 onPointerUp={endBeamDrag}
+                onColumnPick={setSelColumn}
+                onGirderPick={setSelGirder}
+                onDiagPick={setSelDiag}
+                selDiag={selDiag}
+                diagMode={diagMode}
+                diagStart={diagStart}
+                onIntersectionPick={pickIntersection}
                 knownColumns={knownColumns}
                 knownBeams={knownBeams}
                 halfWidthOf={halfWidthOf}

@@ -704,6 +704,54 @@ describe("「無し」チェック（柱・大梁）", () => {
   });
 });
 
+describe("斜梁（2交点どうしの大梁）", () => {
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000],
+    columns: {
+      "0,0": "C1", "1,0": "C1", "2,0": "C1",
+      "0,1": "C1", "1,1": "C1", "2,1": "C1",
+    },
+    diagGirders: [
+      { fx: 1, fy: 0, tx: 2, ty: 1, symbol: "G1", id: "d1" },
+    ],
+    jointSymbols: { "d:d1": "4" },
+  };
+
+  it("保存に残る（parseDrawingの往復）", () => {
+    const round = parseDrawing(serializeDrawing({ floors: { "1": floor } }));
+    expect(round.floors["1"]?.diagGirders).toEqual([
+      { fx: 1, fy: 0, tx: 2, ty: 1, symbol: "G1", id: "d1" },
+    ]);
+  });
+
+  it("取り込みは斜めの真の長さ（両端の柱の面ぶん引く）で1行", () => {
+    const items = beamImportItems(floor, 4000);
+    const diag = items.find((item) => item.symbol === "G1");
+    // (1,0)-(2,1)：plan = hypot(6000,6000)。柱の面は hw*|ux|+hd*|uy| = 120*(√2/2)*2 ≈ 169.7 → 両端で約339.4
+    const expectMm = Math.hypot(6000, 6000) - 2 * (120 * Math.SQRT1_2 + 120 * Math.SQRT1_2);
+    expect(diag?.comment).toBe("2-B〜3-A");
+    expect(diag?.mark).toBe("4");
+    expect(diag?.lengthFormula).toBe(String(Math.round(expectMm) / 1000));
+  });
+
+  it("記号が無い斜梁は行を作らない・取合の未入力にも入らない", () => {
+    const empty: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [{ fx: 0, fy: 0, tx: 2, ty: 1, symbol: "" }],
+      jointSymbols: {},
+    };
+    expect(beamImportItems(empty, 4000)).toHaveLength(0);
+    expect(missingJointKeys(empty).some((k) => k.startsWith("d:"))).toBe(false);
+    expect(
+      missingJointKeys(floor).some((k) => k.startsWith("d:")),
+    ).toBe(false);
+    const unmarked: FireproofDrawingFloor = { ...floor, jointSymbols: {} };
+    expect(missingJointKeys(unmarked)).toContain("d:d1");
+  });
+});
+
 describe("missingJointKeys", () => {
   it("記号の入った柱・大梁・小梁で記号未入力のものだけのキーを返す", () => {
     const floor: FireproofDrawingFloor = {

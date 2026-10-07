@@ -206,6 +206,77 @@
   font-weight: 700;
 }
 
+/* 図でクリックした部材の行（そのまま記号を打てるよう入力欄に移る） */
+.fireproof-drawing-body .symbol-row.pick {
+  background: #fdeec8;
+  border-radius: 3px;
+}
+
+/* 斜梁の一覧（③大梁の下） */
+.fireproof-drawing-body .diag-block {
+  margin-top: 8px;
+  border-top: 1px dashed #d8dde5;
+  padding-top: 6px;
+}
+
+.fireproof-drawing-body .diag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #555;
+}
+
+.fireproof-drawing-body .diag-head button {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.fireproof-drawing-body .diag-head button.on {
+  background: #2f7dd1;
+  color: #fff;
+}
+
+.fireproof-drawing-body .diag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.fireproof-drawing-body .diag-row.on {
+  background: #fdeec8;
+}
+
+.fireproof-drawing-body .diag-row .at {
+  flex: 0 0 auto;
+  min-width: 7em;
+  font-size: 12px;
+  color: #555;
+}
+
+.fireproof-drawing-body .diag-row input {
+  flex: 0 1 92px;
+  min-width: 0;
+  padding: 2px 6px;
+}
+
+.fireproof-drawing-body .diag-row .diag-del {
+  padding: 0 6px;
+  font-size: 11px;
+  color: #888;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+
+.fireproof-drawing-body .diag-row input.bad {
+  color: #d03030;
+  border-color: #d03030;
+  background: #fff5f5;
+}
+
 /* 右の図面 */
 .fireproof-drawing-body .drawing-canvas {
   flex: 1 1 0;
@@ -350,6 +421,40 @@
 .fireproof-drawing-svg .beam.on text {
   fill: #2f7dd1;
   font-weight: bold;
+}
+
+/* 柱・大梁・斜梁を図でクリック（つかむ）→ 左の記号欄のその行へ飛ぶ */
+.fireproof-drawing-svg .column > g,
+.fireproof-drawing-svg .girder > g {
+  cursor: pointer;
+}
+
+.fireproof-drawing-svg .girder .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+  pointer-events: all;
+}
+
+.fireproof-drawing-svg .girder .diag.on line {
+  stroke: #2f7dd1;
+}
+
+.fireproof-drawing-svg .girder .diag.on text {
+  fill: #2f7dd1;
+}
+
+/* 斜梁モード：交点につける押せる印（透明）。始点は青い輪で出す */
+.fireproof-drawing-svg .diag-pick circle {
+  fill: rgba(0, 0, 0, 0);
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.fireproof-drawing-svg .diag-pick .start {
+  fill: rgba(47, 125, 209, 0.15);
+  stroke: #2f7dd1;
+  stroke-width: 45;
+  stroke-dasharray: 200 120;
 }
 
 /* 選んだ区画・入力欄に対応する場所の色付け */
