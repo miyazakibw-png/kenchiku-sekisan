@@ -15,6 +15,7 @@ import {
   copyName,
   moveProject,
   normalizeDate,
+  pinnedOnTop,
   sortProjects,
   type LedgerSortKey,
 } from "./projectLedger";
@@ -164,7 +165,7 @@ export default function ProjectLedgerPage({
 
   const reload = useCallback(async () => {
     const ledger = await window.sekisan.getProjectLedger();
-    setProjects(ledger.projects);
+    setProjects(pinnedOnTop(ledger.projects));
     setFields(ledger.fields);
   }, []);
 
@@ -194,6 +195,7 @@ export default function ProjectLedgerPage({
       builderName: project.builderName,
       designerName: project.designerName,
       note: project.note,
+      pinned: project.pinned,
       fieldValues: project.fieldValues,
       marks: project.marks,
     });
@@ -289,6 +291,25 @@ export default function ProjectLedgerPage({
       if (moved !== projects) void persistOrder(moved);
     },
     [persistOrder, projects],
+  );
+
+  /** 「上に固定」を切り替える（固定した工事は台帳の先頭の段にまとまる） */
+  const togglePin = useCallback(
+    async (project: ProjectSummary) => {
+      const next = { ...project, pinned: !project.pinned };
+      await saveProject(next);
+      await persistOrder(
+        pinnedOnTop(
+          projects.map((row) => (row.id === project.id ? next : row)),
+        ),
+      );
+      setToast(
+        next.pinned
+          ? `${project.name} を上の段に固定しました`
+          : `${project.name} の固定を外しました`,
+      );
+    },
+    [persistOrder, projects, saveProject],
   );
 
   const commitDate = useCallback(
@@ -512,6 +533,22 @@ export default function ProjectLedgerPage({
                   }}
                 >
                   <td className="handle" title="ドラッグで並べ替え">
+                    <button
+                      type="button"
+                      className={project.pinned ? "pin on" : "pin"}
+                      title={
+                        project.pinned
+                          ? "上の段の固定を外します"
+                          : "この工事を上の段に固定します（並べ替え・ドラッグでは動きません）"
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void togglePin(project);
+                      }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >
+                      📌
+                    </button>
                     ⋮⋮
                   </td>
                   {shownColumns.map((column, index) => (

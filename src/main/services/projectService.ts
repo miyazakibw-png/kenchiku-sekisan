@@ -8,6 +8,7 @@ import {
   mProjectFields,
   projectEstimateRows,
   projectFieldValues,
+  projectFireproofSheets,
   projectFittings,
   projectFrameSheets,
   projectGeneralSheets,
@@ -96,6 +97,7 @@ function toSummary(
     designerName: row.designerName,
     note: row.note ?? "",
     displayOrder: row.displayOrder,
+    pinned: row.pinned !== 0,
     fieldValues: listFieldValues(db, row.id),
     marks: parseMarks(row.marks),
   };
@@ -203,6 +205,7 @@ export function copyProject(
           note: source.note,
           marks: source.marks,
           displayOrder: nextDisplayOrder(db),
+          pinned: source.pinned,
           sourceProjectId: sourceId,
         })
         .run().lastInsertRowid,
@@ -306,6 +309,17 @@ export function copyProject(
           .run();
       });
 
+    // 耐火被覆・塗装まわり（鉄骨リスト・階共通リスト・伏図・入力表）は工事に1つの行をまるごと複製する
+    tx.select()
+      .from(projectFireproofSheets)
+      .where(eq(projectFireproofSheets.projectId, sourceId))
+      .all()
+      .forEach(({ id: _id, projectId: _projectId, ...rest }) => {
+        tx.insert(projectFireproofSheets)
+          .values({ ...rest, projectId: newId })
+          .run();
+      });
+
     // 物件専用の明細マスターもコピー先へ複製する（複製元の基本マスターIDはそのまま引き継ぐ）
     tx.select()
       .from(mDetails)
@@ -388,6 +402,7 @@ export function saveProject(
         builderName: request.builderName,
         designerName: request.designerName,
         note: request.note,
+        pinned: request.pinned ? 1 : 0,
         marks: marksText(request.marks),
         updatedAt: new Date().toISOString(),
       })

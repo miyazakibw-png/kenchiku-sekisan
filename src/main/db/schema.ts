@@ -35,6 +35,8 @@ export const projects = sqliteTable(
     marks: text("marks").notNull().default(""),
     /** 作成順とは無関係に台帳で並べ替えるための順序 */
     displayOrder: integer("display_order").notNull().default(0),
+    /** 台帳の上の段に固定する（並べ替え・ドラッグでは動かない） */
+    pinned: integer("pinned").notNull().default(0),
     /** コピー作成元の物件 */
     sourceProjectId: integer("source_project_id"),
     createdAt: text("created_at").notNull().default(now),

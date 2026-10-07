@@ -132,6 +132,21 @@
   text-align: center;
 }
 
+/* 上の段に固定する印（押すまで薄く、固定中ははっきり出る） */
+.project-list td.handle .pin {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.25;
+}
+
+.project-list td.handle .pin.on {
+  opacity: 1;
+}
+
 .project-list tr.selected {
   background: #eaf1fb;
 }

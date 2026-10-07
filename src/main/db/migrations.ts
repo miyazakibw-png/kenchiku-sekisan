@@ -1086,4 +1086,6 @@ CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, disp
   `ALTER TABLE project_breakdown_rows ADD COLUMN struck INTEGER NOT NULL DEFAULT 0;`,
   // 耐火被覆・塗装積算入力の鉄骨伏図（階ごとの図面一式）
   `ALTER TABLE project_fireproof_sheets ADD COLUMN drawing_json TEXT NOT NULL DEFAULT '{}';`,
+  // 台帳の上の段に固定する印（並べ替え・ドラッグでは動かない）
+  `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`,
 ];

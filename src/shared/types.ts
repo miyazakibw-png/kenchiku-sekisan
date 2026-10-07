@@ -706,6 +706,8 @@ export interface ProjectSummary {
   designerName: string;
   note: string;
   displayOrder: number;
+  /** 台帳の上の段に固定する（並べ替え・ドラッグでは動かない） */
+  pinned: boolean;
   /** ユーザー定義列の値（キーは m_project_fields.id） */
   fieldValues: Record<number, string>;
   /** 取引先などの仕分け用チェック（1〜5のうち付けたもの） */
@@ -720,6 +722,7 @@ export interface SaveProjectRequest {
   builderName: string;
   designerName: string;
   note: string;
+  pinned: boolean;
   fieldValues: Record<number, string>;
   marks: number[];
 }
