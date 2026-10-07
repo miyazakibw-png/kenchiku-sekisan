@@ -506,7 +506,6 @@ function FloorSvg({
   onColumnPick,
   onGirderPick,
   onDiagPick,
-  selDiag,
   diagMode,
   diagStart,
   onIntersectionPick,
@@ -536,8 +535,6 @@ function FloorSvg({
   onGirderPick?: (key: string) => void;
   /** 図の斜梁をクリックしたとき（斜梁の行番号） */
   onDiagPick?: (index: number) => void;
-  /** 斜梁リストで選んだ行 */
-  selDiag?: number | null;
   /** 「斜梁を足す」モード中（交点をクリックして2点を選ぶ） */
   diagMode?: boolean;
   /** 斜梁の始点に選んだ交点 */
@@ -838,7 +835,7 @@ function FloorSvg({
           return (
             <g
               key={`d${index}`}
-              className={`diag${index === selDiag ? " on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}`}
+              className={`diag${bad ? " bad" : ""}${miss ? " miss" : ""}`}
               onPointerDown={(event) => {
                 event.stopPropagation();
                 onDiagPick?.(index);
@@ -3006,7 +3003,6 @@ export default function FireproofDrawingPage({
                 onColumnPick={setSelColumn}
                 onGirderPick={setSelGirder}
                 onDiagPick={setSelDiag}
-                selDiag={selDiag}
                 diagMode={diagMode}
                 diagStart={diagStart}
                 onIntersectionPick={pickIntersection}

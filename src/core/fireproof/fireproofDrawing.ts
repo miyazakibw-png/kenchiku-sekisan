@@ -822,10 +822,9 @@ export function girderMembers(
   const present = (key: string) =>
     girderExists(floor, key);
 
-  /** 「無し」の交点（xi,yi）で、向き axis の大梁がつなぐか（両側に同じ記号が入っている） */
+  /** 柱が無い交点（xi,yi）で、向き axis の大梁がつなぐか（両側に同じ記号が入っている） */
   const mergeAt = (axis: "x" | "y", xi: number, yi: number): boolean => {
-    const point = columnKey(xi, yi);
-    if (floor.noColumns?.[point] !== true) return false;
+    if (columnExists(floor, xi, yi)) return false;
     if (axis === "x") {
       const left = `x:${xi - 1},${yi}`;
       const right = `x:${xi},${yi}`;
@@ -917,7 +916,7 @@ export function girderMembers(
     return axis === "x" ? size.hw : size.hd;
   };
 
-  /** 境界（交点）をまたぐか。つなぐのは「無し」の交点で両側に同じ記号があり、十字で負けていない場合 */
+  /** 境界（交点）をまたぐか。つなぐのは柱が無い交点で両側に同じ記号があり、十字で負けていない場合 */
   const joins = (axis: "x" | "y", xi: number, yi: number): boolean => {
     if (!mergeAt(axis, xi, yi)) return false;
     // 十字で負けた側はここで切れる（詰めは crossCuts が持つ）
@@ -1026,8 +1025,7 @@ export function girderEndCuts(
   const present = (key: string) => girderExists(floor, key);
 
   const mergeAt = (axis: "x" | "y", xi: number, yi: number): boolean => {
-    const point = columnKey(xi, yi);
-    if (floor.noColumns?.[point] !== true) return false;
+    if (columnExists(floor, xi, yi)) return false;
     if (axis === "x") {
       const left = `x:${xi - 1},${yi}`;
       const right = `x:${xi},${yi}`;

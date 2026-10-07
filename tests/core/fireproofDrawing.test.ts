@@ -702,6 +702,21 @@ describe("「無し」チェック（柱・大梁）", () => {
       missingJointKeys(floor).filter((key) => key.startsWith("g:")),
     ).toEqual([]);
   });
+
+  it("柱を入れていない交点（「無し」のチェックなし）も大梁はつなぐ", () => {
+    // 中央(1,1)は記号も「無し」も無い＝柱が無い場所 → そこもつなぐ
+    const floor: FireproofDrawingFloor = {
+      ...cross,
+      columns: { ...cross.columns, "1,1": "" },
+      noColumns: {},
+      girders: { "x:0,1": "G1", "x:1,1": "G1" },
+    };
+    const items = beamImportItems(floor, 4000).filter(
+      (item) => item.symbol === "G1",
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]?.comment).toBe("B-1〜3");
+  });
 });
 
 describe("斜梁（2交点どうしの大梁）", () => {

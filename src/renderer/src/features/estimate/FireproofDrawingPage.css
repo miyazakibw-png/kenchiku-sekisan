@@ -435,14 +435,6 @@
   pointer-events: all;
 }
 
-.fireproof-drawing-svg .girder .diag.on line {
-  stroke: #2f7dd1;
-}
-
-.fireproof-drawing-svg .girder .diag.on text {
-  fill: #2f7dd1;
-}
-
 /* 斜梁モード：交点につける押せる印（透明）。始点は青い輪で出す */
 .fireproof-drawing-svg .diag-pick circle {
   fill: rgba(0, 0, 0, 0);
@@ -455,6 +447,7 @@
   stroke: #2f7dd1;
   stroke-width: 45;
   stroke-dasharray: 200 120;
+  pointer-events: none;
 }
 
 /* 選んだ区画・入力欄に対応する場所の色付け */
