@@ -3614,8 +3614,15 @@ export default function FireproofDrawingPage({
                   className={joinMode ? "on" : ""}
                   disabled={(current.diagGirders ?? []).length < 2}
                   onClick={() => {
-                    setJoinMode((on) => !on);
+                    const on = !joinMode;
+                    setJoinMode(on);
                     setJoinFirst(null);
+                    if (on)
+                      setMessage(
+                        unconnectedDiagEnds(current).length === 0
+                          ? "つなぐはずなのに離れている端は見つかりませんでした。端どうしが2.5m以内にあれば印が出ます"
+                          : "赤い印の端がつなぐはずなのに離れている端です。優先の梁→つなぐ梁の順に図でクリックしてください",
+                      );
                   }}
                 >
                   {joinMode ? "やめる" : "梁をつなぐ"}

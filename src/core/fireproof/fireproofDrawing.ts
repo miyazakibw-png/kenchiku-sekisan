@@ -949,10 +949,11 @@ export function clipBeamAtDiagEdges(
   return { ...beam, x1, y1, x2, y2 };
 }
 
-/** つなぐはずなのに離れている斜め梁の端の点（他の梁の線・端に近いが付いていない端）。「梁をつなぐ」の注意表示に使う */
+/** つなぐはずなのに離れている斜め梁の端の点（他の梁の線・端に近いが付いていない端）。「梁をつなぐ」の注意表示に使う。
+   near は「つなぐ」を掛けられる上限（2500mm）と同じにして、つなげる範囲の端には全部印が出るようにする */
 export function unconnectedDiagEnds(
   floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "diagGirders">,
-  near = 400,
+  near = 2500,
   snap = 30,
 ): { x: number; y: number }[] {
   const xs = positions(floor.xSpans);
