@@ -922,11 +922,16 @@ export function clipBeamAtDiagEdges(
     const in1 = d1 < edge.half - 1e-6;
     const in2 = d2 < edge.half - 1e-6;
     if (!in1 && !in2) continue;
-    if (in1 && in2) return null; // 線の幅の中か外側に全部ある
     const t =
       ((edge.x1 - x1) * edy - (edge.y1 - y1) * edx) / den;
     const ix = x1 + bdx * t;
     const iy = y1 + bdy * t;
+    /* 交点が描いてある線の上にあるときだけ切る（延長線上では切らない。
+       斜め梁が途中で終わっているところの向こう側にある梁は切らない） */
+    const tEdge = ((ix - edge.x1) * edx + (iy - edge.y1) * edy) / (eLen * eLen);
+    const margin = edge.half / eLen;
+    if (tEdge < -margin || tEdge > 1 + margin) continue;
+    if (in1 && in2) return null; // 線の幅の中か外側に全部ある
     // 斜め線とのなす角の sin で半幅を梁の向きに割り戻す
     const sin = Math.abs(den) / (bLen * eLen);
     const inset = edge.half / Math.max(0.3, sin);
@@ -942,6 +947,107 @@ export function clipBeamAtDiagEdges(
   }
   if (Math.hypot(x2 - x1, y2 - y1) < 1) return null;
   return { ...beam, x1, y1, x2, y2 };
+}
+
+/** つなぐはずなのに離れている斜め梁の端の点（他の梁の線・端に近いが付いていない端）。「梁をつなぐ」の注意表示に使う */
+export function unconnectedDiagEnds(
+  floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "diagGirders">,
+  near = 400,
+  snap = 30,
+): { x: number; y: number }[] {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const list = floor.diagGirders ?? [];
+  const ends = list.map((g) => diagEnds(xs, ys, g));
+  const points: { x: number; y: number }[] = [];
+  const distToSeg = (
+    px: number,
+    py: number,
+    e: { x1: number; y1: number; x2: number; y2: number },
+  ): number => {
+    const dx = e.x2 - e.x1;
+    const dy = e.y2 - e.y1;
+    const l2 = dx * dx + dy * dy;
+    if (l2 === 0) return Math.hypot(px - e.x1, py - e.y1);
+    let t = ((px - e.x1) * dx + (py - e.y1) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (e.x1 + dx * t), py - (e.y1 + dy * t));
+  };
+  ends.forEach((e, i) => {
+    if (e === null) return;
+    [0, 1].forEach((k) => {
+      const px = k === 0 ? e.x1 : e.x2;
+      const py = k === 0 ? e.y1 : e.y2;
+      let best = Number.POSITIVE_INFINITY;
+      ends.forEach((o, j) => {
+        if (o === null || i === j) return;
+        best = Math.min(best, distToSeg(px, py, o));
+      });
+      if (best > snap && best <= near) points.push({ x: px, y: py });
+    });
+  });
+  return points;
+}
+
+/** 2本の斜め梁をその芯線の交点でつなげる。
+   priorityIndex の梁は優先（交点が線の上にあればそのまま＝縮めない、足りなければそこへ伸びる）。
+   もう一本は交点に近いほうの端を交点へ動かす（伸びも縮めもする）。
+   平行・交点が端から遠すぎる（>2500mm）ときはその理由を返す */
+export function joinDiagGirders(
+  floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "diagGirders">,
+  priorityIndex: number,
+  otherIndex: number,
+): { diagGirders: FireproofDrawingDiagGirder[] } | { error: "parallel" | "far" } {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const list = floor.diagGirders ?? [];
+  const a = list[priorityIndex];
+  const b = list[otherIndex];
+  const ea = a === undefined ? null : diagEnds(xs, ys, a);
+  const eb = b === undefined ? null : diagEnds(xs, ys, b);
+  if (a === undefined || b === undefined || ea === null || eb === null)
+    return { error: "parallel" };
+  const adx = ea.x2 - ea.x1;
+  const ady = ea.y2 - ea.y1;
+  const bdx = eb.x2 - eb.x1;
+  const bdy = eb.y2 - eb.y1;
+  const aLen = Math.hypot(adx, ady);
+  const bLen = Math.hypot(bdx, bdy);
+  const den = adx * bdy - ady * bdx;
+  if (aLen === 0 || bLen === 0 || Math.abs(den) < 1e-9 * aLen * bLen)
+    return { error: "parallel" };
+  const tA = ((eb.x1 - ea.x1) * bdy - (eb.y1 - ea.y1) * bdx) / den;
+  const ix = ea.x1 + adx * tA;
+  const iy = ea.y1 + ady * tA;
+  const tB = ((ea.x1 - eb.x1) * ady - (ea.y1 - eb.y1) * adx) / -den;
+  /* それぞれ交点にいちばん近い端からの距離で、つなげる長さを測る */
+  const gapA =
+    tA < 0
+      ? Math.hypot(ix - ea.x1, iy - ea.y1)
+      : tA > 1
+        ? Math.hypot(ix - ea.x2, iy - ea.y2)
+        : 0;
+  const gapB =
+    tB < 0
+      ? Math.hypot(ix - eb.x1, iy - eb.y1)
+      : tB > 1
+        ? Math.hypot(ix - eb.x2, iy - eb.y2)
+        : Math.min(
+            Math.hypot(ix - eb.x1, iy - eb.y1),
+            Math.hypot(ix - eb.x2, iy - eb.y2),
+          );
+  if (gapA > 2500 || gapB > 2500) return { error: "far" };
+  const p = { x: Math.round(ix), y: Math.round(iy) };
+  const next = list.slice();
+  const gA = { ...a };
+  if (tA > 1) gA.toMm = p;
+  else if (tA < 0) gA.fromMm = p;
+  next[priorityIndex] = gA;
+  const gB = { ...b };
+  if (tB >= 0.5) gB.toMm = p;
+  else gB.fromMm = p;
+  next[otherIndex] = gB;
+  return { diagGirders: next };
 }
 
 /** 小梁の長さ（mm） */

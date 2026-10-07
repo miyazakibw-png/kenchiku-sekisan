@@ -26,6 +26,8 @@ import {
   auxLinePosition,
   auxLineBasePosition,
   clipBeamAtDiagEdges,
+  joinDiagGirders,
+  unconnectedDiagEnds,
   diagEnds,
   diagGirderPosition,
   girderEndCuts,
@@ -203,8 +205,8 @@ function XDimension({
         );
       })}
       {(extra ?? []).map((e, i) => {
-        // 補助寸法は一本ごとに内側へ段違いに、基の線と引いた線の間だけの寸法線として出す
-        const yAux = y + Math.min(500 + i * 550, 1600);
+        // 補助寸法は主の寸法線の延長上に、基の線と引いた線の間だけの寸法線として出す
+        const yAux = y;
         const lo = Math.min(e.from, e.pos);
         const hi = Math.max(e.from, e.pos);
         return (
@@ -270,8 +272,8 @@ function YDimension({
         );
       })}
       {(extra ?? []).map((e, i) => {
-        // 補助寸法は一本ごとに内側へ段違いに、基の線と引いた線の間だけの寸法線として出す
-        const xAux = x + Math.min(500 + i * 550, 1600);
+        // 補助寸法は主の寸法線の延長上に、基の線と引いた線の間だけの寸法線として出す
+        const xAux = x;
         const lo = Math.min(e.from, e.pos);
         const hi = Math.max(e.from, e.pos);
         return (
@@ -617,6 +619,8 @@ function FloorSvg({
   diagHover,
   onDiagHover,
   auxMode,
+  joinMode,
+  joinFirst,
   onAuxBasePick,
   auxPick,
   auxPreview,
@@ -659,6 +663,10 @@ function FloorSvg({
   /** 斜梁モードでカーソルが今取っている点（吸い付き先の下見） */
   diagHover?: { x: number; y: number } | null;
   onDiagHover?: (pt: { x: number; y: number } | null) => void;
+  /** 「梁をつなぐ」モード中（つなぐはずで離れている端に印を出す） */
+  joinMode?: boolean;
+  /** 「梁をつなぐ」で先に選んだ優先の梁の番号 */
+  joinFirst?: number | null;
   /** 「寸法線を足す」モード中（寸法線をクリックして基になる線を選ぶ） */
   auxMode?: boolean;
   /** 寸法線を足すモードで柱線・補助線をクリックしたとき（向き・通り番号・基からのずれmm・読み方・基の補助線id） */
@@ -722,6 +730,8 @@ function FloorSvg({
 
   /* 「無し」の柱を挟んで十字になる大梁：負けた側の区間端の詰め（優先側の面までで止める） */
   const gCuts = girderEndCuts(floor, halfWidthOf);
+  /* 「梁をつなぐ」モード中：つなぐはずなのに離れている端の印 */
+  const joinWarns = joinMode === true ? unconnectedDiagEnds(floor) : [];
 
   /* 取合記号の○印（梁の端のそばに出す。クリックで記号を入れ直せる） */
   const Joint = ({
@@ -1109,8 +1119,8 @@ function FloorSvg({
                 x2={ax2 + ox}
                 y2={ay2 + oy}
               />
-              {/* 一覧で選んだ引き梁の位置を点線で示す */}
-              {index === selDiag && (
+              {/* 一覧で選んだ引き梁・つなぐ優先の梁の位置を点線で示す */}
+              {(index === selDiag || index === joinFirst) && (
                 <line
                   className="diag-sel"
                   x1={ax1 + ox}
@@ -1123,6 +1133,12 @@ function FloorSvg({
           );
         })}
       </g>
+      {/* 「梁をつなぐ」で付くべきなのに離れている端の注意印 */}
+      {joinWarns.map((p, i) => (
+        <g key={`jw${i}`} className="miss">
+          <circle cx={p.x} cy={p.y} r={JOINT_R + 60} fill="#dc2626" />
+        </g>
+      ))}
       {/* 小梁（区画を分割する2本線。つかんで動かせる） */}
       <g className="beam">
         {floor.beams.map((beam, index) => {
@@ -1391,20 +1407,20 @@ function FloorSvg({
             );
           });
           /* 補助寸法線（延長と寸法線のあたりまで入れて、寸法線との交わりも取れるようにする） */
-          auxX.forEach((e, i) => {
+          auxX.forEach((e) => {
             seg(e.pos, -2600, e.pos, totalY);
             const from =
               auxLineBasePosition(floor, e.line) ??
               (xs[e.line.base] ?? e.pos - e.line.offset);
-            const yDim = Math.min(-1400 + i * 550, -300);
+            const yDim = -DIM_OFFSET;
             seg(Math.min(from, e.pos), yDim, Math.max(from, e.pos), yDim);
           });
-          auxY.forEach((e, i) => {
+          auxY.forEach((e) => {
             seg(-2600, e.pos, totalX, e.pos);
             const from =
               auxLineBasePosition(floor, e.line) ??
               (ys[e.line.base] ?? e.pos - e.line.offset);
-            const xDim = Math.min(-1400 + i * 550, -300);
+            const xDim = -DIM_OFFSET;
             seg(xDim, Math.min(from, e.pos), xDim, Math.max(from, e.pos));
           });
           /* 柱の四角の辺 */
@@ -1789,6 +1805,9 @@ export default function FireproofDrawingPage({
   const [selDiag, setSelDiag] = useState<number | null>(null);
   /* 斜梁の入力モード（交点を2か所クリックして入れる）と始点 */
   const [diagMode, setDiagMode] = useState(false);
+  /* 「梁をつなぐ」モードと、先に選んだ優先の梁 */
+  const [joinMode, setJoinMode] = useState(false);
+  const [joinFirst, setJoinFirst] = useState<number | null>(null);
   const [diagStart, setDiagStart] = useState<
     { xi: number; yi: number } | { pt: { x: number; y: number } } | null
   >(null);
@@ -2024,6 +2043,36 @@ export default function FireproofDrawingPage({
   const noGirderSet = useMemo(
     () => new Set(Object.keys(current.noGirders ?? {})),
     [current],
+  );
+
+  /* 「梁をつなぐ」：優先の梁を1本目・つなぐ梁を2本目に押す。
+     2本の芯線が交わる点でつなげる（優先の梁は縮めない・足りなければ伸びる） */
+  const joinPick = useCallback(
+    (index: number) => {
+      if (joinFirst === null) {
+        setJoinFirst(index);
+        setMessage("優先の梁を選びました。つなぐもう一本の梁を押してください");
+        return;
+      }
+      if (index === joinFirst) {
+        setJoinFirst(null);
+        setMessage("優先の梁の選択をやめました");
+        return;
+      }
+      const out = joinDiagGirders(current, joinFirst, index);
+      if ("error" in out) {
+        setMessage(
+          out.error === "parallel"
+            ? "その2本は平行で交わらないのでつなげません"
+            : "交わる場所が端から離れすぎていてつなげません",
+        );
+      } else {
+        updateFloor({ diagGirders: out.diagGirders });
+        setMessage("交わる点でつなげました");
+      }
+      setJoinFirst(null);
+    },
+    [joinFirst, current, updateFloor],
   );
 
   /* 斜梁：モード中に交点・線上の点を押す→始点、もう1か所→終点で1本入る */
@@ -3560,10 +3609,26 @@ export default function FireproofDrawingPage({
                 >
                   {diagMode ? "やめる" : "梁を足す"}
                 </button>
+                <button
+                  type="button"
+                  className={joinMode ? "on" : ""}
+                  disabled={(current.diagGirders ?? []).length < 2}
+                  onClick={() => {
+                    setJoinMode((on) => !on);
+                    setJoinFirst(null);
+                  }}
+                >
+                  {joinMode ? "やめる" : "梁をつなぐ"}
+                </button>
               </div>
               {diagMode && (
                 <p className="hint">
                   図の交点・引いてある梁や柱の線上を2か所クリック（始点→終点）すると梁が入ります（斜め・縦・横どこでも）
+                </p>
+              )}
+              {joinMode && (
+                <p className="hint">
+                  赤い印はつなぐはずなのに離れている端です。優先の梁→つなぐ梁の順に図でクリックすると、2本が交わる点でつながります（優先の梁は縮まず、足りなければ伸びます）
                 </p>
               )}
               {(current.diagGirders ?? []).map((g, index) => {
@@ -3928,7 +3993,7 @@ export default function FireproofDrawingPage({
                 onPointerUp={endBeamDrag}
                 onColumnPick={setSelColumn}
                 onGirderPick={setSelGirder}
-                onDiagPick={setSelDiag}
+                onDiagPick={joinMode ? joinPick : setSelDiag}
                 selDiag={selDiag}
                 diagMode={diagMode}
                 diagStart={diagStart}
@@ -3937,6 +4002,8 @@ export default function FireproofDrawingPage({
                 diagHover={diagHover}
                 onDiagHover={setDiagHover}
                 auxMode={auxMode}
+                joinMode={joinMode}
+                joinFirst={joinFirst}
                 onAuxBasePick={pickAuxBase}
                 auxPick={auxPickPos}
                 auxPreview={auxPreviewPos}

@@ -4,6 +4,7 @@ import {
   beamImportItems,
   beamLength,
   beamSlopeLength,
+  clipBeamAtDiagEdges,
   columnImportItems,
   columnKey,
   columnNumbers,
@@ -14,6 +15,7 @@ import {
   girderKey,
   girderNumber,
   girderOffset,
+  joinDiagGirders,
   missingJointKeys,
   nudgeBeam,
   parseDrawing,
@@ -22,6 +24,7 @@ import {
   positions,
   serializeDrawing,
   spanListText,
+  unconnectedDiagEnds,
   xGridLabel,
   yGridLabel,
   type FireproofDrawingFloor,
@@ -932,5 +935,114 @@ describe("missingJointKeys", () => {
       columns: { "0,0": "C1" },
     };
     expect(missingJointKeys(bare)).toEqual(["c:0,0"]);
+  });
+});
+
+describe("斜め梁で小梁を切る（延長線上は切らない）", () => {
+  const region = (
+    diagEdges: { x1: number; y1: number; x2: number; y2: number; half: number; side: "diag" }[],
+    pinX: number,
+    pinY: number,
+  ) => ({ x: 0, y: 0, width: 6000, height: 6000, diagEdges, pinX, pinY });
+
+  it("斜め梁が実際に通っている部分と交わる梁は切る", () => {
+    // 斜め梁は (0,6000)→(6000,0) の対角線。pinは右下側（区画内）
+    const edge = { x1: 0, y1: 6000, x2: 6000, y2: 0, half: 75, side: "diag" as const };
+    // 対角線と交わる縦梁 x=3000, y=0〜6000：交点は (3000,3000)（線分上）
+    const out = clipBeamAtDiagEdges(
+      { x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B1" },
+      region([edge], 4500, 4500),
+    );
+    // pin側（右下＝直交距離が負になる側）だけ残る → 上側端が交点まで下がる
+    expect(out).not.toBeNull();
+    expect(out!.y2).toBe(6000);
+    expect(out!.y1).toBeGreaterThan(0);
+    expect(out!.y1).toBeLessThan(4000);
+  });
+
+  it("延長線上でしか交わらない梁は切らない（関係ない梁を切らない）", () => {
+    // 斜め梁は (0,6000)→(3000,3000) で途中で終わっている。延長すると (6000,0) 方向
+    const edge = { x1: 0, y1: 6000, x2: 3000, y2: 3000, half: 75, side: "diag" as const };
+    // x=5000 の縦梁：延長線とは (5000,1000) で交わるが、線分上ではない → 切らない
+    const out = clipBeamAtDiagEdges(
+      { x1: 5000, y1: 0, x2: 5000, y2: 6000, symbol: "B1" },
+      region([edge], 4500, 4500),
+    );
+    expect(out).not.toBeNull();
+    expect(out!.x1).toBe(5000);
+    expect(out!.y1).toBe(0);
+    expect(out!.x2).toBe(5000);
+    expect(out!.y2).toBe(6000);
+  });
+});
+
+describe("梁をつなぐ", () => {
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000, 6000],
+  };
+
+  it("端が近いが付いていない端に印が出る", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        { fx: 1, fy: 0, tx: 0, ty: 0, symbol: "G1", toMm: { x: 1600, y: 250 } },
+        { fx: 0, fy: 0, tx: 0, ty: 1, symbol: "G1", fromMm: { x: 1500, y: 0 } },
+      ],
+    };
+    const pts = unconnectedDiagEnds(f);
+    expect(pts).toContainEqual({ x: 1600, y: 250 });
+    expect(pts).toContainEqual({ x: 1500, y: 0 });
+  });
+
+  it("端が重なっていれば印は出ない", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        { fx: 1, fy: 0, tx: 0, ty: 0, symbol: "G1", toMm: { x: 1500, y: 0 } },
+        { fx: 0, fy: 0, tx: 0, ty: 1, symbol: "G1", fromMm: { x: 1500, y: 0 } },
+      ],
+    };
+    expect(unconnectedDiagEnds(f)).toEqual([]);
+  });
+
+  it("2本が交わる点でつながる（優先側は延びる・もう一本は端が合う）", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        // 横方向 (7300→1600, 0→250)。交点は縦線 x=1500 上の (1500,254) 付近＝端の少し先
+        { fx: 1, fy: 0, tx: 0, ty: 0, symbol: "G1", id: "a", fromMm: { x: 7300, y: 0 }, toMm: { x: 1600, y: 250 } },
+        // 縦方向 x=1500, y=0〜3997
+        { fx: 0, fy: 0, tx: 0, ty: 1, symbol: "G1", id: "b", fromMm: { x: 1500, y: 0 }, toMm: { x: 1500, y: 3997 } },
+      ],
+    };
+    const out = joinDiagGirders(f, 0, 1);
+    expect("error" in out).toBe(false);
+    if (!("error" in out)) {
+      const a = out.diagGirders[0];
+      const b = out.diagGirders[1];
+      // 優先の梁は端の延長先（(1500, 約254)）
+      expect(a.toMm).not.toBeUndefined();
+      expect(Math.abs(a.toMm!.x - 1500)).toBeLessThan(2);
+      // もう一本は近いほうの端（上端）が交点へ
+      expect(b.fromMm).not.toBeUndefined();
+      expect(b.fromMm).toEqual(a.toMm);
+      // 遠いほうの端は動かない
+      expect(b.toMm).toEqual({ x: 1500, y: 3997 });
+      expect(a.fromMm).toEqual({ x: 7300, y: 0 });
+    }
+  });
+
+  it("平行な2本はつなげない", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      diagGirders: [
+        { fx: 0, fy: 0, tx: 1, ty: 0, symbol: "G1" },
+        { fx: 0, fy: 1, tx: 1, ty: 1, symbol: "G1" },
+      ],
+    };
+    const out = joinDiagGirders(f, 0, 1);
+    expect(out).toEqual({ error: "parallel" });
   });
 });
