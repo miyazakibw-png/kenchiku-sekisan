@@ -605,6 +605,13 @@ export interface SaveTransferRowsRequest {
   rows: TransferRowDraft[];
 }
 
+/** 同じ工事の中にある計算書（他の計算書から写すときの一覧に出す） */
+export interface SheetOption {
+  estimateRowId: number;
+  /** 部位Ⅱ＋半角スペース＋部位Ⅲ */
+  roomName: string;
+}
+
 /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
 export interface FrameRoomOption {
   estimateRowId: number;

@@ -14,6 +14,7 @@ import type {
   ProjectSummary,
   RoomSheet,
   RoomSheetFitting,
+  SheetOption,
 } from "@shared/types";
 import {
   EMPTY_TRACE,
@@ -40,6 +41,7 @@ import {
   type UnderlayBox,
 } from "./useUnderlay";
 import DrawingSourcePicker from "./DrawingSourcePicker";
+import SheetCopyPicker from "./SheetCopyPicker";
 import {
   closeShape,
   closeShapeAtEdge,
@@ -625,6 +627,9 @@ export default function RoomSheetPage({
   /** 他の計算書の図面を呼び出す窓を出しているか */
   const [importPicker, setImportPicker] = useState(false);
 
+  /** 上段をまるごと写す元に選べる計算書（null は窓を出していない） */
+  const [copySheets, setCopySheets] = useState<SheetOption[] | null>(null);
+
   /** 他の計算書（部屋・軸組・ピット）で置いた図面を、縮尺・位置・濃さごとこの計算書へ貼る */
   const importDrawings = useCallback(
     (drawings: TraceUnderlay[]) => {
@@ -638,6 +643,50 @@ export default function RoomSheetPage({
       );
     },
     [setMessage, setUnderlays, underlays, underlayTool],
+  );
+
+  /** 上段を写す元を選ぶ窓を開く（この工事にある他の部屋計算書を出す） */
+  const openCopyPicker = useCallback(async (): Promise<void> => {
+    const all = await window.sekisan.listRoomSheets(project.id);
+    setCopySheets(all.filter((one) => one.estimateRowId !== row.id));
+  }, [project.id, row.id]);
+
+  /**
+   * 選んだ部屋計算書の上段（図形・寸法・記号・建具・天井伏図・下敷き図面・天井高さ）を
+   * まるごと写す。下段のセット明細はそのまま残す。保存するまで確定しない。
+   */
+  const copyUpperFrom = useCallback(
+    async (source: SheetOption): Promise<void> => {
+      const loaded = await window.sekisan.getRoomSheet(source.estimateRowId);
+      const height = loaded.ceilingHeight;
+      setShapePast((past) => [...past.slice(-49), shape]);
+      setShapeFuture([]);
+      setShape(parseShape(loaded.shapeJson));
+      setRoomFittings(parseRoomFittings(loaded.fittingsJson));
+      ceilingHistory.push({ ceiling, codes });
+      setCeiling(parseCeiling(loaded.ceilingJson, height));
+      setCodes(parseCeilingCodes(loaded.ceilingCodesJson));
+      setTrace(parseTrace(loaded.traceJson));
+      setUnderlays(parseUnderlays(loaded.traceJson));
+      underlayTool.setMoveAll(parseUnderlayLocked(loaded.traceJson));
+      underlayTool.setScalePending(parseScalePending(loaded.traceJson));
+      setCeilingHeight(height);
+      onCeilingHeightChange?.(height);
+      setCopySheets(null);
+      setMessage(
+        `「${source.roomName}」の上段を写しました（下段の明細はそのまま。保存すると確定します）`,
+      );
+    },
+    [
+      ceiling,
+      codes,
+      ceilingHistory,
+      onCeilingHeightChange,
+      setMessage,
+      setUnderlays,
+      shape,
+      underlayTool,
+    ],
   );
 
   // 画面を閉じる・ウィンドウを閉じるときは、直した内容を自動で保存する
@@ -3198,6 +3247,13 @@ export default function RoomSheetPage({
           >
             🗔 図の小窓
           </button>
+          <button
+            type="button"
+            title="この工事にある他の部屋計算書から、上段の内容（図形・寸法・記号・建具・天井伏図・図面）をまるごと写します（下段の明細はそのまま残ります）"
+            onClick={() => void openCopyPicker()}
+          >
+            ⤓ 他室から写す
+          </button>
         </div>
         <div className="drawing-body">
           <div className="shape-tools">
@@ -5548,6 +5604,15 @@ export default function RoomSheetPage({
           excludeCalcType="room"
           onPick={importDrawings}
           onClose={() => setImportPicker(false)}
+        />
+      )}
+
+      {copySheets !== null && !printMode && (
+        <SheetCopyPicker
+          title="他の部屋計算書から上段を写す"
+          sheets={copySheets}
+          onPick={(source) => void copyUpperFrom(source)}
+          onClose={() => setCopySheets(null)}
         />
       )}
 

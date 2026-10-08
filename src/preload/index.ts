@@ -34,6 +34,7 @@ import type {
   FrameRoomOption,
   FrameSheet,
   GeneralSheet,
+  SheetOption,
   MiscSheet,
   MiscSheetSummary,
   FurnitureSheet,
@@ -166,6 +167,9 @@ const api = {
     ipcRenderer.invoke(IPC.roomSheetGet, estimateRowId),
   saveRoomSheet: (request: SaveRoomSheetRequest): Promise<RoomSheet> =>
     ipcRenderer.invoke(IPC.roomSheetSave, request),
+  /** この工事にある部屋計算書の一覧（他の計算書の上段を写すときの選択に出す） */
+  listRoomSheets: (projectId: number): Promise<SheetOption[]> =>
+    ipcRenderer.invoke(IPC.roomSheetList, projectId),
   /** 計算書で使った記号が建具表に無ければ登録する */
   registerRoomFitting: (
     projectId: number,
@@ -192,6 +196,9 @@ const api = {
     ipcRenderer.invoke(IPC.frameSheetGet, estimateRowId),
   saveFrameSheet: (request: SaveFrameSheetRequest): Promise<FrameSheet> =>
     ipcRenderer.invoke(IPC.frameSheetSave, request),
+  /** この工事にある軸組計算書の一覧（他の計算書の上段を写すときの選択に出す） */
+  listFrameSheets: (projectId: number): Promise<SheetOption[]> =>
+    ipcRenderer.invoke(IPC.frameSheetList, projectId),
   /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
   listFrameRooms: (projectId: number): Promise<FrameRoomOption[]> =>
     ipcRenderer.invoke(IPC.frameRoomsList, projectId),

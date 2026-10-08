@@ -20,6 +20,7 @@ import {
 import {
   getFrameSheet,
   listFrameRooms,
+  listFrameSheets,
   saveFrameSheet,
 } from "../../src/main/services/frameSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
@@ -198,5 +199,29 @@ describe("軸組計算書", () => {
     expect(copiedFrame.layoutJson).not.toContain(
       `"estimateRowId":${rows[0].id}`,
     );
+  });
+
+  it("計算書一覧は作ってある計算書だけを、部位Ⅱ＋部位Ⅲの名前で出す", () => {
+    const project = createProject(db, "一覧テスト");
+    const rows = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [
+        row("1階軸組", "frame", 2.7),
+        row("2階軸組", "frame", 2.7),
+        row("未作成", "frame", null),
+      ],
+    });
+    getFrameSheet(db, rows[0].id);
+    getFrameSheet(db, rows[1].id);
+
+    const sheets = listFrameSheets(db, project.id);
+    expect(sheets.map((one) => one.roomName)).toEqual([
+      "内部 1階軸組",
+      "内部 2階軸組",
+    ]);
+    expect(sheets.map((one) => one.estimateRowId)).toEqual([
+      rows[0].id,
+      rows[1].id,
+    ]);
   });
 });

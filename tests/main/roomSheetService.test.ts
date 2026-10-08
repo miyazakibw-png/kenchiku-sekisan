@@ -18,6 +18,7 @@ import {
   getDeductionLimit,
   getRoomLowerTemplate,
   getRoomSheet,
+  listRoomSheets,
   registerRoomFitting,
   saveDeductionLimit,
   saveRoomLowerTemplate,
@@ -391,6 +392,26 @@ describe("部屋計算書（上段）", () => {
     expect(getDeductionLimit(db)).toBe(0.5);
     saveDeductionLimit(db, 0.3);
     expect(getDeductionLimit(db)).toBe(0.3);
+  });
+
+  it("計算書一覧は作ってある計算書だけを、部位Ⅱ＋部位Ⅲの名前で出す", () => {
+    const project = createProject(db, "一覧テスト");
+    const rows = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [roomRow("事務室", 2.5), roomRow("倉庫", 2.4), roomRow("未作成", null)],
+    });
+    getRoomSheet(db, rows[0].id);
+    getRoomSheet(db, rows[1].id);
+
+    const sheets = listRoomSheets(db, project.id);
+    expect(sheets.map((one) => one.roomName)).toEqual([
+      "内部 事務室",
+      "内部 倉庫",
+    ]);
+    expect(sheets.map((one) => one.estimateRowId)).toEqual([
+      rows[0].id,
+      rows[1].id,
+    ]);
   });
 
   it("部位別入力表の行を消すと計算書も消える", () => {

@@ -102,6 +102,7 @@ import {
   getDeductionLimit,
   getRoomLowerTemplate,
   getRoomSheet,
+  listRoomSheets,
   registerRoomFitting,
   saveDeductionLimit,
   saveRoomLowerTemplate,
@@ -110,6 +111,7 @@ import {
 import {
   getFrameSheet,
   listFrameRooms,
+  listFrameSheets,
   saveFrameSheet,
 } from "./services/frameSheetService";
 import {
@@ -419,6 +421,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.roomSheetSave, (_event, request: SaveRoomSheetRequest) =>
     saveRoomSheet(getDatabase(), request),
   );
+  ipcMain.handle(IPC.roomSheetList, (_event, projectId: number) =>
+    listRoomSheets(getDatabase(), projectId),
+  );
   ipcMain.handle(
     IPC.roomFittingRegister,
     (
@@ -446,6 +451,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.frameSheetSave, (_event, request: SaveFrameSheetRequest) =>
     saveFrameSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.frameSheetList, (_event, projectId: number) =>
+    listFrameSheets(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.frameRoomsList, (_event, projectId: number) =>
     listFrameRooms(getDatabase(), projectId),

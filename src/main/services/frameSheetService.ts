@@ -9,6 +9,7 @@ import type {
   FrameRoomOption,
   FrameSheet,
   SaveFrameSheetRequest,
+  SheetOption,
 } from "../../shared/types";
 
 function toSheet(row: typeof projectFrameSheets.$inferSelect): FrameSheet {
@@ -91,6 +92,36 @@ export function saveFrameSheet(
     return row;
   });
   return toSheet(saved);
+}
+
+/**
+ * この工事にある軸組計算書の一覧（他の計算書の上段を写すときの選択に出す）。
+ * 部屋名は 部位Ⅱ＋半角スペース＋部位Ⅲ。
+ */
+export function listFrameSheets(
+  db: AppDatabase,
+  projectId: number,
+): SheetOption[] {
+  const rows = db
+    .select({
+      estimateRowId: projectFrameSheets.estimateRowId,
+      part2: projectEstimateRows.part2,
+      part3: projectEstimateRows.part3,
+      displayOrder: projectEstimateRows.displayOrder,
+    })
+    .from(projectFrameSheets)
+    .innerJoin(
+      projectEstimateRows,
+      eq(projectFrameSheets.estimateRowId, projectEstimateRows.id),
+    )
+    .where(eq(projectFrameSheets.projectId, projectId))
+    .orderBy(projectEstimateRows.displayOrder)
+    .all();
+
+  return rows.map((row) => ({
+    estimateRowId: row.estimateRowId,
+    roomName: `${row.part2} ${row.part3}`.trim(),
+  }));
 }
 
 /**

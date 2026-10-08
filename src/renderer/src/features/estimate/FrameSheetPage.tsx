@@ -15,6 +15,7 @@ import type {
   FrameSheet,
   MasterOptions,
   ProjectSummary,
+  SheetOption,
 } from "@shared/types";
 import {
   buildFrameLines,
@@ -66,6 +67,7 @@ import {
 } from "../../../../core/fittings/partValue";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import DrawingSourcePicker from "./DrawingSourcePicker";
+import SheetCopyPicker from "./SheetCopyPicker";
 import { pdfPageImage } from "./pdfPage";
 import {
   loadImageSize,
@@ -1108,6 +1110,58 @@ export default function FrameSheetPage({
 
   /** 他の計算書の図面を呼び出す窓を出しているか */
   const [importPicker, setImportPicker] = useState(false);
+
+  /** 上段をまるごと写す元に選べる計算書（null は窓を出していない） */
+  const [copySheets, setCopySheets] = useState<SheetOption[] | null>(null);
+
+  /** 上段を写す元を選ぶ窓を開く（この工事にある他の軸組計算書を出す） */
+  const openCopyPicker = useCallback(async (): Promise<void> => {
+    const all = await window.sekisan.listFrameSheets(project.id);
+    setCopySheets(all.filter((one) => one.estimateRowId !== row.id));
+  }, [project.id, row.id]);
+
+  /**
+   * 選んだ軸組計算書の上段（部屋の並び・引いた線・線の指定・建具・図面・施工高さ）を
+   * まるごと写す。下段のセット明細はそのまま残す。保存するまで確定しない。
+   */
+  const copyUpperFrom = useCallback(
+    async (source: SheetOption): Promise<void> => {
+      const loaded = await window.sekisan.getFrameSheet(source.estimateRowId);
+      const loadedTrace = parseFrameTraces(loaded.traceJson);
+      const loadedKinds = parseJson<FrameKind[]>(loaded.kindsJson, []);
+      pushDiagram();
+      setPlacements(parseJson<FramePlacement[]>(loaded.layoutJson, []));
+      setManualLines(parseJson<FrameManualLine[]>(loaded.linesJson, []));
+      setAttributes(
+        parseJson<Record<string, FrameLineAttribute>>(
+          loaded.attributesJson,
+          {},
+        ),
+      );
+      setFrameFittings(
+        parseJson<
+          {
+            id: string;
+            symbol: string;
+            multiplier: number;
+            lineId: string | null;
+          }[]
+        >(loaded.fittingsJson, []),
+      );
+      setTraces(loadedTrace.traces);
+      setActiveTrace(loadedTrace.active);
+      setTraceLocked(loadedTrace.locked);
+      setScalePending(parseScalePending(loaded.traceJson));
+      setKinds(loadedKinds.length > 0 ? loadedKinds : defaultFrameKinds());
+      setWorkHeight(loaded.workHeight);
+      onWorkHeightChange?.(loaded.workHeight);
+      setCopySheets(null);
+      setMessage(
+        `「${source.roomName}」の上段を写しました（下段の明細はそのまま。保存すると確定します）`,
+      );
+    },
+    [onWorkHeightChange, pushDiagram],
+  );
 
   /** 他の計算書（部屋・軸組・ピット）で置いた図面を縮尺・位置・濃さごと、
    *  軸組計算書なら引いた線（色・種類・付けた建具ごと）もこの計算書へ貼る */
@@ -2492,6 +2546,15 @@ export default function FrameSheetPage({
               }}
             >
               🖼 図面に合わせる
+            </button>
+          )}
+          {!printMode && (
+            <button
+              type="button"
+              title="この工事にある他の軸組計算書から、上段の内容（部屋の並び・線・建具・図面）をまるごと写します（下段の明細はそのまま残ります）"
+              onClick={() => void openCopyPicker()}
+            >
+              ⤓ 他室から写す
             </button>
           )}
           {mode === "layout" && (
@@ -4321,6 +4384,15 @@ export default function FrameSheetPage({
           onPick={importDrawings}
           withLines
           onClose={() => setImportPicker(false)}
+        />
+      )}
+
+      {copySheets !== null && !printMode && (
+        <SheetCopyPicker
+          title="他の軸組計算書から上段を写す"
+          sheets={copySheets}
+          onPick={(source) => void copyUpperFrom(source)}
+          onClose={() => setCopySheets(null)}
         />
       )}
 
