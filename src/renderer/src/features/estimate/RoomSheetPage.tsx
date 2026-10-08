@@ -555,6 +555,8 @@ export default function RoomSheetPage({
   const kindBoxMovedRef = useRef(false);
   /** 囲みの直後のクリックは囲みの放し手なので、選びの切替に使わない */
   const kindBoxClickSuppressRef = useRef(false);
+  /** 選び中にカーソルについていく十字の点線（図の中の座標m） */
+  const [kindCursor, setKindCursor] = useState<Point | null>(null);
   /** 部屋の中の独立柱を置くモード */
   const [columnMode, setColumnMode] = useState(false);
   /** これから置く独立柱の大きさ（Ｗ×Ｄ・m） */
@@ -2338,9 +2340,12 @@ export default function RoomSheetPage({
   const startKindBox = (
     event: React.PointerEvent<SVGSVGElement>,
   ): void => {
+    // そのままだとドラッグが文字の選択になって寸法の字が選ばれて見える
+    event.preventDefault();
     const point = svgPoint(event);
     if (point === null) return;
     kindBoxMovedRef.current = false;
+    setKindCursor(null);
     setKindBox({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -3316,6 +3321,7 @@ export default function RoomSheetPage({
               onClick={() => {
                 if (kindPick !== null) {
                   setKindPick(null);
+                  setKindCursor(null);
                   setMessage("種別の選びをやめました");
                   return;
                 }
@@ -3595,8 +3601,16 @@ export default function RoomSheetPage({
               className={underlayTool.svgClass}
               style={
                 underlayScale !== null
-                  ? { width: `${drawnSize}px`, height: `${drawnSize}px` }
-                  : { width: `${zoom * 100}%`, height: `${zoom * 100}%` }
+                  ? {
+                      width: `${drawnSize}px`,
+                      height: `${drawnSize}px`,
+                      cursor: kindPick !== null ? "none" : undefined,
+                    }
+                  : {
+                      width: `${zoom * 100}%`,
+                      height: `${zoom * 100}%`,
+                      cursor: kindPick !== null ? "none" : undefined,
+                    }
               }
               onClick={(event) => {
                 if (kindBoxClickSuppressRef.current) {
@@ -3630,6 +3644,7 @@ export default function RoomSheetPage({
                   moveKindBox(event);
                   return;
                 }
+                if (kindPick !== null) setKindCursor(svgPoint(event));
                 underlayTool.onPointerMove(event);
                 if (columnMode) setColumnGhost(svgPoint(event));
                 if (freePointDragRef.current !== null) return;
@@ -3667,9 +3682,34 @@ export default function RoomSheetPage({
                 }
                 underlayTool.onPointerUp(event);
               }}
-              onPointerLeave={() => setColumnGhost(null)}
+              onPointerLeave={() => {
+                setColumnGhost(null);
+                setKindCursor(null);
+              }}
             >
               <g id="room-drawing">{renderDrawingContent(null)}</g>
+              {kindPick !== null &&
+                kindCursor !== null &&
+                kindBox === null &&
+                (() => {
+                  const [vx, vy, vw, vh] = view.box.split(" ").map(Number);
+                  return (
+                    <g pointerEvents="none" className="kind-cursor">
+                      <line
+                        x1={vx}
+                        y1={kindCursor.y}
+                        x2={(vx ?? 0) + (vw ?? 0)}
+                        y2={kindCursor.y}
+                      />
+                      <line
+                        x1={kindCursor.x}
+                        y1={vy}
+                        x2={kindCursor.x}
+                        y2={(vy ?? 0) + (vh ?? 0)}
+                      />
+                    </g>
+                  );
+                })()}
               {kindBox !== null && kindBoxMovedRef.current && (
                 <rect
                   x={Math.min(kindBox.x1, kindBox.x2)}

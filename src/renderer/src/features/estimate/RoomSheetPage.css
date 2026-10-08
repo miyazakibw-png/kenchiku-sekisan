@@ -525,6 +525,19 @@
   stroke-width: 4;
 }
 
+/* 図の中の字はドラッグで選択しない（囲み操作が文字選択に見えるのを防ぐ） */
+.room-sheet-page svg text {
+  user-select: none;
+}
+
+/* 種別の選び中にカーソルについていく十字の長い点線 */
+.room-sheet-page .kind-cursor line {
+  stroke: #2563eb;
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+  vector-effect: non-scaling-stroke;
+}
+
 /* 種別をまとめて変えるときの囲み四角 */
 .room-sheet-page .kind-box {
   fill: rgba(37, 99, 235, 0.08);
