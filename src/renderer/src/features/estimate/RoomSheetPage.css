@@ -525,6 +525,15 @@
   stroke-width: 4;
 }
 
+/* 種別をまとめて変えるときの囲み四角 */
+.room-sheet-page .kind-box {
+  fill: rgba(37, 99, 235, 0.08);
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 8 5;
+  vector-effect: non-scaling-stroke;
+}
+
 /* 置く前にカーソルについていく柱の形 */
 .room-sheet-page .free-column-ghost {
   fill: rgba(191, 219, 254, 0.45);

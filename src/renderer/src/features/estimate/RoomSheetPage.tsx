@@ -544,6 +544,17 @@ export default function RoomSheetPage({
   const [addCornerMode, setAddCornerMode] = useState(false);
   /** 種別をまとめて変える選び中の辺（null は選び中でない） */
   const [kindPick, setKindPick] = useState<string[] | null>(null);
+  /** 選び中にドラッグで引いている囲み四角（図の中の座標m） */
+  const [kindBox, setKindBox] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null>(null);
+  /** 囲みを実際に引き伸ばしたか（わずかな動きはクリック扱い） */
+  const kindBoxMovedRef = useRef(false);
+  /** 囲みの直後のクリックは囲みの放し手なので、選びの切替に使わない */
+  const kindBoxClickSuppressRef = useRef(false);
   /** 部屋の中の独立柱を置くモード */
   const [columnMode, setColumnMode] = useState(false);
   /** これから置く独立柱の大きさ（Ｗ×Ｄ・m） */
@@ -2323,6 +2334,64 @@ export default function RoomSheetPage({
     setMessage(`${picked.length}本を「${KIND_LABEL[kind]}」にしました`);
   };
 
+  /** 種別の選び中に図を四角く囲み始める（囲んだ中に両端の入る線をまとめて選ぶ） */
+  const startKindBox = (
+    event: React.PointerEvent<SVGSVGElement>,
+  ): void => {
+    const point = svgPoint(event);
+    if (point === null) return;
+    kindBoxMovedRef.current = false;
+    setKindBox({ x1: point.x, y1: point.y, x2: point.x, y2: point.y });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveKindBox = (event: React.PointerEvent<SVGSVGElement>): void => {
+    const point = svgPoint(event);
+    if (point === null) return;
+    setKindBox((current) => {
+      if (current === null) return current;
+      if (!kindBoxMovedRef.current) {
+        const span = Math.hypot(
+          point.x - current.x1,
+          point.y - current.y1,
+        );
+        if (span < cornerRadius * 0.5) return current;
+        kindBoxMovedRef.current = true;
+      }
+      return { ...current, x2: point.x, y2: point.y };
+    });
+  };
+
+  const endKindBox = (): void => {
+    const box = kindBox;
+    setKindBox(null);
+    if (box === null || !kindBoxMovedRef.current) return;
+    kindBoxMovedRef.current = false;
+    kindBoxClickSuppressRef.current = true;
+    const minX = Math.min(box.x1, box.x2);
+    const maxX = Math.max(box.x1, box.x2);
+    const minY = Math.min(box.y1, box.y2);
+    const maxY = Math.max(box.y1, box.y2);
+    const inside = (at: { x: number; y: number }): boolean =>
+      at.x >= minX && at.x <= maxX && at.y >= minY && at.y <= maxY;
+    const enclosed = solved.edges
+      .filter((_, index) => {
+        const a = solved.points[index];
+        const b = solved.points[(index + 1) % solved.points.length];
+        return inside(a) && inside(b);
+      })
+      .map((row) => row.id);
+    if (enclosed.length === 0) {
+      setMessage("囲んだ中に両端の入る線はありませんでした");
+      return;
+    }
+    const next = [...new Set([...(kindPick ?? []), ...enclosed])];
+    setKindPick(next);
+    setMessage(
+      `囲んで${enclosed.length}本えらびました（全部で${next.length}本。「柱にする」か「壁に戻す」を押してください）`,
+    );
+  };
+
   /** 辺を選ぶ（Shift＋クリックでここからここまでの範囲選択） */
   const selectEdge = (edgeId: string, extend: boolean): void => {
     if (extend && selectedEdge !== null && selectedEdge !== edgeId) {
@@ -2672,6 +2741,7 @@ export default function RoomSheetPage({
               if (columnMode) return;
               if (freeDraw !== null || beamDraw !== null) return;
               if (kindPick !== null) {
+                if (kindBoxClickSuppressRef.current) return;
                 toggleKindPick(line.id);
                 return;
               }
@@ -3242,7 +3312,7 @@ export default function RoomSheetPage({
               type="button"
               className={kindPick !== null ? "on" : ""}
               disabled={shape.edges.length === 0}
-              title="押してから図の壁線をまとめてクリックし、「柱にする」（または「壁に戻す」）で一括で種別を変えます"
+              title="押してから図の壁線をまとめてクリック（または四角く囲んで両端の入る線を選び）、「柱にする」（または「壁に戻す」）で一括で種別を変えます"
               onClick={() => {
                 if (kindPick !== null) {
                   setKindPick(null);
@@ -3252,7 +3322,7 @@ export default function RoomSheetPage({
                 setKindPick([]);
                 setAddCornerMode(false);
                 setMessage(
-                  "種別を変える線を図でクリックして選んでください（何本でも）。そのあと「柱にする」か「壁に戻す」を押します",
+                  "種別を変える線を図でクリックして選んでください（何本でも。四角く囲むと中の線をまとめて選べます）。そのあと「柱にする」か「壁に戻す」を押します",
                 );
               }}
             >
@@ -3529,6 +3599,10 @@ export default function RoomSheetPage({
                   : { width: `${zoom * 100}%`, height: `${zoom * 100}%` }
               }
               onClick={(event) => {
+                if (kindBoxClickSuppressRef.current) {
+                  kindBoxClickSuppressRef.current = false;
+                  return;
+                }
                 if (!printMode && underlayTool.onSvgClick(event)) return;
                 if (freeDraw !== null) {
                   clickFreeDraw(event);
@@ -3543,8 +3617,19 @@ export default function RoomSheetPage({
                 if (!columnMode && selectedColumn !== null)
                   setSelectedColumn(null);
               }}
-              onPointerDown={printMode ? undefined : underlayTool.onPointerDown}
+              onPointerDown={(event) => {
+                if (printMode) return;
+                if (kindPick !== null) {
+                  startKindBox(event);
+                  return;
+                }
+                underlayTool.onPointerDown(event);
+              }}
               onPointerMove={(event) => {
+                if (kindBox !== null) {
+                  moveKindBox(event);
+                  return;
+                }
                 underlayTool.onPointerMove(event);
                 if (columnMode) setColumnGhost(svgPoint(event));
                 if (freePointDragRef.current !== null) return;
@@ -3575,10 +3660,26 @@ export default function RoomSheetPage({
                   );
                 }
               }}
-              onPointerUp={underlayTool.onPointerUp}
+              onPointerUp={(event) => {
+                if (kindPick !== null) {
+                  endKindBox();
+                  return;
+                }
+                underlayTool.onPointerUp(event);
+              }}
               onPointerLeave={() => setColumnGhost(null)}
             >
               <g id="room-drawing">{renderDrawingContent(null)}</g>
+              {kindBox !== null && kindBoxMovedRef.current && (
+                <rect
+                  x={Math.min(kindBox.x1, kindBox.x2)}
+                  y={Math.min(kindBox.y1, kindBox.y2)}
+                  width={Math.abs(kindBox.x2 - kindBox.x1)}
+                  height={Math.abs(kindBox.y2 - kindBox.y1)}
+                  className="kind-box"
+                  pointerEvents="none"
+                />
+              )}
               {columnMode &&
                 columnGhost !== null &&
                 Number(columnWidth) > 0 &&
