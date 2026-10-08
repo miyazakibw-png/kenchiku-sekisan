@@ -6,7 +6,6 @@ import type {
   Subject,
 } from "@shared/types";
 import { formatDetailNumber } from "@shared/detailNumber";
-import { assemblySignature } from "@shared/assemblySignature";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import { UnitOptions } from "../../components/UnitInput";
 import PickInput, { type PickEntry } from "../../components/PickInput";
@@ -32,7 +31,6 @@ import {
 import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
-import { ask } from "../common/askDialog";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -271,28 +269,7 @@ export default function AssemblyMasterPage({
         markSaved(null);
         return;
       }
-      // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
-      const changedKeys = (before?.items ?? []).flatMap((old, index) => {
-        const next = items[index];
-        if (!next) return [];
-        const key = assemblySignature([old]);
-        return key === assemblySignature([next]) ? [] : [key];
-      });
-      const sharing = assemblies.filter(
-        (other) =>
-          other.id !== editor.id &&
-          other.items.some((item) =>
-            changedKeys.includes(assemblySignature([item])),
-          ),
-      );
-      // 画面を離れるときの自動保存では確認を出さず、このセットだけ直す
-      const applyToAllSets =
-        !quiet &&
-        sharing.length > 0 &&
-        (await ask(
-          `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
-            "［はい］この明細を使う全セットを直す\n［いいえ］このセットだけ直す",
-        ));
+      // 直しはこのセットだけに効かせる（別のセットに同じ内容の行があっても触らない）
       const result = await window.sekisan.saveAssembly({
         id: editor.id,
         scope: projectId === null ? "basic" : "project",
@@ -300,7 +277,7 @@ export default function AssemblyMasterPage({
         note: editor.note,
         items,
         propagate: true,
-        applyToAllSets,
+        applyToAllSets: false,
       });
       await reload();
       setEditor(null);
