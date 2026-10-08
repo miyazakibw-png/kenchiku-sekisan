@@ -36,6 +36,11 @@ export interface FireproofDrawingDiagGirder {
   fromMm?: { x: number; y: number };
   /** 終点が交点以外のときの実座標（mm） */
   toMm?: { x: number; y: number };
+  /** 「梁をつなぐ」で下になった側の端（相手の面で止まる端）。描くとき面の線は出さず先に描く */
+  underFrom?: boolean;
+  underTo?: boolean;
+  /** 「梁をつなぐ」で優先に選ばれた梁（いちばん最後に描く＝線が通り抜けて見える） */
+  over?: boolean;
 }
 
 /** 補助寸法線の位置（mm）。基になる寸法線の位置に離れ寸法を足したもの */
@@ -306,6 +311,9 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
           ...(typeof r.offset === "number" && Number.isFinite(r.offset)
             ? { offset: r.offset }
             : {}),
+          ...(r.underFrom === true ? { underFrom: true } : {}),
+          ...(r.underTo === true ? { underTo: true } : {}),
+          ...(r.over === true ? { over: true } : {}),
           ...(() => {
             const point = (v: unknown): { x: number; y: number } | undefined => {
               if (v === null || typeof v !== "object") return undefined;
@@ -1263,8 +1271,9 @@ export function joinDiagGirders(
   }
   const tA = ((eb.x1 - ea.x1) * bdy - (eb.y1 - ea.y1) * bdx) / den;
   const tB = ((ea.x1 - eb.x1) * ady - (ea.y1 - eb.y1) * adx) / -den;
-  /* 梁のつなぎ方（基本3パターン）：優先の梁はつなぐ梁を含む向こう側の面まで伸び、
-     つなぐ側の端は優先の梁の手前の面で止まる。芯線から面までの長さは半幅÷交差角のsin */
+  /* 梁のつなぎ方（基本3パターン）：優先の梁は相手を含む向こう側の面まで届く
+     （通り抜けて見える＝over 印）、つなぐ側の端は優先の手前の面で止まる
+     （下になった端は under 印）。芯線から面までの長さは半幅÷交差角のsin */
   const sin = Math.abs(den) / (aLen * bLen);
   const pHalf = halfOf?.(a.symbol.trim()) ?? 75;
   const oHalf = halfOf?.(b.symbol.trim()) ?? 75;
@@ -1272,7 +1281,8 @@ export function joinDiagGirders(
   const uy = ady / aLen;
   const vx = bdx / bLen;
   const vy = bdy / bLen;
-  /* 優先の梁の端：届かなければ相手の向こう側の面まで伸ばす */
+  const sB = tB * bLen;
+  /* 優先の梁の端：届かなければ相手の向こう側の面まで伸ばす（優先＝上に描く印） */
   const gA = { ...a };
   let moveA = 0;
   if (tA > 1) {
@@ -1290,11 +1300,11 @@ export function joinDiagGirders(
     };
     moveA = -reach;
   }
+  gA.over = true;
   /* つなぐ側の端：優先の梁の手前の面で止める（伸びも縮めもする）。
      交点が芯線の内側にあるX字の貫きは端を動かさない */
   const gB = { ...b };
   let moveB = 0;
-  const sB = tB * bLen;
   if (sB > bLen) {
     /* 端の先に交点がある → 優先の面まで延ばす */
     const reach = sB - pHalf / sin;
@@ -1302,6 +1312,7 @@ export function joinDiagGirders(
       x: Math.round(eb.x1 + vx * reach),
       y: Math.round(eb.y1 + vy * reach),
     };
+    gB.underTo = true;
     moveB = Math.abs(bLen - reach);
   } else if (sB < 0) {
     const reach = sB + pHalf / sin;
@@ -1309,6 +1320,7 @@ export function joinDiagGirders(
       x: Math.round(eb.x1 + vx * reach),
       y: Math.round(eb.y1 + vy * reach),
     };
+    gB.underFrom = true;
     moveB = Math.abs(reach);
   } else {
     /* 芯線の中で交わる：いちばん近い端が面の手前にあれば、その端を面へ */
@@ -1320,6 +1332,7 @@ export function joinDiagGirders(
         x: Math.round(eb.x1 + vx * reach),
         y: Math.round(eb.y1 + vy * reach),
       };
+      gB.underFrom = true;
       moveB = pHalf / sin - dFrom;
     } else if (dTo <= dFrom && dTo < pHalf / sin) {
       const reach = sB - pHalf / sin;
@@ -1327,6 +1340,7 @@ export function joinDiagGirders(
         x: Math.round(eb.x1 + vx * reach),
         y: Math.round(eb.y1 + vy * reach),
       };
+      gB.underTo = true;
       moveB = pHalf / sin - dTo;
     }
   }

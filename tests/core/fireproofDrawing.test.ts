@@ -1027,8 +1027,8 @@ describe("梁をつなぐ", () => {
       const b = out.diagGirders[1];
       // 優先の梁は相手の向こう側の面まで伸びる（交点(1500,254)を梁の半幅ぶん越える）
       expect(a.toMm).not.toBeUndefined();
-      expect(a.toMm!.x).toBeLessThan(1500);
       expect(Math.abs(a.toMm!.x - 1425)).toBeLessThan(3);
+      expect(a.over).toBe(true);
       // もう一本は芯線の内側で交わっているので端は動かない
       expect(b.fromMm).toEqual({ x: 1500, y: 0 });
       expect(b.toMm).toEqual({ x: 1500, y: 3997 });
@@ -1205,6 +1205,9 @@ describe("梁をつなぐ", () => {
     expect(out.diagGirders).toHaveLength(2);
     expect(out.diagGirders[0].toMm).toEqual({ x: 3000, y: 6075 });
     expect(out.diagGirders[1].toMm).toEqual({ x: 2925, y: 6000 });
+    /* 下になった端に under 印が付く（描くとき面の線を出さず先に描くため） */
+    expect(out.diagGirders[1].underTo).toBe(true);
+    expect(out.diagGirders[0].underTo).toBeUndefined();
   });
 
   it("平行で同じ線上に無い2本はつなげない", () => {

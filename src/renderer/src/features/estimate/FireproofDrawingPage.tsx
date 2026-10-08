@@ -91,6 +91,14 @@ const FONT_NO = 260;
 const JOINT_R = 150; // 取合記号の○印の半径
 const FONT_JOINT = 280;
 
+/* 引き梁（diagGirders）を描く順の番号：下になった端を持つ梁→ふつうの梁→優先の梁 */
+const diagDrawRank = (g: {
+  underFrom?: boolean;
+  underTo?: boolean;
+  over?: boolean;
+}): number =>
+  g.underFrom === true || g.underTo === true ? 0 : g.over === true ? 2 : 1;
+
 /** 補助寸法線の読み方（例「1の右に1,500」。補助線から引いた線は「1の右1,500から右に3,500」） */
 function auxLineLabel(
   floor: FireproofDrawingFloor,
@@ -1041,7 +1049,13 @@ function FloorSvg({
           return null;
         })}
         {/* 斜梁（2つの交点どうしを結ぶ大梁。端は柱の面） */}
-        {(floor.diagGirders ?? []).map((g, index) => {
+        {(floor.diagGirders ?? [])
+          /* 下になった端（相手の面で止まる側）を先に、優先（over）の梁をいちばん
+             最後に描く。あとに描く梁の白い面が下の線を中抜きして、優先の梁が
+             通り抜けて見える（つなぎ方の3パターン） */
+          .map((g, index) => ({ g, index }))
+          .sort((a, b) => diagDrawRank(a.g) - diagDrawRank(b.g))
+          .map(({ g, index }) => {
           const ends = diagEnds(xs, ys, g);
           if (ends === null) return null;
           const { x1, y1, x2, y2 } = ends;
@@ -1095,6 +1109,11 @@ function FloorSvg({
               }
               onClick={(event) => event.stopPropagation()}
             >
+              {/* 梁の面（白塗り：下の梁の線を中抜きする） */}
+              <polygon
+                fill="white"
+                points={`${ax1 + nx * gh + ox},${ay1 + ny * gh + oy} ${ax2 + nx * gh + ox},${ay2 + ny * gh + oy} ${ax2 - nx * gh + ox},${ay2 - ny * gh + oy} ${ax1 - nx * gh + ox},${ay1 - ny * gh + oy}`}
+              />
               <line
                 x1={ax1 + nx * gh + ox}
                 y1={ay1 + ny * gh + oy}
@@ -1107,6 +1126,23 @@ function FloorSvg({
                 x2={ax2 - nx * gh + ox}
                 y2={ay2 - ny * gh + oy}
               />
+              {/* 端の面（ふた）。下の端（相手の面で止まる側）は出さない */}
+              {g.underFrom !== true && (
+                <line
+                  x1={ax1 + nx * gh + ox}
+                  y1={ay1 + ny * gh + oy}
+                  x2={ax1 - nx * gh + ox}
+                  y2={ay1 - ny * gh + oy}
+                />
+              )}
+              {g.underTo !== true && (
+                <line
+                  x1={ax2 + nx * gh + ox}
+                  y1={ay2 + ny * gh + oy}
+                  x2={ax2 - nx * gh + ox}
+                  y2={ay2 - ny * gh + oy}
+                />
+              )}
               <text
                 x={mx + nx * (gh + 260) + ox}
                 y={my + ny * (gh + 260) + oy}
