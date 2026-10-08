@@ -814,7 +814,8 @@ export default function EstimatePartsPage({
                       entries={options.formworkCategories}
                       listId="formwork-list"
                       value={row.formwork}
-                      title="型枠分類のIDを入力すると種類名に変換されます"
+                      placeholder={shown.formwork}
+                      title="型枠分類のIDを入力すると種類名に変換されます。空欄のときは入力のある上の行を引き継ぎます"
                       onChange={(value) =>
                         editRows(updateRow(rows, index, { formwork: value }))
                       }

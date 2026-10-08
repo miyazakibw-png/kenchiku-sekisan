@@ -127,25 +127,33 @@ export function parseMultiplier(text: string): {
 }
 
 /**
- * 部位Ⅰ・部位Ⅱは未入力なら入力のある上の行を引き継ぐ。
+ * 部位Ⅰ・部位Ⅱ・型枠は未入力なら入力のある上の行を引き継ぐ。
  * 小計行は部位の区切りには使わず、直前の値をそのまま持ち越す。
  */
 export function resolveInherited(
   rows: EstimateRowDraft[],
-): { part1: string; part2: string; part2Split: number }[] {
+): {
+  part1: string;
+  part2: string;
+  part2Split: number;
+  formwork: string;
+}[] {
   let part1 = "";
   let part2 = "";
   let part2Split = 0;
+  let formwork = "";
   return rows.map((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
     if (row.part2.trim() !== "") {
       part2 = row.part2;
       part2Split = row.part2Split;
     }
+    if (row.formwork.trim() !== "") formwork = row.formwork;
     return {
       part1,
       part2,
       part2Split: row.part2.trim() !== "" ? row.part2Split : part2Split,
+      formwork,
     };
   });
 }

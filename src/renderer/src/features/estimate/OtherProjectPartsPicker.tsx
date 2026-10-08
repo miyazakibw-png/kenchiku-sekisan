@@ -210,7 +210,7 @@ export default function OtherProjectPartsPicker({
                         <td>
                           {subtotal ? "" : row.part2Split === 1 ? "✔" : ""}
                         </td>
-                        <td>{subtotal ? "Σ 小計" : row.formwork}</td>
+                        <td>{subtotal ? "Σ 小計" : (shown?.formwork ?? "")}</td>
                         <td>{subtotal ? "Σ 小計" : row.part3}</td>
                         <td>
                           {subtotal || row.ceilingHeight === null

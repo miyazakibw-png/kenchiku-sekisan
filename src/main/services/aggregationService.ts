@@ -552,10 +552,10 @@ function evaluateRowSheets(
 
   const part2Order = new Map<string, number>();
   const evaluations: EvaluatedSheet[] = [];
-  let inherited = { part1: "", part2: "", part2Split: 0 };
+  let inherited = { part1: "", part2: "", part2Split: 0, formwork: "" };
 
   rows.forEach((row) => {
-    // 部位Ⅰ・部位Ⅱは空欄なら入力のある上の行を引き継ぐ
+    // 部位Ⅰ・部位Ⅱ・型枠は空欄なら入力のある上の行を引き継ぐ
     if (row.part1.trim() !== "") inherited = { ...inherited, part1: row.part1 };
     if (row.part2.trim() !== "")
       inherited = {
@@ -563,6 +563,8 @@ function evaluateRowSheets(
         part2: row.part2,
         part2Split: row.part2Split,
       };
+    if (row.formwork.trim() !== "")
+      inherited = { ...inherited, formwork: row.formwork };
     if (row.rowType === "subtotal") return;
     if (!part2Order.has(inherited.part2))
       part2Order.set(inherited.part2, part2Order.size);
@@ -574,7 +576,7 @@ function evaluateRowSheets(
       part2Split: inherited.part2Split === 1,
       part2Order: part2Order.get(inherited.part2) ?? 0,
       part3: row.part3,
-      formwork: row.formwork,
+      formwork: inherited.formwork,
       multiplier: row.multiplier,
       sourceKind:
         row.calcType === "frame"
