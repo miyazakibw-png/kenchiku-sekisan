@@ -340,6 +340,16 @@ export default function AssemblyMasterPage({
     [isDirty, markSaved, save],
   );
 
+  /** 工事専用のセットを共通の仕上明細セットマスターへ写す（元のセットは残る） */
+  const promote = useCallback(async () => {
+    if (editor === null || editor.id === null) return;
+    if (isDirty()) await save(true);
+    const result = await window.sekisan.promoteAssembly(editor.id);
+    setToast(
+      `共通の仕上明細セットマスターに写しました（${headItem(result)?.name ?? ""}）`,
+    );
+  }, [editor, isDirty, save]);
+
   const applyMerge = useCallback(async () => {
     if (!merge) return;
     await window.sekisan.mergeAssemblies(merge.keepId, merge.mergedId);
@@ -721,6 +731,15 @@ export default function AssemblyMasterPage({
                 ➕ 空行を追加
               </button>
               <span className="spacer" />
+              {projectId !== null && editor.id !== null && (
+                <button
+                  type="button"
+                  title="このセットを共通の仕上明細セットマスターへ写します（元のセットは残ります）"
+                  onClick={() => void promote()}
+                >
+                  共通に写す
+                </button>
+              )}
               <button type="button" onClick={() => setEditor(null)}>
                 閉じる
               </button>
