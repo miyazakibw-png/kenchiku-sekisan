@@ -17,6 +17,7 @@ import {
   columnKey,
   columnNumbers,
   dividedBeams,
+  splitBeamAtMembers,
   emptyFloor,
   enclosingRegion,
   GIRDER_HALF,
@@ -93,11 +94,16 @@ const FONT_JOINT = 280;
 
 /* 引き梁（diagGirders）を描く順の番号：下になった端を持つ梁→ふつうの梁→優先の梁 */
 const diagDrawRank = (g: {
+  under?: boolean;
   underFrom?: boolean;
   underTo?: boolean;
   over?: boolean;
 }): number =>
-  g.underFrom === true || g.underTo === true ? 0 : g.over === true ? 2 : 1;
+  g.under === true || g.underFrom === true || g.underTo === true
+    ? 0
+    : g.over === true
+      ? 2
+      : 1;
 
 /** 補助寸法線の読み方（例「1の右に1,500」。補助線から引いた線は「1の右1,500から右に3,500」） */
 function auxLineLabel(
@@ -1054,7 +1060,12 @@ function FloorSvg({
              最後に描く。あとに描く梁の白い面が下の線を中抜きして、優先の梁が
              通り抜けて見える（つなぎ方の3パターン） */
           .map((g, index) => ({ g, index }))
-          .sort((a, b) => diagDrawRank(a.g) - diagDrawRank(b.g))
+          /* 下（under・under端）の梁は先に引いた梁が優先になるよう、新しいものほど先に描く */
+          .sort(
+            (a, b) =>
+              diagDrawRank(a.g) - diagDrawRank(b.g) ||
+              (diagDrawRank(a.g) === 0 ? b.index - a.index : 0),
+          )
           .map(({ g, index }) => {
           const ends = diagEnds(xs, ys, g);
           if (ends === null) return null;
@@ -1216,6 +1227,11 @@ function FloorSvg({
             >
               {vertical ? (
                 <>
+                  {/* 面を白く塗る：下にある線（引き梁・軸線）を中抜きして先に引いた梁が優先に見える */}
+                  <polygon
+                    fill="white"
+                    points={`${beam.x1 - bh},${beam.y1} ${beam.x2 + bh},${beam.y1} ${beam.x2 + bh},${beam.y2} ${beam.x1 - bh},${beam.y2}`}
+                  />
                   <line x1={beam.x1 - bh} y1={beam.y1} x2={beam.x2 - bh} y2={beam.y2} />
                   <line x1={beam.x1 + bh} y1={beam.y1} x2={beam.x2 + bh} y2={beam.y2} />
                   <text
@@ -1230,6 +1246,11 @@ function FloorSvg({
                 </>
               ) : (
                 <>
+                  {/* 面を白く塗る：下にある線（引き梁・軸線）を中抜きして先に引いた梁が優先に見える */}
+                  <polygon
+                    fill="white"
+                    points={`${beam.x1},${beam.y1 - bh} ${beam.x2},${beam.y1 - bh} ${beam.x2},${beam.y2 + bh} ${beam.x1},${beam.y2 + bh}`}
+                  />
                   <line x1={beam.x1} y1={beam.y1 - bh} x2={beam.x2} y2={beam.y2 - bh} />
                   <line x1={beam.x1} y1={beam.y1 + bh} x2={beam.x2} y2={beam.y2 + bh} />
                   <text x={mx} y={my - bh - 60} textAnchor="middle" fontSize={FONT_SYMBOL * 0.85}>
@@ -2229,6 +2250,7 @@ export default function FireproofDrawingPage({
           ty: to.yi,
           symbol: "",
           id: `d${Date.now().toString(36)}${(current.diagGirders ?? []).length}`,
+          under: true,
           ...(from.mm !== undefined ? { fromMm: from.mm } : {}),
           ...(to.mm !== undefined ? { toMm: to.mm } : {}),
         },
@@ -2831,17 +2853,59 @@ export default function FireproofDrawingPage({
     [],
   );
 
+  /** 区画の中をまたぐ部材（置いた小梁など）を外した外側の区画で分割位置を決め、
+     置いた梁は中の部材の面で切る（左右で位置が合う・中の部材を突き抜けない） */
+  const dividedAligned = useCallback(
+    (
+      part: DrawingRegion,
+      axis: "v" | "h",
+      parts: number,
+      symbol: string,
+    ): FireproofDrawingBeam[] => {
+      const outer = enclosingRegion(
+        current,
+        part.pinX ?? part.x + part.width / 2,
+        part.pinY ?? part.y + part.height / 2,
+        halfWidthOf,
+        false,
+        columnHalfOf,
+      );
+      const target: DrawingRegion =
+        outer === null
+          ? part
+          : axis === "h"
+            ? {
+                ...part,
+                y: outer.y,
+                height: outer.height,
+                insetTop: outer.insetTop,
+                insetBottom: outer.insetBottom,
+              }
+            : {
+                ...part,
+                x: outer.x,
+                width: outer.width,
+                insetLeft: outer.insetLeft,
+                insetRight: outer.insetRight,
+              };
+      return dividedBeams(target, axis, parts, symbol).flatMap((beam) =>
+        splitBeamAtMembers(beam, current, halfWidthOf, columnHalfOf),
+      );
+    },
+    [current, halfWidthOf, columnHalfOf],
+  );
+
   /** ④小梁：選んだ区画（複数も可）へ分割配置・区画の中身をコピー＆貼付 */
   const placeBeams = useCallback(() => {
     if (regions.length === 0) return;
     const symbol = beamSymbol.trim();
     const placed = regions
-      .flatMap((part) => dividedBeams(part, beamAxis, beamParts, symbol))
+      .flatMap((part) => dividedAligned(part, beamAxis, beamParts, symbol))
       .map((beam) => ({ ...beam, id: newBeamId() }));
     if (placed.length === 0) return;
     updateFloor({ beams: [...current.beams, ...placed] });
     setMessage(`${regions.length}か所に入れました`);
-  }, [regions, beamAxis, beamParts, beamSymbol, current, updateFloor, newBeamId]);
+  }, [regions, beamAxis, beamParts, beamSymbol, current, updateFloor, newBeamId, dividedAligned]);
 
   /** 区画とその中の小梁から「貼り付けの種」を覚える（区画コピー・入力行コピーの共通） */
   const learnFromBeams = useCallback(
@@ -2996,7 +3060,7 @@ export default function FireproofDrawingPage({
     if (clipRule !== null) {
       // 分割条件で入れ直す（貼る先の区画の大きさに合わせて等分）
       placed = regions.flatMap((part) =>
-        dividedBeams(part, clipRule.axis, clipRule.parts, clipRule.symbol),
+        dividedAligned(part, clipRule.axis, clipRule.parts, clipRule.symbol),
       );
     } else if (clipBeams.length > 0) {
       // 条件が読めない（向き・記号が混ざる、等間隔でない）ときは、写し元の位置のまま貼る
@@ -3025,7 +3089,7 @@ export default function FireproofDrawingPage({
       ],
     });
     setMessage(`${regions.length}か所に貼り付けました`);
-  }, [regions, clipBeams, clipRule, current, updateFloor, newBeamId]);
+  }, [regions, clipBeams, clipRule, current, updateFloor, newBeamId, dividedAligned]);
 
   /* 区画を選んでいるあいだは Ctrl+C（最後の区画の形をコピー）・Ctrl+V（選んだ全部の区画へ貼り付け）も効く。
      入力欄の中の操作はそのまま（input/textareaのときは動かさない） */

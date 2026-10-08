@@ -39,6 +39,8 @@ export interface FireproofDrawingDiagGirder {
   /** 「梁をつなぐ」で下になった側の端（相手の面で止まる端）。描くとき面の線は出さず先に描く */
   underFrom?: boolean;
   underTo?: boolean;
+  /** 後から足した梁：先に引いた梁が優先になるよういちばん先に描く */
+  under?: boolean;
   /** 「梁をつなぐ」で優先に選ばれた梁（いちばん最後に描く＝線が通り抜けて見える） */
   over?: boolean;
 }
@@ -312,6 +314,7 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
             ? { offset: r.offset }
             : {}),
           ...(r.underFrom === true ? { underFrom: true } : {}),
+          ...(r.under === true ? { under: true } : {}),
           ...(r.underTo === true ? { underTo: true } : {}),
           ...(r.over === true ? { over: true } : {}),
           ...(() => {
@@ -1422,6 +1425,133 @@ export function beamSlopeLength(
  * 中点を囲む区画を拾い直して、軸方向の両端をその区画の内内寸法に止める。
  * 寸法や記号の幅が変わったときに呼ぶと、長さ表示が図面に連動する。
  */
+/**
+ * 置く小梁が中をまたぐ部材の線で切る（部材は通り抜け、梁はその面で切れる）。
+ * 部材が梁を貫いて通る（その部材の区間が梁の線を含む）ときだけ切る。
+ * 部材の端が梁の線のところで止まっているT字の付き方では切らない。
+ */
+export function splitBeamAtMembers(
+  beam: FireproofDrawingBeam,
+  floor: FireproofDrawingFloor,
+  halfWidthOf?: HalfWidthOf,
+  columnHalfOf?: ColumnHalfOf,
+): FireproofDrawingBeam[] {
+  const xs = positions(floor.xSpans);
+  const ys = positions(floor.ySpans);
+  const girderHalf = (symbol: string) => halfWidthOf?.(symbol) ?? GIRDER_HALF;
+  const beamHalf = (symbol: string) => halfWidthOf?.(symbol) ?? BEAM_HALF;
+  /** 梁と直角に交わる部材の線（位置・その線のある区間・半幅） */
+  const lines: { at: number; from: number; to: number; half: number }[] = [];
+  const vertical = beam.x1 === beam.x2;
+  if (!vertical && beam.y1 !== beam.y2) return [beam];
+  Object.entries(floor.girders).forEach(([key, symbol]) => {
+    if (!girderExists(floor, key)) return;
+    const [axis, point] = key.split(":");
+    const [xi, yi] = point.split(",").map(Number);
+    if (
+      vertical &&
+      axis === "x" &&
+      xi >= 0 &&
+      xi < xs.length - 1 &&
+      yi >= 0 &&
+      yi < ys.length
+    )
+      lines.push({
+        at: ys[yi] + girderOffset(floor, key, halfWidthOf, columnHalfOf),
+        from: xs[xi],
+        to: xs[xi + 1],
+        half: girderHalf(symbol),
+      });
+    if (
+      !vertical &&
+      axis === "y" &&
+      yi >= 0 &&
+      yi < ys.length - 1 &&
+      xi >= 0 &&
+      xi < xs.length
+    )
+      lines.push({
+        at: xs[xi] + girderOffset(floor, key, halfWidthOf, columnHalfOf),
+        from: ys[yi],
+        to: ys[yi + 1],
+        half: girderHalf(symbol),
+      });
+  });
+  floor.beams.forEach((other) => {
+    if (other === beam) return;
+    if (vertical && other.y1 === other.y2)
+      lines.push({
+        at: other.y1,
+        from: Math.min(other.x1, other.x2),
+        to: Math.max(other.x1, other.x2),
+        half: beamHalf(other.symbol),
+      });
+    if (!vertical && other.x1 === other.x2)
+      lines.push({
+        at: other.x1,
+        from: Math.min(other.y1, other.y2),
+        to: Math.max(other.y1, other.y2),
+        half: beamHalf(other.symbol),
+      });
+  });
+  (floor.diagGirders ?? []).forEach((g) => {
+    const ends = diagEnds(xs, ys, g);
+    if (ends === null) return;
+    const off = g.offset ?? 0;
+    const dx = ends.x2 - ends.x1;
+    const dy = ends.y2 - ends.y1;
+    const plan = Math.hypot(dx, dy);
+    if (plan <= 0) return;
+    const nx = (-dy / plan) * off;
+    const ny = (dx / plan) * off;
+    if (vertical && ends.y1 === ends.y2)
+      lines.push({
+        at: ends.y1 + ny,
+        from: Math.min(ends.x1, ends.x2) + nx,
+        to: Math.max(ends.x1, ends.x2) + nx,
+        half: girderHalf(g.symbol),
+      });
+    if (!vertical && ends.x1 === ends.x2)
+      lines.push({
+        at: ends.x1 + nx,
+        from: Math.min(ends.y1, ends.y2) + ny,
+        to: Math.max(ends.y1, ends.y2) + ny,
+        half: girderHalf(g.symbol),
+      });
+  });
+  /* 梁の軸方向：部材が本当に梁を貫く（部材の区間が梁の線を中に含む）ときだけ切る */
+  const axis = vertical ? beam.x1 : beam.y1;
+  const lo = Math.min(vertical ? beam.y1 : beam.x1, vertical ? beam.y2 : beam.x2);
+  const hi = Math.max(vertical ? beam.y1 : beam.x1, vertical ? beam.y2 : beam.x2);
+  const cuts: { from: number; to: number }[] = [];
+  lines.forEach((line) => {
+    /* 部材の区間が梁の線を含む（端が梁の線で止まるT字は含まない） */
+    if (!(line.from < axis - 1 && axis < line.to)) return;
+    if (!(lo + 1 < line.at && line.at < hi - 1)) return;
+    cuts.push({ from: line.at - line.half, to: line.at + line.half });
+  });
+  if (cuts.length === 0) return [beam];
+  cuts.sort((a, b) => a.from - b.from);
+  const out: FireproofDrawingBeam[] = [];
+  let cur = lo;
+  cuts.forEach((cut) => {
+    if (cut.from > cur + 1)
+      out.push(
+        vertical
+          ? { x1: axis, y1: cur, x2: axis, y2: cut.from, symbol: beam.symbol }
+          : { x1: cur, y1: axis, x2: cut.from, y2: axis, symbol: beam.symbol },
+      );
+    cur = Math.max(cur, cut.to);
+  });
+  if (hi > cur + 1)
+    out.push(
+      vertical
+        ? { x1: axis, y1: cur, x2: axis, y2: hi, symbol: beam.symbol }
+        : { x1: cur, y1: axis, x2: hi, y2: axis, symbol: beam.symbol },
+    );
+  return out;
+}
+
 export function refitBeams(
   floor: FireproofDrawingFloor,
   halfWidthOf?: HalfWidthOf,

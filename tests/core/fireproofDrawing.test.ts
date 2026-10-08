@@ -25,6 +25,7 @@ import {
   positions,
   serializeDrawing,
   spanListText,
+  splitBeamAtMembers,
   unconnectedDiagEnds,
   xGridLabel,
   yGridLabel,
@@ -1220,5 +1221,65 @@ describe("梁をつなぐ", () => {
     };
     const out = joinDiagGirders(f, 0, 1);
     expect("error" in out && out.error).toBe("parallel");
+  });
+});
+
+describe("置いた小梁を中の部材で切る（splitBeamAtMembers）", () => {
+  /* 図：xs = 0,6000,12000 / ys = 0,6000。縦の大梁 "y:1,0"（x=6000, y=0..6000）を
+     横の小梁がまたぐとき、大梁の面で2つに切れる。大梁の半幅は規定値75。 */
+  const floor: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000],
+    columns: {},
+    girders: { "y:1,0": "G1" },
+    beams: [],
+  };
+
+  it("大梁を貫く小梁は大梁の面で2つに切れる", () => {
+    const out = splitBeamAtMembers(
+      { x1: 1000, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+      floor,
+    );
+    expect(out).toEqual([
+      { x1: 1000, y1: 3000, x2: 5925, y2: 3000, symbol: "B40" },
+      { x1: 6075, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+    ]);
+  });
+
+  it("大梁の端が小梁の線で止まるT字は切らない", () => {
+    /* 縦梁を上の区間だけにする（y=3000..6000 → "y:1,0"の代わりに半区間。
+       xSpans区間はないので同じキーだと全区間になる → 代わりに小梁で検証 */
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girders: {},
+      beams: [{ x1: 6000, y1: 3000, x2: 6000, y2: 6000, symbol: "B25" }],
+    };
+    const out = splitBeamAtMembers(
+      { x1: 1000, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+      f,
+    );
+    /* 縦の小梁の端が横梁の線（y=3000）に付くT字 → 切らない */
+    expect(out).toEqual([
+      { x1: 1000, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+    ]);
+  });
+
+  it("小梁どうしが貫くときも小梁の面で切れる", () => {
+    const f: FireproofDrawingFloor = {
+      ...floor,
+      girders: {},
+      beams: [{ x1: 6000, y1: 1000, x2: 6000, y2: 5000, symbol: "B25" }],
+    };
+    const out = splitBeamAtMembers(
+      { x1: 1000, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+      f,
+    );
+    /* 縦の小梁（B25、既定の半幅で切る）の面で2つに切れる */
+    expect(out).toHaveLength(2);
+    expect(out[0]?.x2).toBeLessThan(6000);
+    expect(out[1]?.x1).toBeGreaterThan(6000);
+    expect(out[0]?.x1).toBe(1000);
+    expect(out[1]?.x2).toBe(11000);
   });
 });
