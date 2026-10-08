@@ -78,7 +78,7 @@ export default function RoomCalcPrintPage({
     [busy],
   );
 
-  const name = `${project.managementNo}_${project.name}_計算書`;
+  const name = `${project.name}_計算書`;
 
   return (
     <div className="room-calc-print-page">

@@ -117,7 +117,7 @@ export default function AggregatePrintPage({
     [busy],
   );
 
-  const name = `${project.managementNo}_${project.name}_集計書`;
+  const name = `${project.name}_集計書`;
 
   return (
     <div className="aggregate-print-page">
