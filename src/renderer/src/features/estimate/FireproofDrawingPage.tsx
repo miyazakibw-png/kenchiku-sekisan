@@ -40,6 +40,7 @@ import {
   missingJointKeys,
   nudgeBeam,
   parseDrawing,
+  refitBeam,
   refitBeams,
   parseSpanList,
   positions,
@@ -2840,12 +2841,25 @@ export default function FireproofDrawingPage({
     if (drag !== null && drag.applied !== 0) {
       setPast((rows) => [...rows.slice(-49), drag.before]);
       setFuture([]);
+      /* 離した梁は、落ちた場所を囲む区画に合わせて長さを入れ直す
+         （三角の区画の中に動かしても端がまわりの部材の面まで届く） */
+      setDrawing((before) => {
+        const target = before.floors[floor] ?? emptyFloor();
+        const moved = target.beams[drag.index];
+        if (moved === undefined) return before;
+        const refit = refitBeam(moved, target, halfWidthOf, columnHalfOf);
+        if (JSON.stringify(refit) === JSON.stringify(moved)) return before;
+        const beams = target.beams.map((beam, i) =>
+          i === drag.index ? refit : beam,
+        );
+        return { floors: { ...before.floors, [floor]: { ...target, beams } } };
+      });
     }
     // つかんで離すと発生するクリックで区画選択に化けないよう、少しの間だけ持ち場を残す
     window.setTimeout(() => {
       dragRef.current = null;
     }, 0);
-  }, []);
+  }, [floor, halfWidthOf, columnHalfOf]);
 
   /** 新しい小梁の取合記号用の番号 */
   const newBeamId = useCallback(
