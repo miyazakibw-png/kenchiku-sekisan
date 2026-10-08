@@ -27,6 +27,7 @@ import {
   withUniqueIds,
   removeSet,
   removeSetLine,
+  removeSheetRow,
   resolveDescriptionMark,
   resolveDescriptionMarks,
   splitSetAt,
@@ -324,6 +325,35 @@ describe("行の追加と削除", () => {
     const removed = removeSetDetail(set, 0);
     expect(removed.details.map((item) => item.name)).toEqual(["壁"]);
     expect(removed.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("1行しかないセットの行を消すとセットごと消える", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    const next = removeSheetRow([first, second], first.id, 0);
+    expect(next.map((item) => item.id)).toEqual([second.id]);
+  });
+
+  it("見出し付きセットの最後の1行を消しても見出しは残る", () => {
+    const set = calcSet(1);
+    set.banner = { text: "1階", color: "#dbeafe" };
+    set.details = [calcDetail({ name: "床" })];
+    const next = removeSheetRow([set], set.id, 0);
+    expect(next).toHaveLength(1);
+    expect(next[0].banner?.text).toBe("1階");
+    expect(next[0].details).toHaveLength(0);
+  });
+
+  it("行を消しても空でない計算式が残るセットは消えない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine({ formulaA: "2*3" }), calcLine({ formulaA: "1" })];
+    const next = removeSheetRow([set], set.id, 0);
+    expect(next).toHaveLength(1);
+    expect(next[0].details).toHaveLength(0);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1"]);
   });
 
   it("明細を上下に動かしても計算式は動かない", () => {

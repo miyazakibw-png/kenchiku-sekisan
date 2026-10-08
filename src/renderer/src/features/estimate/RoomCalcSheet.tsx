@@ -28,7 +28,7 @@ import {
   padLines,
   removeSet,
   removeSetLine,
-  removeSetRow,
+  removeSheetRow,
   resolveDescriptionMark,
   setRowCount,
   splitSetAt,
@@ -755,13 +755,11 @@ export default function RoomCalcSheet({
   /** その行（明細と計算式の1組）をまとめて削除する */
   const removeDetail = useCallback(
     (setId: string, index: number): void => {
-      const target = sets.find((set) => set.id === setId);
-      if (!target) return;
-      const next = removeSetRow(target, index);
-      updateSet(setId, { details: next.details, lines: next.lines });
+      // 消したのが最後の1行ならセットごと消す（半分の行が残らないように）
+      commit(removeSheetRow(sets, setId, index));
       onFocus(null);
     },
-    [onFocus, sets, updateSet],
+    [commit, onFocus, sets],
   );
 
   /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */

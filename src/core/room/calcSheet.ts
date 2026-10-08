@@ -613,6 +613,32 @@ export function splitSetAt(
 }
 
 /**
+ * 明細の行を1つ消す。消したのが最後の1行で、残るのが空の計算式行だけなら
+ * セットごと消す（明細入力に半分の行が残らないように。見出し行は残す）。
+ * ↑↓移動でセットが空になったときと同じ片付け方。
+ */
+export function removeSheetRow(
+  sets: CalcSet[],
+  setId: string,
+  index: number,
+): CalcSet[] {
+  const at = sets.findIndex((set) => set.id === setId);
+  if (at < 0) return sets;
+  const target = sets[at];
+  if (index < 0 || index >= target.details.length) return sets;
+  const next = sets.map((item, n) =>
+    n === at ? removeSetRow(item, index) : item,
+  );
+  return next.filter(
+    (item, n) =>
+      n !== at ||
+      item.details.length > 0 ||
+      item.banner != null ||
+      item.lines.some((line) => !isEmptyLine(line)),
+  );
+}
+
+/**
  * セットを1つ消す。見出し（コメント行）が付いていたら、コメント行だけ残す。
  * コメント行は明細とは別のものなので、明細を消しても消えないようにする。
  */
