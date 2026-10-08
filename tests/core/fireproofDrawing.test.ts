@@ -1025,13 +1025,12 @@ describe("梁をつなぐ", () => {
     if (!("error" in out)) {
       const a = out.diagGirders[0];
       const b = out.diagGirders[1];
-      // 優先の梁は端の延長先（(1500, 約254)）
+      // 優先の梁は相手の向こう側の面まで伸びる（交点(1500,254)を梁の半幅ぶん越える）
       expect(a.toMm).not.toBeUndefined();
-      expect(Math.abs(a.toMm!.x - 1500)).toBeLessThan(2);
-      // もう一本は近いほうの端（上端）が交点へ
-      expect(b.fromMm).not.toBeUndefined();
-      expect(b.fromMm).toEqual(a.toMm);
-      // 遠いほうの端は動かない
+      expect(a.toMm!.x).toBeLessThan(1500);
+      expect(Math.abs(a.toMm!.x - 1425)).toBeLessThan(3);
+      // もう一本は芯線の内側で交わっているので端は動かない
+      expect(b.fromMm).toEqual({ x: 1500, y: 0 });
       expect(b.toMm).toEqual({ x: 1500, y: 3997 });
       expect(a.fromMm).toEqual({ x: 7300, y: 0 });
     }
@@ -1129,5 +1128,94 @@ describe("突き抜けチェック", () => {
       beams: [{ x1: 0, y1: 6000, x2: 12000, y2: 6000, symbol: "B1" }],
     };
     expect(piercingDiagPoints(f)).toEqual([]);
+  });
+});
+
+describe("梁をつなぐ", () => {
+  const base: FireproofDrawingFloor = {
+    ...emptyFloor(),
+    xSpans: [6000, 6000],
+    ySpans: [6000, 6000],
+  };
+
+  it("同じ芯線上で切れている2本は、優先の梁が相手を含んで1本になる", () => {
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [
+        /* 水平の線が2つに切れている */
+        {
+          fx: 0,
+          fy: 0,
+          tx: 1,
+          ty: 0,
+          symbol: "G1",
+          fromMm: { x: 0, y: 3000 },
+          toMm: { x: 5000, y: 3000 },
+        },
+        {
+          fx: 1,
+          fy: 0,
+          tx: 2,
+          ty: 0,
+          symbol: "G1",
+          fromMm: { x: 7000, y: 3000 },
+          toMm: { x: 12000, y: 3000 },
+        },
+      ],
+    };
+    const out = joinDiagGirders(f, 0, 1);
+    if ("error" in out) throw new Error(out.error);
+    expect(out.merged).toBe(true);
+    expect(out.diagGirders).toHaveLength(1);
+    expect(out.diagGirders[0].fromMm).toEqual({ x: 0, y: 3000 });
+    expect(out.diagGirders[0].toMm).toEqual({ x: 12000, y: 3000 });
+    expect(out.diagGirders[0].symbol).toBe("G1");
+  });
+
+  it("角度がついた2本は面でつなぐ", () => {
+    /* 優先＝縦。縦は横の向こう側の面(芯＋75)まで伸び、横の端は縦の手前の面(芯－75)で止まる */
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [
+        /* 縦 (3000,0)-(3000,4000) */
+        {
+          fx: 0,
+          fy: 0,
+          tx: 0,
+          ty: 1,
+          symbol: "G1",
+          fromMm: { x: 3000, y: 0 },
+          toMm: { x: 3000, y: 4000 },
+        },
+        /* 横 (0,6000)-(2700,6000)：縦の芯に届かない */
+        {
+          fx: 0,
+          fy: 1,
+          tx: 1,
+          ty: 1,
+          symbol: "G1",
+          fromMm: { x: 0, y: 6000 },
+          toMm: { x: 2700, y: 6000 },
+        },
+      ],
+    };
+    const out = joinDiagGirders(f, 0, 1);
+    if ("error" in out) throw new Error(out.error);
+    expect(out.merged).toBe(false);
+    expect(out.diagGirders).toHaveLength(2);
+    expect(out.diagGirders[0].toMm).toEqual({ x: 3000, y: 6075 });
+    expect(out.diagGirders[1].toMm).toEqual({ x: 2925, y: 6000 });
+  });
+
+  it("平行で同じ線上に無い2本はつなげない", () => {
+    const f: FireproofDrawingFloor = {
+      ...base,
+      diagGirders: [
+        { fx: 0, fy: 0, tx: 1, ty: 0, symbol: "G1" },
+        { fx: 0, fy: 1, tx: 1, ty: 1, symbol: "G1" },
+      ],
+    };
+    const out = joinDiagGirders(f, 0, 1);
+    expect("error" in out && out.error).toBe("parallel");
   });
 });

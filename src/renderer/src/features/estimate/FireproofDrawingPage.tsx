@@ -659,11 +659,13 @@ function FloorSvg({
   diagStart?: { xi: number; yi: number } | { pt: { x: number; y: number } } | null;
   /** 斜梁モードで交点をクリックしたとき */
   onIntersectionPick?: (xi: number, yi: number) => void;
-  /** 斜梁モードで引いた梁・柱の線上の点をクリックしたとき（mm） */
-  onLinePick?: (x: number, y: number) => void;
-  /** 斜梁モードでカーソルが今取っている点（吸い付き先の下見） */
-  diagHover?: { x: number; y: number } | null;
-  onDiagHover?: (pt: { x: number; y: number } | null) => void;
+  /** 斜梁モードで引いた梁・柱の線上の点をクリックしたとき（mm。free=true はShift自由点） */
+  onLinePick?: (x: number, y: number, free: boolean) => void;
+  /** 斜梁モードでカーソルが今取っている点（吸い付き先の下見。free=true はShift自由点） */
+  diagHover?: { x: number; y: number; free?: boolean } | null;
+  onDiagHover?: (
+    pt: { x: number; y: number; free?: boolean } | null,
+  ) => void;
   /** 「梁をつなぐ」モード中（つなぐはずで離れている端に印を出す） */
   joinMode?: boolean;
   /** 「梁をつなぐ」で先に選んだ優先の梁の番号 */
@@ -1400,6 +1402,9 @@ function FloorSvg({
           floor.beams.forEach((beam) =>
             seg(beam.x1, beam.y1, beam.x2, beam.y2),
           );
+          /* 柱の芯線（梁の線×寸法線の交わりを拾えるように図の中だけ入れる） */
+          xs.forEach((x) => seg(x, 0, x, totalY));
+          ys.forEach((y) => seg(0, y, totalX, y));
           (floor.diagGirders ?? []).forEach((g) => {
             const ends = diagEnds(xs, ys, g);
             if (ends === null) return;
@@ -1571,15 +1576,31 @@ function FloorSvg({
                   event.stopPropagation();
                   const at = eventAt(event);
                   if (at === null) return;
+                  /* Shiftを押しながら押すと線に吸い付かず自由な点が打てる（斜め梁用） */
+                  if (event.shiftKey) {
+                    if (at.x < 0 || at.y < 0) return;
+                    onLinePick?.(at.x, at.y, true);
+                    return;
+                  }
                   const s = snapAt(at.x, at.y);
                   if (s === null) return;
                   if (s.xi !== undefined && s.yi !== undefined)
                     onIntersectionPick?.(s.xi, s.yi);
-                  else onLinePick?.(s.x, s.y);
+                  else onLinePick?.(s.x, s.y, false);
                 }}
                 onPointerMove={(event) => {
                   const at = eventAt(event);
-                  onDiagHover?.(at === null ? null : snapAt(at.x, at.y));
+                  if (at === null) {
+                    onDiagHover?.(null);
+                    return;
+                  }
+                  if (event.shiftKey) {
+                    onDiagHover?.(
+                      at.x < 0 || at.y < 0 ? null : { ...at, free: true },
+                    );
+                    return;
+                  }
+                  onDiagHover?.(snapAt(at.x, at.y));
                 }}
                 onPointerLeave={() => onDiagHover?.(null)}
                 onClick={(event) => event.stopPropagation()}
@@ -1598,19 +1619,31 @@ function FloorSvg({
                 start.y !== undefined && (
                   <circle className="start" cx={start.x} cy={start.y} r={600} />
                 )}
-              {/* 始点から終点の下見の線 */}
+              {/* 始点から終点の下見の線（Shiftなしは水平・垂直に揃えて出す） */}
               {start !== null &&
                 start.x !== undefined &&
                 start.y !== undefined &&
-                diagHover != null && (
-                  <line
-                    className="preview"
-                    x1={start.x}
-                    y1={start.y}
-                    x2={diagHover.x}
-                    y2={diagHover.y}
-                  />
-                )}
+                diagHover != null &&
+                (() => {
+                  const ev =
+                    diagHover.free === true ||
+                    diagHover.x === start.x ||
+                    diagHover.y === start.y
+                      ? diagHover
+                      : Math.abs(diagHover.x - start.x) >=
+                          Math.abs(diagHover.y - start.y)
+                        ? { x: diagHover.x, y: start.y }
+                        : { x: start.x, y: diagHover.y };
+                  return (
+                    <line
+                      className="preview"
+                      x1={start.x}
+                      y1={start.y}
+                      x2={ev.x}
+                      y2={ev.y}
+                    />
+                  );
+                })()}
             </g>
           );
         })()}
@@ -1821,7 +1854,11 @@ export default function FireproofDrawingPage({
     { xi: number; yi: number } | { pt: { x: number; y: number } } | null
   >(null);
   /* 斜梁モードでカーソルが今取っている点（吸い付き先の下見） */
-  const [diagHover, setDiagHover] = useState<{ x: number; y: number } | null>(
+  const [diagHover, setDiagHover] = useState<{
+    x: number;
+    y: number;
+    free?: boolean;
+  } | null>(
     null,
   );
   /* 補助寸法線：柱線とは別に寸法線からずらして引く線。モード中に柱線・補助線を押して基の線を選ぶ */
@@ -2054,52 +2091,56 @@ export default function FireproofDrawingPage({
     [current],
   );
 
-  /* 「梁をつなぐ」：優先の梁を1本目・つなぐ梁を2本目に押す。
-     2本の芯線が交わる点でつなげる（優先の梁は縮めない・足りなければ伸びる） */
-  const joinPick = useCallback(
-    (index: number) => {
-      if (joinFirst === null) {
-        setJoinFirst(index);
-        setMessage("優先の梁を選びました。つなぐもう一本の梁を押してください");
-        return;
-      }
-      if (index === joinFirst) {
-        setJoinFirst(null);
-        setMessage("優先の梁の選択をやめました");
-        return;
-      }
-      const out = joinDiagGirders(current, joinFirst, index);
-      if ("error" in out) {
-        setMessage(
-          out.error === "parallel"
-            ? "その2本は平行で交わらないのでつなげません"
-            : "交わる場所が端から離れすぎていてつなげません",
-        );
-      } else {
-        updateFloor({ diagGirders: out.diagGirders });
-        setMessage("交わる点でつなげました");
-      }
-      setJoinFirst(null);
-    },
-    [joinFirst, current, updateFloor],
-  );
-
   /* 斜梁：モード中に交点・線上の点を押す→始点、もう1か所→終点で1本入る */
   const pickDiag = useCallback(
-    (pick: { xi: number; yi: number } | { pt: { x: number; y: number } }) => {
+    (
+      pick:
+        | { xi: number; yi: number }
+        | { pt: { x: number; y: number }; free?: boolean },
+    ) => {
       if (diagStart === null) {
         setDiagStart(pick);
+        setMessage(
+          "終点を押してください（水平・垂直の梁。斜めはShiftを押しながら）",
+        );
         return;
+      }
+      /* 2点目をShiftなしで取ったときは水平・垂直の梁だけにする（軸組図の線の引き方） */
+      let end = pick;
+      if (!("free" in pick && pick.free === true)) {
+        const sx =
+          "pt" in diagStart
+            ? diagStart.pt.x
+            : (positions(current.xSpans)[diagStart.xi] ?? 0);
+        const sy =
+          "pt" in diagStart
+            ? diagStart.pt.y
+            : (positions(current.ySpans)[diagStart.yi] ?? 0);
+        const ex =
+          "pt" in pick
+            ? pick.pt.x
+            : (positions(current.xSpans)[pick.xi] ?? 0);
+        const ey =
+          "pt" in pick
+            ? pick.pt.y
+            : (positions(current.ySpans)[pick.yi] ?? 0);
+        if (ex !== sx && ey !== sy) {
+          const proj =
+            Math.abs(ex - sx) >= Math.abs(ey - sy)
+              ? { x: ex, y: sy }
+              : { x: sx, y: ey };
+          end = { pt: proj };
+        }
       }
       const sameGrid =
         !("pt" in diagStart) &&
-        !("pt" in pick) &&
-        diagStart.xi === pick.xi &&
-        diagStart.yi === pick.yi;
+        !("pt" in end) &&
+        diagStart.xi === end.xi &&
+        diagStart.yi === end.yi;
       const samePt =
         "pt" in diagStart &&
-        "pt" in pick &&
-        Math.hypot(diagStart.pt.x - pick.pt.x, diagStart.pt.y - pick.pt.y) < 1;
+        "pt" in end &&
+        Math.hypot(diagStart.pt.x - end.pt.x, diagStart.pt.y - end.pt.y) < 1;
       if (sameGrid || samePt) {
         setDiagStart(null);
         return;
@@ -2142,7 +2183,7 @@ export default function FireproofDrawingPage({
         return { xi, yi, mm: p.pt, label: "線上" };
       };
       const from = endOf(diagStart);
-      const to = endOf(pick);
+      const to = endOf(end);
       const next: FireproofDrawingDiagGirder[] = [
         ...(current.diagGirders ?? []),
         {
@@ -2170,7 +2211,8 @@ export default function FireproofDrawingPage({
     [pickDiag],
   );
   const pickLinePoint = useCallback(
-    (x: number, y: number) => pickDiag({ pt: { x, y } }),
+    (x: number, y: number, free: boolean) =>
+      pickDiag({ pt: { x, y }, free }),
     [pickDiag],
   );
   /* 補助寸法線：基の柱線・補助線を選ぶ（baseOffsetは基の柱線からのずれ。補助線から連続して引ける） */
@@ -2472,6 +2514,42 @@ export default function FireproofDrawingPage({
   const halfWidthOf = useCallback<HalfWidthOf>(
     (symbol) => beamHalfWidths.get(symbol.trim()) ?? null,
     [beamHalfWidths],
+  );
+
+  /* 「梁をつなぐ」：優先の梁を1本目・つなぐ梁を2本目に押す。
+     つなぐ端は芯線の交点ではなく相手の面で付く（優先は向こう側の面まで伸びる） */
+  const joinPick = useCallback(
+    (index: number) => {
+      if (joinFirst === null) {
+        setJoinFirst(index);
+        setMessage("優先の梁を選びました。つなぐもう一本の梁を押してください");
+        return;
+      }
+      if (index === joinFirst) {
+        setJoinFirst(null);
+        setMessage("優先の梁の選択をやめました");
+        return;
+      }
+      const out = joinDiagGirders(current, joinFirst, index, (s) =>
+        halfWidthOf(s) ?? undefined,
+      );
+      if ("error" in out) {
+        setMessage(
+          out.error === "parallel"
+            ? "その2本は平行で同じ線上に無いのでつなげません"
+            : "交わる場所が端から離れすぎていてつなげません",
+        );
+      } else {
+        updateFloor({ diagGirders: out.diagGirders });
+        setMessage(
+          out.merged
+            ? "同じ線上なので1本につなげました"
+            : "面で付くようにつなげました",
+        );
+      }
+      setJoinFirst(null);
+    },
+    [joinFirst, current, updateFloor, halfWidthOf],
   );
 
   /* 柱記号→柱の四角の半分（横×縦 mm）。柱リストの寸法（Ｗ×Ｄの半分）。
@@ -3642,12 +3720,12 @@ export default function FireproofDrawingPage({
               </div>
               {diagMode && (
                 <p className="hint">
-                  図の交点・引いてある梁や柱の線上を2か所クリック（始点→終点）すると梁が入ります（斜め・縦・横どこでも）
+                  図の交点・線上を2か所クリック（始点→終点）すると梁が入ります。普通に押すと水平・垂直の梁、Shiftを押しながら押すと自由な点で斜めの梁が引けます
                 </p>
               )}
               {joinMode && (
                 <p className="hint">
-                  赤い○はつなぐはずなのに離れている端、赤い✕は斜め梁を突き抜けている（突き抜けられている）箇所です。優先の梁→つなぐ梁の順に図でクリックすると、2本が交わる点でつながります（優先の梁は縮まず、足りなければ伸びます）
+                  赤い○はつなぐはずなのに離れている端、赤い✕は斜め梁を突き抜けている（突き抜けられている）箇所です。優先の梁→つなぐ梁の順に図でクリックするとつながります（同じ線上なら優先の梁が相手を含むまで伸びて1本に、角度がついていれば交わる点でつながります）
                 </p>
               )}
               {(current.diagGirders ?? []).map((g, index) => {

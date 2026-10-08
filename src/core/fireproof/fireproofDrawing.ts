@@ -1197,15 +1197,20 @@ export function piercingDiagPoints(
   return points;
 }
 
-/** 2本の斜め梁をその芯線の交点でつなげる。
-   priorityIndex の梁は優先（交点が線の上にあればそのまま＝縮めない、足りなければそこへ伸びる）。
-   もう一本は交点に近いほうの端を交点へ動かす（伸びも縮めもする）。
-   平行・交点が端から遠すぎる（>2500mm）ときはその理由を返す */
+/** 2本の斜め梁をつなげる。
+   priorityIndex の梁が優先：同じ芯線上（平行で重なり・隙間がある）なら
+   優先の梁が相手を含む範囲まで伸びて1本になり、もう一本は消える。
+   角度がついていれば芯線の交点でつなげる（優先の梁は縮めない・足りなければそこへ伸びる、
+   もう一本は交点に近いほうの端を交点へ動かす）。
+   平行で同じ線上でない・交点が端から遠すぎる（>2500mm）ときはその理由を返す */
 export function joinDiagGirders(
   floor: Pick<FireproofDrawingFloor, "xSpans" | "ySpans" | "diagGirders">,
   priorityIndex: number,
   otherIndex: number,
-): { diagGirders: FireproofDrawingDiagGirder[] } | { error: "parallel" | "far" } {
+  halfOf?: (symbol: string) => number | undefined,
+):
+  | { diagGirders: FireproofDrawingDiagGirder[]; merged: boolean }
+  | { error: "parallel" | "far" } {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
   const list = floor.diagGirders ?? [];
@@ -1222,40 +1227,114 @@ export function joinDiagGirders(
   const aLen = Math.hypot(adx, ady);
   const bLen = Math.hypot(bdx, bdy);
   const den = adx * bdy - ady * bdx;
-  if (aLen === 0 || bLen === 0 || Math.abs(den) < 1e-9 * aLen * bLen)
-    return { error: "parallel" };
+  if (aLen === 0 || bLen === 0) return { error: "parallel" };
+  if (Math.abs(den) < 1e-9 * aLen * bLen) {
+    /* 平行：同じ芯線の上（横のずれ150mm以内）なら、優先の梁が相手を含むまで伸びて1本になる */
+    const ux = adx / aLen;
+    const uy = ady / aLen;
+    const off = (px: number, py: number) =>
+      Math.abs((px - ea.x1) * uy - (py - ea.y1) * ux);
+    if (off(eb.x1, eb.y1) > 150 || off(eb.x2, eb.y2) > 150)
+      return { error: "parallel" };
+    const proj = (px: number, py: number) =>
+      (px - ea.x1) * ux + (py - ea.y1) * uy;
+    const sMin = Math.min(0, aLen, proj(eb.x1, eb.y1), proj(eb.x2, eb.y2));
+    const sMax = Math.max(0, aLen, proj(eb.x1, eb.y1), proj(eb.x2, eb.y2));
+    const p1 = {
+      x: Math.round(ea.x1 + ux * sMin),
+      y: Math.round(ea.y1 + uy * sMin),
+    };
+    const p2 = {
+      x: Math.round(ea.x1 + ux * sMax),
+      y: Math.round(ea.y1 + uy * sMax),
+    };
+    const gA: FireproofDrawingDiagGirder = {
+      ...a,
+      fx: nearestAxis(xs, p1.x),
+      fy: nearestAxis(ys, p1.y),
+      tx: nearestAxis(xs, p2.x),
+      ty: nearestAxis(ys, p2.y),
+      fromMm: p1,
+      toMm: p2,
+    };
+    const next = list.filter((_, i) => i !== otherIndex);
+    next[priorityIndex > otherIndex ? priorityIndex - 1 : priorityIndex] = gA;
+    return { diagGirders: next, merged: true };
+  }
   const tA = ((eb.x1 - ea.x1) * bdy - (eb.y1 - ea.y1) * bdx) / den;
-  const ix = ea.x1 + adx * tA;
-  const iy = ea.y1 + ady * tA;
   const tB = ((ea.x1 - eb.x1) * ady - (ea.y1 - eb.y1) * adx) / -den;
-  /* それぞれ交点にいちばん近い端からの距離で、つなげる長さを測る */
-  const gapA =
-    tA < 0
-      ? Math.hypot(ix - ea.x1, iy - ea.y1)
-      : tA > 1
-        ? Math.hypot(ix - ea.x2, iy - ea.y2)
-        : 0;
-  const gapB =
-    tB < 0
-      ? Math.hypot(ix - eb.x1, iy - eb.y1)
-      : tB > 1
-        ? Math.hypot(ix - eb.x2, iy - eb.y2)
-        : Math.min(
-            Math.hypot(ix - eb.x1, iy - eb.y1),
-            Math.hypot(ix - eb.x2, iy - eb.y2),
-          );
-  if (gapA > 2500 || gapB > 2500) return { error: "far" };
-  const p = { x: Math.round(ix), y: Math.round(iy) };
-  const next = list.slice();
+  /* 梁のつなぎ方（基本3パターン）：優先の梁はつなぐ梁を含む向こう側の面まで伸び、
+     つなぐ側の端は優先の梁の手前の面で止まる。芯線から面までの長さは半幅÷交差角のsin */
+  const sin = Math.abs(den) / (aLen * bLen);
+  const pHalf = halfOf?.(a.symbol.trim()) ?? 75;
+  const oHalf = halfOf?.(b.symbol.trim()) ?? 75;
+  const ux = adx / aLen;
+  const uy = ady / aLen;
+  const vx = bdx / bLen;
+  const vy = bdy / bLen;
+  /* 優先の梁の端：届かなければ相手の向こう側の面まで伸ばす */
   const gA = { ...a };
-  if (tA > 1) gA.toMm = p;
-  else if (tA < 0) gA.fromMm = p;
-  next[priorityIndex] = gA;
+  let moveA = 0;
+  if (tA > 1) {
+    const reach = tA * aLen + oHalf / sin;
+    gA.toMm = {
+      x: Math.round(ea.x1 + ux * reach),
+      y: Math.round(ea.y1 + uy * reach),
+    };
+    moveA = reach - aLen;
+  } else if (tA < 0) {
+    const reach = tA * aLen - oHalf / sin;
+    gA.fromMm = {
+      x: Math.round(ea.x1 + ux * reach),
+      y: Math.round(ea.y1 + uy * reach),
+    };
+    moveA = -reach;
+  }
+  /* つなぐ側の端：優先の梁の手前の面で止める（伸びも縮めもする）。
+     交点が芯線の内側にあるX字の貫きは端を動かさない */
   const gB = { ...b };
-  if (tB >= 0.5) gB.toMm = p;
-  else gB.fromMm = p;
+  let moveB = 0;
+  const sB = tB * bLen;
+  if (sB > bLen) {
+    /* 端の先に交点がある → 優先の面まで延ばす */
+    const reach = sB - pHalf / sin;
+    gB.toMm = {
+      x: Math.round(eb.x1 + vx * reach),
+      y: Math.round(eb.y1 + vy * reach),
+    };
+    moveB = Math.abs(bLen - reach);
+  } else if (sB < 0) {
+    const reach = sB + pHalf / sin;
+    gB.fromMm = {
+      x: Math.round(eb.x1 + vx * reach),
+      y: Math.round(eb.y1 + vy * reach),
+    };
+    moveB = Math.abs(reach);
+  } else {
+    /* 芯線の中で交わる：いちばん近い端が面の手前にあれば、その端を面へ */
+    const dFrom = sB;
+    const dTo = bLen - sB;
+    if (dFrom < dTo && dFrom < pHalf / sin) {
+      const reach = sB + pHalf / sin;
+      gB.fromMm = {
+        x: Math.round(eb.x1 + vx * reach),
+        y: Math.round(eb.y1 + vy * reach),
+      };
+      moveB = pHalf / sin - dFrom;
+    } else if (dTo <= dFrom && dTo < pHalf / sin) {
+      const reach = sB - pHalf / sin;
+      gB.toMm = {
+        x: Math.round(eb.x1 + vx * reach),
+        y: Math.round(eb.y1 + vy * reach),
+      };
+      moveB = pHalf / sin - dTo;
+    }
+  }
+  if (moveA > 2500 || moveB > 2500) return { error: "far" };
+  const next = list.slice();
+  next[priorityIndex] = gA;
   next[otherIndex] = gB;
-  return { diagGirders: next };
+  return { diagGirders: next, merged: false };
 }
 
 /** 小梁の長さ（mm） */
