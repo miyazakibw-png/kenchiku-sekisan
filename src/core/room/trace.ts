@@ -261,6 +261,23 @@ export function scaleUnderlay(
   };
 }
 
+/**
+ * 図形の縮尺合わせ（scaleShape）と同じ倍率で下敷きも伸び縮みさせる。
+ * 図形は原点を中心に大きくなるので、画像の置き場所と1画素あたりの寸法を
+ * 同じ倍率にすると、なぞった線と元図がずれないまま一緒に拡大・縮小する。
+ */
+export function growUnderlay(
+  underlay: TraceUnderlay,
+  factor: number,
+): TraceUnderlay {
+  return {
+    ...underlay,
+    metersPerPixel: underlay.metersPerPixel * factor,
+    x: underlay.x * factor,
+    y: underlay.y * factor,
+  };
+}
+
 /** 2点と実寸から縮尺（1画素あたりのメートル）を出す */
 export function metersPerPixel(
   from: Point,

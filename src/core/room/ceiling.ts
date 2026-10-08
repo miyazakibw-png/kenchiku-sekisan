@@ -2985,3 +2985,39 @@ export function mirrorCeiling(
   const heights = codes.heights.map((row) => ({ ...row, at: flip(row.at) }));
   return { ceiling, codes: { moves, heights } };
 }
+
+/**
+ * 図形の縮尺合わせ（scaleShape）と同じ倍率で、天井伏図の図の中の位置も
+ * 伸び縮みさせる（貼った図面・なぞった線とずれないように）。
+ * 辺の上の位置は割合（rate）で覚えるのでそのまま。梁の幅・離れ・天井高さなど
+ * 実寸の入力値もそのまま（図形と同じく実寸は変えない）。
+ */
+export function scaleCeiling(
+  elements: CeilingElement[],
+  codes: CeilingCodes,
+  factor: number,
+): { ceiling: CeilingElement[]; codes: CeilingCodes } {
+  const grow = (point: CeilingPoint): CeilingPoint => ({
+    x: round2(point.x * factor),
+    y: round2(point.y * factor),
+  });
+  const ceiling = elements.map((element) => {
+    if (
+      element.free === null ||
+      element.free === undefined ||
+      element.free.via === undefined ||
+      element.free.via.length === 0
+    )
+      return element;
+    return {
+      ...element,
+      free: { ...element.free, via: element.free.via.map(grow) },
+    };
+  });
+  const moves: CeilingCodes["moves"] = {};
+  Object.entries(codes.moves).forEach(([code, at]) => {
+    moves[code] = grow(at);
+  });
+  const heights = codes.heights.map((row) => ({ ...row, at: grow(row.at) }));
+  return { ceiling, codes: { moves, heights } };
+}

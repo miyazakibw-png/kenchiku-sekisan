@@ -11,6 +11,7 @@ import {
   ceilingQuantities,
   ceilingRegions,
   mirrorCeiling,
+  scaleCeiling,
   ceilingSymbols,
   normalizeCeilingHeights,
   noteRegionHeight,
@@ -1535,5 +1536,39 @@ describe("部屋の反転で一緒に裏返す", () => {
     expect(mirroredY.codes.moves.C2).toEqual({ x: 0.5, y: 0.2 });
     expect(flippedShape.edges.length).toBe(4);
     expect(solvedY.edges.length).toBe(4);
+  });
+});
+
+describe("図形の縮尺合わせで一緒に伸び縮みする", () => {
+  it("自由線の折れ点・C番号のずらし・区画高さの点は同じ倍率、辺の上の位置と実寸はそのまま", () => {
+    const room = rectangleShape(4, 3);
+    const solved = solveShape(room);
+    const free = element("dropCeiling", null, {
+      height: 0.3,
+      free: {
+        a: { edgeId: solved.edges[0].id, rate: 0.5 },
+        via: [{ x: 2, y: 1.5 }],
+        b: { edgeId: solved.edges[1].id, rate: 0.5 },
+      },
+      offset: 0.45,
+    });
+    const wallBeam = element("wallBeam", solved.edges[0].id, {
+      width: 0.4,
+      range: { from: 0.5, to: 3 },
+    });
+    const codes = {
+      moves: { C2: { x: 0.5, y: -0.2 } },
+      heights: [{ at: { x: 2, y: 1 }, drop: 0.5 }],
+    };
+    const grown = scaleCeiling([free, wallBeam], codes, 2);
+    // 図の中の位置は2倍
+    expect(grown.ceiling[0].free?.via?.[0]).toEqual({ x: 4, y: 3 });
+    expect(grown.codes.moves.C2).toEqual({ x: 1, y: -0.4 });
+    expect(grown.codes.heights[0].at).toEqual({ x: 4, y: 2 });
+    // 辺の上の位置（割合）と実寸の入力値はそのまま
+    expect(grown.ceiling[0].free?.a.rate).toBe(0.5);
+    expect(grown.ceiling[0].offset).toBe(0.45);
+    expect(grown.ceiling[1].width).toBe(0.4);
+    expect(grown.ceiling[1].range).toEqual({ from: 0.5, to: 3 });
   });
 });

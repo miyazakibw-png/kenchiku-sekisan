@@ -20,6 +20,7 @@ import {
   traceAfterUnderlay,
   EMPTY_TRACE,
   scaleUnderlay,
+  growUnderlay,
   EMPTY_UNDERLAY,
 } from "../../src/core/room/trace";
 import { solveShape } from "../../src/core/room/shape";
@@ -171,6 +172,29 @@ describe("下敷きの図面（ピット計算書の traceJson に一緒に保�
     expect(
       scaleUnderlay(underlay, { x: 0, y: 0 }, { x: 1, y: 0 }, 0),
     ).toBeNull();
+  });
+});
+
+describe("growUnderlay（図形の縮尺合わせに追従）", () => {
+  it("置き場所と1画素あたりの寸法を同じ倍率にする（済みの印・濃さは残る）", () => {
+    const underlay = {
+      ...EMPTY_UNDERLAY,
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1.5,
+      y: -2,
+      opacity: 0.5,
+      scaled: true,
+    };
+    const grown = growUnderlay(underlay, 2);
+    expect(grown.metersPerPixel).toBeCloseTo(0.02);
+    expect(grown.x).toBeCloseTo(3);
+    expect(grown.y).toBeCloseTo(-4);
+    expect(grown.opacity).toBe(0.5);
+    expect(grown.scaled).toBe(true);
+    const shrunk = growUnderlay(underlay, 0.5);
+    expect(shrunk.metersPerPixel).toBeCloseTo(0.005);
+    expect(shrunk.x).toBeCloseTo(0.75);
   });
 });
 

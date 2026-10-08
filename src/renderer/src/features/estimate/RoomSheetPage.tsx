@@ -22,6 +22,7 @@ import {
   parseTrace,
   parseUnderlayLocked,
   parseUnderlays,
+  growUnderlay,
   traceFromUnderlay,
   underlayAtTraceOrigin,
   underlayForTrace,
@@ -79,6 +80,7 @@ import {
   ceilingElement,
   beamFootprintArea,
   mirrorCeiling,
+  scaleCeiling,
   ceilingQuantities,
   ceilingSymbols,
   ceilingLines as buildCeilingLines,
@@ -2204,12 +2206,26 @@ export default function RoomSheetPage({
         setMessage("実寸は0より大きい値を入れてください");
         return;
       }
+      const factor = value / prompt.current;
       setPrompt(null);
       applyShape(next);
+      // 形と同じ倍率で、貼った図面・天井伏図の図の中の位置も伸び縮みさせる
+      // （ずれないようにする。反転・回転と同じ動き方）
+      if (factor !== 1) {
+        const scaled = scaleCeiling(ceiling, codes, factor);
+        changeCeiling(scaled.ceiling);
+        changeCodes(scaled.codes);
+        if (underlays.length > 0) {
+          setUnderlays(
+            underlays.map((item) => growUnderlay(item, factor)),
+            underlayTool.active,
+          );
+        }
+      }
       setSelectedEdge(null);
       pickCorners([]);
       setMessage(
-        `図形を${formatNumber(value / prompt.current, 2)}倍に合わせました（選んだ辺を ${formatNumber(value, 2)}m にしました）`,
+        `図形を${formatNumber(factor, 2)}倍に合わせました（選んだ辺を ${formatNumber(value, 2)}m にしました。貼った図面・梁型・下がり天井も一緒です）`,
       );
       return;
     }
