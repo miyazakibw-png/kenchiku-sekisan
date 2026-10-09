@@ -540,8 +540,38 @@ export default function RoomSheetPage({
   /** 「○角移動」ONのときだけ○印をつかんで角を動かせる（OFFでは押しても選択だけ） */
   const [cornerMove, setCornerMove] = useState(false);
   /** 図形の戻る・進む用（1操作ごとの形を覚えておく） */
-  const [shapePast, setShapePast] = useState<RoomShape[]>([]);
-  const [shapeFuture, setShapeFuture] = useState<RoomShape[]>([]);
+  /**
+   * 図形を戻すときの中身。天井伏図の部材・建具は形の辺（沿う壁）を指しているので、
+   * 形を戻すときはその時点の天井伏図・建具も一緒に戻さないと「沿う壁＝指定なし」になる
+   */
+  const [shapePast, setShapePast] = useState<
+    {
+      shape: RoomShape;
+      ceiling: CeilingElement[];
+      codes: CeilingCodes;
+      roomFittings: RoomSheetFitting[];
+    }[]
+  >([]);
+  const [shapeFuture, setShapeFuture] = useState<
+    {
+      shape: RoomShape;
+      ceiling: CeilingElement[];
+      codes: CeilingCodes;
+      roomFittings: RoomSheetFitting[];
+    }[]
+  >([]);
+
+  /** 図形を戻せるように、今の形と一緒に天井伏図・建具も覚えておく */
+  const pushShapePast = useCallback(
+    (previous: RoomShape): void => {
+      setShapePast((past) => [
+        ...past.slice(-49),
+        { shape: previous, ceiling, codes, roomFittings },
+      ]);
+      setShapeFuture([]);
+    },
+    [ceiling, codes, roomFittings],
+  );
   /** 辺をクリックした位置に角を足すモード */
   const [addCornerMode, setAddCornerMode] = useState(false);
   /** 種別をまとめて変える選び中の辺（null は選び中でない） */
@@ -659,8 +689,7 @@ export default function RoomSheetPage({
     async (source: SheetOption): Promise<void> => {
       const loaded = await window.sekisan.getRoomSheet(source.estimateRowId);
       const height = loaded.ceilingHeight;
-      setShapePast((past) => [...past.slice(-49), shape]);
-      setShapeFuture([]);
+      pushShapePast(shape);
       setShape(parseShape(loaded.shapeJson));
       setRoomFittings(parseRoomFittings(loaded.fittingsJson));
       ceilingHistory.push({ ceiling, codes });
@@ -682,6 +711,8 @@ export default function RoomSheetPage({
       codes,
       ceilingHistory,
       onCeilingHeightChange,
+      pushShapePast,
+      roomFittings,
       setMessage,
       setUnderlays,
       shape,
@@ -1736,8 +1767,7 @@ export default function RoomSheetPage({
     if (result.error !== null) return;
     if (!drag.moved) {
       drag.moved = true;
-      setShapePast((past) => [...past.slice(-49), drag.base]);
-      setShapeFuture([]);
+      pushShapePast(drag.base);
     }
     setShape(result.shape);
     event.stopPropagation();
@@ -1814,8 +1844,7 @@ export default function RoomSheetPage({
       const now = Date.now();
       if (now - columnNudgeAtRef.current > 800) {
         columnNudgeAtRef.current = now;
-        setShapePast((past) => [...past.slice(-49), shape]);
-        setShapeFuture([]);
+        pushShapePast(shape);
       }
       const x = round2(column.x + move.x);
       const y = round2(column.y + move.y);
@@ -2095,8 +2124,7 @@ export default function RoomSheetPage({
 
   /** 図形を書き換える。戻る・進むのために1つ前の形を覚えておく */
   const applyShape = (next: RoomShape): void => {
-    setShapePast((past) => [...past.slice(-49), shape]);
-    setShapeFuture([]);
+    pushShapePast(shape);
     // 形を直す操作は外周の辺だけを作るので、置いてある独立柱は残す
     setShape(
       next.columns === undefined ? { ...next, columns: shape.columns } : next,
@@ -2146,8 +2174,16 @@ export default function RoomSheetPage({
       setMessage("図形で戻せる操作がありません");
       return;
     }
-    setShapeFuture((future) => [shape, ...future]);
-    setShape(shapePast[shapePast.length - 1]);
+    setShapeFuture((future) => [
+      { shape, ceiling, codes, roomFittings },
+      ...future,
+    ]);
+    const previous = shapePast[shapePast.length - 1];
+    // 天井伏図・建具は形の辺（沿う壁）を指しているので、その時点のものを一緒に戻す
+    setShape(previous.shape);
+    setCeiling(previous.ceiling);
+    setCodes(previous.codes);
+    setRoomFittings(previous.roomFittings);
     setShapePast(shapePast.slice(0, -1));
     setSelectedEdge(null);
     pickCorners([]);
@@ -2159,8 +2195,15 @@ export default function RoomSheetPage({
       setMessage("図形で進める操作がありません");
       return;
     }
-    setShapePast((past) => [...past, shape]);
-    setShape(shapeFuture[0]);
+    setShapePast((past) => [
+      ...past,
+      { shape, ceiling, codes, roomFittings },
+    ]);
+    const next = shapeFuture[0];
+    setShape(next.shape);
+    setCeiling(next.ceiling);
+    setCodes(next.codes);
+    setRoomFittings(next.roomFittings);
     setShapeFuture(shapeFuture.slice(1));
     setSelectedEdge(null);
     pickCorners([]);
@@ -2611,8 +2654,7 @@ export default function RoomSheetPage({
     const y = round2(drag.from.y + point.y - drag.start.y);
     if (!drag.moved) {
       drag.moved = true;
-      setShapePast((past) => [...past.slice(-49), drag.base]);
-      setShapeFuture([]);
+      pushShapePast(drag.base);
     }
     setShape({
       ...shape,
