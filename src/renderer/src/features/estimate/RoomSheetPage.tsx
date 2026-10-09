@@ -62,6 +62,7 @@ import {
   roomSymbols,
   ROOM_FIXED_SYMBOLS,
   rotateShape,
+  windingReversed,
   round2,
   scaleShape,
   shapeExtents,
@@ -637,6 +638,11 @@ export default function RoomSheetPage({
 
   const solved = useMemo(() => solveShape(shape), [shape]);
   const extents = useMemo(() => shapeExtents(solved), [solved]);
+  /** 形の一周向きが前提と逆か（反転して作った形ではＲ壁の内外の向きが逆になる） */
+  const shapeReversed = useMemo(() => windingReversed(solved.points), [solved]);
+  /** Ｒ壁のふくらみ符号と「内・外」の対応（形の向きが逆なら符号も逆になる） */
+  const bulgeFor = (isIn: boolean, size: number): number =>
+    (isIn ? -size : size) * (shapeReversed ? -1 : 1);
   /** 「📍 近くへ戻す」で図面を置き直す場所（図形の左上の角） */
   const homeSpot = useMemo(() => {
     if (solved.points.length === 0) return { x: 0, y: 0 };
@@ -4227,20 +4233,22 @@ export default function RoomSheetPage({
                         onBlur={(e) => {
                           const value = textToNumber(e.target.value);
                           const size = value === null ? null : Math.abs(value);
+                          const isIn =
+                            ((line.bulge ?? 0) < 0) !== shapeReversed;
                           applyShape(
                             updateEdge(shape, line.id, {
                               bulge:
-                                size === null
-                                  ? null
-                                  : (line.bulge ?? 0) < 0
-                                    ? -size
-                                    : size,
+                                size === null ? null : bulgeFor(isIn, size),
                             }),
                           );
                         }}
                       />
                       <select
-                        value={(line.bulge ?? 0) < 0 ? "in" : "out"}
+                        value={
+                          ((line.bulge ?? 0) < 0) !== shapeReversed
+                            ? "in"
+                            : "out"
+                        }
                         title="ふくらむ向き（外＝部屋の外側へ／内＝部屋の内側へ凹む）"
                         onChange={(e) => {
                           const size = Math.abs(line.bulge ?? 0);
@@ -4249,9 +4257,7 @@ export default function RoomSheetPage({
                               bulge:
                                 size === 0
                                   ? line.bulge
-                                  : e.target.value === "in"
-                                    ? -size
-                                    : size,
+                                  : bulgeFor(e.target.value === "in", size),
                             }),
                           );
                         }}

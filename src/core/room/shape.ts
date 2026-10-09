@@ -283,6 +283,22 @@ function opposite(direction: AxisDirection): AxisDirection {
   return INSIDE[INSIDE[direction]];
 }
 
+/**
+ * 一周する向きが前提（E→S→W→N の並び）と逆か。
+ * 反転して作った形など逆まわりでは、辺から見た内側も反対側になる。
+ * 点がまだ確定していない形は前提どおりとみなす。
+ */
+export function windingReversed(points: Point[]): boolean {
+  if (points.length < 3) return false;
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum < 0;
+}
+
 /** 辺に収まる欠き取り・凹みの上限（元の辺を少しだけ残して形が潰れないようにする） */
 function fitToEdge(length: number): number {
   return Math.max(round2(length - 0.01), length / 2);
@@ -533,7 +549,8 @@ function notchDiagonalEdge(
   );
   const notch = notchKind ?? target.kind;
   const unit = { x: vector.x / span, y: vector.y / span };
-  const inside = { x: -unit.y, y: unit.x };
+  const side = windingReversed(solveShape(shape).points) ? -1 : 1;
+  const inside = { x: -unit.y * side, y: unit.x * side };
   const along = (value: number): Point => ({
     x: unit.x * value,
     y: unit.y * value,
@@ -613,7 +630,8 @@ export function notchEdge(
       notchKind,
     );
   }
-  const length = solveShape(shape).edges[edgeIndex].resolved;
+  const solved = solveShape(shape);
+  const length = solved.edges[edgeIndex].resolved;
   if (length === null) return { shape, error: "先に辺の寸法を決めてください" };
   const notch = notchKind ?? target.kind;
   // 凹みが元の辺より大きいときは、辺が無くならない範囲まで縮めて凹ませる
@@ -621,7 +639,10 @@ export function notchEdge(
   const rest = round2(length - width);
   const head = Math.min(Math.max(offset ?? round2(rest / 2), 0), rest);
   const tail = round2(rest - head);
-  const inside = insideDirection(target.direction as AxisDirection);
+  const inward = insideDirection(target.direction as AxisDirection);
+  const inside = windingReversed(solved.points)
+    ? opposite(inward)
+    : inward;
   const parts = [
     { ...target, length: head },
     edge(inside, notchDepth, notch),

@@ -333,6 +333,39 @@ describe("部屋形状（単線図）", () => {
     expect(floorArea(solveShape(notched.shape))).toBe(6 * 4 - 2 * 1);
   });
 
+  it("逆まわり（反転して作った形）でもコ型は部屋の内側へ凹む", () => {
+    // 同じ長方形を逆向きにたどった形（一周する向きだけ逆）
+    const reversed = {
+      edges: [edge("S", 4), edge("E", 6), edge("N", 4), edge("W", 4)],
+    };
+    const before = floorArea(solveShape(reversed)) ?? 0;
+    const notched = notchEdge(reversed, 0, 2, 0.5);
+    expect(notched.error).toBeNull();
+    // 内側へ凹むので床面積が幅×深さぶん減る（外へ膨らむと増える）
+    expect(floorArea(solveShape(notched.shape))).toBeCloseTo(
+      before - 2 * 0.5,
+      2,
+    );
+  });
+
+  it("逆まわりの斜め辺でもコ型は部屋の内側へ凹む", () => {
+    const reversed = {
+      edges: [
+        { ...edge("D", null), dx: 0, dy: 4 },
+        edge("E", 6),
+        edge("N", 4),
+        edge("W", 4),
+      ],
+    };
+    const before = floorArea(solveShape(reversed)) ?? 0;
+    const notched = notchEdge(reversed, 0, 1, 0.5);
+    expect(notched.error).toBeNull();
+    expect(floorArea(solveShape(notched.shape))).toBeCloseTo(
+      before - 1 * 0.5,
+      2,
+    );
+  });
+
   it("壁の辺に柱のコ型を入れても、凹みの前後の壁は壁のまま", () => {
     const notched = notchEdge(rectangleShape(6, 4), 2, 2, 1, undefined, "column");
     expect(notched.error).toBeNull();
