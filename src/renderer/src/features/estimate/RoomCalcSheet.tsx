@@ -1017,11 +1017,18 @@ export default function RoomCalcSheet({
   const callAssembly = useCallback(
     (assembly: FinishAssembly) => {
       const created = calcSet(0);
-      // セットの部位は計算書に入れてあるものを残す（空のときだけマスターの先頭明細から入れる）
       const at = sets.findIndex((set) => set.id === currentSet?.id);
-      const here = at >= 0 && !isCommentSet(sets[at]) ? sets[at] : null;
+      const bannerAt =
+        bannerSetId === null
+          ? -1
+          : sets.findIndex((set) => set.id === bannerSetId);
+      // 上書き呼出は計算書に入れてあるセットの部位を残す（空のときだけマスターの先頭明細から入れる）。
+      // 挿入呼出や※行の下への追加は新しいセットなので、呼び出したセットの部位をそのまま使う
+      const underBanner = bannerAt >= 0 && isCommentSet(sets[bannerAt]);
+      const overwrites =
+        !underBanner && !insertMode && at >= 0 && !isCommentSet(sets[at]);
       const keptPart =
-        here !== null && here.partName.trim() !== "" ? here : null;
+        overwrites && sets[at].partName.trim() !== "" ? sets[at] : null;
       created.partName =
         keptPart?.partName ?? assembly.items[0]?.partName ?? "";
       created.partNumber =
@@ -1045,10 +1052,6 @@ export default function RoomCalcSheet({
         }),
       );
       created.lines = syncLines(created.details, []);
-      const bannerAt =
-        bannerSetId === null
-          ? -1
-          : sets.findIndex((set) => set.id === bannerSetId);
       const next = [...sets];
       // ※行にカーソルがあるときは、その※行の下へ新しいセットとして入れる
       if (bannerAt >= 0 && isCommentSet(sets[bannerAt])) {
