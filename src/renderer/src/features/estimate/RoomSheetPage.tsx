@@ -4627,15 +4627,14 @@ export default function RoomSheetPage({
                       ? solved.edges.length === 0
                       : wallEdges.length === 0
                   }
-                  onClick={() =>
-                    changeCeiling((current) => [
-                      ...current,
-                      ceilingElement(
-                        kind,
-                        selectedEdge ?? wallEdges[0]?.id ?? null,
-                      ),
-                    ])
-                  }
+                  onClick={() => {
+                    const added = ceilingElement(
+                      kind,
+                      selectedEdge ?? wallEdges[0]?.id ?? null,
+                    );
+                    changeCeiling((current) => [...current, added]);
+                    setPickedCeiling(added.id);
+                  }}
                 >
                   ＋ {CEILING_KIND_LABEL[kind]}
                 </button>
