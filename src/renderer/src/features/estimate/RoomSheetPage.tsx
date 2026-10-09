@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -482,6 +483,72 @@ export default function RoomSheetPage({
    * 区切られた範囲すべてに番号を出し、同じ高さの境目の線も薄く残す。
    */
   const editCeiling = expanded && showCeiling && !printMode;
+
+  /**
+   * 天井伏図まわりの入力欄を計算書と同じくEnter・矢印キーで移動する。
+   * Enter＝右（Shift+Enter＝左）、←→＝文字カーソルが端のとき隣の欄、↑↓＝表の同じ列の上下
+   */
+  const onCeilingKeyDown = (
+    e: ReactKeyboardEvent<HTMLElement>,
+  ): void => {
+    const el = e.target;
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement))
+      return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const section = (el as HTMLElement).closest("section.ceiling");
+    if (section === null) return;
+    const FIELDS =
+      "input:not([type=hidden]):not([disabled]):not([type=checkbox]),select:not([disabled])";
+    const fields = Array.from(
+      section.querySelectorAll<HTMLInputElement | HTMLSelectElement>(FIELDS),
+    );
+    const index = fields.indexOf(el);
+    if (index < 0) return;
+    const allSelected =
+      el instanceof HTMLInputElement &&
+      el.selectionStart === 0 &&
+      el.selectionEnd === el.value.length;
+    const caretStart =
+      !(el instanceof HTMLInputElement) ||
+      (el.selectionStart === 0 && el.selectionEnd === 0) ||
+      allSelected;
+    const caretEnd =
+      !(el instanceof HTMLInputElement) ||
+      (el.selectionStart === el.value.length &&
+        el.selectionEnd === el.value.length) ||
+      allSelected;
+    const focus = (target: HTMLInputElement | HTMLSelectElement): void => {
+      e.preventDefault();
+      target.focus();
+      if (target instanceof HTMLInputElement) target.select();
+    };
+    if (e.key === "Enter" || (e.key === "ArrowRight" && caretEnd)) {
+      const next = fields[index + (e.key === "Enter" && e.shiftKey ? -1 : 1)];
+      if (next !== undefined) focus(next);
+      return;
+    }
+    if (e.key === "ArrowLeft" && caretStart) {
+      const next = fields[index - 1];
+      if (next !== undefined) focus(next);
+      return;
+    }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const tr = el.closest("tr");
+      const table = el.closest("table");
+      if (tr === null || table === null) return;
+      const rows = Array.from(table.querySelectorAll("tr"));
+      const targetRow = rows[rows.indexOf(tr) + (e.key === "ArrowDown" ? 1 : -1)];
+      if (targetRow === undefined) return;
+      const col = Array.from(
+        tr.querySelectorAll<HTMLInputElement | HTMLSelectElement>(FIELDS),
+      ).indexOf(el);
+      const targetFields = Array.from(
+        targetRow.querySelectorAll<HTMLInputElement | HTMLSelectElement>(FIELDS),
+      );
+      const next = targetFields[Math.min(Math.max(col, 0), targetFields.length - 1)];
+      if (next !== undefined) focus(next);
+    }
+  };
   const [lower, setLower] = useState<CalcSet[]>([]);
   const [calcFocus, setCalcFocus] = useState<CalcFocus | null>(null);
   const [options, setOptions] = useState<MasterOptions | null>(null);
@@ -4582,7 +4649,7 @@ export default function RoomSheetPage({
       </section>
 
       {showCeiling && (
-        <section className="ceiling">
+        <section className="ceiling" onKeyDown={onCeilingKeyDown}>
           <div className="section-bar">
             <span>天井伏図（平面図の壁沿いに線を追加します）</span>
             <label className="ceiling-height">
