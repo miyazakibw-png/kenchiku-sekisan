@@ -424,6 +424,23 @@ export default function AggregatePage({
         ? true
         : all || (start === field.value.length && start === end);
 
+    if (field.dataset.unit !== undefined) {
+      // 単位欄の↑↓は同じ単位欄の上下の明細へ移る
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const inputs = Array.from(
+          field
+            .closest("table")
+            ?.querySelectorAll<HTMLInputElement>("input[data-unit]") ?? [],
+        );
+        const target =
+          inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!target) return;
+        event.preventDefault();
+        focusCell(target);
+        target.select();
+      }
+      return;
+    }
     if (field.dataset.estimateDisplay !== undefined) {
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         const inputs = Array.from(
@@ -870,6 +887,8 @@ export default function AggregatePage({
                     <PickInput
                       entries={unitEntries}
                       halfWidth
+                      popupSide="right"
+                      dataAttrs={{ "data-unit": "" }}
                       value={draft.unit}
                       title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
                       onCommit={(text) =>

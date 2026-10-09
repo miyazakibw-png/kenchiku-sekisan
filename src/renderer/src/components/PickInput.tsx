@@ -27,6 +27,7 @@ export function PickInput({
   col,
   commitOnBlur = false,
   popupSide = "bottom",
+  dataAttrs,
   onCommit,
   onFocus,
 }: {
@@ -46,6 +47,8 @@ export function PickInput({
   commitOnBlur?: boolean;
   /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
   popupSide?: "bottom" | "right";
+  /** inputへ付けるdata-*属性（表のキー移動の目印に使う） */
+  dataAttrs?: Record<string, string>;
   /** picked＝一覧の行をクリックして選んだとき（同じ値でも呼び直したいときに使う） */
   onCommit: (text: string, picked?: boolean) => void;
   onFocus?: () => void;
@@ -118,6 +121,7 @@ export function PickInput({
         list={entries ? undefined : listId}
         data-row={row}
         data-col={col}
+        {...dataAttrs}
         value={editing ?? value}
         placeholder={editing !== null && value !== "" ? value : placeholder}
         title={title}
