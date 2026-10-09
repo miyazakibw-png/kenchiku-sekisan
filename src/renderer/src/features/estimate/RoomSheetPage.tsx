@@ -1319,6 +1319,22 @@ export default function RoomSheetPage({
     [],
   );
 
+  /**
+   * 天井伏図の数値欄を値に直す。空欄＝null（自動）、数字・計算式＝その値。
+   * 数字に読めない文字（全角・単位付きなど）は undefined で元の値のままにする
+   * （NaNを入れると計算も描画も止まってしまうので）
+   */
+  const ceilingNumber = (text: string): number | null | undefined => {
+    const body = text.trim();
+    if (body === "") return null;
+    const value = textToNumber(body);
+    if (value === null) {
+      setMessage("数字で入れてください（計算式も使えます）");
+      return undefined;
+    }
+    return value;
+  };
+
   /** 自由線を選んだときの両端のたたき台（部屋をまたぐ対角線） */
   const defaultFree = useCallback((): {
     a: CeilingAnchor;
@@ -4980,10 +4996,9 @@ export default function RoomSheetPage({
                           placeholder={formatNumber(item.length, 2)}
                           title="空欄なら沿う壁の長さ"
                           onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              length: text === "" ? null : Number(text),
-                            });
+                            const value = ceilingNumber(e.target.value);
+                            if (value !== undefined)
+                              updateCeiling(element.id, { length: value });
                           }}
                         />
                       )}
@@ -4997,10 +5012,9 @@ export default function RoomSheetPage({
                             : formatNumber(element.width, 2)
                         }
                         onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateCeiling(element.id, {
-                            width: text === "" ? null : Number(text),
-                          });
+                          const value = ceilingNumber(e.target.value);
+                          if (value !== undefined)
+                            updateCeiling(element.id, { width: value });
                         }}
                       />
                     </td>
@@ -5015,11 +5029,12 @@ export default function RoomSheetPage({
                         }
                         title="Ｈ（梁せい・下がり壁の高さ・下がり天井の下がり）。入れると壁高さは取りつく天井から自動で決まります"
                         onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateCeiling(element.id, {
-                            height: text === "" ? null : Number(text),
-                            ceilingHeight: null,
-                          });
+                          const value = ceilingNumber(e.target.value);
+                          if (value !== undefined)
+                            updateCeiling(element.id, {
+                              height: value,
+                              ceilingHeight: null,
+                            });
                         }}
                       />
                     </td>
@@ -5042,10 +5057,9 @@ export default function RoomSheetPage({
                               : formatNumber(element.offset, 2)
                           }
                           onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              offset: text === "" ? null : Number(text),
-                            });
+                            const value = ceilingNumber(e.target.value);
+                            if (value !== undefined)
+                              updateCeiling(element.id, { offset: value });
                           }}
                         />
                       )}
@@ -5063,10 +5077,9 @@ export default function RoomSheetPage({
                         placeholder={formatNumber(item.baseHeight, 2)}
                         title="空なら自動（その位置の天井。梁の前に下がり天井があればその高さ）"
                         onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          updateCeiling(element.id, {
-                            baseHeight: text === "" ? null : Number(text),
-                          });
+                          const value = ceilingNumber(e.target.value);
+                          if (value !== undefined)
+                            updateCeiling(element.id, { baseHeight: value });
                         }}
                       />
                     </td>
@@ -5077,16 +5090,15 @@ export default function RoomSheetPage({
                         defaultValue={formatNumber(item.wallHeight, 2)}
                         title="取りつく天井高さ−Ｈ。ここを直すとＨが自動で合います"
                         onBlur={(e) => {
-                          const text = e.target.value.trim();
-                          if (text === "") {
+                          const value = ceilingNumber(e.target.value);
+                          if (value === undefined) return;
+                          if (value === null) {
                             updateCeiling(element.id, {
                               height: null,
                               ceilingHeight: null,
                             });
                             return;
                           }
-                          const value = Number(text);
-                          if (Number.isNaN(value)) return;
                           // 壁高さを入れたらＨ（梁せい・下がり）を合わせる
                           updateCeiling(
                             element.id,
@@ -5113,10 +5125,9 @@ export default function RoomSheetPage({
                           placeholder={formatNumber(item.area, 2)}
                           title="下がり天井の段差の見付面積（空欄なら長さ×段差で自動）"
                           onBlur={(e) => {
-                            const text = e.target.value.trim();
-                            updateCeiling(element.id, {
-                              area: text === "" ? null : Number(text),
-                            });
+                            const value = ceilingNumber(e.target.value);
+                            if (value !== undefined)
+                              updateCeiling(element.id, { area: value });
                           }}
                         />
                       ) : (
