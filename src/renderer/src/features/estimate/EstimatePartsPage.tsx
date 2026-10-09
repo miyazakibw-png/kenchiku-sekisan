@@ -35,6 +35,7 @@ import OtherProjectPartsPicker from "./OtherProjectPartsPicker";
 import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import "./EstimatePartsPage.css";
+import { displayedValue } from "../../../../core/room/calcSheet";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { ask } from "../common/askDialog";
@@ -114,9 +115,17 @@ export default function EstimatePartsPage({
     },
     [checks],
   );
+  /**
+   * チェック列に出す数量。数量は保存済みの内容から集計されるので、
+   * 直したばかりの室数（倍率）がまだ保存前でも今の倍率で出す
+   */
   const checkQuantityOf = useCallback(
-    (cell: EstimateRowCheckCell) =>
-      applyMultiplier ? cell.quantity : cell.baseQuantity,
+    (cell: EstimateRowCheckCell, liveMultiplier: number) =>
+      applyMultiplier
+        ? displayedValue(
+            cell.baseQuantity * (liveMultiplier === 0 ? 1 : liveMultiplier),
+          )
+        : cell.baseQuantity,
     [applyMultiplier],
   );
 
@@ -125,7 +134,7 @@ export default function EstimatePartsPage({
     () =>
       subtotalSums(rows, checkColumns, (row, partName) => {
         const cell = checkOf(row.id, partName);
-        return cell === null ? null : checkQuantityOf(cell);
+        return cell === null ? null : checkQuantityOf(cell, row.multiplier);
       }),
     [rows, checkColumns, checkOf, checkQuantityOf],
   );
@@ -160,11 +169,16 @@ export default function EstimatePartsPage({
     setOpenedSheet(at);
   }, [initialEstimateRowId, rows]);
 
+  /** チェック列の読み込み番号（遅れて届いた古い結果で上書きしないため） */
+  const checksSeq = useRef(0);
   useEffect(() => {
+    const seq = (checksSeq.current += 1);
     void (async () => {
-      setChecks(
-        await window.sekisan.getEstimateRowChecks(project.id, checkCategory),
+      const next = await window.sekisan.getEstimateRowChecks(
+        project.id,
+        checkCategory,
       );
+      if (seq === checksSeq.current) setChecks(next);
     })();
   }, [checkCategory, project.id, rows]);
 
@@ -971,7 +985,7 @@ export default function EstimatePartsPage({
                           ? ""
                           : sum.toFixed(2)
                         : cell
-                          ? checkQuantityOf(cell).toFixed(2)
+                          ? checkQuantityOf(cell, row.multiplier).toFixed(2)
                           : ""}
                     </td>,
                   ];
