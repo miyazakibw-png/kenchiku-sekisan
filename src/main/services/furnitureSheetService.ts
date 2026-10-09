@@ -10,7 +10,13 @@ import {
   fittingsFromFurniture,
   furnitureSettings,
   furnitureSettingsFor,
+  isConvertibleFitting,
+  isFittingDetailSheet,
+  numberOf,
+  syncFittingDetailRows,
   transfersToFittings,
+  type FittingConvertInclude,
+  type FittingLink,
   type FurnitureColumn,
   type FurnitureRow,
   type FurnitureSettings,
@@ -333,6 +339,102 @@ export function saveFurnitureSheetList(
   return listFurnitureSheets(db, projectId);
 }
 
+/** 建具明細作成表の行が取り合う建具表の行（idで結び付ける。建具表と同じ並び） */
+function fittingLinks(db: AppDatabase, projectId: number): FittingLink[] {
+  return db
+    .select()
+    .from(projectFittings)
+    .where(eq(projectFittings.projectId, projectId))
+    .orderBy(
+      asc(projectFittings.fromFurniture),
+      asc(projectFittings.fromEstimate),
+      asc(projectFittings.displayOrder),
+      asc(projectFittings.id),
+    )
+    .all()
+    .map((row) => ({
+      id: row.id,
+      symbol: row.symbol,
+      name: row.name,
+      width: row.width,
+      height: row.height,
+      fromEstimate: row.fromEstimate,
+      fromFurniture: row.fromFurniture,
+    }));
+}
+
+/** 建具明細作成表の変換設定（計算書転記分・建具入力部。未設定はどちらも変換する） */
+function convertIncludeOf(
+  sheet: typeof projectFurnitureSheets.$inferSelect,
+): FittingConvertInclude {
+  const settings = parseJson<Partial<FurnitureSettings>>(
+    sheet.settingsJson,
+    {},
+  );
+  return {
+    estimate: settings.convertEstimate ?? true,
+    manual: settings.convertManual ?? true,
+  };
+}
+
+/**
+ * 建具明細作成表の行を建具表と取り合う（開くたび・集計のたびに実行）。
+ * 結び付いた行は建具表の記号・W・Hで更新し、建具表に増えた分は行を足す。
+ */
+export function syncFittingDetailSheet(
+  db: AppDatabase,
+  sheet: typeof projectFurnitureSheets.$inferSelect,
+): typeof projectFurnitureSheets.$inferSelect {
+  const rows = parseJson<FurnitureRow[]>(sheet.rowsJson, []);
+  const next = syncFittingDetailRows(
+    rows,
+    fittingLinks(db, sheet.projectId),
+    convertIncludeOf(sheet),
+  );
+  if (JSON.stringify(next) === JSON.stringify(rows)) return sheet;
+  return (
+    db
+      .update(projectFurnitureSheets)
+      .set({
+        rowsJson: JSON.stringify(next),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projectFurnitureSheets.id, sheet.id))
+      .returning()
+      .get() ?? sheet
+  );
+}
+
+/** 建具明細作成表を取る（無ければ作る）。1工事に1枚 */
+export function ensureFittingDetailSheet(
+  db: AppDatabase,
+  projectId: number,
+): FurnitureSheet {
+  const existing = db
+    .select()
+    .from(projectFurnitureSheets)
+    .where(eq(projectFurnitureSheets.projectId, projectId))
+    .all()
+    .find((row) => isFittingDetailSheet(row.kind));
+  const sheet =
+    existing ??
+    db
+      .insert(projectFurnitureSheets)
+      .values({
+        projectId,
+        name: "建具明細作成表",
+        kind: "fittingDetail",
+        displayOrder: Number.MAX_SAFE_INTEGER,
+        settingsJson: JSON.stringify(
+          getFurnitureBaseSettings(db, "fittingDetail"),
+        ),
+      })
+      .returning()
+      .get();
+  if (sheet === undefined) throw new Error("建具明細作成表を作れませんでした");
+  return toSheet(syncFittingDetailSheet(db, sheet));
+}
+
 export function getFurnitureSheet(
   db: AppDatabase,
   sheetId: number,
@@ -343,7 +445,12 @@ export function getFurnitureSheet(
     .where(eq(projectFurnitureSheets.id, sheetId))
     .get();
   if (existing === undefined) throw new Error("家具計算書が有りません");
-  return toSheet(existing);
+  // 建具明細作成表は開くたびに建具表と取り合う（W・Hは建具→明細表）
+  return toSheet(
+    isFittingDetailSheet(existing.kind)
+      ? syncFittingDetailSheet(db, existing)
+      : existing,
+  );
 }
 
 export function saveFurnitureSheet(
@@ -368,8 +475,41 @@ export function saveFurnitureSheet(
     .where(eq(projectFurnitureSheets.id, request.id))
     .returning()
     .get();
+  if (saved !== undefined && isFittingDetailSheet(saved.kind))
+    backfillFittingSizes(db, saved);
   transferFurnitureFittings(db, saved.projectId, saved.id);
   return toSheet(saved);
+}
+
+/**
+ * 建具明細作成表で入れたW・H（mm）を建具表へ返す（mm÷1000＝m、小数点以下自由）。
+ * 結び付いた行の寸法を変えた側（明細表）が勝つ。式欄は直した寸法で上書きする。
+ */
+function backfillFittingSizes(
+  db: AppDatabase,
+  sheet: typeof projectFurnitureSheets.$inferSelect,
+): void {
+  const include = convertIncludeOf(sheet);
+  const convertible = new Set(
+    fittingLinks(db, sheet.projectId)
+      .filter((link) => isConvertibleFitting(link, include))
+      .map((link) => link.id),
+  );
+  const rows = parseJson<FurnitureRow[]>(sheet.rowsJson, []);
+  rows.forEach((row) => {
+    if (row.fittingId === undefined || !convertible.has(row.fittingId)) return;
+    const width = numberOf(row.width.trim());
+    const height = numberOf(row.height.trim());
+    db.update(projectFittings)
+      .set({
+        width: width === null ? null : width / 1000,
+        height: height === null ? null : height / 1000,
+        widthFormula: "",
+        heightFormula: "",
+      })
+      .where(eq(projectFittings.id, row.fittingId))
+      .run();
+  });
 }
 
 /**

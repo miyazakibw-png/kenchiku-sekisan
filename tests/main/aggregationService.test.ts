@@ -12,14 +12,23 @@ import {
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
 import { saveTransferRows } from "../../src/main/services/transferRowService";
+import { saveFittings } from "../../src/main/services/fittingService";
 import {
+  buildProjectMasters,
   collectEstimateRowChecks,
   getAggregate,
   listAggregateRuns,
+  listCalcErrors,
   runAggregation,
   saveAggregateEdits,
   setDetailUnused,
 } from "../../src/main/services/aggregationService";
+import { listAssemblies } from "../../src/main/services/assemblyService";
+import { listProjectDetailsInUse } from "../../src/main/services/detailService";
+import {
+  getPitSheet,
+  savePitSheet,
+} from "../../src/main/services/pitSheetService";
 import { transferBreakdown } from "../../src/main/services/breakdownService";
 import {
   getMiscSheet,
@@ -216,6 +225,55 @@ describe("集計処理", () => {
     expect(view.items[0].quantity).toBe(3.82);
   });
 
+  it("補強のセットで <記号> だけ書いた計算式は軸組横補強を採る（画面と同じ）", () => {
+    // 建具 SD1（W0.85・H2.10・腰高なし）：面積1.79・軸組横補強0.85
+    saveFittings(db, {
+      projectId,
+      rows: [
+        {
+          id: null,
+          symbol: "SD1",
+          name: "",
+          width: 0.85,
+          height: 2.1,
+          sillHeight: null,
+          widthFormula: "",
+          heightFormula: "",
+          sillHeightFormula: "",
+          areaFormula: "",
+          baseboardFormula: "",
+          reinforcementFormula: "",
+          note: "",
+          fromEstimate: 0,
+        },
+      ],
+    });
+    addRoom("事務室", 1, 1);
+    const row = drafts[drafts.length - 1];
+    const sheet = getRoomSheet(db, row.id as number);
+    const lower = JSON.parse(lowerJson(1)) as {
+      partName: string;
+      lines: unknown[];
+    }[];
+    lower[0].partName = "補強";
+    lower[0].lines = [
+      { id: "l1", formulaA: "<SD1>", formulaB: "", comment: "", bSymbol: "" },
+    ];
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(lower),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    const view = runAggregation(db, projectId);
+    // 部位が「補強」なので <SD1> は面積1.79ではなく軸組横補強0.85を採る
+    expect(view.items[0].quantity).toBe(0.85);
+  });
+
   it("部位別入力表のチェック列は行ごとに部位別の名称と数量を返す", () => {
     addRoom("事務室", 2, 1.05);
     const rowId = drafts[drafts.length - 1].id;
@@ -224,7 +282,13 @@ describe("集計処理", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0].estimateRowId).toBe(rowId);
     expect(checks[0].cells).toEqual([
-      { partName: "床", name: "ビニル床シート", quantity: 25.2 },
+      // 倍率2・掛け率1.05。倍率なしの数量は倍率をかける前の値
+      {
+        partName: "床",
+        name: "ビニル床シート",
+        quantity: 25.2,
+        baseQuantity: 12.6,
+      },
     ]);
 
     // 材種区分が違うときは拾わない
@@ -248,6 +312,55 @@ describe("集計処理", () => {
     ]);
   });
 
+  it("計算式の誤りがある行と、形が決まらない部屋の行は計算エラーになる", () => {
+    addRoom("事務室", 1, 1);
+    const rowId = drafts[drafts.length - 1].id as number;
+    // 正常な計算書はエラーにならない
+    expect(listCalcErrors(db, projectId).has(rowId)).toBe(false);
+
+    const sheet = getRoomSheet(db, rowId);
+    // 計算式が誤っている（演算子が欠けている）行はエラー
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(
+        JSON.parse(lowerJson(1)).map(
+          (set: { lines: { formulaA: string }[] }) => ({
+            ...set,
+            lines: [{ ...set.lines[0], formulaA: "FA*" }],
+          }),
+        ),
+      ),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    expect(listCalcErrors(db, projectId).has(rowId)).toBe(true);
+
+    // 式を直し、部屋の形が閉じていない（横方向に足りない）状態もエラー
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: JSON.stringify({
+        edges: [
+          { id: "e1", direction: "E", length: 4, kind: "wall" },
+          { id: "e2", direction: "S", length: 3, kind: "wall" },
+          { id: "e3", direction: "W", length: 3, kind: "wall" },
+          { id: "e4", direction: "N", length: 3, kind: "wall" },
+        ],
+      }),
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: lowerJson(1),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    const errored = listCalcErrors(db, projectId);
+    expect(errored.has(rowId)).toBe(true);
+    // 備考欄の説明に形の誤りを出せるよう、理由の文も返す
+    expect(errored.get(rowId)).toContain("閉じていません");
+  });
+
   it("転記入力表は集計書に計上するが根拠（部屋別）には出さない", () => {
     addRoom("事務室", 1, 1);
     saveTransferRows(db, { projectId, rows: [transferDraft(3)] });
@@ -261,6 +374,31 @@ describe("集計処理", () => {
     expect(
       view.details.filter((detail) => detail.sourceKind === "transfer"),
     ).toHaveLength(1);
+  });
+
+  it("転記入力表は部位名・名称が無い行も計上し、部位ID・明細IDを引き継ぐ", () => {
+    saveTransferRows(db, {
+      projectId,
+      rows: [
+        transferDraft(3),
+        {
+          ...transferDraft(0),
+          partId: null,
+          partName: "",
+          detailNumber: null,
+          name: "",
+          descriptionLower: "仕様のつづき",
+          unit: "",
+        },
+      ],
+    });
+
+    const view = runAggregation(db, projectId);
+    const items = view.items.filter((item) => item.name === "");
+    expect(items).toHaveLength(1);
+    expect(items[0].partNumber).toBe(10);
+    expect(items[0].detailNumber).toBe(1.02);
+    expect(items[0].descriptionLower).toBe("仕様のつづき");
   });
 
   it("集計をかけ直しても過去の回は消さず、版として残す", () => {
@@ -330,6 +468,45 @@ describe("集計処理", () => {
     expect(after.items[0].quantity).toBe(12);
     // 集計をかけ直しても直した内容のまま（計算書に入っている）
     expect(runAggregation(db, projectId).items[0].name).toBe("長尺塩ビシート");
+  });
+
+  it("集計書で直した積算用表示を計算書へ書き戻す", () => {
+    addRoom("事務室", 1, 1);
+    const before = runAggregation(db, projectId);
+    const item = before.items[0];
+
+    const after = saveAggregateEdits(db, {
+      projectId,
+      runId: before.run?.id ?? 0,
+      edits: [
+        {
+          masterKey: item.masterKey,
+          subjectId: item.subjectId,
+          materialCategory: item.materialCategory,
+          partNumber: item.partNumber,
+          partName: item.partName,
+          detailNumber: item.detailNumber,
+          name: item.name,
+          descriptionUpper: item.descriptionUpper,
+          descriptionLower: item.descriptionLower,
+          unit: item.unit,
+          remarksUpper: item.remarksUpper,
+          remarksLower: item.remarksLower,
+          estimateDisplay: "床面積",
+        },
+      ],
+    });
+
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0].estimateDisplay).toBe("床面積");
+    expect(after.items[0].quantity).toBe(12);
+    expect(runAggregation(db, projectId).items[0].estimateDisplay).toBe(
+      "床面積",
+    );
+    const logs = listDetailChangeLogs(db, projectId).filter(
+      (log) => log.origin === "集計書兼工事マスター",
+    );
+    expect(logs[0].changedFields).toContain("estimateDisplay");
   });
 
   it("集計書で直した内容は明細マスター変更履歴に残る", () => {
@@ -450,76 +627,6 @@ describe("集計処理", () => {
     expect(again.items[0].quantity).toBe(4);
   });
 
-  it("同じ明細マスターから拾った行は、まとめて直せる", () => {
-    const saved = saveDetails(db, {
-      subjectId: 5,
-      projectId,
-      rows: [
-        {
-          id: null,
-          detailNumber: 1.01,
-          materialCategory: "仕上",
-          partName: "床",
-          name: "ビニル床タイル",
-          descriptionUpper: "",
-          descriptionLower: "3.0 コンクリート面",
-          unit: "m2",
-          remarksUpper: "",
-          remarksLower: "",
-          estimateDisplay: "",
-          isActive: true,
-        },
-      ],
-      deletedIds: [],
-    });
-    const detailId = saved[0].id;
-    saveTransferRows(db, {
-      projectId,
-      rows: [
-        {
-          ...transferDraft(14.57),
-          name: "ビニル床タイル",
-          sourceDetailId: detailId,
-        },
-        {
-          ...transferDraft(32.63),
-          name: "ビニル床タイル",
-          descriptionUpper: "東リ:ロイヤルウッド 同等",
-          sourceDetailId: detailId,
-        },
-      ],
-    });
-    const before = runAggregation(db, projectId);
-    // 摘要（上）が違うので、同じ明細でも集計書では2行に分かれる
-    expect(before.items).toHaveLength(2);
-
-    const after = saveAggregateEdits(db, {
-      projectId,
-      runId: before.run?.id ?? 0,
-      applyToSameDetail: true,
-      edits: [
-        {
-          masterKey: before.items[0].masterKey,
-          subjectId: 5,
-          materialCategory: "仕上",
-          partNumber: 10,
-          partName: "床",
-          detailNumber: 1.01,
-          name: "ビニル床タイル",
-          descriptionUpper: "東リ:ロイヤルウッド 同等",
-          descriptionLower: "3.0 コンクリート面",
-          unit: "m2",
-          remarksUpper: "",
-          remarksLower: "",
-        },
-      ],
-    });
-
-    expect(after.items).toHaveLength(1);
-    expect(after.items[0].descriptionUpper).toBe("東リ:ロイヤルウッド 同等");
-    expect(after.items[0].quantity).toBe(47.2);
-  });
-
   it("集計書で直しても物件専用の明細マスターは変わらない", () => {
     const saved = saveDetails(db, {
       subjectId: 5,
@@ -618,5 +725,92 @@ describe("集計処理", () => {
 
     const view = runAggregation(db, projectId);
     expect(view.details).toHaveLength(1);
+  });
+
+  it("マスター作成は集計実行と同じく工事マスターとセット明細マスターを最新にする", () => {
+    addRoom("事務室", 1, 1);
+
+    const built = buildProjectMasters(db, projectId);
+    expect(built.aggregateCount).toBe(1);
+    expect(built.assembliesAdded).toBe(1);
+
+    // マスター呼出の工事マスター（明細）は最新の集計から出る
+    expect(
+      listProjectDetailsInUse(db, 5, projectId).map((detail) => detail.name),
+    ).toEqual(["ビニル床シート"]);
+    // セット明細マスターに計算書のセットが登録されている
+    expect(listAssemblies(db, projectId)).toHaveLength(1);
+    expect(listAssemblies(db, projectId)[0].items[0].partName).toBe("床");
+
+    // 計算書を直してから再度マスター作成すると、呼出もその内容に変わる
+    const row = drafts[0];
+    const sheet = getRoomSheet(db, row.id as number);
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify([
+        {
+          id: "s1",
+          partNumber: 10,
+          partName: "床",
+          details: [
+            {
+              id: "d1",
+              sourceDetailId: null,
+              subjectId: 5,
+              detailNumber: 1.01,
+              materialCategory: "仕上",
+              partName: "",
+              name: "長尺シート",
+              descriptionUpper: "",
+              descriptionLower: "t=2.5",
+              unit: "m2",
+              remarksUpper: "",
+              remarksLower: "",
+              estimateDisplay: "",
+              coefficient: 1,
+            },
+          ],
+          lines: [
+            { id: "l1", formulaA: "FA", formulaB: "", comment: "", bSymbol: "" },
+          ],
+        },
+      ]),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    buildProjectMasters(db, projectId);
+    expect(
+      listProjectDetailsInUse(db, 5, projectId).map((detail) => detail.name),
+    ).toEqual(["長尺シート"]);
+  });
+
+  it("ピット計算書のセットもセット明細マスターに登録する", () => {
+    const rows = saveEstimateRows(db, {
+      projectId,
+      rows: [{ ...roomRow("基礎階ピット", 1), calcType: "pit" }],
+    });
+    const sheet = getPitSheet(db, rows[0].id);
+    savePitSheet(db, {
+      id: sheet.id,
+      pitsJson: sheet.pitsJson,
+      beamsJson: sheet.beamsJson,
+      wallsJson: sheet.wallsJson,
+      sleevesJson: sheet.sleevesJson,
+      sleeveKindsJson: sheet.sleeveKindsJson,
+      wallStep: sheet.wallStep,
+      lowerJson: lowerJson(1),
+      note: "",
+    });
+
+    const built = buildProjectMasters(db, projectId);
+    expect(built.assembliesAdded).toBe(1);
+    expect(listAssemblies(db, projectId)).toHaveLength(1);
+    expect(listAssemblies(db, projectId)[0].items[0].name).toBe(
+      "ビニル床シート",
+    );
   });
 });

@@ -974,4 +974,118 @@ UPDATE project_fittings SET symbol = trim(symbol, ' 　	') WHERE symbol <> trim(
   `
 ALTER TABLE project_fittings ADD COLUMN reinforcement_formula TEXT NOT NULL DEFAULT '';
 `,
+  // 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト）
+  `
+CREATE TABLE project_fireproof_sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  floor_count INTEGER NOT NULL DEFAULT 0,
+  columns_json TEXT NOT NULL DEFAULT '{}',
+  beams_json TEXT NOT NULL DEFAULT '{}',
+  common_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX uq_fireproof_sheet_project ON project_fireproof_sheets(project_id);
+`,
+  // 耐火被覆・塗装入力表（入力管理表）の置き場
+  `
+ALTER TABLE project_fireproof_sheets ADD COLUMN estimate_json TEXT NOT NULL DEFAULT '[]';
+`,
+  // 内訳書の回：その回で初めて出てきた工種科目
+  `
+ALTER TABLE project_breakdown_versions ADD COLUMN new_subjects_json TEXT NOT NULL DEFAULT '[]';
+`,
+  // 内訳書の設定：基本部位のタイトル行（部位番号の範囲の始まり→出す文字）
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_json TEXT NOT NULL DEFAULT '[{"from":10,"title":"＜床＞"},{"from":20,"title":"＜巾木＞"},{"from":30,"title":"＜壁＞"},{"from":40,"title":"＜柱型＞"},{"from":50,"title":"＜梁型＞"},{"from":60,"title":"＜天井＞"},{"from":70,"title":"＜その他＞"}]';
+`,
+  // 内訳書の設定：基本部位のタイトル行を出すかどうか（表は残す）
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN part_titles_on INTEGER NOT NULL DEFAULT 0;
+`,
+  // 集計書兼工事マスターへ手で挿入した明細行（集計のたびにアンカー行の直後へ差し込む）
+  `
+CREATE TABLE project_manual_aggregate_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  after_master_key TEXT NOT NULL DEFAULT '',
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_raw TEXT NOT NULL DEFAULT '',
+  part_number REAL,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  unit TEXT NOT NULL DEFAULT '',
+  remarks_upper TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT '',
+  estimate_display TEXT NOT NULL DEFAULT '',
+  formwork TEXT NOT NULL DEFAULT '',
+  quantity REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX ix_manual_aggregate_items ON project_manual_aggregate_items(project_id);
+`,
+  // 手入力行を「明細の直前」にも挿せるように（0=直後、1=直前）
+  `
+ALTER TABLE project_manual_aggregate_items ADD COLUMN anchor_before INTEGER NOT NULL DEFAULT 0;
+`,
+  // 転記入力表の科目IDは工事の科目マスターの番号なので、基本の科目マスターへの
+  // 外部キーを外す（基本に無い番号を入れると保存自体が失敗していた）
+  `
+CREATE TABLE project_transfer_rows_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  part1 TEXT NOT NULL DEFAULT '',
+  part2 TEXT NOT NULL DEFAULT '',
+  part2_split INTEGER NOT NULL DEFAULT 0,
+  formwork TEXT NOT NULL DEFAULT '',
+  part3 TEXT NOT NULL DEFAULT '',
+  subject_id INTEGER,
+  material_category TEXT NOT NULL DEFAULT '',
+  part_id INTEGER,
+  part_name TEXT NOT NULL DEFAULT '',
+  detail_number REAL,
+  name TEXT NOT NULL DEFAULT '',
+  source_detail_id INTEGER,
+  description_upper TEXT NOT NULL DEFAULT '',
+  description_lower TEXT NOT NULL DEFAULT '',
+  quantity REAL,
+  unit TEXT NOT NULL DEFAULT '',
+  unit_price REAL,
+  amount REAL,
+  remarks TEXT NOT NULL DEFAULT '',
+  memo TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  formwork_key TEXT NOT NULL DEFAULT '',
+  remarks_lower TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO project_transfer_rows_new (
+  id, project_id, part1, part2, part2_split, formwork, part3, subject_id,
+  material_category, part_id, part_name, detail_number, name, source_detail_id,
+  description_upper, description_lower, quantity, unit, unit_price, amount,
+  remarks, memo, display_order, formwork_key, remarks_lower
+)
+SELECT
+  id, project_id, part1, part2, part2_split, formwork, part3, subject_id,
+  material_category, part_id, part_name, detail_number, name, source_detail_id,
+  description_upper, description_lower, quantity, unit, unit_price, amount,
+  remarks, memo, display_order, formwork_key, remarks_lower
+FROM project_transfer_rows;
+DROP INDEX IF EXISTS idx_transfer_rows_project;
+DROP TABLE project_transfer_rows;
+ALTER TABLE project_transfer_rows_new RENAME TO project_transfer_rows;
+CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, display_order);
+`,
+  // 内訳書の行に取り消し線（その明細は無いものとして比較に出す印）
+  `ALTER TABLE project_breakdown_rows ADD COLUMN struck INTEGER NOT NULL DEFAULT 0;`,
+  // 耐火被覆・塗装積算入力の鉄骨伏図（階ごとの図面一式）
+  `ALTER TABLE project_fireproof_sheets ADD COLUMN drawing_json TEXT NOT NULL DEFAULT '{}';`,
+  // 台帳の上の段に固定する印（並べ替え・ドラッグでは動かない）
+  `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`,
 ];

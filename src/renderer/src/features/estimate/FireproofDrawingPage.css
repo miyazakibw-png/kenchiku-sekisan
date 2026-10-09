@@ -1,0 +1,816 @@
+/* 鉄骨伏図の作成：左に寸法線・柱・大梁の入力、右に図面 */
+
+.fireproof-drawing-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fireproof-drawing-page .toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs .tab {
+  padding: 4px 12px;
+  border: 1px solid #9aa4b2;
+  border-radius: 4px;
+  background: #f4f6f9;
+  cursor: pointer;
+}
+
+.fireproof-drawing-page .toolbar .floor-tabs .tab.on {
+  background: #1f4e79;
+  border-color: #1f4e79;
+  color: #fff;
+}
+
+.fireproof-drawing-page .toolbar .status {
+  font-size: 12px;
+  color: #2f7d32;
+}
+
+/* 階の貼り付け先をまとめて選ぶ欄 */
+.fireproof-drawing-page .floor-paste {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #eef4fb;
+  border-bottom: 1px solid #cdd8e6;
+}
+.fireproof-drawing-page .floor-paste .tab {
+  padding: 2px 8px;
+  border: 1px solid #9db4cc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.fireproof-drawing-page .floor-paste .tab.on {
+  background: #1f4e79;
+  border-color: #1f4e79;
+  color: #fff;
+}
+
+.fireproof-drawing-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 6px;
+}
+
+/* 左の入力欄 */
+.fireproof-drawing-body .drawing-side {
+  display: flex;
+  flex: 0 0 340px;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .drawing-section {
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: #fff;
+}
+
+.fireproof-drawing-body .drawing-section h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #1f4e79;
+}
+
+.fireproof-drawing-body .section-bar {
+  margin-bottom: 4px;
+}
+
+.fireproof-drawing-body .span-inputs label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.fireproof-drawing-body .span-inputs input {
+  flex: 1 1 0;
+  padding: 3px 6px;
+}
+
+.fireproof-drawing-body .hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+.fireproof-drawing-body .symbol-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+
+.fireproof-drawing-body .symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 通りが替わるところは少し間を空ける */
+.fireproof-drawing-body .symbol-row.gap {
+  margin-top: 7px;
+  padding-top: 4px;
+  border-top: 1px dashed #d8dde5;
+}
+
+/* 番号・通りのラベル（ドラッグで範囲選択） */
+.fireproof-drawing-body .symbol-row .row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: cell;
+  user-select: none;
+}
+
+/* 範囲選択した行 */
+.fireproof-drawing-body .symbol-row.sel {
+  background: #dbe8fb;
+  border-radius: 3px;
+}
+
+.fireproof-drawing-body .symbol-row.sel input {
+  background: #eef5ff;
+}
+
+.fireproof-drawing-body .symbol-list:focus {
+  outline: none;
+}
+
+.fireproof-drawing-body .symbol-row .no {
+  flex: 0 0 2.4em;
+  text-align: right;
+  color: #888;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .symbol-row .at {
+  flex: 0 0 auto;
+  min-width: 8.5em;
+  font-size: 12px;
+  color: #444;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-right: 1px solid #ddd;
+  white-space: nowrap;
+}
+
+.fireproof-drawing-body .symbol-row input {
+  flex: 0 1 92px;
+  min-width: 0;
+  padding: 2px 6px;
+}
+
+/* 「無」チェック（記号入力欄の右。入れた場所には部材を置かない） */
+.fireproof-drawing-body .none {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.fireproof-drawing-body .none input {
+  flex: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fireproof-drawing-body .none.on {
+  color: #c0392b;
+  font-weight: 700;
+}
+
+/* 図でクリックした部材の行（そのまま記号を打てるよう入力欄に移る） */
+.fireproof-drawing-body .symbol-row.pick {
+  background: #fdeec8;
+  border-radius: 3px;
+}
+
+/* 斜梁の一覧（③大梁の下） */
+.fireproof-drawing-body .diag-block {
+  margin-top: 8px;
+  border-top: 1px dashed #d8dde5;
+  padding-top: 6px;
+}
+
+.fireproof-drawing-body .diag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #555;
+}
+
+.fireproof-drawing-body .diag-head button {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.fireproof-drawing-body .diag-head button.on {
+  background: #2f7dd1;
+  color: #fff;
+}
+
+.fireproof-drawing-body .diag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.fireproof-drawing-body .diag-row.on {
+  background: #fdeec8;
+}
+
+.fireproof-drawing-body .diag-row .at {
+  flex: 0 0 auto;
+  min-width: 7em;
+  font-size: 12px;
+  color: #555;
+}
+
+.fireproof-drawing-body .diag-row input {
+  flex: 0 1 92px;
+  min-width: 0;
+  padding: 2px 6px;
+}
+
+.fireproof-drawing-body .diag-row .diag-del {
+  padding: 0 6px;
+  font-size: 11px;
+  color: #888;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+
+.fireproof-drawing-body .diag-row input.bad {
+  color: #d03030;
+  border-color: #d03030;
+  background: #fff5f5;
+}
+
+/* 引き梁の寄せボタン（柱の面に合わせる） */
+.fireproof-drawing-body .diag-row .diag-align {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.fireproof-drawing-body .diag-row .diag-align button {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 1.6;
+  border: 1px solid #c8c8c8;
+  border-radius: 3px;
+  background: #fff;
+  color: #444;
+}
+
+.fireproof-drawing-body .diag-row .diag-align button.on {
+  border-color: #2f7dd1;
+  color: #1c5f9e;
+  background: #e8f2fc;
+}
+
+/* 右の図面 */
+.fireproof-drawing-body .drawing-canvas {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  background: #fbfcfe;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  position: relative;
+}
+
+/* 図面の拡大縮小（右上に浮かせる） */
+.fireproof-drawing-body .drawing-canvas .zoom-bar {
+  position: sticky;
+  top: 6px;
+  right: 6px;
+  margin-left: auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #cfd6df;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 3;
+  order: 2;
+}
+
+.fireproof-drawing-body .drawing-canvas .zoom-bar button {
+  padding: 1px 7px;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .drawing-canvas .zoom-bar span {
+  min-width: 3em;
+  text-align: center;
+  color: #555;
+}
+
+.fireproof-drawing-body .drawing-canvas .empty {
+  color: #9aa4b2;
+  margin: 40px auto;
+}
+
+.fireproof-drawing-svg {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+
+/* 大梁・小梁の記号に添える寸法（記号と同じく太字） */
+.fireproof-drawing-svg .girder text .size,
+.fireproof-drawing-svg .beam text .size {
+  font-weight: bold;
+}
+
+/* 図面の線（座標はmmなので太さもmm） */
+.fireproof-drawing-svg .grid line {
+  stroke: #666;
+  stroke-width: 16;
+  stroke-dasharray: 1500 260 280 260;
+}
+
+/* 補助寸法線（柱線とは別にずらして引く線。破線で出す） */
+.fireproof-drawing-svg .aux line {
+  stroke: #b07000;
+  stroke-width: 14;
+  stroke-dasharray: 260 140;
+}
+
+.fireproof-drawing-svg .dim line {
+  stroke: #333;
+  stroke-width: 16;
+}
+
+.fireproof-drawing-svg .dim text {
+  fill: #333;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .axis circle {
+  fill: #fff;
+  stroke: #333;
+  stroke-width: 40;
+}
+
+.fireproof-drawing-svg .axis text {
+  fill: #333;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .column rect {
+  fill: #dcdcdc;
+  stroke: #333;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .column text {
+  fill: #1f3b66;
+  font-weight: bold;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+/* リストから読んだ寸法（柱＝□-500*500、梁＝300など）は薄めに出す） */
+.fireproof-drawing-svg .size {
+  fill: #6a7180;
+  font-weight: normal;
+}
+
+.fireproof-drawing-svg .girder line {
+  stroke: #c43d3d;
+  stroke-width: 55;
+}
+
+.fireproof-drawing-svg .girder text {
+  fill: #c43d3d;
+  font-weight: bold;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+/* 小梁（区画を分割する線） */
+.fireproof-drawing-svg .beam line {
+  stroke: #1c3f8f;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .beam text {
+  fill: #1c3f8f;
+  font-weight: bold;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+.fireproof-drawing-svg .beam .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.fireproof-drawing-svg .beam.on line {
+  stroke: #2f7dd1;
+}
+
+.fireproof-drawing-svg .beam.on text {
+  fill: #2f7dd1;
+  font-weight: bold;
+}
+
+/* 柱・大梁・斜梁を図でクリック（つかむ）→ 左の記号欄のその行へ飛ぶ */
+.fireproof-drawing-svg .column > g,
+.fireproof-drawing-svg .girder > g {
+  cursor: pointer;
+}
+
+.fireproof-drawing-svg .girder .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+  pointer-events: all;
+}
+
+/* 引き梁（自分で引いた線）は小梁と同じ紺色にする */
+.fireproof-drawing-svg .girder .diag line {
+  stroke: #1c3f8f;
+  stroke-width: 45;
+}
+
+.fireproof-drawing-svg .girder .diag text {
+  fill: #1c3f8f;
+}
+
+.fireproof-drawing-svg .girder .diag .hit {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 500;
+}
+
+/* 斜梁モード：交点・線上につける押せる印（透明）。始点は青い輪で出す */
+.fireproof-drawing-svg .diag-pick circle {
+  fill: rgba(0, 0, 0, 0);
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+/* 点取りの受け面（透明な全面。カーソル位置の吸い付き先を下見する） */
+.fireproof-drawing-svg .diag-pick .pick-cover {
+  fill: rgba(0, 0, 0, 0);
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+/* 線上の点・柱線の基線選びにつける押せる印（透明の太線） */
+.fireproof-drawing-svg .diag-pick line {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 380;
+  cursor: crosshair;
+  pointer-events: stroke;
+}
+
+.fireproof-drawing-svg .diag-pick .start {
+  fill: rgba(47, 125, 209, 0.15);
+  stroke: #2f7dd1;
+  stroke-width: 45;
+  stroke-dasharray: 200 120;
+  pointer-events: none;
+}
+
+/* カーソルが今取っている点（吸い付き先に小さい青い点） */
+.fireproof-drawing-svg .diag-pick .hover {
+  fill: #2f7dd1;
+  stroke: #ffffff;
+  stroke-width: 60;
+  pointer-events: none;
+}
+
+/* 始点から終点の下見の線（青い破線） */
+.fireproof-drawing-svg .diag-pick .preview {
+  stroke: rgba(47, 125, 209, 0.75);
+  stroke-width: 55;
+  stroke-dasharray: 320 200;
+  pointer-events: none;
+}
+
+/* 寸法線を足す：選んだ基の線を青く示す（クリックは通す） */
+.fireproof-drawing-svg .diag-pick .aux-sel {
+  stroke: #2f7dd1;
+  stroke-width: 60;
+  pointer-events: none;
+}
+
+/* 寸法線を足す：これから引く線の位置を青い破線で示す（クリックは通す） */
+.fireproof-drawing-svg .diag-pick .aux-preview {
+  stroke: rgba(47, 125, 209, 0.65);
+  stroke-width: 40;
+  stroke-dasharray: 300 180;
+  pointer-events: none;
+}
+
+/* 選んだ区画・入力欄に対応する場所の色付け */
+.fireproof-drawing-svg .selection {
+  fill: rgba(255, 224, 138, 0.35);
+  stroke: #d9a400;
+  stroke-width: 50;
+  stroke-dasharray: 320 180;
+}
+
+/* 大梁リストで範囲指定した分（青系の点線） */
+.fireproof-drawing-svg .selection.girder-sel {
+  fill: rgba(150, 195, 255, 0.25);
+  stroke: #4a80c0;
+  stroke-dasharray: 240 160;
+}
+
+/* 引き梁の一覧で選んだ分（その梁の芯に青い点線） */
+.fireproof-drawing-svg .diag-sel {
+  stroke: #4a80c0;
+  stroke-width: 60;
+  stroke-dasharray: 240 160;
+  pointer-events: none;
+}
+
+/* リストに無い記号（エラー） */
+.fireproof-drawing-svg .bad line {
+  stroke: #d03030;
+}
+.fireproof-drawing-svg .bad text {
+  fill: #d03030;
+  font-weight: bold;
+}
+/* 小梁は記号がリストに無くても線は紺色のまま（記号の文字だけ赤） */
+.fireproof-drawing-svg .beam .bad line {
+  stroke: #1c3f8f;
+}
+.fireproof-drawing-svg .bad rect {
+  stroke: #d03030;
+  fill: rgba(208, 48, 48, 0.12);
+}
+.fireproof-drawing-page .symbol-row input.bad {
+  color: #d03030;
+  border-color: #d03030;
+  background: #fff5f5;
+}
+
+.fireproof-drawing-svg .number text {
+  fill: #aaa;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+}
+
+/* 取合記号の○印（未入力は薄い点線、記号ありは紺地に白字） */
+.fireproof-drawing-svg .joint circle {
+  fill: rgba(255, 255, 255, 0.55);
+  stroke: #9db4cc;
+  stroke-width: 10;
+  stroke-dasharray: 26 14;
+  cursor: pointer;
+}
+.fireproof-drawing-svg .joint.on circle {
+  fill: #1f4e79;
+  stroke: none;
+}
+.fireproof-drawing-svg .joint.on text {
+  fill: #fff;
+  font-family: "MS Gothic", "Yu Gothic", sans-serif;
+  pointer-events: none;
+}
+
+/* 補助寸法線の追加入力 */
+.fireproof-drawing-body .aux-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fireproof-drawing-body .aux-add .dist {
+  width: 5.5em;
+}
+/* 離れ寸法が無いまま「線を引く」を押したときの知らせ（欄のすぐ下に赤く） */
+.fireproof-drawing-body .aux-err {
+  color: #c43d3d;
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
+.fireproof-drawing-body .aux-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fireproof-drawing-body .aux-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 通りごとの柱の高さ（勾配用） */
+.fireproof-drawing-body .span-inputs.axis-heights {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 3px solid #dfe4ea;
+}
+.fireproof-drawing-body .axis-height-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 20vh;
+  overflow-y: auto;
+}
+.fireproof-drawing-body .axis-height-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.fireproof-drawing-body .axis-height-list input {
+  width: 7ch;
+  padding: 2px 4px;
+}
+
+/* ⑤取合記号の入力欄 */
+.fireproof-drawing-body .joint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fireproof-drawing-body .joint-picks {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fireproof-drawing-body .joint-picks button {
+  min-width: 30px;
+  padding: 3px 6px;
+}
+.fireproof-drawing-body .joint-picks button.on {
+  background: #1f4e79;
+  color: #fff;
+  border-color: #1f4e79;
+}
+.fireproof-drawing-body .joint-picks input {
+  width: 5ch;
+  padding: 2px 4px;
+}
+.fireproof-drawing-body .joint-ops {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ④小梁の入力欄 */
+.fireproof-drawing-body .beam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fireproof-drawing-body .beam-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fireproof-drawing-body .beam-inputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.fireproof-drawing-body .beam-inputs input {
+  width: 6ch;
+  padding: 2px 4px;
+}
+
+.fireproof-drawing-body .beam-inputs input[type="number"] {
+  width: 8ch;
+}
+
+.fireproof-drawing-body .beam-inputs select {
+  padding: 2px 4px;
+}
+
+.fireproof-drawing-body .beam-ops {
+  display: flex;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .beam-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 26vh;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.fireproof-drawing-body .beam-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 1px solid #dde2ea;
+  border-radius: 3px;
+  background: #fafbfc;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.fireproof-drawing-body .beam-row.on {
+  background: #e2eeff;
+  border-color: #2f7dd1;
+}
+
+.fireproof-drawing-body .beam-row.sel {
+  background: #fff3c8;
+  border-color: #d9a900;
+}
+
+.fireproof-drawing-body .beam-row .no {
+  flex: 0 0 2em;
+  text-align: right;
+  color: #888;
+}
+
+.fireproof-drawing-body .beam-row .at {
+  flex: 0 0 4.5em;
+  font-weight: bold;
+}
+
+.fireproof-drawing-body .beam-row .len {
+  flex: 1 1 0;
+  color: #444;
+}
+
+.fireproof-drawing-body .beam-row .del {
+  color: #b32020;
+  padding: 0 4px;
+}
+
+/* 階ボタン：取合記号が入っていない部材がある階に出す注意 */
+.floor-tabs .joint-warn {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 3px;
+}
+
+/* 未入力表示：取合記号の無い部材を点滅させる */
+@keyframes jointMiss {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.fireproof-drawing-svg .miss {
+  animation: jointMiss 0.9s ease-in-out infinite;
+}
+
+.fireproof-drawing-svg .miss rect,
+.fireproof-drawing-svg .miss line,
+.fireproof-drawing-svg .miss text {
+  stroke: #dc2626;
+  fill: #dc2626;
+}

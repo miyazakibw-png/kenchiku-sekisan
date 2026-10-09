@@ -238,6 +238,26 @@ describe("カーソルのある列から貼り付ける", () => {
     expect(sets[2].lines[0].formulaA).toBe("2");
   });
 
+  it("※行の2つ目の文字（コメント列）もコピー・貼り付けでそのまま戻る", () => {
+    const details = [calcDetail({ name: "床" })];
+    const lines = [calcLine({ formulaA: "1" })];
+    const sets = rowsToSets(
+      details,
+      lines,
+      [
+        {
+          at: 1,
+          text: "※ 見出し",
+          color: "#dcfce7",
+          text2: "手洗い部",
+        },
+      ],
+      [{ at: 0, partNumber: 3, partName: "床" }],
+    );
+    expect(sets[1].banner?.text).toBe("※ 見出し");
+    expect(sets[1].banner?.text2).toBe("手洗い部");
+  });
+
   it("複数のセットをまたいでコピーしても、各セットの左端の部位が残る", () => {
     const details = [calcDetail(), calcDetail(), calcDetail()];
     const lines = [calcLine(), calcLine(), calcLine()];

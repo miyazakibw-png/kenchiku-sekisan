@@ -15,7 +15,7 @@ let sqlite: Database.Database | null = null;
 let db: AppDatabase | null = null;
 let dbPath = "";
 
-function applyMigrations(conn: Database.Database): void {
+export function applyMigrations(conn: Database.Database): void {
   const current = conn.pragma("user_version", { simple: true }) as number;
   for (let version = current; version < migrations.length; version++) {
     conn.exec("BEGIN");
@@ -46,6 +46,12 @@ export function initDatabase(filePath: string): AppDatabase {
 export function getDatabase(): AppDatabase {
   if (!db) throw new Error("データベースが初期化されていません");
   return db;
+}
+
+/** better-sqlite3 の生接続（1物件ファイルの掃き出し・読み込みで使う） */
+export function getRawConnection(): Database.Database {
+  if (!sqlite) throw new Error("データベースが初期化されていません");
+  return sqlite;
 }
 
 export function closeDatabase(): void {

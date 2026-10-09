@@ -9,7 +9,7 @@ import {
   type XlsxCell,
   type XlsxSheet,
 } from "../export/xlsx";
-import { BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
+import { amountOf, BREAKDOWN_LAYOUT, type BreakdownRow } from "./breakdown";
 
 export interface SheetData {
   name: string;
@@ -77,14 +77,24 @@ function rowsPerDetail(layout: number): number {
 }
 
 /** 明細1件分をまとめた行の固まり（ページの途中で切らない単位） */
+interface SpreadsheetBlock {
+  lines: XlsxCell[][];
+  /** 科目の小計の固まり（ページの最後の行へ出す） */
+  subtotal: boolean;
+}
+
 function detailBlocks(
   rows: readonly BreakdownRow[],
   layout: number,
-): XlsxCell[][][] {
-  const blocks: XlsxCell[][][] = [];
+): SpreadsheetBlock[] {
+  const blocks: SpreadsheetBlock[] = [];
   const lines: XlsxCell[][] = [];
+  let subtotal = false;
   const flush = (): void => {
-    if (lines.length > 0) blocks.push(lines.splice(0, lines.length));
+    if (lines.length > 0) {
+      blocks.push({ lines: lines.splice(0, lines.length), subtotal });
+      subtotal = false;
+    }
   };
   const twoRowHeading =
     layout === BREAKDOWN_LAYOUT.twoLine || layout === BREAKDOWN_LAYOUT.twoRow;
@@ -121,7 +131,7 @@ function detailBlocks(
       numberCell(lower === null ? null : lower.quantity),
       textCell(lower === null ? "" : lower.unit),
       numberCell(lower === null ? null : lower.unitPrice),
-      numberCell(lower === null ? null : lower.amount),
+      numberCell(lower === null ? null : amountOf(lower)),
       wrapCell(
         text(
           (row) => row.remarksLower,
@@ -149,6 +159,26 @@ function detailBlocks(
       } else {
         lines.push(headingRow(text, "one"));
       }
+      flush();
+      return;
+    }
+    if (row.subtotal === true) {
+      flushPending();
+      // 小計はページの最後の明細分を使う。
+      // 2段の書式では明細と同じく2行で1つの小計行にする（上段は空行）。
+      const border: RowBorder = rowsPerDetail(layout) === 2 ? "lower" : "one";
+      if (rowsPerDetail(layout) === 2) lines.push(blankRow("upper"));
+      lines.push([
+        markCell(border),
+        textCell(row.nameLower, border),
+        textCell("", border),
+        textCell("", border),
+        textCell("", border),
+        textCell("", border),
+        numberCell(row.amount, border),
+        textCell("", border),
+      ]);
+      subtotal = true;
       flush();
       return;
     }
@@ -183,7 +213,7 @@ function detailBlocks(
         numberCell(row.quantity, border),
         textCell(row.unit, border),
         numberCell(row.unitPrice, border),
-        numberCell(row.amount, border),
+        numberCell(amountOf(row), border),
         textCell(row.remarksLower, border),
       ]);
       if (layout === BREAKDOWN_LAYOUT.oneLine || row.rowKind !== "note")
@@ -207,7 +237,7 @@ function detailBlocks(
       numberCell(row.quantity, "lower"),
       textCell(row.unit, "lower"),
       numberCell(row.unitPrice, "lower"),
-      numberCell(row.amount, "lower"),
+      numberCell(amountOf(row), "lower"),
       textCell(row.remarksLower, "lower"),
     ]);
     flush();
@@ -251,7 +281,7 @@ function blankRow(border: RowBorder): XlsxCell[] {
  * 工種科目が変わるところでは、残りを空行で埋めて次のページから書き出す。
  */
 function paginate(
-  subjects: readonly XlsxCell[][][][],
+  subjects: readonly SpreadsheetBlock[][],
   layout: number,
   page: PageLayout,
 ): XlsxCell[][] {
@@ -282,9 +312,25 @@ function paginate(
   subjects.forEach((blocks, index) => {
     if (index > 0) fillPage();
     blocks.forEach((block) => {
-      if (block.length > remaining) fillPage();
-      block.forEach((row) => rows.push(row));
-      remaining -= block.length;
+      if (block.subtotal) {
+        // 小計は科目が終わるページの最後の行へ出す
+        if (block.lines.length > remaining) fillPage();
+        for (
+          let count = 0;
+          count < remaining - block.lines.length;
+          count += 1
+        ) {
+          const border: RowBorder =
+            unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
+          rows.push(blankRow(border));
+        }
+        block.lines.forEach((row) => rows.push(row));
+        remaining = 0;
+        return;
+      }
+      if (block.lines.length > remaining) fillPage();
+      block.lines.forEach((row) => rows.push(row));
+      remaining -= block.lines.length;
     });
   });
   fillPage();

@@ -6,9 +6,10 @@ import type {
   Subject,
 } from "@shared/types";
 import { formatDetailNumber } from "@shared/detailNumber";
-import { assemblySignature } from "@shared/assemblySignature";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
-import UnitInput, { UnitOptions } from "../../components/UnitInput";
+import { UnitOptions } from "../../components/UnitInput";
+import PickInput, { type PickEntry } from "../../components/PickInput";
+import { resolveMasterName } from "@shared/masters";
 import MasterCodeInput, {
   MasterCodeOptions,
 } from "../../components/MasterCodeInput";
@@ -30,7 +31,6 @@ import {
 import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
-import { ask } from "../common/askDialog";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -55,6 +55,63 @@ interface EditorState {
   items: DraftItem[];
 }
 
+/** 一覧のいまの列幅を読む（見出しの文字→幅 と 位置→幅） */
+function listColumnWidths(): {
+  byLabel: Map<string, number>;
+  byIndex: number[];
+} | null {
+  const list = document.querySelector<HTMLTableElement>(
+    ".assembly-page .assembly-list",
+  );
+  const header = list?.tHead?.rows.item(list.tHead.rows.length - 1);
+  if (!header || header.cells.length === 0) return null;
+  const byLabel = new Map<string, number>();
+  const byIndex: number[] = [];
+  [...header.cells].forEach((cell) => {
+    const width = cell.getBoundingClientRect().width;
+    byIndex.push(width);
+    byLabel.set(cell.textContent?.trim() ?? "", width);
+  });
+  return { byLabel, byIndex };
+}
+
+/**
+ * 表の列幅を一覧に合わせる。
+ * 見出しが同じ列はその幅、見出しが一覧に無い列は同じ位置の幅を使う。
+ * lastFloor はいちばん右の列（操作列など）の最小幅。
+ */
+function alignTableToList(
+  table: HTMLTableElement | null,
+  lastFloor = 0,
+): void {
+  if (!table) return;
+  const header = table.tHead?.rows.item(table.tHead.rows.length - 1);
+  const widths = listColumnWidths();
+  if (!header || header.cells.length === 0 || !widths) return;
+  let group = table.querySelector("colgroup");
+  if (!(group instanceof HTMLElement)) {
+    group = document.createElement("colgroup");
+    table.insertBefore(group, table.firstChild);
+  }
+  while (group.children.length < header.cells.length)
+    group.appendChild(document.createElement("col"));
+  let total = 0;
+  [...header.cells].forEach((cell, index) => {
+    const col = group.children[index];
+    if (!(col instanceof HTMLTableColElement)) return;
+    const label = cell.textContent?.trim() ?? "";
+    const isLast = index === header.cells.length - 1;
+    const width = Math.max(
+      isLast ? Math.max(28, lastFloor) : 28,
+      widths.byLabel.get(label) ?? widths.byIndex[index] ?? 28,
+    );
+    col.style.width = `${width}px`;
+    total += width;
+  });
+  table.style.tableLayout = "fixed";
+  table.style.width = `${total}px`;
+}
+
 /** 統合確認（内容がまったく同じセットができた場合） */
 interface MergeState {
   keepId: number;
@@ -68,6 +125,16 @@ export default function AssemblyMasterPage({
   onBack,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-assembly-list-v1");
+  /** セット明細の表は、開いたときに一覧のいまの列幅をそのまま写して出す（右端は操作列なので64px以上） */
+  const editorTableRef = useCallback(
+    (table: HTMLTableElement | null) => alignTableToList(table, 64),
+    [],
+  );
+  /** 「セット明細を選ぶ」の表も同じく一覧の列幅で出す */
+  const chooserTableRef = useCallback(
+    (table: HTMLTableElement | null) => alignTableToList(table),
+    [],
+  );
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
   const [subject, setSubject] = useState<Subject | null>(
     options.subjects[0] ?? null,
@@ -100,6 +167,16 @@ export default function AssemblyMasterPage({
   const subjectOrderById = useMemo(
     () => new Map(options.subjects.map((s) => [s.id, s.displayOrder])),
     [options.subjects],
+  );
+
+  /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
+  const unitEntries: PickEntry[] = useMemo(
+    () =>
+      options.units.map((unit) => ({
+        value: unit.name,
+        label: `${unit.id}　${unit.name}`,
+      })),
+    [options.units],
   );
 
   /** 科目で絞り込んだうえで、共通ソートキーによる昇順（切替なし） */
@@ -192,28 +269,7 @@ export default function AssemblyMasterPage({
         markSaved(null);
         return;
       }
-      // 直した明細が他のセットでも使われているときは、どちらを直すか選んでもらう
-      const changedKeys = (before?.items ?? []).flatMap((old, index) => {
-        const next = items[index];
-        if (!next) return [];
-        const key = assemblySignature([old]);
-        return key === assemblySignature([next]) ? [] : [key];
-      });
-      const sharing = assemblies.filter(
-        (other) =>
-          other.id !== editor.id &&
-          other.items.some((item) =>
-            changedKeys.includes(assemblySignature([item])),
-          ),
-      );
-      // 画面を離れるときの自動保存では確認を出さず、このセットだけ直す
-      const applyToAllSets =
-        !quiet &&
-        sharing.length > 0 &&
-        (await ask(
-          `直した明細は他の${sharing.length}件のセットでも使われています。\n` +
-            "［はい］この明細を使う全セットを直す\n［いいえ］このセットだけ直す",
-        ));
+      // 直しはこのセットだけに効かせる（別のセットに同じ内容の行があっても触らない）
       const result = await window.sekisan.saveAssembly({
         id: editor.id,
         scope: projectId === null ? "basic" : "project",
@@ -221,7 +277,7 @@ export default function AssemblyMasterPage({
         note: editor.note,
         items,
         propagate: true,
-        applyToAllSets,
+        applyToAllSets: false,
       });
       await reload();
       setEditor(null);
@@ -260,6 +316,16 @@ export default function AssemblyMasterPage({
     },
     [isDirty, markSaved, save],
   );
+
+  /** 工事専用のセットを共通の仕上明細セットマスターへ写す（元のセットは残る） */
+  const promote = useCallback(async () => {
+    if (editor === null || editor.id === null) return;
+    if (isDirty()) await save(true);
+    const result = await window.sekisan.promoteAssembly(editor.id);
+    setToast(
+      `共通の仕上明細セットマスターに写しました（${headItem(result)?.name ?? ""}）`,
+    );
+  }, [editor, isDirty, save]);
 
   const applyMerge = useCallback(async () => {
     if (!merge) return;
@@ -415,7 +481,7 @@ export default function AssemblyMasterPage({
             </header>
 
             <div className="modal-body">
-              <table className="grid">
+              <table className="grid" ref={editorTableRef}>
                 <thead>
                   <tr>
                     <th>行</th>
@@ -490,12 +556,16 @@ export default function AssemblyMasterPage({
                         />
                       </td>
                       <td rowSpan={2}>
-                        <UnitInput
-                          units={options.units}
+                        <PickInput
+                          entries={unitEntries}
+                          halfWidth
                           value={item.unit}
-                          onChange={(value) =>
+                          title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                          onCommit={(text) =>
                             editItems(
-                              updateItem(editor.items, index, { unit: value }),
+                              updateItem(editor.items, index, {
+                                unit: resolveMasterName(options.units, text),
+                              }),
                             )
                           }
                         />
@@ -638,6 +708,15 @@ export default function AssemblyMasterPage({
                 ➕ 空行を追加
               </button>
               <span className="spacer" />
+              {projectId !== null && editor.id !== null && (
+                <button
+                  type="button"
+                  title="このセットを共通の仕上明細セットマスターへ写します（元のセットは残ります）"
+                  onClick={() => void promote()}
+                >
+                  共通に写す
+                </button>
+              )}
               <button type="button" onClick={() => setEditor(null)}>
                 閉じる
               </button>
@@ -661,7 +740,11 @@ export default function AssemblyMasterPage({
             </header>
             <div className="modal-body">
               {chooser.map((assembly, groupIndex) => (
-                <table className="grid" key={assembly.id}>
+                <table
+                  className="grid"
+                  key={assembly.id}
+                  ref={chooserTableRef}
+                >
                   <thead>
                     <tr>
                       <th colSpan={6}>
@@ -678,40 +761,45 @@ export default function AssemblyMasterPage({
                       <th>掛け率</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {assembly.items.map((item, itemIndex) => {
-                      const open = (): void => {
-                        setChooser([]);
-                        void openEditor(assembly);
-                      };
-                      return (
-                        <tr
-                          key={`${assembly.id}-${itemIndex}`}
-                          tabIndex={0}
-                          onDoubleClick={open}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") open();
-                          }}
-                        >
+                  {assembly.items.map((item, itemIndex) => {
+                    const open = (): void => {
+                      setChooser([]);
+                      void openEditor(assembly);
+                    };
+                    return (
+                      // 一覧と同じ1明細2行の見た目にする（セットが2種類以上でも崩さない）
+                      <tbody
+                        key={`${assembly.id}-${itemIndex}`}
+                        className="detail-group"
+                        tabIndex={0}
+                        onDoubleClick={open}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") open();
+                        }}
+                      >
+                        <tr className="upper-row">
                           <td className="num">
-                            {formatDetailNumber(item.partNumber)} /{" "}
+                            {formatDetailNumber(item.partNumber)}
+                          </td>
+                          <td>{item.partName}</td>
+                          <td>{item.descriptionUpper}</td>
+                          <td>{item.remarksUpper}</td>
+                          <td rowSpan={2}>{item.unit}</td>
+                          <td rowSpan={2} className="num">
+                            {item.coefficient}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="num">
                             {formatDetailNumber(item.detailNumber)}
                           </td>
-                          <td>
-                            {item.partName} / {item.name}
-                          </td>
-                          <td>
-                            {item.descriptionUpper} {item.descriptionLower}
-                          </td>
-                          <td>
-                            {item.remarksUpper} {item.remarksLower}
-                          </td>
-                          <td>{item.unit}</td>
-                          <td className="num">{item.coefficient}</td>
+                          <td>{item.name}</td>
+                          <td>{item.descriptionLower}</td>
+                          <td>{item.remarksLower}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
+                      </tbody>
+                    );
+                  })}
                 </table>
               ))}
             </div>

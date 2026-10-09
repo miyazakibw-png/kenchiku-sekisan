@@ -7,8 +7,40 @@ import type {
   FormworkTransferRow,
   FormworkTransferRule,
 } from "../core/aggregate/formworkTransfer";
+import type { TraceUnderlay } from "../core/room/trace";
+import type {
+  FrameFitting,
+  FrameKind,
+  FrameLineAttribute,
+  FrameManualLine,
+} from "../core/frame/frame";
 
 export type { BasicMasterKind, BasicMasterRow };
+export type { TraceUnderlay };
+
+/** 軸組計算書に引いてある線一式（他の軸組計算書へ呼び出す一覧に使う） */
+export interface FrameDrawingSource {
+  /** 直接引いた軸組ライン */
+  lines: FrameManualLine[];
+  /** ラインごとの指定（線ID→指定） */
+  attributes: Record<string, FrameLineAttribute>;
+  /** 線に付けた建具 */
+  fittings: FrameFitting[];
+  /** 軸組種類 */
+  kinds: FrameKind[];
+}
+
+/** 計算書に置いてある図面一式（他の計算書へ呼び出す一覧に使う） */
+export interface SheetDrawingSource {
+  estimateRowId: number;
+  /** 図面を置いた計算書の種類（room/frame/pit/fireproof） */
+  calcType: CalcType;
+  /** 行に結び付かない図面（鉄骨伏図）の表示名。あるときは行名の代わりに出す */
+  name?: string;
+  drawings: TraceUnderlay[];
+  /** 軸組計算書だけ：引いた線一式（線の呼び出しに使う） */
+  frame?: FrameDrawingSource;
+}
 export type { FormworkSourceGroup, FormworkTransferRow, FormworkTransferRule };
 
 export interface Subject {
@@ -267,6 +299,10 @@ export interface EstimateRow {
   note: string;
   calcType: CalcType;
   displayOrder: number;
+  /** 計算書に縮尺未調整の図面（下敷き）があるとき true。備考欄に「縮尺調整（未）」を出す目印で、行には保存しない */
+  scalePending?: boolean;
+  /** 計算書に誤り（計算式の誤り・部屋の形が決まらない等）があるとき、その説明。備考欄に「計算エラー」を出す目印で、行には保存しない */
+  calcError?: string;
 }
 
 export type EstimateRowDraft = Omit<
@@ -450,6 +486,35 @@ export interface FurnitureSheetSummary {
   updatedAt: string;
 }
 
+/** 耐火被覆・塗装積算入力のリスト（階別リスト＝柱・梁／階共通リスト。1工事に1つ） */
+export interface FireproofSheetRecord {
+  id: number;
+  projectId: number;
+  floorCount: number;
+  /** 柱リスト（FireproofFloorList） */
+  columnsJson: string;
+  /** 梁リスト（FireproofFloorList） */
+  beamsJson: string;
+  /** 階共通リスト（FireproofCommonRowの配列） */
+  commonJson: string;
+  /** 耐火被覆・塗装入力表（入力管理表。FireproofManageRowの配列） */
+  estimateJson: string;
+  /** 鉄骨伏図（階ごとの図面一式。core/fireproof/fireproofDrawing の FireproofDrawing） */
+  drawingJson: string;
+  note: string;
+}
+
+export interface SaveFireproofSheetRequest {
+  id: number;
+  floorCount: number;
+  columnsJson: string;
+  beamsJson: string;
+  commonJson: string;
+  estimateJson: string;
+  drawingJson: string;
+  note: string;
+}
+
 /** ピット計算書（Ｐ１・Ｐ２…の四角の平面と天井付き梁型） */
 export interface PitSheet {
   id: number;
@@ -538,6 +603,13 @@ export type TransferRowDraft = Omit<
 export interface SaveTransferRowsRequest {
   projectId: number;
   rows: TransferRowDraft[];
+}
+
+/** 同じ工事の中にある計算書（他の計算書から写すときの一覧に出す） */
+export interface SheetOption {
+  estimateRowId: number;
+  /** 部位Ⅱ＋半角スペース＋部位Ⅲ */
+  roomName: string;
 }
 
 /** 軸組計算書のレイアウトに置ける部屋（部屋計算書を作った行） */
@@ -641,6 +713,8 @@ export interface ProjectSummary {
   designerName: string;
   note: string;
   displayOrder: number;
+  /** 台帳の上の段に固定する（並べ替え・ドラッグでは動かない） */
+  pinned: boolean;
   /** ユーザー定義列の値（キーは m_project_fields.id） */
   fieldValues: Record<number, string>;
   /** 取引先などの仕分け用チェック（1〜5のうち付けたもの） */
@@ -655,6 +729,7 @@ export interface SaveProjectRequest {
   builderName: string;
   designerName: string;
   note: string;
+  pinned: boolean;
   fieldValues: Record<number, string>;
   marks: number[];
 }
@@ -697,6 +772,8 @@ export interface AggregateItem {
   formwork: string;
   /** 不要明細（人が印を付けた明細。内訳書へは飛ばさず工種科目の最後にまとめる） */
   unused: boolean;
+  /** 集計書へ手で挿入した明細行（計算書を持たないので数量は手入力） */
+  manual: boolean;
   quantity: number;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];
@@ -767,21 +844,52 @@ export interface AggregateItemEdit {
   unit: string;
   remarksUpper: string;
   remarksLower: string;
+  /** 積算用表示。無いときは今のまま（転記入力表など積算用表示を持たない行は直せない） */
+  estimateDisplay?: string;
+  /** 手入力行だけ使う（計算書から来る行の数量は集計値なので触らない） */
+  quantity?: number;
 }
 
 export interface SaveAggregateEditsRequest {
   projectId: number;
   runId: number;
   edits: AggregateItemEdit[];
-  /** 同じ工事用明細マスターから拾った行も、まとめて同じ内容に直す */
-  applyToSameDetail?: boolean;
+}
+
+/** 集計書へ明細行を手で挿入する（選んだ行の直後・直前） */
+export interface InsertAggregateManualItemRequest {
+  projectId: number;
+  runId: number;
+  /** この行の直後に挿入する（集計行の masterKey） */
+  afterMasterKey: string;
+  /** true のときその行の直前に挿入する（既定は直後） */
+  before?: boolean;
+}
+
+/** 手で挿入した明細行の付き先を別の明細へ付け直す */
+export interface MoveAggregateManualItemRequest {
+  projectId: number;
+  /** 動かす手入力行（manual:N） */
+  masterKey: string;
+  /** 新しく付く先の明細（集計行または他の手入力行の masterKey） */
+  anchorMasterKey: string;
+}
+
+/** 集計書へ手で挿入した明細行を消す */
+export interface DeleteAggregateManualItemRequest {
+  projectId: number;
+  /** 消す手入力行の masterKey（manual:N） */
+  masterKey: string;
 }
 
 /** 部位別入力表のチェック列（管理用部位ごとの仕上名称と数量） */
 export interface EstimateRowCheckCell {
   partName: string;
   name: string;
+  /** 倍率をかけた計上数量 */
   quantity: number;
+  /** 倍率をかける前の計算書そのままの数量 */
+  baseQuantity: number;
 }
 
 export interface EstimateRowCheck {
@@ -821,6 +929,12 @@ export interface SaveFormworkRulesRequest {
   rules: FormworkTransferRule[];
 }
 
+/** ④の表で並び替えた順を転記入力表へ反映する */
+export interface ReorderFormworkRowsRequest {
+  projectId: number;
+  rows: FormworkTransferRow[];
+}
+
 /** 内訳書の設定（物件ごとに1件。2回目以降はこれを読み込んでから転記する） */
 export interface BreakdownSettingsRecord {
   projectId: number;
@@ -843,6 +957,10 @@ export interface BreakdownSettingsRecord {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: { from: string; to: string }[];
+  /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
+  partTitlesOn: boolean;
+  /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字。空なら出さない） */
+  partTitles: { from: number; title: string }[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数 */
@@ -861,6 +979,8 @@ export interface BreakdownVersion {
   confirmed: number;
   aggregateRunId: number | null;
   note: string;
+  /** この回で初めて出てきた工種科目（科目ID。前の回に無かったもの） */
+  newSubjects: number[];
 }
 
 /** 内訳書の1行 */
@@ -884,6 +1004,8 @@ export interface BreakdownRowRecord {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 取り消し線（1＝この明細は無いものとして比較に出す） */
+  struck: number;
 }
 
 export interface BreakdownView {
@@ -899,10 +1021,7 @@ export interface SaveBreakdownRowsRequest {
 
 /** 掃き出しの種類 */
 export type BreakdownExportKind =
-  | "bcs"
-  | "excelAll"
-  | "excelBySubject"
-  | "excelCompare";
+  "bcs" | "excelAll" | "excelBySubject" | "excelCompare";
 
 export interface BreakdownExportRequest {
   projectId: number;
@@ -955,6 +1074,18 @@ export interface BackupResult {
   message: string;
 }
 
+/** 1物件だけの掃き出し・読み込みの結果 */
+export interface ProjectFileResult {
+  /** 取り消した場合は false */
+  done: boolean;
+  /** 書き出した／読み込んだファイル */
+  filePath: string | null;
+  /** 画面に出す説明 */
+  message: string;
+  /** 読み込んだ工事（書き出しのときは null） */
+  projectId: number | null;
+}
+
 export interface BreakdownExportResult {
   /** 保存したファイル。取り消した場合は null */
   filePath: string | null;
@@ -983,4 +1114,20 @@ export interface SaveBasicMasterResult {
   masters: BasicMasters;
   /** 番号・名称の不備。1件でもあれば保存しない */
   errors: string[];
+}
+
+/** 画面の罫線1種類分の形（設定画面で直せる） */
+export interface LineStyleSetting {
+  /** 太さ（px） */
+  width: number;
+  /** 線の形（solid=実線 dashed=破線 dotted=点線） */
+  style: string;
+  /** 線の色（#rrggbb） */
+  color: string;
+}
+
+/** 画面の罫線の設定（thin=細い線＝表のマス目、thick=太い線＝まとまりの区切り） */
+export interface LineStyleSettings {
+  thin: LineStyleSetting;
+  thick: LineStyleSetting;
 }

@@ -14,6 +14,7 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  canMoveRowAcross,
   commentSet,
   displayQuantity,
   displayedValue,
@@ -21,12 +22,13 @@ import {
   insertSetBefore,
   isCommentSet,
   mergeWithPreviousSet,
-  moveSetDetail,
+  moveDetailAcrossSets,
+  moveDetailTo,
   openSetDetail,
   padLines,
   removeSet,
   removeSetLine,
-  removeSetRow,
+  removeSheetRow,
   resolveDescriptionMark,
   setRowCount,
   splitSetAt,
@@ -43,7 +45,6 @@ import {
   lowerTemplateFrom,
 } from "../../../../core/room/lowerTemplate";
 import {
-  detailAsTsv,
   duplicateDetail,
   duplicateLine,
   duplicateSet,
@@ -58,6 +59,7 @@ import {
 } from "../../../../core/room/calcClipboard";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
+import { focusCell } from "../grid/focusCell";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import type { CalcFocus } from "@shared/calcWindow";
@@ -92,6 +94,8 @@ interface Props {
     save: (sets: CalcSet[]) => Promise<void>;
     load: () => Promise<CalcSet[]>;
   };
+  /** この計算書を保存する（「マスター作成」が集計へ入る前に呼ぶ。別画面では渡さない） */
+  saveSheet?: () => Promise<void>;
 }
 
 type CallSource = "basic" | "project" | "assembly";
@@ -139,46 +143,10 @@ function DescriptionInput({
   );
 }
 
-/**
- * カーソルを欄に移す。画面はエクセルのように、欄が見えている間は動かさず、
- * 上下左右の端から外れるときだけその分（見出し行に隠れる分も）を送る
- */
-function focusCell(input: HTMLInputElement): void {
-  input.focus({ preventScroll: true });
+/** カーソルを欄へ移し、文字を全部選んでおく */
+function focusInput(input: HTMLInputElement): void {
+  focusCell(input);
   input.select();
-  const table = input.closest("table");
-  const headCell = table?.tHead?.querySelector("th");
-  const headHeight =
-    headCell && getComputedStyle(headCell).position === "sticky"
-      ? (table?.tHead?.getBoundingClientRect().height ?? 0)
-      : 0;
-  for (let node = input.parentElement; node; node = node.parentElement) {
-    const style = getComputedStyle(node);
-    const scrollsY =
-      /auto|scroll/.test(style.overflowY) &&
-      node.scrollHeight > node.clientHeight;
-    const scrollsX =
-      /auto|scroll/.test(style.overflowX) &&
-      node.scrollWidth > node.clientWidth;
-    if (!scrollsY && !scrollsX) continue;
-    const box = node.getBoundingClientRect();
-    const cell = input.getBoundingClientRect();
-    if (scrollsY) {
-      const top =
-        box.top +
-        node.clientTop +
-        (table && node.contains(table) ? headHeight : 0);
-      const bottom = box.top + node.clientTop + node.clientHeight;
-      if (cell.top < top) node.scrollTop -= top - cell.top;
-      else if (cell.bottom > bottom) node.scrollTop += cell.bottom - bottom;
-    }
-    if (scrollsX) {
-      const left = box.left + node.clientLeft;
-      const right = left + node.clientWidth;
-      if (cell.left < left) node.scrollLeft -= left - cell.left;
-      else if (cell.right > right) node.scrollLeft += cell.right - right;
-    }
-  }
 }
 
 /** 記号はセットに1つ。先頭の計算式行に持たせ、他の行からは消す */
@@ -284,7 +252,12 @@ const CALC_COLUMNS: {
     width: 100,
     className: "estimate",
   },
-  { label: "操作", title: "明細の並べ替え・削除", width: 92, className: "ops" },
+  {
+    label: "操作",
+    title: "明細の並べ替え・削除。つまみ（⠿）をつかんで行を移せます",
+    width: 108,
+    className: "ops",
+  },
 ];
 
 const CALC_COLUMN_WIDTHS = CALC_COLUMNS.map((column) => column.width);
@@ -310,6 +283,7 @@ export default function RoomCalcSheet({
   windowTitle,
   inWindow = false,
   template,
+  saveSheet,
 }: Props): JSX.Element {
   const [callOpen, setCallOpen] = useState(false);
   const [callPos, setCallPos] = useState<{ x: number; y: number } | null>(null);
@@ -318,12 +292,17 @@ export default function RoomCalcSheet({
   const [subjectId, setSubjectId] = useState<number | null>(null);
   const [subjectNumber, setSubjectNumber] = useState("");
   const [details, setDetails] = useState<Detail[]>([]);
+  /** マスター作成したあと呼出画面の一覧を読み直すための合図 */
+  const [detailsVersion, setDetailsVersion] = useState(0);
   const [bannerOpen, setBannerOpen] = useState(false);
   /** コメント行（※行）にカーソルがあるときの、そのコメント行のセットID */
   const [bannerSetId, setBannerSetId] = useState<string | null>(null);
   const [assemblies, setAssemblies] = useState<FinishAssembly[]>([]);
-  /** 明細番号欄の一覧候補（選んだ科目の明細） */
-  const [numberOptions, setNumberOptions] = useState<Detail[]>([]);
+  /** 明細番号欄の一覧候補（選んだ科目の明細。for はどの科目の候補かの目印） */
+  const [numberOptions, setNumberOptions] = useState<{
+    for: number | null;
+    items: Detail[];
+  }>({ for: null, items: [] });
   /** 複数行コピーの範囲（Shift+クリックで選んだ最後の行） */
   const [rangeEnd, setRangeEnd] = useState<{
     setId: string;
@@ -336,8 +315,20 @@ export default function RoomCalcSheet({
   } | null>(null);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
+  /** 行のつかみ移動（ドラッグ中の行と、今落とそうとしている行） */
+  const [dragRow, setDragRow] = useState<{
+    setId: string;
+    index: number;
+  } | null>(null);
+  const [dropAt, setDropAt] = useState<{
+    setId: string;
+    index: number;
+    bannerSetId?: string;
+  } | null>(null);
   /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
   const lastColumn = useRef<number | null>(null);
+  /** 最後にカーソルがあった表の行（通し番号）。ボタンを押しても残るので、行追加・行挿入の先に使う */
+  const lastGridRow = useRef<number | null>(null);
   /** 元に戻す・やり直しのための履歴 */
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
@@ -434,11 +425,11 @@ export default function RoomCalcSheet({
   );
   const numberEntries: PickEntry[] = useMemo(
     () =>
-      numberOptions.map((item) => ({
+      numberOptions.items.map((item) => ({
         value: item.detailNumber?.toFixed(2) ?? "",
         label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
       })),
-    [numberOptions],
+    [numberOptions.items],
   );
   const unitEntries: PickEntry[] = useMemo(
     () =>
@@ -546,7 +537,7 @@ export default function RoomCalcSheet({
           : await window.sekisan.listDetails(subjectId, projectId),
       );
     })();
-  }, [callOpen, projectId, source, subjectId]);
+  }, [callOpen, projectId, source, subjectId, detailsVersion]);
 
   // 呼出先や科目を変えたら、セットを選ぶ画面は閉じる
   useEffect(() => {
@@ -556,20 +547,26 @@ export default function RoomCalcSheet({
   /** 明細番号欄に入ったとき、その科目の明細を一覧候補として読み込む */
   const loadNumberOptions = useCallback(
     async (detailSubjectId: number | null): Promise<void> => {
-      if (detailSubjectId === null) {
-        setNumberOptions([]);
-        return;
-      }
+      // 先に科目の目印を入れて中身を空にする（読み込み中に前の科目の候補を選べないように）
+      setNumberOptions({ for: detailSubjectId, items: [] });
+      if (detailSubjectId === null) return;
       const project = await window.sekisan.listDetails(
         detailSubjectId,
         projectId,
       );
       const basic = await window.sekisan.listDetails(detailSubjectId, null);
       const numbers = new Set(project.map((row) => row.detailNumber));
-      setNumberOptions([
-        ...project,
-        ...basic.filter((row) => !numbers.has(row.detailNumber)),
-      ]);
+      setNumberOptions((current) =>
+        current.for === detailSubjectId
+          ? {
+              for: detailSubjectId,
+              items: [
+                ...project,
+                ...basic.filter((row) => !numbers.has(row.detailNumber)),
+              ],
+            }
+          : current,
+      );
     },
     [projectId],
   );
@@ -620,31 +617,67 @@ export default function RoomCalcSheet({
   );
 
   /**
+   * セットを分けたり前のセットにつなげたりすると行の目印が変わり、
+   * 入力欄が作り直されてカーソルが消える。組み替えた後の並びで、
+   * 入れていた行（明細・計算式のIDで探す）の部位欄へカーソルを戻す。
+   */
+  const refocusSetPart = useCallback(
+    (next: CalcSet[], detailId?: string, lineId?: string): void => {
+      if (detailId === undefined && lineId === undefined) return;
+      let row = 0;
+      for (const set of next) {
+        const count = setRowCount(set);
+        for (let index = 0; index < count; index += 1) {
+          const hit =
+            (detailId !== undefined && set.details[index]?.id === detailId) ||
+            (lineId !== undefined && set.lines[index]?.id === lineId);
+          if (!hit) continue;
+          const target = row + index;
+          requestAnimationFrame(() => {
+            const input = gridRef.current?.querySelector<HTMLInputElement>(
+              `input[data-row="${target}"][data-col="0"]`,
+            );
+            if (input) focusInput(input);
+          });
+          return;
+        }
+        row += count;
+      }
+    },
+    [],
+  );
+
+  /**
    * 部位欄の入力。セットの先頭の行なら、そのセットの部位を変える。
    * 途中の行に入れると、その行から下を別のセットに分ける（空にすると上のセットにつなげる）。
    */
   const commitSetPart = useCallback(
     (setId: string, rowIndex: number, text: string): void => {
       const picked = pickMaster(aggregationParts, text);
+      const target = sets.find((set) => set.id === setId);
+      const detailId = target?.details[rowIndex]?.id;
+      const lineId = target?.lines[rowIndex]?.id;
       if (rowIndex === 0) {
         const at = sets.findIndex((set) => set.id === setId);
         if (picked.name === "" && at > 0) {
-          commit(mergeWithPreviousSet(sets, setId));
+          const next = mergeWithPreviousSet(sets, setId);
+          commit(next);
+          refocusSetPart(next, detailId, lineId);
           return;
         }
         updateSet(setId, { partNumber: picked.id, partName: picked.name });
         return;
       }
       if (picked.name === "") return;
-      commit(
-        splitSetAt(sets, setId, rowIndex, {
-          partNumber: picked.id,
-          partName: picked.name,
-        }),
-      );
+      const next = splitSetAt(sets, setId, rowIndex, {
+        partNumber: picked.id,
+        partName: picked.name,
+      });
+      commit(next);
+      refocusSetPart(next, detailId, lineId);
       onMessage("この行から別のセット明細に分けました");
     },
-    [aggregationParts, commit, onMessage, sets, updateSet],
+    [aggregationParts, commit, onMessage, refocusSetPart, sets, updateSet],
   );
 
   /**
@@ -703,10 +736,8 @@ export default function RoomCalcSheet({
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
         materialCategory: found.materialCategory || row.materialCategory,
-        partNumber: keepPart
-          ? row.partNumber
-          : (pickupParts.find((part) => part.name === found.partName)?.id ??
-            null),
+        // 部位IDは工事マスター（明細）の通りに入れる（部位名から探さない）
+        partNumber: keepPart ? row.partNumber : (found.partNumber ?? null),
         partName: keepPart ? row.partName : found.partName,
         name: found.name,
         descriptionUpper: found.descriptionUpper,
@@ -724,13 +755,11 @@ export default function RoomCalcSheet({
   /** その行（明細と計算式の1組）をまとめて削除する */
   const removeDetail = useCallback(
     (setId: string, index: number): void => {
-      const target = sets.find((set) => set.id === setId);
-      if (!target) return;
-      const next = removeSetRow(target, index);
-      updateSet(setId, { details: next.details, lines: next.lines });
+      // 消したのが最後の1行ならセットごと消す（半分の行が残らないように）
+      commit(removeSheetRow(sets, setId, index));
       onFocus(null);
     },
-    [onFocus, sets, updateSet],
+    [commit, onFocus, sets],
   );
 
   /** 明細の無い行に空の明細を用意して、名称や摘要を入れられるようにする */
@@ -756,28 +785,72 @@ export default function RoomCalcSheet({
     [onFocus, sets, updateSet],
   );
 
-  /** セットの中の明細を上下に入れ替える */
+  /** 明細を上下へ動かす（セットの端では隣のセットの端へ） */
   const moveDetail = useCallback(
     (setId: string, index: number, step: number): void => {
-      const target = sets.find((set) => set.id === setId);
-      if (!target) return;
-      const to = index + step;
-      if (to < 0 || to >= target.details.length) return;
-      const next = moveSetDetail(target, index, step);
-      updateSet(setId, { details: next.details, lines: next.lines });
-      onFocus({ setId, area: "detail", index: to });
+      // セットの端では隣のセット（※行はまたぐ）の端へ移す
+      const moved = moveDetailAcrossSets(sets, setId, index, step);
+      if (!moved) return;
+      commit(moved.sets);
+      onFocus({ setId: moved.setId, area: "detail", index: moved.index });
     },
-    [onFocus, sets, updateSet],
+    [commit, onFocus, sets],
   );
+
+  // 行をつかんで落とした先（明細のある行）の手前へ移す
+  const dropDetail = useCallback(
+    (targetSetId: string, targetIndex: number): void => {
+      if (!dragRow) return;
+      const moved = moveDetailTo(
+        sets,
+        dragRow.setId,
+        dragRow.index,
+        targetSetId,
+        targetIndex,
+      );
+      setDragRow(null);
+      setDropAt(null);
+      if (!moved) return;
+      commit(moved.sets);
+      onFocus({ setId: moved.setId, area: "detail", index: moved.index });
+    },
+    [commit, dragRow, onFocus, sets],
+  );
+
+  // ※行（見出し）へ落としたときは、その上の行（前のセットの最後）に入れる
+  const dropTargetAboveBanner = (
+    set: CalcSet,
+  ): { set: CalcSet; index: number } | null => {
+    const at = sets.findIndex((item) => item.id === set.id);
+    if (at < 0) return null;
+    const target = sets.slice(0, at).findLast((item) => !isCommentSet(item));
+    return target ? { set: target, index: target.details.length } : null;
+  };
 
   // 明細・計算式の欄へカーソルを移したら、コメント行のカーソルは外す
   useEffect(() => {
     setBannerSetId(null);
   }, [focus?.setId, focus?.area, focus?.index]);
 
+  /**
+   * 明細・計算式の欄へカーソルが入ったときの処理。
+   * 同じ欄へ戻ったときは上のカーソル記録が変わらず外れないので、ここでも外す。
+   */
+  const focusHere = useCallback(
+    (next: CalcFocus): void => {
+      setBannerSetId(null);
+      onFocus(next);
+    },
+    [onFocus],
+  );
+
+  /** 直前に処理した「飛べ」の合図。合図が変わったときだけ画面を送る */
+  const lastJumpTick = useRef(jumpTick);
   // 式の誤りなどで外から指された計算式欄へ、実際にカーソルを移して画面も送る
   useEffect(() => {
-    if (jumpTick === undefined || !focus || focus.area === "detail") return;
+    if (jumpTick === undefined || jumpTick === lastJumpTick.current) return;
+    lastJumpTick.current = jumpTick;
+    if (!focus || focus.area === "detail") return;
     const input = gridRef.current?.querySelector<HTMLInputElement>(
       `input[data-jump="${focus.setId}|${focus.area}|${focus.index}"]`,
     );
@@ -826,6 +899,35 @@ export default function RoomCalcSheet({
     };
   }, [bannerSetId, currentSet, writeFocus]);
 
+  /** 書込先の行に入っている科目ID（呼出画面の工種科目はこれに合わせる） */
+  const callRowSubject = useMemo(() => {
+    if (!callRow) return null;
+    const set = sets.find((item) => item.id === callRow.setId);
+    return set?.details[callRow.index]?.subjectId ?? null;
+  }, [callRow, sets]);
+
+  // 計算書の行に科目IDが入っていれば、呼出画面の工種科目をその科目にする（選び直し可）
+  useEffect(() => {
+    if (!callOpen || callRowSubject === null) return;
+    setSubjectId(callRowSubject);
+    setSubjectNumber(String(callRowSubject));
+  }, [callOpen, callRowSubject]);
+
+  /**
+   * マスター作成：この計算書を保存してから集計実行と同じ処理を走らせ、
+   * 工事マスター（集計書の内容）とセット明細マスターを最新にする。
+   * マスター呼出の「工事マスター（明細）」「セット明細」にすぐ出るようになる。
+   */
+  const buildMasters = async (): Promise<void> => {
+    if (saveSheet === undefined) return;
+    await saveSheet();
+    const built = await window.sekisan.buildProjectMasters(projectId);
+    setDetailsVersion((version) => version + 1);
+    onMessage(
+      `工事マスター・セット明細マスターを更新しました（集計${built.aggregateCount}行・新しいセット${built.assembliesAdded}件。「マスター呼出」に最新が出ます）`,
+    );
+  };
+
   /** 明細を1つ呼び出す（上書き基準・空きが無ければ自動で挿入） */
   const callDetail = useCallback(
     (detail: Detail) => {
@@ -841,12 +943,11 @@ export default function RoomCalcSheet({
         detailNumber: detail.detailNumber,
         materialCategory:
           detail.materialCategory || (kept?.materialCategory ?? ""),
+        // 部位ID・部位名は工事マスター（明細）の通りに入れる
+        // （部位名から部位IDを探さない。マスターの部位が両方空のときは先の行の部位を残す）
         partNumber:
-          detail.partName.trim() === ""
-            ? (kept?.partNumber ?? null)
-            : (detail.partNumber ??
-              pickupParts.find((part) => part.name === detail.partName)?.id ??
-              null),
+          detail.partNumber ??
+          (detail.partName.trim() === "" ? (kept?.partNumber ?? null) : null),
         partName: detail.partName || (kept?.partName ?? ""),
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
@@ -916,11 +1017,18 @@ export default function RoomCalcSheet({
   const callAssembly = useCallback(
     (assembly: FinishAssembly) => {
       const created = calcSet(0);
-      // セットの部位は計算書に入れてあるものを残す（空のときだけマスターの先頭明細から入れる）
       const at = sets.findIndex((set) => set.id === currentSet?.id);
-      const here = at >= 0 && !isCommentSet(sets[at]) ? sets[at] : null;
+      const bannerAt =
+        bannerSetId === null
+          ? -1
+          : sets.findIndex((set) => set.id === bannerSetId);
+      // 上書き呼出は計算書に入れてあるセットの部位を残す（空のときだけマスターの先頭明細から入れる）。
+      // 挿入呼出や※行の下への追加は新しいセットなので、呼び出したセットの部位をそのまま使う
+      const underBanner = bannerAt >= 0 && isCommentSet(sets[bannerAt]);
+      const overwrites =
+        !underBanner && !insertMode && at >= 0 && !isCommentSet(sets[at]);
       const keptPart =
-        here !== null && here.partName.trim() !== "" ? here : null;
+        overwrites && sets[at].partName.trim() !== "" ? sets[at] : null;
       created.partName =
         keptPart?.partName ?? assembly.items[0]?.partName ?? "";
       created.partNumber =
@@ -944,10 +1052,6 @@ export default function RoomCalcSheet({
         }),
       );
       created.lines = syncLines(created.details, []);
-      const bannerAt =
-        bannerSetId === null
-          ? -1
-          : sets.findIndex((set) => set.id === bannerSetId);
       const next = [...sets];
       // ※行にカーソルがあるときは、その※行の下へ新しいセットとして入れる
       if (bannerAt >= 0 && isCommentSet(sets[bannerAt])) {
@@ -990,13 +1094,29 @@ export default function RoomCalcSheet({
         commit(next);
         return;
       }
-      const target = currentSet;
+      // カーソルの行を表から拾う。部位・コメント・記号などカーソルの記録が乗らない欄や、
+      // セットの分け直しで記録が消えたあとでも、最後に触った行が入るセットを足し先にする
+      const gridRow = lastGridRow.current;
+      let target = currentSet;
+      let targetIndex: number | undefined;
+      if (gridRow !== null) {
+        let start = 0;
+        for (const set of sets) {
+          const count = setRowCount(set);
+          if (gridRow >= start && gridRow < start + count) {
+            target = set;
+            targetIndex = gridRow - start;
+            break;
+          }
+          start += count;
+        }
+      }
       if (!target) {
         commit([...sets, calcSet()]);
         return;
       }
       // どの欄で押しても、明細と計算式を1組（1行分）足す
-      const at = insert ? (focus?.index ?? 0) : undefined;
+      const at = insert ? (targetIndex ?? focus?.index ?? 0) : undefined;
       const next = addSetRow(target, at);
       updateSet(target.id, { details: next.details, lines: next.lines });
     },
@@ -1052,19 +1172,36 @@ export default function RoomCalcSheet({
     return currentSet.details[focus.index] ?? null;
   }, [currentSet, focus]);
 
-  /** 1行コピー（カーソルの明細1件）。Excelへも貼れるようTSVにする */
+  /** 1行コピー（カーソルの行を明細・計算式ごと）。Excelへも貼れるようTSVにする */
   const copyRow = useCallback(async () => {
-    if (!currentDetail) {
+    if (!currentDetail || !currentSet || !focus) {
       onMessage("コピーする明細の欄を選んでください");
       return;
     }
-    const text = detailAsTsv(currentDetail);
+    const line = currentSet.lines[focus.index] ?? calcLine();
+    const text = rowsAsTsv([currentDetail], [line]);
     await navigator.clipboard.writeText(text);
-    setCalcClip({ kind: "detail", text, detail: currentDetail });
+    setCalcClip({
+      kind: "rows",
+      text,
+      details: [currentDetail],
+      lines: [line],
+      // 写し元のセットの部位（一番左）も一緒に持っていく
+      partNumber: currentSet.partNumber,
+      partName: currentSet.partName,
+      banners: [],
+      parts: [
+        {
+          at: 0,
+          partNumber: currentSet.partNumber,
+          partName: currentSet.partName,
+        },
+      ],
+    });
     onMessage(
-      `明細「${currentDetail.name || "（名称なし）"}」をコピーしました`,
+      `明細「${currentDetail.name || "（名称なし）"}」を計算式ごとコピーしました`,
     );
-  }, [currentDetail, onMessage]);
+  }, [currentDetail, currentSet, focus, onMessage]);
 
   /** 表の行を上から順に並べたもの（Shift+クリックの範囲を数えるため。※行も含む） */
   const flatRows = useMemo(() => {
@@ -1131,6 +1268,7 @@ export default function RoomCalcSheet({
           at: details.length,
           text: set.banner?.text ?? "",
           color: set.banner?.color ?? "#e2e8f0",
+          text2: set.banner?.text2,
         });
         lastSetId = "";
         return;
@@ -1139,8 +1277,8 @@ export default function RoomCalcSheet({
       if (row.setId !== lastSetId) {
         parts.push({
           at: details.length,
-          partNumber: row.index === 0 ? set.partNumber : null,
-          partName: row.index === 0 ? set.partName : "",
+          partNumber: set.partNumber,
+          partName: set.partName,
         });
         lastSetId = row.setId;
       }
@@ -1196,7 +1334,9 @@ export default function RoomCalcSheet({
       // 貼付ボタンを押すと欄から離れるので、最後にいた列を覚えておいて使う
       const active = document.activeElement;
       const activeColumn =
-        active instanceof HTMLElement && active.dataset.col !== undefined
+        active instanceof HTMLElement &&
+        active.dataset.col !== undefined &&
+        active.dataset.rowspan === undefined
           ? Number(active.dataset.col)
           : null;
       const cursorColumn = activeColumn ?? lastColumn.current;
@@ -1460,32 +1600,49 @@ export default function RoomCalcSheet({
     ],
   );
 
+  /** 記号のように何行分かをまとめて受け持つ欄（エクセルの結合セルと同じ） */
+  const rowsOf = (cell: HTMLInputElement): number =>
+    Number(cell.dataset.rowspan ?? 1) || 1;
+  /** 結合された欄へ入ってきた行。出るときはこの行へ戻す */
+  const cameFromRow = useRef<number | null>(null);
+
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
   const moveFocus = useCallback(
-    (row: number, col: number, stepRow: number, stepCol: number): void => {
+    (from: HTMLInputElement, stepRow: number, stepCol: number): void => {
       const root = gridRef.current;
       if (!root) return;
       const cells = Array.from(
         root.querySelectorAll<HTMLInputElement>("input[data-row][data-col]"),
       );
-      const at = (r: number, c: number): HTMLInputElement | undefined =>
-        cells.find(
-          (cell) =>
-            Number(cell.dataset.row) === r && Number(cell.dataset.col) === c,
-        );
+      const covers = (cell: HTMLInputElement, r: number): boolean => {
+        const top = Number(cell.dataset.row);
+        return top <= r && r < top + rowsOf(cell);
+      };
+      const top = Number(from.dataset.row);
+      const rows = rowsOf(from);
+      const col = Number(from.dataset.col);
+      const row = rows > 1 ? (cameFromRow.current ?? top) : top;
       if (stepRow !== 0) {
-        for (let r = row + stepRow; r >= 0 && r <= 9999; r += stepRow) {
-          const found = at(r, col);
+        const start = stepRow > 0 ? top + rows : top - 1;
+        for (let r = start; r >= 0 && r <= 9999; r += stepRow) {
+          const found = cells.find(
+            (cell) => covers(cell, r) && Number(cell.dataset.col) === col,
+          );
           if (found) {
-            focusCell(found);
+            cameFromRow.current = null;
+            focusInput(found);
             return;
           }
-          if (!cells.some((cell) => Number(cell.dataset.row) === r)) return;
+          if (!cells.some((cell) => covers(cell, r))) return;
         }
         return;
       }
+      const go = (target: HTMLInputElement, fromRow: number): void => {
+        cameFromRow.current = rowsOf(target) > 1 ? fromRow : null;
+        focusInput(target);
+      };
       const sameRow = cells
-        .filter((cell) => Number(cell.dataset.row) === row)
+        .filter((cell) => covers(cell, row))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const next =
         stepCol > 0
@@ -1494,17 +1651,16 @@ export default function RoomCalcSheet({
               .reverse()
               .find((cell) => Number(cell.dataset.col) < col);
       if (next) {
-        focusCell(next);
+        go(next, row);
         return;
       }
       // 行の端では、次（前）の行の先頭（末尾）へ移る
+      const otherAt = row + (stepCol > 0 ? 1 : -1);
       const otherRow = cells
-        .filter(
-          (cell) => Number(cell.dataset.row) === row + (stepCol > 0 ? 1 : -1),
-        )
+        .filter((cell) => covers(cell, otherAt))
         .sort((a, b) => Number(a.dataset.col) - Number(b.dataset.col));
       const edge = stepCol > 0 ? otherRow[0] : otherRow[otherRow.length - 1];
-      if (edge) focusCell(edge);
+      if (edge) go(edge, otherAt);
     },
     [],
   );
@@ -1518,27 +1674,30 @@ export default function RoomCalcSheet({
       if (Number.isNaN(row) || Number.isNaN(col)) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        moveFocus(el, 0, e.shiftKey ? -1 : 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        moveFocus(row, col, -1, 0);
+        moveFocus(el, -1, 0);
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        moveFocus(row, col, 1, 0);
+        moveFocus(el, 1, 0);
       } else if (
         e.key === "ArrowLeft" &&
         el.selectionStart === 0 &&
         el.selectionEnd === 0
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, -1);
+        moveFocus(el, 0, -1);
       } else if (
         e.key === "ArrowRight" &&
         el.selectionStart === el.value.length &&
         el.selectionEnd === el.value.length
       ) {
         e.preventDefault();
-        moveFocus(row, col, 0, 1);
+        moveFocus(el, 0, 1);
       }
     },
     [moveFocus],
@@ -1586,7 +1745,10 @@ export default function RoomCalcSheet({
         const el = e.target;
         if (!(el instanceof HTMLElement)) return;
         const col = el.dataset.col;
-        if (col !== undefined) lastColumn.current = Number(col);
+        if (col !== undefined && el.dataset.rowspan === undefined)
+          lastColumn.current = Number(col);
+        const row = el.dataset.row;
+        if (row !== undefined) lastGridRow.current = Number(row);
       }}
       onKeyDown={(e) => {
         if (!e.ctrlKey) return;
@@ -1733,6 +1895,15 @@ export default function RoomCalcSheet({
         >
           📂 マスター呼出
         </button>
+        {saveSheet !== undefined && (
+          <button
+            type="button"
+            title="この計算書を保存してから、工事マスターとセット明細マスターを最新にします（集計実行と同じ。「マスター呼出」に最新が出ます）"
+            onClick={() => void buildMasters()}
+          >
+            📝 マスター作成
+          </button>
+        )}
         {template && (
           <>
             <button
@@ -1782,11 +1953,11 @@ export default function RoomCalcSheet({
             </button>
           </>
         )}
-        <span className="hint">
-          {hasUpper
-            ? "記号は上段の表をクリックすると計算式へ入ります"
-            : "建具記号は建具表から直接引用します（例 <SD2>）"}
-        </span>
+        {!hasUpper && (
+          <span className="hint">
+            建具記号は建具表から直接引用します（例 &lt;SD2&gt;）
+          </span>
+        )}
       </div>
 
       <div className="calc-body" ref={gridRef} onKeyDown={onGridKeyDown}>
@@ -1822,7 +1993,7 @@ export default function RoomCalcSheet({
                   <tr
                     className={`banner-row${
                       isSelectedRow(set.id, 0) ? " row-selected" : ""
-                    }`}
+                    }${dropAt?.bannerSetId === set.id ? " drop-target" : ""}`}
                     onMouseDownCapture={(e) => {
                       shiftClicking.current = e.shiftKey;
                     }}
@@ -1835,19 +2006,59 @@ export default function RoomCalcSheet({
                       }
                       shiftClicking.current = false;
                     }}
+                    onDragOver={(e) => {
+                      if (!dragRow) return;
+                      const target = dropTargetAboveBanner(set);
+                      if (!target) return;
+                      e.preventDefault();
+                      setDropAt({
+                        setId: target.set.id,
+                        index: target.index,
+                        bannerSetId: set.id,
+                      });
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const target = dropTargetAboveBanner(set);
+                      if (target) dropDetail(target.set.id, target.index);
+                    }}
                   >
                     <td
-                      colSpan={CALC_COLUMNS.length}
+                      className="banner-left"
+                      colSpan={12}
                       style={{ background: set.banner.color }}
                     >
                       <input
                         lang="ja"
+                        title="見出しの文字"
                         value={set.banner.text}
                         onFocus={() => setBannerSetId(set.id)}
                         onChange={(e) =>
                           updateSet(set.id, {
                             banner: {
                               text: e.target.value,
+                              text2: set.banner?.text2,
+                              color: set.banner?.color ?? "#e2e8f0",
+                            },
+                          })
+                        }
+                      />
+                    </td>
+                    <td
+                      className="banner-right"
+                      colSpan={CALC_COLUMNS.length - 12}
+                      style={{ background: set.banner.color }}
+                    >
+                      <input
+                        lang="ja"
+                        title="コメント列の位置から書く文字"
+                        value={set.banner.text2 ?? ""}
+                        onFocus={() => setBannerSetId(set.id)}
+                        onChange={(e) =>
+                          updateSet(set.id, {
+                            banner: {
+                              text: set.banner?.text ?? "",
+                              text2: e.target.value,
                               color: set.banner?.color ?? "#e2e8f0",
                             },
                           })
@@ -1875,7 +2086,7 @@ export default function RoomCalcSheet({
                     : undefined;
                   const gridRow = rowStarts[setIndex] + rowIndex;
                   const focusDetail = (): void =>
-                    onFocus({
+                    focusHere({
                       setId: set.id,
                       area: "detail",
                       index: rowIndex,
@@ -1891,6 +2102,11 @@ export default function RoomCalcSheet({
                         callRow.setId === set.id &&
                         callRow.index === rowIndex
                           ? "call-row"
+                          : "",
+                        dropAt &&
+                        dropAt.setId === set.id &&
+                        dropAt.index === rowIndex
+                          ? "drop-target"
                           : "",
                       ]
                         .filter(Boolean)
@@ -1908,9 +2124,19 @@ export default function RoomCalcSheet({
                         }
                         shiftClicking.current = false;
                       }}
+                      onDragOver={(e) => {
+                        if (!dragRow || !detail) return;
+                        e.preventDefault();
+                        setDropAt({ setId: set.id, index: rowIndex });
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        dropDetail(set.id, rowIndex);
+                      }}
                     >
                       <td className="set-part">
                         <PickInput
+                          popupSide="right"
                           row={gridRow}
                           col={0}
                           entries={aggregationPartEntries}
@@ -1927,6 +2153,7 @@ export default function RoomCalcSheet({
                         <>
                           <td className="material">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={1}
                               entries={materialEntries}
@@ -1951,6 +2178,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={2}
                               entries={subjectEntries}
@@ -1976,6 +2204,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={3}
                               entries={pickupPartEntries}
@@ -2001,9 +2230,14 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={4}
-                              entries={numberEntries}
+                              entries={
+                                numberOptions.for === detail.subjectId
+                                  ? numberEntries
+                                  : []
+                              }
                               halfWidth
                               commitOnBlur
                               value={detail.detailNumber?.toFixed(2) ?? ""}
@@ -2012,10 +2246,11 @@ export default function RoomCalcSheet({
                                 focusDetail();
                                 void loadNumberOptions(detail.subjectId);
                               }}
-                              onCommit={(text) => {
+                              onCommit={(text, picked) => {
                                 if (
+                                  picked !== true &&
                                   text.trim() ===
-                                  (detail.detailNumber?.toFixed(2) ?? "")
+                                    (detail.detailNumber?.toFixed(2) ?? "")
                                 )
                                   return;
                                 void applyDetailNumber(set.id, rowIndex, text);
@@ -2094,6 +2329,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="unit">
                             <PickInput
+                          popupSide="right"
                               row={gridRow}
                               col={9}
                               entries={unitEntries}
@@ -2175,7 +2411,7 @@ export default function RoomCalcSheet({
                               data-jump={`${set.id}|formulaA|${rowIndex}`}
                               value={line.formulaA}
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaA",
                                   index: rowIndex,
@@ -2200,7 +2436,7 @@ export default function RoomCalcSheet({
                               value={line.formulaB}
                               title="ＡとＢの両方に入力すると Ａ×Ｂ になります"
                               onFocus={() =>
-                                onFocus({
+                                focusHere({
                                   setId: set.id,
                                   area: "formulaB",
                                   index: rowIndex,
@@ -2239,6 +2475,9 @@ export default function RoomCalcSheet({
                       {rowIndex === 0 && (
                         <td className="bsym" rowSpan={rowCount}>
                           <input
+                            data-row={gridRow}
+                            data-col={17}
+                            data-rowspan={rowCount}
                             value={setSymbol}
                             title="このセットの累計を他のセットで使うための記号（B1〜B99。セットに1つ）"
                             onChange={(e) => {
@@ -2312,18 +2551,41 @@ export default function RoomCalcSheet({
                       <td className="ops">
                         {detail && (
                           <>
+                            <span
+                              className="grip"
+                              title="つかんで移動：移したい行へドラッグします（落とした行の上に入ります）"
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", "");
+                                setDragRow({
+                                  setId: set.id,
+                                  index: rowIndex,
+                                });
+                              }}
+                              onDragEnd={() => {
+                                setDragRow(null);
+                                setDropAt(null);
+                              }}
+                            >
+                              ⠿
+                            </span>
                             <button
                               type="button"
-                              title="この明細を1つ上へ移動します"
-                              disabled={rowIndex === 0}
+                              title="この明細を1つ上へ移動します（先頭では前のセットの最後へ）"
+                              disabled={
+                                !canMoveRowAcross(sets, setIndex, rowIndex, -1)
+                              }
                               onClick={() => moveDetail(set.id, rowIndex, -1)}
                             >
                               ↑
                             </button>
                             <button
                               type="button"
-                              title="この明細を1つ下へ移動します"
-                              disabled={rowIndex === set.details.length - 1}
+                              title="この明細を1つ下へ移動します（最後では次のセットの先頭へ）"
+                              disabled={
+                                !canMoveRowAcross(sets, setIndex, rowIndex, 1)
+                              }
                               onClick={() => moveDetail(set.id, rowIndex, 1)}
                             >
                               ↓
@@ -2486,7 +2748,20 @@ export default function RoomCalcSheet({
             </span>
           </div>
           <div className="call-scroll">
-            <table className="call-table">
+            <table
+              className={`call-table ${source === "assembly" ? "asm" : ""}`}
+            >
+              {/* 部位名／名称・摘要は他の自由幅の列の1.5倍（広げたい分だけ表は横スクロールする） */}
+              <colgroup>
+                {source === "assembly" && <col className="scope" />}
+                <col className="no" />
+                <col className="no" />
+                <col className="name" />
+                <col className="desc" />
+                <col className="unit" />
+                <col className="flex" />
+                {source === "assembly" && <col className="unit" />}
+              </colgroup>
               <thead>
                 <tr>
                   {source === "assembly" && <th className="scope">区分</th>}
@@ -2601,9 +2876,19 @@ export default function RoomCalcSheet({
               <div className="assembly-pick-scroll">
                 {pickGroup.map((assembly, groupIndex) => (
                   <table
-                    className="call-table"
+                    className="call-table pick"
                     key={`${assembly.scope}-${assembly.id}`}
                   >
+                    {/* 1行目が全幅の見出しなので、列幅は一覧と同じ決め方でここで与える */}
+                    <colgroup>
+                      <col className="no" />
+                      <col className="no" />
+                      <col className="name" />
+                      <col className="desc" />
+                      <col className="unit" />
+                      <col className="flex" />
+                      <col className="unit" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th colSpan={7}>
@@ -2663,6 +2948,7 @@ export default function RoomCalcSheet({
           )}
         </div>
       )}
+
     </div>
   );
 }

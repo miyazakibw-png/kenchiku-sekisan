@@ -6,6 +6,7 @@
  */
 
 import {
+  displayQuantity,
   displayedValue,
   resolveDescriptionMarks,
   type CalcSet,
@@ -14,7 +15,15 @@ import {
 
 /** 計算書の種類。transfer は転記入力表（根拠集計には出さない） */
 export type AggregateSourceKind =
-  "room" | "frame" | "general" | "pit" | "misc" | "furniture" | "transfer";
+  | "room"
+  | "frame"
+  | "general"
+  | "pit"
+  | "area"
+  | "misc"
+  | "furniture"
+  | "fireproof"
+  | "transfer";
 
 /** 合算前の1件（集計詳細データの1行） */
 export interface AggregateEntry {
@@ -52,6 +61,12 @@ export interface AggregateEntry {
   /** 計上数量＝セット累計×掛け率×倍率 */
   quantity: number;
   sourceDetailId: number | null;
+  /** 家具系の詳細でも根拠の部屋集計に入れる（建具明細作成表＝行の記号ごとに根拠を出すため） */
+  includeInRooms?: boolean;
+  /** 根拠の部屋名に「× N」を付ける数（建具明細作成表＝行の数量。無いときは倍率） */
+  roomCount?: number;
+  /** 階ごとの根拠（耐火被覆の数量を拾った階の内訳。あれば部屋別の根拠の代わりにこれを出す） */
+  floorBasis?: { floor: string; quantity: number }[];
 }
 
 /** 集計後の1明細（集計書兼工事マスターの1行＝画面では上下2行） */
@@ -185,10 +200,14 @@ export function masterKeyOf(entry: {
 /** 根拠に出す部屋名（部位Ⅱ：部位Ⅲ。倍率が1でなければ「× 2」を付ける） */
 export function traceRoomName(entry: AggregateEntry): string {
   const base =
-    entry.part3 === "" || entry.part3 === entry.part2Raw
-      ? entry.part2Raw
-      : `${entry.part2Raw}：${entry.part3}`;
-  return entry.multiplier === 1 ? base : `${base} × ${entry.multiplier}`;
+    entry.part2Raw === ""
+      ? entry.part3
+      : entry.part3 === "" || entry.part3 === entry.part2Raw
+        ? entry.part2Raw
+        : `${entry.part2Raw}：${entry.part3}`;
+  // 建具明細作成表は行の数量（建具数）が2以上のとき「× N」を付ける（倍率と同じ考え方）
+  const times = entry.roomCount ?? entry.multiplier;
+  return times === 1 ? base : `${base} × ${times}`;
 }
 
 function numberOrder(value: number | null): string {
@@ -198,7 +217,7 @@ function numberOrder(value: number | null): string {
 
 /**
  * 集計詳細データをまとめて集計書兼工事マスターの行にする。
- * 並びは 科目ID→部位Ⅰ→部位Ⅱ（入力順）→部位ID→明細ID→部位名→名称→摘要（下）→摘要（上）。
+ * 並びは 科目ID→部位Ⅰ（入力順）→部位Ⅱ（入力順）→部位ID→明細ID→部位名→名称→摘要（下）→摘要（上）。
  */
 export function aggregateItems(
   entries: AggregateEntry[],
@@ -243,17 +262,48 @@ export function aggregateItems(
     item.traceIds.push(entry.traceId);
     // 転記入力表の分は根拠集計には出さない。
     // 家具・設備入力表の分は部屋で分けないので、根拠の部屋名も出さない
+    // （建具明細作成表の分は行の記号ごとに根拠を出すので入れる）
     if (
       entry.sourceKind !== "transfer" &&
-      entry.sourceKind !== "furniture" &&
+      (entry.sourceKind !== "furniture" || entry.includeInRooms === true) &&
       entry.quantity !== 0
     ) {
-      const roomName = traceRoomName(entry);
-      const room = item.rooms.find((current) => current.roomName === roomName);
-      if (room) room.quantity = displayedValue(room.quantity + entry.quantity);
-      else item.rooms.push({ roomName, quantity: entry.quantity });
+      if (entry.floorBasis !== undefined) {
+        // 耐火被覆の分は階ごとの内訳を根拠に出す
+        entry.floorBasis.forEach(({ floor, quantity }) => {
+          const room = item.rooms.find(
+            (current) => current.roomName === floor,
+          );
+          if (room) room.quantity = displayedValue(room.quantity + quantity);
+          else item.rooms.push({ roomName: floor, quantity });
+        });
+      } else {
+        const roomName = traceRoomName(entry);
+        const room = item.rooms.find(
+          (current) => current.roomName === roomName,
+        );
+        if (room)
+          room.quantity = displayedValue(room.quantity + entry.quantity);
+        else item.rooms.push({ roomName, quantity: entry.quantity });
+      }
     }
     map.set(masterKey, item);
+  });
+
+  // 部位Ⅰは部位別入力表の入力順（先に入力行が出る方が前）。表に無い新しい部位Ⅰはその後ろ（出てきた順）
+  const estimatePart1s = new Set<string>();
+  const part1Order = new Map<string, number>();
+  const newPart1Order = new Map<string, number>();
+  entries.forEach((entry) => {
+    if (entry.estimateRowId !== null) estimatePart1s.add(entry.part1);
+  });
+  entries.forEach((entry) => {
+    if (estimatePart1s.has(entry.part1)) {
+      if (!part1Order.has(entry.part1))
+        part1Order.set(entry.part1, part1Order.size);
+    } else if (!newPart1Order.has(entry.part1)) {
+      newPart1Order.set(entry.part1, newPart1Order.size);
+    }
   });
 
   return [...map.values()].sort((a, b) => {
@@ -262,7 +312,9 @@ export function aggregateItems(
         String(item.subjectId ?? 99999).padStart(5, "0"),
         // 不要明細は工種科目の最後にまとめる
         item.unused ? "9" : "0",
-        item.part1,
+        item.part1 === "" || estimatePart1s.has(item.part1)
+          ? `0|${String(part1Order.get(item.part1) ?? 0).padStart(5, "0")}`
+          : `1|${String(newPart1Order.get(item.part1) ?? 0).padStart(5, "0")}`,
         item.part2 === "" ? " " : String(item.part2Order).padStart(5, "0"),
         item.part2,
         numberOrder(item.partNumber),
@@ -328,6 +380,12 @@ export function aggregateByRoom(
         ? a.roomName.localeCompare(b.roomName, "ja")
         : a.order - b.order,
     );
+}
+
+/** 集計書兼工事マスターの数量表示。単位が無い数量0（仕様の続きなど）は空欄にする */
+export function aggregateQuantityText(quantity: number, unit: string): string {
+  if (unit.trim() === "" && quantity === 0) return "";
+  return displayQuantity(quantity);
 }
 
 /** 数量・単位チェックの結果。error＝赤、warn＝黄 */

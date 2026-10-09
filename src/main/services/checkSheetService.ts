@@ -1,0 +1,76 @@
+import { eq } from "drizzle-orm";
+import type { AppDatabase } from "../db";
+import { appSettings } from "../db/schema";
+
+/**
+ * チェック表で「どの部位番号がどの列に入るか」の設定。
+ * 管理用部位の番号 → 番号の並び文字（例 "10-19" "10,12-15"）。
+ * 設定が無い列は従来どおり「番号÷10の整数部」の区切りで入る。
+ * 全物件共通で app_settings に保存する（キー checkSheetPartMap）。
+ */
+const PART_MAP_KEY = "checkSheetPartMap";
+
+export function getCheckSheetPartMap(db: AppDatabase): Record<string, string> {
+  const row = db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, PART_MAP_KEY))
+    .get();
+  if (!row) return {};
+  try {
+    const parsed: unknown = JSON.parse(row.valueJson);
+    if (parsed !== null && typeof parsed === "object") {
+      return parsed as Record<string, string>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCheckSheetPartMap(
+  db: AppDatabase,
+  map: Record<string, string>,
+): void {
+  const json = JSON.stringify(map);
+  db.insert(appSettings)
+    .values({ key: PART_MAP_KEY, valueJson: json })
+    .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: json } })
+    .run();
+}
+
+/**
+ * チェック表に出す列（管理用部位の番号）。
+ * 未設定（null）なら従来どおり「使われた列だけ出す」。
+ * 全物件共通で app_settings に保存する（キー checkSheetShownParts）。
+ */
+const SHOWN_PARTS_KEY = "checkSheetShownParts";
+
+export function getCheckSheetShownParts(db: AppDatabase): number[] | null {
+  const row = db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SHOWN_PARTS_KEY))
+    .get();
+  if (!row) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.valueJson);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((each): each is number => typeof each === "number");
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCheckSheetShownParts(
+  db: AppDatabase,
+  partIds: number[],
+): void {
+  const json = JSON.stringify(partIds);
+  db.insert(appSettings)
+    .values({ key: SHOWN_PARTS_KEY, valueJson: json })
+    .onConflictDoUpdate({ target: appSettings.key, set: { valueJson: json } })
+    .run();
+}
