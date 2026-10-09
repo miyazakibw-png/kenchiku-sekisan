@@ -468,6 +468,11 @@ export default function RoomSheetPage({
     width: "0.30",
     height: "",
   });
+  /** ＋ボタンで足す行に入れるＷ・Ｈ（空欄＝自動。連続して足すとき残る） */
+  const [addSize, setAddSize] = useState<{ width: string; height: string }>({
+    width: "",
+    height: "",
+  });
   /** ②を待っている間の、カーソルの所の端点（水平・垂直・柱に合わせた後の位置） */
   const [beamCursor, setBeamCursor] = useState<CeilingPoint | null>(null);
   /** 図を画面いっぱいに開いて、右に寸法入力表だけを出す */
@@ -4632,8 +4637,20 @@ export default function RoomSheetPage({
                       kind,
                       selectedEdge ?? wallEdges[0]?.id ?? null,
                     );
-                    changeCeiling((current) => [...current, added]);
-                    setPickedCeiling(added.id);
+                    const w = addSize.width.trim();
+                    const h = addSize.height.trim();
+                    // ＋ボタン下のＷ・Ｈを新しい行に入れる（空欄の欄は自動のまま）
+                    const next: CeilingElement = {
+                      ...added,
+                      width:
+                        added.width === null || w === ""
+                          ? added.width
+                          : (textToNumber(w) ?? added.width),
+                      height:
+                        h === "" ? added.height : (textToNumber(h) ?? added.height),
+                    };
+                    changeCeiling((current) => [...current, next]);
+                    setPickedCeiling(next.id);
                   }}
                 >
                   ＋ {CEILING_KIND_LABEL[kind]}
@@ -4717,6 +4734,37 @@ export default function RoomSheetPage({
                 </>
               )}
             </span>
+          </div>
+          <div className="ceiling-beam-draw-fields">
+            <label>
+              Ｗ
+              <input
+                className="num"
+                value={addSize.width}
+                placeholder="空=自動"
+                onChange={(e) =>
+                  setAddSize((current) => ({
+                    ...current,
+                    width: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Ｈ
+              <input
+                className="num"
+                value={addSize.height}
+                placeholder="空=自動"
+                onChange={(e) =>
+                  setAddSize((current) => ({
+                    ...current,
+                    height: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <span className="dim">＋で足す行に入ります（空欄＝自動）</span>
           </div>
           <table className="grid">
             <thead>
