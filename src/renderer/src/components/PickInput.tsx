@@ -64,11 +64,15 @@ export function PickInput({
     const rect = ref.current.getBoundingClientRect();
     const width = Math.max(rect.width, 220);
     if (popupSide === "right") {
-      // 欄の右側に出す（下の行をふさがない）。右に入らなければ左側へ
+      // 欄の右側に出す（下の行をふさがない）。すぐ右の1列分はあけるので、
+      // 一覧の上に乗らずに右のマスへマウスを動かせる。右に入らなければ左側へ
       const height = Math.min(320, window.innerHeight - 16);
+      const cell = ref.current.closest("td");
+      const next = cell?.nextElementSibling;
+      const skip = next instanceof HTMLElement ? next.offsetWidth : 0;
       const left =
-        rect.right + 4 + width <= window.innerWidth - 4
-          ? rect.right + 4
+        rect.right + skip + 4 + width <= window.innerWidth - 4
+          ? rect.right + skip + 4
           : Math.max(4, rect.left - width - 4);
       const top = Math.max(
         4,
