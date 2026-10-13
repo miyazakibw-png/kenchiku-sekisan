@@ -424,13 +424,19 @@ export default function AggregatePage({
         ? true
         : all || (start === field.value.length && start === end);
 
-    if (field.dataset.unit !== undefined) {
-      // 単位欄の↑↓は同じ単位欄の上下の明細へ移る
+    const columnMark =
+      field.dataset.unit !== undefined
+        ? "data-unit"
+        : field.dataset.materialCategory !== undefined
+          ? "data-material-category"
+          : null;
+    if (columnMark !== null) {
+      // 単位欄・材種区分欄の↑↓は同じ欄の上下の明細へ移る
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         const inputs = Array.from(
           field
             .closest("table")
-            ?.querySelectorAll<HTMLInputElement>("input[data-unit]") ?? [],
+            ?.querySelectorAll<HTMLInputElement>(`input[${columnMark}]`) ?? [],
         );
         const target =
           inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
@@ -761,6 +767,7 @@ export default function AggregatePage({
                   <td rowSpan={2}>
                     <input
                       lang="ja"
+                      data-material-category
                       value={draft.materialCategory}
                       {...spaceMark(draft.materialCategory)}
                       onChange={(e) =>
