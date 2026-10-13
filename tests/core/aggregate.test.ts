@@ -12,6 +12,10 @@ import {
   type AggregateEntry,
   type EstimateRowContext,
 } from "../../src/core/aggregate/aggregate";
+import {
+  mergeManualItems,
+  type ManualAggregateRow,
+} from "../../src/core/aggregate/manualItems";
 import type { CalcSet, CalcSheetResult } from "../../src/core/room/calcSheet";
 
 function context(over: Partial<EstimateRowContext> = {}): EstimateRowContext {
@@ -421,5 +425,69 @@ describe("集計書兼工事マスターの数量表示", () => {
   it("単位があるとき・数量があるときは今までどおり表示する", () => {
     expect(aggregateQuantityText(0, "m2")).toBe("0.00");
     expect(aggregateQuantityText(1.25, "")).toBe("1.25");
+  });
+});
+
+describe("集計書の手入力行", () => {
+  const manualRow = (
+    over: Partial<ManualAggregateRow> = {},
+  ): ManualAggregateRow => ({
+    id: 1,
+    afterMasterKey: "",
+    before: false,
+    subjectId: 5,
+    materialCategory: "仕上",
+    part1: "建築",
+    part2: "1階",
+    part2Raw: "1階",
+    partNumber: null,
+    partName: "",
+    detailNumber: null,
+    name: "説明行",
+    descriptionUpper: "",
+    descriptionLower: "",
+    unit: "",
+    remarksUpper: "",
+    remarksLower: "",
+    estimateDisplay: "",
+    formwork: "",
+    quantity: 0,
+    ...over,
+  });
+
+  it("番号が空の手入力行は、付き先の部位番号・部位名・明細番号を見せる", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [manualRow({ afterMasterKey: anchor.masterKey })],
+      new Set(),
+    );
+    expect(merged).toHaveLength(2);
+    expect(merged[1].partNumber).toBe(anchor.partNumber);
+    expect(merged[1].partName).toBe(anchor.partName);
+    expect(merged[1].detailNumber).toBe(anchor.detailNumber);
+  });
+
+  it("手で入れた番号は付き先で上書きしない", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [
+        manualRow({
+          afterMasterKey: anchor.masterKey,
+          partNumber: 99,
+          partName: "柱型",
+          detailNumber: 99.5,
+        }),
+      ],
+      new Set(),
+    );
+    expect(merged[1].partNumber).toBe(99);
+    expect(merged[1].partName).toBe("柱型");
+    expect(merged[1].detailNumber).toBe(99.5);
   });
 });

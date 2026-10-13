@@ -77,11 +77,11 @@ describe("集計書へ手で挿入した明細行", () => {
     expect(after.items).toHaveLength(3);
     expect(after.items[1].manual).toBe(true);
     expect(after.items[1].name).toBe("");
-    // 位置欄だけアンカーから写し、部位番号・部位名・明細番号はカラで入る
+    // 位置欄と部位番号・部位名・明細番号は付き先から写す（どの明細の説明か分かるように）
     expect(after.items[1].part1).toBe("1階");
-    expect(after.items[1].partNumber).toBe(null);
-    expect(after.items[1].partName).toBe("");
-    expect(after.items[1].detailNumber).toBe(null);
+    expect(after.items[1].partNumber).toBe(after.items[0].partNumber);
+    expect(after.items[1].partName).toBe(after.items[0].partName);
+    expect(after.items[1].detailNumber).toBe(after.items[0].detailNumber);
 
     // もう一度集計しても同じ位置に残る
     const again = runAggregation(db, projectId);
