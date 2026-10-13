@@ -203,6 +203,7 @@ import type {
   SaveBasicMasterRequest,
   BreakdownExportRequest,
   BreakdownExportResult,
+  BreakdownGrouping,
   BreakdownSettingsRecord,
   SaveBreakdownRowsRequest,
   MiscSheetSummary,
@@ -635,8 +636,20 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(
     IPC.breakdownTransfer,
-    (_event, projectId: number, newRound?: boolean) =>
-      transferBreakdown(getDatabase(), projectId, newRound === true),
+    (
+      _event,
+      projectId: number,
+      newRound?: boolean,
+      grouping?: BreakdownGrouping,
+      runId?: number,
+    ) =>
+      transferBreakdown(
+        getDatabase(),
+        projectId,
+        newRound === true,
+        grouping ?? "subject",
+        runId,
+      ),
   );
   ipcMain.handle(
     IPC.breakdownSaveRows,

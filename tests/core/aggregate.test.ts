@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateByPart,
   aggregateByRoom,
   aggregateItems,
+  NO_PART_LABEL,
   aggregateQuantityText,
   checkQuantityUnit,
   entriesFromCalcSheet,
@@ -299,7 +301,7 @@ describe("部屋別集計", () => {
       result("s3", 2.5),
     );
     const groups = aggregateByRoom([...a, ...b, ...c], ["事務室", "会議室"]);
-    expect(groups.map((group) => group.roomName)).toEqual(["事務室", "会議室"]);
+    expect(groups.map((group) => group.label)).toEqual(["事務室", "会議室"]);
     expect(groups[0].items).toHaveLength(1);
     expect(groups[0].items[0].quantity).toBe(12.5);
     expect(groups[0].quantityTotal).toBe(12.5);
@@ -322,6 +324,64 @@ describe("部屋別集計", () => {
     const groups = aggregateByRoom([...room, transfer, noRoom]);
     expect(groups).toHaveLength(1);
     expect(groups[0].quantityTotal).toBe(10);
+  });
+});
+
+describe("部位別集計", () => {
+  it("部位Ⅱごとにまとめ、同じ部位Ⅱの部屋はひとつにまとまる", () => {
+    // 居室・押入れ・踏み込みは同じ部位Ⅱ「居室」
+    const a = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "居室", part2Order: 1 }),
+      [set("s1", 1)],
+      result("s1", 4),
+    );
+    const b = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "押入れ", part2Order: 1 }),
+      [set("s2", 1)],
+      result("s2", 2.5),
+    );
+    const c = entriesFromCalcSheet(
+      context({ part2: "玄関", part3: "玄関", part2Order: 0 }),
+      [set("s3", 1)],
+      result("s3", 3),
+    );
+    const groups = aggregateByPart([...a, ...b, ...c]);
+    // 部位Ⅱの出た順（玄関→居室）で並ぶ
+    expect(groups.map((group) => group.label)).toEqual(["玄関", "居室"]);
+    expect(groups[1].items).toHaveLength(1);
+    expect(groups[1].items[0].quantity).toBe(6.5);
+    expect(groups[1].quantityTotal).toBe(6.5);
+  });
+
+  it("部位Ⅱが空の明細は最後にまとめ、転記入力表の分も部位Ⅱで入る", () => {
+    const room = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "居室", part2Order: 1 }),
+      [set("s1", 1)],
+      result("s1", 10),
+    );
+    const transfer: AggregateEntry = {
+      ...room[0],
+      traceId: "t:1",
+      sourceKind: "transfer",
+      part2Raw: "玄関",
+      part2Order: 0,
+      quantity: 3,
+    };
+    const noPart: AggregateEntry = {
+      ...room[0],
+      traceId: "x:1",
+      part2Raw: "",
+      quantity: 5,
+    };
+    const groups = aggregateByPart([...room, transfer, noPart]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "玄関",
+      "居室",
+      NO_PART_LABEL,
+    ]);
+    expect(groups[0].quantityTotal).toBe(3);
+    expect(groups[1].quantityTotal).toBe(10);
+    expect(groups[2].quantityTotal).toBe(5);
   });
 });
 

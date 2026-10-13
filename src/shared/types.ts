@@ -969,6 +969,9 @@ export interface BreakdownSettingsRecord {
   workCategory: string;
 }
 
+/** 内訳書のまとめ方：科目別（いままで通り）・部屋別集計・部位別集計 */
+export type BreakdownGrouping = "subject" | "room" | "part";
+
 /** 内訳書の版（提出の回） */
 export interface BreakdownVersion {
   id: number;
@@ -979,6 +982,8 @@ export interface BreakdownVersion {
   confirmed: number;
   aggregateRunId: number | null;
   note: string;
+  /** どのまとめ方で転記した回か（科目別・部屋別・部位別） */
+  grouping: BreakdownGrouping;
   /** この回で初めて出てきた工種科目（科目ID。前の回に無かったもの） */
   newSubjects: number[];
 }

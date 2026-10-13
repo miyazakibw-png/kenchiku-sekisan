@@ -328,13 +328,59 @@ export function aggregateItems(
   });
 }
 
-/** 部屋別集計の1グループ（部位Ⅲごと） */
-export interface RoomAggregateGroup {
-  roomName: string;
+/** 部屋別・部位別集計の1グループ */
+export interface AggregateGroup {
+  /** まとめの名前（部屋名・部位Ⅱ名） */
+  label: string;
   /** 部位別入力表に出てくる順番 */
   order: number;
   items: AggregatedItem[];
   quantityTotal: number;
+}
+
+/** 部屋別・部位別集計。まとめの名前（部屋名・部位Ⅱ名）を工種科目の代わりに使う */
+function groupedAggregates(
+  entries: AggregateEntry[],
+  keyOf: (entry: AggregateEntry) => string,
+  orderOf: (key: string) => number,
+  emptyLabel: string | null,
+  skipPart2: ReadonlySet<number> = new Set(),
+  unusedMasterKeys: ReadonlySet<string> = new Set(),
+): AggregateGroup[] {
+  const byKey = new Map<string, AggregateEntry[]>();
+  entries.forEach((entry) => {
+    let key = keyOf(entry);
+    if (key === "") {
+      if (emptyLabel === null) return;
+      key = emptyLabel;
+    }
+    const found = byKey.get(key);
+    if (found) found.push(entry);
+    else byKey.set(key, [entry]);
+  });
+
+  return [...byKey.entries()]
+    .map(([key, groupEntries]) => {
+      const items = aggregateItems(groupEntries, skipPart2, unusedMasterKeys).map(
+        (item) => ({
+          ...item,
+          rooms: [],
+        }),
+      );
+      return {
+        label: key,
+        order: orderOf(key),
+        items,
+        quantityTotal: displayedValue(
+          items.reduce((total, item) => total + item.quantity, 0),
+        ),
+      };
+    })
+    .sort((a, b) =>
+      a.order === b.order
+        ? a.label.localeCompare(b.label, "ja")
+        : a.order - b.order,
+    );
 }
 
 /**
@@ -345,41 +391,55 @@ export interface RoomAggregateGroup {
 export function aggregateByRoom(
   entries: AggregateEntry[],
   roomOrder: readonly string[] = [],
-): RoomAggregateGroup[] {
-  const orderOf = (roomName: string): number => {
-    const index = roomOrder.indexOf(roomName);
-    return index < 0 ? 9999 : index;
-  };
-  const byRoom = new Map<string, AggregateEntry[]>();
-  entries.forEach((entry) => {
-    if (entry.sourceKind === "transfer") return;
-    const roomName = entry.part3.trim();
-    if (roomName === "") return;
-    const found = byRoom.get(roomName);
-    if (found) found.push(entry);
-    else byRoom.set(roomName, [entry]);
-  });
+  skipPart2: ReadonlySet<number> = new Set(),
+  unusedMasterKeys: ReadonlySet<string> = new Set(),
+): AggregateGroup[] {
+  return groupedAggregates(
+    entries,
+    // 転記入力表の分は根拠に出さないので入れない
+    (entry) =>
+      entry.sourceKind === "transfer" ? "" : entry.part3.trim(),
+    (roomName) => {
+      const index = roomOrder.indexOf(roomName);
+      return index < 0 ? 9999 : index;
+    },
+    null,
+    skipPart2,
+    unusedMasterKeys,
+  );
+}
 
-  return [...byRoom.entries()]
-    .map(([roomName, roomEntries]) => {
-      const items = aggregateItems(roomEntries).map((item) => ({
-        ...item,
-        rooms: [],
-      }));
-      return {
-        roomName,
-        order: orderOf(roomName),
-        items,
-        quantityTotal: displayedValue(
-          items.reduce((total, item) => total + item.quantity, 0),
-        ),
-      };
-    })
-    .sort((a, b) =>
-      a.order === b.order
-        ? a.roomName.localeCompare(b.roomName, "ja")
-        : a.order - b.order,
-    );
+/** 部位Ⅱが空の明細をまとめる名前（最後に出す） */
+export const NO_PART_LABEL = "（部位Ⅱなし）";
+
+/**
+ * 部位別集計。部位Ⅱ（部屋名のひとつ上のまとまり）でまとめる。
+ * 押入れ・踏み込み・前室のような細かい部屋を、同じ部位Ⅱならひとつにまとめる。
+ * 並びは 部位Ⅱ（部位別入力表に出てくる順＝part2Order）→科目ID→部位番号→明細番号。
+ * 転記入力表の分も部位Ⅱを持つので入れる。部位Ⅱが空の分は最後に「（部位Ⅱなし）」でまとめる。
+ */
+export function aggregateByPart(
+  entries: AggregateEntry[],
+  skipPart2: ReadonlySet<number> = new Set(),
+  unusedMasterKeys: ReadonlySet<string> = new Set(),
+): AggregateGroup[] {
+  return groupedAggregates(
+    entries,
+    (entry) => entry.part2Raw.trim(),
+    (key) => {
+      if (key === NO_PART_LABEL) return 9999;
+      const order = entries
+        .filter((entry) => entry.part2Raw.trim() === key)
+        .reduce(
+          (min, entry) => Math.min(min, entry.part2Order),
+          Number.MAX_SAFE_INTEGER,
+        );
+      return order === Number.MAX_SAFE_INTEGER ? 9999 : order;
+    },
+    NO_PART_LABEL,
+    skipPart2,
+    unusedMasterKeys,
+  );
 }
 
 /** 集計書兼工事マスターの数量表示。単位が無い数量0（仕様の続きなど）は空欄にする */

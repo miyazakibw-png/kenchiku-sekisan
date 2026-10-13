@@ -135,6 +135,13 @@ export const WORKSPACE_MENU: WorkspaceMenuItem[] = [
     ready: true,
   },
   {
+    key: "partAggregate",
+    label: "部位別集計",
+    group: "aggregate",
+    note: "部位Ⅱごとに集計（同じ部位Ⅱの押入れ・踏み込み・前室などはひとつにまとめる）",
+    ready: true,
+  },
+  {
     key: "formworkTransfer",
     label: "型枠転記",
     group: "aggregate",

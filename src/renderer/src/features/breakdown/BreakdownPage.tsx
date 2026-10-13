@@ -234,6 +234,13 @@ function blankRow(): BreakdownRowRecord {
   };
 }
 
+/** 内訳書の版のまとめ方（科目別は何も付けない） */
+function groupingLabel(grouping: BreakdownVersion["grouping"]): string {
+  if (grouping === "room") return "（部屋別）";
+  if (grouping === "part") return "（部位別）";
+  return "";
+}
+
 /**
  * 内訳書。集計書兼工事マスターから変換転記して作る。
  * 3層目＝工種科目の見出し、4層目＝その科目の明細（基準は2段1行）。
@@ -249,7 +256,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   });
   const [versions, setVersions] = useState<BreakdownVersion[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<
+    number | string | null
+  >(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const compareScrollRef = useRef<HTMLDivElement | null>(null);
@@ -356,7 +365,11 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     });
     setView((current) => ({ ...current, settings: saved }));
     if (view.version && view.version.confirmed === 0) {
-      const next = await window.sekisan.transferBreakdown(project.id);
+      const next = await window.sekisan.transferBreakdown(
+        project.id,
+        false,
+        view.version?.grouping ?? "subject",
+      );
       setView(next);
       setLeftRows(next.rows);
       setMessage("設定を変えたので、この回を作り直しました。");
@@ -450,23 +463,25 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   };
 
   const usedSubjects = useMemo(() => {
-    const names = new Map<number | null, string>();
+    const names = new Map<number | string, string>();
     view.rows.forEach((row) => {
-      if (row.rowKind === "subject") names.set(row.subjectId, row.subjectName);
+      if (row.rowKind === "subject")
+        // 部屋別・部位別のまとめの見出しは科目IDが無いので名前を目印にする
+        names.set(row.subjectId ?? row.subjectName, row.subjectName);
     });
     const order = settings.subjectOrder;
-    return [...names.entries()].sort((a, b) => {
-      const ai = a[0] === null ? Number.MAX_SAFE_INTEGER : order.indexOf(a[0]);
-      const bi = b[0] === null ? Number.MAX_SAFE_INTEGER : order.indexOf(b[0]);
-      return ai - bi;
-    });
+    const orderIndex = (key: number | string): number =>
+      typeof key === "number" ? order.indexOf(key) : Number.MAX_SAFE_INTEGER;
+    return [...names.entries()].sort(
+      (a, b) => orderIndex(a[0]) - orderIndex(b[0]),
+    );
   }, [settings.subjectOrder, view.rows]);
 
   // 全部の科目を出したまま、選んだ科目の見出しへ移動する
   // 入力は leftRows を直し、少し待つと自動で保存する（比較画面と同じ）
   const shownRows = leftRows;
 
-  const showSubject = (subjectId: number | null): void => {
+  const showSubject = (subjectId: number | string | null): void => {
     setSelectedSubject(subjectId);
     const container =
       panel === "compare" ? compareScrollRef.current : bodyRef.current;
@@ -507,7 +522,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
 
   // 選んだ科目を続けて動かす（↑↓ボタンの場所は動かない）
   const moveSelectedSubject = (step: number): void => {
-    if (selectedSubject === null) return;
+    if (selectedSubject === null || typeof selectedSubject !== "number")
+      return;
     void moveSubject(selectedSubject, step).then(() => {
       listRef.current
         ?.querySelector(`[data-subject-btn="${selectedSubject}"]`)
@@ -518,7 +534,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const selectedSubjectName =
     usedSubjects.find(([id]) => id === selectedSubject)?.[1] ?? "";
   const selectedSubjectIndex =
-    selectedSubject === null
+    typeof selectedSubject !== "number"
       ? -1
       : settings.subjectOrder.indexOf(selectedSubject);
 
@@ -941,7 +957,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         >
           {versions.map((version) => (
             <option key={version.id} value={version.id}>
-              {version.round}回目
+              {version.round}回目{groupingLabel(version.grouping)}
               {version.confirmed === 1 ? "（確定）" : ""} {version.createdAt}
             </option>
           ))}
@@ -1010,7 +1026,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             .filter((version) => version.id !== view.version?.id)
             .map((version) => (
               <option key={version.id} value={version.id}>
-                {version.round}回目と比較
+                {version.round}回目{groupingLabel(version.grouping)}と比較
               </option>
             ))}
         </select>
@@ -1444,7 +1460,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                   type="button"
                   className={[
                     selectedSubject === subjectId ? "selected" : "",
-                    subjectId !== null &&
+                    typeof subjectId === "number" &&
                     view.version?.newSubjects.includes(subjectId)
                       ? "new"
                       : "",
@@ -1452,7 +1468,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     .join(" ")
                     .trim()}
                   title={
-                    subjectId !== null &&
+                    typeof subjectId === "number" &&
                     view.version?.newSubjects.includes(subjectId)
                       ? "この回で初めて出てきた科目"
                       : undefined
@@ -1461,7 +1477,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 >
                   {name}
                 </button>
-                {subjectId !== null && (
+                {typeof subjectId === "number" && (
                   <span className="order">
                     <button
                       type="button"
@@ -1511,8 +1527,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                     <tr
                       className="subject"
                       data-subject={
-                        row.rowKind === "subject" && row.subjectId !== null
-                          ? row.subjectId
+                        row.rowKind === "subject"
+                          ? (row.subjectId ?? row.subjectName)
                           : undefined
                       }
                     >

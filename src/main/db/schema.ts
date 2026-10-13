@@ -945,6 +945,8 @@ export const projectBreakdownVersions = sqliteTable(
     note: text("note").notNull().default(""),
     /** この回で初めて出てきた工種科目（科目IDのJSON。前の回に無かったもの） */
     newSubjectsJson: text("new_subjects_json").notNull().default("[]"),
+    /** どのまとめ方で転記した回か（subject / room / part） */
+    grouping: text("grouping").notNull().default("subject"),
   },
   (t) => ({
     roundUq: uniqueIndex("uq_breakdown_versions_round").on(

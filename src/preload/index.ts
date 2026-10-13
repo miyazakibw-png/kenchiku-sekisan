@@ -18,6 +18,7 @@ import type {
   BreakdownExportRequest,
   BreakdownExportResult,
   BreakdownSettingsRecord,
+  BreakdownGrouping,
   BreakdownVersion,
   BreakdownView,
   BreakdownRowRecord,
@@ -365,8 +366,16 @@ const api = {
   transferBreakdown: (
     projectId: number,
     newRound?: boolean,
+    grouping?: BreakdownGrouping,
+    runId?: number,
   ): Promise<BreakdownView> =>
-    ipcRenderer.invoke(IPC.breakdownTransfer, projectId, newRound),
+    ipcRenderer.invoke(
+      IPC.breakdownTransfer,
+      projectId,
+      newRound,
+      grouping,
+      runId,
+    ),
   saveBreakdownRows: (
     request: SaveBreakdownRowsRequest,
   ): Promise<BreakdownRowRecord[]> =>

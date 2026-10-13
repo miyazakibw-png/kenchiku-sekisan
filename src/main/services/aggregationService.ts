@@ -169,7 +169,7 @@ interface FrameFittingInput {
 }
 
 /** 不要明細（人が印を付けた明細）の集計キー */
-function unusedMasterKeys(
+export function unusedMasterKeys(
   db: AppDatabase,
   projectId: number,
 ): ReadonlySet<string> {

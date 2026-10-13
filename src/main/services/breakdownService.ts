@@ -13,18 +13,29 @@ import {
 } from "../db/schema";
 import {
   buildBreakdownRows,
+  buildGroupedBreakdownRows,
   collectSubjectOrder,
   collectUnits,
   mergeSubjectOrder,
   DEFAULT_BREAKDOWN_SETTINGS,
+  type BreakdownGroupSource,
   type BreakdownSettings,
   type BreakdownSourceItem,
   type BreakdownSubject,
   type TextReplacement,
 } from "../../core/breakdown/breakdown";
-import { getAggregate } from "./aggregationService";
+import {
+  aggregateByPart,
+  aggregateByRoom,
+  type AggregatedItem,
+} from "../../core/aggregate/aggregate";
+import { detailsToEntries } from "../../core/aggregate/detailEntries";
+import { getAggregate, unusedMasterKeys } from "./aggregationService";
+import { listEstimateRows } from "./estimateRowService";
 import { listProjectSubjects } from "./projectMasterService";
 import type {
+  AggregateItem,
+  BreakdownGrouping,
   BreakdownRowRecord,
   BreakdownSettingsRecord,
   BreakdownVersion,
@@ -71,6 +82,16 @@ function parseStrings(json: string): string[] {
 function pageCount(value: number | null, fallback: number): number {
   if (value === null || !Number.isFinite(value) || value < 1) return fallback;
   return Math.floor(value);
+}
+
+/** 部屋別集計の並びに使う、部位別入力表に出てくる部屋名の順 */
+function roomOrderOf(db: AppDatabase, projectId: number): string[] {
+  const order: string[] = [];
+  listEstimateRows(db, projectId).forEach((row) => {
+    const room = row.part3.trim();
+    if (room !== "" && !order.includes(room)) order.push(room);
+  });
+  return order;
 }
 
 /** 内訳書の設定。無ければ既定値で作る */
@@ -191,10 +212,18 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
   };
 }
 
+function groupingOf(value: string): BreakdownGrouping {
+  return value === "room" || value === "part" ? value : "subject";
+}
+
 function toBreakdownVersion(
   row: typeof projectBreakdownVersions.$inferSelect,
 ): BreakdownVersion {
-  return { ...row, newSubjects: parseNumbers(row.newSubjectsJson ?? "[]") };
+  return {
+    ...row,
+    grouping: groupingOf(row.grouping),
+    newSubjects: parseNumbers(row.newSubjectsJson ?? "[]"),
+  };
 }
 
 export function listBreakdownVersions(
@@ -248,31 +277,78 @@ function subjectList(db: AppDatabase, projectId: number): BreakdownSubject[] {
  * newRound が true のときは、開いている回を確定してから次の回を作る
  * （確定を押し忘れて転記したとき、上書きではなく新しい回にできる）。
  */
+/** 集計書兼工事マスターの1明細 → 内訳書の元 */
+function toSourceItem(
+  item: AggregateItem | AggregatedItem,
+): BreakdownSourceItem {
+  return {
+    id: "id" in item ? item.id : null,
+    masterKey: item.masterKey,
+    subjectId: item.subjectId,
+    part1: item.part1,
+    partNumber: item.partNumber,
+    partName: item.partName,
+    name: item.name,
+    descriptionUpper: item.descriptionUpper,
+    descriptionLower: item.descriptionLower,
+    quantity: item.quantity,
+    unit: item.unit,
+    remarksUpper: item.remarksUpper,
+    remarksLower: item.remarksLower,
+  };
+}
+
+/**
+ * 集計書兼工事マスターから内訳書へ変換転記する。
+ * 未確定の回があればその回を作り直し、無ければ次の回を作る。
+ * newRound が true のときは、開いている回を確定してから次の回を作る
+ * （確定を押し忘れて転記したとき、上書きではなく新しい回にできる）。
+ * grouping はまとめ方：subject＝科目別（いままで通り）、room＝部屋別集計、part＝部位別集計。
+ * runId は集計の回。画面で見ている回と同じ集計から転記するために渡す。
+ */
 export function transferBreakdown(
   db: AppDatabase,
   projectId: number,
   newRound = false,
+  grouping: BreakdownGrouping = "subject",
+  runId?: number,
 ): BreakdownView {
-  const aggregate = getAggregate(db, projectId);
+  const aggregate = getAggregate(db, projectId, runId);
   const subjects = subjectList(db, projectId);
-  // 不要明細（人が印を付けた明細）は内訳書へ飛ばさない
-  const items: BreakdownSourceItem[] = aggregate.items
-    .filter((item) => !item.unused)
-    .map((item) => ({
-      id: item.id,
-      masterKey: item.masterKey,
-      subjectId: item.subjectId,
-      part1: item.part1,
-      partNumber: item.partNumber,
-      partName: item.partName,
-      name: item.name,
-      descriptionUpper: item.descriptionUpper,
-      descriptionLower: item.descriptionLower,
-      quantity: item.quantity,
-      unit: item.unit,
-      remarksUpper: item.remarksUpper,
-      remarksLower: item.remarksLower,
+
+  // 部屋別・部位別のまとめのときは、まとめごとの明細を作る
+  let groups: BreakdownGroupSource[] | null = null;
+  let items: BreakdownSourceItem[];
+  if (grouping === "subject") {
+    // 不要明細（人が印を付けた明細）は内訳書へ飛ばさない
+    items = aggregate.items
+      .filter((item) => !item.unused)
+      .map(toSourceItem);
+  } else {
+    const skipPart2 = new Set(
+      listProjectSubjects(db, projectId)
+        .filter((subject) => subject.skipPart2 === 1)
+        .map((subject) => subject.id),
+    );
+    const unused = unusedMasterKeys(db, projectId);
+    const entries = detailsToEntries(aggregate.details);
+    const grouped =
+      grouping === "room"
+        ? aggregateByRoom(
+            entries,
+            roomOrderOf(db, projectId),
+            skipPart2,
+            unused,
+          )
+        : aggregateByPart(entries, skipPart2, unused);
+    groups = grouped.map((group) => ({
+      name: group.label,
+      items: group.items
+        .filter((item) => !item.unused)
+        .map(toSourceItem),
     }));
+    items = groups.flatMap((group) => group.items);
+  }
 
   // 集計書で使っている工種科目・単位を自動的に用意する。
   // 並べ替えた並びは物件の設定として残し、2回目以降もそのまま持ち越す
@@ -323,6 +399,7 @@ export function transferBreakdown(
     db.update(projectBreakdownVersions)
       .set({
         aggregateRunId: aggregate.run?.id ?? null,
+        grouping,
         newSubjectsJson: JSON.stringify(newSubjects),
       })
       .where(eq(projectBreakdownVersions.id, versionId))
@@ -335,6 +412,7 @@ export function transferBreakdown(
         projectId,
         round,
         aggregateRunId: aggregate.run?.id ?? null,
+        grouping,
         newSubjectsJson: JSON.stringify(newSubjects),
       })
       .returning()
@@ -342,7 +420,10 @@ export function transferBreakdown(
     versionId = created.id;
   }
 
-  const rows = buildBreakdownRows(items, subjects, toCoreSettings(settings));
+  const rows =
+    groups === null
+      ? buildBreakdownRows(items, subjects, toCoreSettings(settings))
+      : buildGroupedBreakdownRows(groups, toCoreSettings(settings));
   rows.forEach((row, index) => {
     db.insert(projectBreakdownRows)
       .values({

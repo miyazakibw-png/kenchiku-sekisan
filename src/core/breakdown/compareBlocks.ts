@@ -156,7 +156,8 @@ export function pairBlocksBySubject<T extends BlockSourceRow>(
     let current = "lead";
     blocks.forEach((block, index) => {
       if (block.lower.rowKind === "subject")
-        current = `s:${block.lower.subjectId ?? ""}`;
+        // 部屋別・部位別のまとめの見出しは科目IDが無いので名前で分かつ
+        current = `s:${block.lower.subjectId ?? block.lower.subjectName}`;
       if (!groups.has(current)) {
         groups.set(current, []);
         keys.push(current);

@@ -47,6 +47,7 @@ import RoomAggregatePage from "../aggregate/RoomAggregatePage";
 import CheckSheetPage from "../aggregate/CheckSheetPage";
 import FormworkTransferPage from "../aggregate/FormworkTransferPage";
 import BreakdownPage from "../breakdown/BreakdownPage";
+import PartAggregatePage from "../aggregate/PartAggregatePage";
 import ProjectSummarySheet, { SummarySheetBody } from "./ProjectSummarySheet";
 import "./ProjectWorkspacePage.css";
 
@@ -539,6 +540,12 @@ export default function ProjectWorkspacePage({
   if (openedMenu === "roomAggregate") {
     return (
       <RoomAggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
+    );
+  }
+
+  if (openedMenu === "partAggregate") {
+    return (
+      <PartAggregatePage project={draft} onBack={() => setOpenedMenu(null)} />
     );
   }
 

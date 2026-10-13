@@ -5,6 +5,7 @@ import {
   NAME_PATTERN,
   applyReplacements,
   buildBreakdownRows,
+  buildGroupedBreakdownRows,
   collectSubjectOrder,
   collectUnits,
   mergeSubjectOrder,
@@ -596,5 +597,45 @@ describe("回どうしの比較", () => {
     // Bの明細は左だけ・Cの明細は右だけになる（並びを追いかけてずれない）
     expect(diffs.some((diff) => diff.onlyLeft)).toBe(true);
     expect(diffs.some((diff) => diff.onlyRight)).toBe(true);
+  });
+});
+
+describe("部屋別・部位別のまとめからの内訳書", () => {
+  it("まとめの名前を見出しにし、明細はそのまとめの中に並ぶ", () => {
+    const rows = buildGroupedBreakdownRows(
+      [
+        {
+          name: "居室",
+          items: [item({}), item({ id: 2, masterKey: "k2", quantity: 4 })],
+        },
+        { name: "玄関", items: [item({ id: 3, masterKey: "k3" })] },
+      ],
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    const heads = rows.filter((row) => row.rowKind === "subject");
+    expect(heads.map((row) => row.subjectName)).toEqual(["＜居室＞", "＜玄関＞"]);
+    // 見出しの下にそのまとめの明細が並ぶ（科目IDは明細のまま残る）
+    expect(rows[1].nameLower).toBe("普通コンクリート");
+    expect(rows[1].subjectId).toBe(1);
+    expect(rows.filter((row) => row.rowKind === "detail")).toHaveLength(3);
+  });
+
+  it("まとめの見出しごとに小計が出る", () => {
+    const rows = buildGroupedBreakdownRows(
+      [
+        { name: "居室", items: [item({})] },
+        { name: "玄関", items: [item({ id: 3, masterKey: "k3", quantity: 2 })] },
+      ],
+      DEFAULT_BREAKDOWN_SETTINGS,
+    );
+    // 単価は内訳書で入れるので、行へ直接入れて小計を試す
+    rows.forEach((row) => {
+      if (row.rowKind === "detail") row.unitPrice = 100;
+    });
+    const subs = withSubjectSubtotals(rows).filter(
+      (row) => row.subtotal === true,
+    );
+    // 12.3×100=1230、2×100=200
+    expect(subs.map((row) => row.amount)).toEqual([1230, 200]);
   });
 });

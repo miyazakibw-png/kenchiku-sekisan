@@ -420,9 +420,10 @@ export function withSubjectSubtotals(
   const next: BreakdownRow[] = [];
   let total = 0;
   let has = false;
+  let inGroup = false;
   let subjectId: number | null = null;
   const flush = (): void => {
-    if (subjectId !== null && has) {
+    if (inGroup && has) {
       const subtotal = emptyRow("detail");
       subtotal.nameLower = "小計";
       subtotal.amount = total;
@@ -436,11 +437,13 @@ export function withSubjectSubtotals(
   rows.forEach((row) => {
     if (row.rowKind === "subject") {
       flush();
+      // 科目の見出しだけでなく、部屋別・部位別のまとめの見出しでも小計を出す
+      inGroup = true;
       subjectId = row.subjectId;
       next.push(row);
       return;
     }
-    if (subjectId !== null && amountOf(row) !== null) {
+    if (inGroup && amountOf(row) !== null) {
       total += amountOf(row) ?? 0;
       has = true;
     }
@@ -511,39 +514,90 @@ export function buildBreakdownRows(
     heading.nameUpper = heading.subjectName;
     rows.push(heading);
 
-    // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
-    let part1: string | undefined;
-    // 基本部位のタイトル行は部位Ⅰごとに出し直す
-    let lastPartTitle: string | null = null;
-    (groups.get(subjectId) ?? []).forEach((item) => {
-      if (part1 !== item.part1) {
-        part1 = item.part1;
-        lastPartTitle = null;
-        if (part1 !== "") {
-          const title = emptyRow("title");
-          title.subjectId = subjectId;
-          title.subjectName = heading.subjectName;
-          title.partName = part1;
-          title.nameLower = `（${part1}）`;
-          rows.push(title);
-        }
-      }
-      const partTitle = settings.partTitlesOn
-        ? partTitleOf(item.partNumber, settings.partTitles)
-        : null;
-      if (partTitle !== null && partTitle !== lastPartTitle) {
-        lastPartTitle = partTitle;
-        const title = emptyRow("title");
-        title.subjectId = subjectId;
-        title.subjectName = heading.subjectName;
-        title.partName = partTitle;
-        title.nameLower = partTitle;
-        rows.push(title);
-      }
-      rows.push(...detailRows(item, subjectId, heading.subjectName, settings));
-    });
+    appendGroupRows(
+      rows,
+      groups.get(subjectId) ?? [],
+      () => subjectId,
+      heading.subjectName,
+      settings,
+    );
   });
   return rows;
+}
+
+/** 部屋別・部位別のまとめから作る内訳書の元（1まとめ分） */
+export interface BreakdownGroupSource {
+  /** まとめの名前（部屋名・部位Ⅱ名）。見出しに「＜名前＞」と出る */
+  name: string;
+  items: BreakdownSourceItem[];
+}
+
+/**
+ * 部屋別・部位別のまとめから内訳書の行を作る。
+ * 工種科目の見出しの代わりにまとめの名前（＜部屋名＞など）を見出しにし、
+ * 明細はそのまとめの中の並び（集計書と同じく科目・部位順）で出す。
+ */
+export function buildGroupedBreakdownRows(
+  groups: readonly BreakdownGroupSource[],
+  settings: BreakdownSettings,
+): BreakdownRow[] {
+  const rows: BreakdownRow[] = [];
+  groups.forEach((group) => {
+    const heading = emptyRow("subject");
+    heading.subjectName = `＜${group.name}＞`;
+    heading.nameUpper = heading.subjectName;
+    rows.push(heading);
+    appendGroupRows(
+      rows,
+      group.items,
+      (item) => item.subjectId,
+      heading.subjectName,
+      settings,
+    );
+  });
+  return rows;
+}
+
+/** 見出しの下の明細：部位Ⅰのタイトル行・基本部位のタイトル行を挟んで明細を並べる */
+function appendGroupRows(
+  rows: BreakdownRow[],
+  items: readonly BreakdownSourceItem[],
+  subjectIdOf: (item: BreakdownSourceItem) => number | null,
+  subjectName: string,
+  settings: BreakdownSettings,
+): void {
+  // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
+  let part1: string | undefined;
+  // 基本部位のタイトル行は部位Ⅰごとに出し直す
+  let lastPartTitle: string | null = null;
+  items.forEach((item) => {
+    const subjectId = subjectIdOf(item);
+    if (part1 !== item.part1) {
+      part1 = item.part1;
+      lastPartTitle = null;
+      if (part1 !== "") {
+        const title = emptyRow("title");
+        title.subjectId = subjectId;
+        title.subjectName = subjectName;
+        title.partName = part1;
+        title.nameLower = `（${part1}）`;
+        rows.push(title);
+      }
+    }
+    const partTitle = settings.partTitlesOn
+      ? partTitleOf(item.partNumber, settings.partTitles)
+      : null;
+    if (partTitle !== null && partTitle !== lastPartTitle) {
+      lastPartTitle = partTitle;
+      const title = emptyRow("title");
+      title.subjectId = subjectId;
+      title.subjectName = subjectName;
+      title.partName = partTitle;
+      title.nameLower = partTitle;
+      rows.push(title);
+    }
+    rows.push(...detailRows(item, subjectId, subjectName, settings));
+  });
 }
 
 function detailRows(
