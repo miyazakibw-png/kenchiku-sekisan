@@ -112,6 +112,10 @@ import {
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { parseLowerTemplate } from "../../../../core/room/lowerTemplate";
+import {
+  frameArcApex,
+  frameLinePath,
+} from "../../../../core/frame/frame";
 import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
 import { evaluateFormula } from "../../../../core/formula/evaluate";
@@ -332,11 +336,32 @@ function viewBox(
     const a = solved.points[index];
     const b = solved.points[(index + 1) % solved.points.length];
     if (!a || !b) return;
-    const span = Math.hypot(b.x - a.x, b.y - a.y);
-    if (span === 0) return;
-    const normal = { x: -(b.y - a.y) / span, y: (b.x - a.x) / span };
-    xs.push((a.x + b.x) / 2 - normal.x * bulge);
-    ys.push((a.y + b.y) / 2 - normal.y * bulge);
+    const chord = Math.hypot(b.x - a.x, b.y - a.y);
+    if (chord === 0) return;
+    const apex = frameArcApex({
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      bulge,
+    });
+    xs.push(apex.x);
+    ys.push(apex.y);
+    const h = Math.abs(bulge);
+    if (h <= chord / 2) return;
+    // 半円より大きい弧は弦の両端より横にもはみ出すので、円の両端の点も収める
+    const r = (chord * chord) / (8 * h) + h / 2;
+    const sign = bulge > 0 ? 1 : -1;
+    const nx = ((b.y - a.y) / chord) * sign;
+    const ny = (-(b.x - a.x) / chord) * sign;
+    const tx = (b.x - a.x) / chord;
+    const ty = (b.y - a.y) / chord;
+    const center = {
+      x: (a.x + b.x) / 2 + nx * (h - r),
+      y: (a.y + b.y) / 2 + ny * (h - r),
+    };
+    xs.push(center.x + tx * r, center.x - tx * r);
+    ys.push(center.y + ty * r, center.y - ty * r);
   });
   for (const underlay of underlayBoxes) {
     xs.push(underlay.x, underlay.x + underlay.width);
@@ -2911,18 +2936,6 @@ export default function RoomSheetPage({
           line.kind === "curve" || line.kind === "curveOpening"
             ? (line.bulge ?? 0)
             : 0;
-        const span = Math.hypot(next.x - point.x, next.y - point.y);
-        const normal =
-          span === 0
-            ? { x: 0, y: 0 }
-            : {
-                x: -(next.y - point.y) / span,
-                y: (next.x - point.x) / span,
-              };
-        const control = {
-          x: middle.x - normal.x * bulge * 2,
-          y: middle.y - normal.y * bulge * 2,
-        };
         return (
           <g
             key={line.id}
@@ -2956,7 +2969,13 @@ export default function RoomSheetPage({
             />
             {bulge !== 0 ? (
               <path
-                d={`M ${point.x} ${point.y} Q ${control.x} ${control.y} ${next.x} ${next.y}`}
+                d={frameLinePath({
+                  x1: point.x,
+                  y1: point.y,
+                  x2: next.x,
+                  y2: next.y,
+                  bulge,
+                })}
                 className={className}
                 fill="none"
               />

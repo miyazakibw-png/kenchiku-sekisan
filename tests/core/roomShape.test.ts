@@ -29,6 +29,7 @@ import {
   trimEdges,
   updateEdge,
   uShape,
+  windingReversed,
   withFixedRoomSymbols,
 } from "../../src/core/room/shape";
 
@@ -593,6 +594,87 @@ describe("部屋形状（単線図）", () => {
     const order = symbols.map((row) => row.symbol);
     expect(order.indexOf("RHL")).toBe(order.indexOf("HL") + 1);
     expect(order.indexOf("RWA")).toBe(order.indexOf("WA") + 1);
+  });
+
+  it("Ｒ壁のふくらみは床面積に入る（半円・5/8の円・内側・Ｒ開口）", () => {
+    // 弦2・矢1の半円（r=1）：床面積 = 4 + π/2
+    const semicircle = {
+      edges: [
+        edge("E", 2),
+        edge("S", 2),
+        { ...edge("W", 2, "curve"), bulge: 1 },
+        edge("N", 2),
+      ],
+    };
+    expect(floorArea(solveShape(semicircle))).toBe(5.57);
+
+    // 弦2・矢1.497の5/8の円：中心角225°の弓形（r²/2(θ−sinθ) ≒ 2.71）が足される
+    const fiveEighths = {
+      edges: [
+        edge("E", 2),
+        edge("S", 2),
+        { ...edge("W", 2, "curve"), bulge: 1.497 },
+        edge("N", 2),
+      ],
+    };
+    expect(floorArea(solveShape(fiveEighths))).toBe(6.72);
+
+    // ふくらみが「内」（凹み）なら弓形の分だけ引く
+    const inward = {
+      edges: [
+        edge("E", 2),
+        edge("S", 2),
+        { ...edge("W", 2, "curve"), bulge: -1.497 },
+        edge("N", 2),
+      ],
+    };
+    expect(floorArea(solveShape(inward))).toBe(1.28);
+
+    // Ｒ開口も同じく弓形の分だけ足す
+    const opening = {
+      edges: [
+        edge("E", 2),
+        edge("S", 2),
+        { ...edge("W", 2, "curveOpening"), bulge: 1.497 },
+        edge("N", 2),
+      ],
+    };
+    expect(floorArea(solveShape(opening))).toBe(6.72);
+  });
+
+  it("一周の向きが逆の形でも、同じ側へふくらむＲ壁なら面積は同じ", () => {
+    const shape = {
+      edges: [
+        edge("E", 2),
+        edge("S", 2),
+        { ...edge("W", 2, "curve"), bulge: 1.497 },
+        edge("N", 2),
+      ],
+    };
+    // 同じ2×2の部屋を逆まわり（S→E→N→W）に入れた形。
+    // 逆まわりでは「外」は bulge がマイナスになる（bulgeFor と同じ対応）
+    const reversed = {
+      edges: [
+        edge("S", 2),
+        { ...edge("E", 2, "curve"), bulge: -1.497 },
+        edge("N", 2),
+        edge("W", 2),
+      ],
+    };
+    expect(windingReversed(solveShape(reversed).points)).toBe(true);
+    expect(floorArea(solveShape(reversed))).toBe(
+      floorArea(solveShape(shape)),
+    );
+    // 逆まわりで「内」（凹み）なら同じく引く
+    const reversedIn = {
+      edges: [
+        edge("S", 2),
+        { ...edge("E", 2, "curve"), bulge: 1.497 },
+        edge("N", 2),
+        edge("W", 2),
+      ],
+    };
+    expect(floorArea(solveShape(reversedIn))).toBe(1.28);
   });
 
   it("Ｒ開口は弧長を開口の長さに数え、壁・曲面には入れない", () => {

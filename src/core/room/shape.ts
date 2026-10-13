@@ -126,6 +126,19 @@ export function arcLength(chord: number, bulge: number | null): number {
   return round2(2 * r * angle);
 }
 
+/**
+ * Ｒ壁・Ｒ開口の弧が弦とつくる弓形の面積。
+ *   弓形 = r^2 / 2 * (θ − sin θ)　（θ は中心角。半円より大きい弧でもこの式で出る）
+ */
+export function arcSegmentArea(chord: number, bulge: number | null): number {
+  const h = Math.abs(bulge ?? 0);
+  if (h <= 0 || chord <= 0) return 0;
+  const r = (chord * chord) / (8 * h) + h / 2;
+  const half = Math.asin(Math.min(1, chord / (2 * r)));
+  const theta = 2 * (h > r ? Math.PI - half : half);
+  return ((r * r) / 2) * (theta - Math.sin(theta));
+}
+
 /** 辺の進む向きと長さ（図形を描くときの移動量） */
 export function edgeVector(row: RoomEdge, length: number | null): Point {
   if (isDiagonal(row.direction)) return diagonalVector(row);
@@ -917,7 +930,21 @@ export function floorArea(
     (sum, column) => sum + column.width * column.depth,
     0,
   );
-  return round2(polygonArea(solved.points) + kept - free);
+  // Ｒ壁・Ｒ開口のふくらみ（弦の外へ出る弓形の面積）。外なら足し、内なら引く。
+  // 一周の向きが逆の形では bulge の内外の向きも逆になる（bulgeFor と同じ対応）
+  const reversed = windingReversed(solved.points);
+  let arcs = 0;
+  solved.edges.forEach((edge, index) => {
+    const bulge = edge.bulge ?? 0;
+    if (bulge === 0) return;
+    const a = solved.points[index];
+    const b = solved.points[(index + 1) % solved.points.length];
+    if (!a || !b) return;
+    const chord = Math.hypot(b.x - a.x, b.y - a.y);
+    const inward = bulge < 0 !== reversed;
+    arcs += arcSegmentArea(chord, bulge) * (inward ? -1 : 1);
+  });
+  return round2(polygonArea(solved.points) + arcs + kept - free);
 }
 
 /** 図の外形寸法（X＝横の最大、Y＝縦の最大）。曲面壁のふくらみは含めない */
