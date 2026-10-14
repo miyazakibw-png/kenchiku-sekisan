@@ -932,27 +932,19 @@ export default function RoomCalcSheet({
   const callDetail = useCallback(
     (detail: Detail) => {
       const target = currentSet;
-      // 上書きする行に先に入れてある部位・区分・単位は、マスターが空欄なら残す
-      const at0 =
-        writeFocus && writeFocus.setId === target?.id ? writeFocus.index : -1;
-      const kept =
-        !insertMode && at0 >= 0 ? (target?.details[at0] ?? null) : null;
       const item = calcDetail({
         sourceDetailId: detail.id,
         subjectId: detail.subjectId,
         detailNumber: detail.detailNumber,
-        materialCategory:
-          detail.materialCategory || (kept?.materialCategory ?? ""),
-        // 部位ID・部位名は工事マスター（明細）の通りに入れる
-        // （部位名から部位IDを探さない。マスターの部位が両方空のときは先の行の部位を残す）
-        partNumber:
-          detail.partNumber ??
-          (detail.partName.trim() === "" ? (kept?.partNumber ?? null) : null),
-        partName: detail.partName || (kept?.partName ?? ""),
+        // 部位・材種区分・単位などすべてマスターの登録通りに入れる
+        // （空欄は空欄のまま。書き込み先の行の値は引き継がない）
+        materialCategory: detail.materialCategory,
+        partNumber: detail.partNumber,
+        partName: detail.partName,
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
         descriptionLower: detail.descriptionLower,
-        unit: detail.unit || (kept?.unit ?? ""),
+        unit: detail.unit,
         remarksUpper: detail.remarksUpper,
         remarksLower: detail.remarksLower,
         estimateDisplay: detail.estimateDisplay,
