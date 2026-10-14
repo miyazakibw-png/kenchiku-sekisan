@@ -60,6 +60,8 @@ export interface AggregateEntry {
   setTotal: number;
   /** 計上数量＝セット累計×掛け率×倍率 */
   quantity: number;
+  /** 計算しない説明だけの行（集計書の印刷には出さない） */
+  note?: boolean;
   sourceDetailId: number | null;
   /** 家具系の詳細でも根拠の部屋集計に入れる（建具明細作成表＝行の記号ごとに根拠を出すため） */
   includeInRooms?: boolean;
@@ -93,6 +95,8 @@ export interface AggregatedItem {
   /** 不要明細（人が印を付けた明細。内訳書へは飛ばさず工種科目の最後にまとめる） */
   unused: boolean;
   quantity: number;
+  /** 計算しない説明だけの行（集計書の印刷には出さない） */
+  note?: boolean;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];
   /** この行を作った詳細データのID */
@@ -166,6 +170,7 @@ export function entriesFromCalcSheet(
           detail.note === true
             ? 0
             : displayedValue(total * coefficient * multiplier),
+        note: detail.note === true,
         sourceDetailId: detail.sourceDetailId,
       });
     });
@@ -265,9 +270,12 @@ export function aggregateItems(
       formwork: entry.formwork,
       unused: unusedMasterKeys.has(masterKey),
       quantity: 0,
+      note: entry.note === true,
       rooms: [],
       traceIds: [],
     };
+    // 通常の明細とまとまったときは説明行ではなくなる
+    if (entry.note !== true) item.note = false;
     item.quantity = displayedValue(item.quantity + entry.quantity);
     item.part2Order = Math.min(item.part2Order, entry.part2Order);
     item.traceIds.push(entry.traceId);

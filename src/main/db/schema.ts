@@ -770,6 +770,8 @@ export const projectAggregateItems = sqliteTable(
     formwork: text("formwork").notNull().default(""),
     /** 1: 不要明細（内訳書へ飛ばさず工種科目の最後にまとめる） */
     unused: integer("unused").notNull().default(0),
+    /** 1: 計算書で入れた説明だけの行（集計書の印刷には出さない） */
+    note: integer("note").notNull().default(0),
     quantity: real("quantity").notNull().default(0),
     /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
     roomsJson: text("rooms_json").notNull().default("[]"),

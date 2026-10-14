@@ -774,6 +774,8 @@ export interface AggregateItem {
   unused: boolean;
   /** 集計書へ手で挿入した明細行（計算書を持たないので数量は手入力） */
   manual: boolean;
+  /** 計算書で入れた説明だけの行（計算しない。集計書の印刷には出さない） */
+  note: boolean;
   quantity: number;
   /** 根拠（部屋別の内訳）。転記入力表の分は入れない */
   rooms: { roomName: string; quantity: number }[];

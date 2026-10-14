@@ -398,6 +398,7 @@ export function runAggregation(
           estimateDisplay: item.estimateDisplay,
           formwork: item.formwork,
           unused: item.unused ? 1 : 0,
+          note: item.note === true ? 1 : 0,
           quantity: item.quantity,
           roomsJson: JSON.stringify(item.rooms),
         })
@@ -1501,6 +1502,7 @@ function toItem(row: typeof projectAggregateItems.$inferSelect): AggregateItem {
     formwork: row.formwork,
     unused: row.unused === 1,
     manual: isManualMasterKey(row.masterKey),
+    note: row.note === 1,
     quantity: row.quantity,
     rooms: parseJson<{ roomName: string; quantity: number }[]>(
       row.roomsJson,

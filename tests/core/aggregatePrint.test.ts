@@ -97,6 +97,21 @@ describe("集計書の印刷", () => {
     expect(names).toEqual(["床 / ビニル床シート", "床 / タイルカーペット"]);
   });
 
+  it("計算書で入れた説明行は印刷に出さない（画面の集計書だけに出る）", () => {
+    const rows = aggregatePrintRows(
+      [
+        item({ masterKey: "a" }),
+        item({ masterKey: "n1", note: true, name: "説明文", quantity: 0 }),
+        item({ masterKey: "b", name: "タイルカーペット" }),
+      ],
+      subjectName,
+    );
+    const names = rows
+      .filter((row) => row.kind === "item")
+      .map((row) => (row.kind === "item" ? row.name : ""));
+    expect(names).toEqual(["床 / ビニル床シート", "床 / タイルカーペット"]);
+  });
+
   it("根拠が途中で切れたときは、続きの部屋から次のページに出す", () => {
     const rows = aggregatePrintRows(
       [

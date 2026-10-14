@@ -1090,4 +1090,6 @@ CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, disp
   `ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;`,
   // 内訳書の回ごとのまとめ方（subject＝科目別・room＝部屋別・part＝部位別）
   `ALTER TABLE project_breakdown_versions ADD COLUMN grouping TEXT NOT NULL DEFAULT 'subject';`,
+  // 計算書で入れた説明だけの明細（集計書の印刷には出さない印）
+  `ALTER TABLE project_aggregate_items ADD COLUMN note INTEGER NOT NULL DEFAULT 0;`,
 ];
