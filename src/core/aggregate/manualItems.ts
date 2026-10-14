@@ -81,7 +81,8 @@ export function manualItemOf(
 
 /**
  * 集計結果へ手入力行を差し込む。
- * アンカー行の直後（before のとき直前）。アンカーが無いとき（元の行が消えた・
+ * 番号（部位番号・明細番号）を振った行は番号の順で同じ科目の直近の明細の次に付く。
+ * 番号の無い行はアンカー行の直後（before のとき直前）。アンカーが無いとき（元の行が消えた・
  * キーが変わった）は、直後挿入は同じ 科目+部位Ⅰ+部位Ⅱ の最後→同じ科目の最後、
  * 直前挿入は同じ 科目+部位Ⅰ+部位Ⅱ の先頭→同じ科目の先頭、それも無ければ全体の最後。
  * rows は登録順で渡す（手入力行どうしの順序が保たれ、手入力行へ重ねて挿入もできる）。
@@ -92,11 +93,60 @@ export function mergeManualItems(
   unusedMasterKeys: ReadonlySet<string>,
 ): AggregatedItem[] {
   const result = [...items];
+  /** 番号の並びで比べる（部位番号→明細番号。空はいちばん小さい側） */
+  const numRank = (item: AggregatedItem): [number, number] => [
+    item.partNumber ?? Number.NEGATIVE_INFINITY,
+    item.detailNumber ?? Number.NEGATIVE_INFINITY,
+  ];
+  const numLess = (a: [number, number], b: [number, number]): boolean =>
+    a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
   rows.forEach((row) => {
     let item = manualItemOf(row, unusedMasterKeys);
     const anchorIndex = result.findIndex(
       (current) => current.masterKey === row.afterMasterKey,
     );
+    // 番号（部位番号・明細番号）を振った説明行は、番号の順で
+    // 同じ科目の直近の明細の次に付く（60/101.01→60/101の次）
+    if (item.partNumber !== null || item.detailNumber !== null) {
+      const subject =
+        anchorIndex >= 0 ? result[anchorIndex].subjectId : item.subjectId;
+      // 部位番号が無いときは明細番号だけで比べる
+      const byDetail = item.partNumber === null;
+      const rankOf = (current: AggregatedItem): [number, number] =>
+        byDetail
+          ? [current.detailNumber ?? Number.NEGATIVE_INFINITY, 0]
+          : numRank(current);
+      const rank = rankOf(item);
+      let at = -1;
+      result.forEach((current, index) => {
+        if (current.subjectId === subject && numLess(rankOf(current), rank)) {
+          at = index;
+        }
+      });
+      const besideIndex = at >= 0 ? at : -1;
+      const insertAt = at >= 0 ? at + 1 : -1;
+      let first = -1;
+      if (insertAt < 0) {
+        first = result.findIndex(
+          (current) => current.subjectId === subject,
+        );
+      }
+      const pos = insertAt >= 0 ? insertAt : first;
+      if (pos >= 0) {
+        const beside = result[besideIndex >= 0 ? besideIndex : first];
+        item = {
+          ...item,
+          subjectId: beside.subjectId,
+          materialCategory: beside.materialCategory,
+          part1: beside.part1,
+          part2: beside.part2,
+          part2Raw: beside.part2Raw,
+        };
+        result.splice(pos, 0, item);
+        return;
+      }
+      // 同じ科目の行が無いときはいつものフォールバックへ
+    }
     if (anchorIndex >= 0) {
       // 付き先の明細の説明として扱う。科目・部位Ⅰ・部位Ⅱ・材種区分は
       // 付き先と揃える（違うと見出しで分かれてしまう）。番号・部位名は入力した通り

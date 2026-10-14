@@ -549,4 +549,39 @@ describe("集計書の手入力行", () => {
     expect(merged[1].part1).toBe(anchor.part1);
     expect(merged[1].part2).toBe(anchor.part2);
   });
+
+  it("番号を振った手入力行は、番号の順で同じ科目の直近の明細の次に付く", () => {
+    const second = set("s2", 1);
+    second.details = [
+      { ...second.details[0], detailNumber: 1.5, name: "巾木" },
+    ];
+    const items = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1), second], {
+        setTotals: new Map([
+          ["s1", 2],
+          ["s2", 3],
+        ]),
+        lineValues: new Map(),
+        errors: [],
+      } as unknown as CalcSheetResult),
+    );
+    const merged = mergeManualItems(
+      items,
+      [
+        manualRow({
+          afterMasterKey: "missing",
+          partNumber: 10,
+          detailNumber: 1.02,
+        }),
+      ],
+      new Set(),
+    );
+    // (10/1.01) 明細 → 手入力行 (10/1.02) → (10/1.5) 明細 の順に並ぶ
+    expect(merged.map((item) => item.name)).toEqual([
+      "ビニル床シート",
+      "説明行",
+      "巾木",
+    ]);
+    expect(merged[1].part1).toBe(merged[0].part1);
+  });
 });

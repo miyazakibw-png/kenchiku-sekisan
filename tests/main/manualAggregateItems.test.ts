@@ -169,12 +169,12 @@ describe("集計書へ手で挿入した明細行", () => {
         },
       ],
     });
-    const edited = saved.items[1];
+    const edited = saved.items.find((item) => item.manual)!;
     expect(edited.name).toBe("説明文");
     expect(edited.descriptionLower).toBe("メーカー名 品番A 色白 形状L");
     expect(edited.quantity).toBe(7.5);
     expect(edited.detailNumber).toBe(1.99);
-    // 直しても masterKey（manual:N）は変わらず位置も同じ
+    // 直しても masterKey（manual:N）は変わらない
     expect(edited.masterKey).toBe(manual.masterKey);
     expect(saved.items[0].name).toBe("ビニル床シート");
   });
