@@ -258,6 +258,29 @@ describe("部屋形状（単線図）", () => {
     expect(vertical.shape).toBe(shape);
   });
 
+  it("斜め辺を選んでも、横・縦の値で形を閉じる", () => {
+    // 左の縦の辺を伸ばしたあと、反対側の斜め辺で合わせる
+    const shape = {
+      edges: [
+        edge("S", 4),
+        edge("E", 6),
+        edge("N", 5),
+        { ...edge("D", null), dx: -6, dy: 0 },
+      ],
+    };
+    const fixed = closeShapeAtEdge(shape, shape.edges[3].id);
+    expect(fixed.error).toBeNull();
+    const diagonal = fixed.shape.edges[3];
+    expect(diagonal.dx).toBe(-6);
+    expect(diagonal.dy).toBe(1);
+    expect(solveShape(fixed.shape).error).toBeNull();
+
+    // 縦の辺を選ぶと、横方向は別の辺で合わせられないので寸法だけ変わる
+    const vertical = closeShapeAtEdge(shape, shape.edges[2].id);
+    expect(vertical.error).toBeNull();
+    expect(vertical.shape.edges[2].length).toBe(4);
+  });
+
   it("閉じている形は自動補正しない", () => {
     const shape = rectangleShape(3, 3);
     expect(closeShape(shape).changed).toBe(false);

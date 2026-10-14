@@ -485,6 +485,7 @@ export function closeShape(shape: RoomShape): {
 /**
  * 選んだ辺の寸法だけを直して、閉じていない分を合わせる。
  * その辺の向きの方向で足りない（余っている）分をこの辺で引き受ける。
+ * 斜め辺は横移動・縦移動で閉じる分を引き受ける（曲線の辺は直線と同じ）。
  */
 export function closeShapeAtEdge(
   shape: RoomShape,
@@ -492,10 +493,54 @@ export function closeShapeAtEdge(
 ): { shape: RoomShape; length: number | null; error: string | null } {
   const index = shape.edges.findIndex((row) => row.id === edgeId);
   const target = index < 0 ? undefined : shape.edges[index];
-  const axis = target === undefined ? null : axisOf(target.direction);
-  if (target === undefined || axis === null) {
-    return { shape, length: null, error: "斜め辺は自動で合わせられません" };
+  if (target === undefined) {
+    return { shape, length: null, error: "辺を選んでください" };
   }
+  // 斜め辺は横移動・縦移動で閉じていない分を引き受ける
+  if (isDiagonal(target.direction)) {
+    const solved = solveShape(shape);
+    const blank = solved.edges.some(
+      (row) =>
+        row.id !== edgeId &&
+        !isDiagonal(row.direction) &&
+        row.resolved === null,
+    );
+    if (blank) {
+      return {
+        shape,
+        length: null,
+        error: "先に他の辺の寸法を入れてください（空欄が残っています）",
+      };
+    }
+    const others = solved.edges
+      .filter((row) => row.id !== edgeId)
+      .reduce(
+        (sum, row) => {
+          const vector = isDiagonal(row.direction)
+            ? diagonalVector(row)
+            : edgeVector(row, row.resolved);
+          return { x: sum.x + vector.x, y: sum.y + vector.y };
+        },
+        { x: 0, y: 0 },
+      );
+    const dx = round2(-others.x);
+    const dy = round2(-others.y);
+    const span = round2(Math.hypot(dx, dy));
+    if (span < 0.01) {
+      return {
+        shape,
+        length: null,
+        error: "この辺では合わせられません（別の辺を選んでください）",
+      };
+    }
+    if (dx === (target.dx ?? 0) && dy === (target.dy ?? 0)) {
+      return { shape, length: span, error: null };
+    }
+    const edges = [...shape.edges];
+    edges[index] = { ...target, dx, dy };
+    return { shape: { edges }, length: span, error: null };
+  }
+  const axis = axisOf(target.direction)!;
   // 空欄の辺は自動算出した寸法で数える（自動算出できない空欄が残っていたら直せない）
   const solved = solveShape(shape);
   const sameAxisBlank = solved.edges.some(
