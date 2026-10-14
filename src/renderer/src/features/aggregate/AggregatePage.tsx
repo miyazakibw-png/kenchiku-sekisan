@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import type { KeyboardEvent } from "react";
 import type {
   AggregateDetail,
@@ -208,6 +215,7 @@ export default function AggregatePage({
       setView(await window.sekisan.getAggregate(project.id, runId));
       setRuns(await window.sekisan.listAggregateRuns(project.id));
       setEdits({});
+      setRawNums({});
       markSaved({});
     },
     [markSaved, project.id],
@@ -226,6 +234,7 @@ export default function AggregatePage({
     setView(result);
     setRuns(await window.sekisan.listAggregateRuns(project.id));
     setEdits({});
+    setRawNums({});
     markSaved({});
     setMessage(`集計しました（明細 ${result.items.length} 件）`);
   }, [markSaved, project.id]);
@@ -244,6 +253,46 @@ export default function AggregatePage({
     [],
   );
 
+  /**
+   * 数字欄の打ち途中の文字。「30.」と打ったとき直ぐに30へ整うと
+   * 小数点が消えて続きが打てないので、欄を離れるまで打ったままを見せる
+   */
+  const [rawNums, setRawNums] = useState<Record<string, string>>({});
+
+  const numKey = (item: AggregateItem, field: string): string =>
+    `${item.masterKey}\u0000${field}`;
+
+  const numText = (
+    item: AggregateItem,
+    field: string,
+    parsed: number | null,
+  ): string =>
+    rawNums[numKey(item, field)] ??
+    (parsed === null ? "" : String(parsed));
+
+  const numEvents = (
+    item: AggregateItem,
+    field: string,
+    apply: (text: string) => void,
+  ): {
+    onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+    onBlur: () => void;
+  } => ({
+    onChange: (event) => {
+      const text = event.target.value;
+      setRawNums((map) => ({ ...map, [numKey(item, field)]: text }));
+      apply(text);
+    },
+    onBlur: () =>
+      setRawNums((map) => {
+        const key = numKey(item, field);
+        if (!(key in map)) return map;
+        const next = { ...map };
+        delete next[key];
+        return next;
+      }),
+  });
+
   /** 直した内容を計算書・工事の明細マスターへ書き戻し、集計をかけ直す */
   const saveEdits = useCallback(
     async (quiet = false) => {
@@ -257,6 +306,7 @@ export default function AggregatePage({
       setView(result);
       setRuns(await window.sekisan.listAggregateRuns(project.id));
       setEdits({});
+      setRawNums({});
       markSaved({});
       setSelected(null);
       if (quiet) return;
@@ -778,10 +828,10 @@ export default function AggregatePage({
                   <td>
                     <input
                       className="number"
-                      value={draft.partNumber === null ? "" : draft.partNumber}
-                      onChange={(e) =>
-                        editItem(item, { partNumber: toNumber(e.target.value) })
-                      }
+                      value={numText(item, "partNumber", draft.partNumber)}
+                      {...numEvents(item, "partNumber", (text) =>
+                        editItem(item, { partNumber: toNumber(text) }),
+                      )}
                     />
                   </td>
                   <td>
@@ -846,14 +896,10 @@ export default function AggregatePage({
                   <td>
                     <input
                       className="number"
-                      value={
-                        draft.detailNumber === null ? "" : draft.detailNumber
-                      }
-                      onChange={(e) =>
-                        editItem(item, {
-                          detailNumber: toNumber(e.target.value),
-                        })
-                      }
+                      value={numText(item, "detailNumber", draft.detailNumber)}
+                      {...numEvents(item, "detailNumber", (text) =>
+                        editItem(item, { detailNumber: toNumber(text) }),
+                      )}
                     />
                   </td>
                   <td>
@@ -879,12 +925,14 @@ export default function AggregatePage({
                       <input
                         className="number"
                         title="数量。手入力行は計算書を持たないので直接入れます"
-                        value={draft.quantity ?? item.quantity}
-                        onChange={(e) =>
-                          editItem(item, {
-                            quantity: toNumber(e.target.value) ?? 0,
-                          })
-                        }
+                        value={numText(
+                          item,
+                          "quantity",
+                          draft.quantity ?? item.quantity,
+                        )}
+                        {...numEvents(item, "quantity", (text) =>
+                          editItem(item, { quantity: toNumber(text) ?? 0 }),
+                        )}
                       />
                     ) : (
                       aggregateQuantityText(item.quantity, draft.unit)

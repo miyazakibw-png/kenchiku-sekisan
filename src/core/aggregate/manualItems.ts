@@ -98,20 +98,20 @@ export function mergeManualItems(
       (current) => current.masterKey === row.afterMasterKey,
     );
     if (anchorIndex >= 0) {
-      // 番号が空の行は付き先の番号を見せる（どの明細の説明か分かるように）
+      // 付き先の明細の説明として扱う。科目・部位Ⅰ・部位Ⅱ・材種区分は
+      // 付き先と揃える（違うと見出しで分かれてしまう）。番号は空のときだけ付き先を見せる
       const anchor = result[anchorIndex];
-      if (
-        item.partNumber === null ||
-        item.detailNumber === null ||
-        item.partName === ""
-      ) {
-        item = {
-          ...item,
-          partNumber: item.partNumber ?? anchor.partNumber,
-          partName: item.partName === "" ? anchor.partName : item.partName,
-          detailNumber: item.detailNumber ?? anchor.detailNumber,
-        };
-      }
+      item = {
+        ...item,
+        subjectId: anchor.subjectId,
+        materialCategory: anchor.materialCategory,
+        part1: anchor.part1,
+        part2: anchor.part2,
+        part2Raw: anchor.part2Raw,
+        partNumber: item.partNumber ?? anchor.partNumber,
+        partName: item.partName === "" ? anchor.partName : item.partName,
+        detailNumber: item.detailNumber ?? anchor.detailNumber,
+      };
       let at: number;
       if (row.before) {
         // 直前挿入：その行の直前へ（同じ行の上に挿入済みの手入力行の下に並び、登録順に上から並ぶ）

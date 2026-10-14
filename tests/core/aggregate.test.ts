@@ -510,4 +510,20 @@ describe("集計書の手入力行", () => {
     expect(merged[1].partName).toBe("柱型");
     expect(merged[1].detailNumber).toBe(99.5);
   });
+
+  it("部位Ⅰ・部位Ⅱ・科目・材種区分は付き先に揃える（見出しで分かれないように）", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [manualRow({ afterMasterKey: anchor.masterKey })],
+      new Set(),
+    );
+    expect(merged[1].subjectId).toBe(anchor.subjectId);
+    expect(merged[1].materialCategory).toBe(anchor.materialCategory);
+    expect(merged[1].part1).toBe(anchor.part1);
+    expect(merged[1].part2).toBe(anchor.part2);
+    expect(merged[1].part2Raw).toBe(anchor.part2Raw);
+  });
 });
