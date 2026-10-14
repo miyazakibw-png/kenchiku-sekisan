@@ -130,9 +130,10 @@ export function calcPrintRows(
         descriptionLower: detail?.descriptionLower ?? "",
         descriptionUpper: detail?.descriptionUpper ?? "",
         unit: detail?.unit ?? "",
-        coefficient: detail ? String(detail.coefficient) : "",
+        coefficient:
+          detail && detail.note !== true ? String(detail.coefficient) : "",
         setTotal:
-          detail && setTotal !== null
+          detail && detail.note !== true && setTotal !== null
             ? displayQuantity(
                 displayedValue(setTotal * (detail.coefficient || 1)),
               )

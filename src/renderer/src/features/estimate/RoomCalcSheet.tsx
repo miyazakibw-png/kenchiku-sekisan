@@ -1143,6 +1143,23 @@ export default function RoomCalcSheet({
     onMessage("上に空の明細（1明細）を入れました");
   }, [bannerSetId, commit, currentSet?.id, onFocus, onMessage, sets]);
 
+  /**
+   * カーソルのある明細行を説明行（計算しない文字だけの行）にする／明細に戻す。
+   * 説明行は集計で数量0になり、集計書では説明用の行として並ぶ。
+   */
+  const toggleNote = useCallback(() => {
+    if (!focus || focus.area !== "detail") return;
+    const target = sets.find((set) => set.id === focus.setId);
+    const detail = target?.details[focus.index];
+    if (!target || !detail) return;
+    updateDetail(target.id, focus.index, { note: detail.note !== true });
+    onMessage(
+      detail.note === true
+        ? "明細に戻しました"
+        : "説明行にしました（数量は入りません。名称・摘要を入れて使います）",
+    );
+  }, [focus, onMessage, sets, updateDetail]);
+
   /** コメント行を入れる（明細とは別の独立した1行。何行でも続けて入れられる） */
   const insertBanner = useCallback(
     (color: string) => {
@@ -1854,6 +1871,14 @@ export default function RoomCalcSheet({
         >
           ↑ 明細（1明細）挿入
         </button>
+        <button
+          type="button"
+          disabled={focus?.area !== "detail"}
+          title="カーソルのある明細行を「説明行」にします／明細に戻します。説明行は計算しない文字だけの行で、集計では数量0になります（名称・摘要を入れて使います）"
+          onClick={toggleNote}
+        >
+          説 説明行⇄明細
+        </button>
         <button type="button" onClick={() => addRow(false)}>
           ＋ 行追加
         </button>
@@ -2096,6 +2121,7 @@ export default function RoomCalcSheet({
                       // 行の目印は行番号ではなくIDにする（行を差し込んでも入力中の欄がずれない）
                       key={`${set.id}-${detail?.id ?? line?.id ?? `r${rowIndex}`}`}
                       className={[
+                        detail?.note === true ? "note-row" : "",
                         isSelectedRow(set.id, rowIndex) ? "row-selected" : "",
                         callOpen &&
                         callRow &&
@@ -2152,6 +2178,14 @@ export default function RoomCalcSheet({
                       {detail ? (
                         <>
                           <td className="material">
+                            {detail.note === true && (
+                              <span
+                                className="note-mark"
+                                title="説明行（数量は入りません）"
+                              >
+                                説
+                              </span>
+                            )}
                             <PickInput
                           popupSide="right"
                               row={gridRow}

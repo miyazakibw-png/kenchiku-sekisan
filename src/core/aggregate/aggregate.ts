@@ -122,7 +122,15 @@ export function entriesFromCalcSheet(
   sets.forEach((set) => {
     const total = result.setTotals.get(set.id) ?? 0;
     resolveDescriptionMarks(set.details).forEach((detail) => {
-      if (detail.name.trim() === "" && detail.partName.trim() === "") return;
+      // 説明行は名称・部位名のどちらか、または摘要に文字があれば出す
+      const empty =
+        detail.note === true
+          ? detail.name.trim() === "" &&
+            detail.partName.trim() === "" &&
+            detail.descriptionUpper.trim() === "" &&
+            detail.descriptionLower.trim() === ""
+          : detail.name.trim() === "" && detail.partName.trim() === "";
+      if (empty) return;
       const coefficient = detail.coefficient || 1;
       // 明細に入れた部位をそのまま使う。どちらも空欄のときだけセットの部位を使う
       const noPart =
@@ -154,7 +162,10 @@ export function entriesFromCalcSheet(
         estimateDisplay: detail.estimateDisplay,
         coefficient,
         setTotal: total,
-        quantity: displayedValue(total * coefficient * multiplier),
+        quantity:
+          detail.note === true
+            ? 0
+            : displayedValue(total * coefficient * multiplier),
         sourceDetailId: detail.sourceDetailId,
       });
     });

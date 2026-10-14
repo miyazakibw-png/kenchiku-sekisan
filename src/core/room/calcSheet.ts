@@ -26,6 +26,8 @@ export interface CalcDetail {
   remarksLower: string;
   estimateDisplay: string;
   coefficient: number;
+  /** 説明行（計算しない文字だけの明細。集計では数量0） */
+  note?: boolean;
 }
 
 /** セット明細の計算式1行（A・Bの2欄。両方あれば A×B） */
@@ -94,6 +96,7 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
     remarksLower: "",
     estimateDisplay: "",
     coefficient: 1,
+    note: false,
     ...patch,
   };
 }
@@ -907,7 +910,7 @@ export function quantityByPart(
     const total = result.setTotals.get(set.id) ?? 0;
     if (total === 0) return;
     set.details.forEach((detail) => {
-      if (detail.name.trim() === "") return;
+      if (detail.name.trim() === "" || detail.note === true) return;
       const key = `${set.partName}\u0000${detail.materialCategory}`;
       const quantity = displayedValue(total * (detail.coefficient || 1));
       totals.set(key, displayedValue((totals.get(key) ?? 0) + quantity));

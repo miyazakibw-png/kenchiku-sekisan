@@ -69,6 +69,26 @@ function result(id: string, total: number): CalcSheetResult {
 }
 
 describe("集計処理", () => {
+  it("説明行は数量0で集計へ入る（名称・摘要だけの行）", () => {
+    const target = set("s1", 1);
+    const note = {
+      ...target.details[0],
+      id: "s1-note",
+      name: "内部 白塗装仕上 ※要メンテナンス",
+      note: true,
+    };
+    target.details = [target.details[0], note];
+    const entries = entriesFromCalcSheet(
+      context(),
+      [target],
+      result("s1", 10),
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries[0].quantity).toBe(10);
+    expect(entries[1].name).toBe("内部 白塗装仕上 ※要メンテナンス");
+    expect(entries[1].quantity).toBe(0);
+  });
+
   it("計上数量はセット累計×明細の掛け率×部位別入力表の倍率", () => {
     const entries = entriesFromCalcSheet(
       context({ multiplier: 2 }),

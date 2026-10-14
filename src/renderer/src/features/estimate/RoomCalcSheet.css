@@ -587,3 +587,19 @@
     display: none;
   }
 }
+
+/* 説明行（計算しない文字だけの明細。集計では数量0） */
+.room-calc-sheet table.calc tbody.set tr.note-row td {
+  background: #e8f6e8;
+}
+
+.room-calc-sheet .note-mark {
+  display: inline-block;
+  margin-right: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #15803d;
+  color: #fff;
+  font-size: 10px;
+  vertical-align: middle;
+}

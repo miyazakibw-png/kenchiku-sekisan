@@ -361,7 +361,11 @@ function toCalcDetail(
 
 /** マスターの明細とつき合わせる行か（空行・科目なしの行はマスターに無い） */
 function isMasterRow(detail: CalcDetail): boolean {
-  return !isEmptyDetail(detail) && detail.subjectId !== null;
+  return (
+    !isEmptyDetail(detail) &&
+    detail.subjectId !== null &&
+    detail.note !== true
+  );
 }
 
 /** 同じ明細かを見分ける目印（明細マスターのID。無いものは名称で見る） */
