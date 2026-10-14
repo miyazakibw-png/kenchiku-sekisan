@@ -475,7 +475,7 @@ describe("集計書の手入力行", () => {
     ...over,
   });
 
-  it("番号が空の手入力行は、付き先の部位番号・部位名・明細番号を見せる", () => {
+  it("手入力行の番号・部位名は入力した通り（空は空のまま）", () => {
     const anchor = aggregateItems(
       entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
     )[0];
@@ -485,9 +485,9 @@ describe("集計書の手入力行", () => {
       new Set(),
     );
     expect(merged).toHaveLength(2);
-    expect(merged[1].partNumber).toBe(anchor.partNumber);
-    expect(merged[1].partName).toBe(anchor.partName);
-    expect(merged[1].detailNumber).toBe(anchor.detailNumber);
+    expect(merged[1].partNumber).toBeNull();
+    expect(merged[1].partName).toBe("");
+    expect(merged[1].detailNumber).toBeNull();
   });
 
   it("手で入れた番号は付き先で上書きしない", () => {

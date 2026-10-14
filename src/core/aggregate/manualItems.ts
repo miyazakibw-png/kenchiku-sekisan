@@ -99,7 +99,7 @@ export function mergeManualItems(
     );
     if (anchorIndex >= 0) {
       // 付き先の明細の説明として扱う。科目・部位Ⅰ・部位Ⅱ・材種区分は
-      // 付き先と揃える（違うと見出しで分かれてしまう）。番号は空のときだけ付き先を見せる
+      // 付き先と揃える（違うと見出しで分かれてしまう）。番号・部位名は入力した通り
       const anchor = result[anchorIndex];
       item = {
         ...item,
@@ -108,9 +108,6 @@ export function mergeManualItems(
         part1: anchor.part1,
         part2: anchor.part2,
         part2Raw: anchor.part2Raw,
-        partNumber: item.partNumber ?? anchor.partNumber,
-        partName: item.partName === "" ? anchor.partName : item.partName,
-        detailNumber: item.detailNumber ?? anchor.detailNumber,
       };
       let at: number;
       if (row.before) {

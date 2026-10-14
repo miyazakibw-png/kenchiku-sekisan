@@ -277,10 +277,6 @@ export function insertAggregateManualItem(
       part1: anchor.part1,
       part2: anchor.part2,
       part2Raw: anchor.part2Raw,
-      // どの明細の説明か分かるよう、番号も付き先から写す
-      partNumber: anchor.partNumber,
-      partName: anchor.partName,
-      detailNumber: anchor.detailNumber,
       estimateDisplay: anchor.estimateDisplay,
       formwork: anchor.formwork,
     })
@@ -306,15 +302,11 @@ export function moveAggregateManualItem(
   db.update(projectManualAggregateItems)
     .set({
       afterMasterKey: request.anchorMasterKey,
-      // 付け替えた先の明細に番号も揃える（どの明細の説明か分かるように）
       subjectId: anchor.subjectId,
       materialCategory: anchor.materialCategory,
       part1: anchor.part1,
       part2: anchor.part2,
       part2Raw: anchor.part2Raw,
-      partNumber: anchor.partNumber,
-      partName: anchor.partName,
-      detailNumber: anchor.detailNumber,
       estimateDisplay: anchor.estimateDisplay,
       formwork: anchor.formwork,
     })
@@ -1133,15 +1125,12 @@ export function saveAggregateEdits(
           tx.update(projectManualAggregateItems)
             .set({
               afterMasterKey: nextKey,
-              // 付き先の明細の番号が変わったので、手入力行の番号も揃える
+              // 説明行の科目・部位は付き先と揃える（番号・部位名は入力した通り）
               subjectId: edit.subjectId,
               materialCategory: edit.materialCategory,
               part1: itemRow.part1,
               part2: itemRow.part2,
               part2Raw: itemRow.part2Raw,
-              partNumber: edit.partNumber,
-              partName: edit.partName,
-              detailNumber: edit.detailNumber,
               estimateDisplay:
                 edit.estimateDisplay ?? itemRow.estimateDisplay,
             })
