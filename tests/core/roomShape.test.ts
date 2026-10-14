@@ -11,6 +11,7 @@ import {
   floorArea,
   freeColumn,
   freeColumnTotals,
+  growShape,
   lShape,
   mirrorShape,
   moveCorner,
@@ -757,6 +758,30 @@ describe("部屋形状（単線図）", () => {
     expect(next?.columns?.[0].width).toBe(1);
     // 弧長も2倍（丸めを含めた実値）
     expect(solveShape(next!).edges[2].measured).toBe(8.33);
+  });
+
+  it("下敷きの図面と同じ倍率で図形を伸び縮みさせる（growShape）", () => {
+    // なぞりに使った図面を縮尺合わせで伸び縮みさせたとき、図形も同じ倍率で伸びてずれない
+    const shape = {
+      edges: [
+        edge("S", 4),
+        { ...edge("D", 3), dx: 3, dy: -1 },
+        { ...edge("N", 4), length: null },
+        { ...edge("W", 3, "curve"), bulge: 0.5 },
+      ],
+      columns: [freeColumn(2, 1, 0.5, 0.5)],
+    };
+    const grown = growShape(shape, 2);
+    expect(grown.edges[0].length).toBe(8);
+    expect(grown.edges[1].dx).toBe(6);
+    expect(grown.edges[1].dy).toBe(-2);
+    // 自動算出（寸法なし）の辺は寸法なしのまま
+    expect(grown.edges[2].length).toBeNull();
+    expect(grown.edges[3].length).toBe(6);
+    expect(grown.edges[3].bulge).toBe(1);
+    expect(grown.columns?.[0].x).toBe(4);
+    expect(grown.columns?.[0].width).toBe(1);
+    // 壁の高さは図面の縮尺とは関係ないので変えない
   });
 
   it("縮尺合わせ：斜め辺・自動算出の辺も基準にできる", () => {

@@ -25,6 +25,7 @@ import {
   parseUnderlayLocked,
   parseUnderlays,
   growUnderlay,
+  traceAfterUnderlay,
   traceFromUnderlay,
   underlayAtTraceOrigin,
   underlayForTrace,
@@ -52,6 +53,7 @@ import {
   edgeVector,
   floorArea,
   freeColumn,
+  growShape,
   incomingIsVertical,
   isDiagonal,
   mirrorShape,
@@ -748,14 +750,55 @@ export default function RoomSheetPage({
       y: Math.min(...solved.points.map((point) => point.y)),
     };
   }, [solved.points]);
+  /** 下敷きを置き替えた直前に呼ぶ処理（図形を図面に付いていかせる）。useUnderlay の中から呼ばれる */
+  const commitUnderlayRef = useRef<
+    (before: TraceUnderlay, after: TraceUnderlay) => TraceUnderlay | void
+  >(() => undefined);
   /** 図の下敷きにする図面（部屋の形と見比べるために置く。traceJson に一緒に保存する） */
   const underlayTool = useUnderlay({
     setMessage,
     planSize: extents === null ? 0 : Math.max(extents.x, extents.y),
     multi: true,
     homeSpot,
+    commit: (before, after) => commitUnderlayRef.current(before, after),
   });
   const { underlay, setUnderlay, underlays, setUnderlays } = underlayTool;
+
+  // なぞりに使った図面が伸び縮みしたときは、図形・天井伏図・他の図面も同じ倍率で伸び縮みさせる。
+  // 図形は原点起点なので、図面も支点のずれを引いて原点中心に置き直す（growUnderlay と同じ置き方）。
+  // こうしておくと「図形をなぞってから縮尺を合わせても、なぞった線・元図・図形がずれない」
+  commitUnderlayRef.current = (before, after) => {
+    const k =
+      before.metersPerPixel > 0
+        ? after.metersPerPixel / before.metersPerPixel
+        : 0;
+    const follows =
+      before.image !== "" &&
+      before.image === after.image &&
+      k > 0 &&
+      k !== 1 &&
+      (underlays.length <= 1 || before.image === trace.image);
+    if (!follows) {
+      const nextTrace = traceAfterUnderlay(trace, after);
+      if (nextTrace !== trace) setTrace(nextTrace);
+      return;
+    }
+    pushShapePast(shape);
+    setShape(growShape(shape, k));
+    const scaled = scaleCeiling(ceiling, codes, k);
+    changeCeiling(scaled.ceiling);
+    changeCodes(scaled.codes);
+    const placed = { ...after, x: before.x * k, y: before.y * k };
+    setUnderlays(
+      underlays.map((item) =>
+        item === before ? placed : growUnderlay(item, k),
+      ),
+      underlayTool.active,
+    );
+    const nextTrace = traceAfterUnderlay(trace, after);
+    if (nextTrace !== trace) setTrace(nextTrace);
+    return placed;
+  };
 
   /** 他の計算書の図面を呼び出す窓を出しているか */
   const [importPicker, setImportPicker] = useState(false);
@@ -955,25 +998,47 @@ export default function RoomSheetPage({
     const slotIndex = Math.min(underlayTool.active, underlays.length - 1);
     const current = slotIndex >= 0 ? underlays[slotIndex] : undefined;
     if (current === undefined || trace.image === "") return;
-    if (
-      current.image !== trace.image ||
-      (trace.metersPerPixel > 0 &&
-        current.metersPerPixel !== trace.metersPerPixel)
-    ) {
+    const mppChanged =
+      trace.metersPerPixel > 0 &&
+      current.metersPerPixel !== trace.metersPerPixel;
+    if (current.image === trace.image && !mppChanged) return;
+    // 同じ図面の縮尺を変えたときは、図形が原点起点なので図面の置き場所も原点中心に
+    // 同じ倍率で伸び縮みさせる（左上固定のままだと図形・なぞった線と元図がずれる）
+    const k =
+      current.image === trace.image &&
+      mppChanged &&
+      current.metersPerPixel > 0
+        ? trace.metersPerPixel / current.metersPerPixel
+        : 0;
+    const next: TraceUnderlay = {
+      ...current,
+      image: trace.image,
+      ...(mppChanged
+        ? {
+            metersPerPixel: trace.metersPerPixel,
+            scaled: true,
+            ...(k > 0 ? { x: current.x * k, y: current.y * k } : {}),
+          }
+        : {}),
+    };
+    const list = underlays.map((item, index) =>
+      index === slotIndex ? next : item,
+    );
+    // この図面からなぞった形なら、図形・天井伏図・他の図面も同じ倍率で伸び縮みさせてずれないようにする
+    if (k > 0 && k !== 1 && trace.points.length >= 3) {
+      pushShapePast(shape);
+      setShape(growShape(shape, k));
+      const scaled = scaleCeiling(ceiling, codes, k);
+      changeCeiling(scaled.ceiling);
+      changeCodes(scaled.codes);
       setUnderlays(
-        underlays.map((item, index) =>
-          index === slotIndex
-            ? {
-                ...item,
-                image: trace.image,
-                ...(trace.metersPerPixel > 0
-                  ? { metersPerPixel: trace.metersPerPixel, scaled: true }
-                  : {}),
-              }
-            : item,
+        list.map((item, index) =>
+          index === slotIndex ? item : growUnderlay(item, k),
         ),
         slotIndex,
       );
+    } else {
+      setUnderlays(list, slotIndex);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTrace, trace, underlayTool.active]);
@@ -2440,10 +2505,15 @@ export default function RoomSheetPage({
         changeCeiling(scaled.ceiling);
         changeCodes(scaled.codes);
         if (underlays.length > 0) {
-          setUnderlays(
-            underlays.map((item) => growUnderlay(item, factor)),
-            underlayTool.active,
-          );
+          const grown = underlays.map((item) => growUnderlay(item, factor));
+          setUnderlays(grown, underlayTool.active);
+          // 図面が伸びたぶん、なぞりに使った図面の縮尺も揃えておく
+          // （なぞる画面を開いたとき、古い縮尺で逆方向にずれないように）
+          const traced = grown.find((item) => item.image === trace.image);
+          if (traced !== undefined) {
+            const nextTrace = traceAfterUnderlay(trace, traced);
+            if (nextTrace !== trace) setTrace(nextTrace);
+          }
         }
       }
       setSelectedEdge(null);

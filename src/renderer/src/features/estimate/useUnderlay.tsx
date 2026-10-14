@@ -92,9 +92,13 @@ interface Options {
   planSize: number;
   /**
    * 下敷きを置き替える操作（貼る・縮尺合わせ・縮尺を戻す・外す）の直前に呼ぶ。
-   * 計算書側で戻る用の履歴に積み、図形を図面に付いていかせるときに渡す（下敷き自体はこのフックが置き替える）
+   * 計算書側で戻る用の履歴に積み、図形を図面に付いていかせるときに渡す（下敷き自体はこのフックが置き替える）。
+   * 図面の置き直し方を変えたいときは、置き替える下敷きを返す（返さなければそのまま置く）
    */
-  commit?: (before: TraceUnderlay, after: TraceUnderlay) => void;
+  commit?: (
+    before: TraceUnderlay,
+    after: TraceUnderlay,
+  ) => TraceUnderlay | void;
   /** 図面を動かし始めた（戻る用に動かす前を覚える） */
   dragStart?: (before: TraceUnderlay) => void;
   /** 図面を動かしている途中（from＝動かし始めの下敷き、to＝いまの下敷き）。図形を一緒に動かすときに渡す */
@@ -245,8 +249,8 @@ export function useUnderlay({
 
   const replace = useCallback(
     (before: TraceUnderlay, after: TraceUnderlay) => {
-      if (commit) commit(before, after);
-      setUnderlay(after);
+      const committed = commit ? (commit(before, after) ?? after) : after;
+      setUnderlay(committed);
     },
     [commit, setUnderlay],
   );
@@ -464,7 +468,7 @@ export function useUnderlay({
     setMode("off");
     setMessage(
       commit
-        ? "縮尺を合わせました（なぞったピットも図面に合わせて伸び縮みしています。［↶ 戻る］で元に戻せます）"
+        ? "縮尺を合わせました（図形・なぞった形も図面に合わせて伸び縮みしています。［↶ 戻る］で元に戻せます）"
         : "縮尺を合わせました（図形はそのままです）",
     );
   }, [commit, replace, scalePoints, scaleText, setMessage, underlay]);

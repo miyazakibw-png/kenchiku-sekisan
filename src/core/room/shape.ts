@@ -1429,6 +1429,32 @@ export function scaleShape(
   return { ...shape, edges, columns };
 }
 
+/**
+ * 図形全体を factor 倍に伸び縮みさせる（下敷きの図面が原点中心に伸び縮みする growUnderlay と
+ * 同じ動き方。寸法が決まっている辺・斜め辺の横縦移動・ふくらみ・独立柱の位置と大きさを伸ばす）
+ */
+export function growShape(shape: RoomShape, factor: number): RoomShape {
+  const scaled = (
+    value: number | null | undefined,
+  ): number | null | undefined =>
+    value === null || value === undefined ? value : round2(value * factor);
+  const edges = shape.edges.map((row) => ({
+    ...row,
+    length: row.length === null ? null : round2(row.length * factor),
+    dx: scaled(row.dx),
+    dy: scaled(row.dy),
+    bulge: scaled(row.bulge),
+  }));
+  const columns = (shape.columns ?? []).map((col) => ({
+    ...col,
+    x: round2(col.x * factor),
+    y: round2(col.y * factor),
+    width: round2(col.width * factor),
+    depth: round2(col.depth * factor),
+  }));
+  return { ...shape, edges, columns };
+}
+
 /** 図形を回す向き（選んだ辺を水平か垂直にそろえる） */
 export type ShapeRotation = "horizontal" | "vertical";
 
