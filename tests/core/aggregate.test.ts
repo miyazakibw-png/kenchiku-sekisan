@@ -526,4 +526,27 @@ describe("集計書の手入力行", () => {
     expect(merged[1].part2).toBe(anchor.part2);
     expect(merged[1].part2Raw).toBe(anchor.part2Raw);
   });
+
+  it("付き先が見つからない手入力行は、置いた場所の隣の明細の部位に揃える", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [
+        manualRow({
+          afterMasterKey: "missing",
+          subjectId: 999,
+          part1: "別の部位",
+          part2: "別の部位Ⅱ",
+        }),
+      ],
+      new Set(),
+    );
+    // 付き先不明で末尾に置かれる → 隣の明細の部位に揃うので見出しで分かれない
+    expect(merged).toHaveLength(2);
+    expect(merged[1].subjectId).toBe(anchor.subjectId);
+    expect(merged[1].part1).toBe(anchor.part1);
+    expect(merged[1].part2).toBe(anchor.part2);
+  });
 });

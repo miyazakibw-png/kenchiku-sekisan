@@ -126,6 +126,22 @@ export function mergeManualItems(
       result.splice(at, 0, item);
       return;
     }
+    // 付き先が見つからないときは、置いた場所の隣の明細の科目・部位に揃える
+    // （保存されている部位と違う場所へ置くと、見出しが間に入って分かれるため）
+    const besideOf = (at: number, before: boolean): void => {
+      const beside = before
+        ? (result[at] ?? result[at - 1])
+        : (result[at - 1] ?? result[at]);
+      if (beside === undefined) return;
+      item = {
+        ...item,
+        subjectId: beside.subjectId,
+        materialCategory: beside.materialCategory,
+        part1: beside.part1,
+        part2: beside.part2,
+        part2Raw: beside.part2Raw,
+      };
+    };
     if (row.before) {
       // 直前挿入のアンカーが無いとき：同じ 科目+部位Ⅰ+部位Ⅱ の先頭→同じ科目の先頭
       let firstSameGroup = -1;
@@ -142,9 +158,12 @@ export function mergeManualItems(
           }
         }
       });
-      if (firstSameGroup >= 0) result.splice(firstSameGroup, 0, item);
-      else if (firstSameSubject >= 0) result.splice(firstSameSubject, 0, item);
-      else result.push(item);
+      let at: number;
+      if (firstSameGroup >= 0) at = firstSameGroup;
+      else if (firstSameSubject >= 0) at = firstSameSubject;
+      else at = result.length;
+      besideOf(at, true);
+      result.splice(at, 0, item);
       return;
     }
     let lastSameGroup = -1;
@@ -157,9 +176,12 @@ export function mergeManualItems(
         }
       }
     });
-    if (lastSameGroup >= 0) result.splice(lastSameGroup + 1, 0, item);
-    else if (lastSameSubject >= 0) result.splice(lastSameSubject + 1, 0, item);
-    else result.push(item);
+    let at: number;
+    if (lastSameGroup >= 0) at = lastSameGroup + 1;
+    else if (lastSameSubject >= 0) at = lastSameSubject + 1;
+    else at = result.length;
+    besideOf(at, false);
+    result.splice(at, 0, item);
   });
   return result;
 }
