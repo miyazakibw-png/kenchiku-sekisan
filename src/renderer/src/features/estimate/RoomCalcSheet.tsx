@@ -2162,6 +2162,7 @@ export default function RoomCalcSheet({
                           commitOnBlur
                           value={rowIndex === 0 ? set.partName : ""}
                           title="管理用部位。番号を打つと名称に変わります。途中の行に入れると、その行から別のセットになります"
+                          onFocus={detail ? focusDetail : undefined}
                           onCommit={(text) =>
                             commitSetPart(set.id, rowIndex, text)
                           }
