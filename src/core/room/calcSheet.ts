@@ -101,6 +101,21 @@ export function calcDetail(patch: Partial<CalcDetail> = {}): CalcDetail {
   };
 }
 
+export function noteNumbersFrom(
+  prev: CalcDetail | undefined,
+  detail: CalcDetail,
+): Partial<CalcDetail> {
+  if (!prev) return {};
+  const patch: Partial<CalcDetail> = {};
+  if (detail.subjectId === null && prev.subjectId !== null)
+    patch.subjectId = prev.subjectId;
+  if (detail.partNumber === null && prev.partNumber !== null)
+    patch.partNumber = prev.partNumber;
+  if (detail.detailNumber === null && prev.detailNumber !== null)
+    patch.detailNumber = Math.round((prev.detailNumber + 0.01) * 100) / 100;
+  return patch;
+}
+
 /**
  * 摘要の「○○面」「○○下」（マスターに置いた印）。○○は隣の明細の積算用表示に変わる。
  * ○○面：下の行の積算用表示＋面　○○下：上の行の積算用表示＋下　該当が無ければ印ごと消す（前の空けも）

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   Detail,
   FinishAssembly,
@@ -24,6 +31,7 @@ import {
   mergeWithPreviousSet,
   moveDetailAcrossSets,
   moveDetailTo,
+  noteNumbersFrom,
   openSetDetail,
   padLines,
   removeSet,
@@ -48,7 +56,10 @@ import {
   duplicateDetail,
   duplicateLine,
   duplicateSet,
+  cellsAsTsv,
+  fillCells,
   fillLines,
+  pasteCells,
   pasteLines,
   pasteRows,
   pasteSheet,
@@ -57,6 +68,7 @@ import {
   type CopiedBanner,
   type CopiedPart,
 } from "../../../../core/room/calcClipboard";
+import { parseTsv } from "../../../../shared/tsv";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { focusCell } from "../grid/focusCell";
@@ -99,6 +111,35 @@ interface Props {
 }
 
 type CallSource = "basic" | "project" | "assembly";
+type CellPosition = { row: number; col: number };
+type CellRange = { anchor: CellPosition; end: CellPosition };
+
+function cellRangeBounds(range: CellRange): {
+  rowFrom: number;
+  rowTo: number;
+  colFrom: number;
+  colTo: number;
+} {
+  return {
+    rowFrom: Math.min(range.anchor.row, range.end.row),
+    rowTo: Math.max(range.anchor.row, range.end.row),
+    colFrom: Math.min(range.anchor.col, range.end.col),
+    colTo: Math.max(range.anchor.col, range.end.col),
+  };
+}
+
+function cellPositionFrom(target: EventTarget): CellPosition | null {
+  if (!(target instanceof HTMLInputElement)) return null;
+  if (
+    target.dataset.row === undefined ||
+    target.dataset.col === undefined ||
+    target.dataset.rowspan !== undefined
+  )
+    return null;
+  const row = Number(target.dataset.row);
+  const col = Number(target.dataset.col);
+  return Number.isFinite(row) && Number.isFinite(col) ? { row, col } : null;
+}
 
 /** コメント行（※行挿入）で選べる色 */
 const BANNER_COLORS: { label: string; color: string }[] = [
@@ -313,6 +354,8 @@ export default function RoomCalcSheet({
     setId: string;
     index: number;
   } | null>(null);
+  const [cellRange, setCellRange] = useState<CellRange | null>(null);
+  const cellDragAnchor = useRef<CellPosition | null>(null);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
   /** 行のつかみ移動（ドラッグ中の行と、今落とそうとしている行） */
@@ -333,6 +376,13 @@ export default function RoomCalcSheet({
   const [past, setPast] = useState<CalcSet[][]>([]);
   const [future, setFuture] = useState<CalcSet[][]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const clearCellDrag = (): void => {
+      cellDragAnchor.current = null;
+    };
+    window.addEventListener("mouseup", clearCellDrag);
+    return () => window.removeEventListener("mouseup", clearCellDrag);
+  }, []);
   const { widths, startResize } = useColumnWidths(
     "calc-sheet-columns-v2",
     CALC_COLUMN_WIDTHS,
@@ -1141,10 +1191,26 @@ export default function RoomCalcSheet({
    */
   const toggleNote = useCallback(() => {
     if (!focus || focus.area !== "detail") return;
-    const target = sets.find((set) => set.id === focus.setId);
+    const targetIndex = sets.findIndex((set) => set.id === focus.setId);
+    const target = sets[targetIndex];
     const detail = target?.details[focus.index];
     if (!target || !detail) return;
-    updateDetail(target.id, focus.index, { note: detail.note !== true });
+    let patch: Partial<CalcDetail> = {};
+    if (detail.note !== true) {
+      const prev =
+        focus.index > 0
+          ? target.details[focus.index - 1]
+          : sets
+              .slice(0, targetIndex)
+              .reverse()
+              .find((set) => !isCommentSet(set) && set.details.length > 0)
+              ?.details.at(-1);
+      patch = noteNumbersFrom(prev, detail);
+    }
+    updateDetail(target.id, focus.index, {
+      note: detail.note !== true,
+      ...patch,
+    });
     onMessage(
       detail.note === true
         ? "明細に戻しました"
@@ -1349,6 +1415,7 @@ export default function RoomCalcSheet({
           ? Number(active.dataset.col)
           : null;
       const cursorColumn = activeColumn ?? lastColumn.current;
+      const byColumn = cursorColumn !== null && Number.isFinite(cursorColumn);
       // コメント行（※行）にカーソルがあるときは、その行が貼り付け先
       const bannerAt =
         bannerSetId === null
@@ -1461,6 +1528,40 @@ export default function RoomCalcSheet({
         return;
       }
 
+      if (mode === "overwrite" && clip === null && byColumn) {
+        const bounds = cellRange ? cellRangeBounds(cellRange) : null;
+        const matrix = parseTsv(text);
+        if (bounds && matrix.length === 1 && (matrix[0]?.length ?? 0) === 1) {
+          commit(
+            fillCells(
+              sets,
+              bounds.rowFrom,
+              bounds.rowTo,
+              bounds.colFrom,
+              bounds.colTo,
+              text,
+            ),
+          );
+        } else {
+          const activeRow =
+            active instanceof HTMLElement && active.dataset.row !== undefined
+              ? Number(active.dataset.row)
+              : null;
+          const startRow =
+            bounds?.rowFrom ??
+            (activeRow !== null && Number.isFinite(activeRow)
+              ? activeRow
+              : (lastGridRow.current ?? 0));
+          commit(
+            pasteCells(sets, startRow, bounds?.colFrom ?? cursorColumn, text),
+          );
+        }
+        onMessage(
+          "Excelの表を、カーソルのある列から画面の並びどおりに貼り付けました（部位合計・Ａ*Ｂ・累計・記号の列は飛ばします）",
+        );
+        return;
+      }
+
       if (!currentSet) {
         if (clip) {
           onMessage("貼り付ける場所を選んでください");
@@ -1541,7 +1642,6 @@ export default function RoomCalcSheet({
 
       // 列の多いエクセルの表は、カーソルが明細に無くても明細へ取り込む
       const wideTable = (text.split(/\r?\n/)[0]?.split("\t").length ?? 1) >= 4;
-      const byColumn = cursorColumn !== null && Number.isFinite(cursorColumn);
       if (byColumn || focus?.area === "detail" || (!focus && wideTable)) {
         const at =
           mode === "append" ? currentSet.details.length : (focus?.index ?? 0);
@@ -1604,6 +1704,7 @@ export default function RoomCalcSheet({
       focus,
       onFocus,
       onMessage,
+      cellRange,
       sets,
       updateSet,
     ],
@@ -1614,6 +1715,35 @@ export default function RoomCalcSheet({
     Number(cell.dataset.rowspan ?? 1) || 1;
   /** 結合された欄へ入ってきた行。出るときはこの行へ戻す */
   const cameFromRow = useRef<number | null>(null);
+
+  const onCellMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>): void => {
+      if (e.button !== 0) return;
+      const cell = cellPositionFrom(e.target);
+      if (!cell || cell.col === 17) return;
+      cellDragAnchor.current = cell;
+      setCellRange(null);
+    },
+    [],
+  );
+
+  const onCellMouseOver = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>): void => {
+      const anchor = cellDragAnchor.current;
+      const cell = cellPositionFrom(e.target);
+      if (
+        !anchor ||
+        !cell ||
+        cell.col === 17 ||
+        e.buttons !== 1 ||
+        (cell.row === anchor.row && cell.col === anchor.col)
+      )
+        return;
+      setCellRange({ anchor, end: cell });
+      window.getSelection()?.removeAllRanges();
+    },
+    [],
+  );
 
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
   const moveFocus = useCallback(
@@ -1681,17 +1811,61 @@ export default function RoomCalcSheet({
       const row = Number(el.dataset.row);
       const col = Number(el.dataset.col);
       if (Number.isNaN(row) || Number.isNaN(col)) return;
+      const shiftStep =
+        e.shiftKey &&
+        (e.key === "ArrowUp" ||
+          e.key === "ArrowDown" ||
+          (e.key === "ArrowLeft" &&
+            el.selectionStart === 0 &&
+            el.selectionEnd === 0) ||
+          (e.key === "ArrowRight" &&
+            el.selectionStart === el.value.length &&
+            el.selectionEnd === el.value.length))
+          ? e.key === "ArrowUp"
+            ? { row: -1, col: 0 }
+            : e.key === "ArrowDown"
+              ? { row: 1, col: 0 }
+              : e.key === "ArrowLeft"
+                ? { row: 0, col: -1 }
+                : { row: 0, col: 1 }
+          : null;
+      if (shiftStep) {
+        e.preventDefault();
+        const anchor = cellRange?.anchor ?? { row, col };
+        if (anchor.col === 17) return;
+        const end = cellRange?.end ?? { row, col };
+        const lastRow = Math.max(
+          0,
+          sets.reduce((total, set) => total + setRowCount(set), 0) - 1,
+        );
+        const nextCol = Math.min(20, Math.max(0, end.col + shiftStep.col));
+        setCellRange({
+          anchor,
+          end: {
+            row: Math.min(lastRow, Math.max(0, end.row + shiftStep.row)),
+            col:
+              nextCol === 17
+                ? Math.min(20, Math.max(0, nextCol + shiftStep.col))
+                : nextCol,
+          },
+        });
+        return;
+      }
       if (e.key === "Enter") {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, 0, 1);
       } else if (e.key === "Tab") {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, 0, e.shiftKey ? -1 : 1);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, -1, 0);
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, 1, 0);
       } else if (
         e.key === "ArrowLeft" &&
@@ -1699,6 +1873,7 @@ export default function RoomCalcSheet({
         el.selectionEnd === 0
       ) {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, 0, -1);
       } else if (
         e.key === "ArrowRight" &&
@@ -1706,10 +1881,11 @@ export default function RoomCalcSheet({
         el.selectionEnd === el.value.length
       ) {
         e.preventDefault();
+        setCellRange(null);
         moveFocus(el, 0, 1);
       }
     },
-    [moveFocus],
+    [cellRange, moveFocus, sets],
   );
 
   /** セットごとの表示開始行（キー移動のための通し番号） */
@@ -1722,6 +1898,24 @@ export default function RoomCalcSheet({
     });
     return starts;
   }, [sets]);
+
+  useLayoutEffect(() => {
+    const bounds = cellRange ? cellRangeBounds(cellRange) : null;
+    gridRef.current
+      ?.querySelectorAll<HTMLInputElement>("input[data-row][data-col]")
+      .forEach((input) => {
+        const row = Number(input.dataset.row);
+        const col = Number(input.dataset.col);
+        const selected =
+          bounds !== null &&
+          input.dataset.rowspan === undefined &&
+          row >= bounds.rowFrom &&
+          row <= bounds.rowTo &&
+          col >= bounds.colFrom &&
+          col <= bounds.colTo;
+        input.closest("td")?.classList.toggle("cell-selected", selected);
+      });
+  });
 
   if (inOtherWindow)
     return (
@@ -1760,8 +1954,52 @@ export default function RoomCalcSheet({
         if (row !== undefined) lastGridRow.current = Number(row);
       }}
       onKeyDown={(e) => {
+        if (e.key === "Delete" && cellRange) {
+          const bounds = cellRangeBounds(cellRange);
+          const rows = bounds.rowTo - bounds.rowFrom + 1;
+          const cols = bounds.colTo - bounds.colFrom + 1;
+          if (rows * cols > 1) {
+            e.preventDefault();
+            commit(
+              fillCells(
+                sets,
+                bounds.rowFrom,
+                bounds.rowTo,
+                bounds.colFrom,
+                bounds.colTo,
+                "",
+              ),
+            );
+            onMessage(`${rows}行×${cols}列を消去しました`);
+            return;
+          }
+        }
         if (!e.ctrlKey) return;
         if (e.key === "c") {
+          if (cellRange) {
+            const bounds = cellRangeBounds(cellRange);
+            const rows = bounds.rowTo - bounds.rowFrom + 1;
+            const cols = bounds.colTo - bounds.colFrom + 1;
+            if (rows * cols > 1) {
+              e.preventDefault();
+              void navigator.clipboard
+                .writeText(
+                  cellsAsTsv(
+                    sets,
+                    bounds.rowFrom,
+                    bounds.rowTo,
+                    bounds.colFrom,
+                    bounds.colTo,
+                  ),
+                )
+                .then(() =>
+                  onMessage(
+                    `${rows}行×${cols}列をコピーしました（エクセルにも貼れます）`,
+                  ),
+                );
+              return;
+            }
+          }
           // 文字を選んでいるときは通常の文字コピーを邪魔しない
           if ((window.getSelection()?.toString() ?? "") !== "") return;
           const active = document.activeElement;
@@ -1866,7 +2104,7 @@ export default function RoomCalcSheet({
         <button
           type="button"
           disabled={focus?.area !== "detail"}
-          title="カーソルのある明細行を「説明行」にします／明細に戻します。説明行は計算しない文字だけの行で、集計では数量0になります（名称・摘要を入れて使います）"
+          title="カーソルのある明細行を「説明行」にします／明細に戻します。空の科目ID・部位番号・明細番号は上の行から入り（明細番号は＋0.01）、説明行は計算しません"
           onClick={toggleNote}
         >
           説 説明行⇄明細
@@ -1977,7 +2215,13 @@ export default function RoomCalcSheet({
         )}
       </div>
 
-      <div className="calc-body" ref={gridRef} onKeyDown={onGridKeyDown}>
+      <div
+        className="calc-body"
+        ref={gridRef}
+        onKeyDown={onGridKeyDown}
+        onMouseDownCapture={onCellMouseDown}
+        onMouseOverCapture={onCellMouseOver}
+      >
         <table className="grid calc">
           <colgroup>
             {CALC_COLUMNS.map((column, index) => (

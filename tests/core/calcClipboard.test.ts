@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  cellsAsTsv,
   detailAsTsv,
   duplicateDetail,
   duplicateLine,
   duplicateSet,
   rowsAsTsv,
   fillLines,
+  fillCells,
   pasteDetails,
+  pasteCells,
   pasteLines,
   pasteRows,
   pasteSheet,
@@ -17,6 +20,7 @@ import {
   calcDetail,
   calcLine,
   calcSet,
+  commentSet,
   isCommentSet,
 } from "../../src/core/room/calcSheet";
 
@@ -285,5 +289,105 @@ describe("カーソルのある列から貼り付ける", () => {
     expect(pasted.details[0].coefficient).toBe(1);
     expect(pasted.lines[0].comment).toBe("FA");
     expect(pasted.lines[0].formulaA).toBe("1+2");
+  });
+});
+
+describe("計算表のセル範囲コピー・貼り付け", () => {
+  it("コメント行を飛ばして範囲をコピーし、番号を2桁・計算列を空欄にする", () => {
+    const first = calcSet(2);
+    first.partName = "壁";
+    first.details[0] = calcDetail({
+      detailNumber: 101.5,
+      partName: "内壁",
+      name: "塗装",
+      coefficient: 1.25,
+    });
+    first.details[1] = calcDetail({ name: "下地" });
+    const second = calcSet(1);
+    second.partName = "床";
+    second.details[0] = calcDetail({ detailNumber: 2.03, name: "床材" });
+    const text = cellsAsTsv(
+      [first, commentSet("見出し", "#e2e8f0"), second],
+      0,
+      2,
+      4,
+      11,
+    );
+    const rows = text.split("\r\n").map((row) => row.split("\t"));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["101.50", "内壁", "塗装", "", "", "", "1.25", ""]);
+    expect(rows[1][0]).toBe("");
+    expect(rows[2][0]).toBe("2.03");
+    expect(rows[2][7]).toBe("");
+  });
+
+  it("複数セットをまたいで貼り付け、末尾を広げても入力を変えず説明行を保つ", () => {
+    const first = calcSet(2);
+    first.details[0] = calcDetail({ name: "先頭" });
+    first.details[1] = calcDetail({ name: "最後" });
+    const second = calcSet(1);
+    second.details[0] = calcDetail({ name: "説明", note: true });
+    const originalFirst = first.details[1];
+    const originalSecond = second.details[0];
+    const next = pasteCells(
+      [first, commentSet("見出し", "#e2e8f0"), second],
+      1,
+      2,
+      "51\t10\n52\t11\n53\t12",
+    );
+    expect(next[0].details[1]).toMatchObject({ subjectId: 51, partNumber: 10 });
+    expect(next[2].details[0]).toMatchObject({
+      subjectId: 52,
+      partNumber: 11,
+      note: true,
+    });
+    expect(next[2].details[1]).toMatchObject({
+      subjectId: 53,
+      partNumber: 12,
+    });
+    expect(first.details[1]).toBe(originalFirst);
+    expect(first.details[1].subjectId).toBeNull();
+    expect(second.details[0]).toBe(originalSecond);
+    expect(second.details[0].subjectId).toBeNull();
+    expect(next[2].details).toHaveLength(2);
+  });
+
+  it("範囲の消去は番号と文字を空にし、掛け率と説明行を保つ", () => {
+    const set = calcSet(2);
+    set.details[0] = calcDetail({
+      subjectId: 2,
+      partNumber: 3,
+      detailNumber: 4.05,
+      name: "床",
+      coefficient: 0.75,
+      note: true,
+    });
+    set.details[1] = calcDetail({ name: "壁" });
+    set.lines[0].comment = "コメント";
+    const cleared = fillCells([set], 0, 0, 2, 12, "");
+    expect(cleared[0].details[0]).toMatchObject({
+      subjectId: null,
+      partNumber: null,
+      detailNumber: null,
+      partName: "",
+      name: "",
+      coefficient: 0.75,
+      note: true,
+    });
+    expect(cleared[0].lines[0].comment).toBe("");
+    expect(set.details[0].name).toBe("床");
+    expect(set.details[0].subjectId).toBe(2);
+  });
+
+  it("1つの値を選択範囲の全セルへ入れる", () => {
+    const set = calcSet(2);
+    const filled = fillCells([set], 0, 1, 6, 7, "同じ値");
+    expect(
+      filled[0].details.map((detail) => [detail.name, detail.descriptionLower]),
+    ).toEqual([
+      ["同じ値", "同じ値"],
+      ["同じ値", "同じ値"],
+    ]);
+    expect(set.details[0].name).toBe("");
   });
 });

@@ -7,6 +7,7 @@ import {
   moveDetailAcrossSets,
   moveDetailTo,
   moveSetDetail,
+  noteNumbersFrom,
   removeSetDetail,
   calcDetail,
   calcLine,
@@ -52,6 +53,42 @@ describe("下段セット明細計算表", () => {
     expect(displayQuantity(9.994)).toBe("9.99");
     expect(displayQuantity(0.00035)).toBe("0.0004");
     expect(displayQuantity(0)).toBe("0.00");
+  });
+
+  it("説明行にする際、空の番号だけを直前の明細から引き継ぐ", () => {
+    const prev = calcDetail({
+      subjectId: 12,
+      partNumber: 34,
+      detailNumber: 101,
+      partName: "床",
+      materialCategory: "仕上",
+    });
+    expect(noteNumbersFrom(prev, calcDetail({ detailNumber: null }))).toEqual({
+      subjectId: 12,
+      partNumber: 34,
+      detailNumber: 101.01,
+    });
+    expect(
+      noteNumbersFrom(
+        calcDetail({ subjectId: 5, partNumber: 6, detailNumber: 101.01 }),
+        calcDetail({ subjectId: 7, partNumber: 8, detailNumber: 9 }),
+      ),
+    ).toEqual({});
+    expect(
+      noteNumbersFrom(
+        calcDetail({
+          subjectId: null,
+          partNumber: null,
+          detailNumber: null,
+        }),
+        calcDetail(),
+      ),
+    ).toEqual({});
+    expect(
+      noteNumbersFrom(calcDetail({ detailNumber: 101.01 }), calcDetail())
+        .detailNumber,
+    ).toBe(101.02);
+    expect(noteNumbersFrom(undefined, calcDetail())).toEqual({});
   });
 
   it("A・B両方あれば A×B、Aだけなら A のみ計算する", () => {

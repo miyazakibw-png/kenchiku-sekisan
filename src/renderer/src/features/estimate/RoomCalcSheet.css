@@ -487,6 +487,11 @@
   background: #fff8d0;
 }
 
+.room-calc-sheet table.calc tbody.set td.cell-selected,
+.room-calc-sheet table.calc tbody.set td.cell-selected input {
+  background-color: #dbeafe !important;
+}
+
 /* マスター呼出で書き込まれる行 */
 .room-calc-sheet table.calc tbody.set tr.call-row td {
   background: #d9ecff;

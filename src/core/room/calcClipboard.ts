@@ -10,7 +10,9 @@ import {
   calcLine,
   calcSet,
   commentSet,
+  isCommentSet,
   padLines,
+  setRowCount,
   type CalcDetail,
   type CalcLine,
   type CalcSet,
@@ -174,12 +176,58 @@ export const SHEET_PASTE_FIELDS = [
   "estimateDisplay",
 ] as const;
 
+type SheetPasteField = (typeof SHEET_PASTE_FIELDS)[number];
+
 /** 明細の部位名の列（画面の左から6列目） */
 export const SHEET_PART_NAME_COLUMN = SHEET_PASTE_FIELDS.indexOf("partName");
 
 function numberOf(text: string): number | null {
   const value = Number(text.trim());
   return text.trim() !== "" && Number.isFinite(value) ? value : null;
+}
+
+function assignCell(
+  detail: CalcDetail,
+  line: CalcLine,
+  field: SheetPasteField,
+  text: string,
+): void {
+  if (field === null || field === "setPartName") return;
+  switch (field) {
+    case "subjectId":
+      detail.subjectId = numberOf(text);
+      break;
+    case "partNumber":
+      detail.partNumber = numberOf(text);
+      break;
+    case "detailNumber":
+      detail.detailNumber = numberOf(text);
+      break;
+    case "coefficient":
+      detail.coefficient = coefficientOf(text, detail.coefficient);
+      break;
+    case "comment":
+      line.comment = text;
+      break;
+    case "formulaA":
+      line.formulaA = text;
+      break;
+    case "formulaB":
+      line.formulaB = text;
+      break;
+    default:
+      detail[field] = text;
+  }
+}
+
+function gridRows(sets: CalcSet[]): { setIndex: number; rowIndex: number }[] {
+  const rows: { setIndex: number; rowIndex: number }[] = [];
+  sets.forEach((set, setIndex) => {
+    if (isCommentSet(set)) return;
+    for (let rowIndex = 0; rowIndex < setRowCount(set); rowIndex += 1)
+      rows.push({ setIndex, rowIndex });
+  });
+  return rows;
 }
 
 /**
@@ -202,35 +250,9 @@ export function pasteSheet(
     const detail = { ...(nextDetails[index] ?? calcDetail()) };
     const line = { ...(nextLines[index] ?? calcLine()) };
     row.forEach((text, cell) => {
-      const field = SHEET_PASTE_FIELDS[Math.max(startColumn, 0) + cell];
-      if (field === undefined || field === null) return;
-      switch (field) {
-        case "setPartName":
-          break;
-        case "subjectId":
-          detail.subjectId = numberOf(text);
-          break;
-        case "partNumber":
-          detail.partNumber = numberOf(text);
-          break;
-        case "detailNumber":
-          detail.detailNumber = numberOf(text);
-          break;
-        case "coefficient":
-          detail.coefficient = coefficientOf(text, detail.coefficient);
-          break;
-        case "comment":
-          line.comment = text;
-          break;
-        case "formulaA":
-          line.formulaA = text;
-          break;
-        case "formulaB":
-          line.formulaB = text;
-          break;
-        default:
-          detail[field] = text;
-      }
+      const field =
+        SHEET_PASTE_FIELDS[Math.max(startColumn, 0) + cell] ?? undefined;
+      if (field !== undefined) assignCell(detail, line, field, text);
     });
     if (index < nextDetails.length) nextDetails[index] = detail;
     else nextDetails.push(detail);
@@ -238,6 +260,173 @@ export function pasteSheet(
     else nextLines.push(line);
   });
   return { details: nextDetails, lines: fillLines(nextDetails, nextLines) };
+}
+
+export function cellsAsTsv(
+  sets: CalcSet[],
+  rowFrom: number,
+  rowTo: number,
+  colFrom: number,
+  colTo: number,
+): string {
+  const rows = gridRows(sets);
+  const firstRow = Math.max(0, Math.min(rowFrom, rowTo));
+  const lastRow = Math.min(rows.length - 1, Math.max(rowFrom, rowTo));
+  const firstCol = Math.max(0, Math.min(colFrom, colTo));
+  const lastCol = Math.min(
+    SHEET_PASTE_FIELDS.length - 1,
+    Math.max(colFrom, colTo),
+  );
+  const output: string[][] = [];
+  for (let gridRow = firstRow; gridRow <= lastRow; gridRow += 1) {
+    const location = rows[gridRow];
+    if (!location) continue;
+    const set = sets[location.setIndex];
+    const detail = set.details[location.rowIndex];
+    const line = set.lines[location.rowIndex];
+    output.push(
+      Array.from({ length: lastCol - firstCol + 1 }, (_, offset) => {
+        const field = SHEET_PASTE_FIELDS[firstCol + offset];
+        if (field === null) return "";
+        if (field === "setPartName")
+          return location.rowIndex === 0 ? set.partName : "";
+        if (field === "comment" || field === "formulaA" || field === "formulaB")
+          return line?.[field] ?? "";
+        if (!detail) return "";
+        switch (field) {
+          case "subjectId":
+          case "partNumber":
+            return detail[field] === null ? "" : String(detail[field]);
+          case "detailNumber":
+            return detail.detailNumber?.toFixed(2) ?? "";
+          case "coefficient":
+            return String(detail.coefficient);
+          default:
+            return detail[field];
+        }
+      }),
+    );
+  }
+  return toTsv(output);
+}
+
+export function pasteCells(
+  sets: CalcSet[],
+  startRow: number,
+  startCol: number,
+  text: string,
+): CalcSet[] {
+  const lastSetIndex = sets.findLastIndex((set) => !isCommentSet(set));
+  if (lastSetIndex < 0) return sets;
+  const matrix = normalizePastedMatrix(parseTsv(text));
+  if (matrix.length === 0) return sets;
+
+  const next = [...sets];
+  const drafts = new Map<number, CalcSet>();
+  const getDraft = (setIndex: number): CalcSet => {
+    let draft = drafts.get(setIndex);
+    if (!draft) {
+      const original = next[setIndex];
+      draft = {
+        ...original,
+        details: [...original.details],
+        lines: [...original.lines],
+      };
+      drafts.set(setIndex, draft);
+      next[setIndex] = draft;
+    }
+    return draft;
+  };
+  const rows = gridRows(sets);
+  const firstRow = Math.max(0, startRow);
+  matrix.forEach((row, rowOffset) => {
+    const gridRow = firstRow + rowOffset;
+    while (gridRow >= rows.length) {
+      const last = getDraft(lastSetIndex);
+      const rowIndex = setRowCount(last);
+      const details = [...last.details];
+      const lines = [...last.lines];
+      while (details.length <= rowIndex) details.push(calcDetail());
+      while (lines.length <= rowIndex) lines.push(calcLine());
+      const extended = { ...last, details, lines };
+      drafts.set(lastSetIndex, extended);
+      next[lastSetIndex] = extended;
+      rows.push({ setIndex: lastSetIndex, rowIndex });
+    }
+    const { setIndex, rowIndex } = rows[gridRow];
+    const draft = getDraft(setIndex);
+    const details = [...draft.details];
+    const lines = [...draft.lines];
+    while (details.length <= rowIndex) details.push(calcDetail());
+    while (lines.length <= rowIndex) lines.push(calcLine());
+    const detail = { ...details[rowIndex] };
+    const line = { ...lines[rowIndex] };
+    row.forEach((value, cell) => {
+      const field =
+        SHEET_PASTE_FIELDS[Math.max(startCol, 0) + cell] ?? undefined;
+      if (field !== undefined) assignCell(detail, line, field, value);
+    });
+    details[rowIndex] = detail;
+    lines[rowIndex] = line;
+    const updated = { ...draft, details, lines };
+    drafts.set(setIndex, updated);
+    next[setIndex] = updated;
+  });
+  drafts.forEach((set, setIndex) => {
+    next[setIndex] = {
+      ...set,
+      lines: fillLines(set.details, set.lines),
+    };
+  });
+  return next;
+}
+
+export function fillCells(
+  sets: CalcSet[],
+  rowFrom: number,
+  rowTo: number,
+  colFrom: number,
+  colTo: number,
+  text: string,
+): CalcSet[] {
+  const rows = gridRows(sets);
+  const firstRow = Math.max(0, Math.min(rowFrom, rowTo));
+  const lastRow = Math.min(rows.length - 1, Math.max(rowFrom, rowTo));
+  const firstCol = Math.max(0, Math.min(colFrom, colTo));
+  const lastCol = Math.min(
+    SHEET_PASTE_FIELDS.length - 1,
+    Math.max(colFrom, colTo),
+  );
+  if (lastRow < firstRow || lastCol < firstCol) return sets;
+
+  const next = [...sets];
+  const drafts = new Map<number, CalcSet>();
+  for (let gridRow = firstRow; gridRow <= lastRow; gridRow += 1) {
+    const { setIndex, rowIndex } = rows[gridRow];
+    const original = drafts.get(setIndex) ?? next[setIndex];
+    const details = [...original.details];
+    const lines = [...original.lines];
+    while (details.length <= rowIndex) details.push(calcDetail());
+    while (lines.length <= rowIndex) lines.push(calcLine());
+    const detail = { ...details[rowIndex] };
+    const line = { ...lines[rowIndex] };
+    for (let col = firstCol; col <= lastCol; col += 1) {
+      const field = SHEET_PASTE_FIELDS[col];
+      if (field !== null) assignCell(detail, line, field, text);
+    }
+    details[rowIndex] = detail;
+    lines[rowIndex] = line;
+    const updated = { ...original, details, lines };
+    drafts.set(setIndex, updated);
+    next[setIndex] = updated;
+  }
+  drafts.forEach((set, setIndex) => {
+    next[setIndex] = {
+      ...set,
+      lines: fillLines(set.details, set.lines),
+    };
+  });
+  return next;
 }
 
 /** 明細1件をExcelへ貼れる形（1行）にする */
