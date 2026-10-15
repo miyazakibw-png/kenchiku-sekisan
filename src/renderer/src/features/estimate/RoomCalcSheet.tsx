@@ -72,6 +72,7 @@ import { parseTsv } from "../../../../shared/tsv";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { focusCell } from "../grid/focusCell";
+import { writeClipboard } from "../grid/writeClipboard";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import type { CalcFocus } from "@shared/calcWindow";
@@ -356,6 +357,7 @@ export default function RoomCalcSheet({
   } | null>(null);
   const [cellRange, setCellRange] = useState<CellRange | null>(null);
   const cellDragAnchor = useRef<CellPosition | null>(null);
+  const pasteEventCount = useRef(0);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
   /** 行のつかみ移動（ドラッグ中の行と、今落とそうとしている行） */
@@ -1255,7 +1257,7 @@ export default function RoomCalcSheet({
     }
     const line = currentSet.lines[focus.index] ?? calcLine();
     const text = rowsAsTsv([currentDetail], [line]);
-    await navigator.clipboard.writeText(text);
+    writeClipboard(text);
     setCalcClip({
       kind: "rows",
       text,
@@ -1370,7 +1372,7 @@ export default function RoomCalcSheet({
       .sort((a, b) => b.at - a.at)
       .forEach((banner) => textRows.splice(banner.at, 0, banner.text));
     const text = textRows.join("\r\n");
-    await navigator.clipboard.writeText(text);
+    writeClipboard(text);
     setCalcClip({
       kind: "rows",
       text,
@@ -1400,9 +1402,8 @@ export default function RoomCalcSheet({
    * Excelなど他から持ってきた表なら、カーソルの欄（明細／計算式）へ取り込む。
    * mode が insert なら差し込み、append なら最後の行へ足し、overwrite ならその位置に上書きする。
    */
-  const paste = useCallback(
-    async (mode: "overwrite" | "insert" | "append") => {
-      const text = await navigator.clipboard.readText();
+  const pasteText = useCallback(
+    async (text: string, mode: "overwrite" | "insert" | "append") => {
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
       // カーソルのある列（この列から画面の並びどおりに貼り付ける）。
@@ -1709,6 +1710,13 @@ export default function RoomCalcSheet({
       updateSet,
     ],
   );
+  const paste = useCallback(
+    async (mode: "overwrite" | "insert" | "append") => {
+      const text = await navigator.clipboard.readText();
+      await pasteText(text, mode);
+    },
+    [pasteText],
+  );
 
   /** 記号のように何行分かをまとめて受け持つ欄（エクセルの結合セルと同じ） */
   const rowsOf = (cell: HTMLInputElement): number =>
@@ -1953,6 +1961,49 @@ export default function RoomCalcSheet({
         const row = el.dataset.row;
         if (row !== undefined) lastGridRow.current = Number(row);
       }}
+      onCopy={(e) => {
+        const target = e.target;
+        if (
+          !(target instanceof HTMLInputElement) ||
+          target.dataset.row === undefined ||
+          target.dataset.col === undefined ||
+          target.dataset.rowspan !== undefined ||
+          !gridRef.current?.contains(target) ||
+          !cellRange
+        )
+          return;
+        const bounds = cellRangeBounds(cellRange);
+        const rows = bounds.rowTo - bounds.rowFrom + 1;
+        const cols = bounds.colTo - bounds.colFrom + 1;
+        if (rows * cols <= 1) return;
+        e.preventDefault();
+        e.clipboardData.setData(
+          "text/plain",
+          cellsAsTsv(
+            sets,
+            bounds.rowFrom,
+            bounds.rowTo,
+            bounds.colFrom,
+            bounds.colTo,
+          ),
+        );
+        onMessage(
+          `${rows}行×${cols}列をコピーしました（エクセルにも貼れます）`,
+        );
+      }}
+      onPaste={(e) => {
+        pasteEventCount.current += 1;
+        const text = e.clipboardData.getData("text");
+        const singleTrailingNewlineRemoved = text.replace(/\r?\n$/, "");
+        if (
+          !cellRange &&
+          !/[\t\n]/.test(singleTrailingNewlineRemoved) &&
+          getCalcClip(text) === null
+        )
+          return;
+        e.preventDefault();
+        void pasteText(text, "overwrite");
+      }}
       onKeyDown={(e) => {
         if (e.key === "Delete" && cellRange) {
           const bounds = cellRangeBounds(cellRange);
@@ -1975,28 +2026,28 @@ export default function RoomCalcSheet({
           }
         }
         if (!e.ctrlKey) return;
-        if (e.key === "c") {
+        const letter = e.code.startsWith("Key")
+          ? e.code.slice(3).toLowerCase()
+          : e.key.toLowerCase();
+        if (letter === "c") {
           if (cellRange) {
             const bounds = cellRangeBounds(cellRange);
             const rows = bounds.rowTo - bounds.rowFrom + 1;
             const cols = bounds.colTo - bounds.colFrom + 1;
             if (rows * cols > 1) {
               e.preventDefault();
-              void navigator.clipboard
-                .writeText(
-                  cellsAsTsv(
-                    sets,
-                    bounds.rowFrom,
-                    bounds.rowTo,
-                    bounds.colFrom,
-                    bounds.colTo,
-                  ),
-                )
-                .then(() =>
-                  onMessage(
-                    `${rows}行×${cols}列をコピーしました（エクセルにも貼れます）`,
-                  ),
-                );
+              writeClipboard(
+                cellsAsTsv(
+                  sets,
+                  bounds.rowFrom,
+                  bounds.rowTo,
+                  bounds.colFrom,
+                  bounds.colTo,
+                ),
+              );
+              onMessage(
+                `${rows}行×${cols}列をコピーしました（エクセルにも貼れます）`,
+              );
               return;
             }
           }
@@ -2011,16 +2062,36 @@ export default function RoomCalcSheet({
           e.preventDefault();
           // Shift+クリックで範囲を選んでいればその範囲、無ければカーソルの1行
           void copySelection();
-        } else if (e.key === "V" && e.shiftKey) {
+        } else if (letter === "v" && e.shiftKey) {
           e.preventDefault();
-          void paste("insert");
-        } else if (e.key === "v") {
-          e.preventDefault();
-          void paste("overwrite");
-        } else if (e.key === "z") {
+          void paste("insert").catch(() =>
+            onMessage("クリップボードを読み取れませんでした"),
+          );
+        } else if (letter === "v" && e.key === "Process") {
+          const eventCount = pasteEventCount.current;
+          let clipboardText: Promise<string | null>;
+          try {
+            clipboardText = navigator.clipboard.readText().then(
+              (text) => text,
+              () => null,
+            );
+          } catch {
+            clipboardText = Promise.resolve(null);
+          }
+          window.setTimeout(() => {
+            if (pasteEventCount.current !== eventCount) return;
+            void clipboardText.then((text) => {
+              if (text === null) {
+                onMessage("クリップボードを読み取れませんでした");
+                return;
+              }
+              void pasteText(text, "overwrite");
+            });
+          }, 100);
+        } else if (letter === "z") {
           e.preventDefault();
           undo();
-        } else if (e.key === "y") {
+        } else if (letter === "y") {
           e.preventDefault();
           redo();
         }
