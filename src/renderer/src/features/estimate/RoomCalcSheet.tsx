@@ -1218,6 +1218,29 @@ export default function RoomCalcSheet({
         ? "明細に戻しました"
         : "説明行にしました（数量は入りません。名称・摘要を入れて使います）",
     );
+    requestAnimationFrame(() => {
+      const root = gridRef.current;
+      if (!root) return;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement &&
+        active.dataset.row !== undefined &&
+        active.dataset.col !== undefined &&
+        root.contains(active)
+      )
+        return;
+      const row = lastGridRow.current;
+      if (row === null) return;
+      const rowSelector = `input[data-row="${row}"][data-col]`;
+      const column = lastColumn.current;
+      const input =
+        (column === null
+          ? null
+          : root.querySelector<HTMLInputElement>(
+              `input[data-row="${row}"][data-col="${column}"]`,
+            )) ?? root.querySelector<HTMLInputElement>(rowSelector);
+      if (input) focusInput(input);
+    });
   }, [focus, onMessage, sets, updateDetail]);
 
   /** コメント行を入れる（明細とは別の独立した1行。何行でも続けて入れられる） */
@@ -2176,6 +2199,7 @@ export default function RoomCalcSheet({
           type="button"
           disabled={focus?.area !== "detail"}
           title="カーソルのある明細行を「説明行」にします／明細に戻します。空の科目ID・部位番号・明細番号は上の行から入り（明細番号は＋0.01）、説明行は計算しません"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={toggleNote}
         >
           説 説明行⇄明細
