@@ -39,6 +39,14 @@ import { displayedValue } from "../../../../core/room/calcSheet";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { ask } from "../common/askDialog";
+import type { CalcDetailJump } from "./RoomCalcSheet";
+
+export interface EstimatePartsJumpTarget {
+  estimateRowId: number;
+  setId?: string;
+  detailId?: string;
+  tick: number;
+}
 
 interface Props {
   project: ProjectSummary;
@@ -46,6 +54,7 @@ interface Props {
   onBack: () => void;
   /** 開いたときにすぐこの行（部位別入力表の行id）の計算書を出す（建具表の「計算書」から飛んできたとき） */
   initialEstimateRowId?: number | null;
+  jumpTarget?: EstimatePartsJumpTarget | null;
 }
 
 /** 計算書から拾った数量を表示するチェック列（既定は仕上） */
@@ -56,6 +65,7 @@ export default function EstimatePartsPage({
   options,
   onBack,
   initialEstimateRowId = null,
+  jumpTarget = null,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-estimate-parts-v1");
   /** 計算書を開く前の画面の位置（戻ったときに同じ所を出す） */
@@ -72,6 +82,8 @@ export default function EstimatePartsPage({
   const [others, setOthers] = useState(false);
   /** 計算書を開いている行（部位別入力表の行が1部屋＝1計算書） */
   const [openedSheet, setOpenedSheet] = useState<number | null>(null);
+  const [activeJumpDetail, setActiveJumpDetail] =
+    useState<CalcDetailJump | null>(null);
   /** 軸組の「置ける部屋」から部屋計算書へ飛んだとき、戻り先の軸組計算書 */
   const [returnSheet, setReturnSheet] = useState<number | null>(null);
   /** チェック列に表示する材種区分（仕上以外でもチェックできる） */
@@ -157,17 +169,33 @@ export default function EstimatePartsPage({
     void reload();
   }, [reload]);
 
-  /** 建具表から飛んできたときは、行を読んだあとに一度だけその計算書を開く */
-  const jumpedRef = useRef(false);
+  /** 出所から飛んできたときは、行を読んだあとにその計算書を開く */
+  const jumpedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (jumpedRef.current || initialEstimateRowId === null) return;
-    const at = rows.findIndex((row) => row.id === initialEstimateRowId);
+    const estimateRowId = jumpTarget?.estimateRowId ?? initialEstimateRowId;
+    const jumpKey =
+      jumpTarget !== null
+        ? `source-${jumpTarget.tick}`
+        : estimateRowId === null
+          ? null
+          : `row-${estimateRowId}`;
+    if (jumpKey === null || jumpedRef.current === jumpKey) return;
+    const at = rows.findIndex((row) => row.id === estimateRowId);
     if (at < 0) return;
-    jumpedRef.current = true;
+    jumpedRef.current = jumpKey;
+    setActiveJumpDetail(
+      jumpTarget?.setId && jumpTarget.detailId
+        ? {
+            setId: jumpTarget.setId,
+            detailId: jumpTarget.detailId,
+            tick: jumpTarget.tick,
+          }
+        : null,
+    );
     setSelected(at);
     setSelectedEnd(at);
     setOpenedSheet(at);
-  }, [initialEstimateRowId, rows]);
+  }, [initialEstimateRowId, jumpTarget, rows]);
 
   /** チェック列の読み込み番号（遅れて届いた古い結果で上書きしないため） */
   const checksSeq = useRef(0);
@@ -347,6 +375,7 @@ export default function EstimatePartsPage({
         setMessage("保存してから計算書を開いてください");
         return;
       }
+      setActiveJumpDetail(null);
       setOpenedSheet(index);
     },
     [project.id, rows],
@@ -396,6 +425,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        jumpDetail={activeJumpDetail}
         onWorkHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
@@ -405,6 +435,7 @@ export default function EstimatePartsPage({
           );
         }}
         onBack={() => {
+          setActiveJumpDetail(null);
           setOpenedSheet(null);
           void reload();
         }}
@@ -416,6 +447,7 @@ export default function EstimatePartsPage({
           }
           setSelected(index);
           setReturnSheet(openedSheet);
+          setActiveJumpDetail(null);
           setOpenedSheet(index);
         }}
       />
@@ -428,6 +460,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        jumpDetail={activeJumpDetail}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
@@ -437,6 +470,7 @@ export default function EstimatePartsPage({
           );
         }}
         onBack={() => {
+          setActiveJumpDetail(null);
           setOpenedSheet(null);
           void reload();
         }}
@@ -455,10 +489,12 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        jumpDetail={activeJumpDetail}
         sheetName={
           rows[openedSheet]?.calcType === "area" ? "面積計算書" : undefined
         }
         onBack={() => {
+          setActiveJumpDetail(null);
           setOpenedSheet(null);
           void reload();
         }}
@@ -472,6 +508,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        jumpDetail={activeJumpDetail}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
           editRows(
@@ -481,6 +518,7 @@ export default function EstimatePartsPage({
           );
         }}
         onBack={() => {
+          setActiveJumpDetail(null);
           if (returnSheet !== null) {
             setOpenedSheet(returnSheet);
             setReturnSheet(null);

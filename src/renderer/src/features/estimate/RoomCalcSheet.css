@@ -602,6 +602,11 @@
   background: #e8f6e8;
 }
 
+.room-calc-sheet table.calc tbody.set tr.jump-row td,
+.room-calc-sheet table.calc tbody.set tr.jump-row td input {
+  background-color: #ffe2b8 !important;
+}
+
 .room-calc-sheet .note-mark {
   display: inline-block;
   margin-right: 2px;

@@ -12,7 +12,10 @@ import {
   type CalcSet,
 } from "../../../../core/room/calcSheet";
 import { computeFitting } from "../../../../core/fittings/fitting";
-import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
+import RoomCalcSheet, {
+  type CalcDetailJump,
+  type CalcFocus,
+} from "./RoomCalcSheet";
 import CalcPrintSheet from "../print/CalcPrintSheet";
 import "./RoomSheetPage.css";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -22,6 +25,7 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  jumpDetail?: CalcDetailJump | null;
   /** 天井高さを直したときに部位別入力表の行へも伝える */
   onCeilingHeightChange?: (height: number | null) => void;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
@@ -43,6 +47,7 @@ export default function GeneralSheetPage({
   row,
   roomName,
   onBack,
+  jumpDetail = null,
   onCeilingHeightChange,
   printMode = false,
 }: Props): JSX.Element {
@@ -212,6 +217,7 @@ export default function GeneralSheetPage({
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}
+        jumpDetail={sheet !== null ? jumpDetail : null}
         result={calcResult}
         onMessage={setMessage}
         hasUpper={false}

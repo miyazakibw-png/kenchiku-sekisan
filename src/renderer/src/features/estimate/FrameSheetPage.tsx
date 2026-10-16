@@ -65,7 +65,10 @@ import {
   fittingPartVariables,
   type FittingPartValue,
 } from "../../../../core/fittings/partValue";
-import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
+import RoomCalcSheet, {
+  type CalcDetailJump,
+  type CalcFocus,
+} from "./RoomCalcSheet";
 import DrawingSourcePicker from "./DrawingSourcePicker";
 import SheetCopyPicker from "./SheetCopyPicker";
 import { pdfPageImage } from "./pdfPage";
@@ -88,6 +91,7 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  jumpDetail?: CalcDetailJump | null;
   /** 置ける部屋の名前を押したとき、その部屋の計算書を開く */
   onOpenRoomSheet?: (estimateRowId: number) => void;
   /** 施工高さを直したときに部位別入力表の行（天井高さ）へも伝える */
@@ -190,6 +194,7 @@ export default function FrameSheetPage({
   row,
   roomName,
   onBack,
+  jumpDetail = null,
   onOpenRoomSheet,
   onWorkHeightChange,
   printMode = false,
@@ -4405,6 +4410,7 @@ export default function FrameSheetPage({
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}
+        jumpDetail={sheet !== null ? jumpDetail : null}
         result={calcResult}
         onMessage={setMessage}
         windowTitle={`軸組・梁計算書　${project.managementNo}`}

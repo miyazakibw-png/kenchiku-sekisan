@@ -81,6 +81,12 @@ import "./RoomCalcSheet.css";
 
 export type { CalcFocus };
 
+export interface CalcDetailJump {
+  setId: CalcSet["id"];
+  detailId: CalcDetail["id"];
+  tick: number;
+}
+
 interface Props {
   sets: CalcSet[];
   onChange: (sets: CalcSet[]) => void;
@@ -93,6 +99,7 @@ interface Props {
   result: CalcSheetResult;
   /** この数が変わったら focus の計算式欄へカーソルを飛ばす（式の誤りへ移すのに使う） */
   jumpTick?: number;
+  jumpDetail?: CalcDetailJump | null;
   onMessage: (message: string) => void;
   /** 上段（図・記号表）を持つ計算書か。汎用計算書は false */
   hasUpper?: boolean;
@@ -321,6 +328,7 @@ export default function RoomCalcSheet({
   onFocus,
   result,
   jumpTick,
+  jumpDetail,
   onMessage,
   hasUpper = true,
   windowTitle,
@@ -357,6 +365,10 @@ export default function RoomCalcSheet({
     index: number;
   } | null>(null);
   const [cellRange, setCellRange] = useState<CellRange | null>(null);
+  const [jumpedDetail, setJumpedDetail] = useState<
+    (CalcDetailJump & { gridRow: number }) | null
+  >(null);
+  const jumpedTick = useRef<number | null>(null);
   const cellDragAnchor = useRef<CellPosition | null>(null);
   const pasteEventCount = useRef(0);
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
@@ -1929,6 +1941,41 @@ export default function RoomCalcSheet({
     return starts;
   }, [sets]);
 
+  useEffect(() => {
+    if (jumpDetail === null || jumpDetail === undefined) return;
+    if (jumpedTick.current === jumpDetail.tick) return;
+    setJumpedDetail(null);
+    const setIndex = sets.findIndex((set) => set.id === jumpDetail.setId);
+    const detailIndex =
+      setIndex < 0
+        ? -1
+        : sets[setIndex].details.findIndex(
+            (detail) => detail.id === jumpDetail.detailId,
+          );
+    if (setIndex < 0 || detailIndex < 0) {
+      jumpedTick.current = jumpDetail.tick;
+      onMessage(
+        "出所の行が見つかりません（集計のあとで計算書から消えています）",
+      );
+      return;
+    }
+    jumpedTick.current = jumpDetail.tick;
+    setJumpedDetail({
+      ...jumpDetail,
+      gridRow: rowStarts[setIndex] + detailIndex,
+    });
+  }, [jumpDetail, onMessage, rowStarts, sets]);
+
+  useLayoutEffect(() => {
+    if (!jumpedDetail) return;
+    const input = gridRef.current?.querySelector<HTMLInputElement>(
+      `input[data-row="${jumpedDetail.gridRow}"][data-col="6"]`,
+    );
+    if (!input) return;
+    input.closest("tr")?.scrollIntoView({ block: "center" });
+    focusInput(input);
+  }, [jumpedDetail]);
+
   useLayoutEffect(() => {
     const bounds = cellRange ? cellRangeBounds(cellRange) : null;
     gridRef.current
@@ -2313,7 +2360,10 @@ export default function RoomCalcSheet({
         className="calc-body"
         ref={gridRef}
         onKeyDown={onGridKeyDown}
-        onMouseDownCapture={onCellMouseDown}
+        onMouseDownCapture={(e) => {
+          setJumpedDetail(null);
+          onCellMouseDown(e);
+        }}
         onMouseOverCapture={onCellMouseOver}
       >
         <table className="grid calc">
@@ -2452,6 +2502,10 @@ export default function RoomCalcSheet({
                       key={`${set.id}-${detail?.id ?? line?.id ?? `r${rowIndex}`}`}
                       className={[
                         detail?.note === true ? "note-row" : "",
+                        jumpedDetail?.setId === set.id &&
+                        jumpedDetail.detailId === detail?.id
+                          ? "jump-row"
+                          : "",
                         isSelectedRow(set.id, rowIndex) ? "row-selected" : "",
                         callOpen &&
                         callRow &&

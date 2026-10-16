@@ -97,7 +97,10 @@ import {
 } from "./useUnderlay";
 import DrawingSourcePicker from "./DrawingSourcePicker";
 import { computeFitting } from "../../../../core/fittings/fitting";
-import RoomCalcSheet, { type CalcFocus } from "./RoomCalcSheet";
+import RoomCalcSheet, {
+  type CalcDetailJump,
+  type CalcFocus,
+} from "./RoomCalcSheet";
 import CalcPrintSheet from "../print/CalcPrintSheet";
 import "./RoomSheetPage.css";
 import "./PitSheetPage.css";
@@ -121,6 +124,7 @@ interface Props {
   row: EstimateRowDraft;
   roomName: string;
   onBack: () => void;
+  jumpDetail?: CalcDetailJump | null;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
   printMode?: boolean;
   /** 表の題名（面積計算書など。省略はピット計算書） */
@@ -188,6 +192,7 @@ export default function PitSheetPage({
   row,
   roomName,
   onBack,
+  jumpDetail = null,
   printMode = false,
   sheetName = "ピット計算書",
 }: Props): JSX.Element {
@@ -2984,6 +2989,7 @@ export default function PitSheetPage({
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}
+        jumpDetail={sheet !== null ? jumpDetail : null}
         result={calcResult}
         onMessage={setMessage}
         hasUpper

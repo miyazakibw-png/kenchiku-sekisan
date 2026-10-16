@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AggregateDetail,
   MasterOptions,
@@ -31,7 +31,9 @@ import SubjectMasterPage from "../subjects/SubjectMasterPage";
 import BasicMasterPage from "../masters/BasicMasterPage";
 import DetailChangeHistoryPage from "../details/DetailChangeHistoryPage";
 import FittingsPage from "../fittings/FittingsPage";
-import EstimatePartsPage from "../estimate/EstimatePartsPage";
+import EstimatePartsPage, {
+  type EstimatePartsJumpTarget,
+} from "../estimate/EstimatePartsPage";
 import MiscSheetListPage from "../estimate/MiscSheetListPage";
 import MiscSheetPage from "../estimate/MiscSheetPage";
 import FurnitureSheetListPage from "../estimate/FurnitureSheetListPage";
@@ -130,6 +132,9 @@ export default function ProjectWorkspacePage({
   const [jumpEstimateRowId, setJumpEstimateRowId] = useState<number | null>(
     null,
   );
+  const [calcJumpTarget, setCalcJumpTarget] =
+    useState<EstimatePartsJumpTarget | null>(null);
+  const calcJumpTick = useRef(0);
   /** 集計書兼工事マスターの数量根拠から出所へ飛んできたときの戻り先 */
   const [backToAggregate, setBackToAggregate] = useState<string | null>(null);
   const [options, setOptions] = useState<MasterOptions>(initialOptions);
@@ -251,6 +256,12 @@ export default function ProjectWorkspacePage({
     if (jump.kind === "calcSheet") {
       setBackToAggregate(from);
       setJumpEstimateRowId(jump.estimateRowId);
+      setCalcJumpTarget({
+        estimateRowId: jump.estimateRowId,
+        setId: jump.setId,
+        detailId: jump.detailId,
+        tick: (calcJumpTick.current += 1),
+      });
       setOpenedMenu("roomFinishes");
       return;
     }
@@ -368,6 +379,7 @@ export default function ProjectWorkspacePage({
         project={draft}
         onBack={() => setOpenedMenu(null)}
         onOpenRoomSheet={(estimateRowId) => {
+          setCalcJumpTarget(null);
           setJumpEstimateRowId(estimateRowId);
           setOpenedMenu("roomFinishes");
         }}
@@ -412,8 +424,10 @@ export default function ProjectWorkspacePage({
         project={draft}
         options={options}
         initialEstimateRowId={jumpEstimateRowId}
+        jumpTarget={calcJumpTarget}
         onBack={() => {
           setJumpEstimateRowId(null);
+          setCalcJumpTarget(null);
           if (leaveSource()) return;
           setOpenedMenu(null);
         }}

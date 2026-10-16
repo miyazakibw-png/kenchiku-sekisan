@@ -24,7 +24,12 @@ export function sourceLabelOf(value: string): string {
 
 /** 数量根拠の1件から開く出所（計算書・入力表） */
 export type SourceJump =
-  | { kind: "calcSheet"; estimateRowId: number }
+  | {
+      kind: "calcSheet";
+      estimateRowId: number;
+      setId?: string;
+      detailId?: string;
+    }
   | { kind: "misc"; rowId: string }
   | { kind: "furniture"; sheetId: number }
   | { kind: "fireproof"; rowId: string }
@@ -58,6 +63,11 @@ export function sourceJumpOf(detail: {
     default:
       return detail.estimateRowId === null
         ? null
-        : { kind: "calcSheet", estimateRowId: detail.estimateRowId };
+        : {
+            kind: "calcSheet",
+            estimateRowId: detail.estimateRowId,
+            setId: parts[1] || undefined,
+            detailId: parts[2] || undefined,
+          };
   }
 }

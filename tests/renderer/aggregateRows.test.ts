@@ -5,14 +5,47 @@ describe("数量根拠から出所の計算書へ飛ぶ", () => {
   it("部屋・軸組・汎用・ピットは部位別入力表の行を開く", () => {
     expect(
       sourceJumpOf({ sourceKind: "room", estimateRowId: 12, traceId: "12:3:4" }),
-    ).toEqual({ kind: "calcSheet", estimateRowId: 12 });
+    ).toEqual({
+      kind: "calcSheet",
+      estimateRowId: 12,
+      setId: "3",
+      detailId: "4",
+    });
     expect(
       sourceJumpOf({
         sourceKind: "frame",
         estimateRowId: 7,
         traceId: "7:1:2",
       }),
-    ).toEqual({ kind: "calcSheet", estimateRowId: 7 });
+    ).toEqual({
+      kind: "calcSheet",
+      estimateRowId: 7,
+      setId: "1",
+      detailId: "2",
+    });
+  });
+
+  it("欠けたセットid・明細idは未設定にする", () => {
+    expect(
+      sourceJumpOf({ sourceKind: "room", estimateRowId: 12, traceId: "12::" }),
+    ).toEqual({
+      kind: "calcSheet",
+      estimateRowId: 12,
+      setId: undefined,
+      detailId: undefined,
+    });
+    expect(
+      sourceJumpOf({
+        sourceKind: "room",
+        estimateRowId: 12,
+        traceId: "12:only-set",
+      }),
+    ).toEqual({
+      kind: "calcSheet",
+      estimateRowId: 12,
+      setId: "only-set",
+      detailId: undefined,
+    });
   });
 
   it("家具・設備入力表は表のid、部位別雑・金物入力表は行のidを返す", () => {
