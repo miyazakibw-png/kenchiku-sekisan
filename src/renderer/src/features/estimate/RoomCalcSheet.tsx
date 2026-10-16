@@ -1945,6 +1945,7 @@ export default function RoomCalcSheet({
     if (jumpDetail === null || jumpDetail === undefined) return;
     if (jumpedTick.current === jumpDetail.tick) return;
     setJumpedDetail(null);
+    if (sets.length === 0) return;
     const setIndex = sets.findIndex((set) => set.id === jumpDetail.setId);
     const detailIndex =
       setIndex < 0
