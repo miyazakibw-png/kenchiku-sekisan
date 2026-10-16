@@ -77,6 +77,7 @@ export default function FormworkTransferPage({
   project,
   onBack,
 }: Props): JSX.Element {
+  const tableRef0 = useTableResize("table-widths-formwork-source-v1");
   const tableRef = useTableResize("table-widths-formwork-rules-v3");
   const tableRef1 = useTableResize("table-widths-formwork-rows-v4");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
@@ -391,7 +392,7 @@ export default function FormworkTransferPage({
           </button>
         </div>
       )}
-      <table className="parts check-sheet">
+      <table className="parts check-sheet" ref={tableRef0}>
         <thead>
           <tr>
             <th className="flag">選択</th>

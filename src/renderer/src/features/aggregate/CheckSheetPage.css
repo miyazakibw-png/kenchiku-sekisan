@@ -35,6 +35,12 @@ table.check-sheet td {
   min-width: 8ch;
 }
 
+.formwork-transfer-page table.check-sheet th,
+.formwork-transfer-page table.check-sheet td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 table.check-sheet td.number {
   text-align: right;
   width: 10ch;
