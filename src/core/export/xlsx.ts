@@ -28,6 +28,8 @@ export interface XlsxCell {
   border: XlsxBorder;
   /** 省くと plain（色を付けない） */
   mark?: XlsxMark;
+  /** 取り消し線（無いものと決めた明細に引く打消しの線）。省くと引かない */
+  strike?: boolean;
 }
 
 export interface XlsxSheet {
@@ -89,8 +91,10 @@ function styleIndex(cell: XlsxCell): number {
   const mark = MARKS.indexOf(cell.mark ?? "plain");
   return (
     1 +
-    (mark * KINDS.length + KINDS.indexOf(cell.kind)) * BORDERS.length +
-    BORDERS.indexOf(cell.border)
+    ((mark * KINDS.length + KINDS.indexOf(cell.kind)) * BORDERS.length +
+      BORDERS.indexOf(cell.border)) *
+      2 +
+    (cell.strike === true ? 1 : 0)
   );
 }
 
@@ -120,26 +124,29 @@ function stylesXml(): string {
   const plain = `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`;
   const xfs = MARKS.flatMap((mark) =>
     KINDS.flatMap((kind) =>
-      BORDERS.map((border) => {
-        // 違うところは文字を赤（太字）・背景を黄色にする
-        const fontId = mark === "diff" ? 3 : kind === "header" ? 1 : 0;
-        const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
-        const numFmtId = kind === "number" ? 176 : 0;
-        const alignment =
-          kind === "number"
-            ? '<alignment vertical="center" horizontal="right"/>'
-            : kind === "wrap"
-              ? '<alignment vertical="center" wrapText="1"/>'
-              : '<alignment vertical="center"/>';
-        return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
-      }),
+      BORDERS.flatMap((border) =>
+        [false, true].map((strike) => {
+          // 違うところは文字を赤・背景を黄色にする（太字にはしない）。取り消しは4以降の打消し付き文字
+          const fontId =
+            (mark === "diff" ? 2 : kind === "header" ? 1 : 0) + (strike ? 4 : 0);
+          const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
+          const numFmtId = kind === "number" ? 176 : 0;
+          const alignment =
+            kind === "number"
+              ? '<alignment vertical="center" horizontal="right"/>'
+              : kind === "wrap"
+                ? '<alignment vertical="center" wrapText="1"/>'
+                : '<alignment vertical="center"/>';
+          return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
+        }),
+      ),
     ),
   ).join("");
-  const count = MARKS.length * KINDS.length * BORDERS.length + 1;
+  const count = MARKS.length * KINDS.length * BORDERS.length * 2 + 1;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="1"><numFmt numFmtId="176" formatCode="#,##0.00"/></numFmts>
-<fonts count="4"><font><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font></fonts>
+<fonts count="8"><font><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><strike/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><strike/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><strike/><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font><font><b/><strike/><color rgb="FFFF0000"/><sz val="10"/><name val="ＭＳ Ｐゴシック"/></font></fonts>
 <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="${BORDERS.length + 1}">${borders}</borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>

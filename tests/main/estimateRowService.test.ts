@@ -18,6 +18,14 @@ import {
   getRoomSheet,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
+import {
+  getFrameSheet,
+  saveFrameSheet,
+} from "../../src/main/services/frameSheetService";
+import {
+  getPitSheet,
+  savePitSheet,
+} from "../../src/main/services/pitSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
 
 function createDb(): AppDatabase {
@@ -152,6 +160,7 @@ describe("部位別入力表", () => {
       ceilingJson: sheet.ceilingJson,
       lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
       ceilingHeight: 2.5,
+      traceJson: '{"underlays":[{"image":"data:png","x":1}]}',
       note: "もとの計算書",
     });
 
@@ -169,6 +178,10 @@ describe("部位別入力表", () => {
     const copiedSheet = getRoomSheet(db, saved[1].id);
     expect(copiedSheet.lowerJson).toBe('[{"id":"set-1","detail":"床仕上"}]');
     expect(copiedSheet.note).toBe("もとの計算書");
+    // 下図（貼り付けた図面）も一緒に写る
+    expect(copiedSheet.traceJson).toBe(
+      '{"underlays":[{"image":"data:png","x":1}]}',
+    );
     expect(copiedSheet.id).not.toBe(sheet.id);
 
     saveRoomSheet(db, {
@@ -181,6 +194,40 @@ describe("部位別入力表", () => {
       note: "直した計算書",
     });
     expect(getRoomSheet(db, source.id).note).toBe("もとの計算書");
+  });
+
+  it("行コピーの貼付はピット計算書の下図も複製する", () => {
+    const [source] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: "基礎階ピット", calcType: "pit" })],
+    });
+    const sheet = getPitSheet(db, source.id);
+    savePitSheet(db, {
+      id: sheet.id,
+      pitsJson: sheet.pitsJson,
+      beamsJson: sheet.beamsJson,
+      wallsJson: sheet.wallsJson,
+      sleevesJson: sheet.sleevesJson,
+      sleeveKindsJson: sheet.sleeveKindsJson,
+      wallStep: sheet.wallStep,
+      lowerJson: '[{"id":"set-1","detail":"床仕上"}]',
+      traceJson: '{"underlays":[{"image":"data:png","x":-17.4}]}',
+      note: "ピット計算書",
+    });
+
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        { ...source },
+        draft({ part3: "コピー", calcType: "pit", copySourceId: source.id }),
+      ],
+    });
+    const copiedSheet = getPitSheet(db, saved[1].id);
+    expect(copiedSheet.traceJson).toBe(
+      '{"underlays":[{"image":"data:png","x":-17.4}]}',
+    );
+    expect(copiedSheet.note).toBe("ピット計算書");
+    expect(copiedSheet.id).not.toBe(sheet.id);
   });
 
   it("物件コピーで部位別入力表も複製し、コピー元とは切り離す", () => {
@@ -201,12 +248,13 @@ describe("部位別入力表", () => {
 });
 
 describe("計算書の書式", () => {
-  it("4書式（部屋別・軸組・汎用・ピット）を選べる", () => {
+  it("5書式（部屋別・軸組・汎用・ピット・面積）を選べる", () => {
     expect(listMasterOptions(db).calcSheets.map((sheet) => sheet.key)).toEqual([
       "room",
       "frame",
       "general",
       "pit",
+      "area",
     ]);
   });
 
@@ -216,5 +264,59 @@ describe("計算書の書式", () => {
       { id: 2, name: "地下階" },
       { id: 3, name: "地上階" },
     ]);
+  });
+});
+
+describe("縮尺調整（未）の印", () => {
+  it("行のいまの計算書種類だけを見る（別種類に残った印は出さない）", () => {
+    const [row] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: "部屋A", calcType: "room" })],
+    });
+    // 部屋計算書の図面は縮尺合わせ済み（scaled:true・印なし）
+    const roomSheet = getRoomSheet(db, row.id);
+    saveRoomSheet(db, {
+      id: roomSheet.id,
+      shapeJson: '{"edges":[]}',
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: "[]",
+      ceilingHeight: 2.4,
+      traceJson: JSON.stringify({
+        underlays: [
+          {
+            image: "data:image/png;base64,AA==",
+            metersPerPixel: 0.01,
+            x: 0,
+            y: 0,
+            opacity: 0.75,
+            scaled: true,
+          },
+        ],
+      }),
+      note: "",
+    });
+    // 前に軸組計算書で置いた図面の「縮尺合わせがまだ」の印が残っている
+    const frame = getFrameSheet(db, row.id);
+    saveFrameSheet(db, {
+      id: frame.id,
+      layoutJson: "[]",
+      linesJson: "[]",
+      attributesJson: "{}",
+      fittingsJson: "[]",
+      lowerJson: "[]",
+      workHeight: 2.4,
+      traceJson: JSON.stringify({ traces: [], scalePending: true }),
+      kindsJson: "[]",
+      note: "",
+    });
+    // 行の種類は部屋別のまま → 軸組の印は出ない
+    expect(listEstimateRows(db, projectId)[0].scalePending).toBeUndefined();
+    // 種類を軸組に戻すとその計算書の印が出る
+    saveEstimateRows(db, {
+      projectId,
+      rows: [{ ...draft({ part3: "部屋A", calcType: "frame" }), id: row.id }],
+    });
+    expect(listEstimateRows(db, projectId)[0].scalePending).toBe(true);
   });
 });

@@ -45,4 +45,16 @@ describe("呼出画面のセットまとめ", () => {
   it("明細の無いセットは出さない", () => {
     expect(groupAssembliesByHead([assembly(1, [])]).length).toBe(0);
   });
+
+  it("先頭が説明行でも通常明細をセットの見出しに使う", () => {
+    const withNoteFirst = assembly(1, ["説明", "明細"]);
+    withNoteFirst.items[0].note = true;
+    withNoteFirst.items[1].name = "共通の見出し";
+    const matching = assembly(2, ["共通の見出し"]);
+
+    const groups = groupAssembliesByHead([withNoteFirst, matching]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].list.map((a) => a.id)).toEqual([1, 2]);
+  });
 });

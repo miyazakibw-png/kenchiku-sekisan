@@ -20,6 +20,7 @@ import {
 import {
   getFrameSheet,
   listFrameRooms,
+  listFrameSheets,
   saveFrameSheet,
 } from "../../src/main/services/frameSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
@@ -104,6 +105,33 @@ describe("軸組計算書", () => {
     expect(reopened.lowerJson).toContain('"s1"');
   });
 
+  it("施工高さを保存すると部位別入力表の天井高さへも書き戻す", () => {
+    const project = createProject(db, "高さ連動");
+    const [frameRow] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("1階軸組", "frame", 2.7)],
+    });
+    const sheet = getFrameSheet(db, frameRow.id);
+
+    saveFrameSheet(db, {
+      id: sheet.id,
+      layoutJson: "[]",
+      linesJson: "[]",
+      attributesJson: "{}",
+      fittingsJson: "[]",
+      lowerJson: "[]",
+      workHeight: 3.5,
+      traceJson: "{}",
+      kindsJson: "[]",
+      note: "",
+    });
+
+    const saved = listEstimateRows(db, project.id).find(
+      (each) => each.id === frameRow.id,
+    );
+    expect(saved?.ceilingHeight).toBe(3.5);
+  });
+
   it("置ける部屋は部屋計算書を作った行だけで、部屋名は部位Ⅱ＋部位Ⅲ", () => {
     const project = createProject(db, "部屋一覧");
     const rows = saveEstimateRows(db, {
@@ -171,5 +199,29 @@ describe("軸組計算書", () => {
     expect(copiedFrame.layoutJson).not.toContain(
       `"estimateRowId":${rows[0].id}`,
     );
+  });
+
+  it("計算書一覧は作ってある計算書だけを、部位Ⅱ＋部位Ⅲの名前で出す", () => {
+    const project = createProject(db, "一覧テスト");
+    const rows = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [
+        row("1階軸組", "frame", 2.7),
+        row("2階軸組", "frame", 2.7),
+        row("未作成", "frame", null),
+      ],
+    });
+    getFrameSheet(db, rows[0].id);
+    getFrameSheet(db, rows[1].id);
+
+    const sheets = listFrameSheets(db, project.id);
+    expect(sheets.map((one) => one.roomName)).toEqual([
+      "内部 1階軸組",
+      "内部 2階軸組",
+    ]);
+    expect(sheets.map((one) => one.estimateRowId)).toEqual([
+      rows[0].id,
+      rows[1].id,
+    ]);
   });
 });

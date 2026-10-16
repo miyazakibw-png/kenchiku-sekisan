@@ -113,41 +113,65 @@ export function parseNumber(text: string): {
   return { value: Math.round(value * 100) / 100 };
 }
 
-/** 倍率は -99〜99 の範囲 */
+/** 倍率は -999.99〜999.99 の範囲 */
 export function parseMultiplier(text: string): {
   value: number | null;
   error?: string;
 } {
   const parsed = parseNumber(text);
   if (parsed.error || parsed.value === null) return parsed;
-  if (parsed.value < -99 || parsed.value > 99) {
-    return { value: null, error: "倍率は -99〜99 で入力してください" };
+  if (parsed.value < -999.99 || parsed.value > 999.99) {
+    return { value: null, error: "倍率は -999.99〜999.99 で入力してください" };
   }
   return parsed;
 }
 
 /**
- * 部位Ⅰ・部位Ⅱは未入力なら入力のある上の行を引き継ぐ。
+ * 部位Ⅰ・部位Ⅱ・型枠は未入力なら入力のある上の行を引き継ぐ。
  * 小計行は部位の区切りには使わず、直前の値をそのまま持ち越す。
  */
 export function resolveInherited(
   rows: EstimateRowDraft[],
-): { part1: string; part2: string; part2Split: number }[] {
+): {
+  part1: string;
+  part2: string;
+  part2Split: number;
+  formwork: string;
+}[] {
   let part1 = "";
   let part2 = "";
   let part2Split = 0;
+  let formwork = "";
   return rows.map((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
     if (row.part2.trim() !== "") {
       part2 = row.part2;
       part2Split = row.part2Split;
     }
+    if (row.formwork.trim() !== "") formwork = row.formwork;
     return {
       part1,
       part2,
       part2Split: row.part2.trim() !== "" ? row.part2Split : part2Split,
+      formwork,
     };
   });
+}
+
+/**
+ * 計算書に出す部屋名（部位Ⅱ＋部位Ⅲ）を行IDごとに作る。
+ * 部位Ⅱが空欄の行は、入力のある上の行から引き継いだ内容を使う。
+ */
+export function roomNamesByRowId(
+  rows: EstimateRowDraft[],
+): Map<number, string> {
+  const inherited = resolveInherited(rows);
+  const names = new Map<number, string>();
+  rows.forEach((row, index) => {
+    if (row.id === null) return;
+    names.set(row.id, `${inherited[index].part2} ${row.part3}`.trim());
+  });
+  return names;
 }
 
 export function insertRow(

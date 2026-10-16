@@ -13,17 +13,29 @@ import {
 } from "../db/schema";
 import {
   buildBreakdownRows,
+  buildGroupedBreakdownRows,
   collectSubjectOrder,
   collectUnits,
+  mergeSubjectOrder,
   DEFAULT_BREAKDOWN_SETTINGS,
+  type BreakdownGroupSource,
   type BreakdownSettings,
   type BreakdownSourceItem,
   type BreakdownSubject,
   type TextReplacement,
 } from "../../core/breakdown/breakdown";
-import { getAggregate } from "./aggregationService";
+import {
+  aggregateByPart,
+  aggregateByRoom,
+  type AggregatedItem,
+} from "../../core/aggregate/aggregate";
+import { detailsToEntries } from "../../core/aggregate/detailEntries";
+import { getAggregate, unusedMasterKeys } from "./aggregationService";
+import { listEstimateRows } from "./estimateRowService";
 import { listProjectSubjects } from "./projectMasterService";
 import type {
+  AggregateItem,
+  BreakdownGrouping,
   BreakdownRowRecord,
   BreakdownSettingsRecord,
   BreakdownVersion,
@@ -39,6 +51,18 @@ function parseReplacements(json: string): TextReplacement[] {
     if (typeof record.from !== "string" || typeof record.to !== "string")
       return [];
     return [{ from: record.from, to: record.to }];
+  });
+}
+
+function parsePartTitles(json: string): { from: number; title: string }[] {
+  const parsed: unknown = JSON.parse(json);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const record = entry as { from?: unknown; title?: unknown };
+    if (typeof record.from !== "number" || typeof record.title !== "string")
+      return [];
+    return [{ from: record.from, title: record.title }];
   });
 }
 
@@ -58,6 +82,16 @@ function parseStrings(json: string): string[] {
 function pageCount(value: number | null, fallback: number): number {
   if (value === null || !Number.isFinite(value) || value < 1) return fallback;
   return Math.floor(value);
+}
+
+/** 部屋別集計の並びに使う、部位別入力表に出てくる部屋名の順 */
+function roomOrderOf(db: AppDatabase, projectId: number): string[] {
+  const order: string[] = [];
+  listEstimateRows(db, projectId).forEach((row) => {
+    const room = row.part3.trim();
+    if (room !== "" && !order.includes(room)) order.push(room);
+  });
+  return order;
 }
 
 /** 内訳書の設定。無ければ既定値で作る */
@@ -86,6 +120,8 @@ export function getBreakdownSettings(
       replacements: [],
       unitOrder: [],
       unitReplacements: [],
+      partTitlesOn: DEFAULT_BREAKDOWN_SETTINGS.partTitlesOn,
+      partTitles: DEFAULT_BREAKDOWN_SETTINGS.partTitles,
       detailsPerPage: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
       detailsPerPageLater: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
       workCategory: "建築主体工事",
@@ -105,6 +141,8 @@ export function getBreakdownSettings(
     replacements: parseReplacements(row.replacementsJson),
     unitOrder: parseStrings(row.unitOrderJson),
     unitReplacements: parseReplacements(row.unitReplacementsJson),
+    partTitlesOn: row.partTitlesOn === 1,
+    partTitles: parsePartTitles(row.partTitlesJson),
     detailsPerPage: pageCount(
       row.detailsPerPage,
       DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
@@ -136,6 +174,8 @@ export function saveBreakdownSettings(
       replacementsJson: JSON.stringify(settings.replacements),
       unitOrderJson: JSON.stringify(settings.unitOrder),
       unitReplacementsJson: JSON.stringify(settings.unitReplacements),
+      partTitlesOn: settings.partTitlesOn ? 1 : 0,
+      partTitlesJson: JSON.stringify(settings.partTitles),
       detailsPerPage: pageCount(
         settings.detailsPerPage,
         DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
@@ -165,8 +205,24 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
     replacements: record.replacements,
     unitOrder: record.unitOrder,
     unitReplacements: record.unitReplacements,
+    partTitlesOn: record.partTitlesOn,
+    partTitles: record.partTitles,
     detailsPerPage: record.detailsPerPage,
     detailsPerPageLater: record.detailsPerPageLater,
+  };
+}
+
+function groupingOf(value: string): BreakdownGrouping {
+  return value === "room" || value === "part" ? value : "subject";
+}
+
+function toBreakdownVersion(
+  row: typeof projectBreakdownVersions.$inferSelect,
+): BreakdownVersion {
+  return {
+    ...row,
+    grouping: groupingOf(row.grouping),
+    newSubjects: parseNumbers(row.newSubjectsJson ?? "[]"),
   };
 }
 
@@ -179,7 +235,8 @@ export function listBreakdownVersions(
     .from(projectBreakdownVersions)
     .where(eq(projectBreakdownVersions.projectId, projectId))
     .orderBy(desc(projectBreakdownVersions.round))
-    .all();
+    .all()
+    .map(toBreakdownVersion);
 }
 
 function listRows(db: AppDatabase, versionId: number): BreakdownRowRecord[] {
@@ -217,40 +274,89 @@ function subjectList(db: AppDatabase, projectId: number): BreakdownSubject[] {
 /**
  * 集計書兼工事マスターから内訳書へ変換転記する。
  * 未確定の回があればその回を作り直し、無ければ次の回を作る。
+ * newRound が true のときは、開いている回を確定してから次の回を作る
+ * （確定を押し忘れて転記したとき、上書きではなく新しい回にできる）。
+ */
+/** 集計書兼工事マスターの1明細 → 内訳書の元 */
+function toSourceItem(
+  item: AggregateItem | AggregatedItem,
+): BreakdownSourceItem {
+  return {
+    id: "id" in item ? item.id : null,
+    masterKey: item.masterKey,
+    subjectId: item.subjectId,
+    part1: item.part1,
+    partNumber: item.partNumber,
+    partName: item.partName,
+    name: item.name,
+    descriptionUpper: item.descriptionUpper,
+    descriptionLower: item.descriptionLower,
+    quantity: item.quantity,
+    unit: item.unit,
+    remarksUpper: item.remarksUpper,
+    remarksLower: item.remarksLower,
+  };
+}
+
+/**
+ * 集計書兼工事マスターから内訳書へ変換転記する。
+ * 未確定の回があればその回を作り直し、無ければ次の回を作る。
+ * newRound が true のときは、開いている回を確定してから次の回を作る
+ * （確定を押し忘れて転記したとき、上書きではなく新しい回にできる）。
+ * grouping はまとめ方：subject＝科目別（いままで通り）、room＝部屋別集計、part＝部位別集計。
+ * runId は集計の回。画面で見ている回と同じ集計から転記するために渡す。
  */
 export function transferBreakdown(
   db: AppDatabase,
   projectId: number,
+  newRound = false,
+  grouping: BreakdownGrouping = "subject",
+  runId?: number,
 ): BreakdownView {
-  const aggregate = getAggregate(db, projectId);
+  const aggregate = getAggregate(db, projectId, runId);
   const subjects = subjectList(db, projectId);
-  // 不要明細（人が印を付けた明細）は内訳書へ飛ばさない
-  const items: BreakdownSourceItem[] = aggregate.items
-    .filter((item) => !item.unused)
-    .map((item) => ({
-      id: item.id,
-      masterKey: item.masterKey,
-      subjectId: item.subjectId,
-      part1: item.part1,
-      partName: item.partName,
-      name: item.name,
-      descriptionUpper: item.descriptionUpper,
-      descriptionLower: item.descriptionLower,
-      quantity: item.quantity,
-      unit: item.unit,
-      remarksUpper: item.remarksUpper,
-      remarksLower: item.remarksLower,
+
+  // 部屋別・部位別のまとめのときは、まとめごとの明細を作る
+  let groups: BreakdownGroupSource[] | null = null;
+  let items: BreakdownSourceItem[];
+  if (grouping === "subject") {
+    // 不要明細（人が印を付けた明細）は内訳書へ飛ばさない
+    items = aggregate.items
+      .filter((item) => !item.unused)
+      .map(toSourceItem);
+  } else {
+    const skipPart2 = new Set(
+      listProjectSubjects(db, projectId)
+        .filter((subject) => subject.skipPart2 === 1)
+        .map((subject) => subject.id),
+    );
+    const unused = unusedMasterKeys(db, projectId);
+    const entries = detailsToEntries(aggregate.details);
+    const grouped =
+      grouping === "room"
+        ? aggregateByRoom(
+            entries,
+            roomOrderOf(db, projectId),
+            skipPart2,
+            unused,
+          )
+        : aggregateByPart(entries, skipPart2, unused);
+    groups = grouped.map((group) => ({
+      name: group.label,
+      items: group.items
+        .filter((item) => !item.unused)
+        .map(toSourceItem),
     }));
+    items = groups.flatMap((group) => group.items);
+  }
 
   // 集計書で使っている工種科目・単位を自動的に用意する。
   // 並べ替えた並びは物件の設定として残し、2回目以降もそのまま持ち越す
   // （その回で使わなかった科目・単位も並びから消さない）。
   const stored = getBreakdownSettings(db, projectId);
   const used = collectSubjectOrder(items, subjects);
-  const subjectOrder = [
-    ...stored.subjectOrder,
-    ...used.filter((id) => !stored.subjectOrder.includes(id)),
-  ];
+  // 新しい科目は、科目マスターの並びで直前に来る科目の直後へ入れる（後ろに並べない）
+  const subjectOrder = mergeSubjectOrder(stored.subjectOrder, used, subjects);
   const units = collectUnits(items);
   const unitOrder = [
     ...stored.unitOrder,
@@ -263,7 +369,27 @@ export function transferBreakdown(
   });
 
   const versions = listBreakdownVersions(db, projectId);
-  const open = versions.find((version) => version.confirmed === 0);
+  const openStored = versions.find((version) => version.confirmed === 0);
+  // 新しい回を選んだときは、開いている回を確定して次の回へ進む
+  if (newRound && openStored !== undefined) {
+    db.update(projectBreakdownVersions)
+      .set({ confirmed: 1 })
+      .where(eq(projectBreakdownVersions.id, openStored.id))
+      .run();
+  }
+  const open = newRound ? undefined : openStored;
+  // この回で初めて出てきた工種科目＝前の回に無かったもの
+  // （作り直す開いている回は数えない。確定した回の中にあれば「新しい」ではない）
+  const previousSubjects = new Set<number>();
+  versions
+    .filter((version) => version.id !== open?.id)
+    .forEach((version) => {
+      listRows(db, version.id).forEach((row) => {
+        if (row.rowKind === "subject" && row.subjectId !== null)
+          previousSubjects.add(row.subjectId);
+      });
+    });
+  const newSubjects = used.filter((id) => !previousSubjects.has(id));
   let versionId: number;
   if (open) {
     versionId = open.id;
@@ -271,20 +397,33 @@ export function transferBreakdown(
       .where(eq(projectBreakdownRows.versionId, versionId))
       .run();
     db.update(projectBreakdownVersions)
-      .set({ aggregateRunId: aggregate.run?.id ?? null })
+      .set({
+        aggregateRunId: aggregate.run?.id ?? null,
+        grouping,
+        newSubjectsJson: JSON.stringify(newSubjects),
+      })
       .where(eq(projectBreakdownVersions.id, versionId))
       .run();
   } else {
     const round = versions.length === 0 ? 1 : versions[0].round + 1;
     const created = db
       .insert(projectBreakdownVersions)
-      .values({ projectId, round, aggregateRunId: aggregate.run?.id ?? null })
+      .values({
+        projectId,
+        round,
+        aggregateRunId: aggregate.run?.id ?? null,
+        grouping,
+        newSubjectsJson: JSON.stringify(newSubjects),
+      })
       .returning()
       .get();
     versionId = created.id;
   }
 
-  const rows = buildBreakdownRows(items, subjects, toCoreSettings(settings));
+  const rows =
+    groups === null
+      ? buildBreakdownRows(items, subjects, toCoreSettings(settings))
+      : buildGroupedBreakdownRows(groups, toCoreSettings(settings));
   rows.forEach((row, index) => {
     db.insert(projectBreakdownRows)
       .values({
@@ -306,6 +445,7 @@ export function transferBreakdown(
         amount: row.amount,
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
+        struck: 0,
       })
       .run();
   });
@@ -343,6 +483,7 @@ export function saveBreakdownRows(
         amount: row.amount,
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
+        struck: row.struck,
       })
       .run();
   });
@@ -371,11 +512,10 @@ export function confirmBreakdownVersion(
     .set({ confirmed: 1 })
     .where(eq(projectBreakdownVersions.id, versionId))
     .run();
-  return (
-    db
-      .select()
-      .from(projectBreakdownVersions)
-      .where(eq(projectBreakdownVersions.id, versionId))
-      .get() ?? null
-  );
+  const row = db
+    .select()
+    .from(projectBreakdownVersions)
+    .where(eq(projectBreakdownVersions.id, versionId))
+    .get();
+  return row === undefined ? null : toBreakdownVersion(row);
 }

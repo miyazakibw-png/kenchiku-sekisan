@@ -70,21 +70,22 @@ function sample(): ReturnType<typeof furnitureRow>[] {
 }
 
 describe("家具計算書の引き継ぎ", () => {
-  it("科目・部位ID・部位・数量は上の行と同じ、名称IDは+0.01", () => {
+  it("科目・部位IDは上の行と同じ、名称IDは+0.01", () => {
     const resolved = resolveFurnitureRows(sample());
     expect(resolved[1].subjectId).toBe(42);
     expect(resolved[1].partNumber).toBe(300);
     expect(resolved[1].detailNumber).toBe(100.01);
     expect(resolved[2].detailNumber).toBe(100.02);
-    expect(resolved[2].part).toBe("A");
   });
 
-  it("単位も未入力なら上の行と同じ（明細側にもその単位が出る）", () => {
+  it("部位・数量・単位は上の行を引き継がない（空欄のまま残せる）", () => {
     const rows = sample();
     rows[2].unit = "";
     const resolved = resolveFurnitureRows(rows);
-    expect(resolved[2].unit).toBe("ヶ所");
-    expect(applyFurnitureDetails(rows, settings)[2].detail.unit).toBe("ヶ所");
+    expect(resolved[2].part).toBe("");
+    expect(resolved[2].quantity).toBe("5");
+    expect(resolved[2].unit).toBe("");
+    expect(applyFurnitureDetails(rows, settings)[2].detail.unit).toBe("");
   });
 });
 
@@ -163,7 +164,7 @@ describe("数量", () => {
 });
 
 describe("集計と建具転記", () => {
-  it("空の明細と数量0の行は集計しない", () => {
+  it("空の明細は集計せず、科目等だけの行は見出し用に数量0で計上する", () => {
     const entries = entriesFromFurnitureSheet(
       {
         sheetId: 3,
@@ -173,13 +174,17 @@ describe("集計と建具転記", () => {
         part3: "システム収納",
         multiplier: 2,
       },
-      { rows: sample(), settings },
+      // なにも入っていない行（数量も0）は集計しない
+      { rows: [...sample(), furnitureRow({ id: "r9", quantity: "0" })], settings },
       new Map(),
     );
-    expect(entries).toHaveLength(2);
-    expect(entries[0].traceId).toBe("furniture:3:r2");
-    expect(entries[0].quantity).toBe(2);
-    expect(entries[0].part3).toBe("システム収納");
+    expect(entries).toHaveLength(3);
+    // 科目・部位ID・名称ID・部材名称だけの行（数量0・単位なし）は見出しとして計上
+    expect(entries[0].traceId).toBe("furniture:3:r1");
+    expect(entries[0].quantity).toBe(0);
+    expect(entries[1].traceId).toBe("furniture:3:r2");
+    expect(entries[1].quantity).toBe(2);
+    expect(entries[1].part3).toBe("システム収納");
   });
 
   it("名称の記号は明細側で設定の文字に変わる（表に無い文字はそのまま）", () => {
@@ -197,7 +202,8 @@ describe("集計と建具転記", () => {
       width: 1.2,
       height: 1.1,
     });
-    expect(fittings[1].symbol).toBe("AGEIS");
+    // 部位は引き継がないので3行目の記号に「A」は付かない
+    expect(fittings[1].symbol).toBe("GEIS");
   });
 });
 
@@ -224,7 +230,7 @@ describe("タテ方向の明細（列）", () => {
     expect(furnitureColumnTotal(rowsWithValues(), "c1")).toBe(17);
   });
 
-  it("数量が未入力の行は上の行の数量を使い、どこにも無ければ1とする", () => {
+  it("数量が未入力の行は1として計算する", () => {
     const rows = rowsWithValues();
     rows[2].quantity = "";
     expect(furnitureColumnTotal(rows, "c1")).toBe(5);
@@ -711,7 +717,8 @@ describe("カーテン・ブラインド（建具記号から寸法を呼び出�
   it("部位は部位+F+部位Ⅲ、部材名称は空なら上の行と同じ（記号表にあれば文字に変わる）", () => {
     const rows = applyFurnitureDetails(curtainRows(), curtain, "curtain", fittings);
     expect(rows[0].detail.partName).toBe("2F事務室");
-    expect(rows[1].detail.partName).toBe("2F会議室");
+    // 部位は引き継がないので2行目の部位は空（+部位だけ出る）
+    expect(rows[1].detail.partName).toBe("会議室");
     expect(rows[0].detail.name).toBe("ブラインド");
     expect(rows[1].detail.name).toBe("ブラインド");
     expect(rows[2].detail.name).toBe("カーテン");

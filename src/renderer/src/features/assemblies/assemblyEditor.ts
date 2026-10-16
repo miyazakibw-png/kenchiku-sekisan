@@ -13,6 +13,7 @@ import {
   sortDetails,
   type SortableDetail,
 } from "../../../../core/sort/detailSortKey";
+import { assemblyHead } from "@shared/assemblyItem";
 
 /** セット明細の編集行（数値欄は入力途中の文字列を保持する） */
 export interface DraftItem extends AssemblyItem {
@@ -84,12 +85,12 @@ export function updateCoefficientInput(
   );
 }
 
-/** セットの表示行（一覧に出るのは1行目の明細だけ） */
+/** セットの表示行（説明行を除いた先頭明細） */
 export function headItem(assembly: FinishAssembly): AssemblyItem | null {
-  return assembly.items[0] ?? null;
+  return assemblyHead(assembly.items) ?? null;
 }
 
-/** 科目で絞り込む。セットの所属科目は1行目の明細の科目とする */
+/** 科目で絞り込む。セットの所属科目は先頭の通常明細の科目とする */
 export function filterBySubject(
   assemblies: FinishAssembly[],
   subjectId: number | null,
@@ -127,7 +128,7 @@ function toSortable(
 /**
  * セット一覧の並び替え。
  * 自動登録されるマスターなので常に昇順（切替なし）で、共通ソートキーに従う。
- * 判定に使うのは一覧に出ている1行目の明細。
+ * 判定に使うのは一覧に出ている先頭の通常明細。
  */
 export function sortAssemblies(
   assemblies: FinishAssembly[],

@@ -50,6 +50,21 @@ describe("部位Ⅰ・部位Ⅱの引き継ぎ", () => {
     ];
     expect(resolveInherited(rows).map((r) => r.part2Split)).toEqual([1, 1]);
   });
+
+  it("型枠も空欄の行は入力のある上の行を引き継ぐ", () => {
+    const rows = [
+      row({ formwork: "地下階", part3: "風除室" }),
+      row({ part3: "玄関ホール" }),
+      row({ formwork: "地上階", part3: "ホール" }),
+      row({ part3: "会議室" }),
+    ];
+    expect(resolveInherited(rows).map((r) => r.formwork)).toEqual([
+      "地下階",
+      "地下階",
+      "地上階",
+      "地上階",
+    ]);
+  });
 });
 
 describe("行操作", () => {
@@ -89,10 +104,12 @@ describe("行操作", () => {
     expect(merged[1].copySourceId).toBe(12);
   });
 
-  it("倍率は -99〜99 の範囲", () => {
+  it("倍率は -999.99〜999.99 の範囲", () => {
     expect(parseMultiplier("2").value).toBe(2);
     expect(parseMultiplier("-3").value).toBe(-3);
-    expect(parseMultiplier("100").error).toBeTruthy();
+    expect(parseMultiplier("100").value).toBe(100);
+    expect(parseMultiplier("999.99").value).toBe(999.99);
+    expect(parseMultiplier("1000").error).toBeTruthy();
   });
 
   it("部屋を入力した行の倍率は既定で1", () => {
