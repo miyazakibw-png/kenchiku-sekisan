@@ -148,7 +148,7 @@ export default function AssemblyMasterPage({
   const [pickerScope, setPickerScope] = useState<PickerScope>(
     projectId === null ? "basic" : "project",
   );
-  /** 1行目が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
+  /** 先頭の通常明細が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
   const [chooser, setChooser] = useState<FinishAssembly[]>([]);
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -197,7 +197,7 @@ export default function AssemblyMasterPage({
     ],
   );
 
-  /** 1行目が同じセットは1行にまとめて見せる */
+  /** 先頭の通常明細が同じセットは1行にまとめて見せる */
   const groups = useMemo(() => groupAssembliesByHead(visible), [visible]);
 
   // 科目を変えたら、セットを選ぶ画面は閉じる
@@ -377,7 +377,7 @@ export default function AssemblyMasterPage({
             ➕ 新規セット（明細マスターから）
           </button>
           <span className="hint">
-            1行目が同じセットは1行にまとめています。ダブルクリック／Enterで中のセットを出します
+            先頭の通常明細が同じセットは1行にまとめています。ダブルクリック／Enterで中のセットを出します
           </span>
           <span className="status">{toast ?? ""}</span>
         </div>
@@ -441,7 +441,7 @@ export default function AssemblyMasterPage({
                       <td>{head.remarksUpper}</td>
                       <td rowSpan={2} className="num">
                         {group.list.length === 1
-                          ? `${assembly.items.length}明細`
+                          ? `${assembly.items.filter((item) => item.note !== true).length}明細`
                           : `${group.list.length}種類`}
                       </td>
                     </tr>
@@ -449,7 +449,12 @@ export default function AssemblyMasterPage({
                       <td className="num">
                         {formatDetailNumber(head.detailNumber)}
                       </td>
-                      <td>{head.name}</td>
+                      <td>
+                        {head.note === true && (
+                          <span className="note-mark">説</span>
+                        )}
+                        {head.name}
+                      </td>
                       <td>{head.descriptionLower}</td>
                       <td>{head.remarksLower}</td>
                     </tr>
@@ -496,9 +501,17 @@ export default function AssemblyMasterPage({
                   </tr>
                 </thead>
                 {editor.items.map((item, index) => (
-                  <tbody key={item.key} className="detail-group">
+                  <tbody
+                    key={item.key}
+                    className={`detail-group ${item.note === true ? "note-row" : ""}`}
+                  >
                     <tr className="upper-row">
-                      <td rowSpan={2}>{index + 1}</td>
+                      <td rowSpan={2}>
+                        {item.note === true && (
+                          <span className="note-mark">説</span>
+                        )}
+                        {index + 1}
+                      </td>
                       <td rowSpan={2}>
                         <MasterCodeInput
                           entries={options.materialCategories}
@@ -736,7 +749,10 @@ export default function AssemblyMasterPage({
         <div className="modal-backdrop" role="dialog">
           <div className="modal picker">
             <header>
-              <h3>セット明細を選ぶ（1行目が同じセットが{chooser.length}件）</h3>
+              <h3>
+                セット明細を選ぶ（先頭の通常明細が同じセットが{chooser.length}
+                件）
+              </h3>
             </header>
             <div className="modal-body">
               {chooser.map((assembly, groupIndex) => (
@@ -748,7 +764,12 @@ export default function AssemblyMasterPage({
                   <thead>
                     <tr>
                       <th colSpan={6}>
-                        {groupIndex + 1}．{assembly.items.length}明細のセット
+                        {groupIndex + 1}．
+                        {
+                          assembly.items.filter((item) => item.note !== true)
+                            .length
+                        }
+                        明細のセット
                         {assembly.note ? `（${assembly.note}）` : ""}
                       </th>
                     </tr>
@@ -770,7 +791,7 @@ export default function AssemblyMasterPage({
                       // 一覧と同じ1明細2行の見た目にする（セットが2種類以上でも崩さない）
                       <tbody
                         key={`${assembly.id}-${itemIndex}`}
-                        className="detail-group"
+                        className={`detail-group ${item.note === true ? "note-row" : ""}`}
                         tabIndex={0}
                         onDoubleClick={open}
                         onKeyDown={(e) => {
@@ -793,7 +814,12 @@ export default function AssemblyMasterPage({
                           <td className="num">
                             {formatDetailNumber(item.detailNumber)}
                           </td>
-                          <td>{item.name}</td>
+                          <td>
+                            {item.note === true && (
+                              <span className="note-mark">説</span>
+                            )}
+                            {item.name}
+                          </td>
                           <td>{item.descriptionLower}</td>
                           <td>{item.remarksLower}</td>
                         </tr>

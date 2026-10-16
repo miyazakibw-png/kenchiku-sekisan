@@ -20,6 +20,7 @@ import type {
   SaveAssemblyRequest,
   SaveAssemblyResult,
 } from "../../shared/types";
+import { assemblyHead, assemblyItemSubjectId } from "../../shared/assemblyItem";
 import { assemblySignature } from "../../shared/assemblySignature";
 import type { CalcDetail, CalcLine, CalcSet } from "../../core/room/calcSheet";
 import {
@@ -109,6 +110,7 @@ function listItems(db: AppDatabase, assemblyId: number): AssemblyItem[] {
       estimateDisplay: item.estimateDisplay,
       formula: item.formula,
       coefficient: item.coefficient,
+      note: item.note === 1,
     }));
 }
 
@@ -161,8 +163,8 @@ export function saveAssembly(
   const id = db.transaction((tx) => {
     let assemblyId = request.id;
     const values = {
-      // 一覧・参照用にセット名としてセット1行目の名称を保持する
-      assemblyName: request.items[0].name,
+      // 一覧・参照用にセット名として先頭の通常明細の名称を保持する
+      assemblyName: assemblyHead(request.items)?.name ?? "",
       scope: request.scope,
       projectId: request.scope === "project" ? request.projectId : null,
       note: request.note,
@@ -194,6 +196,7 @@ export function saveAssembly(
       beforeSnapshot: DetailSnapshot | null,
       afterSnapshot: DetailSnapshot | null,
     ): void => {
+      if (item.note === true) return;
       tx.insert(detailChangeLogs)
         .values({
           scope: values.scope,
@@ -237,6 +240,7 @@ export function saveAssembly(
           // セット明細は計算式を持たない（式は計算書ごとに入れる）
           formula: "",
           coefficient: item.coefficient,
+          note: item.note === true ? 1 : 0,
           displayOrder: index,
         })
         .run();
@@ -343,7 +347,7 @@ function toCalcDetail(
   return calcDetail({
     ...(base ?? {}),
     sourceDetailId: item.sourceDetailId,
-    subjectId: item.subjectId,
+    subjectId: assemblyItemSubjectId(item),
     detailNumber: item.detailNumber,
     materialCategory: item.materialCategory,
     partNumber: item.partNumber,
@@ -356,23 +360,52 @@ function toCalcDetail(
     remarksLower: item.remarksLower,
     estimateDisplay: item.estimateDisplay,
     coefficient: item.coefficient,
+    note: item.note === true,
   });
 }
 
 /** マスターの明細とつき合わせる行か（空行・科目なしの行はマスターに無い） */
 function isMasterRow(detail: CalcDetail): boolean {
   return (
-    !isEmptyDetail(detail) &&
-    detail.subjectId !== null &&
-    detail.note !== true
+    !isEmptyDetail(detail) && detail.subjectId !== null && detail.note !== true
   );
+}
+
+function isNoteRow(detail: CalcDetail): boolean {
+  return (
+    detail.note === true &&
+    [
+      detail.name,
+      detail.partName,
+      detail.descriptionUpper,
+      detail.descriptionLower,
+    ].some((value) => value.trim() !== "")
+  );
+}
+
+function isAssemblyRow(detail: CalcDetail): boolean {
+  return isMasterRow(detail) || isNoteRow(detail);
 }
 
 /** 同じ明細かを見分ける目印（明細マスターのID。無いものは名称で見る） */
 function rowKeyOf(value: {
   sourceDetailId: number | null;
   name: string;
+  note?: boolean;
+  descriptionLower: string;
+  descriptionUpper: string;
+  partName: string;
 }): string {
+  if (value.note === true) {
+    return `note:${[
+      value.name,
+      value.descriptionLower,
+      value.descriptionUpper,
+      value.partName,
+    ]
+      .map((part) => part.trim())
+      .join("\u001f")}`;
+  }
   return value.sourceDetailId === null
     ? `n:${value.name.trim()}`
     : `d:${value.sourceDetailId}`;
@@ -411,6 +444,12 @@ function matchItemsToRows(
     let at = 0;
     for (let item = itemFrom; item < anchorItem; item += 1) {
       if (anchors.has(item)) continue;
+      if (items[item].note === true) continue;
+      while (
+        freeRows[at] !== undefined &&
+        rows[freeRows[at]].detail.note === true
+      )
+        at += 1;
       const row = freeRows[at];
       at += 1;
       if (row !== undefined) matched.set(item, row);
@@ -432,7 +471,7 @@ function applyItemsToSet(
 ): { details: CalcDetail[]; lines: CalcLine[] } {
   const rows = set.details
     .map((detail, index) => ({ detail, index }))
-    .filter((row) => isMasterRow(row.detail));
+    .filter((row) => isAssemblyRow(row.detail));
   const matched = matchItemsToRows(items, rows);
   const itemOfRow = new Map<number, number>();
   matched.forEach((position, itemIndex) => {
@@ -452,12 +491,17 @@ function applyItemsToSet(
   };
   set.details.forEach((detail, index) => {
     const line = set.lines[index] ?? calcLine();
-    if (!isMasterRow(detail)) {
+    if (!isAssemblyRow(detail)) {
       details.push(detail);
       lines.push(line);
       return;
     }
     const itemIndex = itemOfRow.get(index);
+    if (itemIndex === undefined && isNoteRow(detail)) {
+      details.push(detail);
+      lines.push(line);
+      return;
+    }
     // マスターから消えた明細は計算書からも消す
     if (itemIndex === undefined) return;
     pushNewItems(itemIndex);
@@ -510,24 +554,29 @@ export function propagateAssemblyToSheets(
 
 /** 計算書の1セットを、セット明細マスターの構成明細に写し取る */
 function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
-  return set.details.filter(isMasterRow).map((detail) => ({
-    id: null,
-    sourceDetailId: detail.sourceDetailId,
-    subjectId: detail.subjectId as number,
-    partNumber: detail.partNumber,
-    detailNumber: detail.detailNumber,
-    materialCategory: detail.materialCategory,
-    partName: detail.partName || set.partName,
-    name: detail.name,
-    descriptionUpper: detail.descriptionUpper,
-    descriptionLower: detail.descriptionLower,
-    unit: detail.unit,
-    remarksUpper: detail.remarksUpper,
-    remarksLower: detail.remarksLower,
-    estimateDisplay: detail.estimateDisplay,
-    formula: "",
-    coefficient: detail.coefficient,
-  }));
+  if (!set.details.some(isMasterRow)) return [];
+  return set.details.filter(isAssemblyRow).map((detail) => {
+    const note = detail.note === true;
+    return {
+      id: null,
+      sourceDetailId: detail.sourceDetailId,
+      subjectId: note ? (detail.subjectId ?? 0) : (detail.subjectId as number),
+      partNumber: detail.partNumber,
+      detailNumber: detail.detailNumber,
+      materialCategory: detail.materialCategory,
+      partName: note ? detail.partName : detail.partName || set.partName,
+      name: detail.name,
+      descriptionUpper: detail.descriptionUpper,
+      descriptionLower: detail.descriptionLower,
+      unit: detail.unit,
+      remarksUpper: detail.remarksUpper,
+      remarksLower: detail.remarksLower,
+      estimateDisplay: detail.estimateDisplay,
+      formula: "",
+      coefficient: detail.coefficient,
+      note,
+    };
+  });
 }
 
 /**

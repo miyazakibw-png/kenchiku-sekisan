@@ -362,6 +362,10 @@
   outline: none;
 }
 
+.room-calc-sheet .call-table tbody tr.note-row td {
+  background: #e8f6e8;
+}
+
 /* 1明細は上下2段（上段＝部位名・摘要（上）、下段＝名称・摘要（下）） */
 .room-calc-sheet .call-table td .upper,
 .room-calc-sheet .call-table td .lower {

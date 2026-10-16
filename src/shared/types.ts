@@ -648,6 +648,8 @@ export interface AssemblyItem {
   formula: string;
   /** 掛け率（セットで拾うが計上単位が異なる場合に使用） */
   coefficient: number;
+  /** 計算しない説明行 */
+  note?: boolean;
 }
 
 export interface FinishAssembly {

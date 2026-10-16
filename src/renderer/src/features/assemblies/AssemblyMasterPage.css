@@ -77,6 +77,21 @@
   background: var(--selected, #eaf1fb);
 }
 
+.assembly-page .note-row td {
+  background: #e8f6e8;
+}
+
+.assembly-page .note-mark {
+  display: inline-block;
+  margin-right: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #15803d;
+  color: #fff;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
 .assembly-main .toolbar .hint {
   font-size: 12px;
   color: #6b7280;

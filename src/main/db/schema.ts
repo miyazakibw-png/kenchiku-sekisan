@@ -257,6 +257,7 @@ export const mFinishAssemblyItems = sqliteTable(
     formula: text("formula").notNull().default(""),
     /** 掛け率（セットで拾うが計上単位が異なる場合に使用） */
     coefficient: real("coefficient").notNull().default(1),
+    note: integer("note").notNull().default(0),
     displayOrder: integer("display_order").notNull().default(0),
   },
   (t) => ({

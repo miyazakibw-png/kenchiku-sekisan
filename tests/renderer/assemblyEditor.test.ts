@@ -58,6 +58,18 @@ describe("仕上明細セットの編集ロジック", () => {
     expect(swapped.items.map((i) => i.name)).toEqual(["B", "A", "C"]);
   });
 
+  it("先頭が説明行なら通常明細を見出しにし、説明行を保存変換でも保つ", () => {
+    const note = item("説明", { note: true, subjectId: 0 });
+    const detail = item("明細");
+    const set = assembly(1, [note, detail]);
+
+    expect(headItem(set)?.name).toBe("明細");
+    expect(toAssemblyItems(toDraftItems(set.items))).toMatchObject([
+      { name: "説明", note: true, subjectId: 0 },
+      { name: "明細" },
+    ]);
+  });
+
   it("科目で絞り込む（セットの科目は1行目の明細の科目）", () => {
     const list = [
       assembly(1, [item("A", { subjectId: 1 })]),
