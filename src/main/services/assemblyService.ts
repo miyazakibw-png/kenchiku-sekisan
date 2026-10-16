@@ -564,7 +564,7 @@ function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
       partNumber: detail.partNumber,
       detailNumber: detail.detailNumber,
       materialCategory: detail.materialCategory,
-      partName: note ? detail.partName : detail.partName || set.partName,
+      partName: detail.partName,
       name: detail.name,
       descriptionUpper: detail.descriptionUpper,
       descriptionLower: detail.descriptionLower,

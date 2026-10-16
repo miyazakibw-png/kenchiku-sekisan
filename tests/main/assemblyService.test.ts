@@ -359,6 +359,52 @@ describe("計算書からの自動登録と連動", () => {
     expect(listAssemblies(db, projectIdRef).length).toBe(1);
   });
 
+  it("空の明細部位名をセット見出しで補わず、再登録・呼び出し後も空のまま保つ", () => {
+    const set = calcSetJson(["軽鉄下地"]) as {
+      partName: string;
+      details: Record<string, unknown>[];
+    };
+    set.partName = "その他";
+    set.details[0].partName = "";
+    const sheetId = makeRoomSheet([set]);
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1);
+    const [oldAssembly] = listAssemblies(db, projectIdRef);
+    expect(oldAssembly.items[0].partName).toBe("");
+
+    saveAssembly(db, {
+      id: oldAssembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      note: oldAssembly.note,
+      items: oldAssembly.items.map((item) => ({
+        ...item,
+        partName: "その他",
+      })),
+    });
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1);
+    const [assembly] = listAssemblies(db, projectIdRef);
+    expect(assembly.id).not.toBe(oldAssembly.id);
+    expect(assembly.items[0].partName).toBe("");
+    expect(listAssemblies(db, projectIdRef)).toHaveLength(1);
+
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      note: assembly.note,
+      items: assembly.items,
+      propagate: true,
+    });
+    const calledBack = JSON.parse(lowerJsonOf(sheetId)) as {
+      assemblyId: number;
+      details: { partName: string }[];
+    }[];
+    expect(calledBack[0].assemblyId).toBe(assembly.id);
+    expect(calledBack[0].details[0].partName).toBe("");
+  });
+
   it("説明行も登録し、科目ID 0 から null に戻して内容を保つ", () => {
     const set = calcSetJson(["軽鉄下地"]) as {
       details: Record<string, unknown>[];
