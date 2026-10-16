@@ -7,6 +7,7 @@ import {
   toCheckSheetTsv,
   type CheckSheetSourceItem,
 } from "../../src/core/aggregate/checkSheet";
+import { toHalfWidth } from "../../src/core/breakdown/breakdown";
 
 const PARTS = [
   { id: 1, name: "床" },
@@ -193,7 +194,7 @@ describe("チェック表", () => {
       "1階",
       "事務室",
       "",
-      "ビニル床シート",
+      toHalfWidth("ビニル床シート"),
       "",
       "10.00",
       "",
@@ -204,5 +205,28 @@ describe("チェック表", () => {
     ]);
     expect(lines[3]).toBe("");
     expect(lines[4].split("\t")[7]).toBe("化粧石膏");
+  });
+
+  it("Excelへコピーする文字も画面と同じ半角表記にする", () => {
+    const partName = "床　ＶＰ";
+    const part1 = "ＡＢ";
+    const part2 = "会議室　ＡＢ";
+    const name = "ビニルクロス　ＶＰ";
+    const sheet = buildCheckSheet(
+      [item({ part1, part2, partNumber: 10, partName: "床", name })],
+      [{ id: 1, name: partName }],
+      "仕上",
+    );
+    const lines = toCheckSheetTsv(sheet).split("\n");
+
+    expect(lines[0].split("\t")[0]).toBe("部位");
+    expect(lines[0].split("\t")[3]).toBe(toHalfWidth(partName));
+    expect(lines[1].split("\t").slice(0, 2)).toEqual(["部位Ⅰ", "部位Ⅱ"]);
+    expect(lines[2].split("\t").slice(0, 4)).toEqual([
+      toHalfWidth(part1),
+      toHalfWidth(part2),
+      "",
+      toHalfWidth(name),
+    ]);
   });
 });

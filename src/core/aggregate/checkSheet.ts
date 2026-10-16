@@ -5,6 +5,7 @@
  * 明細用部位の番号は 10番台＝管理用部位1、20番台＝2 … と対応するので、
  * 部位番号から管理用部位を決める（番号が無い明細は名称の一致で探す）。
  */
+import { toHalfWidth } from "../breakdown/breakdown";
 
 export interface CheckSheetSourceItem {
   part1: string;
@@ -194,7 +195,7 @@ export function toCheckSheetTsv(sheet: CheckSheet): string {
   const header1 = ["部位", "", ""];
   const header2 = ["部位Ⅰ", "部位Ⅱ", ""];
   sheet.parts.forEach((part) => {
-    header1.push(part.name, "", "", "");
+    header1.push(toHalfWidth(part.name), "", "", "");
     header2.push("名称", "", "数量", "");
   });
   lines.push(header1.join("\t"), header2.join("\t"));
@@ -207,14 +208,14 @@ export function toCheckSheetTsv(sheet: CheckSheet): string {
     );
     for (let row = 0; row < rowCount; row += 1) {
       const cells = [
-        row === 0 ? block.part1 : "",
-        row === 0 ? block.part2 : "",
+        row === 0 ? toHalfWidth(block.part1) : "",
+        row === 0 ? toHalfWidth(block.part2) : "",
         "",
       ];
       block.columns.forEach((column) => {
         const cell = column[row];
         cells.push(
-          cell ? cell.name : "",
+          cell ? toHalfWidth(cell.name) : "",
           "",
           cell ? cell.quantity.toFixed(2) : "",
           "",
