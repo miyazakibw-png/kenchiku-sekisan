@@ -14,6 +14,7 @@ import type {
   Subject,
 } from "@shared/types";
 import { resolveMasterName } from "@shared/masters";
+import { pickMaster, resolvePartNumberInput } from "./partNumberInput";
 import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import {
@@ -205,22 +206,6 @@ function setBSymbol(set: CalcSet, symbol: string): CalcSet["lines"] {
     ...line,
     bSymbol: index === 0 ? symbol : "",
   }));
-}
-
-/** 番号でも名称でも受け付けて、マスターの番号と名称を決める */
-function pickMaster(
-  entries: MasterEntry[],
-  input: string,
-): { id: number | null; name: string } {
-  const text = input.trim();
-  if (text === "") return { id: null, name: "" };
-  const byNumber = /^\d+$/.test(text)
-    ? entries.find((entry) => entry.id === Number(text))
-    : undefined;
-  if (byNumber) return { id: byNumber.id, name: byNumber.name };
-  const byName = entries.find((entry) => entry.name === text);
-  if (byName) return { id: byName.id, name: byName.name };
-  return { id: null, name: text };
 }
 
 /** 計算表の列（画像の並び。列幅はドラッグで変えられ、全物件で共通に使う） */
@@ -2629,23 +2614,25 @@ export default function RoomCalcSheet({
                               col={3}
                               entries={pickupPartEntries}
                               halfWidth
+                              commitOnBlur
                               value={
                                 detail.partNumber === null
                                   ? ""
                                   : String(detail.partNumber)
                               }
-                              title="明細用部位のID。入れると右の部位名にマスターの文字が入ります"
+                              title="明細用部位のID。登録済みの番号を入れると右の部位名にマスターの文字が入ります"
                               onFocus={focusDetail}
-                              onCommit={(text) => {
-                                const picked = pickMaster(pickupParts, text);
-                                updateDetail(set.id, rowIndex, {
-                                  partNumber: picked.id,
-                                  partName:
-                                    picked.id === null
-                                      ? detail.partName
-                                      : picked.name,
-                                });
-                              }}
+                              onCommit={(text) =>
+                                updateDetail(
+                                  set.id,
+                                  rowIndex,
+                                  resolvePartNumberInput(
+                                    pickupParts,
+                                    text,
+                                    detail.partName,
+                                  ),
+                                )
+                              }
                             />
                           </td>
                           <td className="id">

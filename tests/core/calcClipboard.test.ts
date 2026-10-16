@@ -217,6 +217,28 @@ describe("カーソルのある列から貼り付ける", () => {
     expect(detail.unit).toBe("m2");
   });
 
+  it("部位ID列への貼り付けは未登録番号を保ち、部位名を変えない", () => {
+    const pasted = pasteSheet(
+      [
+        calcDetail({ partName: "床" }),
+        calcDetail({ partName: "天井" }),
+      ],
+      [calcLine(), calcLine()],
+      0,
+      3,
+      "180\n30.01",
+    );
+
+    expect(pasted.details[0]).toMatchObject({
+      partNumber: 180,
+      partName: "床",
+    });
+    expect(pasted.details[1]).toMatchObject({
+      partNumber: 30.01,
+      partName: "天井",
+    });
+  });
+
   it("計算式の列から貼り付けるとコメント・計算式に入る（計算で出る欄は変えない）", () => {
     const text = "FA\t1*2\t3";
     const pasted = pasteSheet([calcDetail()], [calcLine()], 0, 12, text);

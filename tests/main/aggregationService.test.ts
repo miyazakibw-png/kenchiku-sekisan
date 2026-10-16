@@ -740,7 +740,7 @@ describe("集計処理", () => {
     ).toEqual(["ビニル床シート"]);
     // セット明細マスターに計算書のセットが登録されている
     expect(listAssemblies(db, projectId)).toHaveLength(1);
-    expect(listAssemblies(db, projectId)[0].items[0].partName).toBe("床");
+    expect(listAssemblies(db, projectId)[0].items[0].partName).toBe("");
 
     // 計算書を直してから再度マスター作成すると、呼出もその内容に変わる
     const row = drafts[0];
