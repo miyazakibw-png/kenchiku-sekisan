@@ -612,3 +612,21 @@
   font-size: 10px;
   vertical-align: middle;
 }
+
+.room-calc-sheet table.calc td.material {
+  position: relative;
+}
+
+.room-calc-sheet table.calc tr.note-row td.material input {
+  padding-left: 20px;
+}
+
+.room-calc-sheet table.calc td.material .note-mark {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  z-index: 1;
+  pointer-events: none;
+}
