@@ -286,6 +286,7 @@ function toSourceItem(
     masterKey: item.masterKey,
     subjectId: item.subjectId,
     part1: item.part1,
+    part2: item.part2,
     partNumber: item.partNumber,
     partName: item.partName,
     name: item.name,

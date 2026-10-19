@@ -13,6 +13,7 @@ import {
 } from "../../core/breakdown/spreadsheet";
 import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
 import {
+  relayoutBreakdownRows,
   withSubjectSubtotals,
   type BreakdownRow,
 } from "../../core/breakdown/breakdown";
@@ -65,12 +66,14 @@ export function buildExport(
   projectName: string,
   compare?: CompareExportInput,
 ): { content: Buffer; defaultName: string } {
-  const coreRows = rows.map(toCoreRow);
+  const coreRows = relayoutBreakdownRows(rows.map(toCoreRow), settings);
   if (kind === "excelCompare") {
     return {
       content: toCompareWorkbook({
         left: withSubjectSubtotals(coreRows),
-        right: withSubjectSubtotals((compare?.rows ?? []).map(toCoreRow)),
+        right: withSubjectSubtotals(
+          relayoutBreakdownRows((compare?.rows ?? []).map(toCoreRow), settings),
+        ),
         layout: settings.layout,
         leftTitle: compare?.leftTitle ?? "新しい内訳書",
         rightTitle: compare?.rightTitle ?? "前の内訳書",

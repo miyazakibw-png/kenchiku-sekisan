@@ -23,6 +23,10 @@ import {
 } from "../../src/main/services/breakdownService";
 import { buildExport } from "../../src/main/services/breakdownExportService";
 import type { EstimateRowDraft } from "../../src/shared/types";
+import {
+  BREAKDOWN_LAYOUT,
+  relayoutBreakdownRows,
+} from "../../src/core/breakdown/breakdown";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -123,6 +127,15 @@ describe("内訳書", () => {
     // 集計書で使っている科目・単位を設定へ自動で用意する
     expect(view.settings.subjectOrder).toContain(5);
     expect(view.settings.unitOrder).toEqual(["m2"]);
+  });
+
+  it("部位Ⅱに仕分けた見出しも内訳書へ転記する", () => {
+    const view = transferBreakdown(db, projectId);
+    expect(
+      view.rows.some(
+        (row) => row.rowKind === "title" && row.nameLower === "＜1階＞",
+      ),
+    ).toBe(true);
   });
 
   it("確定するまでは何度転記しても同じ回、確定後は次の回になる", () => {
@@ -234,5 +247,36 @@ describe("内訳書", () => {
     expect(excel.defaultName).toBe("港区計画_内訳書.xlsx");
     // .xlsx（zip）なので PK で始まる
     expect(excel.content.subarray(0, 2).toString("latin1")).toBe("PK");
+  });
+
+  it("古い書式の明細も現在の書式で各種出力する", () => {
+    const view = transferBreakdown(db, projectId);
+    const oldRows = view.rows.map((row) =>
+      row.rowKind === "detail"
+        ? { ...row, partName: "床", nameUpper: "床" }
+        : row,
+    );
+    const settings = { ...view.settings, layout: BREAKDOWN_LAYOUT.twoRow };
+    const relayoutedRows = relayoutBreakdownRows(oldRows, settings);
+
+    (["bcs", "excelAll", "excelBySubject"] as const).forEach((kind) => {
+      expect(buildExport(kind, oldRows, settings, "港区計画").content).toEqual(
+        buildExport(kind, relayoutedRows, settings, "港区計画").content,
+      );
+    });
+
+    expect(
+      buildExport("excelCompare", oldRows, settings, "港区計画", {
+        rows: oldRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content,
+    ).toEqual(
+      buildExport("excelCompare", relayoutedRows, settings, "港区計画", {
+        rows: relayoutedRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content,
+    );
   });
 });

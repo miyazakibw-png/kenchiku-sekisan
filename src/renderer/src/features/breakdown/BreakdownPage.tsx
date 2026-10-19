@@ -19,6 +19,7 @@ import {
   amountOf,
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
+  relayoutBreakdownRows,
 } from "../../../../core/breakdown/breakdown";
 import type { BreakdownHalfField } from "../../../../core/breakdown/compare";
 import { moveRow } from "../../../../core/breakdown/compare";
@@ -307,8 +308,12 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const reload = useCallback(
     async (versionId?: number) => {
       const next = await window.sekisan.getBreakdown(project.id, versionId);
-      setView(next);
-      setLeftRows(next.rows);
+      const relayouted = {
+        ...next,
+        rows: relayoutBreakdownRows(next.rows, next.settings),
+      };
+      setView(relayouted);
+      setLeftRows(relayouted.rows);
       setVersions(await window.sekisan.listBreakdownVersions(project.id));
     },
     [project.id],
@@ -341,13 +346,17 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       newRound = choice === 1;
     }
     const next = await window.sekisan.transferBreakdown(project.id, newRound);
-    setView(next);
-    setLeftRows(next.rows);
+    const relayouted = {
+      ...next,
+      rows: relayoutBreakdownRows(next.rows, next.settings),
+    };
+    setView(relayouted);
+    setLeftRows(relayouted.rows);
     setVersions(await window.sekisan.listBreakdownVersions(project.id));
     setMessage(
-      next.version === null
+      relayouted.version === null
         ? "集計処理を先に実行してください。"
-        : `${next.version.round}回目として転記しました（${next.rows.length}行）`,
+        : `${relayouted.version.round}回目として転記しました（${relayouted.rows.length}行）`,
     );
   };
 
@@ -363,20 +372,45 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       ...patch,
       projectId: project.id,
     });
-    setView((current) => ({ ...current, settings: saved }));
     if (view.version && view.version.confirmed === 0) {
       const next = await window.sekisan.transferBreakdown(
         project.id,
         false,
         view.version?.grouping ?? "subject",
       );
-      setView(next);
-      setLeftRows(next.rows);
+      const relayouted = {
+        ...next,
+        rows: relayoutBreakdownRows(next.rows, next.settings),
+      };
+      setView(relayouted);
+      setLeftRows(relayouted.rows);
       setMessage("設定を変えたので、この回を作り直しました。");
-    } else if (view.version) {
-      setMessage(
-        "確定した回は作り直しません（新しく転記すると設定が効きます）。",
-      );
+      return;
+    }
+    if (view.version) {
+      if (
+        saved.layout !== settings.layout ||
+        saved.namePattern !== settings.namePattern
+      ) {
+        setView((current) => ({
+          ...current,
+          settings: saved,
+          rows: relayoutBreakdownRows(current.rows, saved),
+        }));
+        setLeftRows((current) => relayoutBreakdownRows(current, saved));
+        setRightRows((current) => relayoutBreakdownRows(current, saved));
+        history.clear();
+        setMessage(
+          "確定した回は行の中身はそのままで、書式だけ変えて出します。",
+        );
+      } else {
+        setView((current) => ({ ...current, settings: saved }));
+        setMessage(
+          "確定した回は作り直しません（新しく転記すると設定が効きます）。",
+        );
+      }
+    } else {
+      setView((current) => ({ ...current, settings: saved }));
     }
   };
 
@@ -425,7 +459,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
 
   const openCompare = async (versionId: number): Promise<void> => {
     const other = await window.sekisan.getBreakdown(project.id, versionId);
-    setRightRows(other.rows);
+    setRightRows(relayoutBreakdownRows(other.rows, settings));
     setCompareTarget(versionId);
     setPanel("compare");
     history.clear();
@@ -510,7 +544,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     await saveSettings({ subjectOrder: nextOrder });
     // 確定した回は作り直さないので、科目のかたまりごと行を並べ替えて保存する
     if (view.version && view.version.confirmed !== 0) {
-      const nextRows = reorderBySubjectOrder(view.rows, nextOrder);
+      const nextRows = reorderBySubjectOrder(
+        relayoutBreakdownRows(view.rows, settings),
+        nextOrder,
+      );
       setView((current) => ({ ...current, rows: nextRows }));
       setLeftRows(nextRows);
       await window.sekisan.saveBreakdownRows({

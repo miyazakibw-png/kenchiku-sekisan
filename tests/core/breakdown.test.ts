@@ -9,6 +9,7 @@ import {
   collectSubjectOrder,
   collectUnits,
   mergeSubjectOrder,
+  relayoutBreakdownRows,
   roundQuantity,
   toFullWidth,
   toHalfWidth,
@@ -167,6 +168,111 @@ describe("内訳書の行づくり", () => {
     ]);
   });
 
+  it("部位Ⅱの切り替わりに見出しを入れ、基本部位の見出しを出し直す", () => {
+    const items = [
+      item({
+        id: 1,
+        masterKey: "part2-1",
+        part1: "共用内装",
+        part2: "1階レセプション",
+        partNumber: 11,
+        name: "受付A",
+        descriptionUpper: "",
+        descriptionLower: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 2,
+        masterKey: "part2-2",
+        part1: "共用内装",
+        part2: "1階レセプション",
+        partNumber: 11,
+        name: "受付B",
+        descriptionUpper: "",
+        descriptionLower: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 3,
+        masterKey: "part2-3",
+        part1: "共用内装",
+        part2: "2階ロビー",
+        partNumber: 11,
+        name: "ロビー",
+        descriptionUpper: "",
+        descriptionLower: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 4,
+        masterKey: "part2-4",
+        part1: "外部",
+        part2: "",
+        partNumber: 11,
+        name: "外部明細",
+        descriptionUpper: "",
+        descriptionLower: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+    ];
+    const settings = { ...DEFAULT_BREAKDOWN_SETTINGS, partTitlesOn: true };
+    const rows = buildBreakdownRows(items, subjects, settings);
+    const names = rows.map((row) =>
+      row.rowKind === "subject" ? row.subjectName : row.nameLower,
+    );
+
+    expect(names).toEqual([
+      "コンクリート工事",
+      "（共用内装）",
+      "＜1階レセプション＞",
+      "＜床＞",
+      "受付A",
+      "受付B",
+      "＜2階ロビー＞",
+      "＜床＞",
+      "ロビー",
+      "（外部）",
+      "＜床＞",
+      "外部明細",
+    ]);
+    expect(rows.some((row) => row.nameLower === "＜＞")).toBe(false);
+
+    const relayouted = relayoutBreakdownRows(rows, {
+      layout: BREAKDOWN_LAYOUT.oneLine,
+      namePattern: NAME_PATTERN.asIs,
+    });
+    expect(
+      relayouted
+        .filter((row) => row.rowKind === "title")
+        .map((row) => row.nameLower),
+    ).toEqual([
+      "（共用内装）",
+      "＜1階レセプション＞",
+      "＜床＞",
+      "＜2階ロビー＞",
+      "＜床＞",
+      "（外部）",
+      "＜床＞",
+    ]);
+    const part2Heading = toCompareBlocks(
+      relayouted,
+      BREAKDOWN_LAYOUT.twoRow,
+    ).find((block) => block.lower.nameLower === "＜1階レセプション＞");
+    expect(part2Heading?.heading).toBe(true);
+
+    const grouped = buildGroupedBreakdownRows(
+      [{ name: "居室", items }],
+      settings,
+    );
+    expect(grouped.some((row) => row.nameLower === "＜1階レセプション＞")).toBe(
+      false,
+    );
+  });
+
   it("名称の文字を全角・半角にそろえる（部位名はそのまま）", () => {
     const source = item({ partName: "ﾌｶｼ壁", name: "ﾒﾀｶﾗｰSK-FB" });
     const full = buildBreakdownRows([source], subjects, {
@@ -320,6 +426,194 @@ describe("内訳書の行づくり", () => {
     expect(mergeSubjectOrder([3, 1], [2], list)).toEqual([3, 1, 2]);
     // どの既存科目より前なら先頭
     expect(mergeSubjectOrder([2, 3], [1, 2, 3], list)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("内訳書の書式を並べ替える", () => {
+  const relayoutItems = [
+    item({
+      id: 101,
+      masterKey: "relayout-101",
+      part1: "内部",
+      partNumber: 11,
+      partName: "床",
+      name: "ビニルクロス　ＶＰ",
+      descriptionUpper: "上段摘要",
+      descriptionLower: "下段摘要",
+      remarksUpper: "上段備考",
+      remarksLower: "下段備考",
+    }),
+    item({
+      id: 102,
+      masterKey: "relayout-102",
+      part1: "内部",
+      partNumber: 31,
+      partName: "",
+      subjectId: 2,
+      name: "部位名のない明細",
+      descriptionUpper: "",
+      descriptionLower: "数量のある明細",
+      remarksUpper: "",
+      remarksLower: "備考",
+    }),
+    item({
+      id: 103,
+      masterKey: "relayout-103",
+      part1: "外部",
+      partNumber: 70,
+      partName: "壁",
+      name: "数量なし明細",
+      unit: "",
+      descriptionUpper: "上段が主",
+      descriptionLower: "下段摘要",
+      remarksUpper: "上段備考",
+      remarksLower: "下段備考",
+    }),
+  ];
+  const baseSettings = {
+    ...DEFAULT_BREAKDOWN_SETTINGS,
+    partTitlesOn: true,
+    replacements: [{ from: "上段", to: "先行" }],
+  };
+  const layouts = [
+    BREAKDOWN_LAYOUT.twoLine,
+    BREAKDOWN_LAYOUT.oneLine,
+    BREAKDOWN_LAYOUT.excel,
+    BREAKDOWN_LAYOUT.twoRow,
+  ];
+  const namePatterns = [
+    NAME_PATTERN.asIs,
+    NAME_PATTERN.withPart,
+    NAME_PATTERN.withPartColon,
+    NAME_PATTERN.withPartFullColon,
+  ];
+
+  it("全書式・名称欄の組み合わせで新規転記と同じ行になる", () => {
+    layouts.forEach((sourceLayout) =>
+      namePatterns.forEach((sourcePattern) => {
+        const sourceRows = buildBreakdownRows(relayoutItems, subjects, {
+          ...baseSettings,
+          layout: sourceLayout,
+          namePattern: sourcePattern,
+        });
+        layouts.forEach((targetLayout) =>
+          namePatterns.forEach((targetPattern) => {
+            const targetSettings = {
+              ...baseSettings,
+              layout: targetLayout,
+              namePattern: targetPattern,
+            };
+            expect(relayoutBreakdownRows(sourceRows, targetSettings)).toEqual(
+              buildBreakdownRows(relayoutItems, subjects, targetSettings),
+            );
+          }),
+        );
+      }),
+    );
+  });
+
+  it("単価・金額・取消線を保ち、2行形式では上下両方に取消線を出す", () => {
+    const original = buildBreakdownRows(
+      [
+        item({
+          descriptionUpper: "",
+          descriptionLower: "",
+          remarksUpper: "",
+          remarksLower: "",
+        }),
+      ],
+      subjects,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, layout: BREAKDOWN_LAYOUT.twoLine },
+    )
+      .map((row, index) => ({ ...row, id: index + 10, versionId: 42 }))
+      .map((row) =>
+        row.rowKind === "detail"
+          ? { ...row, unitPrice: 125, amount: 1500, struck: 1 }
+          : row,
+      );
+    const twoRow = relayoutBreakdownRows(original, {
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.asIs,
+    });
+    expect(twoRow[1]).toMatchObject({
+      rowKind: "note",
+      unitPrice: null,
+      amount: null,
+      struck: 1,
+      id: original[1].id,
+      versionId: 42,
+    });
+    expect(twoRow[2]).toMatchObject({
+      rowKind: "detail",
+      unitPrice: 125,
+      amount: 1500,
+      struck: 1,
+      id: original[1].id,
+      versionId: 42,
+    });
+    expect(
+      relayoutBreakdownRows(twoRow, {
+        layout: BREAKDOWN_LAYOUT.twoLine,
+        namePattern: NAME_PATTERN.asIs,
+      }),
+    ).toEqual(original);
+  });
+
+  it("空行とキーのない注記を位置を変えずに通し、同じ書式への変換は冪等", () => {
+    const source = buildBreakdownRows(
+      [
+        item({
+          descriptionUpper: "",
+          descriptionLower: "",
+          remarksUpper: "",
+          remarksLower: "",
+        }),
+        item({
+          id: 2,
+          masterKey: "k2",
+          descriptionUpper: "",
+          descriptionLower: "",
+          remarksUpper: "",
+          remarksLower: "",
+        }),
+      ],
+      subjects,
+      { ...DEFAULT_BREAKDOWN_SETTINGS, layout: BREAKDOWN_LAYOUT.oneLine },
+    );
+    const keylessNote = {
+      ...source[1],
+      rowKind: "note" as const,
+      masterKey: "",
+      aggregateItemId: null,
+    };
+    const subtotal = {
+      ...source[1],
+      nameLower: "小計",
+      subtotal: true,
+    };
+    const blank = {
+      ...source[1],
+      rowKind: "blank" as const,
+      masterKey: "",
+      aggregateItemId: null,
+    };
+    const rows = [
+      source[0],
+      source[1],
+      subtotal,
+      keylessNote,
+      blank,
+      source[2],
+    ];
+    const settings = {
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPartColon,
+    };
+    const once = relayoutBreakdownRows(rows, settings);
+    expect(once[3]).toBe(subtotal);
+    expect(once[4]).toBe(keylessNote);
+    expect(once[5]).toBe(blank);
+    expect(relayoutBreakdownRows(once, settings)).toEqual(once);
   });
 });
 
@@ -492,6 +786,50 @@ describe("回どうしの比較", () => {
     expect(diffs[2].onlyLeft).toBe(true);
   });
 
+  it("保存時の書式が違っても現在の2段2行書式で差分なく比較する", () => {
+    const source = item({
+      id: 11,
+      masterKey: "cross-format",
+      partName: "壁",
+      name: "コンクリートブロック",
+      descriptionUpper: "上段摘要",
+      descriptionLower: "下段摘要",
+      remarksUpper: "上段備考",
+      remarksLower: "下段備考",
+    });
+    const previousRows = buildBreakdownRows([source], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoLine,
+      namePattern: NAME_PATTERN.withPart,
+    });
+    const currentRows = buildBreakdownRows([source], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPart,
+    });
+    const settings = {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.withPart,
+    };
+    const leftRows = relayoutBreakdownRows(previousRows, settings);
+    const rightRows = relayoutBreakdownRows(currentRows, settings);
+    const leftBlocks = toCompareBlocks(leftRows, settings.layout);
+    const rightBlocks = toCompareBlocks(rightRows, settings.layout);
+
+    expect(leftBlocks.map((block) => block.span)).toEqual([1, 2]);
+    expect(rightBlocks.map((block) => block.span)).toEqual([1, 2]);
+    expect(
+      compareBlocksBySubject(leftBlocks, rightBlocks).every(
+        (diff) =>
+          !diff.onlyLeft &&
+          !diff.onlyRight &&
+          diff.changed.length === 0 &&
+          diff.changedHalves.length === 0,
+      ),
+    ).toBe(true);
+  });
+
   it("行を上下に動かせる", () => {
     expect(moveRow([1, 2, 3], 0, 1)).toEqual([2, 1, 3]);
     expect(moveRow([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
@@ -613,7 +951,10 @@ describe("部屋別・部位別のまとめからの内訳書", () => {
       DEFAULT_BREAKDOWN_SETTINGS,
     );
     const heads = rows.filter((row) => row.rowKind === "subject");
-    expect(heads.map((row) => row.subjectName)).toEqual(["＜居室＞", "＜玄関＞"]);
+    expect(heads.map((row) => row.subjectName)).toEqual([
+      "＜居室＞",
+      "＜玄関＞",
+    ]);
     // 見出しの下にそのまとめの明細が並ぶ（科目IDは明細のまま残る）
     expect(rows[1].nameLower).toBe("普通コンクリート");
     expect(rows[1].subjectId).toBe(1);
@@ -624,7 +965,10 @@ describe("部屋別・部位別のまとめからの内訳書", () => {
     const rows = buildGroupedBreakdownRows(
       [
         { name: "居室", items: [item({})] },
-        { name: "玄関", items: [item({ id: 3, masterKey: "k3", quantity: 2 })] },
+        {
+          name: "玄関",
+          items: [item({ id: 3, masterKey: "k3", quantity: 2 })],
+        },
       ],
       DEFAULT_BREAKDOWN_SETTINGS,
     );

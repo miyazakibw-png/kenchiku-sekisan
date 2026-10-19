@@ -154,6 +154,8 @@ export interface BreakdownSourceItem {
   subjectId: number | null;
   /** 部位Ⅰ（集計書ではタイトル行になる） */
   part1: string;
+  /** 部位Ⅱ（集計書では＜＞の見出し行になる） */
+  part2?: string;
   /** 明細用部位の番号（基本部位のタイトル行を出す範囲の判断に使う） */
   partNumber: number | null;
   partName: string;
@@ -520,6 +522,7 @@ export function buildBreakdownRows(
       () => subjectId,
       heading.subjectName,
       settings,
+      true,
     );
   });
   return rows;
@@ -553,6 +556,7 @@ export function buildGroupedBreakdownRows(
       (item) => item.subjectId,
       heading.subjectName,
       settings,
+      false,
     );
   });
   return rows;
@@ -565,15 +569,18 @@ function appendGroupRows(
   subjectIdOf: (item: BreakdownSourceItem) => number | null,
   subjectName: string,
   settings: BreakdownSettings,
+  withPart2: boolean,
 ): void {
   // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
   let part1: string | undefined;
+  let part2: string | undefined;
   // 基本部位のタイトル行は部位Ⅰごとに出し直す
   let lastPartTitle: string | null = null;
   items.forEach((item) => {
     const subjectId = subjectIdOf(item);
     if (part1 !== item.part1) {
       part1 = item.part1;
+      part2 = undefined;
       lastPartTitle = null;
       if (part1 !== "") {
         const title = emptyRow("title");
@@ -582,6 +589,21 @@ function appendGroupRows(
         title.partName = part1;
         title.nameLower = `（${part1}）`;
         rows.push(title);
+      }
+    }
+    if (withPart2) {
+      const nextPart2 = item.part2 ?? "";
+      if (nextPart2 !== part2) {
+        part2 = nextPart2;
+        lastPartTitle = null;
+        if (part2 !== "") {
+          const title = emptyRow("title");
+          title.subjectId = subjectId;
+          title.subjectName = subjectName;
+          title.partName = part2;
+          title.nameLower = `＜${part2}＞`;
+          rows.push(title);
+        }
       }
     }
     const partTitle = settings.partTitlesOn
@@ -600,6 +622,25 @@ function appendGroupRows(
   });
 }
 
+interface BreakdownDetailUnit {
+  hasQuantity?: boolean;
+  subjectId: number | null;
+  subjectName: string;
+  masterKey: string;
+  aggregateItemId: number | null;
+  partName: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  remarksUpper: string;
+  remarksLower: string;
+  quantity: number | null;
+  unit: string;
+  unitPrice: number | null;
+  amount: number | null;
+  struck?: number;
+}
+
 function detailRows(
   item: BreakdownSourceItem,
   subjectId: number | null,
@@ -607,54 +648,105 @@ function detailRows(
   settings: BreakdownSettings,
 ): BreakdownRow[] {
   const hasQuantity = item.unit !== "";
+  return emitDetailUnit(
+    {
+      subjectId,
+      subjectName,
+      hasQuantity,
+      masterKey: item.masterKey,
+      aggregateItemId: item.id,
+      partName: item.partName,
+      name: applyWidth(item.name, settings.nameWidth),
+      descriptionUpper: applyReplacements(
+        item.descriptionUpper,
+        settings.replacements,
+      ),
+      descriptionLower: applyReplacements(
+        item.descriptionLower,
+        settings.replacements,
+      ),
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+      quantity: hasQuantity ? roundQuantity(item.quantity, settings) : null,
+      unit: replaceUnit(item.unit, settings.unitReplacements),
+      unitPrice: null,
+      amount: null,
+    },
+    settings.layout,
+    settings.namePattern,
+  );
+}
+
+function emitDetailUnit(
+  unit: BreakdownDetailUnit,
+  layout: number,
+  namePattern: number,
+): BreakdownRow[] {
+  const line = (kind: BreakdownRowKind): BreakdownRow => {
+    const row = emptyRow(kind);
+    row.subjectId = unit.subjectId;
+    row.subjectName = unit.subjectName;
+    row.masterKey = unit.masterKey;
+    row.aggregateItemId = unit.aggregateItemId;
+    row.partName = unit.partName;
+    if (unit.struck !== undefined) row.struck = unit.struck;
+    return row;
+  };
+  const joined = joinPartAndName(unit.partName, unit.name, namePattern);
+
+  if (layout === BREAKDOWN_LAYOUT.twoRow || layout === BREAKDOWN_LAYOUT.excel) {
+    const upper = line("note");
+    upper.descriptionLower = unit.descriptionUpper;
+    upper.remarksLower = unit.remarksUpper;
+
+    const lower = line("detail");
+    if (joined !== null) lower.nameLower = joined;
+    else {
+      upper.nameLower = unit.partName;
+      lower.nameLower = unit.name;
+    }
+    lower.descriptionLower = unit.descriptionLower;
+    lower.remarksLower = unit.remarksLower;
+    lower.quantity = unit.quantity;
+    lower.unit = unit.unit;
+    lower.unitPrice = unit.unitPrice;
+    lower.amount = unit.amount;
+    return [upper, lower];
+  }
+
+  const hasQuantity = unit.hasQuantity ?? unit.unit !== "";
   const description = splitTwoLines(
-    applyReplacements(item.descriptionUpper, settings.replacements),
-    applyReplacements(item.descriptionLower, settings.replacements),
+    unit.descriptionUpper,
+    unit.descriptionLower,
     hasQuantity,
   );
   const remarks = splitTwoLines(
-    item.remarksUpper,
-    item.remarksLower,
+    unit.remarksUpper,
+    unit.remarksLower,
     hasQuantity,
   );
-  const name = applyWidth(item.name, settings.nameWidth);
-  const partName = item.partName;
-
-  // 書式③（エクセルへ1行で転記）も、ソフト内の表示は書式④と同じ2段2行にする
-  if (
-    settings.layout === BREAKDOWN_LAYOUT.twoRow ||
-    settings.layout === BREAKDOWN_LAYOUT.excel
-  ) {
-    return twoRowDetail(item, subjectId, subjectName, name, partName, settings);
-  }
-
-  const row = emptyRow("detail");
-  row.subjectId = subjectId;
-  row.subjectName = subjectName;
-  row.masterKey = item.masterKey;
-  row.aggregateItemId = item.id;
-  row.partName = item.partName;
-  const joined = joinPartAndName(partName, name, settings.namePattern);
-  if (settings.layout === BREAKDOWN_LAYOUT.oneLine || joined !== null) {
-    row.nameUpper = "";
+  const row = line("detail");
+  if (layout === BREAKDOWN_LAYOUT.oneLine || joined !== null) {
     row.nameLower =
-      joined ?? (partName === "" ? name : `${partName} ${name}`.trim());
+      joined ??
+      (unit.partName === ""
+        ? unit.name
+        : `${unit.partName} ${unit.name}`.trim());
   } else {
-    row.nameUpper = partName;
-    row.nameLower = name;
+    row.nameUpper = unit.partName;
+    row.nameLower = unit.name;
   }
   row.descriptionLower = description.primary;
   row.remarksLower = remarks.primary;
-  row.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  row.unit = replaceUnit(item.unit, settings.unitReplacements);
+  row.quantity = unit.quantity;
+  row.unit = unit.unit;
+  row.unitPrice = unit.unitPrice;
+  row.amount = unit.amount;
 
   const rows = [row];
   if (description.overflow !== "" || remarks.overflow !== "") {
-    const extra = emptyRow("note");
-    extra.subjectId = subjectId;
-    extra.subjectName = subjectName;
-    extra.masterKey = item.masterKey;
-    extra.aggregateItemId = item.id;
+    const extra = line("note");
+    extra.partName = "";
     extra.descriptionLower = description.overflow;
     extra.remarksLower = remarks.overflow;
     rows.push(extra);
@@ -662,55 +754,167 @@ function detailRows(
   return rows;
 }
 
+function detailUnitKey(row: BreakdownRow): string | null {
+  if (
+    row.subtotal === true ||
+    (row.rowKind !== "detail" && row.rowKind !== "note") ||
+    (row.masterKey === "" && row.aggregateItemId === null)
+  )
+    return null;
+  return JSON.stringify([row.masterKey, row.aggregateItemId]);
+}
+
+function stripPartName(text: string, partName: string): string {
+  if (partName === "") return text;
+  const prefix = [" ", ":", "："]
+    .map((separator) => `${partName}${separator}`)
+    .find((candidate) => text.startsWith(candidate));
+  return prefix === undefined ? text : text.slice(prefix.length);
+}
+
 /**
- * 書式④＝集計書のまま2段2行。
- * 上段（部位名・摘要上段・備考上段）と下段（名称・摘要下段・数量・単位・備考下段）を別の行にする。
+ * 保存済みの明細行を、現在の書式と名称欄の設定に合わせて並べ直す。
+ * 集計から作り直さず、確定した回の行データだけを組み替える。
  */
-function twoRowDetail(
-  item: BreakdownSourceItem,
-  subjectId: number | null,
-  subjectName: string,
-  name: string,
-  partName: string,
-  settings: BreakdownSettings,
-): BreakdownRow[] {
-  const hasQuantity = item.unit !== "";
-  const line = (kind: BreakdownRowKind): BreakdownRow => {
-    const row = emptyRow(kind);
-    row.subjectId = subjectId;
-    row.subjectName = subjectName;
-    row.masterKey = item.masterKey;
-    row.aggregateItemId = item.id;
-    row.partName = item.partName;
-    return row;
-  };
+export function relayoutBreakdownRows<T extends BreakdownRow>(
+  rows: readonly T[],
+  settings: { layout: number; namePattern: number },
+): T[];
+export function relayoutBreakdownRows<
+  T extends Omit<BreakdownRow, "rowKind"> & { rowKind: string },
+>(rows: readonly T[], settings: { layout: number; namePattern: number }): T[];
+export function relayoutBreakdownRows<
+  T extends Omit<BreakdownRow, "rowKind"> & { rowKind: string },
+>(rows: readonly T[], settings: { layout: number; namePattern: number }): T[] {
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  let index = 0;
+  while (index < rows.length) {
+    const row = rowAt(index);
+    const key = detailUnitKey(row);
+    const next = rows[index + 1] as BreakdownRow | undefined;
+    const nextKey = next ? detailUnitKey(next) : null;
 
-  const upper = line("note");
-  upper.descriptionLower = applyReplacements(
-    item.descriptionUpper,
-    settings.replacements,
-  );
-  upper.remarksLower = item.remarksUpper;
+    if (
+      row.rowKind === "note" &&
+      key !== null &&
+      next?.rowKind === "detail" &&
+      nextKey === key
+    ) {
+      const unitRows = [row, next];
+      output.push(
+        ...emitRelayoutUnit(unitRows, next, row, undefined, settings).map(
+          (emitted) =>
+            ({ ...(emitted.rowKind === "note" ? row : next), ...emitted }) as T,
+        ),
+      );
+      index += 2;
+      continue;
+    }
 
-  const lower = line("detail");
-  // 名称欄を「部位 名称」「部位：名称」にまとめる（部位は上段の名称欄には出さない）
-  const joined = joinPartAndName(partName, name, settings.namePattern);
-  if (joined !== null) {
-    lower.nameLower = joined;
-  } else {
-    upper.nameLower = partName;
-    lower.nameLower = name;
+    if (row.rowKind === "detail" && key !== null) {
+      const afterNext = rows[index + 2] as BreakdownRow | undefined;
+      const noteIsPair =
+        next?.rowKind === "note" &&
+        nextKey === key &&
+        afterNext?.rowKind === "detail" &&
+        detailUnitKey(afterNext) === key;
+      const overflow =
+        next?.rowKind === "note" && nextKey === key && !noteIsPair
+          ? next
+          : undefined;
+      const unitRows = overflow ? [row, overflow] : [row];
+      output.push(
+        ...emitRelayoutUnit(unitRows, row, undefined, overflow, settings).map(
+          (emitted) =>
+            ({
+              ...(emitted.rowKind === "note" ? (overflow ?? row) : row),
+              ...emitted,
+            }) as T,
+        ),
+      );
+      index += overflow ? 2 : 1;
+      continue;
+    }
+
+    output.push(rows[index]);
+    index += 1;
   }
-  lower.descriptionLower = applyReplacements(
-    item.descriptionLower,
-    settings.replacements,
-  );
-  lower.remarksLower = item.remarksLower;
-  lower.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  lower.unit = replaceUnit(item.unit, settings.unitReplacements);
+  return output;
+}
 
-  // 1明細＝必ず上下2行1組にする（中身が空でも行は残す）
-  return [upper, lower];
+function emitRelayoutUnit(
+  sourceRows: readonly BreakdownRow[],
+  detail: BreakdownRow,
+  pairedUpper: BreakdownRow | undefined,
+  overflow: BreakdownRow | undefined,
+  settings: { layout: number; namePattern: number },
+): BreakdownRow[] {
+  const partName =
+    pairedUpper !== undefined
+      ? pairedUpper.nameLower !== ""
+        ? pairedUpper.nameLower
+        : detail.partName
+      : detail.nameUpper !== ""
+        ? detail.nameUpper
+        : detail.partName;
+  const name =
+    pairedUpper !== undefined
+      ? pairedUpper.nameLower !== ""
+        ? detail.nameLower
+        : stripPartName(detail.nameLower, detail.partName)
+      : detail.nameUpper !== ""
+        ? detail.nameLower
+        : stripPartName(detail.nameLower, detail.partName);
+  const hasQuantity = detail.unit !== "";
+  const struck = sourceRows.some((row) => row.struck === 1)
+    ? 1
+    : sourceRows.some((row) => row.struck !== undefined)
+      ? 0
+      : undefined;
+
+  return emitDetailUnit(
+    {
+      subjectId: detail.subjectId,
+      subjectName: detail.subjectName,
+      hasQuantity,
+      masterKey: detail.masterKey,
+      aggregateItemId: detail.aggregateItemId,
+      partName,
+      name,
+      descriptionUpper:
+        pairedUpper !== undefined
+          ? pairedUpper.descriptionLower
+          : hasQuantity
+            ? (overflow?.descriptionLower ?? "")
+            : detail.descriptionLower,
+      descriptionLower:
+        pairedUpper !== undefined
+          ? detail.descriptionLower
+          : hasQuantity
+            ? detail.descriptionLower
+            : (overflow?.descriptionLower ?? ""),
+      remarksUpper:
+        pairedUpper !== undefined
+          ? pairedUpper.remarksLower
+          : hasQuantity
+            ? (overflow?.remarksLower ?? "")
+            : detail.remarksLower,
+      remarksLower:
+        pairedUpper !== undefined
+          ? detail.remarksLower
+          : hasQuantity
+            ? detail.remarksLower
+            : (overflow?.remarksLower ?? ""),
+      quantity: detail.quantity,
+      unit: detail.unit,
+      unitPrice: detail.unitPrice,
+      amount: detail.amount,
+      struck,
+    },
+    settings.layout,
+    settings.namePattern,
+  );
 }
 
 /** 集計書から使っている単位を並び順つきで抜き出す */
