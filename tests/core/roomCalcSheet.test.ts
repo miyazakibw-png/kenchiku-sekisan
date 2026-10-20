@@ -29,6 +29,7 @@ import {
   removeSet,
   removeSetLine,
   removeSheetRow,
+  removeSheetRows,
   resolveDescriptionMark,
   resolveDescriptionMarks,
   splitSetAt,
@@ -391,6 +392,97 @@ describe("行の追加と削除", () => {
     expect(next).toHaveLength(1);
     expect(next[0].details).toHaveLength(0);
     expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1"]);
+  });
+
+  it("複数セットにまたがる切り取りで明細セットと間の※行を消す", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    first.lines = [calcLine({ formulaA: "1" })];
+    const banner = commentSet("※");
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    second.lines = [calcLine({ formulaA: "2" })];
+
+    const next = removeSheetRows(
+      [first, banner, second],
+      [
+        { setId: first.id, index: 0 },
+        { setId: banner.id, index: 0 },
+        { setId: second.id, index: 0 },
+      ],
+    );
+
+    expect(next).toEqual([]);
+  });
+
+  it("部分削除後も残った明細と計算式の行がそろう", () => {
+    const set = calcSet(1);
+    set.details = [
+      calcDetail({ name: "床" }),
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    set.lines = [
+      calcLine({ formulaA: "1" }),
+      calcLine({ formulaA: "2" }),
+      calcLine({ formulaA: "3" }),
+    ];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 1 }]);
+
+    expect(next[0].details.map((item) => item.name)).toEqual(["床", "天井"]);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1", "3"]);
+  });
+
+  it("全行を消した空セットは除去する", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine()];
+
+    expect(removeSheetRows([set], [{ setId: set.id, index: 0 }])).toEqual([]);
+  });
+
+  it("最後の明細を消しても見出し付きセットは残す", () => {
+    const set = calcSet(1);
+    set.banner = { text: "1階", color: "#dbeafe" };
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine()];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 0 }]);
+
+    expect(next).toHaveLength(1);
+    expect(next[0].banner?.text).toBe("1階");
+    expect(next[0].details).toHaveLength(0);
+  });
+
+  it("明細数より後ろの行番号では計算式だけを消す", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [
+      calcLine({ formulaA: "1" }),
+      calcLine({ formulaA: "2" }),
+      calcLine({ formulaA: "3" }),
+    ];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 2 }]);
+
+    expect(next[0].details.map((item) => item.name)).toEqual(["床"]);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("変更対象でないセットは同じオブジェクトを保つ", () => {
+    const removed = calcSet(1);
+    removed.details = [calcDetail({ name: "床" })];
+    const untouched = calcSet(1);
+    untouched.details = [calcDetail({ name: "壁" })];
+
+    const next = removeSheetRows(
+      [removed, untouched],
+      [{ setId: removed.id, index: 0 }],
+    );
+
+    expect(next).toHaveLength(1);
+    expect(next[0]).toBe(untouched);
   });
 
   it("明細を上下に動かしても計算式は動かない", () => {

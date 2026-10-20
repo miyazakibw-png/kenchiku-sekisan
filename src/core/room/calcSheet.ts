@@ -653,7 +653,39 @@ export function removeSheetRow(
       item.details.length > 0 ||
       item.banner != null ||
       item.lines.some((line) => !isEmptyLine(line)),
-  );
+    );
+}
+
+/** 明細表の複数行をまとめて消す（※行、明細・計算式、計算式だけの行を含む）。 */
+export function removeSheetRows(
+  sets: CalcSet[],
+  rows: { setId: string; index: number }[],
+): CalcSet[] {
+  const removals = new Map<string, Set<number>>();
+  rows.forEach(({ setId, index }) => {
+    const indices = removals.get(setId) ?? new Set<number>();
+    indices.add(index);
+    removals.set(setId, indices);
+  });
+  if (removals.size === 0) return sets;
+
+  return sets.flatMap((set) => {
+    const indices = removals.get(set.id);
+    if (!indices) return [set];
+    if (isCommentSet(set)) return [];
+
+    const details = set.details.filter((_, index) => !indices.has(index));
+    const lines = syncLines(
+      details,
+      set.lines.filter((_, index) => !indices.has(index)),
+    );
+    const next = { ...set, details, lines };
+    return details.length === 0 &&
+      next.banner == null &&
+      lines.every(isEmptyLine)
+      ? []
+      : [next];
+  });
 }
 
 /**
