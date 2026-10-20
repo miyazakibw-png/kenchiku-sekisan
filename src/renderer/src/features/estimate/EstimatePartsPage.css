@@ -99,12 +99,12 @@ table.estimate th.no {
   color: #6b7280;
 }
 
-/* 先頭列：行番号のとなりに行の入れ替え（↑↓） */
+/* 先頭列：行番号のとなりに行の入れ替え・削除 */
 table.estimate td.no .no-cell {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
+  gap: 0;
 }
 
 table.estimate td.no .row-move {
@@ -113,11 +113,16 @@ table.estimate td.no .row-move {
   line-height: 1;
 }
 
-table.estimate td.no .row-move button {
+table.estimate td.no .row-move button,
+table.estimate td.no .row-delete {
   padding: 0 2px;
   font-size: 9px;
   line-height: 1.1;
   min-width: 14px;
+}
+
+table.estimate td.no .row-delete {
+  color: #b91c1c;
 }
 
 table.estimate th.part,

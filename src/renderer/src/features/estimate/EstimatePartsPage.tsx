@@ -326,27 +326,6 @@ export default function EstimatePartsPage({
               );
             })
           : [];
-      const rowsWithFilledSheets =
-        mode === "over"
-          ? copied.filter((source, offset) => {
-              const target = rows[at + offset];
-              return (
-                target !== undefined &&
-                target.id !== null &&
-                target.rowType === "room" &&
-                source.rowType === "room" &&
-                hasRowInput(target) &&
-                (source.id ?? source.copySourceId) !== target.id &&
-                (filledSheets[target.id]?.length ?? 0) > 0
-              );
-            }).length
-          : 0;
-      if (rowsWithFilledSheets > 0) {
-        const confirmed = await ask(
-          `入力のある行は、部位Ⅰ〜倍率・備考の入力をそのまま残し、計算書の中身だけを貼り付けます。入力済みの計算書（${rowsWithFilledSheets}行）は、コピーした計算書に置き換わります。よいですか？`,
-        );
-        if (!confirmed) return;
-      }
       const where =
         mode === "over"
           ? "カーソルの行から上書き"
@@ -359,7 +338,7 @@ export default function EstimatePartsPage({
           : `${copied.length} 行を${where}しました（計算書の中身も複製）`;
       await saveRows(next, message);
     },
-    [clipboard, filledSheets, rows, saveRows, selectionStart],
+    [clipboard, rows, saveRows, selectionStart],
   );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
@@ -844,6 +823,25 @@ export default function EstimatePartsPage({
                         }}
                       >
                         ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="この行を削除"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editRows(removeRow(rows, index));
+                          const nextSelected =
+                            index === selected
+                              ? Math.max(0, Math.min(index, rows.length - 2))
+                              : index < selected
+                                ? selected - 1
+                                : selected;
+                          setSelected(nextSelected);
+                          setSelectedEnd(nextSelected);
+                        }}
+                      >
+                        ✕
                       </button>
                     </span>
                   </span>
