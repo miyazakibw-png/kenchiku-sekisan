@@ -61,7 +61,8 @@ interface Props {
 /** 計算書から拾った数量を表示するチェック列（既定は仕上） */
 const CHECK_COLUMNS = ["床", "巾木", "壁", "柱", "梁", "張天井", "廻り縁"];
 const ESTIMATE_PARTS_TABLE_WIDTHS_KEY = "table-widths-estimate-parts-v1";
-const MIN_NO_COLUMN_WIDTH = 230;
+const MIN_NO_COLUMN_WIDTH = 121;
+const PREVIOUS_NO_COLUMN_WIDTH = 230;
 
 if (typeof window !== "undefined") {
   try {
@@ -78,7 +79,8 @@ if (typeof window !== "undefined") {
         const widths = parsed as Record<string, unknown>;
         if (
           typeof widths["0"] === "number" &&
-          widths["0"] < MIN_NO_COLUMN_WIDTH
+          (widths["0"] < MIN_NO_COLUMN_WIDTH ||
+            widths["0"] === PREVIOUS_NO_COLUMN_WIDTH)
         ) {
           window.localStorage.setItem(
             ESTIMATE_PARTS_TABLE_WIDTHS_KEY,

@@ -92,10 +92,24 @@ table.estimate td.check.number {
   min-width: 7ch;
 }
 
+table.estimate {
+  --estimate-parts-action-size: 25px;
+}
+
+table.estimate td.open button {
+  white-space: nowrap;
+  height: var(--estimate-parts-action-size);
+}
+
+table.estimate td.open,
+table.estimate th.open {
+  min-width: 61px;
+}
+
 table.estimate td.no,
 table.estimate th.no {
-  width: 230px;
-  min-width: 230px;
+  width: 121px;
+  min-width: 121px;
   text-align: right;
   color: #6b7280;
 }
@@ -127,11 +141,11 @@ table.estimate td.no .row-delete {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 59px;
-  min-width: 59px;
-  height: 59px;
+  width: var(--estimate-parts-action-size);
+  min-width: var(--estimate-parts-action-size);
+  height: var(--estimate-parts-action-size);
   padding: 0;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
