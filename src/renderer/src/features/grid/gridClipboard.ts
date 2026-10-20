@@ -136,6 +136,101 @@ export function buildPastePreview<T>(
   };
 }
 
+/** 選択範囲へTSVを貼り付ける。複数セル選択では範囲外へ展開しない。 */
+export function pasteIntoRange<T>(
+  rows: T[],
+  columns: GridColumn<T>[],
+  clipboardText: string,
+  range: CellRange,
+  createRow: () => T,
+): PastePreview<T> {
+  const normalized = normalizeRange(range);
+  const matrix = normalizePastedMatrix(parseTsv(clipboardText));
+  const rangeRows = normalized.endRow - normalized.startRow + 1;
+  const rangeColumns = normalized.endCol - normalized.startCol + 1;
+
+  if (rangeRows === 1 && rangeColumns === 1) {
+    return buildPastePreview(
+      rows,
+      columns,
+      clipboardText,
+      normalized.startRow,
+      normalized.startCol,
+      createRow,
+    );
+  }
+
+  const singleValue = matrix.length === 1 && matrix[0].length === 1;
+  const nextRows = [...rows];
+  const cells: PreviewCell[][] = [];
+  let errorCount = 0;
+  let warningCount = 0;
+  const rowCount = singleValue ? rangeRows : Math.min(matrix.length, rangeRows);
+  const columnCount = singleValue
+    ? rangeColumns
+    : Math.min(matrix[0]?.length ?? 0, rangeColumns);
+
+  for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) {
+    const rowIndex = normalized.startRow + rowOffset;
+    if (rowIndex >= nextRows.length) break;
+    const previewLine: PreviewCell[] = [];
+    for (let colOffset = 0; colOffset < columnCount; colOffset += 1) {
+      const columnIndex = normalized.startCol + colOffset;
+      const value = singleValue ? matrix[0][0] : matrix[rowOffset][colOffset];
+      const column = columns[columnIndex];
+      if (!column?.set) {
+        previewLine.push({ value });
+        continue;
+      }
+      const result = column.set(nextRows[rowIndex], value);
+      nextRows[rowIndex] = result.row;
+      if (result.error) errorCount += 1;
+      if (result.warning) warningCount += 1;
+      previewLine.push({ value, error: result.error, warning: result.warning });
+    }
+    cells.push(previewLine);
+  }
+
+  return {
+    rows: nextRows,
+    cells,
+    columns,
+    errorCount,
+    warningCount,
+    addedRows: 0,
+    startRow: normalized.startRow,
+    startCol: normalized.startCol,
+  };
+}
+
+/** 選択範囲内の入力可能セルを空欄にする。 */
+export function clearRange<T>(
+  rows: T[],
+  columns: GridColumn<T>[],
+  range: CellRange,
+): T[] {
+  const normalized = normalizeRange(range);
+  const nextRows = [...rows];
+  for (
+    let rowIndex = normalized.startRow;
+    rowIndex <= normalized.endRow && rowIndex < nextRows.length;
+    rowIndex += 1
+  ) {
+    for (
+      let columnIndex = normalized.startCol;
+      columnIndex <= normalized.endCol && columnIndex < columns.length;
+      columnIndex += 1
+    ) {
+      const set = columns[columnIndex]?.set;
+      if (!set) continue;
+      try {
+        nextRows[rowIndex] = set(nextRows[rowIndex], "").row;
+      } catch {}
+    }
+  }
+  return nextRows;
+}
+
 /**
  * 元の行を消さずに差し込む貼り付け。
  * at の位置に貼り付けた行を入れ、そこにあった行は下へずらす（at が行数なら最終行への追加になる）。

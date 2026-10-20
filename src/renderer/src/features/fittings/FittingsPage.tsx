@@ -31,8 +31,14 @@ import {
 import {
   buildInsertPastePreview,
   buildPastePreview,
+  clearRange,
   copyRangeAsTsv,
+  isInRange,
+  normalizeRange,
+  pasteIntoRange,
+  type CellRange,
 } from "../grid/gridClipboard";
+import { writeClipboard } from "../grid/writeClipboard";
 import "./FittingsPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
@@ -72,12 +78,24 @@ export default function FittingsPage({
   onOpenFittingDetail,
 }: Props): JSX.Element {
   const tableRef = useTableResize("table-widths-fittings-v1");
+  const tableElementRef = useRef<HTMLTableElement | null>(null);
+  const setTableRef = useCallback(
+    (table: HTMLTableElement | null) => {
+      tableElementRef.current = table;
+      tableRef(table);
+    },
+    [tableRef],
+  );
   const [rows, setRows] = useState<FittingDraft[]>([]);
   /** 計算書から追加された建具の出所（建具id→計算書） */
   const [sources, setSources] = useState<Map<number, FittingSource>>(new Map());
   const [selected, setSelected] = useState(0);
   /** Shift+クリックで広げた選択の終わりの行 */
   const [selectedEnd, setSelectedEnd] = useState(0);
+  const [cellRange, setCellRange] = useState<CellRange | null>(null);
+  const cellRangeAnchor = useRef<{ row: number; col: number } | null>(null);
+  const pasteEventCount = useRef(0);
+  const insertPastePending = useRef(false);
   /** Shift+クリックの最中は、欄へカーソルが入っても選択範囲を消さない */
   const shiftClick = useRef(false);
   const [message, setMessage] = useState("");
@@ -176,8 +194,8 @@ export default function FittingsPage({
 
   /** Excelの表をそのまま貼り付ける（選択行の建具記号列から取り込む） */
   const paste = useCallback(
-    async (startRow: number) => {
-      const text = await navigator.clipboard.readText();
+    async (startRow: number, clipboardText?: string) => {
+      const text = clipboardText ?? (await navigator.clipboard.readText());
       if (!text.trim()) return;
       const preview = buildPastePreview(
         rows,
@@ -202,8 +220,12 @@ export default function FittingsPage({
 
   /** 元の行を消さずに差し込む貼り付け（at が行数なら最終行への追加） */
   const pasteInsert = useCallback(
-    async (at: number, appended: boolean): Promise<void> => {
-      const text = await navigator.clipboard.readText();
+    async (
+      at: number,
+      appended: boolean,
+      clipboardText?: string,
+    ): Promise<void> => {
+      const text = clipboardText ?? (await navigator.clipboard.readText());
       if (!text.trim()) return;
       const preview = buildInsertPastePreview(
         rows,
@@ -232,7 +254,7 @@ export default function FittingsPage({
     const from = Math.min(selected, selectedEnd);
     const to = Math.max(selected, selectedEnd);
     if (from < 0 || from >= rows.length) return;
-    await navigator.clipboard.writeText(
+    writeClipboard(
       copyRangeAsTsv(rows, columns, {
         startRow: from,
         startCol: 0,
@@ -291,20 +313,244 @@ export default function FittingsPage({
     />
   );
 
+  const getCellPosition = (
+    target: EventTarget | null,
+  ): { row: number; col: number } | null => {
+    if (!(target instanceof Element)) return null;
+    const cell = target.closest<HTMLTableCellElement>("td[data-row][data-col]");
+    if (!cell || !tableElementRef.current?.contains(cell)) return null;
+    const row = Number(cell.dataset.row);
+    const col = Number(cell.dataset.col);
+    return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : null;
+  };
+
+  const isMultiCellRange = (range: CellRange | null): boolean => {
+    if (!range) return false;
+    const bounds = normalizeRange(range);
+    return (
+      (bounds.endRow - bounds.startRow + 1) *
+        (bounds.endCol - bounds.startCol + 1) >
+      1
+    );
+  };
+
+  const applyRangePaste = (
+    target: EventTarget | null,
+    text: string,
+    range?: CellRange,
+  ): void => {
+    const cell = getCellPosition(target);
+    if (!cell) return;
+    const preview = pasteIntoRange(
+      rows,
+      columns,
+      text,
+      range ??
+        cellRange ?? {
+          startRow: cell.row,
+          startCol: cell.col,
+          endRow: cell.row,
+          endCol: cell.col,
+        },
+      emptyRow,
+    );
+    setRows(preview.rows);
+    const notes = [
+      preview.addedRows > 0 ? `${preview.addedRows} 行追加` : "",
+      preview.errorCount > 0 ? `取り込めない値 ${preview.errorCount} 件` : "",
+      preview.warningCount > 0
+        ? `自動計算列 ${preview.warningCount} 件は取り込みません`
+        : "",
+    ].filter(Boolean);
+    setMessage(
+      `貼り付けました${notes.length > 0 ? `（${notes.join("／")}）` : ""}`,
+    );
+  };
+
   return (
     <div
       className="fittings-page"
+      onMouseDownCapture={(e) => {
+        if (e.button !== 0) return;
+        const cell = getCellPosition(e.target);
+        cellRangeAnchor.current = cell;
+        setCellRange(null);
+      }}
+      onMouseOverCapture={(e) => {
+        const anchor = cellRangeAnchor.current;
+        const cell = getCellPosition(e.target);
+        if (
+          !anchor ||
+          !cell ||
+          e.buttons !== 1 ||
+          (cell.row === anchor.row && cell.col === anchor.col)
+        )
+          return;
+        setCellRange({
+          startRow: anchor.row,
+          startCol: anchor.col,
+          endRow: cell.row,
+          endCol: cell.col,
+        });
+        window.getSelection()?.removeAllRanges();
+      }}
+      onCopy={(e) => {
+        if (!isMultiCellRange(cellRange)) return;
+        const bounds = normalizeRange(cellRange!);
+        e.preventDefault();
+        e.clipboardData.setData(
+          "text/plain",
+          copyRangeAsTsv(rows, columns, bounds),
+        );
+        setMessage(
+          `${bounds.endRow - bounds.startRow + 1}行×${bounds.endCol - bounds.startCol + 1}列をコピーしました（エクセルにも貼れます）`,
+        );
+      }}
+      onPaste={(e) => {
+        pasteEventCount.current += 1;
+        const insert = insertPastePending.current;
+        insertPastePending.current = false;
+        const cell = getCellPosition(e.target);
+        if (!cell) return;
+        const text = e.clipboardData.getData("text");
+        const bounds = cellRange ? normalizeRange(cellRange) : null;
+        const multiRange =
+          bounds !== null &&
+          (bounds.endRow - bounds.startRow + 1) *
+            (bounds.endCol - bounds.startCol + 1) >
+            1;
+        const singleCellText = !/[\t\n]/.test(text.replace(/\r?\n$/, ""));
+        if (
+          !insert &&
+          !multiRange &&
+          singleCellText &&
+          e.target instanceof HTMLInputElement
+        )
+          return;
+        e.preventDefault();
+        if (insert) {
+          void pasteInsert(Math.min(selected, selectedEnd), false, text);
+          return;
+        }
+        applyRangePaste(
+          e.target,
+          text,
+          multiRange
+            ? cellRange!
+            : {
+                startRow: cell.row,
+                startCol: cell.col,
+                endRow: cell.row,
+                endCol: cell.col,
+              },
+        );
+      }}
       onKeyDown={(e) => {
+        const cell = getCellPosition(e.target);
+        if (e.key === "Escape") {
+          setCellRange(null);
+          cellRangeAnchor.current = null;
+          return;
+        }
+        const arrow = [
+          "ArrowUp",
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+        ].includes(e.key);
+        if (cell && e.shiftKey && arrow) {
+          e.preventDefault();
+          const anchor = cellRangeAnchor.current ?? cell;
+          cellRangeAnchor.current = anchor;
+          const currentEnd = cellRange
+            ? { row: cellRange.endRow, col: cellRange.endCol }
+            : cell;
+          const next = {
+            row: Math.max(
+              0,
+              Math.min(
+                rows.length - 1,
+                currentEnd.row +
+                  (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0),
+              ),
+            ),
+            col: Math.max(
+              0,
+              Math.min(
+                columns.length - 1,
+                currentEnd.col +
+                  (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0),
+              ),
+            ),
+          };
+          setCellRange({
+            startRow: anchor.row,
+            startCol: anchor.col,
+            endRow: next.row,
+            endCol: next.col,
+          });
+          window.getSelection()?.removeAllRanges();
+          return;
+        }
+        if (e.key === "Enter" || (arrow && !e.shiftKey)) {
+          setCellRange(null);
+          cellRangeAnchor.current = null;
+        }
+        if (e.key === "Delete" && isMultiCellRange(cellRange)) {
+          e.preventDefault();
+          const bounds = normalizeRange(cellRange!);
+          setRows(clearRange(rows, columns, bounds));
+          setMessage(
+            `${bounds.endRow - bounds.startRow + 1}行×${bounds.endCol - bounds.startCol + 1}列を消去しました`,
+          );
+          return;
+        }
         if (!e.ctrlKey) return;
-        if (e.key === "V" && e.shiftKey) {
-          e.preventDefault();
-          void pasteInsert(Math.min(selected, selectedEnd), false);
-        } else if (e.key === "v") {
-          e.preventDefault();
-          void paste(selected);
-        } else if (e.key === "c") {
+        const letter = e.code.startsWith("Key")
+          ? e.code.slice(3).toLowerCase()
+          : e.key.toLowerCase();
+        if (letter === "v" && e.shiftKey) {
+          insertPastePending.current = true;
+          window.setTimeout(() => {
+            insertPastePending.current = false;
+          }, 100);
+          return;
+        }
+        if (letter === "v" && e.key === "Process") {
+          const eventCount = pasteEventCount.current;
+          let clipboardText: Promise<string | null>;
+          try {
+            clipboardText = navigator.clipboard.readText().then(
+              (text) => text,
+              () => null,
+            );
+          } catch {
+            clipboardText = Promise.resolve(null);
+          }
+          const target = e.target;
+          window.setTimeout(() => {
+            if (pasteEventCount.current !== eventCount) return;
+            void clipboardText.then((text) => {
+              if (text === null) {
+                setMessage("クリップボードを読み取れませんでした");
+                return;
+              }
+              applyRangePaste(target, text);
+            });
+          }, 100);
+        } else if (letter === "c") {
+          if (isMultiCellRange(cellRange)) {
+            const bounds = normalizeRange(cellRange!);
+            e.preventDefault();
+            writeClipboard(copyRangeAsTsv(rows, columns, bounds));
+            setMessage(
+              `${bounds.endRow - bounds.startRow + 1}行×${bounds.endCol - bounds.startCol + 1}列をコピーしました（エクセルにも貼れます）`,
+            );
+            return;
+          }
           const active = document.activeElement;
           // 文字を選んでいるときは通常の文字コピーを邪魔しない
+          if ((window.getSelection()?.toString() ?? "") !== "") return;
           if (
             active instanceof HTMLInputElement &&
             active.selectionStart !== active.selectionEnd
@@ -500,7 +746,7 @@ export default function FittingsPage({
         </div>
       )}
 
-      <table className="grid fittings" ref={tableRef}>
+      <table className="grid fittings" ref={setTableRef}>
         <thead>
           <tr>
             <th className="no">No</th>
@@ -556,7 +802,15 @@ export default function FittingsPage({
                 }}
               >
                 <td className="no">{index + 1}</td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={0}
+                  className={
+                    cellRange && isInRange(cellRange, index, 0)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   <input
                     className={duplicates.has(index) ? "duplicate" : undefined}
                     title={
@@ -577,7 +831,15 @@ export default function FittingsPage({
                     }}
                   />
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={1}
+                  className={
+                    cellRange && isInRange(cellRange, index, 1)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   {numberCell(
                     index,
                     row.width,
@@ -588,7 +850,15 @@ export default function FittingsPage({
                     }),
                   )}
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={2}
+                  className={
+                    cellRange && isInRange(cellRange, index, 2)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   {numberCell(
                     index,
                     row.height,
@@ -599,7 +869,15 @@ export default function FittingsPage({
                     }),
                   )}
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={3}
+                  className={
+                    cellRange && isInRange(cellRange, index, 3)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   {numberCell(
                     index,
                     row.sillHeight,
@@ -610,12 +888,36 @@ export default function FittingsPage({
                     }),
                   )}
                 </td>
-                <td className="num calc">{formatNumber(calc.area)}</td>
-                <td className="num calc">
+                <td
+                  data-row={index}
+                  data-col={4}
+                  className={`num calc${cellRange && isInRange(cellRange, index, 4) ? " in-range" : ""}`}
+                >
+                  {formatNumber(calc.area)}
+                </td>
+                <td
+                  data-row={index}
+                  data-col={5}
+                  className={`num calc${cellRange && isInRange(cellRange, index, 5) ? " in-range" : ""}`}
+                >
                   {formatNumber(calc.baseboardDeduction)}
                 </td>
-                <td className="num calc">{formatNumber(calc.reinforcement)}</td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={6}
+                  className={`num calc${cellRange && isInRange(cellRange, index, 6) ? " in-range" : ""}`}
+                >
+                  {formatNumber(calc.reinforcement)}
+                </td>
+                <td
+                  data-row={index}
+                  data-col={7}
+                  className={
+                    cellRange && isInRange(cellRange, index, 7)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   <input
                     className={calc.areaFormulaError ? "duplicate" : undefined}
                     title={
@@ -631,7 +933,15 @@ export default function FittingsPage({
                     }
                   />
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={8}
+                  className={
+                    cellRange && isInRange(cellRange, index, 8)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   <input
                     className={
                       calc.baseboardFormulaError ? "duplicate" : undefined
@@ -651,7 +961,15 @@ export default function FittingsPage({
                     }
                   />
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={9}
+                  className={
+                    cellRange && isInRange(cellRange, index, 9)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   <input
                     className={
                       calc.reinforcementFormulaError ? "duplicate" : undefined
@@ -671,7 +989,15 @@ export default function FittingsPage({
                     }
                   />
                 </td>
-                <td>
+                <td
+                  data-row={index}
+                  data-col={10}
+                  className={
+                    cellRange && isInRange(cellRange, index, 10)
+                      ? "in-range"
+                      : undefined
+                  }
+                >
                   <input
                     lang="ja"
                     value={row.note}
@@ -721,6 +1047,7 @@ export default function FittingsPage({
         W×2−巾木減＋腰高×2、それ以外は腰高ありでW×2・腰高なしでW
         となります（自動計算修正用の欄に式を入れるとその結果になります。W・H・腰高が使えます）。積算入力の計算式では
         <code>&lt;AW-1&gt;</code> のように山カッコを付けて建具と判別します。
+        欄をなぞる（Shift＋矢印）と範囲を選べます。Ctrl+Cでコピー、Ctrl+Vで選んだ範囲だけに貼り付け、Deleteで消去します。
       </p>
     </div>
   );
