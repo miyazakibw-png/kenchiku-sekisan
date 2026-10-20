@@ -258,6 +258,15 @@ export function saveEstimateRows(
 ): EstimateRow[] {
   const { projectId, rows } = request;
   db.transaction((tx) => {
+    const sheetSnapshots = new Map<number, CalcSheetsSnapshot>();
+    for (const sourceRowId of new Set(
+      rows
+        .map((row) => row.copySourceId)
+        .filter((id): id is number => id != null),
+    )) {
+      sheetSnapshots.set(sourceRowId, readCalcSheets(tx, sourceRowId));
+    }
+
     const keptIds = rows
       .map((row) => row.id)
       .filter((id): id is number => id !== null);
@@ -297,7 +306,13 @@ export function saveEstimateRows(
           .all();
         const newId = inserted[0]?.id;
         if (newId !== undefined && row.copySourceId != null) {
-          copyCalcSheets(tx, projectId, row.copySourceId, newId);
+          writeCalcSheets(
+            tx,
+            projectId,
+            sheetSnapshots.get(row.copySourceId),
+            newId,
+            row.ceilingHeight,
+          );
         }
         return;
       }
@@ -310,6 +325,16 @@ export function saveEstimateRows(
           ),
         )
         .run();
+      if (row.copySourceId != null && row.copySourceId !== row.id) {
+        deleteCalcSheets(tx, projectId, row.id);
+        writeCalcSheets(
+          tx,
+          projectId,
+          sheetSnapshots.get(row.copySourceId),
+          row.id,
+          row.ceilingHeight,
+        );
+      }
     });
   });
   return listEstimateRows(db, projectId);
@@ -412,21 +437,90 @@ export function listFilledCalcSheets(
   return filled;
 }
 
-/**
- * 行コピーで作った行に、コピー元の計算書（部屋別・軸組・汎用）の中身をそのまま複製する。
- * コピー元に計算書が無ければ何もしない。
- */
-function copyCalcSheets(
+type CalcSheetsSnapshot = {
+  room: typeof projectRoomSheets.$inferSelect | undefined;
+  frame: typeof projectFrameSheets.$inferSelect | undefined;
+  general: typeof projectGeneralSheets.$inferSelect | undefined;
+  pit: typeof projectPitSheets.$inferSelect | undefined;
+};
+
+function readCalcSheets(
+  tx: AppDatabase,
+  sourceRowId: number,
+): CalcSheetsSnapshot {
+  return {
+    room: tx
+      .select()
+      .from(projectRoomSheets)
+      .where(eq(projectRoomSheets.estimateRowId, sourceRowId))
+      .get(),
+    frame: tx
+      .select()
+      .from(projectFrameSheets)
+      .where(eq(projectFrameSheets.estimateRowId, sourceRowId))
+      .get(),
+    general: tx
+      .select()
+      .from(projectGeneralSheets)
+      .where(eq(projectGeneralSheets.estimateRowId, sourceRowId))
+      .get(),
+    pit: tx
+      .select()
+      .from(projectPitSheets)
+      .where(eq(projectPitSheets.estimateRowId, sourceRowId))
+      .get(),
+  };
+}
+
+function deleteCalcSheets(
   tx: AppDatabase,
   projectId: number,
-  sourceRowId: number,
-  targetRowId: number,
+  estimateRowId: number,
 ): void {
-  const room = tx
-    .select()
-    .from(projectRoomSheets)
-    .where(eq(projectRoomSheets.estimateRowId, sourceRowId))
-    .get();
+  tx.delete(projectRoomSheets)
+    .where(
+      and(
+        eq(projectRoomSheets.projectId, projectId),
+        eq(projectRoomSheets.estimateRowId, estimateRowId),
+      ),
+    )
+    .run();
+  tx.delete(projectFrameSheets)
+    .where(
+      and(
+        eq(projectFrameSheets.projectId, projectId),
+        eq(projectFrameSheets.estimateRowId, estimateRowId),
+      ),
+    )
+    .run();
+  tx.delete(projectGeneralSheets)
+    .where(
+      and(
+        eq(projectGeneralSheets.projectId, projectId),
+        eq(projectGeneralSheets.estimateRowId, estimateRowId),
+      ),
+    )
+    .run();
+  tx.delete(projectPitSheets)
+    .where(
+      and(
+        eq(projectPitSheets.projectId, projectId),
+        eq(projectPitSheets.estimateRowId, estimateRowId),
+      ),
+    )
+    .run();
+}
+
+function writeCalcSheets(
+  tx: AppDatabase,
+  projectId: number,
+  snapshot: CalcSheetsSnapshot | undefined,
+  targetRowId: number,
+  ceilingHeight: number | null,
+): void {
+  if (snapshot === undefined) return;
+
+  const room = snapshot.room;
   if (room) {
     tx.insert(projectRoomSheets)
       .values({
@@ -436,18 +530,14 @@ function copyCalcSheets(
         fittingsJson: room.fittingsJson,
         ceilingJson: room.ceilingJson,
         lowerJson: room.lowerJson,
-        ceilingHeight: room.ceilingHeight,
+        ceilingHeight,
         traceJson: room.traceJson,
         note: room.note,
       })
       .run();
   }
 
-  const frame = tx
-    .select()
-    .from(projectFrameSheets)
-    .where(eq(projectFrameSheets.estimateRowId, sourceRowId))
-    .get();
+  const frame = snapshot.frame;
   if (frame) {
     tx.insert(projectFrameSheets)
       .values({
@@ -466,11 +556,7 @@ function copyCalcSheets(
       .run();
   }
 
-  const general = tx
-    .select()
-    .from(projectGeneralSheets)
-    .where(eq(projectGeneralSheets.estimateRowId, sourceRowId))
-    .get();
+  const general = snapshot.general;
   if (general) {
     tx.insert(projectGeneralSheets)
       .values({
@@ -482,11 +568,7 @@ function copyCalcSheets(
       .run();
   }
 
-  const pit = tx
-    .select()
-    .from(projectPitSheets)
-    .where(eq(projectPitSheets.estimateRowId, sourceRowId))
-    .get();
+  const pit = snapshot.pit;
   if (pit) {
     tx.insert(projectPitSheets)
       .values({

@@ -17,6 +17,7 @@ import {
   duplicateRoomFlags,
   emptyRow,
   formatNumber,
+  hasRowInput,
   insertRow,
   moveRow,
   overwriteRowsInto,
@@ -298,26 +299,67 @@ export default function EstimatePartsPage({
     async (mode: "over" | "insert" | "append") => {
       const copied = clipboard;
       if (copied.length === 0) return;
+      const at =
+        mode === "over"
+          ? selectionStart
+          : mode === "insert"
+            ? selectionStart
+            : rows.length;
       const next =
         mode === "over"
-          ? overwriteRowsInto(rows, selectionStart, copied)
+          ? overwriteRowsInto(rows, at, copied)
           : copyRowsInto(
               rows,
-              mode === "insert" ? selectionStart : rows.length,
+              at,
               copied,
             );
+      const mergedRows =
+        mode === "over"
+          ? copied.filter((source, offset) => {
+              const target = rows[at + offset];
+              return (
+                target !== undefined &&
+                target.rowType === "room" &&
+                source.rowType === "room" &&
+                hasRowInput(target) &&
+                (source.id ?? source.copySourceId) !== target.id
+              );
+            })
+          : [];
+      const rowsWithFilledSheets =
+        mode === "over"
+          ? copied.filter((source, offset) => {
+              const target = rows[at + offset];
+              return (
+                target !== undefined &&
+                target.id !== null &&
+                target.rowType === "room" &&
+                source.rowType === "room" &&
+                hasRowInput(target) &&
+                (source.id ?? source.copySourceId) !== target.id &&
+                (filledSheets[target.id]?.length ?? 0) > 0
+              );
+            }).length
+          : 0;
+      if (rowsWithFilledSheets > 0) {
+        const confirmed = await ask(
+          `入力のある行は、部位Ⅰ〜倍率・備考の入力をそのまま残し、計算書の中身だけを貼り付けます。入力済みの計算書（${rowsWithFilledSheets}行）は、コピーした計算書に置き換わります。よいですか？`,
+        );
+        if (!confirmed) return;
+      }
       const where =
         mode === "over"
           ? "カーソルの行から上書き"
           : mode === "insert"
             ? "カーソルの行の上へ挿入"
             : "最終行の下へ追加";
-      await saveRows(
-        next,
-        `${copied.length} 行を${where}しました（計算書の中身も複製）`,
-      );
+      const message =
+        mergedRows.length > 0
+          ? `${copied.length} 行を上書きしました（入力のある${mergedRows.length}行は入力を残して計算書の中身だけ複製）`
+          : `${copied.length} 行を${where}しました（計算書の中身も複製）`;
+      await saveRows(next, message);
     },
-    [clipboard, rows, saveRows, selectionStart],
+    [clipboard, filledSheets, rows, saveRows, selectionStart],
   );
 
   /** Excelの表をそのまま貼り付ける（選択行の部位Ⅰ列から取り込む） */
@@ -632,7 +674,7 @@ export default function EstimatePartsPage({
         </button>
         <button
           type="button"
-          title="カーソルの行から、コピーした行で上書きします"
+          title="カーソルの行から、コピーした行で上書きします。入力のある行は部位Ⅰ〜倍率・備考を残して空欄だけ埋め、計算書の中身を貼り付けます。"
           disabled={clipboard.length === 0}
           onClick={() => void pasteRows("over")}
         >

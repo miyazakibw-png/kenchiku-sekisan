@@ -92,16 +92,109 @@ describe("行操作", () => {
   });
 
   it("上書貼付はカーソルの行から置き換える", () => {
-    const rows = [
-      row({ part3: "A" }),
-      row({ part3: "B" }),
-      row({ part3: "C" }),
-    ];
+    const rows = [row({ part3: "A" }), emptyRow(), row({ part3: "C" })];
     const copied = [{ ...row({ part3: "倉庫" }), id: 12 }];
     const merged = overwriteRowsInto(rows, 1, copied);
     expect(merged.map((r) => r.part3)).toEqual(["A", "倉庫", "C"]);
     expect(merged[1].id).toBeNull();
     expect(merged[1].copySourceId).toBe(12);
+  });
+
+  it("入力済みの部屋行は入力を残し、空欄を埋めて計算書の複製元を設定する", () => {
+    const target = row({
+      id: 20,
+      part1: "内部",
+      part3: "既存の部屋",
+      multiplier: 2,
+      note: "既存備考",
+    });
+    const source = row({
+      id: 12,
+      part1: "外部",
+      part2: "2階",
+      part2Split: 1,
+      formwork: "地上階",
+      part3: "コピー元の部屋",
+      ceilingHeight: 2.8,
+      multiplier: 9,
+      note: "コピー元備考",
+      calcType: "general",
+    });
+
+    const [merged] = overwriteRowsInto([target], 0, [source]);
+
+    expect(merged).toMatchObject({
+      id: 20,
+      part1: "内部",
+      part2: "2階",
+      part2Split: 1,
+      formwork: "地上階",
+      part3: "既存の部屋",
+      ceilingHeight: 2.8,
+      multiplier: 2,
+      note: "既存備考",
+      calcType: "general",
+      rowType: "room",
+      copySourceId: 12,
+    });
+  });
+
+  it("部位Ⅱが入力済みなら部位Ⅱ別仕訳も残す", () => {
+    const target = row({ id: 20, part2: "1階", part2Split: 0 });
+    const source = row({ id: 12, part2: "2階", part2Split: 1 });
+
+    const [merged] = overwriteRowsInto([target], 0, [source]);
+
+    expect(merged.part2).toBe("1階");
+    expect(merged.part2Split).toBe(0);
+  });
+
+  it("ID未採番の入力済み行はIDを維持しつつ複製元を設定する", () => {
+    const target = row({ part1: "内部" });
+    const source = row({ id: 12, part3: "コピー元" });
+
+    const [merged] = overwriteRowsInto([target], 0, [source]);
+
+    expect(merged.id).toBeNull();
+    expect(merged.part1).toBe("内部");
+    expect(merged.part3).toBe("コピー元");
+    expect(merged.copySourceId).toBe(12);
+  });
+
+  it("貼り付け先とコピー元が同じ行なら変更しない", () => {
+    const target = row({ id: 12, part1: "内部", part3: "事務室" });
+
+    const [merged] = overwriteRowsInto([target], 0, [target]);
+
+    expect(merged).toBe(target);
+    expect(merged).not.toHaveProperty("copySourceId");
+  });
+
+  it("小計行を含む貼り付けは従来どおり行を置き換える", () => {
+    const targetSubtotal = subtotalRow();
+    const copiedRoom = row({ id: 12, part3: "倉庫" });
+    const [room] = overwriteRowsInto([targetSubtotal], 0, [copiedRoom]);
+    expect(room.rowType).toBe("room");
+    expect(room.id).toBeNull();
+    expect(room.part3).toBe("倉庫");
+
+    const targetRoom = row({ id: 20, part1: "内部", part3: "事務室" });
+    const [subtotal] = overwriteRowsInto([targetRoom], 0, [subtotalRow()]);
+    expect(subtotal.rowType).toBe("subtotal");
+    expect(subtotal.id).toBeNull();
+  });
+
+  it("貼り付け範囲が末尾を越えた分は追加する", () => {
+    const rows = [emptyRow()];
+
+    const merged = overwriteRowsInto(rows, 0, [
+      row({ id: 12, part3: "A" }),
+      row({ id: 13, part3: "B" }),
+    ]);
+
+    expect(merged.map((item) => item.part3)).toEqual(["A", "B"]);
+    expect(merged.every((item) => item.id === null)).toBe(true);
+    expect(merged.map((item) => item.copySourceId)).toEqual([12, 13]);
   });
 
   it("倍率は -999.99〜999.99 の範囲", () => {

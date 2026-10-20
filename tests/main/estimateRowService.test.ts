@@ -62,6 +62,24 @@ beforeEach(() => {
   projectId = createProject(db, "テスト工事").id;
 });
 
+function setRoomLower(
+  estimateRowId: number,
+  lowerJson: string,
+  note?: string,
+): void {
+  const sheet = getRoomSheet(db, estimateRowId);
+  saveRoomSheet(db, {
+    id: sheet.id,
+    shapeJson: sheet.shapeJson,
+    fittingsJson: sheet.fittingsJson,
+    ceilingJson: sheet.ceilingJson,
+    lowerJson,
+    ceilingHeight: sheet.ceilingHeight,
+    traceJson: sheet.traceJson,
+    note: note ?? sheet.note,
+  });
+}
+
 describe("部位別入力表", () => {
   it("画面の行順で保存し、同じ順で読み出せる", () => {
     const saved = saveEstimateRows(db, {
@@ -228,6 +246,130 @@ describe("部位別入力表", () => {
     );
     expect(copiedSheet.note).toBe("ピット計算書");
     expect(copiedSheet.id).not.toBe(sheet.id);
+  });
+
+  it("入力済み行への貼付は既存の計算書を置き換え、行の天井高さを保つ", () => {
+    const [source, target] = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        draft({ part3: "コピー元", ceilingHeight: 2.5 }),
+        draft({ part3: "入力済み", ceilingHeight: 2.7, calcType: "pit" }),
+      ],
+    });
+    const originalTargetRoom = getRoomSheet(db, target.id);
+    setRoomLower(source.id, '[{"id":"source-sheet"}]', "コピー元計算書");
+    saveRoomSheet(db, {
+      id: originalTargetRoom.id,
+      shapeJson: originalTargetRoom.shapeJson,
+      fittingsJson: originalTargetRoom.fittingsJson,
+      ceilingJson: originalTargetRoom.ceilingJson,
+      lowerJson: '[{"id":"old-target-sheet"}]',
+      ceilingHeight: 2.7,
+      traceJson: originalTargetRoom.traceJson,
+      note: "古い部屋計算書",
+    });
+    const targetPit = getPitSheet(db, target.id);
+    savePitSheet(db, {
+      id: targetPit.id,
+      pitsJson: targetPit.pitsJson,
+      beamsJson: targetPit.beamsJson,
+      wallsJson: targetPit.wallsJson,
+      sleevesJson: targetPit.sleevesJson,
+      sleeveKindsJson: targetPit.sleeveKindsJson,
+      wallStep: targetPit.wallStep,
+      lowerJson: '[{"id":"old-pit-sheet"}]',
+      traceJson: targetPit.traceJson,
+      note: "古いピット計算書",
+    });
+
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        source,
+        { ...target, calcType: source.calcType, copySourceId: source.id },
+      ],
+    });
+
+    const savedTarget = saved[1];
+    const replacement = getRoomSheet(db, savedTarget.id);
+    expect(savedTarget).toMatchObject({
+      id: target.id,
+      ceilingHeight: 2.7,
+    });
+    expect(replacement.lowerJson).toBe('[{"id":"source-sheet"}]');
+    expect(replacement.ceilingHeight).toBe(2.7);
+    expect(replacement.note).toBe("コピー元計算書");
+    expect(replacement.id).not.toBe(originalTargetRoom.id);
+    expect(
+      db
+        .select()
+        .from(schema.projectPitSheets)
+        .all()
+        .some((sheet) => sheet.estimateRowId === target.id),
+    ).toBe(false);
+    expect(getRoomSheet(db, source.id).lowerJson).toBe(
+      '[{"id":"source-sheet"}]',
+    );
+  });
+
+  it("重なる行範囲を上書きしても後続行には元の計算書を複製する", () => {
+    const [source1, source2, target3] = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        draft({ part3: "1行目", ceilingHeight: 2.5 }),
+        draft({ part3: "2行目", ceilingHeight: 2.6 }),
+        draft({ part3: "3行目", ceilingHeight: 2.7 }),
+      ],
+    });
+    setRoomLower(source1.id, '[{"id":"original-row-1"}]');
+    setRoomLower(source2.id, '[{"id":"original-row-2"}]');
+    setRoomLower(target3.id, '[{"id":"original-row-3"}]');
+
+    const saved = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        source1,
+        { ...source2, copySourceId: source1.id },
+        { ...target3, copySourceId: source2.id },
+      ],
+    });
+
+    expect(getRoomSheet(db, saved[1].id).lowerJson).toBe(
+      '[{"id":"original-row-1"}]',
+    );
+    expect(getRoomSheet(db, saved[2].id).lowerJson).toBe(
+      '[{"id":"original-row-2"}]',
+    );
+    expect(getRoomSheet(db, source1.id).lowerJson).toBe(
+      '[{"id":"original-row-1"}]',
+    );
+  });
+
+  it("同じ保存で削除されるコピー元からも計算書を複製できる", () => {
+    const [source] = saveEstimateRows(db, {
+      projectId,
+      rows: [draft({ part3: "コピー元", ceilingHeight: 2.5 })],
+    });
+    setRoomLower(source.id, '[{"id":"deleted-source-sheet"}]');
+
+    const [copy] = saveEstimateRows(db, {
+      projectId,
+      rows: [
+        draft({
+          part3: "コピー先",
+          ceilingHeight: 2.5,
+          copySourceId: source.id,
+        }),
+      ],
+    });
+
+    expect(copy.id).not.toBe(source.id);
+    expect(getRoomSheet(db, copy.id).lowerJson).toBe(
+      '[{"id":"deleted-source-sheet"}]',
+    );
+    expect(listEstimateRows(db, projectId).map((row) => row.part3)).toEqual([
+      "コピー先",
+    ]);
   });
 
   it("物件コピーで部位別入力表も複製し、コピー元とは切り離す", () => {
