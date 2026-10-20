@@ -60,6 +60,35 @@ interface Props {
 
 /** 計算書から拾った数量を表示するチェック列（既定は仕上） */
 const CHECK_COLUMNS = ["床", "巾木", "壁", "柱", "梁", "張天井", "廻り縁"];
+const ESTIMATE_PARTS_TABLE_WIDTHS_KEY = "table-widths-estimate-parts-v1";
+const MIN_NO_COLUMN_WIDTH = 230;
+
+if (typeof window !== "undefined") {
+  try {
+    const savedWidths = window.localStorage.getItem(
+      ESTIMATE_PARTS_TABLE_WIDTHS_KEY,
+    );
+    if (savedWidths) {
+      const parsed: unknown = JSON.parse(savedWidths);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        const widths = parsed as Record<string, unknown>;
+        if (
+          typeof widths["0"] === "number" &&
+          widths["0"] < MIN_NO_COLUMN_WIDTH
+        ) {
+          window.localStorage.setItem(
+            ESTIMATE_PARTS_TABLE_WIDTHS_KEY,
+            JSON.stringify({ ...widths, 0: MIN_NO_COLUMN_WIDTH }),
+          );
+        }
+      }
+    }
+  } catch {}
+}
 
 export default function EstimatePartsPage({
   project,
@@ -68,7 +97,7 @@ export default function EstimatePartsPage({
   initialEstimateRowId = null,
   jumpTarget = null,
 }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-estimate-parts-v1");
+  const tableRef = useTableResize(ESTIMATE_PARTS_TABLE_WIDTHS_KEY);
   /** 計算書を開く前の画面の位置（戻ったときに同じ所を出す） */
   const pageRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef(0);
