@@ -1218,11 +1218,12 @@ function FloorSvg({
             beam.symbol.trim() !== "" && !knownBeams.has(beam.symbol.trim());
           const bh = halfWidthOf?.(beam.symbol.trim()) ?? BEAM_HALF;
           const miss =
+            beam.none !== true &&
             jointMissing?.has(`b:${beam.id ?? `#${index}`}`) === true;
           return (
             <g
               key={index}
-              className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}`}
+              className={`${selectedBeams.has(index) ? "on" : ""}${bad ? " bad" : ""}${miss ? " miss" : ""}${beam.none === true ? " none" : ""}`}
               onPointerDown={(event) =>
                 grabOrRegion(
                   event,
@@ -1973,6 +1974,7 @@ export default function FireproofDrawingPage({
       dx2: number;
       dy2: number;
       symbol: string;
+      none?: true;
       xEdge1: "left" | "right" | null;
       xEdge2: "left" | "right" | null;
       yEdge1: "top" | "bottom" | null;
@@ -1997,6 +1999,7 @@ export default function FireproofDrawingPage({
     axis: "v" | "h";
     symbol: string;
     parts: number;
+    none?: true;
   } | null>(null);
   /* 階まるごとのコピー：記号だけが写るので、貼った先の階の鉄骨リストの寸法で描かれる */
   const [clipFloor, setClipFloor] = useState<FireproofDrawingFloor | null>(
@@ -3012,6 +3015,7 @@ export default function FireproofDrawingPage({
         dx2: beam.x2 - part.x,
         dy2: beam.y2 - part.y,
         symbol: beam.symbol,
+        ...(beam.none === true ? { none: true } : {}),
         xEdge1: edgeX(beam.x1),
         xEdge2: edgeX(beam.x2),
         yEdge1: edgeY(beam.y1),
@@ -3023,10 +3027,17 @@ export default function FireproofDrawingPage({
     const verticals = inside.every((beam) => beam.x1 === beam.x2);
     const horizontals = inside.every((beam) => beam.y1 === beam.y2);
     const symbols = new Set(inside.map((beam) => beam.symbol));
-    let rule: { axis: "v" | "h"; symbol: string; parts: number } | null = null;
+    const noneStates = new Set(inside.map((beam) => beam.none === true));
+    let rule: {
+      axis: "v" | "h";
+      symbol: string;
+      parts: number;
+      none?: true;
+    } | null = null;
     if (
       inside.length > 0 &&
       symbols.size === 1 &&
+      noneStates.size === 1 &&
       (verticals || horizontals)
     ) {
       const along = inside
@@ -3043,6 +3054,7 @@ export default function FireproofDrawingPage({
           axis: verticals ? "v" : "h",
           symbol: inside[0].symbol,
           parts: inside.length + 1,
+          ...(inside[0]?.none === true ? { none: true } : {}),
         };
     }
     setClipRule(rule);
@@ -3127,9 +3139,13 @@ export default function FireproofDrawingPage({
     let placed: FireproofDrawingBeam[] = [];
     if (clipRule !== null) {
       // 分割条件で入れ直す（貼る先の区画の大きさに合わせて等分）
-      placed = regions.flatMap((part) =>
-        dividedAligned(part, clipRule.axis, clipRule.parts, clipRule.symbol),
-      );
+      placed = regions
+        .flatMap((part) =>
+          dividedAligned(part, clipRule.axis, clipRule.parts, clipRule.symbol),
+        )
+        .map((beam) =>
+          clipRule.none === true ? { ...beam, none: true } : beam,
+        );
     } else if (clipBeams.length > 0) {
       // 条件が読めない（向き・記号が混ざる、等間隔でない）ときは、写し元の位置のまま貼る
       placed = regions.flatMap((part) => {
@@ -3138,13 +3154,17 @@ export default function FireproofDrawingPage({
         const top = part.y + (part.insetTop ?? 0);
         const bottom = part.y + part.height - (part.insetBottom ?? 0);
         return clipBeams
-          .map((clip) => ({
-            x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
-            x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
-            y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
-            y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
-            symbol: clip.symbol,
-          }))
+          .map((clip) => {
+            const beam: FireproofDrawingBeam = {
+              x1: clip.xEdge1 === "left" ? left : clip.xEdge1 === "right" ? right : part.x + clip.dx1,
+              x2: clip.xEdge2 === "left" ? left : clip.xEdge2 === "right" ? right : part.x + clip.dx2,
+              y1: clip.yEdge1 === "top" ? top : clip.yEdge1 === "bottom" ? bottom : part.y + clip.dy1,
+              y2: clip.yEdge2 === "top" ? top : clip.yEdge2 === "bottom" ? bottom : part.y + clip.dy2,
+              symbol: clip.symbol,
+            };
+            if (clip.none === true) beam.none = true;
+            return beam;
+          })
           .map((beam) => clipBeamAtDiagEdges(beam, part))
           .filter((beam): beam is FireproofDrawingBeam => beam !== null);
       });
@@ -3220,6 +3240,27 @@ export default function FireproofDrawingPage({
       setSelBeam(null);
       setSelBeamRange(null);
       setFocusTarget(null);
+    },
+    [current, updateFloor, selBeamRange, selBeamSet],
+  );
+
+  const toggleBeamNone = useCallback(
+    (index: number, checked: boolean) => {
+      const indices =
+        selBeamRange !== null &&
+        selBeamSet.size > 1 &&
+        selBeamSet.has(index)
+          ? selBeamSet
+          : new Set([index]);
+      updateFloor({
+        beams: current.beams.map((beam, at) => {
+          if (!indices.has(at)) return beam;
+          const next = { ...beam };
+          if (checked) next.none = true;
+          else delete next.none;
+          return next;
+        }),
+      });
     },
     [current, updateFloor, selBeamRange, selBeamSet],
   );
@@ -4109,82 +4150,97 @@ export default function FireproofDrawingPage({
               {current.beams.length > 0 && (
                 <div className="beam-list">
                   {current.beams.map((beam, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      className={`beam-row${index === selBeam ? " on" : ""}${selBeamSet.has(index) && selBeamRange !== null ? " sel" : ""}`}
-                      onMouseEnter={() => {
-                        if (beamRowDragRef.current)
-                          setSelBeamRange((before) =>
-                            before === null
-                              ? { from: index, to: index }
-                              : { ...before, to: index },
-                          );
-                      }}
-                      onClick={(event) => {
-                        if (rowClickSuppressRef.current) {
-                          rowClickSuppressRef.current = false;
-                          return;
-                        }
-                        selFocusRef.current = "beam";
-                        if (event.shiftKey) {
-                          setSelBeamRange({
-                            from: beamAnchorRef.current ?? selBeam ?? index,
-                            to: index,
-                          });
-                          setSelBeam(index);
-                          setFocusTarget({ kind: "beam", index });
-                        } else {
-                          setSelBeam(index);
-                          setSelBeamRange(null);
-                          beamAnchorRef.current = index;
-                          setFocusTarget({ kind: "beam", index });
-                        }
-                      }}
-                    >
-                      <span
-                        className="no"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          rowClickSuppressRef.current = true;
-                          beamRowDragRef.current = true;
-                          beamAnchorRef.current = index;
-                          setSelBeam(index);
-                          setSelBeamRange({ from: index, to: index });
+                    <div className="beam-row-wrap" key={index}>
+                      <button
+                        type="button"
+                        className={`beam-row${index === selBeam ? " on" : ""}${selBeamSet.has(index) && selBeamRange !== null ? " sel" : ""}${beam.none === true ? " none" : ""}`}
+                        onMouseEnter={() => {
+                          if (beamRowDragRef.current)
+                            setSelBeamRange((before) =>
+                              before === null
+                                ? { from: index, to: index }
+                                : { ...before, to: index },
+                            );
+                        }}
+                        onClick={(event) => {
+                          if (rowClickSuppressRef.current) {
+                            rowClickSuppressRef.current = false;
+                            return;
+                          }
                           selFocusRef.current = "beam";
-                          setFocusTarget({ kind: "beam", index });
+                          if (event.shiftKey) {
+                            setSelBeamRange({
+                              from: beamAnchorRef.current ?? selBeam ?? index,
+                              to: index,
+                            });
+                            setSelBeam(index);
+                            setFocusTarget({ kind: "beam", index });
+                          } else {
+                            setSelBeam(index);
+                            setSelBeamRange(null);
+                            beamAnchorRef.current = index;
+                            setFocusTarget({ kind: "beam", index });
+                          }
                         }}
                       >
-                        {index + 1}
-                      </span>
-                      <span className="at">{beam.symbol}</span>
-                      <span className="len">
-                        {beam.x1 === beam.x2 ? "縦" : "横"}{" "}
-                        {Math.round(
-                          beamSlopeLength(beam, current, floorHeight ?? 0),
-                        ).toLocaleString("ja-JP")}
-                        mm
-                        {Math.round(
-                          beamSlopeLength(beam, current, floorHeight ?? 0) -
-                            beamLength(beam),
-                        ) > 0 &&
-                          `（勾配＋${Math.round(
-                            beamSlopeLength(beam, current, floorHeight ?? 0) -
-                              beamLength(beam),
-                          ).toLocaleString("ja-JP")}）`}
-                      </span>
-                      {(index === selBeam || selBeamSet.has(index)) && (
                         <span
-                          className="del"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteBeam(index);
+                          className="no"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            rowClickSuppressRef.current = true;
+                            beamRowDragRef.current = true;
+                            beamAnchorRef.current = index;
+                            setSelBeam(index);
+                            setSelBeamRange({ from: index, to: index });
+                            selFocusRef.current = "beam";
+                            setFocusTarget({ kind: "beam", index });
                           }}
                         >
-                          消す
+                          {index + 1}
                         </span>
-                      )}
-                    </button>
+                        <span className="at">{beam.symbol}</span>
+                        <span className="len">
+                          {beam.x1 === beam.x2 ? "縦" : "横"}{" "}
+                          {Math.round(
+                            beamSlopeLength(beam, current, floorHeight ?? 0),
+                          ).toLocaleString("ja-JP")}
+                          mm
+                          {Math.round(
+                            beamSlopeLength(beam, current, floorHeight ?? 0) -
+                              beamLength(beam),
+                          ) > 0 &&
+                            `（勾配＋${Math.round(
+                              beamSlopeLength(beam, current, floorHeight ?? 0) -
+                                beamLength(beam),
+                            ).toLocaleString("ja-JP")}）`}
+                        </span>
+                        {(index === selBeam || selBeamSet.has(index)) && (
+                          <span
+                            className="del"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              deleteBeam(index);
+                            }}
+                          >
+                            消す
+                          </span>
+                        )}
+                      </button>
+                      <label
+                        className={`none${beam.none === true ? " on" : ""}`}
+                        title="この小梁は拾いません（図には点線で残ります）"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={beam.none === true}
+                          onChange={(event) =>
+                            toggleBeamNone(index, event.target.checked)
+                          }
+                        />
+                        無
+                      </label>
+                    </div>
                   ))}
                 </div>
               )}

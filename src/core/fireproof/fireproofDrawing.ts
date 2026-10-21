@@ -13,6 +13,7 @@ export interface FireproofDrawingBeam {
   y2: number;
   /** 記号（B40 など） */
   symbol: string;
+  none?: true;
   /** 取合記号のキーに使う番号。無いものは行番号で代用する */
   id?: string;
 }
@@ -396,6 +397,7 @@ function normalizeFloor(raw: unknown): FireproofDrawingFloor {
               ...(typeof row2.id === "string" && row2.id !== ""
                 ? { id: row2.id }
                 : {}),
+              ...(row2.none === true ? { none: true } : {}),
             };
           })
           .filter((beam): beam is FireproofDrawingBeam => beam !== null)
@@ -1635,6 +1637,24 @@ export function splitBeamAtMembers(
   const lo = Math.min(vertical ? beam.y1 : beam.x1, vertical ? beam.y2 : beam.x2);
   const hi = Math.max(vertical ? beam.y1 : beam.x1, vertical ? beam.y2 : beam.x2);
   const cuts: { from: number; to: number }[] = [];
+  const segment = (from: number, to: number): FireproofDrawingBeam =>
+    vertical
+      ? {
+          x1: axis,
+          y1: from,
+          x2: axis,
+          y2: to,
+          symbol: beam.symbol,
+          ...(beam.none === true ? { none: true } : {}),
+        }
+      : {
+          x1: from,
+          y1: axis,
+          x2: to,
+          y2: axis,
+          symbol: beam.symbol,
+          ...(beam.none === true ? { none: true } : {}),
+        };
   lines.forEach((line) => {
     /* 部材の区間が梁の線を含む（端が梁の線で止まるT字は含まない） */
     if (!(line.from < axis - 1 && axis < line.to)) return;
@@ -1647,19 +1667,11 @@ export function splitBeamAtMembers(
   let cur = lo;
   cuts.forEach((cut) => {
     if (cut.from > cur + 1)
-      out.push(
-        vertical
-          ? { x1: axis, y1: cur, x2: axis, y2: cut.from, symbol: beam.symbol }
-          : { x1: cur, y1: axis, x2: cut.from, y2: axis, symbol: beam.symbol },
-      );
+      out.push(segment(cur, cut.from));
     cur = Math.max(cur, cut.to);
   });
   if (hi > cur + 1)
-    out.push(
-      vertical
-        ? { x1: axis, y1: cur, x2: axis, y2: hi, symbol: beam.symbol }
-        : { x1: cur, y1: axis, x2: hi, y2: axis, symbol: beam.symbol },
-    );
+    out.push(segment(cur, hi));
   return out;
 }
 
@@ -1767,6 +1779,7 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
       member.keys.forEach((key) => missing.push(`g:${key}`));
   });
   floor.beams.forEach((beam, index) => {
+    if (beam.none === true) return;
     const key = `b:${beam.id ?? `#${index}`}`;
     if ((joints[key] ?? "") === "") missing.push(key);
   });
@@ -2301,6 +2314,7 @@ export function beamImportItems(
   girders.sort((a, b) => a.no - b.no);
 
   floor.beams.forEach((beam, index) => {
+    if (beam.none === true) return;
     const mx = (beam.x1 + beam.x2) / 2;
     const my = (beam.y1 + beam.y2) / 2;
     /** 中点が入る区画の軸（柱線の間の番号） */

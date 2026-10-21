@@ -573,8 +573,15 @@
   font-weight: bold;
 }
 /* 小梁は記号がリストに無くても線は紺色のまま（記号の文字だけ赤） */
-.fireproof-drawing-svg .beam .bad line {
+.fireproof-drawing-svg .beam .bad line:not(.hit) {
   stroke: #1c3f8f;
+}
+.fireproof-drawing-svg .beam .none line:not(.hit) {
+  stroke: #999;
+  stroke-dasharray: 120 100;
+}
+.fireproof-drawing-svg .beam .none text {
+  fill: #999;
 }
 .fireproof-drawing-svg .bad rect {
   stroke: #d03030;
@@ -752,6 +759,22 @@
   text-align: left;
   cursor: pointer;
   font-size: 12px;
+}
+
+.fireproof-drawing-body .beam-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fireproof-drawing-body .beam-row-wrap .beam-row {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.fireproof-drawing-body .beam-row.none .at,
+.fireproof-drawing-body .beam-row.none .len {
+  color: #999;
 }
 
 .fireproof-drawing-body .beam-row.on {

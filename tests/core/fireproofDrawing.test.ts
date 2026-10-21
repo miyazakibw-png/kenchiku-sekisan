@@ -73,7 +73,16 @@ describe("setYSpansKeepingBottom", () => {
       },
       axisHeights: { "0": 2800, "1": 3000 },
       axisHeightsX: { "0": 2500 },
-      beams: [{ x1: 1000, y1: 1000, x2: 2000, y2: 1000, symbol: "B1" }],
+      beams: [
+        {
+          x1: 1000,
+          y1: 1000,
+          x2: 2000,
+          y2: 1000,
+          symbol: "B1",
+          none: true,
+        },
+      ],
       diagGirders: [
         {
           fx: 0,
@@ -109,7 +118,11 @@ describe("setYSpansKeepingBottom", () => {
     });
     expect(next.axisHeights).toEqual({ "1": 2800, "2": 3000 });
     expect(next.axisHeightsX).toEqual({ "0": 2500 });
-    expect(next.beams[0]).toMatchObject({ y1: 7650, y2: 7650 });
+    expect(next.beams[0]).toMatchObject({
+      y1: 7650,
+      y2: 7650,
+      none: true,
+    });
     expect(next.diagGirders?.[0]).toMatchObject({
       fy: 1,
       ty: 2,
@@ -420,7 +433,14 @@ describe("小梁の配置・調整", () => {
   });
 
   it("長さと微調整（縦は左右・横は上下）", () => {
-    const beam = { x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B40" };
+    const beam = {
+      x1: 3000,
+      y1: 0,
+      x2: 3000,
+      y2: 6000,
+      symbol: "B40",
+      none: true as const,
+    };
     expect(beamLength(beam)).toBe(6000);
     expect(nudgeBeam(beam, 250)).toEqual({ ...beam, x1: 3250, x2: 3250 });
     const flat = { x1: 0, y1: 3000, x2: 9000, y2: 3000, symbol: "B25" };
@@ -439,11 +459,27 @@ describe("小梁の配置・調整", () => {
         "y:1,0": "G1",
       },
       // 芯から芯まで伸びた縦の小梁（古い置き方）
-      beams: [{ x1: 3000, y1: 0, x2: 3000, y2: 6000, symbol: "B40" }],
+      beams: [
+        {
+          x1: 3000,
+          y1: 0,
+          x2: 3000,
+          y2: 6000,
+          symbol: "B40",
+          none: true,
+        },
+      ],
     };
     const refit = refitBeams(floor, () => 150);
     expect(refit).toEqual([
-      { x1: 3000, y1: 150, x2: 3000, y2: 5850, symbol: "B40" },
+      {
+        x1: 3000,
+        y1: 150,
+        x2: 3000,
+        y2: 5850,
+        symbol: "B40",
+        none: true,
+      },
     ]);
     // いったん内内なら二回目は変わらない（連動のあと動かない）
     const again = refitBeams({ ...floor, beams: refit }, () => 150);
@@ -582,6 +618,28 @@ describe("parseDrawing / serializeDrawing", () => {
     );
     expect(parsed.floors["1"].xSpans).toEqual([7300]);
     expect(parsed.floors["1"].columns).toEqual({ "1,1": "C9" });
+  });
+
+  it("小梁の無はtrueだけを保存から読み込む", () => {
+    const parsed = parseDrawing(
+      JSON.stringify({
+        floors: {
+          "1": {
+            beams: [
+              { x1: 0, y1: 0, x2: 100, y2: 0, symbol: "B1", none: true },
+              { x1: 0, y1: 100, x2: 100, y2: 100, symbol: "B2", none: false },
+              { x1: 0, y1: 200, x2: 100, y2: 200, symbol: "B3", none: "true" },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(parsed.floors["1"]?.beams).toEqual([
+      { x1: 0, y1: 0, x2: 100, y2: 0, symbol: "B1", none: true },
+      { x1: 0, y1: 100, x2: 100, y2: 100, symbol: "B2" },
+      { x1: 0, y1: 200, x2: 100, y2: 200, symbol: "B3" },
+    ]);
   });
 });
 
@@ -742,6 +800,24 @@ describe("beamImportItems", () => {
       { comment: "1-A〜B", symbol: "G3", mark: "", lengthFormula: "5.76" },
       { comment: "2-A〜B", symbol: "G4", mark: "", lengthFormula: "5.76" },
       { comment: "1〜2-A〜B", symbol: "B1", mark: "2", lengthFormula: "5.8" },
+    ]);
+  });
+
+  it("「無」の小梁は取り込まず、他の小梁は取り込む", () => {
+    const withNone: FireproofDrawingFloor = {
+      ...floor,
+      beams: [
+        ...floor.beams,
+        { ...floor.beams[0]!, symbol: "B2", id: "bNone", none: true },
+      ],
+    };
+
+    expect(beamImportItems(withNone, 4000).map((item) => item.symbol)).toEqual([
+      "G1",
+      "G2",
+      "G3",
+      "G4",
+      "B1",
     ]);
   });
 
@@ -1061,6 +1137,7 @@ describe("missingJointKeys", () => {
       beams: [
         { x1: 0, y1: 0, x2: 0, y2: 100, symbol: "B1", id: "b1" },
         { x1: 0, y1: 0, x2: 100, y2: 0, symbol: "B2" },
+        { x1: 0, y1: 100, x2: 100, y2: 100, symbol: "B3", none: true },
       ],
       jointSymbols: { "c:0,0": "3", "b:b1": "2" },
     };
@@ -1390,6 +1467,39 @@ describe("置いた小梁を中の部材で切る（splitBeamAtMembers）", () =
     expect(out).toEqual([
       { x1: 1000, y1: 3000, x2: 5925, y2: 3000, symbol: "B40" },
       { x1: 6075, y1: 3000, x2: 11000, y2: 3000, symbol: "B40" },
+    ]);
+  });
+
+  it("「無」の小梁を分割しても各部分に状態を保つ", () => {
+    const out = splitBeamAtMembers(
+      {
+        x1: 1000,
+        y1: 3000,
+        x2: 11000,
+        y2: 3000,
+        symbol: "B40",
+        none: true,
+      },
+      floor,
+    );
+
+    expect(out).toEqual([
+      {
+        x1: 1000,
+        y1: 3000,
+        x2: 5925,
+        y2: 3000,
+        symbol: "B40",
+        none: true,
+      },
+      {
+        x1: 6075,
+        y1: 3000,
+        x2: 11000,
+        y2: 3000,
+        symbol: "B40",
+        none: true,
+      },
     ]);
   });
 
