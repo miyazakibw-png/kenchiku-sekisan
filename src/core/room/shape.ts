@@ -1103,20 +1103,34 @@ export interface RoomQuantities {
   fittingBaseboard: number;
 }
 
-/** 辺の長さ×高さの合計（辺ごとの高さがあればそれを使う） */
+/** 手入力、辺ごとの高さ、天井高さの順で辺の高さを決める */
+function edgeHeight(
+  row: SolvedEdge,
+  ceilingHeight: number | null,
+  edgeHeights?: ReadonlyMap<string, number>,
+): number | null {
+  return typeof row.height === "number" && row.height > 0
+    ? row.height
+    : (edgeHeights?.get(row.id) ?? ceilingHeight);
+}
+
+/** 辺の長さ×高さの合計。必要な高さが無い場合は null */
 function edgeArea(
   solved: SolvedShape,
   kind: EdgeKind,
-  height: number,
+  ceilingHeight: number | null,
   edgeHeights?: ReadonlyMap<string, number>,
-): number {
-  return solved.edges.reduce(
-    (sum, row) =>
-      row.kind === kind && row.measured !== null
-        ? sum + row.measured * (edgeHeights?.get(row.id) ?? height)
-        : sum,
-    0,
-  );
+): number | null {
+  let area = 0;
+  let measuredEdges = 0;
+  for (const row of solved.edges) {
+    if (row.kind !== kind || row.measured === null) continue;
+    measuredEdges += 1;
+    const height = edgeHeight(row, ceilingHeight, edgeHeights);
+    if (height === null) return null;
+    area += row.measured * height;
+  }
+  return measuredEdges === 0 && ceilingHeight === null ? null : area;
 }
 
 export function roomQuantities(
@@ -1154,6 +1168,9 @@ export function roomQuantities(
     curveFitting.baseboard += onCurve.baseboard;
   }
   curveMeasured = round2(curveMeasured);
+  const wallEdgesArea = edgeArea(solved, "wall", height, edgeHeights);
+  const curveEdgesArea = edgeArea(solved, "curve", height, edgeHeights);
+  const columnEdgesArea = edgeArea(solved, "column", height, edgeHeights);
   return {
     floorArea: area,
     ceilingArea: area === null ? null : round2(Math.max(0, area - beamArea)),
@@ -1169,23 +1186,18 @@ export function roomQuantities(
     ),
     curveLength: round2(curveMeasured - curveFitting.baseboard),
     wallArea:
-      height === null
+      wallEdgesArea === null || (height === null && freeWall.perimeter > 0)
         ? null
         : round2(
-            edgeArea(solved, "wall", height, edgeHeights) +
-              freeWall.perimeter * height -
+            wallEdgesArea + freeWall.perimeter * (height ?? 0) -
               (fitting.area - curveFitting.area),
           ),
     curveArea:
-      height === null
+      curveEdgesArea === null
         ? null
-        : round2(
-            edgeArea(solved, "curve", height, edgeHeights) - curveFitting.area,
-          ),
+        : round2(curveEdgesArea - curveFitting.area),
     columnArea:
-      height === null
-        ? null
-        : round2(edgeArea(solved, "column", height, edgeHeights)),
+      columnEdgesArea === null ? null : round2(columnEdgesArea),
     freeColumnArea: free.face,
     moldingLength: round2(totals.wall + freeWall.perimeter + column),
     fittingArea: fitting.area,
@@ -1315,10 +1327,11 @@ export function roomSymbols(
         symbol: `WA${wallIndex}`,
         label: `壁${wallIndex} 面積`,
         value:
-          ceilingHeight === null
+          edgeHeight(row, ceilingHeight, edgeHeights) === null
             ? null
             : round2(
-                row.measured * (edgeHeights?.get(row.id) ?? ceilingHeight) -
+                row.measured *
+                  (edgeHeight(row, ceilingHeight, edgeHeights) ?? 0) -
                   onWall.area,
               ),
         edgeId: row.id,
@@ -1329,10 +1342,11 @@ export function roomSymbols(
         symbol: `HA${columnIndex}`,
         label: `柱${columnIndex} 面積`,
         value:
-          ceilingHeight === null
+          edgeHeight(row, ceilingHeight, edgeHeights) === null
             ? null
             : round2(
-                row.measured * (edgeHeights?.get(row.id) ?? ceilingHeight),
+                row.measured *
+                  (edgeHeight(row, ceilingHeight, edgeHeights) ?? 0),
               ),
         edgeId: row.id,
       });

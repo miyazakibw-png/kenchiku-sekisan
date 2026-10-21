@@ -22,6 +22,7 @@ import {
 } from "../../src/core/room/ceiling";
 import {
   edge,
+  freeColumn,
   lShape,
   mirrorShape,
   rectangleShape,
@@ -1277,6 +1278,119 @@ describe("低い天井の区画に面している壁の壁高さ", () => {
     expect(
       roomQuantities(solved, 3.0, [], undefined, 0, manual).columnArea,
     ).toBe(8.8);
+  });
+});
+
+describe("手入力の辺高さ", () => {
+  it("天井高さが空でも全ての壁に高さがあればWAを計算し、建具面積を引く", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row, index) => ({
+        ...row,
+        height: [1, 2, 3, 4][index],
+      })),
+    });
+    const fittings = [
+      {
+        symbol: "AW1",
+        multiplier: 1,
+        area: 1.2,
+        baseboardDeduction: 0,
+        edgeId: solved.edges[0].id,
+      },
+    ];
+
+    const quantities = roomQuantities(solved, null, fittings);
+    const symbols = roomSymbols(solved, null, fittings);
+    const wallSymbol = (symbol: string) =>
+      symbols.find((row) => row.symbol === symbol)?.value;
+
+    expect(quantities.wallArea).toBe(32.8);
+    expect(wallSymbol("WA")).toBe(32.8);
+    expect(wallSymbol("WA1")).toBe(2.8);
+    expect(
+      roomQuantities(
+        solved,
+        null,
+        fittings,
+        undefined,
+        0,
+        new Map([[solved.edges[0].id, 9]]),
+      ).wallArea,
+    ).toBe(32.8);
+  });
+
+  it("測定した壁に高さが無いとWAを出さない", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row, index) =>
+        index < 3 ? { ...row, height: 2 } : row,
+      ),
+    });
+    const symbols = roomSymbols(solved, null);
+
+    expect(roomQuantities(solved, null).wallArea).toBeNull();
+    expect(symbols.find((row) => row.symbol === "WA")?.value).toBeNull();
+    expect(symbols.find((row) => row.symbol === "WA4")?.value).toBeNull();
+  });
+
+  it("天井高さがあれば未入力辺は補い、手入力の壁高さを優先する", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row, index) =>
+        index === 0 ? { ...row, height: 1.5 } : row,
+      ),
+    });
+    const quantities = roomQuantities(solved, 3);
+    const symbols = roomSymbols(solved, 3);
+
+    expect(quantities.wallArea).toBe(36);
+    expect(symbols.find((row) => row.symbol === "WA1")?.value).toBe(6);
+  });
+
+  it("曲面壁・柱の辺は天井高さが空でも手入力の高さで面積を出す", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row, index) =>
+        index === 0
+          ? { ...row, kind: "curve" as const, height: 2 }
+          : index === 1
+            ? { ...row, kind: "column" as const, height: 1.5 }
+            : row,
+      ),
+    });
+    const quantities = roomQuantities(solved, null);
+    const symbols = roomSymbols(solved, null);
+
+    expect(quantities.curveArea).toBe(8);
+    expect(quantities.columnArea).toBe(4.5);
+    expect(symbols.find((row) => row.symbol === "RWA")?.value).toBe(8);
+    expect(symbols.find((row) => row.symbol === "HA1")?.value).toBe(4.5);
+  });
+
+  it("壁種の独立柱は天井高さが空なら壁面積を未確定にする", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row) => ({ ...row, height: 2 })),
+      columns: [freeColumn(1, 1, 0.3, 0.3, "wall")],
+    });
+
+    expect(roomQuantities(solved, null).wallArea).toBeNull();
+  });
+
+  it("測定した壁が無く天井高さも空ならWAは未確定のまま", () => {
+    const shape = rectangleShape(4, 3);
+    const solved = solveShape({
+      ...shape,
+      edges: shape.edges.map((row) => ({ ...row, kind: "opening" as const })),
+    });
+
+    expect(roomQuantities(solved, null).wallArea).toBeNull();
   });
 });
 

@@ -194,6 +194,31 @@ describe("集計処理", () => {
     ]);
   });
 
+  it("手入力の壁高さをWAの集計に使う", () => {
+    addRoom("事務室", 1, 1);
+    const rowId = drafts[drafts.length - 1].id as number;
+    const sheet = getRoomSheet(db, rowId);
+    const shape = JSON.parse(SHAPE_JSON);
+    const lower = JSON.parse(lowerJson(1));
+    shape.edges = shape.edges.map((edge: { length: number }) => ({
+      ...edge,
+      height: 1.5,
+    }));
+    lower[0].lines[0].formulaA = "WA";
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: JSON.stringify(shape),
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(lower),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+
+    const view = runAggregation(db, projectId);
+    expect(view.items[0].quantity).toBe(21);
+  });
+
   it("天井高さは部位別入力表の値で集計する（計算書のコピーで残った古い高さは使わない）", () => {
     addRoom("事務室", 1, 1);
     const row = drafts[drafts.length - 1];
