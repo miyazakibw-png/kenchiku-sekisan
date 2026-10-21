@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   axisHeightAt,
   beamImportItems,
+  BEAM_IMPORT_HEAD_COMMENT,
   beamLength,
   beamSlopeLength,
   clipBeamAtDiagEdges,
@@ -821,6 +822,12 @@ describe("beamImportItems", () => {
     beams: [{ x1: 3000, y1: 100, x2: 3000, y2: 5900, symbol: "B1", id: "b12ab" }],
     jointSymbols: { "g:x:0,0": "3", "b:b12ab": "2" },
   };
+
+  it("梁の取込案内は柱と同じ通り表記にする", () => {
+    expect(BEAM_IMPORT_HEAD_COMMENT).toBe(
+      "梁位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
+    );
+  });
 
   it("大梁は通し番号どおり・小梁はそのあとに並ぶ（柱の面どうしの長さ）", () => {
     const items = beamImportItems(floor, 4000);

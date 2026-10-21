@@ -1829,7 +1829,7 @@ export function columnImportItems(
 
 /** 伏図から取り込んだ梁ブロックの先頭に入れる案内文 */
 export const BEAM_IMPORT_HEAD_COMMENT =
-  "梁位置表示（大＝大梁は通り芯の区間・小＝小梁は区画。軸の表記は柱と同じ）";
+  "梁位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）";
 
 /** 斜梁の位置表示（例「4-A〜5-C」。始点→終点の交点ラベル） */
 export function diagGirderPosition(
