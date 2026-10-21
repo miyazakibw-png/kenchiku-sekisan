@@ -1792,7 +1792,7 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
 }
 
 /**
- * 伏図1階分の柱を、柱入力表へ取り込む順（上の通り→下へ、各行は左→右）に並べる。
+ * 伏図1階分の柱を、柱入力表へ取り込む順（下のA通り→上へ、各行は左→右）に並べる。
  * コメントは柱位置（階数は表の階欄が持つので付けない。案内文の行は画面側で足す）。
  * 柱の高さは縦通りの値 → 横通りの値 → 階高 の順で使う。
  */
@@ -1809,7 +1809,7 @@ export function columnImportItems(
     .sort((a, b) => {
       const [ax, ay] = a.split(",").map(Number);
       const [bx, by] = b.split(",").map(Number);
-      return ay === by ? ax - bx : ay - by;
+      return ay === by ? ax - bx : by - ay;
     });
   return keys.map((key) => {
     const [xi, yi] = key.split(",").map(Number);
@@ -2199,7 +2199,7 @@ export function drawingColumnHalfOf(
 
 /**
  * 伏図1階分の大梁・小梁を、梁型入力表へ取り込む行にする。
- * 大梁は通し番号どおり（X方向→Y方向）、小梁は上→下・左→右の見え方で並べる。
+ * 大梁は横方向をA行から上へ、縦方向を左から下→上、小梁も下→上・左→右に並べる。
  * 「無し」の柱をまたぐ大梁は1部材にまとめ、十字になるところは先に入力した向きを優先（通し）にする。
  * コメントは位置だけ（大梁は軸-区間・小梁は区画。案内文の行は画面側で足す）。
  * 有効長は図に描かれている長さ（大梁は柱の面どうし・小梁は内内寸法。勾配ぶんも入れる）。
@@ -2220,21 +2220,27 @@ export function beamImportItems(
     floorHeight;
 
   const girders: {
-    no: number;
+    group: number;
+    row: number;
+    column: number;
+    order: number;
     position: string;
     symbol: string;
     mark: string;
     mm: number;
   }[] = [];
   const beams: {
-    sort: number;
+    group: number;
+    row: number;
+    column: number;
+    order: number;
     position: string;
     symbol: string;
     mark: string;
     mm: number;
   }[] = [];
 
-  girderMembers(floor, columnHalfOf, memberHalfOf).forEach((member) => {
+  girderMembers(floor, columnHalfOf, memberHalfOf).forEach((member, index) => {
     const start =
       member.axis === "x"
         ? xs[member.fromXi] + member.startCut
@@ -2256,7 +2262,10 @@ export function beamImportItems(
         ? `${yGridLabel(ys.length - 1 - member.fromYi)}-${xGridLabel(member.fromXi)}〜${xGridLabel(member.toXi)}`
         : `${xGridLabel(member.fromXi)}-${yGridLabel(ys.length - 1 - member.toYi)}〜${yGridLabel(ys.length - 1 - member.fromYi)}`;
     girders.push({
-      no: girderNumber(member.axis, member.fromXi, member.fromYi, floor),
+      group: member.axis === "x" ? 0 : 1,
+      row: member.axis === "x" ? -member.fromYi : member.fromXi,
+      column: member.axis === "x" ? member.fromXi : -member.toYi,
+      order: index,
       position,
       symbol: member.symbol,
       mark:
@@ -2267,8 +2276,6 @@ export function beamImportItems(
     });
   });
   /* 斜梁（2交点どうしを結ぶ大梁。端は両端の柱の、斜め方向の面ぶん詰める） */
-  const girderTotal =
-    ys.length * (xs.length - 1) + xs.length * (ys.length - 1);
   (floor.diagGirders ?? []).forEach((g, index) => {
     const symbol = g.symbol.trim();
     if (symbol === "") return;
@@ -2304,14 +2311,23 @@ export function beamImportItems(
         ? Math.abs(h1 - h2)
         : 0;
     girders.push({
-      no: girderTotal + 1 + index,
+      group: 2,
+      row: index,
+      column: 0,
+      order: index,
       position: diagGirderPosition(floor, g),
       symbol,
       mark: floor.jointSymbols?.[`d:${g.id ?? `#${index}`}`] ?? "",
       mm: Math.hypot(len, dh),
     });
   });
-  girders.sort((a, b) => a.no - b.no);
+  girders.sort(
+    (a, b) =>
+      a.group - b.group ||
+      a.row - b.row ||
+      a.column - b.column ||
+      a.order - b.order,
+  );
 
   floor.beams.forEach((beam, index) => {
     if (beam.none === true) return;
@@ -2348,14 +2364,23 @@ export function beamImportItems(
         ? beamLength(beam)
         : beamSlopeLength(beam, floor, floorHeight);
     beams.push({
-      sort: index,
+      group: xb !== null && yb !== null ? 0 : 1,
+      row: yb === null ? 0 : -yb.to,
+      column: xb === null ? 0 : xb.from,
+      order: index,
       position,
       symbol: beam.symbol.trim(),
       mark: floor.jointSymbols?.[`b:${beam.id ?? `#${index}`}`] ?? "",
       mm,
     });
   });
-  beams.sort((a, b) => a.sort - b.sort);
+  beams.sort(
+    (a, b) =>
+      a.group - b.group ||
+      a.row - b.row ||
+      a.column - b.column ||
+      a.order - b.order,
+  );
 
   return [...girders, ...beams].map((item) => ({
     comment: item.position,

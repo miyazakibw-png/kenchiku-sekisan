@@ -729,18 +729,49 @@ describe("columnImportItems", () => {
     jointSymbols: { "c:0,0": "3", "c:2,1": "2" },
   };
 
-  it("上の通りから順に、位置・記号・取合番号・高さを入れた行を作る（縦通りの記号は図の下がA）", () => {
+  it("下のA通りから順に、位置・記号・取合番号・高さを入れた行を作る", () => {
     const items = columnImportItems(floor, 4000);
     // コメントは各行に柱位置だけ（案内文の先頭行は画面側で足す・階数は階欄が持つ）
     expect(items).toEqual([
-      { comment: "1-B", symbol: "C1", mark: "3", lengthFormula: "4" },
-      { comment: "2-B", symbol: "C2", mark: "", lengthFormula: "4" },
       { comment: "1-A", symbol: "C1", mark: "", lengthFormula: "4" },
       { comment: "3-A", symbol: "C3", mark: "2", lengthFormula: "4" },
+      { comment: "1-B", symbol: "C1", mark: "3", lengthFormula: "4" },
+      { comment: "2-B", symbol: "C2", mark: "", lengthFormula: "4" },
     ]);
     expect(COLUMN_IMPORT_HEAD_COMMENT).toBe(
       "柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
     );
+  });
+
+  it("2×2区画はA行から左→右、つづいてB・C行へ取り込む", () => {
+    const grid: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [6000, 6000],
+      columns: {
+        "0,0": "C1",
+        "1,0": "C1",
+        "2,0": "C1",
+        "0,1": "C1",
+        "1,1": "C1",
+        "2,1": "C1",
+        "0,2": "C1",
+        "1,2": "C1",
+        "2,2": "C1",
+      },
+    };
+
+    expect(columnImportItems(grid, 4000).map((item) => item.comment)).toEqual([
+      "1-A",
+      "2-A",
+      "3-A",
+      "1-B",
+      "2-B",
+      "3-B",
+      "1-C",
+      "2-C",
+      "3-C",
+    ]);
   });
 
   it("通りごとの高さが入っているときはその値を使う（縦通りが先、横通りはその次）", () => {
@@ -750,9 +781,9 @@ describe("columnImportItems", () => {
       axisHeightsX: { "1": 4500 },
     };
     const items = columnImportItems(slope, 4000);
-    // yi=0 の2本は縦通り"0"の5000、yi=1 の2本は階高4000（横通りの値は縦通りが無い交点だけ）
+    // yi=1のA行2本は階高4000、yi=0の2本は縦通り"0"の5000
     expect(items.map((each) => each.lengthFormula)).toEqual([
-      "5", "5", "4", "4",
+      "4", "4", "5", "5",
     ]);
   });
 
@@ -762,7 +793,7 @@ describe("columnImportItems", () => {
       axisHeightsX: { "1": 4500 },
     };
     const items = columnImportItems(slope, 4000);
-    expect(items[1]?.lengthFormula).toBe("4.5");
+    expect(items[3]?.lengthFormula).toBe("4.5");
   });
 
   it("記号の無い交点・階高不明は行を作らない・式は空欄", () => {
@@ -800,6 +831,94 @@ describe("beamImportItems", () => {
       { comment: "1-A〜B", symbol: "G3", mark: "", lengthFormula: "5.76" },
       { comment: "2-A〜B", symbol: "G4", mark: "", lengthFormula: "5.76" },
       { comment: "1〜2-A〜B", symbol: "B1", mark: "2", lengthFormula: "5.8" },
+    ]);
+  });
+
+  it("大梁は横A行から上へ、縦は左から下→上に並び、斜梁の順は保つ", () => {
+    const grid: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [5000, 5000],
+      columns: {
+        "0,0": "C1",
+        "1,0": "C1",
+        "2,0": "C1",
+        "0,1": "C1",
+        "1,1": "C1",
+        "2,1": "C1",
+        "0,2": "C1",
+        "1,2": "C1",
+        "2,2": "C1",
+      },
+      girders: {
+        "x:1,2": "HA2",
+        "x:0,2": "HA1",
+        "x:0,1": "HB",
+        "x:0,0": "HC",
+        "y:1,0": "2-BC",
+        "y:0,1": "1-AB",
+        "y:0,0": "1-BC",
+        "y:1,1": "2-AB",
+      },
+      diagGirders: [
+        { fx: 0, fy: 0, tx: 1, ty: 1, symbol: "D2" },
+        { fx: 2, fy: 2, tx: 1, ty: 0, symbol: "D1" },
+      ],
+    };
+    const items = beamImportItems(grid, 4000);
+
+    expect(items.map((item) => item.comment)).toEqual([
+      "A-1〜2",
+      "A-2〜3",
+      "B-1〜2",
+      "C-1〜2",
+      "1-A〜B",
+      "1-B〜C",
+      "2-A〜B",
+      "2-B〜C",
+      "1-C〜2-B",
+      "3-A〜2-C",
+    ]);
+    expect(items.slice(-2).map((item) => item.symbol)).toEqual(["D2", "D1"]);
+  });
+
+  it("小梁はA側の区画から左→右に並べ、元の配列順に依存しない", () => {
+    const grid: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      xSpans: [6000, 6000],
+      ySpans: [6000, 6000],
+      beams: [
+        { x1: 9000, y1: 500, x2: 9000, y2: 5500, symbol: "top-right" },
+        { x1: 9000, y1: 6500, x2: 9000, y2: 11500, symbol: "bottom-right" },
+        { x1: 3000, y1: 500, x2: 3000, y2: 5500, symbol: "top-left" },
+        { x1: 3000, y1: 6500, x2: 3000, y2: 11500, symbol: "bottom-left" },
+      ],
+    };
+
+    expect(
+      beamImportItems(grid, 4000).map((item) => [item.symbol, item.comment]),
+    ).toEqual([
+      ["bottom-left", "1〜2-A〜B"],
+      ["bottom-right", "2〜3-A〜B"],
+      ["top-left", "1〜2-B〜C"],
+      ["top-right", "2〜3-B〜C"],
+    ]);
+  });
+
+  it("区画が特定できない小梁は「小」のまま元の順を保つ", () => {
+    const noGrid: FireproofDrawingFloor = {
+      ...emptyFloor(),
+      beams: [
+        { x1: 0, y1: 0, x2: 0, y2: 1000, symbol: "first" },
+        { x1: 0, y1: 1000, x2: 0, y2: 2000, symbol: "second" },
+      ],
+    };
+
+    expect(
+      beamImportItems(noGrid, 4000).map((item) => [item.symbol, item.comment]),
+    ).toEqual([
+      ["first", "小"],
+      ["second", "小"],
     ]);
   });
 
