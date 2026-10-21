@@ -17,6 +17,10 @@ describe("計算書の部位ID入力", () => {
   });
 
   it("未登録の整数・小数はその番号を保ち、部位名を変えない", () => {
+    expect(resolvePartNumberInput(parts, "999", "既存部位")).toEqual({
+      partNumber: 999,
+      partName: "既存部位",
+    });
     expect(resolvePartNumberInput(parts, "180", "既存部位")).toEqual({
       partNumber: 180,
       partName: "既存部位",

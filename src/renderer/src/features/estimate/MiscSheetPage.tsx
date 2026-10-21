@@ -24,6 +24,7 @@ import {
   type MiscRow,
 } from "../../../../core/misc/miscSheet";
 import PickInput, { type PickEntry } from "../../components/PickInput";
+import { resolvePartNumberInput } from "./partNumberInput";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
 import "./RoomCalcSheet.css";
@@ -684,10 +685,14 @@ export default function MiscSheetPage({
           title="明細用部位のID。入れると部位名にマスターの文字が入ります"
           onFocus={() => setPickedColumn(column.id)}
           onCommit={(text) => {
-            const picked = pickMaster(options.pickupParts, text);
+            const part = resolvePartNumberInput(
+              options.pickupParts,
+              text,
+              column.partName,
+            );
             editColumn(column.id, {
-              partNumber: picked.id,
-              partName: picked.id === null ? column.partName : picked.name,
+              partNumber: part.partNumber,
+              partName: part.partName,
             });
           }}
         />

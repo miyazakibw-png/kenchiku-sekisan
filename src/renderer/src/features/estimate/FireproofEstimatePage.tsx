@@ -55,6 +55,7 @@ import {
 } from "../../../../core/fireproof/fireproofDrawing";
 import { findColumnSize } from "../../../../core/fireproof/fireproofEstimate";
 import PickInput, { type PickEntry } from "../../components/PickInput";
+import { resolvePartNumberInput } from "./partNumberInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { useUndoRedo } from "../../hooks/useUndoRedo";
@@ -642,10 +643,14 @@ export default function FireproofEstimatePage({
           value={detail.partNumber === null ? "" : String(detail.partNumber)}
           title="明細用部位のID。入れると部位名にマスターの文字が入ります"
           onCommit={(text) => {
-            const picked = pickMaster(options.pickupParts, text);
+            const part = resolvePartNumberInput(
+              options.pickupParts,
+              text,
+              detail.partName,
+            );
             changeDetail(index, {
-              partNumber: picked.id,
-              partName: picked.id === null ? detail.partName : picked.name,
+              partNumber: part.partNumber,
+              partName: part.partName,
             });
           }}
         />

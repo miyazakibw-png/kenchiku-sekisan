@@ -800,6 +800,45 @@ export function resolveFurnitureRows(
   });
 }
 
+/** 名称IDから呼び出した明細を家具の入力行へ反映する */
+export function applyMasterDetailToFurnitureRow(
+  row: FurnitureRow,
+  resolved: FurnitureResolved,
+  detail: {
+    id: number;
+    subjectId: number;
+    partNumber?: number | null;
+    detailNumber: number | null;
+    name: string;
+    unit: string;
+  },
+): FurnitureRow {
+  return {
+    ...row,
+    subjectId:
+      detail.subjectId !== resolved.subjectId
+        ? detail.subjectId
+        : row.subjectId,
+    partNumber:
+      row.partNumber === null && resolved.partNumber === null
+        ? (detail.partNumber ?? null)
+        : row.partNumber,
+    detailNumber: detail.detailNumber,
+    nameSymbol: detail.name,
+    unit: detail.unit || row.unit,
+    detail: {
+      ...row.detail,
+      sourceDetailId: detail.id,
+      edited: row.detail.edited.filter(
+        (key) =>
+          !["name", "unit", "detailNumber", "subjectId", "partNumber"].includes(
+            key,
+          ),
+      ),
+    },
+  };
+}
+
 /** 建具記号で建具表を探す（全角・半角・大文字・小文字の違いは同じ記号とみなす） */
 export function findFitting(
   fittings: FittingSize[],

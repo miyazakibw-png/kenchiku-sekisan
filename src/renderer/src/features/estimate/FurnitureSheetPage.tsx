@@ -17,6 +17,7 @@ import type {
   ProjectSummary,
 } from "@shared/types";
 import {
+  applyMasterDetailToFurnitureRow,
   applyFurnitureDetails,
   columnCellTexts,
   furnitureCellQuantity,
@@ -48,6 +49,7 @@ import {
   type FurnitureSymbol,
 } from "../../../../core/furniture/furnitureSheet";
 import { PickInput, type PickEntry } from "../../components/PickInput";
+import { resolvePartNumberInput } from "./partNumberInput";
 import { normalizePastedMatrix, parseTsv } from "@shared/tsv";
 import {
   pasteFurnitureCells,
@@ -923,6 +925,67 @@ export default function FurnitureSheetPage({
     );
   };
 
+  const applyRowDetailNumber = async (
+    index: number,
+    text: string,
+  ): Promise<void> => {
+    const row = rows[index];
+    const rowResolved = resolved[index];
+    if (!row || !rowResolved) return;
+
+    const rowId = row.id;
+    const value = text.trim();
+    const updateById = (
+      update: (current: FurnitureRow) => FurnitureRow,
+    ): void => {
+      changeRows((current) =>
+        current.map((each) => (each.id === rowId ? update(each) : each)),
+      );
+    };
+
+    if (value === "") {
+      if (row.detailNumber !== null)
+        updateById((current) => ({ ...current, detailNumber: null }));
+      return;
+    }
+
+    const number = Number(value);
+    if (Number.isNaN(number)) {
+      setMessage("名称ID（明細番号）は数字で入れてください");
+      return;
+    }
+
+    const rowSubjectId = row.subjectId ?? rowResolved.subjectId;
+    const targets =
+      rowSubjectId === null
+        ? options.subjects.map((subject) => subject.id)
+        : [rowSubjectId];
+    let found: Detail | undefined;
+    for (const subjectKey of targets) {
+      for (const scope of [project.id, null]) {
+        const list = await window.sekisan.listDetails(subjectKey, scope);
+        found = list.find(
+          (item) =>
+            item.detailNumber !== null &&
+            Math.abs(item.detailNumber - number) < 0.005,
+        );
+        if (found) break;
+      }
+      if (found) break;
+    }
+
+    if (!found) {
+      updateById((current) => ({ ...current, detailNumber: number }));
+      setMessage(`名称ID ${value} の明細が見つかりません`);
+      return;
+    }
+
+    updateById((current) =>
+      applyMasterDetailToFurnitureRow(current, rowResolved, found),
+    );
+    setMessage(`${found.name} を呼び出しました`);
+  };
+
   /** 右の明細欄を手で直す（直した欄は自動作成で上書きしない） */
   const editDetail = (index: number, patch: Partial<FurnitureDetail>): void => {
     changeRows(
@@ -1435,10 +1498,14 @@ export default function FurnitureSheetPage({
           title="部位ID"
           onFocus={() => setPickedColumn(column.id)}
           onCommit={(text) => {
-            const found = pickMaster(options.pickupParts, text);
+            const part = resolvePartNumberInput(
+              options.pickupParts,
+              text,
+              column.partName,
+            );
             editColumn(column.id, {
-              partNumber: found.id,
-              partName: found.id === null ? column.partName : found.name,
+              partNumber: part.partNumber,
+              partName: part.partName,
             });
           }}
         />
@@ -2496,8 +2563,12 @@ export default function FurnitureSheetPage({
                             : String(resolved[index].partNumber)
                         }
                         onCommit={(text) => {
-                          const found = pickMaster(options.pickupParts, text);
-                          editRow(index, { partNumber: found.id });
+                          const part = resolvePartNumberInput(
+                            options.pickupParts,
+                            text,
+                            "",
+                          );
+                          editRow(index, { partNumber: part.partNumber });
                         }}
                       />
                     </td>
@@ -2531,13 +2602,7 @@ export default function FurnitureSheetPage({
                           )
                         }
                         onCommit={(text) => {
-                          const value = Number(text);
-                          editRow(index, {
-                            detailNumber:
-                              text.trim() === "" || Number.isNaN(value)
-                                ? null
-                                : value,
-                          });
+                          void applyRowDetailNumber(index, text);
                         }}
                       />
                     </td>

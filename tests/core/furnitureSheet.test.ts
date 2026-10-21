@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyMasterDetailToFurnitureRow,
   applyFurnitureDetails,
   bathUpperText,
   entriesFromFurnitureSheet,
@@ -23,6 +24,7 @@ import {
   rowQuantity,
   transfersToFittings,
   symbolText,
+  type FurnitureResolved,
 } from "../../src/core/furniture/furnitureSheet";
 
 const settings = furnitureSettings({
@@ -86,6 +88,187 @@ describe("家具計算書の引き継ぎ", () => {
     expect(resolved[2].quantity).toBe("5");
     expect(resolved[2].unit).toBe("");
     expect(applyFurnitureDetails(rows, settings)[2].detail.unit).toBe("");
+  });
+});
+
+describe("名称IDから明細を家具行へ呼び出す", () => {
+  const masterDetail = {
+    id: 77,
+    subjectId: 42,
+    partNumber: 300,
+    detailNumber: 7.25,
+    name: "マスター名称",
+    unit: "台",
+  };
+  const resolved = (
+    patch: Partial<FurnitureResolved> = {},
+  ): FurnitureResolved => ({
+    subjectId: 42,
+    partNumber: null,
+    detailNumber: null,
+    place: "",
+    part: "",
+    nameSymbol: "",
+    quantity: "",
+    unit: "",
+    formula: "",
+    ...patch,
+  });
+
+  it("名称・名称ID・単位・元明細IDをマスターから呼び出す", () => {
+    const row = furnitureRow({ nameSymbol: "旧名称", unit: "個" });
+    const result = applyMasterDetailToFurnitureRow(
+      row,
+      resolved(),
+      masterDetail,
+    );
+
+    expect(result).toMatchObject({
+      detailNumber: 7.25,
+      nameSymbol: "マスター名称",
+      unit: "台",
+      detail: { sourceDetailId: 77 },
+    });
+  });
+
+  it("マスターの単位が空なら行の単位を残す", () => {
+    const result = applyMasterDetailToFurnitureRow(
+      furnitureRow({ unit: "個" }),
+      resolved(),
+      { ...masterDetail, unit: "" },
+    );
+
+    expect(result.unit).toBe("個");
+  });
+
+  it("科目は引き継ぎ先と異なるときだけ設定する", () => {
+    const row = furnitureRow();
+    expect(
+      applyMasterDetailToFurnitureRow(row, resolved(), masterDetail).subjectId,
+    ).toBeNull();
+    expect(
+      applyMasterDetailToFurnitureRow(row, resolved(), {
+        ...masterDetail,
+        subjectId: 43,
+      }).subjectId,
+    ).toBe(43);
+    expect(
+      applyMasterDetailToFurnitureRow(
+        furnitureRow({ subjectId: 42 }),
+        resolved(),
+        masterDetail,
+      ).subjectId,
+    ).toBe(42);
+  });
+
+  it("部位IDは行か引き継ぎ先にあれば維持し、両方空ならマスターから入れる", () => {
+    expect(
+      applyMasterDetailToFurnitureRow(
+        furnitureRow({ partNumber: 200 }),
+        resolved(),
+        masterDetail,
+      ).partNumber,
+    ).toBe(200);
+    expect(
+      applyMasterDetailToFurnitureRow(
+        furnitureRow({ partNumber: 999 }),
+        resolved(),
+        masterDetail,
+      ).partNumber,
+    ).toBe(999);
+    expect(
+      applyMasterDetailToFurnitureRow(
+        furnitureRow(),
+        resolved({ partNumber: 100 }),
+        masterDetail,
+      ).partNumber,
+    ).toBeNull();
+    expect(
+      applyMasterDetailToFurnitureRow(
+        furnitureRow(),
+        resolved(),
+        masterDetail,
+      ).partNumber,
+    ).toBe(300);
+  });
+
+  it("明細の手直し対象を必要な項目だけ解除し、ほかの入力を変えず元行を変更しない", () => {
+    const row = furnitureRow({
+      subjectId: 42,
+      partNumber: 200,
+      detailNumber: 1,
+      place: "1F",
+      part: "A",
+      partAdd: "2",
+      partSymbol: "GE",
+      nameSymbol: "旧名称",
+      width: "1200",
+      width2: "600",
+      width3: "300",
+      height: "900",
+      depth: "400",
+      shape: "2",
+      model: "M1",
+      beam: "梁欠き",
+      window: "窓",
+      floorFormula: "FA",
+      fittingSymbol: "AW1",
+      quantity: "3",
+      unit: "個",
+      descriptionUpper: "摘要上段",
+      remarksLower: "備考下段",
+      values: { c1: "W*H" },
+    });
+    row.detail = {
+      ...row.detail,
+      sourceDetailId: 5,
+      edited: [
+        "name",
+        "unit",
+        "detailNumber",
+        "subjectId",
+        "partNumber",
+        "partName",
+        "descriptionLower",
+      ],
+    };
+    const original = {
+      ...row,
+      detail: { ...row.detail, edited: [...row.detail.edited] },
+      values: { ...row.values },
+    };
+    const result = applyMasterDetailToFurnitureRow(
+      row,
+      resolved({ partNumber: 100 }),
+      masterDetail,
+    );
+
+    expect(result.detail.edited).toEqual(["partName", "descriptionLower"]);
+    expect(result).toMatchObject({
+      place: "1F",
+      part: "A",
+      partAdd: "2",
+      partSymbol: "GE",
+      width: "1200",
+      width2: "600",
+      width3: "300",
+      height: "900",
+      depth: "400",
+      shape: "2",
+      model: "M1",
+      beam: "梁欠き",
+      window: "窓",
+      floorFormula: "FA",
+      fittingSymbol: "AW1",
+      quantity: "3",
+      descriptionUpper: "摘要上段",
+      remarksLower: "備考下段",
+      values: { c1: "W*H" },
+    });
+    expect(row).toEqual(original);
+    expect(result).not.toBe(row);
+    expect(result.detail).not.toBe(row.detail);
+    expect(result.detail.edited).not.toBe(row.detail.edited);
   });
 });
 
