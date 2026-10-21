@@ -607,7 +607,6 @@ function SymbolList({
                 : undefined
             }
             value={values[row.key] ?? ""}
-            placeholder={row.key.startsWith("x:") || row.key.startsWith("y:") ? "G1" : "C1"}
             onMouseDown={(event) => {
               if (!event.shiftKey) return;
               event.preventDefault();
@@ -4077,7 +4076,6 @@ export default function FireproofDrawingPage({
                           : undefined
                       }
                       value={g.symbol}
-                      placeholder="G1"
                       onFocus={() => setSelDiag(index)}
                       onChange={(event) =>
                         changeDiagSymbol(index, event.target.value)
