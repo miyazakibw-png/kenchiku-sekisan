@@ -7,6 +7,7 @@ import type {
 import {
   BASIC_MASTER_LIMITS,
   nextBasicMasterId,
+  sortBasicMasterRowsById,
 } from "../../../../core/masters/basicMaster";
 import {
   buildPastePreview,
@@ -197,6 +198,14 @@ export default function BasicMasterPage({
     }
   };
 
+  const sortById = (): void => {
+    const selectedRow = rows[selected];
+    const next = sortBasicMasterRowsById(rows);
+    setRows(next);
+    if (selectedRow) setSelected(next.indexOf(selectedRow));
+    setMessages(["番号順に並べ替えました（保存すると残ります）"]);
+  };
+
   return (
     <div
       className="basic-master-page"
@@ -219,55 +228,61 @@ export default function BasicMasterPage({
       }}
     >
       <div className="toolbar">
-        {onBack ? (
-          <button type="button" onClick={onBack}>
-            ← 戻る
+        <div className="toolbar-top">
+          {onBack ? (
+            <button type="button" onClick={onBack}>
+              ← 戻る
+            </button>
+          ) : null}
+          <h2>
+            {projectId === null ? "基本マスター" : "この工事の基準マスター"}
+          </h2>
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              className={tab === kind ? "tab active" : "tab"}
+              onClick={() => void changeKind(tab)}
+            >
+              {BASIC_MASTER_LIMITS[tab].label}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar-actions">
+          {projectId === null ? null : (
+            <button type="button" onClick={() => void copyFromBasic()}>
+              ↻ 基準マスターから複製
+            </button>
+          )}
+          <button type="button" onClick={() => addRow(selected)}>
+            ➕ 行挿入
           </button>
-        ) : null}
-        <h2>
-          {projectId === null ? "基本マスター" : "この工事の基準マスター"}
-        </h2>
-        {TABS.map((tab) => (
+          <button type="button" onClick={() => addRow(rows.length)}>
+            ⤓ 最終行に追加
+          </button>
           <button
-            key={tab}
             type="button"
-            className={tab === kind ? "tab active" : "tab"}
-            onClick={() => void changeKind(tab)}
+            disabled={rows.length === 0}
+            onClick={() => {
+              setRows(rows.filter((_, i) => i !== selected));
+              setSelected(Math.max(0, selected - 1));
+            }}
           >
-            {BASIC_MASTER_LIMITS[tab].label}
+            🗑 行削除
           </button>
-        ))}
-        <span className="spacer" />
-        {projectId === null ? null : (
-          <button type="button" onClick={() => void copyFromBasic()}>
-            ↻ 基準マスターから複製
+          <button type="button" onClick={sortById}>
+            ↑ 番号順に並べ替え
           </button>
-        )}
-        <button type="button" onClick={() => addRow(selected)}>
-          ➕ 行挿入
-        </button>
-        <button type="button" onClick={() => addRow(rows.length)}>
-          ⤓ 最終行に追加
-        </button>
-        <button
-          type="button"
-          disabled={rows.length === 0}
-          onClick={() => {
-            setRows(rows.filter((_, i) => i !== selected));
-            setSelected(Math.max(0, selected - 1));
-          }}
-        >
-          🗑 行削除
-        </button>
-        <button type="button" onClick={() => void paste()}>
-          📋 Excelから貼り付け
-        </button>
-        <button type="button" onClick={() => void copy()}>
-          ⧉ Excelへコピー
-        </button>
-        <button type="button" onClick={() => void save()}>
-          💾 保存
-        </button>
+          <button type="button" onClick={() => void paste()}>
+            📋 Excelから貼り付け
+          </button>
+          <button type="button" onClick={() => void copy()}>
+            ⧉ Excelへコピー
+          </button>
+          <button type="button" onClick={() => void save()}>
+            💾 保存
+          </button>
+        </div>
       </div>
 
       <div className="hint">
