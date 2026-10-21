@@ -2645,6 +2645,7 @@ export default function RoomCalcSheet({
                           <td className="id">
                             <PickInput
                           popupSide="right"
+                              popupAnchorCol={5}
                               row={gridRow}
                               col={4}
                               entries={
