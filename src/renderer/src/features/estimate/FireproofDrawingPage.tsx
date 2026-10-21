@@ -475,7 +475,25 @@ function SymbolList({
 
   const handleKey = (event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
-    if (target.tagName === "INPUT" || sel === null) return;
+    if (target.tagName === "INPUT") {
+      if (
+        !event.shiftKey ||
+        (event.key !== "ArrowDown" && event.key !== "ArrowUp")
+      )
+        return;
+      const index = Number((target as HTMLInputElement).dataset.row ?? -1);
+      if (index < 0 || index >= rows.length) return;
+      const d = event.key === "ArrowDown" ? 1 : -1;
+      anchorRef.current = index;
+      setSel({
+        from: anchorRef.current,
+        to: Math.min(rows.length - 1, Math.max(0, index + d)),
+      });
+      boxRef.current?.focus();
+      event.preventDefault();
+      return;
+    }
+    if (sel === null) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
       copyToClipboard(
         selRows()
@@ -520,18 +538,39 @@ function SymbolList({
     }
   };
 
+  const pasteFromTarget = (target: EventTarget | null, text: string) => {
+    let start = sel?.from ?? 0;
+    if (target instanceof HTMLInputElement) {
+      const index = Number(target.dataset.row ?? -1);
+      if (index >= 0) start = index;
+    }
+    pasteAt(start, text);
+  };
+
   const handlePaste = (event: React.ClipboardEvent) => {
     const text = event.clipboardData.getData("text");
     if (text === "") return;
-    let start = sel?.from ?? 0;
-    const target = event.target as HTMLElement;
-    if (target.tagName === "INPUT") {
-      const index = Number((target as HTMLInputElement).dataset.row ?? -1);
-      if (index >= 0) start = index;
-    }
     event.preventDefault();
-    pasteAt(start, text);
+    pasteFromTarget(event.target, text);
   };
+
+  useEffect(() => {
+    const handleDocumentPaste = (event: ClipboardEvent) => {
+      const box = boxRef.current;
+      if (
+        box === null ||
+        document.activeElement !== box ||
+        (event.target instanceof Node && box.contains(event.target))
+      )
+        return;
+      const text = event.clipboardData?.getData("text") ?? "";
+      if (text === "") return;
+      event.preventDefault();
+      pasteFromTarget(event.target, text);
+    };
+    document.addEventListener("paste", handleDocumentPaste);
+    return () => document.removeEventListener("paste", handleDocumentPaste);
+  }, [pasteFromTarget]);
 
   return (
     <div
@@ -569,7 +608,13 @@ function SymbolList({
             }
             value={values[row.key] ?? ""}
             placeholder={row.key.startsWith("x:") || row.key.startsWith("y:") ? "G1" : "C1"}
+            onMouseDown={(event) => {
+              if (!event.shiftKey) return;
+              event.preventDefault();
+              pick(index, true);
+            }}
             onFocus={() => {
+              anchorRef.current = index;
               setSel(null);
               onActiveRow?.(row);
             }}
@@ -596,7 +641,7 @@ function SymbolList({
       ))}
       {rows.length > 0 && (
         <p className="hint">
-          番号のところをドラッグすると範囲を選べます（Ctrl+Cで写す・Ctrl+Vで入れる・Deleteで消す）
+          番号をドラッグ、またはShift＋クリック・Shift＋↑↓で範囲を選べます（Ctrl+Cで写す・Ctrl+Vで入れる・Deleteで消す）
         </p>
       )}
     </div>
@@ -1975,6 +2020,7 @@ export default function FireproofDrawingPage({
       dy2: number;
       symbol: string;
       none?: true;
+      mark?: string;
       xEdge1: "left" | "right" | null;
       xEdge2: "left" | "right" | null;
       yEdge1: "top" | "bottom" | null;
@@ -2000,6 +2046,7 @@ export default function FireproofDrawingPage({
     symbol: string;
     parts: number;
     none?: true;
+    mark?: string;
   } | null>(null);
   /* 階まるごとのコピー：記号だけが写るので、貼った先の階の鉄骨リストの寸法で描かれる */
   const [clipFloor, setClipFloor] = useState<FireproofDrawingFloor | null>(
@@ -2535,6 +2582,11 @@ export default function FireproofDrawingPage({
 
   /* 入力欄共通：Enterは次の欄、↑↓は上下の欄へ（←→はカーソル移動のまま） */
   const handleNavKey = useCallback((event: React.KeyboardEvent) => {
+    if (
+      event.shiftKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    )
+      return;
     const el = event.target as HTMLElement;
     if (el.tagName !== "INPUT" && el.tagName !== "SELECT") return;
     if (
@@ -2981,6 +3033,10 @@ export default function FireproofDrawingPage({
   /** 区画とその中の小梁から「貼り付けの種」を覚える（区画コピー・入力行コピーの共通） */
   const learnFromBeams = useCallback(
     (part: DrawingRegion, inside: FireproofDrawingBeam[]) => {
+    const copiedMarks = inside.map((beam) => {
+      const index = current.beams.indexOf(beam);
+      return current.jointSymbols?.[`b:${beam.id ?? `#${index}`}`] ?? "";
+    });
     // 端が区画の辺（その内側＝梁の内内の面）に付いているか。貼る側でも内内に合わせる目印。
     // 端ごとに「左辺・右辺・上辺・下辺」のどれに付いているかを覚える
     // （片端だけ見ると、辺に沿った梁が斜めに化けるので同じ辺の端は両方に付ける）
@@ -3009,18 +3065,22 @@ export default function FireproofDrawingPage({
       return null;
     };
     setClipBeams(
-      inside.map((beam) => ({
-        dx1: beam.x1 - part.x,
-        dy1: beam.y1 - part.y,
-        dx2: beam.x2 - part.x,
-        dy2: beam.y2 - part.y,
-        symbol: beam.symbol,
-        ...(beam.none === true ? { none: true } : {}),
-        xEdge1: edgeX(beam.x1),
-        xEdge2: edgeX(beam.x2),
-        yEdge1: edgeY(beam.y1),
-        yEdge2: edgeY(beam.y2),
-      })),
+      inside.map((beam, index) => {
+        const mark = copiedMarks[index] ?? "";
+        return {
+          dx1: beam.x1 - part.x,
+          dy1: beam.y1 - part.y,
+          dx2: beam.x2 - part.x,
+          dy2: beam.y2 - part.y,
+          symbol: beam.symbol,
+          ...(beam.none === true ? { none: true } : {}),
+          ...(mark !== "" ? { mark } : {}),
+          xEdge1: edgeX(beam.x1),
+          xEdge2: edgeX(beam.x2),
+          yEdge1: edgeY(beam.y1),
+          yEdge2: edgeY(beam.y2),
+        };
+      }),
     );
     /* 写し元の小梁が「同じ向き・同じ記号で等間隔」なら分割条件として覚える。
        貼る先の区画の大きさに合わせて同じ条件で入れ直せる（大きさが違っても等分になる） */
@@ -3028,16 +3088,19 @@ export default function FireproofDrawingPage({
     const horizontals = inside.every((beam) => beam.y1 === beam.y2);
     const symbols = new Set(inside.map((beam) => beam.symbol));
     const noneStates = new Set(inside.map((beam) => beam.none === true));
+    const marks = new Set(copiedMarks);
     let rule: {
       axis: "v" | "h";
       symbol: string;
       parts: number;
       none?: true;
+      mark?: string;
     } | null = null;
     if (
       inside.length > 0 &&
       symbols.size === 1 &&
       noneStates.size === 1 &&
+      marks.size === 1 &&
       (verticals || horizontals)
     ) {
       const along = inside
@@ -3055,6 +3118,9 @@ export default function FireproofDrawingPage({
           symbol: inside[0].symbol,
           parts: inside.length + 1,
           ...(inside[0]?.none === true ? { none: true } : {}),
+          ...(copiedMarks[0] !== undefined && copiedMarks[0] !== ""
+            ? { mark: copiedMarks[0] }
+            : {}),
         };
     }
     setClipRule(rule);
@@ -3067,7 +3133,7 @@ export default function FireproofDrawingPage({
     else
       setMessage("その区画には小梁が入っていません（中に小梁がある区画でコピーしてください）");
     },
-    [],
+    [current],
   );
 
   const copyRegion = useCallback(() => {
@@ -3136,16 +3202,18 @@ export default function FireproofDrawingPage({
 
   const pasteBeams = useCallback(() => {
     if (regions.length === 0) return;
-    let placed: FireproofDrawingBeam[] = [];
+    let placed: { beam: FireproofDrawingBeam; mark?: string }[] = [];
     if (clipRule !== null) {
       // 分割条件で入れ直す（貼る先の区画の大きさに合わせて等分）
       placed = regions
         .flatMap((part) =>
           dividedAligned(part, clipRule.axis, clipRule.parts, clipRule.symbol),
         )
-        .map((beam) =>
-          clipRule.none === true ? { ...beam, none: true } : beam,
-        );
+        .map((beam) => ({
+          beam:
+            clipRule.none === true ? { ...beam, none: true } : beam,
+          ...(clipRule.mark !== undefined ? { mark: clipRule.mark } : {}),
+        }));
     } else if (clipBeams.length > 0) {
       // 条件が読めない（向き・記号が混ざる、等間隔でない）ときは、写し元の位置のまま貼る
       placed = regions.flatMap((part) => {
@@ -3163,18 +3231,34 @@ export default function FireproofDrawingPage({
               symbol: clip.symbol,
             };
             if (clip.none === true) beam.none = true;
-            return beam;
+            const clipped = clipBeamAtDiagEdges(beam, part);
+            if (clipped === null) return [];
+            return [
+              {
+                beam: clipped,
+                ...(clip.mark !== undefined ? { mark: clip.mark } : {}),
+              },
+            ];
           })
-          .map((beam) => clipBeamAtDiagEdges(beam, part))
-          .filter((beam): beam is FireproofDrawingBeam => beam !== null);
+          .flat();
       });
     }
     if (placed.length === 0) return;
+    const jointSymbols = { ...(current.jointSymbols ?? {}) };
+    const beams = placed.map(({ beam, mark }) => {
+      const id = newBeamId();
+      if (mark !== undefined && mark !== "") jointSymbols[`b:${id}`] = mark;
+      return { ...beam, id };
+    });
+    const patch: Partial<FireproofDrawingFloor> = {
+      beams: [...current.beams, ...beams],
+    };
+    if (Object.keys(jointSymbols).length > 0)
+      patch.jointSymbols = jointSymbols;
+    else if (current.jointSymbols !== undefined)
+      patch.jointSymbols = undefined;
     updateFloor({
-      beams: [
-        ...current.beams,
-        ...placed.map((beam) => ({ ...beam, id: newBeamId() })),
-      ],
+      ...patch,
     });
     setMessage(`${regions.length}か所に貼り付けました`);
   }, [regions, clipBeams, clipRule, current, updateFloor, newBeamId, dividedAligned]);

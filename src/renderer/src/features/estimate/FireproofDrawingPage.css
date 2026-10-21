@@ -772,6 +772,10 @@
   min-width: 0;
 }
 
+.fireproof-drawing-body .beam-row-wrap .none {
+  margin-left: 4px;
+}
+
 .fireproof-drawing-body .beam-row.none .at,
 .fireproof-drawing-body .beam-row.none .len {
   color: #999;
