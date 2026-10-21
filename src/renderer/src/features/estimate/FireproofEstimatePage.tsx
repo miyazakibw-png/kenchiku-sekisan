@@ -307,14 +307,16 @@ export default function FireproofEstimatePage({
 
   /** 入力欄を打っている間は履歴に積まない（欄ごとの細かい戻りを作らない） */
   const change = (index: number, patch: Partial<FireproofManageRow>): void =>
-    setRows(rows.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+    setRows((current) =>
+      current.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+    );
 
   const changeDetail = (
     index: number,
     patch: Partial<FireproofManageDetail>,
   ): void =>
-    setRows(
-      rows.map((row, at) =>
+    setRows((current) =>
+      current.map((row, at) =>
         at === index ? { ...row, detail: { ...row.detail, ...patch } } : row,
       ),
     );
