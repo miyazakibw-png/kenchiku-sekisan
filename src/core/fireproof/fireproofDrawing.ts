@@ -449,6 +449,117 @@ export function spanListText(spans: readonly number[]): string {
   return spans.join(",");
 }
 
+/** Y軸寸法の変更後も最下段を基準に既存の配置を保つ */
+export function setYSpansKeepingBottom(
+  floor: FireproofDrawingFloor,
+  ySpans: number[],
+): FireproofDrawingFloor {
+  const oldCount = floor.ySpans.length;
+  const newCount = ySpans.length;
+  const d = newCount - oldCount;
+  const dH =
+    ySpans.reduce((sum, span) => sum + span, 0) -
+    floor.ySpans.reduce((sum, span) => sum + span, 0);
+  const nextSpans = [...ySpans];
+  if (oldCount === 0 || (d === 0 && dH === 0))
+    return { ...floor, ySpans: nextSpans };
+
+  const remap = <T,>(
+    source: Record<string, T> | undefined,
+    keyFor: (key: string) => string | null,
+  ): Record<string, T> | undefined => {
+    if (source === undefined) return undefined;
+    const next: Record<string, T> = {};
+    Object.entries(source).forEach(([key, value]) => {
+      const shifted = keyFor(key);
+      if (shifted !== null) next[shifted] = value;
+    });
+    return next;
+  };
+  const shiftPoint = (key: string): string | null => {
+    const match = /^(-?\d+),(-?\d+)$/.exec(key);
+    if (match === null) return key;
+    const yi = Number(match[2]) + d;
+    if (yi < 0 || yi > newCount) return null;
+    return `${match[1]},${yi}`;
+  };
+  const shiftGirder = (key: string): string | null => {
+    const match = /^([xy]):(-?\d+),(-?\d+)$/.exec(key);
+    if (match === null) return key;
+    const axis = match[1] as "x" | "y";
+    const xi = Number(match[2]);
+    const yi = Number(match[3]) + d;
+    const maxXi =
+      axis === "x" ? floor.xSpans.length - 1 : floor.xSpans.length;
+    const maxYi = axis === "x" ? newCount : newCount - 1;
+    if (xi < 0 || xi > maxXi || yi < 0 || yi > maxYi) return null;
+    return `${axis}:${xi},${yi}`;
+  };
+  const shiftJoint = (key: string): string | null => {
+    const column = /^c:(-?\d+),(-?\d+)$/.exec(key);
+    if (column !== null) {
+      const point = shiftPoint(`${column[1]},${column[2]}`);
+      return point === null ? null : `c:${point}`;
+    }
+    const girder = /^g:([xy]):(-?\d+),(-?\d+)$/.exec(key);
+    if (girder === null) return key;
+    const shifted = shiftGirder(`${girder[1]}:${girder[2]},${girder[3]}`);
+    return shifted === null ? null : `g:${shifted}`;
+  };
+  const axisHeights = remap(floor.axisHeights, (key) => {
+    if (!/^-?\d+$/.test(key)) return key;
+    const yi = Number(key) + d;
+    return yi < 0 || yi > newCount ? null : String(yi);
+  });
+  const diagGirders =
+    floor.diagGirders?.flatMap((girder) => {
+      const fy = girder.fy + d;
+      const ty = girder.ty + d;
+      if (fy < 0 || fy > newCount || ty < 0 || ty > newCount) return [];
+      return [
+        {
+          ...girder,
+          fy,
+          ty,
+          ...(girder.fromMm === undefined
+            ? {}
+            : { fromMm: { ...girder.fromMm, y: girder.fromMm.y + dH } }),
+          ...(girder.toMm === undefined
+            ? {}
+            : { toMm: { ...girder.toMm, y: girder.toMm.y + dH } }),
+        },
+      ];
+    });
+  const auxLines = floor.auxLines?.flatMap((line) => {
+    if (line.axis !== "y") return [line];
+    const base = line.base + d;
+    if (base < 0 || base > newCount) return [];
+    return [{ ...line, base }];
+  });
+
+  return {
+    ...floor,
+    ySpans: nextSpans,
+    columns: remap(floor.columns, shiftPoint) ?? {},
+    noColumns: remap(floor.noColumns, shiftPoint),
+    girders: remap(floor.girders, shiftGirder) ?? {},
+    noGirders: remap(floor.noGirders, shiftGirder),
+    girderAlign: remap(floor.girderAlign, shiftGirder),
+    jointSymbols: remap(floor.jointSymbols, shiftJoint),
+    axisHeights,
+    beams:
+      dH === 0
+        ? floor.beams
+        : floor.beams.map((beam) => ({
+            ...beam,
+            y1: beam.y1 + dH,
+            y2: beam.y2 + dH,
+          })),
+    diagGirders,
+    auxLines,
+  };
+}
+
 /** 累積の座標（先頭は0）。xPositions[xi] = xi本目の柱線のx座標（mm） */
 export function positions(spans: readonly number[]): number[] {
   const points = [0];

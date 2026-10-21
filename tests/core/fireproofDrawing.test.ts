@@ -24,6 +24,7 @@ import {
   refitBeams,
   positions,
   serializeDrawing,
+  setYSpansKeepingBottom,
   spanListText,
   splitBeamAtMembers,
   unconnectedDiagEnds,
@@ -51,6 +52,151 @@ describe("positions", () => {
   it("累積の座標を返す（先頭は0）", () => {
     expect(positions([7300, 7650, 7300])).toEqual([0, 7300, 14950, 22250]);
     expect(positions([])).toEqual([0]);
+  });
+});
+
+describe("setYSpansKeepingBottom", () => {
+  it("Y軸寸法を増やしても交点・区間・高さ・図形を下端基準でずらす", () => {
+    const floor = {
+      ...emptyFloor(),
+      xSpans: [7300],
+      ySpans: [7350],
+      columns: { "0,0": "C1", "0,1": "C2" },
+      noColumns: { "0,0": true, "0,1": true },
+      girders: { "x:0,0": "GX1", "x:0,1": "GX2", "y:0,0": "GY" },
+      noGirders: { "y:0,0": true },
+      girderAlign: { "y:0,0": "min" as const },
+      jointSymbols: {
+        "c:0,0": "C1",
+        "g:y:0,0": "G1",
+        "b:beam-1": "B1",
+      },
+      axisHeights: { "0": 2800, "1": 3000 },
+      axisHeightsX: { "0": 2500 },
+      beams: [{ x1: 1000, y1: 1000, x2: 2000, y2: 1000, symbol: "B1" }],
+      diagGirders: [
+        {
+          fx: 0,
+          fy: 0,
+          tx: 1,
+          ty: 1,
+          symbol: "DG1",
+          fromMm: { x: 1000, y: 1000 },
+          toMm: { x: 2000, y: 2000 },
+        },
+      ],
+      auxLines: [
+        { axis: "y" as const, base: 0, offset: 500 },
+        { axis: "x" as const, base: 0, offset: 500 },
+      ],
+    };
+
+    const next = setYSpansKeepingBottom(floor, [6650, 7350]);
+
+    expect(next.columns).toEqual({ "0,1": "C1", "0,2": "C2" });
+    expect(next.noColumns).toEqual({ "0,1": true, "0,2": true });
+    expect(next.girders).toEqual({
+      "x:0,1": "GX1",
+      "x:0,2": "GX2",
+      "y:0,1": "GY",
+    });
+    expect(next.noGirders).toEqual({ "y:0,1": true });
+    expect(next.girderAlign).toEqual({ "y:0,1": "min" });
+    expect(next.jointSymbols).toEqual({
+      "c:0,1": "C1",
+      "g:y:0,1": "G1",
+      "b:beam-1": "B1",
+    });
+    expect(next.axisHeights).toEqual({ "1": 2800, "2": 3000 });
+    expect(next.axisHeightsX).toEqual({ "0": 2500 });
+    expect(next.beams[0]).toMatchObject({ y1: 7650, y2: 7650 });
+    expect(next.diagGirders?.[0]).toMatchObject({
+      fy: 1,
+      ty: 2,
+      fromMm: { x: 1000, y: 7650 },
+      toMm: { x: 2000, y: 8650 },
+    });
+    expect(next.auxLines).toEqual([
+      { axis: "y", base: 1, offset: 500 },
+      { axis: "x", base: 0, offset: 500 },
+    ]);
+  });
+
+  it("上側の寸法を削ると範囲外を落とし、残った位置を下端に合わせる", () => {
+    const floor = {
+      ...emptyFloor(),
+      xSpans: [7300],
+      ySpans: [6650, 7350],
+      columns: { "0,0": "TOP", "0,1": "B", "0,2": "A" },
+      girders: {
+        "x:0,0": "TOP",
+        "x:0,1": "B",
+        "x:0,2": "A",
+        "y:0,0": "TOP",
+        "y:0,1": "A",
+      },
+      jointSymbols: {
+        "c:0,0": "TOP",
+        "c:0,1": "B",
+        "c:0,2": "A",
+        "g:y:0,0": "TOP",
+        "g:y:0,1": "A",
+        "b:beam-1": "B1",
+      },
+      axisHeights: { "0": 2700, "1": 2800, "2": 2900 },
+      beams: [{ x1: 1000, y1: 10000, x2: 2000, y2: 11000, symbol: "B1" }],
+      auxLines: [
+        { axis: "y" as const, base: 0, offset: 500 },
+        { axis: "y" as const, base: 1, offset: 500 },
+      ],
+    };
+
+    const next = setYSpansKeepingBottom(floor, [7350]);
+
+    expect(next.columns).toEqual({ "0,0": "B", "0,1": "A" });
+    expect(next.girders).toEqual({
+      "x:0,0": "B",
+      "x:0,1": "A",
+      "y:0,0": "A",
+    });
+    expect(next.jointSymbols).toEqual({
+      "c:0,0": "B",
+      "c:0,1": "A",
+      "g:y:0,0": "A",
+      "b:beam-1": "B1",
+    });
+    expect(next.axisHeights).toEqual({ "0": 2800, "1": 2900 });
+    expect(next.beams[0]).toMatchObject({ y1: 3350, y2: 4350 });
+    expect(next.auxLines).toEqual([{ axis: "y", base: 0, offset: 500 }]);
+  });
+
+  it("同じ本数なら通り番号を保ち、高さだけ寸法合計の差だけずらす", () => {
+    const floor = {
+      ...emptyFloor(),
+      ySpans: [6650, 7350],
+      columns: { "0,0": "C1", "0,1": "C2", "0,2": "C3" },
+      beams: [{ x1: 0, y1: 1000, x2: 1000, y2: 2000, symbol: "B1" }],
+    };
+
+    const next = setYSpansKeepingBottom(floor, [7000, 8000]);
+
+    expect(next.columns).toEqual(floor.columns);
+    expect(next.beams[0]).toMatchObject({ y1: 2000, y2: 3000 });
+  });
+
+  it("元の寸法がないときは配置をずらさず寸法だけを設定する", () => {
+    const floor = {
+      ...emptyFloor(),
+      xSpans: [7300],
+      columns: { "0,0": "C1" },
+      beams: [{ x1: 1000, y1: 1000, x2: 2000, y2: 1000, symbol: "B1" }],
+    };
+
+    const next = setYSpansKeepingBottom(floor, [7350]);
+
+    expect(next.ySpans).toEqual([7350]);
+    expect(next.columns).toBe(floor.columns);
+    expect(next.beams).toBe(floor.beams);
   });
 });
 

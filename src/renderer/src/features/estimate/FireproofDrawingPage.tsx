@@ -44,6 +44,7 @@ import {
   refitBeams,
   parseSpanList,
   positions,
+  setYSpansKeepingBottom,
   spanListText,
   xGridLabel,
   yGridLabel,
@@ -92,6 +93,15 @@ const FONT_SYMBOL = 430;
 const FONT_NO = 260;
 const JOINT_R = 150; // 取合記号の○印の半径
 const FONT_JOINT = 280;
+const NON_TEXT_INPUT_TYPES = new Set([
+  "checkbox",
+  "radio",
+  "button",
+  "submit",
+  "color",
+  "file",
+  "range",
+]);
 
 /* 引き梁（diagGirders）を描く順の番号：下になった端を持つ梁→ふつうの梁→優先の梁 */
 const diagDrawRank = (g: {
@@ -1883,6 +1893,13 @@ export default function FireproofDrawingPage({
   const [floors, setFloors] = useState<string[]>([]);
   const [floor, setFloor] = useState("");
   const [message, setMessage] = useState("");
+  const [xSpanText, setXSpanText] = useState("");
+  const [ySpanText, setYSpanText] = useState("");
+  const xSpanInputRef = useRef<HTMLInputElement | null>(null);
+  const ySpanInputRef = useRef<HTMLInputElement | null>(null);
+  const previousFloorRef = useRef(floor);
+  const forceSpanTextSyncRef = useRef(false);
+  const skipSpanBlurCommitRef = useRef(false);
   /** ④小梁：選んだ区画（Shift+クリックで複数）・選んだ小梁・入力する記号と分割の仕方 */
   const [regions, setRegions] = useState<DrawingRegion[]>([]);
   const [selBeam, setSelBeam] = useState<number | null>(null);
@@ -2074,6 +2091,16 @@ export default function FireproofDrawingPage({
   const { markSaved } = useSaveOnLeave(drawing, () => save(true));
 
   const current = drawing.floors[floor] ?? emptyFloor();
+  useEffect(() => {
+    const floorChanged = previousFloorRef.current !== floor;
+    previousFloorRef.current = floor;
+    const forceSync = floorChanged || forceSpanTextSyncRef.current;
+    forceSpanTextSyncRef.current = false;
+    if (forceSync || xSpanInputRef.current !== document.activeElement)
+      setXSpanText(spanListText(current.xSpans));
+    if (forceSync || ySpanInputRef.current !== document.activeElement)
+      setYSpanText(spanListText([...current.ySpans].reverse()));
+  }, [current.xSpans, current.ySpans, drawing, floor]);
   /** 取合記号が入っていない部材（未入力表示中は点滅させるキー、階ボタンには階ごとの有無を出す） */
   const missingNow = useMemo(
     () => (showMissing ? new Set(missingJointKeys(current)) : undefined),
@@ -2114,6 +2141,24 @@ export default function FireproofDrawingPage({
       setDrawing(next);
     },
     [drawing, floor],
+  );
+  const commitXSpanText = useCallback(
+    (text: string) => {
+      const spans = parseSpanList(text);
+      setXSpanText(spanListText(spans));
+      updateFloor({ xSpans: spans });
+    },
+    [updateFloor],
+  );
+  const commitYSpanText = useCallback(
+    (text: string) => {
+      const inputOrder = parseSpanList(text);
+      setYSpanText(spanListText(inputOrder));
+      updateFloor(
+        setYSpansKeepingBottom(current, [...inputOrder].reverse()),
+      );
+    },
+    [current, updateFloor],
   );
 
   /* ②柱の「無し」チェック（その交点に柱を置かない。大梁はまたいでつなぐ） */
@@ -2434,6 +2479,7 @@ export default function FireproofDrawingPage({
     if (previous === undefined) return;
     setPast((rows) => rows.slice(0, -1));
     setFuture((rows) => [...rows, drawing]);
+    forceSpanTextSyncRef.current = true;
     setDrawing(previous);
     setRegions([]);
     setSelBeam(null);
@@ -2447,6 +2493,7 @@ export default function FireproofDrawingPage({
     if (next === undefined) return;
     setFuture((rows) => rows.slice(0, -1));
     setPast((rows) => [...rows, drawing]);
+    forceSpanTextSyncRef.current = true;
     setDrawing(next);
     setRegions([]);
     setSelBeam(null);
@@ -2499,7 +2546,14 @@ export default function FireproofDrawingPage({
       root.querySelectorAll<HTMLElement>(
         "input:not([disabled]), select:not([disabled])",
       ),
-    ).filter((f) => f.offsetParent !== null);
+    ).filter(
+      (f) =>
+        f.offsetParent !== null &&
+        !(
+          f instanceof HTMLInputElement &&
+          NON_TEXT_INPUT_TYPES.has(f.type)
+        ),
+    );
     const i = fields.indexOf(el);
     if (i < 0) return;
     const next = event.key === "ArrowUp" ? fields[i - 1] : fields[i + 1];
@@ -3531,25 +3585,61 @@ export default function FireproofDrawingPage({
               <label>
                 X軸
                 <input
-                  value={spanListText(current.xSpans)}
+                  ref={xSpanInputRef}
+                  value={xSpanText}
                   placeholder="7300,7650,7300"
-                  onChange={(event) =>
-                    updateFloor({ xSpans: parseSpanList(event.target.value) })
-                  }
+                  onChange={(event) => setXSpanText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      skipSpanBlurCommitRef.current = true;
+                      commitXSpanText(event.currentTarget.value);
+                      queueMicrotask(() => {
+                        skipSpanBlurCommitRef.current = false;
+                      });
+                    } else if (event.key === "Escape") {
+                      setXSpanText(spanListText(current.xSpans));
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (skipSpanBlurCommitRef.current) {
+                      skipSpanBlurCommitRef.current = false;
+                      return;
+                    }
+                    commitXSpanText(event.currentTarget.value);
+                  }}
                 />
               </label>
               <label>
                 Y軸
                 <input
-                  value={spanListText(current.ySpans)}
+                  ref={ySpanInputRef}
+                  value={ySpanText}
                   placeholder="7350,6650"
-                  onChange={(event) =>
-                    updateFloor({ ySpans: parseSpanList(event.target.value) })
-                  }
+                  onChange={(event) => setYSpanText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      skipSpanBlurCommitRef.current = true;
+                      commitYSpanText(event.currentTarget.value);
+                      queueMicrotask(() => {
+                        skipSpanBlurCommitRef.current = false;
+                      });
+                    } else if (event.key === "Escape") {
+                      setYSpanText(
+                        spanListText([...current.ySpans].reverse()),
+                      );
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (skipSpanBlurCommitRef.current) {
+                      skipSpanBlurCommitRef.current = false;
+                      return;
+                    }
+                    commitYSpanText(event.currentTarget.value);
+                  }}
                 />
               </label>
               <p className="hint">
-                寸法を「,」区切りで入れると一点鎖線の柱線ができます（全角の「、」や空白でも切れます）
+                寸法を「,」区切りで入れると一点鎖線の柱線ができます。Y軸は下（A）から順に入れます（全角の「、」や空白でも切れます）。Enterか欄を離れると図に入ります
               </p>
             </div>
             {/* 補助寸法線（柱線寸法線とは別。梁を引くための線をずらして引く） */}
