@@ -2536,6 +2536,7 @@ export default function RoomCalcSheet({
                       <td className="set-part">
                         <PickInput
                           popupSide="right"
+                          popupAnchorCol={5}
                           row={gridRow}
                           col={0}
                           entries={aggregationPartEntries}
@@ -2562,6 +2563,7 @@ export default function RoomCalcSheet({
                             )}
                             <PickInput
                           popupSide="right"
+                              popupAnchorCol={5}
                               row={gridRow}
                               col={1}
                               entries={materialEntries}
@@ -2587,6 +2589,7 @@ export default function RoomCalcSheet({
                           <td className="id">
                             <PickInput
                           popupSide="right"
+                              popupAnchorCol={5}
                               row={gridRow}
                               col={2}
                               entries={subjectEntries}
@@ -2613,6 +2616,7 @@ export default function RoomCalcSheet({
                           <td className="id">
                             <PickInput
                           popupSide="right"
+                              popupAnchorCol={5}
                               row={gridRow}
                               col={3}
                               entries={pickupPartEntries}

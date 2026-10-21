@@ -27,6 +27,7 @@ export function PickInput({
   col,
   commitOnBlur = false,
   popupSide = "bottom",
+  popupAnchorCol,
   dataAttrs,
   onCommit,
   onFocus,
@@ -47,6 +48,8 @@ export function PickInput({
   commitOnBlur?: boolean;
   /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
   popupSide?: "bottom" | "right";
+  /** 右側の候補一覧を揃える列番号 */
+  popupAnchorCol?: number;
   /** inputへ付けるdata-*属性（表のキー移動の目印に使う） */
   dataAttrs?: Record<string, string>;
   /** picked＝一覧の行をクリックして選んだとき（同じ値でも呼び直したいときに使う） */
@@ -70,13 +73,30 @@ export function PickInput({
       // 欄の右側に出す（下の行をふさがない）。すぐ右の1列分はあけるので、
       // 一覧の上に乗らずに右のマスへマウスを動かせる。右に入らなければ左側へ
       const height = Math.min(320, window.innerHeight - 16);
-      const cell = ref.current.closest("td");
-      const next = cell?.nextElementSibling;
-      const skip = next instanceof HTMLElement ? next.offsetWidth : 0;
-      const left =
-        rect.right + skip + 4 + width <= window.innerWidth - 4
-          ? rect.right + skip + 4
-          : Math.max(4, rect.left - width - 4);
+      let left: number | null = null;
+      if (popupAnchorCol !== undefined) {
+        const anchorInput = ref.current
+          .closest("tr")
+          ?.querySelector<HTMLInputElement>(
+            `input[data-col="${popupAnchorCol}"]`,
+          );
+        const anchorCell = anchorInput?.closest("td");
+        if (anchorCell instanceof HTMLElement) {
+          const anchoredLeft = anchorCell.getBoundingClientRect().right + 4;
+          if (anchoredLeft + width <= window.innerWidth - 4) {
+            left = anchoredLeft;
+          }
+        }
+      }
+      if (left === null) {
+        const cell = ref.current.closest("td");
+        const next = cell?.nextElementSibling;
+        const skip = next instanceof HTMLElement ? next.offsetWidth : 0;
+        left =
+          rect.right + skip + 4 + width <= window.innerWidth - 4
+            ? rect.right + skip + 4
+            : Math.max(4, rect.left - width - 4);
+      }
       const top = Math.max(
         4,
         Math.min(rect.top, window.innerHeight - height - 4),
