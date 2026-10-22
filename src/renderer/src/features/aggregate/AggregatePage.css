@@ -109,6 +109,22 @@ table.aggregate tbody.row.selected td {
   background: #fff6b8;
 }
 
+table.aggregate td.in-range {
+  background: #dbe8fb;
+  outline: 1px solid #7aa4e0;
+}
+
+table.aggregate td.in-range input,
+table.aggregate td.in-range select {
+  background: transparent;
+}
+
+.aggregate-page .aggregate-bulk-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* 左端の工種科目ボタン。押すとその科目の先頭明細へ飛ぶ */
 /* 工種科目の選択ボタンは、上下・左右どちらへ動かしても常に見えるようにする */
 .aggregate-page .subject-jump {

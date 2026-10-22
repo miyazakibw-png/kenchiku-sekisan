@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { KeyboardEvent } from "react";
 import type {
@@ -27,7 +29,16 @@ import PickInput, { type PickEntry } from "../../components/PickInput";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
 import { focusCell } from "../grid/focusCell";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { useUndoRedo } from "../../hooks/useUndoRedo";
 import { sourceLabelOf } from "./aggregateRows";
+import {
+  aggregateRangeTsv,
+  buildAggregateGrid,
+  initialEdit,
+  itemsInGridRange,
+  type AggregateGridLine,
+  type AggregateGridRange,
+} from "./aggregateGrid";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
 
@@ -62,25 +73,6 @@ function spaceMark(text: string): { className?: string; title?: string } {
     : {};
 }
 
-/** 集計書で直す前の内容（直していない欄は集計結果のまま） */
-function initialEdit(item: AggregateItem): AggregateItemEdit {
-  return {
-    masterKey: item.masterKey,
-    subjectId: item.subjectId,
-    materialCategory: item.materialCategory,
-    partNumber: item.partNumber,
-    partName: item.partName,
-    detailNumber: item.detailNumber,
-    name: item.name,
-    descriptionUpper: item.descriptionUpper,
-    descriptionLower: item.descriptionLower,
-    unit: item.unit,
-    remarksUpper: item.remarksUpper,
-    remarksLower: item.remarksLower,
-    estimateDisplay: item.estimateDisplay,
-  };
-}
-
 /**
  * 積算用表示を持たない入力（転記入力表・部位別雑・金物入力表・家具・設備入力表・耐火被覆の管理表）から来た明細か。
  * これらは積算用表示がいつも空なので、集計書からは直せない。
@@ -103,18 +95,11 @@ function toNumber(value: string): number | null {
 }
 
 /** 明細の前に入れる見出し（科目・部位Ⅰ・部位Ⅱ） */
-interface HeadingRow {
-  kind: "subject" | "part1" | "part2";
-  text: string;
-  subjectId: number | null;
-}
-
-type Line =
-  | { kind: "heading"; heading: HeadingRow }
-  | { kind: "item"; item: AggregateItem };
-
-function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
-  const lines: Line[] = [];
+function buildLines(
+  items: AggregateItem[],
+  subjects: Subject[],
+): AggregateGridLine[] {
+  const lines: AggregateGridLine[] = [];
   let subjectId: number | null | undefined;
   let part1: string | undefined;
   let part2: string | undefined;
@@ -175,6 +160,37 @@ function buildLines(items: AggregateItem[], subjects: Subject[]): Line[] {
   return lines;
 }
 
+function gridCellFromTarget(
+  target: EventTarget | null,
+): AggregateGridRange["anchor"] | null {
+  if (!(target instanceof Element)) return null;
+  const cell = target.closest<HTMLElement>("td[data-grow][data-gcol]");
+  if (!cell) return null;
+  const row = Number(cell.dataset.grow);
+  const col = Number(cell.dataset.gcol);
+  return Number.isInteger(row) && Number.isInteger(col) ? { row, col } : null;
+}
+
+function gridCellIntersectsRange(
+  range: AggregateGridRange | null,
+  row: number,
+  col: number,
+  rowSpan = 1,
+  colSpan = 1,
+): boolean {
+  if (!range) return false;
+  const firstRow = Math.min(range.anchor.row, range.end.row);
+  const lastRow = Math.max(range.anchor.row, range.end.row);
+  const firstCol = Math.min(range.anchor.col, range.end.col);
+  const lastCol = Math.max(range.anchor.col, range.end.col);
+  return (
+    row <= lastRow &&
+    row + rowSpan - 1 >= firstRow &&
+    col <= lastCol &&
+    col + colSpan - 1 >= firstCol
+  );
+}
+
 /**
  * 集計書兼工事マスター。
  * 計算書（部屋別・軸組・汎用）と転記入力表から集計した明細を、科目→部位Ⅰ→部位Ⅱの順に並べる。
@@ -196,6 +212,15 @@ export default function AggregatePage({
   const [checking, setChecking] = useState(true);
   const [selected, setSelected] = useState<AggregateItem | null>(null);
   const [edits, setEdits] = useState<Record<string, AggregateItemEdit>>({});
+  const history = useUndoRedo<Record<string, AggregateItemEdit>>();
+  const editsRef = useRef(edits);
+  const lastEditKeyRef = useRef<string | null>(null);
+  const [cellRange, setCellRange] = useState<AggregateGridRange | null>(null);
+  const cellDragAnchorRef =
+    useRef<AggregateGridRange["anchor"] | null>(null);
+  const lastCellRef = useRef<AggregateGridRange["anchor"] | null>(null);
+  const [bulkSubjectOpen, setBulkSubjectOpen] = useState(false);
+  const [bulkSubjectId, setBulkSubjectId] = useState<number | "">("");
   const [message, setMessage] = useState("");
   /** 手入力行の付け直しモード（次にクリックした明細が新しい付き先） */
   const [moving, setMoving] = useState(false);
@@ -203,6 +228,20 @@ export default function AggregatePage({
   const basisRef = useRef<HTMLElement>(null);
   /** 数量根拠を出す高さ（選んだ明細の行に合わせる） */
   const [basisTop, setBasisTop] = useState(0);
+  const replaceEdits = useCallback(
+    (next: Record<string, AggregateItemEdit>) => {
+      editsRef.current = next;
+      setEdits(next);
+    },
+    [],
+  );
+  useEffect(() => {
+    history.clear();
+    lastEditKeyRef.current = null;
+    setCellRange(null);
+    cellDragAnchorRef.current = null;
+    lastCellRef.current = null;
+  }, [history.clear, view]);
   const { widths, startResize } = useColumnWidths(
     "aggregate-columns-v2",
     COLUMN_WIDTHS,
@@ -214,11 +253,11 @@ export default function AggregatePage({
     async (runId?: number) => {
       setView(await window.sekisan.getAggregate(project.id, runId));
       setRuns(await window.sekisan.listAggregateRuns(project.id));
-      setEdits({});
+      replaceEdits({});
       setRawNums({});
       markSaved({});
     },
-    [markSaved, project.id],
+    [markSaved, project.id, replaceEdits],
   );
 
   useEffect(() => {
@@ -233,24 +272,28 @@ export default function AggregatePage({
     const result = await window.sekisan.runAggregation(project.id);
     setView(result);
     setRuns(await window.sekisan.listAggregateRuns(project.id));
-    setEdits({});
+    replaceEdits({});
     setRawNums({});
     markSaved({});
     setMessage(`集計しました（明細 ${result.items.length} 件）`);
-  }, [markSaved, project.id]);
+  }, [markSaved, project.id, replaceEdits]);
 
   /** 集計書の欄を直す（保存を押すまでは画面の中だけ） */
   const editItem = useCallback(
     (item: AggregateItem, patch: Partial<AggregateItemEdit>) => {
-      setEdits((current) => ({
+      const key = `${item.masterKey}|${Object.keys(patch).sort().join(",")}`;
+      const current = editsRef.current;
+      if (lastEditKeyRef.current !== key) history.push({ ...current });
+      lastEditKeyRef.current = key;
+      replaceEdits({
         ...current,
         [item.masterKey]: {
           ...(current[item.masterKey] ?? initialEdit(item)),
           ...patch,
         },
-      }));
+      });
     },
-    [],
+    [history.push, replaceEdits],
   );
 
   /**
@@ -258,6 +301,75 @@ export default function AggregatePage({
    * 小数点が消えて続きが打てないので、欄を離れるまで打ったままを見せる
    */
   const [rawNums, setRawNums] = useState<Record<string, string>>({});
+  const undoEdits = useCallback(() => {
+    const previous = history.undo(editsRef.current);
+    lastEditKeyRef.current = null;
+    if (previous !== null) {
+      replaceEdits(previous);
+      setRawNums({});
+    }
+  }, [history.undo, replaceEdits]);
+  const redoEdits = useCallback(() => {
+    const next = history.redo(editsRef.current);
+    lastEditKeyRef.current = null;
+    if (next !== null) {
+      replaceEdits(next);
+      setRawNums({});
+    }
+  }, [history.redo, replaceEdits]);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setCellRange(null);
+        cellDragAnchorRef.current = null;
+        return;
+      }
+      if (!event.ctrlKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoEdits();
+      } else if (key === "y" || (key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redoEdits();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [redoEdits, undoEdits]);
+  const onCellMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLTableElement>) => {
+      if (event.button !== 0) return;
+      const cell = gridCellFromTarget(event.target);
+      if (!cell) return;
+      const anchor =
+        event.shiftKey
+          ? (cellRange?.anchor ?? lastCellRef.current ?? cell)
+          : cell;
+      if (!event.shiftKey) lastCellRef.current = cell;
+      cellDragAnchorRef.current = anchor;
+      setCellRange(
+        anchor.row === cell.row && anchor.col === cell.col
+          ? null
+          : { anchor, end: cell },
+      );
+    },
+    [cellRange],
+  );
+  const onCellMouseOver = useCallback(
+    (event: ReactMouseEvent<HTMLTableElement>) => {
+      const anchor = cellDragAnchorRef.current;
+      if (!anchor || event.buttons !== 1) return;
+      const cell = gridCellFromTarget(event.target);
+      if (!cell || (anchor.row === cell.row && anchor.col === cell.col)) return;
+      setCellRange({ anchor, end: cell });
+      window.getSelection()?.removeAllRanges();
+    },
+    [],
+  );
+  const onCellMouseUp = useCallback(() => {
+    cellDragAnchorRef.current = null;
+  }, []);
 
   const numKey = (item: AggregateItem, field: string): string =>
     `${item.masterKey}\u0000${field}`;
@@ -305,7 +417,7 @@ export default function AggregatePage({
       });
       setView(result);
       setRuns(await window.sekisan.listAggregateRuns(project.id));
-      setEdits({});
+      replaceEdits({});
       setRawNums({});
       markSaved({});
       setSelected(null);
@@ -314,7 +426,7 @@ export default function AggregatePage({
         `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
       );
     },
-    [edits, markSaved, project.id, view.run],
+    [edits, markSaved, project.id, replaceEdits, view.run],
   );
 
   /** 選んだ明細の上下に、手入力の明細行を挿入する（集計をかけ直しても残る） */
@@ -420,6 +532,114 @@ export default function AggregatePage({
     () => buildLines(view.items, subjects),
     [subjects, view.items],
   );
+  const bulkSubjectTargets = useMemo(
+    () =>
+      cellRange
+        ? itemsInGridRange(lines, cellRange)
+        : selected
+          ? [selected]
+          : [],
+    [cellRange, lines, selected],
+  );
+  const lineGridRows = useMemo(() => {
+    let row = 0;
+    return lines.map((line) => {
+      const position =
+        line.kind === "item"
+          ? { upper: row, lower: row + 1 }
+          : { upper: row, lower: null };
+      row += line.kind === "item" ? 2 : 1;
+      return position;
+    });
+  }, [lines]);
+  const aggregateGrid = useMemo(
+    () => buildAggregateGrid(lines, edits, subjects),
+    [edits, lines, subjects],
+  );
+  const rangeBounds = useMemo(() => {
+    if (!cellRange) return null;
+    return {
+      firstRow: Math.min(cellRange.anchor.row, cellRange.end.row),
+      lastRow: Math.max(cellRange.anchor.row, cellRange.end.row),
+      firstCol: Math.min(cellRange.anchor.col, cellRange.end.col),
+      lastCol: Math.max(cellRange.anchor.col, cellRange.end.col),
+    };
+  }, [cellRange]);
+  const rangeHeight = rangeBounds
+    ? rangeBounds.lastRow - rangeBounds.firstRow + 1
+    : 0;
+  const rangeWidth = rangeBounds
+    ? rangeBounds.lastCol - rangeBounds.firstCol + 1
+    : 0;
+  const canCopyRange = rangeHeight * rangeWidth > 1;
+  const rangeCellClass = (
+    row: number,
+    col: number,
+    rowSpan = 1,
+    colSpan = 1,
+    baseClass?: string,
+  ): string | undefined => {
+    const className = [
+      baseClass,
+      gridCellIntersectsRange(cellRange, row, col, rowSpan, colSpan)
+        ? "in-range"
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return className || undefined;
+  };
+  const copyRangeMessage = `${rangeHeight}行×${rangeWidth}列をコピーしました（エクセルに貼れます）`;
+  const onTableCopy = useCallback(
+    (event: ReactClipboardEvent<HTMLTableElement>) => {
+      if (!cellRange || !canCopyRange) return;
+      event.preventDefault();
+      event.clipboardData.setData(
+        "text/plain",
+        aggregateRangeTsv(aggregateGrid, cellRange),
+      );
+      setMessage(copyRangeMessage);
+    },
+    [aggregateGrid, canCopyRange, cellRange, copyRangeMessage],
+  );
+  const copyRange = useCallback(async () => {
+    if (!cellRange || !canCopyRange) return;
+    try {
+      await navigator.clipboard.writeText(
+        aggregateRangeTsv(aggregateGrid, cellRange),
+      );
+      setMessage(copyRangeMessage);
+    } catch {
+      setMessage("範囲をコピーできませんでした");
+    }
+  }, [aggregateGrid, canCopyRange, cellRange, copyRangeMessage]);
+  const changeBulkSubject = useCallback(() => {
+    if (bulkSubjectTargets.length === 0) return;
+    const subjectId = bulkSubjectId === "" ? null : bulkSubjectId;
+    const current = editsRef.current;
+    history.push({ ...current });
+    lastEditKeyRef.current = null;
+    const next = { ...current };
+    for (const item of bulkSubjectTargets) {
+      next[item.masterKey] = {
+        ...(current[item.masterKey] ?? initialEdit(item)),
+        subjectId,
+      };
+    }
+    replaceEdits(next);
+    setBulkSubjectOpen(false);
+    const subjectName =
+      subjects.find((row) => row.id === subjectId)?.name ?? "（科目なし）";
+    setMessage(
+      `${bulkSubjectTargets.length}件の科目を「${subjectName}」に変えました（💾 修正を保存で確定します）`,
+    );
+  }, [
+    bulkSubjectId,
+    bulkSubjectTargets,
+    history.push,
+    replaceEdits,
+    subjects,
+  ]);
 
   /** 単位マスターの呼び出し一覧（計算書の単位欄と同じ並び） */
   const unitEntries: PickEntry[] = useMemo(
@@ -640,6 +860,69 @@ export default function AggregatePage({
         </button>
         <button
           type="button"
+          disabled={!history.canUndo}
+          title="保存する前の直しを1つ戻します（Ctrl+Z）"
+          onClick={undoEdits}
+        >
+          ↶ 戻る
+        </button>
+        <button
+          type="button"
+          disabled={!history.canRedo}
+          title="戻した直しをやり直します（Ctrl+Y）"
+          onClick={redoEdits}
+        >
+          ↷ 進む
+        </button>
+        <button
+          type="button"
+          disabled={!canCopyRange}
+          onClick={() => void copyRange()}
+        >
+          ⧉ 範囲をコピー
+        </button>
+        <button
+          type="button"
+          disabled={bulkSubjectTargets.length === 0}
+          title="範囲で選んだ明細の科目をまとめて変えます。保存するまでは ↶ 戻る で戻せます"
+          onClick={() => {
+            setBulkSubjectId(selected?.subjectId ?? "");
+            setBulkSubjectOpen(true);
+          }}
+        >
+          🔀 科目をまとめて変える
+        </button>
+        {bulkSubjectOpen && bulkSubjectTargets.length > 0 && (
+          <span className="aggregate-bulk-subject">
+            <select
+              aria-label="変更後の科目"
+              value={bulkSubjectId}
+              onChange={(event) =>
+                setBulkSubjectId(
+                  event.target.value === "" ? "" : Number(event.target.value),
+                )
+              }
+            >
+              <option value="">（科目なし）</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.id} {subject.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={changeBulkSubject}>
+              変える
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkSubjectOpen(false)}
+            >
+              やめる
+            </button>
+          </span>
+        )}
+        <button
+          type="button"
           disabled={selected === null}
           onClick={() => void toggleUnused()}
           title="不要になった明細に印を付けます。印を付けた明細は工種科目の最後にまとめ、内訳書へは飛ばしません（計算書はそのまま残ります）"
@@ -724,7 +1007,14 @@ export default function AggregatePage({
           ))}
           {usedSubjects.length === 0 && <span className="note">未集計</span>}
         </nav>
-        <table className="parts aggregate" onKeyDown={onTableKeyDown}>
+        <table
+          className="parts aggregate"
+          onKeyDown={onTableKeyDown}
+          onMouseDownCapture={onCellMouseDown}
+          onMouseOverCapture={onCellMouseOver}
+          onMouseUpCapture={onCellMouseUp}
+          onCopy={onTableCopy}
+        >
           <colgroup>
             {COLUMNS.map((label, index) => (
               <col key={label} style={{ width: `${widths[index]}px` }} />
@@ -745,6 +1035,7 @@ export default function AggregatePage({
             </tr>
           </thead>
           {lines.map((line, index) => {
+            const gridRows = lineGridRows[index];
             if (line.kind === "heading") {
               const subject = subjects.find(
                 (row) => row.id === line.heading.subjectId,
@@ -761,12 +1052,28 @@ export default function AggregatePage({
                         : undefined
                     }
                   >
-                    <td className="no">
+                    <td
+                      className={rangeCellClass(gridRows.upper, 0, 1, 1, "no")}
+                      data-grow={gridRows.upper}
+                      data-gcol={0}
+                    >
                       {line.heading.kind === "subject"
                         ? (subject?.id ?? "")
                         : ""}
                     </td>
-                    <td colSpan={COLUMNS.length - 1}>{line.heading.text}</td>
+                    <td
+                      colSpan={COLUMNS.length - 1}
+                      className={rangeCellClass(
+                        gridRows.upper,
+                        1,
+                        1,
+                        COLUMNS.length - 1,
+                      )}
+                      data-grow={gridRows.upper}
+                      data-gcol={1}
+                    >
+                      {line.heading.text}
+                    </td>
                   </tr>
                 </tbody>
               );
@@ -778,6 +1085,8 @@ export default function AggregatePage({
             const isSelected = selected?.masterKey === item.masterKey;
             const unusedClass = item.unused ? "unused" : "";
             const manualClass = item.manual ? "manual" : "";
+            const upperGridRow = gridRows.upper;
+            const lowerGridRow = gridRows.lower ?? upperGridRow + 1;
             const draft = edits[item.masterKey] ?? initialEdit(item);
             return (
               <tbody
@@ -787,7 +1096,12 @@ export default function AggregatePage({
                 onClick={() => clickRow(item)}
               >
                 <tr className="detail-upper">
-                  <td className="no" rowSpan={2}>
+                  <td
+                    className={rangeCellClass(upperGridRow, 0, 2, 1, "no")}
+                    data-grow={upperGridRow}
+                    data-gcol={0}
+                    rowSpan={2}
+                  >
                     {draft.subjectId ?? ""}
                     {item.manual && (
                       <span
@@ -798,7 +1112,12 @@ export default function AggregatePage({
                       </span>
                     )}
                   </td>
-                  <td rowSpan={2}>
+                  <td
+                    className={rangeCellClass(upperGridRow, 1, 2)}
+                    data-grow={upperGridRow}
+                    data-gcol={1}
+                    rowSpan={2}
+                  >
                     <select
                       value={draft.subjectId ?? ""}
                       title="工種科目を選び直せます"
@@ -814,7 +1133,12 @@ export default function AggregatePage({
                       ))}
                     </select>
                   </td>
-                  <td rowSpan={2}>
+                  <td
+                    className={rangeCellClass(upperGridRow, 2, 2)}
+                    data-grow={upperGridRow}
+                    data-gcol={2}
+                    rowSpan={2}
+                  >
                     <input
                       lang="ja"
                       data-material-category
@@ -825,7 +1149,11 @@ export default function AggregatePage({
                       }
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(upperGridRow, 3)}
+                    data-grow={upperGridRow}
+                    data-gcol={3}
+                  >
                     <input
                       className="number"
                       value={numText(item, "partNumber", draft.partNumber)}
@@ -834,7 +1162,11 @@ export default function AggregatePage({
                       )}
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(upperGridRow, 4)}
+                    data-grow={upperGridRow}
+                    data-gcol={4}
+                  >
                     <input
                       lang="ja"
                       value={draft.partName}
@@ -844,7 +1176,11 @@ export default function AggregatePage({
                       }
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(upperGridRow, 5)}
+                    data-grow={upperGridRow}
+                    data-gcol={5}
+                  >
                     <input
                       lang="ja"
                       value={draft.descriptionUpper}
@@ -854,9 +1190,21 @@ export default function AggregatePage({
                       }
                     />
                   </td>
-                  <td />
-                  <td />
-                  <td>
+                  <td
+                    className={rangeCellClass(upperGridRow, 6)}
+                    data-grow={upperGridRow}
+                    data-gcol={6}
+                  />
+                  <td
+                    className={rangeCellClass(upperGridRow, 7)}
+                    data-grow={upperGridRow}
+                    data-gcol={7}
+                  />
+                  <td
+                    className={rangeCellClass(upperGridRow, 8)}
+                    data-grow={upperGridRow}
+                    data-gcol={8}
+                  >
                     <input
                       lang="ja"
                       value={draft.remarksUpper}
@@ -867,8 +1215,16 @@ export default function AggregatePage({
                     />
                   </td>
                   <td
+                    className={rangeCellClass(
+                      upperGridRow,
+                      9,
+                      2,
+                      1,
+                      "estimate-display",
+                    )}
+                    data-grow={upperGridRow}
+                    data-gcol={9}
                     rowSpan={2}
-                    className="estimate-display"
                     title={
                       fixedEstimateDisplay.has(item.masterKey)
                         ? "積算用表示。転記入力表などから来た明細は積算用表示を持たないので直せません"
@@ -893,7 +1249,11 @@ export default function AggregatePage({
                   </td>
                 </tr>
                 <tr className="detail-lower">
-                  <td>
+                  <td
+                    className={rangeCellClass(lowerGridRow, 3)}
+                    data-grow={lowerGridRow}
+                    data-gcol={3}
+                  >
                     <input
                       className="number"
                       value={numText(item, "detailNumber", draft.detailNumber)}
@@ -902,7 +1262,11 @@ export default function AggregatePage({
                       )}
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(lowerGridRow, 4)}
+                    data-grow={lowerGridRow}
+                    data-gcol={4}
+                  >
                     <input
                       lang="ja"
                       value={draft.name}
@@ -910,7 +1274,11 @@ export default function AggregatePage({
                       onChange={(e) => editItem(item, { name: e.target.value })}
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(lowerGridRow, 5)}
+                    data-grow={lowerGridRow}
+                    data-gcol={5}
+                  >
                     <input
                       lang="ja"
                       value={draft.descriptionLower}
@@ -920,7 +1288,11 @@ export default function AggregatePage({
                       }
                     />
                   </td>
-                  <td className="number">
+                  <td
+                    className={rangeCellClass(lowerGridRow, 6, 1, 1, "number")}
+                    data-grow={lowerGridRow}
+                    data-gcol={6}
+                  >
                     {item.manual ? (
                       <input
                         className="number"
@@ -938,7 +1310,11 @@ export default function AggregatePage({
                       aggregateQuantityText(item.quantity, draft.unit)
                     )}
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(lowerGridRow, 7)}
+                    data-grow={lowerGridRow}
+                    data-gcol={7}
+                  >
                     <PickInput
                       entries={unitEntries}
                       halfWidth
@@ -953,7 +1329,11 @@ export default function AggregatePage({
                       }
                     />
                   </td>
-                  <td>
+                  <td
+                    className={rangeCellClass(lowerGridRow, 8)}
+                    data-grow={lowerGridRow}
+                    data-gcol={8}
+                  >
                     <input
                       lang="ja"
                       data-remarks-lower
