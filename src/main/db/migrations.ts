@@ -1098,4 +1098,10 @@ CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, disp
 ALTER TABLE m_finish_assemblies ADD COLUMN set_part_number INTEGER;
 ALTER TABLE m_finish_assemblies ADD COLUMN set_part_name TEXT NOT NULL DEFAULT '';
 `,
+  // 内訳書の摘要の文字幅と折り返し情報
+  `
+ALTER TABLE project_breakdown_settings ADD COLUMN description_width INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_glue TEXT NOT NULL DEFAULT '';
+`,
 ];

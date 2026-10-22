@@ -901,6 +901,7 @@ export const projectBreakdownSettings = sqliteTable(
     namePattern: integer("name_pattern").notNull().default(1),
     /** half:半角 full:全角 raw:そのまま */
     nameWidth: text("name_width").notNull().default("raw"),
+    descriptionWidth: integer("description_width").notNull().default(0),
     roundThreshold1: real("round_threshold1").notNull().default(100),
     roundDecimals1: integer("round_decimals1").notNull().default(0),
     roundThreshold2: real("round_threshold2").notNull().default(0),
@@ -989,6 +990,8 @@ export const projectBreakdownRows = sqliteTable(
     remarksLower: text("remarks_lower").notNull().default(""),
     /** 取り消し線（1＝この明細は無いものとして比較に出す） */
     struck: integer("struck").notNull().default(0),
+    wrap: text("wrap").notNull().default(""),
+    wrapGlue: text("wrap_glue").notNull().default(""),
   },
   (t) => ({
     versionIdx: index("idx_breakdown_rows_version").on(

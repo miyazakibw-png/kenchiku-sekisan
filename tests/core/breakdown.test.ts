@@ -11,8 +11,11 @@ import {
   mergeSubjectOrder,
   relayoutBreakdownRows,
   roundQuantity,
+  splitDescription,
+  textWidth,
   toFullWidth,
   toHalfWidth,
+  unwrapBreakdownRows,
   withSubjectSubtotals,
 } from "../../src/core/breakdown/breakdown";
 import { toBcsCsv } from "../../src/core/breakdown/bcs";
@@ -51,6 +54,198 @@ function item(patch: Partial<BreakdownSourceItem>): BreakdownSourceItem {
     ...patch,
   };
 }
+
+describe("摘要の文字幅と折り返し", () => {
+  it("全角・半角・半角カナを文字幅に換算する", () => {
+    expect(textWidth("A1ｶ")).toBe(3);
+    expect(textWidth("床・壁")).toBe(6);
+    expect(textWidth("😀")).toBe(2);
+  });
+
+  it("幅内の最後の半角・全角スペースで分割し、接着文字を保持する", () => {
+    expect(splitDescription("ABC DE FG", 6)).toEqual([
+      { text: "ABC DE", glue: "" },
+      { text: "FG", glue: " " },
+    ]);
+    expect(splitDescription("ABC　DEF", 3)).toEqual([
+      { text: "ABC", glue: "" },
+      { text: "DEF", glue: "　" },
+    ]);
+  });
+
+  it("スペースが無ければ幅位置で分割し、収まる文字列や幅0はそのまま返す", () => {
+    expect(splitDescription("ABCDE", 2)).toEqual([
+      { text: "AB", glue: "" },
+      { text: "CD", glue: "" },
+      { text: "E", glue: "" },
+    ]);
+    expect(splitDescription("床A", 4)).toEqual([{ text: "床A", glue: "" }]);
+    expect(splitDescription("ABCDE", 0)).toEqual([
+      { text: "ABCDE", glue: "" },
+    ]);
+  });
+
+  it("上段と下段が幅内なら元の2行のまま返す", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "AB", descriptionLower: "CD" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 2,
+      },
+    );
+    expect(rows.slice(1).map((row) => row.descriptionLower)).toEqual([
+      "AB",
+      "CD",
+    ]);
+    expect(rows.some((row) => row.wrap !== undefined && row.wrap !== "")).toBe(
+      false,
+    );
+  });
+
+  it("上段が折り返されると数量行の後へ上段を移す", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "ABCD", descriptionLower: "X" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 2,
+      },
+    );
+    expect(
+      rows.slice(1).map((row) => [row.rowKind, row.descriptionLower]),
+    ).toEqual([
+      ["note", ""],
+      ["detail", "X"],
+      ["note", "AB"],
+      ["detail", "CD"],
+    ]);
+    expect(rows.slice(3).map((row) => row.wrap)).toEqual(["upper", "upper"]);
+  });
+
+  it("下段が折り返されると数量行に先頭を残し、奇数行をfillで補う", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "X", descriptionLower: "ABCDE" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 2,
+      },
+    );
+    expect(
+      rows
+        .slice(1)
+        .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
+    ).toEqual([
+      ["note", "X", undefined],
+      ["detail", "AB", "lower"],
+      ["note", "CD", "lower"],
+      ["detail", "E", "lower"],
+    ]);
+  });
+
+  it("下段が空なら上段の2つ目を数量行へ移して継続行をペアにする", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "ABCDE", descriptionLower: "" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 2,
+      },
+    );
+    expect(
+      rows
+        .slice(1)
+        .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
+    ).toEqual([
+      ["note", "AB", undefined],
+      ["detail", "CD", "upper"],
+      ["note", "E", "upper"],
+      ["detail", "", "fill"],
+    ]);
+  });
+
+  it("上段を1文字幅に分けても数量行を保持し、継続行を交互に並べる", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "ABCDEF", descriptionLower: "Q" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 1,
+      },
+    );
+    expect(rows.slice(1).map((row) => [row.rowKind, row.descriptionLower])).toEqual([
+      ["note", ""],
+      ["detail", "Q"],
+      ["note", "A"],
+      ["detail", "B"],
+      ["note", "C"],
+      ["detail", "D"],
+      ["note", "E"],
+      ["detail", "F"],
+    ]);
+  });
+
+  it("折り返しを解除して原文へ戻し、幅変更で再分割する", () => {
+    const source = [item({ descriptionUpper: "ABCDE", descriptionLower: "FGHIJ" })];
+    const original = buildBreakdownRows(source, subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+    });
+    const wrapped = buildBreakdownRows(source, subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      descriptionWidth: 2,
+    });
+    expect(unwrapBreakdownRows(wrapped)).toEqual(original);
+    expect(
+      relayoutBreakdownRows(wrapped, {
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        namePattern: NAME_PATTERN.asIs,
+        descriptionWidth: 0,
+      }),
+    ).toEqual(original);
+    const wider = relayoutBreakdownRows(wrapped, {
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.asIs,
+      descriptionWidth: 4,
+    });
+    expect(wider.filter((row) => row.wrap === "upper")).toHaveLength(2);
+    expect(wider.filter((row) => row.wrap === "lower")).toHaveLength(2);
+    const oneLine = relayoutBreakdownRows(wrapped, {
+      layout: BREAKDOWN_LAYOUT.oneLine,
+      namePattern: NAME_PATTERN.asIs,
+      descriptionWidth: 2,
+    });
+    expect(
+      oneLine.some(
+        (row) =>
+          row.wrap === "upper" || row.wrap === "lower" || row.wrap === "fill",
+      ),
+    ).toBe(false);
+  });
+
+  it("エクセル書式では幅設定があっても摘要を分割しない", () => {
+    const rows = buildBreakdownRows(
+      [item({ descriptionUpper: "ABCDE", descriptionLower: "FGHIJ" })],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.excel,
+        descriptionWidth: 1,
+      },
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows.some((row) => row.wrap !== undefined && row.wrap !== "")).toBe(
+      false,
+    );
+  });
+});
 
 describe("数量の丸め", () => {
   it("100以上は整数、100未満は小数1桁", () => {

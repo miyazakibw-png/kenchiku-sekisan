@@ -954,6 +954,8 @@ export interface BreakdownSettingsRecord {
   namePattern: number;
   /** half / full / raw */
   nameWidth: string;
+  /** 摘要を折り返す文字幅（全角2・半角1。0は折り返さない） */
+  descriptionWidth: number;
   roundThreshold1: number;
   roundDecimals1: number;
   roundThreshold2: number;
@@ -1019,6 +1021,8 @@ export interface BreakdownRowRecord {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  wrap?: string;
+  wrapGlue?: string;
   /** 取り消し線（1＝この明細は無いものとして比較に出す） */
   struck: number;
 }

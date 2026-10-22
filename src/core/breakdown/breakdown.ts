@@ -67,6 +67,8 @@ export interface BreakdownSettings {
   namePattern: number;
   /** 名称（下段）の文字幅 half:半角 full:全角 raw:そのまま */
   nameWidth: string;
+  /** 摘要を折り返す文字幅（全角2・半角1。0は折り返さない） */
+  descriptionWidth: number;
   /** 数量の丸め：閾値1以上→桁数1、閾値2以上→桁数2、それ未満→桁数3 */
   roundThreshold1: number;
   roundDecimals1: number;
@@ -95,6 +97,7 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   layout: BREAKDOWN_LAYOUT.twoLine,
   namePattern: NAME_PATTERN.asIs,
   nameWidth: "raw",
+  descriptionWidth: 0,
   roundThreshold1: 100,
   roundDecimals1: 0,
   roundThreshold2: 0,
@@ -145,6 +148,8 @@ export interface BreakdownRow {
   struck?: number;
   /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
   subtotal?: boolean;
+  wrap?: "" | "upper" | "lower" | "fill";
+  wrapGlue?: string;
 }
 
 /** 内訳書へ転記する集計書兼工事マスターの明細 */
@@ -175,6 +180,71 @@ export interface BreakdownSubject {
 }
 
 const FULL_WIDTH_OFFSET = 0xfee0;
+
+export function textWidth(value: string): number {
+  let width = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    width +=
+      codePoint <= 0x7e || (codePoint >= 0xff61 && codePoint <= 0xff9f)
+        ? 1
+        : 2;
+  }
+  return width;
+}
+
+export function splitDescription(
+  text: string,
+  width: number,
+): { text: string; glue: string }[] {
+  if (!Number.isFinite(width) || width <= 0 || textWidth(text) <= width)
+    return [{ text, glue: "" }];
+
+  const chunks: { text: string; glue: string }[] = [];
+  let remaining = Array.from(text);
+  let glue = "";
+  while (remaining.length > 0) {
+    const rest = remaining.join("");
+    if (textWidth(rest) <= width) {
+      chunks.push({ text: rest, glue });
+      break;
+    }
+
+    let prefixWidth = 0;
+    let lastSpace = -1;
+    remaining.forEach((character, index) => {
+      if (
+        index > 0 &&
+        prefixWidth <= width &&
+        (character === " " || character === "　")
+      ) {
+        lastSpace = index;
+      }
+      prefixWidth += textWidth(character);
+    });
+
+    if (lastSpace > 0) {
+      chunks.push({ text: remaining.slice(0, lastSpace).join(""), glue });
+      glue = remaining[lastSpace];
+      remaining = remaining.slice(lastSpace + 1);
+      continue;
+    }
+
+    let cut = 0;
+    let usedWidth = 0;
+    for (const character of remaining) {
+      const characterWidth = textWidth(character);
+      if (cut > 0 && usedWidth + characterWidth > width) break;
+      usedWidth += characterWidth;
+      cut += 1;
+    }
+    if (cut === 0) cut = 1;
+    chunks.push({ text: remaining.slice(0, cut).join(""), glue });
+    remaining = remaining.slice(cut);
+    glue = "";
+  }
+  return chunks.length > 0 ? chunks : [{ text, glue: "" }];
+}
 
 /** 半角カタカナ→全角カタカナ（濁点・半濁点は1文字にまとめる） */
 const KANA_TO_FULL: Record<string, string> = {
@@ -674,6 +744,7 @@ function detailRows(
     },
     settings.layout,
     settings.namePattern,
+    settings.descriptionWidth,
   );
 }
 
@@ -681,6 +752,7 @@ function emitDetailUnit(
   unit: BreakdownDetailUnit,
   layout: number,
   namePattern: number,
+  descriptionWidth = 0,
 ): BreakdownRow[] {
   const line = (kind: BreakdownRowKind): BreakdownRow => {
     const row = emptyRow(kind);
@@ -711,7 +783,70 @@ function emitDetailUnit(
     lower.unit = unit.unit;
     lower.unitPrice = unit.unitPrice;
     lower.amount = unit.amount;
-    return [upper, lower];
+    if (layout !== BREAKDOWN_LAYOUT.twoRow || descriptionWidth <= 0) {
+      return [upper, lower];
+    }
+
+    const upperChunks = splitDescription(
+      unit.descriptionUpper,
+      descriptionWidth,
+    );
+    const lowerChunks = splitDescription(
+      unit.descriptionLower,
+      descriptionWidth,
+    );
+    const upperOverflows = upperChunks.length > 1;
+    const lowerOverflows = lowerChunks.length > 1;
+    if (!upperOverflows && !lowerOverflows) return [upper, lower];
+
+    const continuations: {
+      text: string;
+      glue: string;
+      wrap: "upper" | "lower";
+    }[] = [];
+    if (unit.descriptionLower !== "") {
+      lower.descriptionLower = lowerChunks[0].text;
+      if (lowerOverflows) {
+        lower.wrap = "lower";
+        lower.wrapGlue = lowerChunks[0].glue;
+        continuations.push(
+          ...lowerChunks
+            .slice(1)
+            .map((chunk) => ({ ...chunk, wrap: "lower" as const })),
+        );
+      }
+      if (upperOverflows) {
+        upper.descriptionLower = "";
+        continuations.push(
+          ...upperChunks.map((chunk) => ({ ...chunk, wrap: "upper" as const })),
+        );
+      }
+    } else if (upperOverflows) {
+      upper.descriptionLower = upperChunks[0].text;
+      lower.descriptionLower = upperChunks[1].text;
+      lower.wrap = "upper";
+      lower.wrapGlue = upperChunks[1].glue;
+      continuations.push(
+        ...upperChunks
+          .slice(2)
+          .map((chunk) => ({ ...chunk, wrap: "upper" as const })),
+      );
+    }
+
+    const continuationRows = continuations.map((chunk, index) => {
+      const continuation = line(index % 2 === 0 ? "note" : "detail");
+      continuation.descriptionLower = chunk.text;
+      continuation.wrap = chunk.wrap;
+      continuation.wrapGlue = chunk.glue;
+      return continuation;
+    });
+    if (continuationRows.length % 2 === 1) {
+      const fill = line(continuationRows.length % 2 === 0 ? "note" : "detail");
+      fill.wrap = "fill";
+      fill.wrapGlue = "";
+      continuationRows.push(fill);
+    }
+    return [upper, lower, ...continuationRows];
   }
 
   const hasQuantity = unit.hasQuantity ?? unit.unit !== "";
@@ -772,27 +907,44 @@ function stripPartName(text: string, partName: string): string {
   return prefix === undefined ? text : text.slice(prefix.length);
 }
 
+type BreakdownRowLike = Omit<
+  BreakdownRow,
+  "rowKind" | "wrap" | "wrapGlue"
+> & {
+  rowKind: string;
+  wrap?: string;
+  wrapGlue?: string;
+};
+
 /**
  * 保存済みの明細行を、現在の書式と名称欄の設定に合わせて並べ直す。
  * 集計から作り直さず、確定した回の行データだけを組み替える。
  */
 export function relayoutBreakdownRows<T extends BreakdownRow>(
   rows: readonly T[],
-  settings: { layout: number; namePattern: number },
+  settings: {
+    layout: number;
+    namePattern: number;
+    descriptionWidth?: number;
+  },
 ): T[];
-export function relayoutBreakdownRows<
-  T extends Omit<BreakdownRow, "rowKind"> & { rowKind: string },
->(rows: readonly T[], settings: { layout: number; namePattern: number }): T[];
-export function relayoutBreakdownRows<
-  T extends Omit<BreakdownRow, "rowKind"> & { rowKind: string },
->(rows: readonly T[], settings: { layout: number; namePattern: number }): T[] {
+export function relayoutBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  settings: { layout: number; namePattern: number; descriptionWidth?: number },
+): T[];
+export function relayoutBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  settings: { layout: number; namePattern: number; descriptionWidth?: number },
+): T[] {
+  const unwrapped = unwrapBreakdownRows(rows);
   const output: T[] = [];
-  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  const rowAt = (index: number): BreakdownRow =>
+    unwrapped[index] as BreakdownRow;
   let index = 0;
-  while (index < rows.length) {
+  while (index < unwrapped.length) {
     const row = rowAt(index);
     const key = detailUnitKey(row);
-    const next = rows[index + 1] as BreakdownRow | undefined;
+    const next = unwrapped[index + 1] as BreakdownRow | undefined;
     const nextKey = next ? detailUnitKey(next) : null;
 
     if (
@@ -813,7 +965,7 @@ export function relayoutBreakdownRows<
     }
 
     if (row.rowKind === "detail" && key !== null) {
-      const afterNext = rows[index + 2] as BreakdownRow | undefined;
+      const afterNext = unwrapped[index + 2] as BreakdownRow | undefined;
       const noteIsPair =
         next?.rowKind === "note" &&
         nextKey === key &&
@@ -837,8 +989,88 @@ export function relayoutBreakdownRows<
       continue;
     }
 
-    output.push(rows[index]);
+    output.push(unwrapped[index]);
     index += 1;
+  }
+  return output;
+}
+
+export function unwrapBreakdownRows<T extends BreakdownRow>(
+  rows: readonly T[],
+): T[];
+export function unwrapBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+): T[];
+export function unwrapBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+): T[] {
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  let index = 0;
+  while (index < rows.length) {
+    const upper = rowAt(index);
+    const key = detailUnitKey(upper);
+    const detail = rows[index + 1] as BreakdownRow | undefined;
+    if (
+      upper.rowKind !== "note" ||
+      key === null ||
+      detail?.rowKind !== "detail" ||
+      detailUnitKey(detail) !== key
+    ) {
+      output.push(rows[index]);
+      index += 1;
+      continue;
+    }
+
+    let end = index + 2;
+    while (end < rows.length) {
+      const continuation = rowAt(end);
+      if (
+        detailUnitKey(continuation) !== key ||
+        continuation.wrap === undefined ||
+        continuation.wrap === ""
+      ) {
+        break;
+      }
+      end += 1;
+    }
+    const hasWrap =
+      (detail.wrap !== undefined && detail.wrap !== "") || end > index + 2;
+    if (!hasWrap) {
+      output.push(rows[index], rows[index + 1]);
+      index += 2;
+      continue;
+    }
+
+    const wrappedRows = [
+      ...(detail.wrap !== undefined && detail.wrap !== "" ? [detail] : []),
+      ...rows.slice(index + 2, end).map((row) => row as BreakdownRow),
+    ];
+    const restoredUpper =
+      upper.descriptionLower +
+      wrappedRows
+        .filter((row) => row.wrap === "upper")
+        .map((row) => `${row.wrapGlue ?? ""}${row.descriptionLower}`)
+        .join("");
+    const restoredLower =
+      (detail.wrap === "upper" ? "" : detail.descriptionLower) +
+      rows
+        .slice(index + 2, end)
+        .map((row) => row as BreakdownRow)
+        .filter((row) => row.wrap === "lower")
+        .map((row) => `${row.wrapGlue ?? ""}${row.descriptionLower}`)
+        .join("");
+    const clearWrap = (row: T, descriptionLower: string): T => {
+      const copy = { ...row, descriptionLower } as Record<string, unknown>;
+      delete copy.wrap;
+      delete copy.wrapGlue;
+      return copy as T;
+    };
+    output.push(
+      clearWrap(rows[index], restoredUpper),
+      clearWrap(rows[index + 1], restoredLower),
+    );
+    index = end;
   }
   return output;
 }
@@ -848,7 +1080,11 @@ function emitRelayoutUnit(
   detail: BreakdownRow,
   pairedUpper: BreakdownRow | undefined,
   overflow: BreakdownRow | undefined,
-  settings: { layout: number; namePattern: number },
+  settings: {
+    layout: number;
+    namePattern: number;
+    descriptionWidth?: number;
+  },
 ): BreakdownRow[] {
   const partName =
     pairedUpper !== undefined
@@ -914,6 +1150,7 @@ function emitRelayoutUnit(
     },
     settings.layout,
     settings.namePattern,
+    settings.descriptionWidth,
   );
 }
 

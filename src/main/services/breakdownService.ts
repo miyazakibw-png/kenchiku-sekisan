@@ -84,6 +84,11 @@ function pageCount(value: number | null, fallback: number): number {
   return Math.floor(value);
 }
 
+function clampDescriptionWidth(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_BREAKDOWN_SETTINGS.descriptionWidth;
+  return Math.max(0, Math.min(200, Math.round(value)));
+}
+
 /** 部屋別集計の並びに使う、部位別入力表に出てくる部屋名の順 */
 function roomOrderOf(db: AppDatabase, projectId: number): string[] {
   const order: string[] = [];
@@ -111,6 +116,7 @@ export function getBreakdownSettings(
       layout: DEFAULT_BREAKDOWN_SETTINGS.layout,
       namePattern: DEFAULT_BREAKDOWN_SETTINGS.namePattern,
       nameWidth: DEFAULT_BREAKDOWN_SETTINGS.nameWidth,
+      descriptionWidth: DEFAULT_BREAKDOWN_SETTINGS.descriptionWidth,
       roundThreshold1: DEFAULT_BREAKDOWN_SETTINGS.roundThreshold1,
       roundDecimals1: DEFAULT_BREAKDOWN_SETTINGS.roundDecimals1,
       roundThreshold2: DEFAULT_BREAKDOWN_SETTINGS.roundThreshold2,
@@ -132,6 +138,7 @@ export function getBreakdownSettings(
     layout: row.layout,
     namePattern: row.namePattern,
     nameWidth: row.nameWidth,
+    descriptionWidth: clampDescriptionWidth(row.descriptionWidth),
     roundThreshold1: row.roundThreshold1,
     roundDecimals1: row.roundDecimals1,
     roundThreshold2: row.roundThreshold2,
@@ -165,6 +172,7 @@ export function saveBreakdownSettings(
       layout: settings.layout,
       namePattern: settings.namePattern,
       nameWidth: settings.nameWidth,
+      descriptionWidth: clampDescriptionWidth(settings.descriptionWidth),
       roundThreshold1: settings.roundThreshold1,
       roundDecimals1: settings.roundDecimals1,
       roundThreshold2: settings.roundThreshold2,
@@ -196,6 +204,7 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
     layout: record.layout,
     namePattern: record.namePattern,
     nameWidth: record.nameWidth,
+    descriptionWidth: clampDescriptionWidth(record.descriptionWidth),
     roundThreshold1: record.roundThreshold1,
     roundDecimals1: record.roundDecimals1,
     roundThreshold2: record.roundThreshold2,
@@ -447,6 +456,8 @@ export function transferBreakdown(
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
         struck: 0,
+        wrap: row.wrap ?? "",
+        wrapGlue: row.wrapGlue ?? "",
       })
       .run();
   });
@@ -485,6 +496,8 @@ export function saveBreakdownRows(
         remarksUpper: row.remarksUpper,
         remarksLower: row.remarksLower,
         struck: row.struck,
+        wrap: row.wrap ?? "",
+        wrapGlue: row.wrapGlue ?? "",
       })
       .run();
   });

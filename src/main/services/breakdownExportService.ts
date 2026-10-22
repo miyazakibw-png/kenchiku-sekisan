@@ -14,6 +14,7 @@ import {
 import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
 import {
   relayoutBreakdownRows,
+  unwrapBreakdownRows,
   withSubjectSubtotals,
   type BreakdownRow,
 } from "../../core/breakdown/breakdown";
@@ -48,6 +49,13 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
     remarksUpper: row.remarksUpper,
     remarksLower: row.remarksLower,
     struck: row.struck,
+    wrap:
+      row.wrap === "upper" ||
+      row.wrap === "lower" ||
+      row.wrap === "fill"
+        ? row.wrap
+        : "",
+    wrapGlue: row.wrapGlue,
   };
 }
 
@@ -86,7 +94,7 @@ export function buildExport(
     };
   }
   if (kind === "bcs") {
-    const csv = toBcsCsv(coreRows, {
+    const csv = toBcsCsv(unwrapBreakdownRows(coreRows), {
       projectName,
       workCategory: settings.workCategory,
     });

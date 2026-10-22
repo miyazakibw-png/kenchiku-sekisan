@@ -131,6 +131,10 @@
   outline: 1px solid #4a90d9;
 }
 
+.breakdown-page table.breakdown td.wrapped input {
+  color: #c2410c;
+}
+
 .breakdown-page table.breakdown tr.subject td {
   background: #eee;
   font-weight: bold;
@@ -318,4 +322,10 @@
 .breakdown-page table.compare td.ops button.struck-on {
   background: #4a90d9;
   color: #fff;
+}
+
+@media print {
+  .breakdown-page table.breakdown td.wrapped input {
+    color: inherit;
+  }
 }

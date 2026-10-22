@@ -46,6 +46,7 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   layout: BREAKDOWN_LAYOUT.twoLine,
   namePattern: NAME_PATTERN.asIs,
   nameWidth: "raw",
+  descriptionWidth: 0,
   roundThreshold1: 100,
   roundDecimals1: 0,
   roundThreshold2: 0,
@@ -390,7 +391,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     if (view.version) {
       if (
         saved.layout !== settings.layout ||
-        saved.namePattern !== settings.namePattern
+        saved.namePattern !== settings.namePattern ||
+        saved.descriptionWidth !== settings.descriptionWidth
       ) {
         setView((current) => ({
           ...current,
@@ -401,7 +403,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         setRightRows((current) => relayoutBreakdownRows(current, saved));
         history.clear();
         setMessage(
-          "確定した回は行の中身はそのままで、書式だけ変えて出します。",
+          "確定した回は行の中身はそのままで、書式や摘要幅だけ変えて出します。",
         );
       } else {
         setView((current) => ({ ...current, settings: saved }));
@@ -1105,6 +1107,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </select>
           </label>
           <label>
+            摘要の文字数
+            <input
+              type="number"
+              min={0}
+              value={settings.descriptionWidth}
+              onChange={(e) =>
+                void saveSettings({ descriptionWidth: Number(e.target.value) })
+              }
+            />
+            （全角2・半角1。0で分けない・④2段2行のとき）
+          </label>
+          <label>
             名称
             <select
               value={settings.nameWidth}
@@ -1608,7 +1622,13 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                           }
                         />
                       </td>
-                      <td>
+                      <td
+                        className={
+                          row.wrap === "upper" || row.wrap === "lower"
+                            ? "wrapped"
+                            : undefined
+                        }
+                      >
                         <TextInput
                           value={row.descriptionLower}
                           onCommit={(value) =>

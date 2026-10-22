@@ -231,6 +231,56 @@ describe("内訳書", () => {
     expect(detail?.descriptionLower).toBe("厚2.0");
   });
 
+  it("摘要幅を制限して保存し、折り返し情報を保持してBCS出力では戻す", () => {
+    const initial = getBreakdown(db, projectId).settings;
+    const capped = saveBreakdownSettings(db, {
+      ...initial,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      descriptionWidth: 999,
+    });
+    expect(capped.descriptionWidth).toBe(200);
+
+    const settings = saveBreakdownSettings(db, {
+      ...capped,
+      descriptionWidth: 1,
+    });
+    const wrapped = transferBreakdown(db, projectId);
+    expect(
+      wrapped.rows.some(
+        (row) => row.wrap === "upper" || row.wrap === "lower",
+      ),
+    ).toBe(true);
+    const rowsWithGlue = wrapped.rows.map((row) =>
+      row.wrap === "upper" && row.descriptionLower !== ""
+        ? { ...row, wrapGlue: " " }
+        : row,
+    );
+    const savedRows = saveBreakdownRows(
+      db,
+      wrapped.version?.id ?? 0,
+      rowsWithGlue,
+    );
+    expect(
+      savedRows.some((row) => row.wrap === "upper" && row.wrapGlue === " "),
+    ).toBe(true);
+    expect(
+      buildExport("bcs", savedRows, settings, "港区計画").content,
+    ).toEqual(
+      buildExport(
+        "bcs",
+        savedRows,
+        { ...settings, descriptionWidth: 0 },
+        "港区計画",
+      ).content,
+    );
+
+    const lowerCapped = saveBreakdownSettings(db, {
+      ...settings,
+      descriptionWidth: -5,
+    });
+    expect(lowerCapped.descriptionWidth).toBe(0);
+  });
+
   it("BCS.CSVはShift_JISで、エクセルは科目ごとのシートで掃き出す", () => {
     const view = transferBreakdown(db, projectId);
     const bcs = buildExport("bcs", view.rows, view.settings, "港区計画");
