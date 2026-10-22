@@ -52,7 +52,8 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
     wrap:
       row.wrap === "upper" ||
       row.wrap === "lower" ||
-      row.wrap === "fill"
+      row.wrap === "fill" ||
+      row.wrap === "pair"
         ? row.wrap
         : "",
     wrapGlue: row.wrapGlue,
