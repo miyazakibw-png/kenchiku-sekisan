@@ -86,6 +86,33 @@
   outline-offset: -2px;
 }
 
+.assembly-list.grid td {
+  border: 1px solid #e2e8f0;
+  padding: 1px 4px;
+  font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assembly-list.grid tbody.detail-group {
+  border-bottom: none;
+}
+
+.assembly-list.grid tbody.detail-group > tr.upper-row > td:not([rowspan]) {
+  border-bottom: 1px dotted #cbd5e1;
+}
+
+.assembly-list.grid tbody.detail-group > tr:last-child > td:not([rowspan]) {
+  border-top: 1px dotted #cbd5e1;
+}
+
+.assembly-list.grid tbody.detail-group > tr:last-child > td,
+.assembly-list.grid tbody.detail-group > tr:first-child > td[rowspan] {
+  border-bottom: 1px solid #cbd5e1;
+}
+
 .assembly-page .note-row td {
   background: #e8f6e8;
 }
