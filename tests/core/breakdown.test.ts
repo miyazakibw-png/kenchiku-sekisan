@@ -205,6 +205,10 @@ describe("摘要の文字幅と折り返し", () => {
           masterKey: "description",
           descriptionUpper: "FG",
           descriptionLower: "",
+          name: "",
+          partName: "",
+          remarksUpper: "",
+          remarksLower: "",
           unit: "",
         }),
       ],
@@ -238,9 +242,95 @@ describe("摘要の文字幅と折り返し", () => {
       "upper",
       "upper",
       "upper",
-      "pair",
+      "keepUpper",
       "upper",
       "fill",
+    ]);
+  });
+
+  it("上段・下段を持つ説明明細を上段から詰め、名称行をブロックに含めない", () => {
+    const descriptionUpper =
+      "1テスト用摘要上 30文字超え⑤ 30文字超え⑥ 30文字超え⑦ 30文字超え⑧";
+    const descriptionLower =
+      "1テスト用摘要上 30文字超え⑨ 30文字超え⑩";
+    const rows = buildBreakdownRows(
+      [
+        item({
+          id: 1,
+          masterKey: "quantity",
+          subjectId: 2,
+          partName: "",
+          name: "打放型枠",
+          descriptionUpper:
+            "1テスト用摘要上 30文字超え① 30文字超え② 30文字超え③ 30文字超え④",
+          descriptionLower:
+            "1テスト用摘要下 30文字超えA 30文字超えB 30文字超えC 30文字超えD",
+          quantity: 100,
+          unit: "m2",
+        }),
+        item({
+          id: 2,
+          masterKey: "description",
+          subjectId: 2,
+          partName: "",
+          name: "",
+          descriptionUpper,
+          descriptionLower,
+          quantity: 0,
+          unit: "",
+        }),
+        item({
+          id: 3,
+          masterKey: "title",
+          subjectId: 2,
+          partName: "",
+          name: "テストタイトル",
+          descriptionUpper: "",
+          descriptionLower: "",
+          quantity: 0,
+          unit: "",
+        }),
+      ],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        descriptionWidth: 30,
+      },
+    );
+    const descriptionRows = rows.filter(
+      (row) => row.aggregateItemId === 2 && row.wrap !== "fill",
+    );
+    expect(descriptionRows.map((row) => row.descriptionLower)).toEqual([
+      ...splitDescription(descriptionUpper, 30).map((chunk) => chunk.text),
+      ...splitDescription(descriptionLower, 30).map((chunk) => chunk.text),
+    ]);
+    expect(descriptionRows.map((row) => row.wrap)).toEqual([
+      "keepUpper",
+      "upper",
+      "upper",
+      "lower",
+      "lower",
+    ]);
+    expect(descriptionRows[0].remarksLower).toBe("上段備考");
+    expect(descriptionRows[3].remarksLower).toBe("下段備考");
+    const titleIndex = rows.findIndex((row) => row.aggregateItemId === 3);
+    const blockRows = rows.slice(1, titleIndex);
+    const fills = blockRows.filter((row) => row.wrap === "fill");
+    expect(fills.length).toBeLessThanOrEqual(1);
+    expect((blockRows.length - fills.length) % 2).toBe(0);
+    if (fills.length === 1) {
+      expect(blockRows.at(-1)?.wrap).toBe("fill");
+      expect(fills[0].aggregateItemId).toBe(2);
+      expect(rows[titleIndex].aggregateItemId).toBe(3);
+    }
+    expect(
+      rows
+        .filter((row) => row.aggregateItemId === 3)
+        .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
+    ).toEqual([
+      ["note", "", undefined],
+      ["detail", "", undefined],
     ]);
   });
 
@@ -258,6 +348,10 @@ describe("摘要の文字幅と折り返し", () => {
           masterKey: "description-1",
           descriptionUpper: "X",
           descriptionLower: "",
+          name: "",
+          partName: "",
+          remarksUpper: "",
+          remarksLower: "",
           unit: "",
         }),
         item({
@@ -265,6 +359,10 @@ describe("摘要の文字幅と折り返し", () => {
           masterKey: "description-2",
           descriptionUpper: "YZ",
           descriptionLower: "",
+          name: "",
+          partName: "",
+          remarksUpper: "",
+          remarksLower: "",
           unit: "",
         }),
       ],
@@ -280,20 +378,16 @@ describe("摘要の文字幅と折り返し", () => {
       details
         .filter((row) => row.aggregateItemId === 2)
         .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
-    ).toEqual([
-      ["detail", "X", "pair"],
-      ["note", "", "pair"],
-    ]);
+    ).toEqual([["detail", "X", "keepUpper"]]);
     expect(
       details
         .filter((row) => row.aggregateItemId === 3)
         .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
     ).toEqual([
-      ["detail", "Y", "pair"],
-      ["note", "Z", "upper"],
-      ["detail", "", "fill"],
+      ["note", "Y", "keepUpper"],
+      ["detail", "Z", "upper"],
     ]);
-    expect(details.filter((row) => row.wrap === "fill")).toHaveLength(1);
+    expect(details.filter((row) => row.wrap === "fill")).toHaveLength(0);
   });
 
   it("折り返した数量明細の後にずれた説明明細をwidth 0で元に戻す", () => {
@@ -309,6 +403,10 @@ describe("摘要の文字幅と折り返し", () => {
         masterKey: "description",
         descriptionUpper: "F",
         descriptionLower: "",
+        name: "",
+        partName: "",
+        remarksUpper: "",
+        remarksLower: "",
         unit: "",
       }),
     ];
@@ -325,11 +423,136 @@ describe("摘要の文字幅と折り返し", () => {
       wrapped
         .filter((row) => row.aggregateItemId === 2)
         .map((row) => [row.rowKind, row.descriptionLower, row.wrap]),
-    ).toEqual([
-      ["detail", "F", "pair"],
-      ["note", "", "pair"],
-      ["detail", "", "fill"],
-    ]);
+    ).toEqual([["detail", "F", "keepUpper"]]);
+    expect(unwrapBreakdownRows(wrapped)).toEqual(original);
+    expect(
+      relayoutBreakdownRows(wrapped, {
+        layout: BREAKDOWN_LAYOUT.twoRow,
+        namePattern: NAME_PATTERN.asIs,
+        descriptionWidth: 0,
+      }),
+    ).toEqual(original);
+  });
+
+  it("下段だけの説明明細は空行を作らず先頭をkeepLowerで残す", () => {
+    const lower = "下段の説明明細 30文字超えA 30文字超えB 30文字超えC";
+    const source = [
+      item({
+        id: 1,
+        masterKey: "quantity",
+        descriptionUpper: "ABCDEFGHIJK",
+        descriptionLower: "Q",
+      }),
+      item({
+        id: 2,
+        masterKey: "description",
+        descriptionUpper: "",
+        descriptionLower: lower,
+        quantity: 0,
+        unit: "",
+        name: "",
+        partName: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+    ];
+    const original = buildBreakdownRows(source, subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+    });
+    const rowsWithZeroQuantity = original.map((row) =>
+      row.aggregateItemId === 2 && row.rowKind === "detail"
+        ? { ...row, quantity: 0 }
+        : row,
+    );
+    const rows = relayoutBreakdownRows(rowsWithZeroQuantity, {
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      namePattern: NAME_PATTERN.asIs,
+      descriptionWidth: 10,
+    });
+    const descriptionRows = rows.filter(
+      (row) => row.aggregateItemId === 2 && row.wrap !== "fill",
+    );
+    expect(descriptionRows.map((row) => row.descriptionLower)).toEqual(
+      splitDescription(lower, 10).map((chunk) => chunk.text),
+    );
+    expect(descriptionRows[0].wrap).toBe("keepLower");
+    expect(descriptionRows.slice(1).every((row) => row.wrap === "lower")).toBe(
+      true,
+    );
+    expect(descriptionRows.every((row) => row.descriptionLower !== "")).toBe(
+      true,
+    );
+  });
+
+  it("legacy pair marker remains readable when restoring a shifted unit", () => {
+    const original = buildBreakdownRows(
+      [
+        item({
+          id: 2,
+          masterKey: "description",
+          descriptionUpper: "F",
+          descriptionLower: "",
+          name: "",
+          partName: "",
+          unit: "",
+        }),
+      ],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.twoRow,
+      },
+    );
+    const legacy = [
+      original[0],
+      ...original.slice(1).map((row, index) => ({
+        ...row,
+        rowKind: index === 0 ? "detail" : "note",
+        wrap: "pair" as const,
+        wrapGlue: "",
+      })),
+    ];
+    expect(unwrapBreakdownRows(legacy)).toEqual(original);
+  });
+
+  it("上下段を持つ説明明細を幅0へ戻すと元の2行へ復元する", () => {
+    const source = [
+      item({
+        id: 1,
+        masterKey: "quantity",
+        subjectId: 2,
+        partName: "",
+        name: "打放型枠",
+        descriptionUpper:
+          "1テスト用摘要上 30文字超え① 30文字超え② 30文字超え③ 30文字超え④",
+        descriptionLower:
+          "1テスト用摘要下 30文字超えA 30文字超えB 30文字超えC 30文字超えD",
+        quantity: 100,
+        unit: "m2",
+      }),
+      item({
+        id: 2,
+        masterKey: "description",
+        subjectId: 2,
+        partName: "",
+        name: "",
+        descriptionUpper:
+          "1テスト用摘要上 30文字超え⑤ 30文字超え⑥ 30文字超え⑦ 30文字超え⑧",
+        descriptionLower: "1テスト用摘要上 30文字超え⑨ 30文字超え⑩",
+        quantity: 0,
+        unit: "",
+      }),
+    ];
+    const original = buildBreakdownRows(source, subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+    });
+    const wrapped = buildBreakdownRows(source, subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      descriptionWidth: 30,
+    });
     expect(unwrapBreakdownRows(wrapped)).toEqual(original);
     expect(
       relayoutBreakdownRows(wrapped, {
@@ -354,6 +577,8 @@ describe("摘要の文字幅と折り返し", () => {
           masterKey: "description",
           descriptionUpper: "F",
           descriptionLower: "",
+          name: "",
+          partName: "",
           unit: "",
         }),
         item({
@@ -395,6 +620,10 @@ describe("摘要の文字幅と折り返し", () => {
         masterKey: "description",
         descriptionUpper: "R",
         descriptionLower: "",
+        name: "",
+        partName: "",
+        remarksUpper: "",
+        remarksLower: "",
         unit: "",
       }),
     ];
@@ -412,7 +641,7 @@ describe("摘要の文字幅と折り返し", () => {
       namePattern: NAME_PATTERN.asIs,
       descriptionWidth: 10,
     });
-    expect(width10.some((row) => row.wrap === "pair")).toBe(true);
+    expect(width10.some((row) => row.wrap === "keepUpper")).toBe(true);
     expect(
       relayoutBreakdownRows(width10, {
         layout: BREAKDOWN_LAYOUT.twoRow,
@@ -471,6 +700,10 @@ describe("摘要の文字幅と折り返し", () => {
               masterKey: "description",
               descriptionUpper: "F",
               descriptionLower: "",
+              name: "",
+              partName: "",
+              remarksUpper: "",
+              remarksLower: "",
               unit: "",
             }),
           ],
@@ -483,9 +716,8 @@ describe("摘要の文字幅と折り返し", () => {
       },
     );
     const details = rows.slice(1);
-    expect(details.filter((row) => row.wrap === "fill")).toHaveLength(1);
-    expect(details.at(-1)?.wrap).toBe("fill");
-    expect(details.some((row) => row.wrap === "pair")).toBe(true);
+    expect(details.filter((row) => row.wrap === "fill")).toHaveLength(0);
+    expect(details.some((row) => row.wrap === "keepUpper")).toBe(true);
   });
 
   it("折り返しを解除して原文へ戻し、幅変更で再分割する", () => {

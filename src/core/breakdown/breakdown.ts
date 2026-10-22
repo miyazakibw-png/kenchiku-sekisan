@@ -148,7 +148,14 @@ export interface BreakdownRow {
   struck?: number;
   /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
   subtotal?: boolean;
-  wrap?: "" | "upper" | "lower" | "fill" | "pair";
+  wrap?:
+    | ""
+    | "upper"
+    | "lower"
+    | "fill"
+    | "pair"
+    | "keepUpper"
+    | "keepLower";
   wrapGlue?: string;
 }
 
@@ -597,7 +604,7 @@ export function buildBreakdownRows(
   });
   return settings.layout === BREAKDOWN_LAYOUT.twoRow &&
     settings.descriptionWidth > 0
-    ? compactWrapBlocks(rows)
+    ? compactWrapBlocks(rows, settings.descriptionWidth)
     : rows;
 }
 
@@ -634,7 +641,7 @@ export function buildGroupedBreakdownRows(
   });
   return settings.layout === BREAKDOWN_LAYOUT.twoRow &&
     settings.descriptionWidth > 0
-    ? compactWrapBlocks(rows)
+    ? compactWrapBlocks(rows, settings.descriptionWidth)
     : rows;
 }
 
@@ -907,6 +914,7 @@ function detailUnitKey(row: BreakdownRow): string | null {
 
 function compactWrapBlocks<T extends BreakdownRowLike>(
   rows: readonly T[],
+  descriptionWidth: number,
 ): T[] {
   const output: T[] = [];
   const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
@@ -918,7 +926,94 @@ function compactWrapBlocks<T extends BreakdownRowLike>(
   const hasWrap = (row: BreakdownRow): boolean =>
     row.wrap !== undefined && row.wrap !== "";
   const hasQuantity = (unitRows: readonly T[]): boolean =>
-    unitRows.some((row) => row.unit !== "" || row.quantity !== null);
+    unitRows.some(
+      (row) =>
+        row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
+    );
+  const isDescriptionOnly = (unitRows: readonly T[]): boolean =>
+    !hasQuantity(unitRows) &&
+    unitRows.every((row) => row.nameUpper === "" && row.nameLower === "");
+  const rebuildDescriptionOnlyUnit = (unitRows: readonly T[]): T[] => {
+    const original = unwrapBreakdownRows(unitRows);
+    const upper = original[0];
+    const lower = original[1];
+    if (upper === undefined || lower === undefined) return [];
+
+    const upperChunks =
+      upper.descriptionLower === ""
+        ? []
+        : splitDescription(upper.descriptionLower, descriptionWidth);
+    const lowerChunks =
+      lower.descriptionLower === ""
+        ? []
+        : splitDescription(lower.descriptionLower, descriptionWidth);
+    const rebuilt: T[] = [];
+    const appendChunk = (
+      template: T,
+      chunk: { text: string; glue: string },
+      rowKind: "note" | "detail",
+      wrap: "upper" | "lower" | "keepUpper" | "keepLower",
+      remarksLower: string,
+    ): void => {
+      rebuilt.push(
+        {
+          ...template,
+          rowKind,
+          descriptionLower: chunk.text,
+          quantity: null,
+          unit: "",
+          unitPrice: null,
+          amount: null,
+          remarksLower,
+          wrap,
+          wrapGlue: chunk.glue,
+        } as T,
+      );
+    };
+
+    upperChunks.forEach((chunk, index) => {
+      appendChunk(
+        upper,
+        chunk,
+        "note",
+        index === 0 ? "keepUpper" : "upper",
+        index === 0 ? upper.remarksLower : "",
+      );
+    });
+    if (upperChunks.length === 0 && upper.remarksLower !== "") {
+      appendChunk(
+        upper,
+        { text: "", glue: "" },
+        "note",
+        "keepUpper",
+        upper.remarksLower,
+      );
+    }
+
+    lowerChunks.forEach((chunk, index) => {
+      appendChunk(
+        lower,
+        chunk,
+        "detail",
+        index === 0
+          ? upperChunks.length <= 1
+            ? "keepLower"
+            : "lower"
+          : "lower",
+        index === 0 ? lower.remarksLower : "",
+      );
+    });
+    if (lowerChunks.length === 0 && lower.remarksLower !== "") {
+      appendChunk(
+        lower,
+        { text: "", glue: "" },
+        "detail",
+        "keepLower",
+        lower.remarksLower,
+      );
+    }
+    return rebuilt;
+  };
 
   let index = 0;
   while (index < rows.length) {
@@ -946,7 +1041,7 @@ function compactWrapBlocks<T extends BreakdownRowLike>(
       const nextUnit = rows.slice(end, nextEnd);
       if (
         nextUnit[0].subjectId !== firstUnit[0].subjectId ||
-        hasQuantity(nextUnit)
+        !isDescriptionOnly(nextUnit)
       ) {
         break;
       }
@@ -962,20 +1057,17 @@ function compactWrapBlocks<T extends BreakdownRowLike>(
     }
 
     let offset = 0;
-    const compacted = units.flatMap((unitRows, unitIndex) =>
-      unitRows
+    const compacted = units.flatMap((unitRows, unitIndex) => {
+      const compactedUnit =
+        unitIndex === 0 ? unitRows : rebuildDescriptionOnlyUnit(unitRows);
+      return compactedUnit
         .filter((row) => row.wrap !== "fill")
         .map((row) => {
           const rowKind = offset % 2 === 0 ? "note" : "detail";
-          const shifted = row.rowKind !== rowKind;
           offset += 1;
-          const next = { ...row, rowKind } as T;
-          if (unitIndex > 0 && shifted && !hasWrap(row as BreakdownRow)) {
-            return { ...next, wrap: "pair", wrapGlue: "" } as T;
-          }
-          return next;
-        }),
-    );
+          return { ...row, rowKind } as T;
+        });
+    });
 
     if (compacted.length % 2 === 1) {
       const lastUnit = units[units.length - 1];
@@ -1096,7 +1188,7 @@ export function relayoutBreakdownRows<T extends BreakdownRowLike>(
   }
   return settings.layout === BREAKDOWN_LAYOUT.twoRow &&
     (settings.descriptionWidth ?? 0) > 0
-    ? compactWrapBlocks(output)
+    ? compactWrapBlocks(output, settings.descriptionWidth ?? 0)
     : output;
 }
 
@@ -1113,6 +1205,22 @@ export function unwrapBreakdownRows<T extends BreakdownRowLike>(
   const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
   const hasWrap = (row: BreakdownRow): boolean =>
     row.wrap !== undefined && row.wrap !== "";
+  const clearWrap = (
+    row: T,
+    descriptionLower: string,
+    rowKind: "note" | "detail",
+    remarksLower = row.remarksLower,
+  ): T => {
+    const copy = {
+      ...row,
+      descriptionLower,
+      remarksLower,
+      rowKind,
+    } as Record<string, unknown>;
+    delete copy.wrap;
+    delete copy.wrapGlue;
+    return copy as T;
+  };
   let index = 0;
   while (index < rows.length) {
     const key = detailUnitKey(rowAt(index));
@@ -1129,6 +1237,43 @@ export function unwrapBreakdownRows<T extends BreakdownRowLike>(
     }
 
     const group = rows.slice(index, end);
+    const upperChunks = group.filter(
+      (row) => row.wrap === "keepUpper" || row.wrap === "upper",
+    );
+    const lowerChunks = group.filter(
+      (row) => row.wrap === "keepLower" || row.wrap === "lower",
+    );
+    if (
+      group.some(
+        (row) => row.wrap === "keepUpper" || row.wrap === "keepLower",
+      )
+    ) {
+      const joinChunks = (chunks: readonly T[]): string =>
+        chunks
+          .map(
+            (row) =>
+              `${(row as BreakdownRow).wrapGlue ?? ""}${row.descriptionLower}`,
+          )
+          .join("");
+      const upperTemplate = upperChunks[0] ?? group[0];
+      const lowerTemplate = lowerChunks[0] ?? group[0];
+      output.push(
+        clearWrap(
+          upperTemplate,
+          joinChunks(upperChunks),
+          "note",
+          upperChunks[0]?.remarksLower ?? "",
+        ),
+        clearWrap(
+          lowerTemplate,
+          joinChunks(lowerChunks),
+          "detail",
+          lowerChunks[0]?.remarksLower ?? "",
+        ),
+      );
+      index = end;
+      continue;
+    }
     if (
       group.length < 2 ||
       !group.some((row) => hasWrap(row as BreakdownRow))
@@ -1156,20 +1301,6 @@ export function unwrapBreakdownRows<T extends BreakdownRowLike>(
         .filter((row) => row.wrap === "lower")
         .map((row) => `${row.wrapGlue ?? ""}${row.descriptionLower}`)
         .join("");
-    const clearWrap = (
-      row: T,
-      descriptionLower: string,
-      rowKind: "note" | "detail",
-    ): T => {
-      const copy = {
-        ...row,
-        descriptionLower,
-        rowKind,
-      } as Record<string, unknown>;
-      delete copy.wrap;
-      delete copy.wrapGlue;
-      return copy as T;
-    };
     output.push(
       clearWrap(group[0], restoredUpper, "note"),
       clearWrap(group[1], restoredLower, "detail"),
