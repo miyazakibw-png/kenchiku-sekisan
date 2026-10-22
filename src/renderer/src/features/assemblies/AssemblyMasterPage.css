@@ -77,6 +77,15 @@
   background: var(--selected, #eaf1fb);
 }
 
+.assembly-list tbody.detail-group.banded td {
+  background-color: inherit;
+}
+
+.assembly-list tbody.detail-group.banded.selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
 .assembly-page .note-row td {
   background: #e8f6e8;
 }

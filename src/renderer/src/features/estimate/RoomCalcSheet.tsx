@@ -15,6 +15,7 @@ import type {
 } from "@shared/types";
 import { resolveMasterName } from "@shared/masters";
 import { pickMaster, resolvePartNumberInput } from "./partNumberInput";
+import { BANNER_COLORS, assemblyBandColor } from "./bannerColors";
 import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
 import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
 import {
@@ -150,18 +151,6 @@ function cellPositionFrom(target: EventTarget): CellPosition | null {
   const col = Number(target.dataset.col);
   return Number.isFinite(row) && Number.isFinite(col) ? { row, col } : null;
 }
-
-/** コメント行（※行挿入）で選べる色 */
-const BANNER_COLORS: { label: string; color: string }[] = [
-  { label: "緑", color: "#dcfce7" },
-  { label: "桃", color: "#fce7f3" },
-  { label: "青", color: "#dbeafe" },
-  { label: "黄", color: "#fef9c3" },
-  { label: "橙", color: "#ffedd5" },
-  { label: "灰", color: "#e2e8f0" },
-  { label: "紫", color: "#ede9fe" },
-  { label: "水", color: "#cffafe" },
-];
 
 /**
  * 摘要の欄。マスターの○○面・○○下は、欄を離れている間は置き換わった文字（上下の行の積算用表示＋面・下）で見せ、
@@ -3175,6 +3164,7 @@ export default function RoomCalcSheet({
                   ? assemblyGroups.map((group) => {
                       const assembly = group.list[0];
                       const head = assemblyHead(assembly.items);
+                      const band = assemblyBandColor(head?.partNumber);
                       // 同じ通常明細のセットが複数あるときだけ、中身を見て選ぶ
                       const pick = (): void => {
                         if (group.list.length === 1) callAssembly(assembly);
@@ -3183,6 +3173,8 @@ export default function RoomCalcSheet({
                       return (
                         <tr
                           key={group.key}
+                          className={band ? "banded" : undefined}
+                          style={band ? { backgroundColor: band } : undefined}
                           tabIndex={0}
                           onDoubleClick={pick}
                           onKeyDown={(e) => {
@@ -3270,7 +3262,11 @@ export default function RoomCalcSheet({
                 </button>
               </div>
               <div className="assembly-pick-scroll">
-                {pickGroup.map((assembly, groupIndex) => (
+                {pickGroup.map((assembly, groupIndex) => {
+                  const band = assemblyBandColor(
+                    assemblyHead(assembly.items)?.partNumber,
+                  );
+                  return (
                   <table
                     className="call-table pick"
                     key={`${assembly.scope}-${assembly.id}`}
@@ -3310,7 +3306,8 @@ export default function RoomCalcSheet({
                       {assembly.items.map((item, itemIndex) => (
                         <tr
                           key={`${assembly.id}-${itemIndex}`}
-                          className={item.note === true ? "note-row" : ""}
+                          className={`${item.note === true ? "note-row" : band ? "banded" : ""}`}
+                          style={item.note !== true && band ? { backgroundColor: band } : undefined}
                           tabIndex={0}
                           onDoubleClick={() => {
                             callAssembly(assembly);
@@ -3349,7 +3346,8 @@ export default function RoomCalcSheet({
                       ))}
                     </tbody>
                   </table>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

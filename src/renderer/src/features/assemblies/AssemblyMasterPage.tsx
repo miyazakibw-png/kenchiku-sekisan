@@ -31,6 +31,7 @@ import {
 import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
+import { assemblyBandColor } from "../estimate/bannerColors";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -410,6 +411,7 @@ export default function AssemblyMasterPage({
                 const assembly = group.list[0];
                 const head = headItem(assembly);
                 if (!head) return null;
+                const band = assemblyBandColor(head.partNumber);
                 // 同じ行のセットが複数あるときだけ、中身を見て選ぶ
                 const open = (): void => {
                   if (group.list.length === 1) void openEditor(assembly);
@@ -418,7 +420,8 @@ export default function AssemblyMasterPage({
                 return (
                   <tbody
                     key={group.key}
-                    className={`detail-group ${group.list.some((a) => a.id === selectedId) ? "selected" : ""}`}
+                    className={`detail-group ${band ? "banded" : ""} ${group.list.some((a) => a.id === selectedId) ? "selected" : ""}`}
+                    style={band ? { backgroundColor: band } : undefined}
                     tabIndex={0}
                     onClick={() => setSelectedId(assembly.id)}
                     onDoubleClick={open}
@@ -783,6 +786,10 @@ export default function AssemblyMasterPage({
                     </tr>
                   </thead>
                   {assembly.items.map((item, itemIndex) => {
+                    const band =
+                      item.note === true
+                        ? null
+                        : assemblyBandColor(headItem(assembly)?.partNumber);
                     const open = (): void => {
                       setChooser([]);
                       void openEditor(assembly);
@@ -791,7 +798,8 @@ export default function AssemblyMasterPage({
                       // 一覧と同じ1明細2行の見た目にする（セットが2種類以上でも崩さない）
                       <tbody
                         key={`${assembly.id}-${itemIndex}`}
-                        className={`detail-group ${item.note === true ? "note-row" : ""}`}
+                        className={`detail-group ${item.note === true ? "note-row " : ""}${band ? "banded" : ""}`}
+                        style={band ? { backgroundColor: band } : undefined}
                         tabIndex={0}
                         onDoubleClick={open}
                         onKeyDown={(e) => {
