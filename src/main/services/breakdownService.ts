@@ -458,6 +458,11 @@ export function transferBreakdown(
         struck: 0,
         wrap: row.wrap ?? "",
         wrapGlue: row.wrapGlue ?? "",
+        wrapUpper: row.wrapUpper ?? "",
+        wrapGlueUpper: row.wrapGlueUpper ?? "",
+        wrapUpperSource: row.wrapUpperSource ?? "",
+        wrapOrder: row.wrapOrder ?? 0,
+        wrapOrderUpper: row.wrapOrderUpper ?? 0,
       })
       .run();
   });
@@ -498,6 +503,11 @@ export function saveBreakdownRows(
         struck: row.struck,
         wrap: row.wrap ?? "",
         wrapGlue: row.wrapGlue ?? "",
+        wrapUpper: row.wrapUpper ?? "",
+        wrapGlueUpper: row.wrapGlueUpper ?? "",
+        wrapUpperSource: row.wrapUpperSource ?? "",
+        wrapOrder: row.wrapOrder ?? 0,
+        wrapOrderUpper: row.wrapOrderUpper ?? 0,
       })
       .run();
   });

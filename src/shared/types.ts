@@ -1023,6 +1023,11 @@ export interface BreakdownRowRecord {
   remarksLower: string;
   wrap?: string;
   wrapGlue?: string;
+  wrapUpper?: string;
+  wrapGlueUpper?: string;
+  wrapUpperSource?: string;
+  wrapOrder?: number;
+  wrapOrderUpper?: number;
   /** 取り消し線（1＝この明細は無いものとして比較に出す） */
   struck: number;
 }

@@ -992,6 +992,11 @@ export const projectBreakdownRows = sqliteTable(
     struck: integer("struck").notNull().default(0),
     wrap: text("wrap").notNull().default(""),
     wrapGlue: text("wrap_glue").notNull().default(""),
+    wrapUpper: text("wrap_upper").notNull().default(""),
+    wrapGlueUpper: text("wrap_glue_upper").notNull().default(""),
+    wrapUpperSource: text("wrap_upper_source").notNull().default(""),
+    wrapOrder: integer("wrap_order").notNull().default(0),
+    wrapOrderUpper: integer("wrap_order_upper").notNull().default(0),
   },
   (t) => ({
     versionIdx: index("idx_breakdown_rows_version").on(

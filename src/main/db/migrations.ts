@@ -1104,4 +1104,12 @@ ALTER TABLE project_breakdown_settings ADD COLUMN description_width INTEGER NOT 
 ALTER TABLE project_breakdown_rows ADD COLUMN wrap TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_breakdown_rows ADD COLUMN wrap_glue TEXT NOT NULL DEFAULT '';
 `,
+  // 内訳書の上段摘要と折り返し元情報（書式①のレイアウト復元用）
+  `
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_upper TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_glue_upper TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_upper_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_order INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_breakdown_rows ADD COLUMN wrap_order_upper INTEGER NOT NULL DEFAULT 0;
+`,
 ];

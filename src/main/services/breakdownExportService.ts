@@ -59,6 +59,19 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
         ? row.wrap
         : "",
     wrapGlue: row.wrapGlue,
+    wrapUpper:
+      row.wrapUpper === "upper" ||
+      row.wrapUpper === "lower" ||
+      row.wrapUpper === "fill" ||
+      row.wrapUpper === "pair" ||
+      row.wrapUpper === "keepUpper" ||
+      row.wrapUpper === "keepLower"
+        ? row.wrapUpper
+        : "",
+    wrapGlueUpper: row.wrapGlueUpper,
+    wrapUpperSource: row.wrapUpperSource,
+    wrapOrder: row.wrapOrder,
+    wrapOrderUpper: row.wrapOrderUpper,
   };
 }
 

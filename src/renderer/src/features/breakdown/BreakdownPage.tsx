@@ -266,6 +266,8 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   const compareScrollRef = useRef<HTMLDivElement | null>(null);
   const [panel, setPanel] = useState<"none" | "settings" | "compare">("none");
   const [message, setMessage] = useState("");
+  const [descriptionWidthDraft, setDescriptionWidthDraft] = useState("0");
+  const [savingDescriptionWidth, setSavingDescriptionWidth] = useState(false);
   const [leftRows, setLeftRows] = useState<BreakdownRowRecord[]>([]);
   const [rightRows, setRightRows] = useState<BreakdownRowRecord[]>([]);
   const [compareTarget, setCompareTarget] = useState<number | null>(null);
@@ -328,6 +330,14 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   }, [reload]);
 
   const settings = view.settings;
+  const parsedDescriptionWidth = Number(descriptionWidthDraft);
+  const normalizedDescriptionWidth =
+    Number.isFinite(parsedDescriptionWidth) && parsedDescriptionWidth >= 0
+      ? parsedDescriptionWidth
+      : 0;
+  useEffect(() => {
+    setDescriptionWidthDraft(String(settings.descriptionWidth));
+  }, [settings.descriptionWidth, view.version?.id]);
   const unitList = useMemo(
     () => unitsOf(settings, view.rows),
     [settings, view.rows],
@@ -413,6 +423,18 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
       }
     } else {
       setView((current) => ({ ...current, settings: saved }));
+    }
+  };
+
+  const applyDescriptionWidth = async (): Promise<void> => {
+    const descriptionWidth = normalizedDescriptionWidth;
+    if (descriptionWidth === settings.descriptionWidth || savingDescriptionWidth)
+      return;
+    setSavingDescriptionWidth(true);
+    try {
+      await saveSettings({ descriptionWidth });
+    } finally {
+      setSavingDescriptionWidth(false);
     }
   };
 
@@ -1036,6 +1058,34 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
         <button type="button" onClick={() => void exportFile("excelBySubject")}>
           Excel（科目別）
         </button>
+        <label className="description-width-control">
+          摘要の文字数
+          <input
+            type="number"
+            min={0}
+            value={descriptionWidthDraft}
+            onChange={(e) => setDescriptionWidthDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void applyDescriptionWidth();
+              }
+            }}
+          />
+          <span title="全角2・半角1。0で分けない">
+            （全角2・半角1。0で分けない）
+          </span>
+          <button
+            type="button"
+            onClick={() => void applyDescriptionWidth()}
+            disabled={
+              savingDescriptionWidth ||
+              normalizedDescriptionWidth === settings.descriptionWidth
+            }
+          >
+            変換
+          </button>
+        </label>
         <button
           type="button"
           onClick={() => setPanel(panel === "settings" ? "none" : "settings")}
@@ -1105,18 +1155,6 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               <option value={NAME_PATTERN.withPartColon}>部位:名称</option>
               <option value={NAME_PATTERN.withPartFullColon}>部位：名称</option>
             </select>
-          </label>
-          <label>
-            摘要の文字数
-            <input
-              type="number"
-              min={0}
-              value={settings.descriptionWidth}
-              onChange={(e) =>
-                void saveSettings({ descriptionWidth: Number(e.target.value) })
-              }
-            />
-            （全角2・半角1。0で分けない・④2段2行のとき）
           </label>
           <label>
             名称
@@ -1701,7 +1739,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                         </div>
                       </td>
                       <td>
-                        <div className="upper">
+                        <div
+                          className={`upper${row.wrapUpper === "upper" || row.wrapUpper === "lower" ? " wrapped" : ""}`}
+                        >
                           <TextInput
                             value={row.descriptionUpper}
                             onCommit={(value) =>
@@ -1709,7 +1749,9 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                             }
                           />
                         </div>
-                        <div className="lower">
+                        <div
+                          className={`lower${row.wrap === "upper" || row.wrap === "lower" ? " wrapped" : ""}`}
+                        >
                           <TextInput
                             value={row.descriptionLower}
                             onCommit={(value) =>

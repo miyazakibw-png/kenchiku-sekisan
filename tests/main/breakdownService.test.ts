@@ -281,6 +281,56 @@ describe("内訳書", () => {
     expect(lowerCapped.descriptionWidth).toBe(0);
   });
 
+  it("書式①の上段折り返し情報を保存し、各Excel出力へ渡す", () => {
+    const settings = saveBreakdownSettings(db, {
+      ...getBreakdown(db, projectId).settings,
+      layout: BREAKDOWN_LAYOUT.twoLine,
+      descriptionWidth: 1,
+    });
+    const view = transferBreakdown(db, projectId);
+    expect(
+      view.rows.some(
+        (row) =>
+          row.wrapUpper === "upper" ||
+          row.wrapUpper === "lower" ||
+          row.wrapUpper === "keepUpper" ||
+          row.wrapUpper === "keepLower",
+      ),
+    ).toBe(true);
+    const savedRows = saveBreakdownRows(
+      db,
+      view.version?.id ?? 0,
+      view.rows,
+    );
+    expect(
+      savedRows.some(
+        (row) =>
+          row.wrapUpper === "upper" ||
+          row.wrapUpper === "lower" ||
+          row.wrapUpper === "keepUpper" ||
+          row.wrapUpper === "keepLower",
+      ),
+    ).toBe(true);
+    expect(savedRows.some((row) => (row.wrapOrder ?? 0) > 0)).toBe(true);
+    expect(savedRows.some((row) => (row.wrapOrderUpper ?? 0) > 0)).toBe(true);
+    (["excelAll", "excelBySubject"] as const).forEach((kind) => {
+      expect(
+        buildExport(kind, savedRows, settings, "港区計画").content
+          .subarray(0, 2)
+          .toString("latin1"),
+      ).toBe("PK");
+    });
+    expect(
+      buildExport("excelCompare", savedRows, settings, "港区計画", {
+        rows: savedRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content
+        .subarray(0, 2)
+        .toString("latin1"),
+    ).toBe("PK");
+  });
+
   it("BCS.CSVはShift_JISで、エクセルは科目ごとのシートで掃き出す", () => {
     const view = transferBreakdown(db, projectId);
     const bcs = buildExport("bcs", view.rows, view.settings, "港区計画");

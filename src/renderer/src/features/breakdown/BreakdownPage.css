@@ -131,7 +131,7 @@
   outline: 1px solid #4a90d9;
 }
 
-.breakdown-page table.breakdown td.wrapped input {
+.breakdown-page table.breakdown .wrapped input {
   color: #c2410c;
 }
 
@@ -194,6 +194,21 @@
 
 .breakdown-page .breakdown-settings input[type="number"] {
   width: 60px;
+}
+
+.breakdown-page .description-width-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.breakdown-page .description-width-control input[type="number"] {
+  width: 54px;
+}
+
+.breakdown-page .description-width-control span {
+  font-size: 11px;
 }
 
 .breakdown-page .breakdown-settings .rule input {
@@ -325,7 +340,7 @@
 }
 
 @media print {
-  .breakdown-page table.breakdown td.wrapped input {
+  .breakdown-page table.breakdown .wrapped input {
     color: inherit;
   }
 }
