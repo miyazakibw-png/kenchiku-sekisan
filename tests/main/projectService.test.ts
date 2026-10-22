@@ -78,6 +78,7 @@ describe("物件管理台帳", () => {
       builderName: "○○建設",
       designerName: "△△設計",
       note: "メモ",
+      pinned: false,
       fieldValues: {},
       marks: [],
     });
@@ -112,10 +113,29 @@ describe("物件管理台帳", () => {
       items: [item(db, "ビニル床シート")],
     });
 
+    // 耐火被覆まわり（鉄骨リスト・伏図・入力表）も一緒に写る
+    db.insert(schema.projectFireproofSheets)
+      .values({
+        projectId: source.id,
+        floorCount: 2,
+        columnsJson: '{"floors":[]}',
+        drawingJson: '{"floors":{"1":{}}}',
+      })
+      .run();
+
     const copied = copyProject(db, source.id, "A工事（コピー）");
 
     expect(copied.managementNo).not.toBe(source.managementNo);
     expect(copied.name).toBe("A工事（コピー）");
+
+    const fireproof = db
+      .select()
+      .from(schema.projectFireproofSheets)
+      .all()
+      .filter((row) => row.projectId === copied.id);
+    expect(fireproof).toHaveLength(1);
+    expect(fireproof[0].floorCount).toBe(2);
+    expect(fireproof[0].drawingJson).toBe('{"floors":{"1":{}}}');
 
     const sourceAssemblies = db
       .select()
@@ -145,6 +165,7 @@ describe("物件管理台帳", () => {
       builderName: "",
       designerName: "",
       note: "",
+      pinned: false,
       fieldValues: { [fields[0].id]: "宮崎" },
       marks: [],
     });

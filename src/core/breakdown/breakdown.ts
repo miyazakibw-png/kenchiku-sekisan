@@ -22,11 +22,44 @@ export const NAME_PATTERN = {
   asIs: 1,
   /** 部位＋半角スペース＋名称 */
   withPart: 2,
+  /** 部位＋半角「：」＋名称 */
+  withPartColon: 3,
+  /** 部位＋全角「：」＋名称 */
+  withPartFullColon: 4,
 } as const;
+
+/**
+ * 名称欄の設定どおりに部位と名称をつなぐ。
+ * 「そのまま」のときは null（つなげず上下に分けて出す）。
+ */
+function joinPartAndName(
+  partName: string,
+  name: string,
+  namePattern: number,
+): string | null {
+  const separator =
+    namePattern === NAME_PATTERN.withPart
+      ? " "
+      : namePattern === NAME_PATTERN.withPartColon
+        ? ":"
+        : namePattern === NAME_PATTERN.withPartFullColon
+          ? "："
+          : null;
+  if (separator === null) return null;
+  return partName === "" ? name : `${partName}${separator}${name}`.trim();
+}
 
 export interface TextReplacement {
   from: string;
   to: string;
+}
+
+/** 基本部位のタイトル行（部位番号が「始まり」以上の範囲の前へ出す文字） */
+export interface PartTitle {
+  /** 範囲の始まりの部位番号（次の始まり未満までがこの範囲） */
+  from: number;
+  /** 出す文字（「＜床＞」のようにそのまま出る） */
+  title: string;
 }
 
 export interface BreakdownSettings {
@@ -34,6 +67,8 @@ export interface BreakdownSettings {
   namePattern: number;
   /** 名称（下段）の文字幅 half:半角 full:全角 raw:そのまま */
   nameWidth: string;
+  /** 摘要を折り返す文字幅（全角2・半角1。0は折り返さない） */
+  descriptionWidth: number;
   /** 数量の丸め：閾値1以上→桁数1、閾値2以上→桁数2、それ未満→桁数3 */
   roundThreshold1: number;
   roundDecimals1: number;
@@ -48,6 +83,10 @@ export interface BreakdownSettings {
   unitOrder: string[];
   /** 単位の置き換え（変更後が空なら集計書の単位のまま） */
   unitReplacements: TextReplacement[];
+  /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
+  partTitlesOn: boolean;
+  /** 基本部位のタイトル行（部位番号の範囲→出す文字。空なら出さない） */
+  partTitles: PartTitle[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */
   detailsPerPage: number;
   /** エクセル掃き出し：2ページ目以降の明細数（タイトル行が無い分） */
@@ -58,6 +97,7 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   layout: BREAKDOWN_LAYOUT.twoLine,
   namePattern: NAME_PATTERN.asIs,
   nameWidth: "raw",
+  descriptionWidth: 0,
   roundThreshold1: 100,
   roundDecimals1: 0,
   roundThreshold2: 0,
@@ -67,6 +107,16 @@ export const DEFAULT_BREAKDOWN_SETTINGS: BreakdownSettings = {
   replacements: [],
   unitOrder: [],
   unitReplacements: [],
+  partTitlesOn: false,
+  partTitles: [
+    { from: 10, title: "＜床＞" },
+    { from: 20, title: "＜巾木＞" },
+    { from: 30, title: "＜壁＞" },
+    { from: 40, title: "＜柱型＞" },
+    { from: 50, title: "＜梁型＞" },
+    { from: 60, title: "＜天井＞" },
+    { from: 70, title: "＜その他＞" },
+  ],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
 };
@@ -94,6 +144,24 @@ export interface BreakdownRow {
   amount: number | null;
   remarksUpper: string;
   remarksLower: string;
+  /** 取り消し線（1＝この明細は無いものとして比較に出す。無い欄は0と同じ） */
+  struck?: number;
+  /** 科目の小計として自動で足した行（エクセル出力ではページの最後の行へ出す） */
+  subtotal?: boolean;
+  wrap?:
+    | ""
+    | "upper"
+    | "lower"
+    | "fill"
+    | "pair"
+    | "keepUpper"
+    | "keepLower";
+  wrapGlue?: string;
+  wrapUpper?: BreakdownRow["wrap"];
+  wrapGlueUpper?: string;
+  wrapUpperSource?: string;
+  wrapOrder?: number;
+  wrapOrderUpper?: number;
 }
 
 /** 内訳書へ転記する集計書兼工事マスターの明細 */
@@ -103,6 +171,10 @@ export interface BreakdownSourceItem {
   subjectId: number | null;
   /** 部位Ⅰ（集計書ではタイトル行になる） */
   part1: string;
+  /** 部位Ⅱ（集計書では＜＞の見出し行になる） */
+  part2?: string;
+  /** 明細用部位の番号（基本部位のタイトル行を出す範囲の判断に使う） */
+  partNumber: number | null;
   partName: string;
   name: string;
   descriptionUpper: string;
@@ -120,6 +192,71 @@ export interface BreakdownSubject {
 }
 
 const FULL_WIDTH_OFFSET = 0xfee0;
+
+export function textWidth(value: string): number {
+  let width = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    width +=
+      codePoint <= 0x7e || (codePoint >= 0xff61 && codePoint <= 0xff9f)
+        ? 1
+        : 2;
+  }
+  return width;
+}
+
+export function splitDescription(
+  text: string,
+  width: number,
+): { text: string; glue: string }[] {
+  if (!Number.isFinite(width) || width <= 0 || textWidth(text) <= width)
+    return [{ text, glue: "" }];
+
+  const chunks: { text: string; glue: string }[] = [];
+  let remaining = Array.from(text);
+  let glue = "";
+  while (remaining.length > 0) {
+    const rest = remaining.join("");
+    if (textWidth(rest) <= width) {
+      chunks.push({ text: rest, glue });
+      break;
+    }
+
+    let prefixWidth = 0;
+    let lastSpace = -1;
+    remaining.forEach((character, index) => {
+      if (
+        index > 0 &&
+        prefixWidth <= width &&
+        (character === " " || character === "　")
+      ) {
+        lastSpace = index;
+      }
+      prefixWidth += textWidth(character);
+    });
+
+    if (lastSpace > 0) {
+      chunks.push({ text: remaining.slice(0, lastSpace).join(""), glue });
+      glue = remaining[lastSpace];
+      remaining = remaining.slice(lastSpace + 1);
+      continue;
+    }
+
+    let cut = 0;
+    let usedWidth = 0;
+    for (const character of remaining) {
+      const characterWidth = textWidth(character);
+      if (cut > 0 && usedWidth + characterWidth > width) break;
+      usedWidth += characterWidth;
+      cut += 1;
+    }
+    if (cut === 0) cut = 1;
+    chunks.push({ text: remaining.slice(0, cut).join(""), glue });
+    remaining = remaining.slice(cut);
+    glue = "";
+  }
+  return chunks.length > 0 ? chunks : [{ text, glue: "" }];
+}
 
 /** 半角カタカナ→全角カタカナ（濁点・半濁点は1文字にまとめる） */
 const KANA_TO_FULL: Record<string, string> = {
@@ -342,6 +479,86 @@ function subjectSortKey(
 }
 
 /**
+ * 金額欄に出す金額。
+ * 直接入力があればそれを使い、無ければ数量×単価を出す。
+ */
+export function amountOf(row: {
+  quantity: number | null;
+  unitPrice: number | null;
+  amount: number | null;
+}): number | null {
+  if (row.amount !== null) return row.amount;
+  if (row.quantity !== null && row.unitPrice !== null) {
+    return row.quantity * row.unitPrice;
+  }
+  return null;
+}
+
+/**
+ * 金額が入った科目の終わりに「小計」行を足す。
+ * 画面では直接入力した金額か数量×単価を使い、科目ごとの合計金額を次の科目の前へ出す。
+ */
+export function withSubjectSubtotals(
+  rows: readonly BreakdownRow[],
+): BreakdownRow[] {
+  const next: BreakdownRow[] = [];
+  let total = 0;
+  let has = false;
+  let inGroup = false;
+  let subjectId: number | null = null;
+  const flush = (): void => {
+    if (inGroup && has) {
+      const subtotal = emptyRow("detail");
+      subtotal.nameLower = "小計";
+      subtotal.amount = total;
+      subtotal.subtotal = true;
+      subtotal.subjectId = subjectId;
+      next.push(subtotal);
+    }
+    total = 0;
+    has = false;
+  };
+  rows.forEach((row) => {
+    if (row.rowKind === "subject") {
+      flush();
+      // 科目の見出しだけでなく、部屋別・部位別のまとめの見出しでも小計を出す
+      inGroup = true;
+      subjectId = row.subjectId;
+      next.push(row);
+      return;
+    }
+    if (inGroup && amountOf(row) !== null) {
+      total += amountOf(row) ?? 0;
+      has = true;
+    }
+    next.push(row);
+  });
+  flush();
+  return next;
+}
+
+/**
+ * 部位番号がどの範囲に入るか調べ、出すタイトル文字を返す。
+ * 範囲は「始まり以上・次の始まり未満」。部位番号が無い・どの範囲にも入らないときは null。
+ */
+export function partTitleOf(
+  partNumber: number | null,
+  partTitles: readonly PartTitle[],
+): string | null {
+  if (partNumber === null || !Number.isFinite(partNumber)) return null;
+  const whole = Math.floor(partNumber);
+  let title: string | null = null;
+  let best = Number.NEGATIVE_INFINITY;
+  partTitles.forEach((entry) => {
+    if (entry.from <= whole && entry.from > best && entry.title !== "") {
+      best = entry.from;
+      title = entry.title;
+    }
+  });
+  return title;
+}
+
+/**
  * 集計書兼工事マスターの明細を内訳書の行に変換する。
  * 工種科目ごとに見出し行を置き、明細を並べる。
  */
@@ -350,6 +567,11 @@ export function buildBreakdownRows(
   subjects: readonly BreakdownSubject[],
   settings: BreakdownSettings,
 ): BreakdownRow[] {
+  const emitSettings =
+    settings.descriptionWidth > 0 &&
+    settings.layout !== BREAKDOWN_LAYOUT.twoRow
+      ? { ...settings, layout: BREAKDOWN_LAYOUT.twoRow }
+      : settings;
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
   const groups = new Map<number | null, BreakdownSourceItem[]>();
   items.forEach((item) => {
@@ -381,24 +603,148 @@ export function buildBreakdownRows(
     heading.nameUpper = heading.subjectName;
     rows.push(heading);
 
-    // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
-    let part1: string | undefined;
-    (groups.get(subjectId) ?? []).forEach((item) => {
-      if (part1 !== item.part1) {
-        part1 = item.part1;
-        if (part1 !== "") {
+    appendGroupRows(
+      rows,
+      groups.get(subjectId) ?? [],
+      () => subjectId,
+      heading.subjectName,
+      emitSettings,
+      true,
+    );
+  });
+  return settings.descriptionWidth > 0
+    ? finishWrappedLayout(
+        rows,
+        settings.layout,
+        settings.descriptionWidth,
+        settings.namePattern,
+      )
+    : rows;
+}
+
+/** 部屋別・部位別のまとめから作る内訳書の元（1まとめ分） */
+export interface BreakdownGroupSource {
+  /** まとめの名前（部屋名・部位Ⅱ名）。見出しに「＜名前＞」と出る */
+  name: string;
+  items: BreakdownSourceItem[];
+}
+
+/**
+ * 部屋別・部位別のまとめから内訳書の行を作る。
+ * 工種科目の見出しの代わりにまとめの名前（＜部屋名＞など）を見出しにし、
+ * 明細はそのまとめの中の並び（集計書と同じく科目・部位順）で出す。
+ */
+export function buildGroupedBreakdownRows(
+  groups: readonly BreakdownGroupSource[],
+  settings: BreakdownSettings,
+): BreakdownRow[] {
+  const emitSettings =
+    settings.descriptionWidth > 0 &&
+    settings.layout !== BREAKDOWN_LAYOUT.twoRow
+      ? { ...settings, layout: BREAKDOWN_LAYOUT.twoRow }
+      : settings;
+  const rows: BreakdownRow[] = [];
+  groups.forEach((group) => {
+    const heading = emptyRow("subject");
+    heading.subjectName = `＜${group.name}＞`;
+    heading.nameUpper = heading.subjectName;
+    rows.push(heading);
+    appendGroupRows(
+      rows,
+      group.items,
+      (item) => item.subjectId,
+      heading.subjectName,
+      emitSettings,
+      false,
+    );
+  });
+  return settings.descriptionWidth > 0
+    ? finishWrappedLayout(
+        rows,
+        settings.layout,
+        settings.descriptionWidth,
+        settings.namePattern,
+      )
+    : rows;
+}
+
+/** 見出しの下の明細：部位Ⅰのタイトル行・基本部位のタイトル行を挟んで明細を並べる */
+function appendGroupRows(
+  rows: BreakdownRow[],
+  items: readonly BreakdownSourceItem[],
+  subjectIdOf: (item: BreakdownSourceItem) => number | null,
+  subjectName: string,
+  settings: BreakdownSettings,
+  withPart2: boolean,
+): void {
+  // 集計書兼工事マスターと同じく、部位Ⅰが変わるところへタイトル行を置く
+  let part1: string | undefined;
+  let part2: string | undefined;
+  // 基本部位のタイトル行は部位Ⅰごとに出し直す
+  let lastPartTitle: string | null = null;
+  items.forEach((item) => {
+    const subjectId = subjectIdOf(item);
+    if (part1 !== item.part1) {
+      part1 = item.part1;
+      part2 = undefined;
+      lastPartTitle = null;
+      if (part1 !== "") {
+        const title = emptyRow("title");
+        title.subjectId = subjectId;
+        title.subjectName = subjectName;
+        title.partName = part1;
+        title.nameLower = `（${part1}）`;
+        rows.push(title);
+      }
+    }
+    if (withPart2) {
+      const nextPart2 = item.part2 ?? "";
+      if (nextPart2 !== part2) {
+        part2 = nextPart2;
+        lastPartTitle = null;
+        if (part2 !== "") {
           const title = emptyRow("title");
           title.subjectId = subjectId;
-          title.subjectName = heading.subjectName;
-          title.partName = part1;
-          title.nameLower = `（${part1}）`;
+          title.subjectName = subjectName;
+          title.partName = part2;
+          title.nameLower = `＜${part2}＞`;
           rows.push(title);
         }
       }
-      rows.push(...detailRows(item, subjectId, heading.subjectName, settings));
-    });
+    }
+    const partTitle = settings.partTitlesOn
+      ? partTitleOf(item.partNumber, settings.partTitles)
+      : null;
+    if (partTitle !== null && partTitle !== lastPartTitle) {
+      lastPartTitle = partTitle;
+      const title = emptyRow("title");
+      title.subjectId = subjectId;
+      title.subjectName = subjectName;
+      title.partName = partTitle;
+      title.nameLower = partTitle;
+      rows.push(title);
+    }
+    rows.push(...detailRows(item, subjectId, subjectName, settings));
   });
-  return rows;
+}
+
+interface BreakdownDetailUnit {
+  hasQuantity?: boolean;
+  subjectId: number | null;
+  subjectName: string;
+  masterKey: string;
+  aggregateItemId: number | null;
+  partName: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  remarksUpper: string;
+  remarksLower: string;
+  quantity: number | null;
+  unit: string;
+  unitPrice: number | null;
+  amount: number | null;
+  struck?: number;
 }
 
 function detailRows(
@@ -408,55 +754,170 @@ function detailRows(
   settings: BreakdownSettings,
 ): BreakdownRow[] {
   const hasQuantity = item.unit !== "";
+  return emitDetailUnit(
+    {
+      subjectId,
+      subjectName,
+      hasQuantity,
+      masterKey: item.masterKey,
+      aggregateItemId: item.id,
+      partName: item.partName,
+      name: applyWidth(item.name, settings.nameWidth),
+      descriptionUpper: applyReplacements(
+        item.descriptionUpper,
+        settings.replacements,
+      ),
+      descriptionLower: applyReplacements(
+        item.descriptionLower,
+        settings.replacements,
+      ),
+      remarksUpper: item.remarksUpper,
+      remarksLower: item.remarksLower,
+      quantity: hasQuantity ? roundQuantity(item.quantity, settings) : null,
+      unit: replaceUnit(item.unit, settings.unitReplacements),
+      unitPrice: null,
+      amount: null,
+    },
+    settings.layout,
+    settings.namePattern,
+    settings.descriptionWidth,
+  );
+}
+
+function emitDetailUnit(
+  unit: BreakdownDetailUnit,
+  layout: number,
+  namePattern: number,
+  descriptionWidth = 0,
+): BreakdownRow[] {
+  const line = (kind: BreakdownRowKind): BreakdownRow => {
+    const row = emptyRow(kind);
+    row.subjectId = unit.subjectId;
+    row.subjectName = unit.subjectName;
+    row.masterKey = unit.masterKey;
+    row.aggregateItemId = unit.aggregateItemId;
+    row.partName = unit.partName;
+    if (unit.struck !== undefined) row.struck = unit.struck;
+    return row;
+  };
+  const joined = joinPartAndName(unit.partName, unit.name, namePattern);
+
+  if (layout === BREAKDOWN_LAYOUT.twoRow || layout === BREAKDOWN_LAYOUT.excel) {
+    const upper = line("note");
+    upper.descriptionLower = unit.descriptionUpper;
+    upper.remarksLower = unit.remarksUpper;
+
+    const lower = line("detail");
+    if (joined !== null) lower.nameLower = joined;
+    else {
+      upper.nameLower = unit.partName;
+      lower.nameLower = unit.name;
+    }
+    lower.descriptionLower = unit.descriptionLower;
+    lower.remarksLower = unit.remarksLower;
+    lower.quantity = unit.quantity;
+    lower.unit = unit.unit;
+    lower.unitPrice = unit.unitPrice;
+    lower.amount = unit.amount;
+    if (layout !== BREAKDOWN_LAYOUT.twoRow || descriptionWidth <= 0) {
+      return [upper, lower];
+    }
+
+    const upperChunks = splitDescription(
+      unit.descriptionUpper,
+      descriptionWidth,
+    );
+    const lowerChunks = splitDescription(
+      unit.descriptionLower,
+      descriptionWidth,
+    );
+    const upperOverflows = upperChunks.length > 1;
+    const lowerOverflows = lowerChunks.length > 1;
+    if (!upperOverflows && !lowerOverflows) return [upper, lower];
+
+    const continuations: {
+      text: string;
+      glue: string;
+      wrap: "upper" | "lower";
+    }[] = [];
+    if (unit.descriptionLower !== "") {
+      lower.descriptionLower = lowerChunks[0].text;
+      if (lowerOverflows) {
+        lower.wrap = "lower";
+        lower.wrapGlue = lowerChunks[0].glue;
+        continuations.push(
+          ...lowerChunks
+            .slice(1)
+            .map((chunk) => ({ ...chunk, wrap: "lower" as const })),
+        );
+      }
+      if (upperOverflows) {
+        upper.descriptionLower = "";
+        continuations.push(
+          ...upperChunks.map((chunk) => ({ ...chunk, wrap: "upper" as const })),
+        );
+      }
+    } else if (upperOverflows) {
+      upper.descriptionLower = upperChunks[0].text;
+      lower.descriptionLower = upperChunks[1].text;
+      lower.wrap = "upper";
+      lower.wrapGlue = upperChunks[1].glue;
+      continuations.push(
+        ...upperChunks
+          .slice(2)
+          .map((chunk) => ({ ...chunk, wrap: "upper" as const })),
+      );
+    }
+
+    const continuationRows = continuations.map((chunk, index) => {
+      const continuation = line(index % 2 === 0 ? "note" : "detail");
+      continuation.descriptionLower = chunk.text;
+      continuation.wrap = chunk.wrap;
+      continuation.wrapGlue = chunk.glue;
+      return continuation;
+    });
+    if (continuationRows.length % 2 === 1) {
+      const fill = line(continuationRows.length % 2 === 0 ? "note" : "detail");
+      fill.wrap = "fill";
+      fill.wrapGlue = "";
+      continuationRows.push(fill);
+    }
+    return [upper, lower, ...continuationRows];
+  }
+
+  const hasQuantity = unit.hasQuantity ?? unit.unit !== "";
   const description = splitTwoLines(
-    applyReplacements(item.descriptionUpper, settings.replacements),
-    applyReplacements(item.descriptionLower, settings.replacements),
+    unit.descriptionUpper,
+    unit.descriptionLower,
     hasQuantity,
   );
   const remarks = splitTwoLines(
-    item.remarksUpper,
-    item.remarksLower,
+    unit.remarksUpper,
+    unit.remarksLower,
     hasQuantity,
   );
-  const name = applyWidth(item.name, settings.nameWidth);
-  const partName = item.partName;
-
-  // 書式③（エクセルへ1行で転記）も、ソフト内の表示は書式④と同じ2段2行にする
-  if (
-    settings.layout === BREAKDOWN_LAYOUT.twoRow ||
-    settings.layout === BREAKDOWN_LAYOUT.excel
-  ) {
-    return twoRowDetail(item, subjectId, subjectName, name, partName, settings);
-  }
-
-  const row = emptyRow("detail");
-  row.subjectId = subjectId;
-  row.subjectName = subjectName;
-  row.masterKey = item.masterKey;
-  row.aggregateItemId = item.id;
-  row.partName = item.partName;
-  if (
-    settings.layout === BREAKDOWN_LAYOUT.oneLine ||
-    settings.namePattern === NAME_PATTERN.withPart
-  ) {
-    row.nameUpper = "";
-    row.nameLower = partName === "" ? name : `${partName} ${name}`.trim();
+  const row = line("detail");
+  if (layout === BREAKDOWN_LAYOUT.oneLine || joined !== null) {
+    row.nameLower =
+      joined ??
+      (unit.partName === ""
+        ? unit.name
+        : `${unit.partName} ${unit.name}`.trim());
   } else {
-    row.nameUpper = partName;
-    row.nameLower = name;
+    row.nameUpper = unit.partName;
+    row.nameLower = unit.name;
   }
   row.descriptionLower = description.primary;
   row.remarksLower = remarks.primary;
-  row.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  row.unit = replaceUnit(item.unit, settings.unitReplacements);
+  row.quantity = unit.quantity;
+  row.unit = unit.unit;
+  row.unitPrice = unit.unitPrice;
+  row.amount = unit.amount;
 
   const rows = [row];
   if (description.overflow !== "" || remarks.overflow !== "") {
-    const extra = emptyRow("note");
-    extra.subjectId = subjectId;
-    extra.subjectName = subjectName;
-    extra.masterKey = item.masterKey;
-    extra.aggregateItemId = item.id;
+    const extra = line("note");
+    extra.partName = "";
     extra.descriptionLower = description.overflow;
     extra.remarksLower = remarks.overflow;
     rows.push(extra);
@@ -464,49 +925,1090 @@ function detailRows(
   return rows;
 }
 
-/**
- * 書式④＝集計書のまま2段2行。
- * 上段（部位名・摘要上段・備考上段）と下段（名称・摘要下段・数量・単位・備考下段）を別の行にする。
- */
-function twoRowDetail(
-  item: BreakdownSourceItem,
-  subjectId: number | null,
-  subjectName: string,
-  name: string,
-  partName: string,
-  settings: BreakdownSettings,
-): BreakdownRow[] {
-  const hasQuantity = item.unit !== "";
-  const line = (kind: BreakdownRowKind): BreakdownRow => {
-    const row = emptyRow(kind);
-    row.subjectId = subjectId;
-    row.subjectName = subjectName;
-    row.masterKey = item.masterKey;
-    row.aggregateItemId = item.id;
-    row.partName = item.partName;
-    return row;
+function detailUnitKey(row: BreakdownRow): string | null {
+  if (
+    row.subtotal === true ||
+    (row.rowKind !== "detail" && row.rowKind !== "note") ||
+    (row.masterKey === "" && row.aggregateItemId === null)
+  )
+    return null;
+  return JSON.stringify([row.masterKey, row.aggregateItemId]);
+}
+
+function compactWrapBlocks<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  descriptionWidth: number,
+): T[] {
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  const unitEnd = (start: number, key: string): number => {
+    let end = start + 1;
+    while (end < rows.length && detailUnitKey(rowAt(end)) === key) end += 1;
+    return end;
+  };
+  const hasWrap = (row: BreakdownRow): boolean =>
+    row.wrap !== undefined && row.wrap !== "";
+  const hasQuantity = (unitRows: readonly T[]): boolean =>
+    unitRows.some(
+      (row) =>
+        row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
+    );
+  const isDescriptionOnly = (unitRows: readonly T[]): boolean =>
+    !hasQuantity(unitRows) &&
+    unitRows.every((row) => row.nameUpper === "" && row.nameLower === "");
+  const rebuildDescriptionOnlyUnit = (unitRows: readonly T[]): T[] => {
+    const original = unwrapBreakdownRows(unitRows);
+    const upper = original[0];
+    const lower = original[1];
+    if (upper === undefined || lower === undefined) return [];
+
+    const upperChunks =
+      upper.descriptionLower === ""
+        ? []
+        : splitDescription(upper.descriptionLower, descriptionWidth);
+    const lowerChunks =
+      lower.descriptionLower === ""
+        ? []
+        : splitDescription(lower.descriptionLower, descriptionWidth);
+    const rebuilt: T[] = [];
+    const appendChunk = (
+      template: T,
+      chunk: { text: string; glue: string },
+      rowKind: "note" | "detail",
+      wrap: "upper" | "lower" | "keepUpper" | "keepLower",
+      remarksLower: string,
+    ): void => {
+      rebuilt.push(
+        {
+          ...template,
+          rowKind,
+          descriptionLower: chunk.text,
+          quantity: null,
+          unit: "",
+          unitPrice: null,
+          amount: null,
+          remarksLower,
+          wrap,
+          wrapGlue: chunk.glue,
+        } as T,
+      );
+    };
+
+    upperChunks.forEach((chunk, index) => {
+      appendChunk(
+        upper,
+        chunk,
+        "note",
+        index === 0 ? "keepUpper" : "upper",
+        index === 0 ? upper.remarksLower : "",
+      );
+    });
+    if (upperChunks.length === 0 && upper.remarksLower !== "") {
+      appendChunk(
+        upper,
+        { text: "", glue: "" },
+        "note",
+        "keepUpper",
+        upper.remarksLower,
+      );
+    }
+
+    lowerChunks.forEach((chunk, index) => {
+      appendChunk(
+        lower,
+        chunk,
+        "detail",
+        index === 0
+          ? upperChunks.length <= 1
+            ? "keepLower"
+            : "lower"
+          : "lower",
+        index === 0 ? lower.remarksLower : "",
+      );
+    });
+    if (lowerChunks.length === 0 && lower.remarksLower !== "") {
+      appendChunk(
+        lower,
+        { text: "", glue: "" },
+        "detail",
+        "keepLower",
+        lower.remarksLower,
+      );
+    }
+    return rebuilt;
   };
 
-  const upper = line("note");
-  upper.nameLower = partName;
-  upper.descriptionLower = applyReplacements(
-    item.descriptionUpper,
-    settings.replacements,
-  );
-  upper.remarksLower = item.remarksUpper;
+  let index = 0;
+  while (index < rows.length) {
+    const key = detailUnitKey(rowAt(index));
+    if (key === null) {
+      output.push(rows[index]);
+      index += 1;
+      continue;
+    }
 
-  const lower = line("detail");
-  lower.nameLower = name;
-  lower.descriptionLower = applyReplacements(
-    item.descriptionLower,
-    settings.replacements,
-  );
-  lower.remarksLower = item.remarksLower;
-  lower.quantity = hasQuantity ? roundQuantity(item.quantity, settings) : null;
-  lower.unit = replaceUnit(item.unit, settings.unitReplacements);
+    const firstEnd = unitEnd(index, key);
+    const firstUnit = rows.slice(index, firstEnd);
+    if (!hasQuantity(firstUnit)) {
+      if (!firstUnit.some((row) => hasWrap(row as BreakdownRow))) {
+        output.push(...firstUnit);
+      } else {
+        let order = 0;
+        output.push(
+          ...firstUnit.map((row) => {
+            if (row.wrap === "fill") return row;
+            order += 1;
+            return { ...row, wrapOrder: order } as T;
+          }),
+        );
+      }
+      index = firstEnd;
+      continue;
+    }
 
-  // 1明細＝必ず上下2行1組にする（中身が空でも行は残す）
-  return [upper, lower];
+    const units: T[][] = [firstUnit];
+    let end = firstEnd;
+    while (end < rows.length) {
+      const nextKey = detailUnitKey(rowAt(end));
+      if (nextKey === null) break;
+      const nextEnd = unitEnd(end, nextKey);
+      const nextUnit = rows.slice(end, nextEnd);
+      if (
+        nextUnit[0].subjectId !== firstUnit[0].subjectId ||
+        !isDescriptionOnly(nextUnit)
+      ) {
+        break;
+      }
+      units.push(nextUnit);
+      end = nextEnd;
+    }
+
+    const block = units.flat();
+    if (!block.some((row) => hasWrap(row as BreakdownRow))) {
+      output.push(...block);
+      index = end;
+      continue;
+    }
+
+    let offset = 0;
+    const compacted = units.flatMap((unitRows, unitIndex) => {
+      const compactedUnit =
+        unitIndex === 0 ? unitRows : rebuildDescriptionOnlyUnit(unitRows);
+      return compactedUnit
+        .filter((row) => row.wrap !== "fill")
+        .map((row) => {
+          const rowKind = offset % 2 === 0 ? "note" : "detail";
+          offset += 1;
+          return { ...row, rowKind, wrapOrder: offset } as T;
+        });
+    });
+
+    if (compacted.length % 2 === 1) {
+      const lastUnit = units[units.length - 1];
+      const source = lastUnit[lastUnit.length - 1];
+      const fill = {
+        ...source,
+        ...emptyRow("detail"),
+        subjectId: source.subjectId,
+        subjectName: source.subjectName,
+        masterKey: source.masterKey,
+        aggregateItemId: source.aggregateItemId,
+        partName: source.partName,
+        struck: source.struck,
+        wrap: "fill",
+        wrapGlue: "",
+      } as T;
+      compacted.push(fill);
+    }
+
+    output.push(...compacted);
+    index = end;
+  }
+  return output;
+}
+
+interface WrapSource {
+  subjectId: number | null;
+  subjectName: string;
+  masterKey: string;
+  aggregateItemId: number | null;
+  partName: string;
+  nameLower: string;
+  lowerNameLower?: string;
+  struck?: number;
+}
+
+function wrapSource(row: BreakdownRow): WrapSource {
+  return {
+    subjectId: row.subjectId,
+    subjectName: row.subjectName,
+    masterKey: row.masterKey,
+    aggregateItemId: row.aggregateItemId,
+    partName: row.partName,
+    nameLower: row.nameLower,
+    struck: row.struck,
+  };
+}
+
+function sourceKey(source: WrapSource): string {
+  return JSON.stringify([source.masterKey, source.aggregateItemId]);
+}
+
+function canonicalWrap(row: BreakdownRow): NonNullable<BreakdownRow["wrap"]> {
+  return row.wrap !== undefined && row.wrap !== ""
+    ? row.wrap
+    : row.rowKind === "note"
+      ? "keepUpper"
+      : "keepLower";
+}
+
+function foldTwoLineRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+): T[] {
+  const output: T[] = [];
+  let index = 0;
+  while (index < rows.length) {
+    const upper = rows[index] as BreakdownRow;
+    const lower = rows[index + 1] as BreakdownRow | undefined;
+    if (
+      upper.rowKind !== "note" ||
+      detailUnitKey(upper) === null ||
+      lower?.rowKind !== "detail" ||
+      detailUnitKey(lower) === null
+    ) {
+      output.push(rows[index]);
+      index += 1;
+      continue;
+    }
+
+    const upperSource = wrapSource(upper);
+    const lowerSource = wrapSource(lower);
+    const upperWrap = canonicalWrap(upper);
+    const lowerWrap = canonicalWrap(lower);
+    const isUnitStart =
+      upperWrap === "keepUpper" ||
+      upperWrap === "keepLower" ||
+      lowerWrap === "keepUpper" ||
+      lowerWrap === "keepLower" ||
+      lower.unit !== "" ||
+      (lower.quantity !== null && lower.quantity !== 0) ||
+      upper.nameLower !== "" ||
+      lower.nameLower !== "";
+    const folded = {
+      ...lower,
+      rowKind: isUnitStart ? "detail" : "note",
+      nameUpper: upper.nameLower,
+      nameLower: lower.nameLower,
+      descriptionUpper: upper.descriptionLower,
+      descriptionLower: lower.descriptionLower,
+      remarksUpper: upper.remarksLower,
+      remarksLower: lower.remarksLower,
+      wrapUpper: upperWrap,
+      wrapGlueUpper: upper.wrapGlue ?? "",
+      wrapOrderUpper: upper.wrapOrder ?? 0,
+      wrap: lowerWrap,
+      wrapGlue: lower.wrapGlue ?? "",
+      wrapOrder: lower.wrapOrder ?? 0,
+      wrapUpperSource:
+        JSON.stringify(upperSource) === JSON.stringify(lowerSource) &&
+        upperWrap !== "fill"
+          ? ""
+          : JSON.stringify(upperSource),
+    } as T;
+    output.push(folded);
+    index += 2;
+  }
+  return output;
+}
+
+function withoutUpperLineMetadata<T extends BreakdownRowLike>(row: T): T {
+  const copy = { ...row } as Record<string, unknown>;
+  delete copy.wrapUpper;
+  delete copy.wrapGlueUpper;
+  delete copy.wrapUpperSource;
+  delete copy.wrapOrderUpper;
+  return copy as T;
+}
+
+function foldOneLineRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  namePattern: number,
+): T[] {
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  const unitEnd = (start: number, key: string): number => {
+    let end = start + 1;
+    while (end < rows.length && detailUnitKey(rowAt(end)) === key) end += 1;
+    return end;
+  };
+  let index = 0;
+  while (index < rows.length) {
+    const key = detailUnitKey(rowAt(index));
+    if (key === null) {
+      output.push(rows[index]);
+      index += 1;
+      continue;
+    }
+
+    const group = rows.slice(index, unitEnd(index, key));
+    const quantityIndex = group.findIndex(
+      (row) => row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
+    );
+    if (quantityIndex >= 0) {
+      const quantityRow = group[quantityIndex] as BreakdownRow;
+      const partName =
+        group.find(
+          (row) =>
+            row.rowKind === "note" && row.nameLower !== "",
+        )?.nameLower ?? quantityRow.partName;
+      const rawName =
+        group.find((row) => row.rowKind === "detail")?.nameLower ??
+        quantityRow.nameLower;
+      const name =
+        namePattern === NAME_PATTERN.asIs
+          ? rawName
+          : stripPartName(rawName, partName);
+      const joined =
+        joinPartAndName(partName, name, namePattern) ??
+        (partName === "" ? name : `${partName} ${name}`.trim());
+      const quantityOutput = {
+        ...withoutUpperLineMetadata(quantityRow as T),
+        rowKind: "detail",
+        nameUpper: "",
+        nameLower: joined,
+        wrap: canonicalWrap(quantityRow),
+        wrapGlue: quantityRow.wrapGlue ?? "",
+      } as T;
+      output.push(quantityOutput);
+      group.forEach((row, rowIndex) => {
+        const source = row as BreakdownRow;
+        if (
+          rowIndex === quantityIndex ||
+          source.wrap === "fill" ||
+          (source.descriptionLower === "" && source.remarksLower === "")
+        )
+          return;
+        output.push({
+          ...withoutUpperLineMetadata(row),
+          rowKind: "note",
+          nameUpper: "",
+          nameLower: "",
+          quantity: null,
+          unit: "",
+          unitPrice: null,
+          amount: null,
+          wrap: canonicalWrap(source),
+          wrapGlue: source.wrapGlue ?? "",
+        } as T);
+      });
+    } else {
+      const partName =
+        group.find(
+          (candidate) =>
+            candidate.rowKind === "note" && candidate.nameLower !== "",
+        )?.nameLower ?? (group[0] as BreakdownRow).partName;
+      const rawName =
+        group.find((candidate) => candidate.rowKind === "detail")?.nameLower ??
+        (group[0] as BreakdownRow).nameLower;
+      const name =
+        namePattern === NAME_PATTERN.asIs
+          ? rawName
+          : stripPartName(rawName, partName);
+      const joined =
+        joinPartAndName(partName, name, namePattern) ??
+        (partName === "" ? name : `${partName} ${name}`.trim());
+      const upperSource = {
+        ...wrapSource(group[0] as BreakdownRow),
+        lowerNameLower:
+          group.find((candidate) => candidate.rowKind === "detail")
+            ?.nameLower ?? "",
+      };
+      let first = true;
+      group.forEach((row) => {
+        const source = row as BreakdownRow;
+      if (
+        source.wrap === "fill" ||
+        (!first &&
+            source.descriptionLower === "" &&
+            source.remarksLower === "")
+        )
+          return;
+        const folded = {
+        ...withoutUpperLineMetadata(row),
+        rowKind: first ? "detail" : "note",
+        nameUpper: "",
+        nameLower: first ? joined : "",
+        ...(first ? { wrapUpperSource: JSON.stringify(upperSource) } : {}),
+        wrap: canonicalWrap(source),
+        wrapGlue: source.wrapGlue ?? "",
+      } as T;
+        output.push(folded);
+        first = false;
+      });
+    }
+    index += group.length;
+  }
+  return output;
+}
+
+function finishWrappedLayout<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  layout: number,
+  descriptionWidth: number,
+  namePattern: number = NAME_PATTERN.asIs,
+): T[] {
+  const canonical = compactWrapBlocks(rows, descriptionWidth);
+  if (layout === BREAKDOWN_LAYOUT.twoLine)
+    return foldTwoLineRows(canonical);
+  if (layout === BREAKDOWN_LAYOUT.oneLine)
+    return foldOneLineRows(canonical, namePattern);
+  return canonical;
+}
+
+function stripPartName(text: string, partName: string): string {
+  if (partName === "") return text;
+  const prefix = [" ", ":", "："]
+    .map((separator) => `${partName}${separator}`)
+    .find((candidate) => text.startsWith(candidate));
+  return prefix === undefined ? text : text.slice(prefix.length);
+}
+
+type BreakdownRowLike = Omit<
+  BreakdownRow,
+  | "rowKind"
+  | "wrap"
+  | "wrapGlue"
+  | "wrapUpper"
+  | "wrapGlueUpper"
+  | "wrapUpperSource"
+> & {
+  rowKind: string;
+  wrap?: string;
+  wrapGlue?: string;
+  wrapUpper?: string;
+  wrapGlueUpper?: string;
+  wrapUpperSource?: string;
+  wrapOrder?: number;
+  wrapOrderUpper?: number;
+};
+
+/**
+ * 保存済みの明細行を、現在の書式と名称欄の設定に合わせて並べ直す。
+ * 集計から作り直さず、確定した回の行データだけを組み替える。
+ */
+export function relayoutBreakdownRows<T extends BreakdownRow>(
+  rows: readonly T[],
+  settings: {
+    layout: number;
+    namePattern: number;
+    descriptionWidth?: number;
+  },
+): T[];
+export function relayoutBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  settings: { layout: number; namePattern: number; descriptionWidth?: number },
+): T[];
+export function relayoutBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  settings: { layout: number; namePattern: number; descriptionWidth?: number },
+): T[] {
+  const unwrapped = unwrapBreakdownRows(rows, settings.namePattern);
+  const emitSettings =
+    (settings.descriptionWidth ?? 0) > 0 &&
+    settings.layout !== BREAKDOWN_LAYOUT.twoRow
+      ? { ...settings, layout: BREAKDOWN_LAYOUT.twoRow }
+      : settings;
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow =>
+    unwrapped[index] as BreakdownRow;
+  let index = 0;
+  while (index < unwrapped.length) {
+    const row = rowAt(index);
+    const key = detailUnitKey(row);
+    const next = unwrapped[index + 1] as BreakdownRow | undefined;
+    const nextKey = next ? detailUnitKey(next) : null;
+
+    if (
+      row.rowKind === "note" &&
+      key !== null &&
+      next?.rowKind === "detail" &&
+      nextKey === key
+    ) {
+      const unitRows = [row, next];
+      output.push(
+        ...emitRelayoutUnit(unitRows, next, row, undefined, emitSettings).map(
+          (emitted) =>
+            ({ ...(emitted.rowKind === "note" ? row : next), ...emitted }) as T,
+        ),
+      );
+      index += 2;
+      continue;
+    }
+
+    if (row.rowKind === "detail" && key !== null) {
+      const afterNext = unwrapped[index + 2] as BreakdownRow | undefined;
+      const noteIsPair =
+        next?.rowKind === "note" &&
+        nextKey === key &&
+        afterNext?.rowKind === "detail" &&
+        detailUnitKey(afterNext) === key;
+      const overflow =
+        next?.rowKind === "note" && nextKey === key && !noteIsPair
+          ? next
+          : undefined;
+      const unitRows = overflow ? [row, overflow] : [row];
+      output.push(
+        ...emitRelayoutUnit(unitRows, row, undefined, overflow, emitSettings).map(
+          (emitted) =>
+            ({
+              ...(emitted.rowKind === "note" ? (overflow ?? row) : row),
+              ...emitted,
+            }) as T,
+        ),
+      );
+      index += overflow ? 2 : 1;
+      continue;
+    }
+
+    output.push(unwrapped[index]);
+    index += 1;
+  }
+  return (settings.descriptionWidth ?? 0) > 0
+    ? finishWrappedLayout(
+        output,
+        settings.layout,
+        settings.descriptionWidth ?? 0,
+        settings.namePattern,
+      )
+    : output;
+}
+
+function parseWrapSource(value: string | undefined): WrapSource | null {
+  if (value === undefined || value === "") return null;
+  try {
+    const source = JSON.parse(value) as WrapSource;
+    if (
+      typeof source.masterKey !== "string" ||
+      (source.aggregateItemId !== null &&
+        typeof source.aggregateItemId !== "number")
+    )
+      return null;
+    if (typeof source.nameLower !== "string") source.nameLower = "";
+    return source;
+  } catch {
+    return null;
+  }
+}
+
+function unwrapTwoLineRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+): T[] {
+  interface RestoredUnit {
+    source: WrapSource;
+    upperParts: { order: number; index: number; text: string }[];
+    lowerParts: { order: number; index: number; text: string }[];
+    upperRemarks: string;
+    lowerRemarks: string;
+    upperName: string;
+    lowerName: string;
+    upperNameSet: boolean;
+    lowerNameSet: boolean;
+    upperTemplate?: T;
+    lowerTemplate?: T;
+    quantityTemplate?: T;
+  }
+  const units = new Map<string, RestoredUnit>();
+  const ensureUnit = (source: WrapSource): RestoredUnit => {
+    const key = sourceKey(source);
+    let unit = units.get(key);
+    if (unit === undefined) {
+      unit = {
+        source,
+        upperParts: [],
+        lowerParts: [],
+        upperRemarks: "",
+        lowerRemarks: "",
+        upperName: "",
+        lowerName: "",
+        upperNameSet: false,
+        lowerNameSet: false,
+      };
+      units.set(key, unit);
+    }
+    return unit;
+  };
+  const append = (
+    row: T,
+    source: WrapSource,
+    flag: string | undefined,
+    glue: string | undefined,
+    text: string,
+    remarks: string,
+    order: number | undefined,
+  ): void => {
+    if (flag === undefined || flag === "" || flag === "fill") return;
+    const unit = ensureUnit(source);
+    if (flag === "keepUpper" || flag === "upper") {
+      unit.upperTemplate ??= row;
+      if (!unit.upperNameSet) {
+        unit.upperName = source.nameLower;
+        unit.upperNameSet = true;
+      }
+    } else if (flag === "keepLower" || flag === "lower") {
+      unit.lowerTemplate ??= row;
+      if (!unit.lowerNameSet) {
+        unit.lowerName = source.nameLower;
+        unit.lowerNameSet = true;
+      }
+    }
+    if (flag === "keepUpper" || flag === "upper")
+      unit.upperParts.push({
+        order: order ?? 0,
+        index: unit.upperParts.length,
+        text: `${glue ?? ""}${text}`,
+      });
+    else if (flag === "keepLower" || flag === "lower")
+      unit.lowerParts.push({
+        order: order ?? 0,
+        index: unit.lowerParts.length,
+        text: `${glue ?? ""}${text}`,
+      });
+    if (remarks !== "") {
+      if (flag === "keepUpper" || flag === "upper") {
+        if (unit.upperRemarks === "") unit.upperRemarks = remarks;
+      } else if (flag === "keepLower" || flag === "lower") {
+        if (unit.lowerRemarks === "") unit.lowerRemarks = remarks;
+      }
+    }
+  };
+
+  rows.forEach((row) => {
+    const base = row as BreakdownRow;
+    const upperSource = parseWrapSource(base.wrapUpperSource) ?? {
+      ...wrapSource(base),
+      nameLower: base.nameUpper,
+    };
+    const lowerSource = wrapSource(base);
+    append(
+      row,
+      upperSource,
+      base.wrapUpper,
+      base.wrapGlueUpper,
+      base.descriptionUpper,
+      base.remarksUpper,
+      base.wrapOrderUpper,
+    );
+    append(
+      row,
+      lowerSource,
+      base.wrap,
+      base.wrapGlue,
+      base.descriptionLower,
+      base.remarksLower,
+      base.wrapOrder,
+    );
+    if (base.unit !== "" || base.quantity !== null) {
+      const unit = ensureUnit(lowerSource);
+      unit.quantityTemplate ??= row;
+    }
+  });
+
+  const clean = (row: T): Record<string, unknown> => {
+    const copy = { ...row } as Record<string, unknown>;
+    delete copy.wrap;
+    delete copy.wrapGlue;
+    delete copy.wrapUpper;
+    delete copy.wrapGlueUpper;
+    delete copy.wrapUpperSource;
+    delete copy.wrapOrder;
+    delete copy.wrapOrderUpper;
+    return copy;
+  };
+  const joinOrderedParts = (
+    parts: readonly { order: number; index: number; text: string }[],
+  ): string => {
+    const hasOrder = parts.some((part) => part.order > 0);
+    return [...parts]
+      .sort((a, b) => {
+        if (!hasOrder || (a.order === 0 && b.order === 0))
+          return a.index - b.index;
+        if (a.order === 0) return 1;
+        if (b.order === 0) return -1;
+        return a.order - b.order || a.index - b.index;
+      })
+      .map((part) => part.text)
+      .join("");
+  };
+  const output: T[] = [];
+  units.forEach((unit) => {
+    const template =
+      unit.lowerTemplate ?? unit.upperTemplate ?? unit.quantityTemplate;
+    if (template === undefined) return;
+    const noteBase = clean(unit.upperTemplate ?? template) as unknown as T;
+    const detailBase = clean(unit.quantityTemplate ?? unit.lowerTemplate ?? template) as unknown as T;
+    const sourceFields = unit.source;
+    const upper = {
+      ...noteBase,
+      subjectId: sourceFields.subjectId,
+      subjectName: sourceFields.subjectName,
+      masterKey: sourceFields.masterKey,
+      aggregateItemId: sourceFields.aggregateItemId,
+      partName: sourceFields.partName,
+      ...(sourceFields.struck === undefined
+        ? {}
+        : { struck: sourceFields.struck }),
+      rowKind: "note",
+      nameUpper: "",
+      nameLower: unit.upperNameSet ? unit.upperName : sourceFields.partName,
+      descriptionUpper: "",
+      descriptionLower: joinOrderedParts(unit.upperParts),
+      quantity: null,
+      unit: "",
+      unitPrice: null,
+      amount: null,
+      remarksUpper: "",
+      remarksLower: unit.upperRemarks,
+    } as T;
+    const lower = {
+      ...detailBase,
+      subjectId: sourceFields.subjectId,
+      subjectName: sourceFields.subjectName,
+      masterKey: sourceFields.masterKey,
+      aggregateItemId: sourceFields.aggregateItemId,
+      partName: sourceFields.partName,
+      ...(sourceFields.struck === undefined
+        ? {}
+        : { struck: sourceFields.struck }),
+      rowKind: "detail",
+      nameUpper: "",
+      nameLower: unit.lowerNameSet
+        ? unit.lowerName
+        : (unit.quantityTemplate as BreakdownRow | undefined)?.nameLower ??
+          "",
+      descriptionUpper: "",
+      descriptionLower: joinOrderedParts(unit.lowerParts),
+      remarksUpper: "",
+      remarksLower: unit.lowerRemarks,
+    } as T;
+    output.push(upper, lower);
+  });
+  return output;
+}
+
+export function unwrapBreakdownRows<T extends BreakdownRow>(
+  rows: readonly T[],
+  namePattern?: number,
+): T[];
+export function unwrapBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  namePattern?: number,
+): T[];
+export function unwrapBreakdownRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  namePattern: number = NAME_PATTERN.asIs,
+): T[] {
+  const output: T[] = [];
+  const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
+  const hasWrap = (row: BreakdownRow): boolean =>
+    row.wrap !== undefined && row.wrap !== "";
+  const clearWrap = (
+    row: T,
+    descriptionLower: string,
+    rowKind: "note" | "detail",
+    remarksLower = row.remarksLower,
+  ): T => {
+    const copy = {
+      ...row,
+      descriptionLower,
+      remarksLower,
+      rowKind,
+    } as Record<string, unknown>;
+    delete copy.wrap;
+    delete copy.wrapGlue;
+    delete copy.wrapUpper;
+    delete copy.wrapGlueUpper;
+    delete copy.wrapUpperSource;
+    delete copy.wrapOrder;
+    delete copy.wrapOrderUpper;
+    return copy as T;
+  };
+  const orderGroup = (group: readonly T[]): T[] => {
+    if (!group.some((row) => (row.wrapOrder ?? 0) > 0)) return [...group];
+    return group
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const aOrder = a.row.wrapOrder ?? 0;
+        const bOrder = b.row.wrapOrder ?? 0;
+        if (aOrder === 0 && bOrder === 0) return a.index - b.index;
+        if (aOrder === 0) return 1;
+        if (bOrder === 0) return -1;
+        return aOrder - bOrder || a.index - b.index;
+      })
+      .map(({ row }) => row);
+  };
+  let index = 0;
+  while (index < rows.length) {
+    if (rowAt(index).wrapUpper !== undefined && rowAt(index).wrapUpper !== "") {
+      let end = index + 1;
+      while (
+        end < rows.length &&
+        rowAt(end).wrapUpper !== undefined &&
+        rowAt(end).wrapUpper !== "" &&
+        detailUnitKey(rowAt(end)) !== null
+      )
+        end += 1;
+      output.push(...unwrapTwoLineRows(rows.slice(index, end)));
+      index = end;
+      continue;
+    }
+    const key = detailUnitKey(rowAt(index));
+    if (key === null) {
+      output.push(rows[index]);
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < rows.length) {
+      if (detailUnitKey(rowAt(end)) !== key) break;
+      end += 1;
+    }
+
+    const group = orderGroup(rows.slice(index, end));
+    const upperChunks = group.filter(
+      (row) => row.wrap === "keepUpper" || row.wrap === "upper",
+    );
+    const lowerChunks = group.filter(
+      (row) => row.wrap === "keepLower" || row.wrap === "lower",
+    );
+    const hasOrderedRoleMismatch = group.some((row) => {
+        const order = row.wrapOrder ?? 0;
+        if (order === 0) return false;
+        return order % 2 === 0
+          ? row.rowKind !== "detail"
+          : row.rowKind !== "note";
+      }) ||
+      (group.length === 1 &&
+        (group[0].wrapOrder ?? 0) > 0 &&
+        (group[0].wrapOrder ?? 0) % 2 === 0 &&
+        group[0].rowKind === "detail");
+    if (hasOrderedRoleMismatch) {
+      const upperTemplate = group.find(
+        (row) => (row.wrapOrder ?? 0) % 2 === 1,
+      );
+      const lowerTemplate = group.find(
+        (row) => (row.wrapOrder ?? 0) % 2 === 0 && (row.wrapOrder ?? 0) > 0,
+      );
+      const upperBase = upperTemplate ?? lowerTemplate ?? group[0];
+      const lowerBase = lowerTemplate ?? upperTemplate ?? group[0];
+      const oneLineSource = parseWrapSource(upperBase.wrapUpperSource);
+      const foldedName =
+        group.find((row) => row.rowKind === "detail")?.nameLower ?? "";
+      const partName =
+        oneLineSource?.partName ?? upperBase.partName ?? lowerBase.partName;
+      const upperNameLower =
+        oneLineSource?.nameLower ??
+        (namePattern === NAME_PATTERN.asIs ? partName : "");
+      const lowerNameLower =
+        oneLineSource?.lowerNameLower ??
+        (namePattern === NAME_PATTERN.asIs
+          ? stripPartName(foldedName, partName)
+          : foldedName);
+      const joinChunks = (chunks: readonly T[]): string =>
+        chunks
+          .map(
+            (row) =>
+              `${(row as BreakdownRow).wrapGlue ?? ""}${row.descriptionLower}`,
+          )
+          .join("");
+      const upperRow = {
+        ...clearWrap(
+          upperBase,
+          joinChunks(upperChunks),
+          "note",
+          upperChunks[0]?.remarksLower ?? "",
+        ),
+        nameLower: upperNameLower,
+        ...(upperTemplate === undefined
+          ? {
+              partName: "",
+              nameUpper: "",
+              nameLower: "",
+          }
+          : {}),
+        quantity: null,
+        unit: "",
+        unitPrice: null,
+        amount: null,
+      } as T;
+      const lowerRow = {
+        ...clearWrap(
+          lowerBase,
+          joinChunks(lowerChunks),
+          "detail",
+          lowerChunks[0]?.remarksLower ?? "",
+        ),
+        nameLower: lowerNameLower,
+      } as T;
+      output.push(upperRow, lowerRow);
+      index = end;
+      continue;
+    }
+    if (
+      group.some(
+        (row) => row.wrap === "keepUpper" || row.wrap === "keepLower",
+      )
+    ) {
+      const joinChunks = (chunks: readonly T[]): string =>
+        chunks
+          .map(
+            (row) =>
+              `${(row as BreakdownRow).wrapGlue ?? ""}${row.descriptionLower}`,
+          )
+          .join("");
+      const upperTemplate = upperChunks[0] ?? group[0];
+      const lowerTemplate = lowerChunks[0] ?? group[0];
+      const upperRow = clearWrap(
+        upperTemplate,
+        joinChunks(upperChunks),
+        "note",
+        upperChunks[0]?.remarksLower ?? "",
+      );
+      const upperSource = parseWrapSource(upperTemplate.wrapUpperSource);
+      const lowerRow = clearWrap(
+        lowerTemplate,
+        joinChunks(lowerChunks),
+        "detail",
+        lowerChunks[0]?.remarksLower ?? "",
+      );
+      if (upperSource !== null) {
+        upperRow.partName = upperSource.partName;
+        upperRow.nameLower = upperSource.nameLower;
+        lowerRow.partName = upperSource.partName;
+        lowerRow.nameLower = upperSource.lowerNameLower ?? lowerRow.nameLower;
+      }
+      output.push(
+        upperChunks.length === 0
+          ? ({ ...upperRow, nameUpper: "", nameLower: "" } as T)
+          : upperRow,
+        lowerRow,
+      );
+      index = end;
+      continue;
+    }
+    if (
+      group.length < 2 ||
+      !group.some((row) => hasWrap(row as BreakdownRow))
+    ) {
+      output.push(...group);
+      index = end;
+      continue;
+    }
+
+    const upper = group[0] as BreakdownRow;
+    const detail = group[1] as BreakdownRow;
+    const restoredUpper =
+      upper.descriptionLower +
+      group
+        .slice(1)
+        .map((row) => row as BreakdownRow)
+        .filter((row) => row.wrap === "upper")
+      .map((row) => `${row.wrapGlue ?? ""}${row.descriptionLower}`)
+        .join("");
+    const restoredLower =
+      (detail.wrap === "upper" ? "" : detail.descriptionLower) +
+      group
+        .slice(2)
+        .map((row) => row as BreakdownRow)
+        .filter((row) => row.wrap === "lower")
+        .map((row) => `${row.wrapGlue ?? ""}${row.descriptionLower}`)
+        .join("");
+    output.push(
+      clearWrap(group[0], restoredUpper, "note"),
+      clearWrap(group[1], restoredLower, "detail"),
+    );
+    index = end;
+  }
+  return output;
+}
+
+function emitRelayoutUnit(
+  sourceRows: readonly BreakdownRow[],
+  detail: BreakdownRow,
+  pairedUpper: BreakdownRow | undefined,
+  overflow: BreakdownRow | undefined,
+  settings: {
+    layout: number;
+    namePattern: number;
+    descriptionWidth?: number;
+  },
+): BreakdownRow[] {
+  const partName =
+    pairedUpper !== undefined
+      ? pairedUpper.nameLower !== ""
+        ? pairedUpper.nameLower
+        : detail.partName
+      : detail.nameUpper !== ""
+        ? detail.nameUpper
+        : detail.partName;
+  const name =
+    pairedUpper !== undefined
+      ? pairedUpper.nameLower !== ""
+        ? detail.nameLower
+        : stripPartName(detail.nameLower, detail.partName)
+      : detail.nameUpper !== ""
+        ? detail.nameLower
+        : stripPartName(detail.nameLower, detail.partName);
+  const hasQuantity = detail.unit !== "";
+  const struck = sourceRows.some((row) => row.struck === 1)
+    ? 1
+    : sourceRows.some((row) => row.struck !== undefined)
+      ? 0
+      : undefined;
+
+  return emitDetailUnit(
+    {
+      subjectId: detail.subjectId,
+      subjectName: detail.subjectName,
+      hasQuantity,
+      masterKey: detail.masterKey,
+      aggregateItemId: detail.aggregateItemId,
+      partName,
+      name,
+      descriptionUpper:
+        pairedUpper !== undefined
+          ? pairedUpper.descriptionLower
+          : hasQuantity
+            ? (overflow?.descriptionLower ?? "")
+            : detail.descriptionLower,
+      descriptionLower:
+        pairedUpper !== undefined
+          ? detail.descriptionLower
+          : hasQuantity
+            ? detail.descriptionLower
+            : (overflow?.descriptionLower ?? ""),
+      remarksUpper:
+        pairedUpper !== undefined
+          ? pairedUpper.remarksLower
+          : hasQuantity
+            ? (overflow?.remarksLower ?? "")
+            : detail.remarksLower,
+      remarksLower:
+        pairedUpper !== undefined
+          ? detail.remarksLower
+          : hasQuantity
+            ? detail.remarksLower
+            : (overflow?.remarksLower ?? ""),
+      quantity: detail.quantity,
+      unit: detail.unit,
+      unitPrice: detail.unitPrice,
+      amount: detail.amount,
+      struck,
+    },
+    settings.layout,
+    settings.namePattern,
+    settings.descriptionWidth,
+  );
 }
 
 /** 集計書から使っている単位を並び順つきで抜き出す */
@@ -531,4 +2033,33 @@ export function collectSubjectOrder(
     .filter((subject) => used.has(subject.id))
     .sort((a, b) => a.displayOrder - b.displayOrder)
     .map((subject) => subject.id);
+}
+
+/**
+ * 工種科目の並びに新しい科目を入れる。
+ * 今までの並び（動かした分も含めて覚えたもの）を基準に、新しい科目は
+ * 科目マスターの並びで直前に来る科目の直後へ入れる（前後の科目から位置を決める。
+ * どの既存科目より前なら先頭）。
+ */
+export function mergeSubjectOrder(
+  storedOrder: readonly number[],
+  usedIds: readonly number[],
+  subjects: readonly BreakdownSubject[],
+): number[] {
+  const orderById = new Map(
+    subjects.map((subject) => [subject.id, subject.displayOrder]),
+  );
+  const order = [...storedOrder];
+  usedIds
+    .filter((id) => !order.includes(id))
+    .forEach((id) => {
+      const key = orderById.get(id) ?? Number.MAX_SAFE_INTEGER;
+      let insertAt = 0;
+      order.forEach((existing, index) => {
+        const existingKey = orderById.get(existing) ?? Number.MAX_SAFE_INTEGER;
+        if (existingKey < key) insertAt = index + 1;
+      });
+      order.splice(insertAt, 0, id);
+    });
+  return order;
 }

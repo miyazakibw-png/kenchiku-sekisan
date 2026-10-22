@@ -10,6 +10,7 @@ import type {
   Fitting,
   RoomSheet,
   SaveRoomSheetRequest,
+  SheetOption,
 } from "../../shared/types";
 import { DEFAULT_DEDUCTION_LIMIT } from "../../core/room/shape";
 import {
@@ -36,6 +37,36 @@ function toSheet(row: typeof projectRoomSheets.$inferSelect): RoomSheet {
     ceilingHeight: row.ceilingHeight,
     note: row.note,
   };
+}
+
+/**
+ * この工事にある部屋計算書の一覧（他の計算書の上段を写すときの選択に出す）。
+ * 部屋名は 部位Ⅱ＋半角スペース＋部位Ⅲ。
+ */
+export function listRoomSheets(
+  db: AppDatabase,
+  projectId: number,
+): SheetOption[] {
+  const rows = db
+    .select({
+      estimateRowId: projectRoomSheets.estimateRowId,
+      part2: projectEstimateRows.part2,
+      part3: projectEstimateRows.part3,
+      displayOrder: projectEstimateRows.displayOrder,
+    })
+    .from(projectRoomSheets)
+    .innerJoin(
+      projectEstimateRows,
+      eq(projectRoomSheets.estimateRowId, projectEstimateRows.id),
+    )
+    .where(eq(projectRoomSheets.projectId, projectId))
+    .orderBy(projectEstimateRows.displayOrder)
+    .all();
+
+  return rows.map((row) => ({
+    estimateRowId: row.estimateRowId,
+    roomName: `${row.part2} ${row.part3}`.trim(),
+  }));
 }
 
 /** 部屋計算書を開く。まだ無ければ部位別入力表の行から作る（天井高さも引き継ぐ） */

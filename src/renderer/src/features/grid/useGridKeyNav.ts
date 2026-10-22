@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { KeyboardEvent } from "react";
 import { caretJumpOf, navMoveOf, nextCellPosition } from "./gridKeyNav";
+import { focusCell } from "./focusCell";
 
 const FIELDS =
   "input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])";
@@ -112,7 +113,7 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
         ? nearestByLeft(lines[next.row], field)
         : lines[next.row][next.col];
     event.preventDefault();
-    target.focus();
+    focusCell(target);
     if (target instanceof HTMLInputElement && target.type === "text")
       target.select();
     else if (target instanceof HTMLTextAreaElement) target.select();

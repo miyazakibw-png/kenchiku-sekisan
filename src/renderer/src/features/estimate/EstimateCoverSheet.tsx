@@ -91,7 +91,7 @@ export default function EstimateCoverSheet({
                     <td>{row.part1 || shown.part1}</td>
                     <td>{row.part2 || shown.part2}</td>
                     <td className="flag">{row.part2Split === 1 ? "✓" : ""}</td>
-                    <td>{row.formwork}</td>
+                    <td>{row.formwork || shown.formwork}</td>
                     <td>{row.part3}</td>
                     <td className="num">
                       {row.ceilingHeight === null

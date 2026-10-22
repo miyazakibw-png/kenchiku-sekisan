@@ -271,7 +271,8 @@ describe("家具・設備入力表", () => {
     saveRows(db, sheet.id);
 
     const fittings = listFittings(db, projectId);
-    expect(fittings.map((row) => row.symbol)).toEqual(["W1", "A2G", "AIS"]);
+    // 部位は引き継がないので3行目の記号に「A」は付かない
+    expect(fittings.map((row) => row.symbol)).toEqual(["W1", "A2G", "IS"]);
     expect(fittings[1]).toMatchObject({
       fromFurniture: 1,
       width: 1.2,
@@ -300,7 +301,7 @@ describe("家具・設備入力表", () => {
     saveRows(db, furniture.id);
     expect(listFittings(db, projectId).map((row) => row.symbol)).toEqual([
       "A2G",
-      "AIS",
+      "IS",
     ]);
     saveRows(db, furniture.id, "kitchen");
     expect(listFittings(db, projectId)).toEqual([]);

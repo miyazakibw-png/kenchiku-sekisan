@@ -66,7 +66,7 @@ table.estimate {
 
 table.estimate th,
 table.estimate td {
-  border: 1px solid #c9ced6;
+  border: var(--line-thin);
   padding: 1px 4px;
   font-size: 12px;
 }
@@ -92,32 +92,65 @@ table.estimate td.check.number {
   min-width: 7ch;
 }
 
+table.estimate {
+  --estimate-parts-action-size: 25px;
+}
+
+table.estimate td.open button {
+  white-space: nowrap;
+  height: var(--estimate-parts-action-size);
+}
+
+table.estimate td.open,
+table.estimate th.open {
+  min-width: 61px;
+}
+
 table.estimate td.no,
 table.estimate th.no {
-  width: 8ch;
+  width: 121px;
+  min-width: 121px;
   text-align: right;
   color: #6b7280;
 }
 
-/* 先頭列：行番号のとなりに行の入れ替え（↑↓） */
+/* 先頭列：行番号のとなりに行の入れ替え・削除 */
 table.estimate td.no .no-cell {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 2px;
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+table.estimate td.no .row-no {
+  flex: 0 0 3ch;
+  min-width: 3ch;
+  text-align: right;
 }
 
 table.estimate td.no .row-move {
   display: inline-flex;
-  flex-direction: column;
+  flex-direction: row;
+  gap: 4px;
   line-height: 1;
 }
 
-table.estimate td.no .row-move button {
-  padding: 0 2px;
-  font-size: 9px;
-  line-height: 1.1;
-  min-width: 14px;
+table.estimate td.no .row-move button,
+table.estimate td.no .row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--estimate-parts-action-size);
+  min-width: var(--estimate-parts-action-size);
+  height: var(--estimate-parts-action-size);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+table.estimate td.no .row-delete {
+  color: #b91c1c;
 }
 
 table.estimate th.part,
@@ -173,6 +206,11 @@ table.estimate tr.subtotal .subtotal-label {
   padding: 0 4px;
 }
 
+/* 選んだ小計行は普通の行と同じ青いバーにする（小計の色が上書きしないよう後に置く） */
+table.estimate tr.subtotal.selected {
+  background: #e8f0fe;
+}
+
 .estimate-page .hint {
   margin: 0 8px 16px;
   font-size: 11px;
@@ -190,4 +228,42 @@ table.estimate tr.subtotal .subtotal-label {
   color: #c2410c;
   margin-right: 2px;
   cursor: help;
+}
+
+/* 計算に誤りのある計算書がある行の備考欄に出す印 */
+.calc-error {
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 4px;
+  cursor: help;
+}
+
+/* 縮尺未調整の図面がある行の備考欄に出す印 */
+.scale-pending {
+  color: #c2410c;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-right: 4px;
+  cursor: help;
+}
+
+/* 行を消したとき、消した行より上の行が動かないよう、表の下に白い余白を残す
+   （消した行の下の行が上へ詰まる形にする。
+    ※.estimate-page自体にpaddingや疑似要素を足すと、box-sizing:border-boxと
+    縦flex配置で中の欄を潰して画面が空になるので、表や説明文の外マージンで作る） */
+.estimate-page > table:last-child,
+/* 内側にスクロール欄（雑・金物表・家具表・耐火表）を持つ画面は、説明文のマージンで
+   その欄が潰れることがあるため外す（それらは内側の欄へ余白を入れてある） */
+.estimate-page:not(.misc-page):not(.furniture-page):not(.fireproof-estimate-page)
+  > p.hint:last-child {
+  margin-bottom: 100vh;
+}
+
+@media print {
+  .estimate-page > table:last-child,
+  .estimate-page > p.hint:last-child {
+    margin-bottom: 0;
+  }
 }

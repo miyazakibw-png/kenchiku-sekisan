@@ -23,6 +23,10 @@ import {
 } from "../../src/main/services/breakdownService";
 import { buildExport } from "../../src/main/services/breakdownExportService";
 import type { EstimateRowDraft } from "../../src/shared/types";
+import {
+  BREAKDOWN_LAYOUT,
+  relayoutBreakdownRows,
+} from "../../src/core/breakdown/breakdown";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -125,6 +129,15 @@ describe("内訳書", () => {
     expect(view.settings.unitOrder).toEqual(["m2"]);
   });
 
+  it("部位Ⅱに仕分けた見出しも内訳書へ転記する", () => {
+    const view = transferBreakdown(db, projectId);
+    expect(
+      view.rows.some(
+        (row) => row.rowKind === "title" && row.nameLower === "＜1階＞",
+      ),
+    ).toBe(true);
+  });
+
   it("確定するまでは何度転記しても同じ回、確定後は次の回になる", () => {
     const first = transferBreakdown(db, projectId);
     const again = transferBreakdown(db, projectId);
@@ -141,6 +154,23 @@ describe("内訳書", () => {
     );
   });
 
+  it("確定し忘れても newRound で転記すると、開いていた回を確定して次の回を作る", () => {
+    const first = transferBreakdown(db, projectId);
+    // 確定を押さないまま「次の回として新しく作る」を選んだ転記
+    const second = transferBreakdown(db, projectId, true);
+    expect(second.version?.round).toBe(2);
+    const versions = listBreakdownVersions(db, projectId);
+    expect(versions).toHaveLength(2);
+    // もとの回は確定済みになり、行もそのまま残る
+    const kept = getBreakdown(db, projectId, first.version?.id);
+    expect(kept.version?.confirmed).toBe(1);
+    expect(kept.rows.length).toBe(first.rows.length);
+    // さらに転記すると今度は2回目が作り直される
+    const again = transferBreakdown(db, projectId);
+    expect(again.version?.round).toBe(2);
+    expect(again.version?.id).toBe(second.version?.id);
+  });
+
   it("工種科目の並べ替えは2回目以降も持ち越す", () => {
     const first = transferBreakdown(db, projectId);
     saveBreakdownSettings(db, {
@@ -152,6 +182,18 @@ describe("内訳書", () => {
     const second = transferBreakdown(db, projectId);
     expect(second.version?.round).toBe(2);
     expect(second.settings.subjectOrder).toEqual([9, 5, 1]);
+  });
+
+  it("その回で初めて出てきた科目を記録する（前の回にあった科目は新しくない）", () => {
+    const first = transferBreakdown(db, projectId);
+    expect(first.version?.newSubjects).toEqual([5]);
+    // 確定する前に作り直しても、この回の中では「新しい」まま
+    const again = transferBreakdown(db, projectId);
+    expect(again.version?.newSubjects).toEqual([5]);
+    confirmBreakdownVersion(db, first.version?.id ?? 0);
+    // 次の回では前の回にあった科目は「新しい」ではない
+    const second = transferBreakdown(db, projectId);
+    expect(second.version?.newSubjects).toEqual([]);
   });
 
   it("作った回を削除すると行も消える", () => {
@@ -189,6 +231,106 @@ describe("内訳書", () => {
     expect(detail?.descriptionLower).toBe("厚2.0");
   });
 
+  it("摘要幅を制限して保存し、折り返し情報を保持してBCS出力では戻す", () => {
+    const initial = getBreakdown(db, projectId).settings;
+    const capped = saveBreakdownSettings(db, {
+      ...initial,
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      descriptionWidth: 999,
+    });
+    expect(capped.descriptionWidth).toBe(200);
+
+    const settings = saveBreakdownSettings(db, {
+      ...capped,
+      descriptionWidth: 1,
+    });
+    const wrapped = transferBreakdown(db, projectId);
+    expect(
+      wrapped.rows.some(
+        (row) => row.wrap === "upper" || row.wrap === "lower",
+      ),
+    ).toBe(true);
+    const rowsWithGlue = wrapped.rows.map((row) =>
+      row.wrap === "upper" && row.descriptionLower !== ""
+        ? { ...row, wrapGlue: " " }
+        : row,
+    );
+    const savedRows = saveBreakdownRows(
+      db,
+      wrapped.version?.id ?? 0,
+      rowsWithGlue,
+    );
+    expect(
+      savedRows.some((row) => row.wrap === "upper" && row.wrapGlue === " "),
+    ).toBe(true);
+    expect(
+      buildExport("bcs", savedRows, settings, "港区計画").content,
+    ).toEqual(
+      buildExport(
+        "bcs",
+        savedRows,
+        { ...settings, descriptionWidth: 0 },
+        "港区計画",
+      ).content,
+    );
+
+    const lowerCapped = saveBreakdownSettings(db, {
+      ...settings,
+      descriptionWidth: -5,
+    });
+    expect(lowerCapped.descriptionWidth).toBe(0);
+  });
+
+  it("書式①の上段折り返し情報を保存し、各Excel出力へ渡す", () => {
+    const settings = saveBreakdownSettings(db, {
+      ...getBreakdown(db, projectId).settings,
+      layout: BREAKDOWN_LAYOUT.twoLine,
+      descriptionWidth: 1,
+    });
+    const view = transferBreakdown(db, projectId);
+    expect(
+      view.rows.some(
+        (row) =>
+          row.wrapUpper === "upper" ||
+          row.wrapUpper === "lower" ||
+          row.wrapUpper === "keepUpper" ||
+          row.wrapUpper === "keepLower",
+      ),
+    ).toBe(true);
+    const savedRows = saveBreakdownRows(
+      db,
+      view.version?.id ?? 0,
+      view.rows,
+    );
+    expect(
+      savedRows.some(
+        (row) =>
+          row.wrapUpper === "upper" ||
+          row.wrapUpper === "lower" ||
+          row.wrapUpper === "keepUpper" ||
+          row.wrapUpper === "keepLower",
+      ),
+    ).toBe(true);
+    expect(savedRows.some((row) => (row.wrapOrder ?? 0) > 0)).toBe(true);
+    expect(savedRows.some((row) => (row.wrapOrderUpper ?? 0) > 0)).toBe(true);
+    (["excelAll", "excelBySubject"] as const).forEach((kind) => {
+      expect(
+        buildExport(kind, savedRows, settings, "港区計画").content
+          .subarray(0, 2)
+          .toString("latin1"),
+      ).toBe("PK");
+    });
+    expect(
+      buildExport("excelCompare", savedRows, settings, "港区計画", {
+        rows: savedRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content
+        .subarray(0, 2)
+        .toString("latin1"),
+    ).toBe("PK");
+  });
+
   it("BCS.CSVはShift_JISで、エクセルは科目ごとのシートで掃き出す", () => {
     const view = transferBreakdown(db, projectId);
     const bcs = buildExport("bcs", view.rows, view.settings, "港区計画");
@@ -205,5 +347,36 @@ describe("内訳書", () => {
     expect(excel.defaultName).toBe("港区計画_内訳書.xlsx");
     // .xlsx（zip）なので PK で始まる
     expect(excel.content.subarray(0, 2).toString("latin1")).toBe("PK");
+  });
+
+  it("古い書式の明細も現在の書式で各種出力する", () => {
+    const view = transferBreakdown(db, projectId);
+    const oldRows = view.rows.map((row) =>
+      row.rowKind === "detail"
+        ? { ...row, partName: "床", nameUpper: "床" }
+        : row,
+    );
+    const settings = { ...view.settings, layout: BREAKDOWN_LAYOUT.twoRow };
+    const relayoutedRows = relayoutBreakdownRows(oldRows, settings);
+
+    (["bcs", "excelAll", "excelBySubject"] as const).forEach((kind) => {
+      expect(buildExport(kind, oldRows, settings, "港区計画").content).toEqual(
+        buildExport(kind, relayoutedRows, settings, "港区計画").content,
+      );
+    });
+
+    expect(
+      buildExport("excelCompare", oldRows, settings, "港区計画", {
+        rows: oldRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content,
+    ).toEqual(
+      buildExport("excelCompare", relayoutedRows, settings, "港区計画", {
+        rows: relayoutedRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      }).content,
+    );
   });
 });

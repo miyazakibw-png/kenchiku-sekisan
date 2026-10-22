@@ -113,41 +113,65 @@ export function parseNumber(text: string): {
   return { value: Math.round(value * 100) / 100 };
 }
 
-/** 倍率は -99〜99 の範囲 */
+/** 倍率は -999.99〜999.99 の範囲 */
 export function parseMultiplier(text: string): {
   value: number | null;
   error?: string;
 } {
   const parsed = parseNumber(text);
   if (parsed.error || parsed.value === null) return parsed;
-  if (parsed.value < -99 || parsed.value > 99) {
-    return { value: null, error: "倍率は -99〜99 で入力してください" };
+  if (parsed.value < -999.99 || parsed.value > 999.99) {
+    return { value: null, error: "倍率は -999.99〜999.99 で入力してください" };
   }
   return parsed;
 }
 
 /**
- * 部位Ⅰ・部位Ⅱは未入力なら入力のある上の行を引き継ぐ。
+ * 部位Ⅰ・部位Ⅱ・型枠は未入力なら入力のある上の行を引き継ぐ。
  * 小計行は部位の区切りには使わず、直前の値をそのまま持ち越す。
  */
 export function resolveInherited(
   rows: EstimateRowDraft[],
-): { part1: string; part2: string; part2Split: number }[] {
+): {
+  part1: string;
+  part2: string;
+  part2Split: number;
+  formwork: string;
+}[] {
   let part1 = "";
   let part2 = "";
   let part2Split = 0;
+  let formwork = "";
   return rows.map((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
     if (row.part2.trim() !== "") {
       part2 = row.part2;
       part2Split = row.part2Split;
     }
+    if (row.formwork.trim() !== "") formwork = row.formwork;
     return {
       part1,
       part2,
       part2Split: row.part2.trim() !== "" ? row.part2Split : part2Split,
+      formwork,
     };
   });
+}
+
+/**
+ * 計算書に出す部屋名（部位Ⅱ＋部位Ⅲ）を行IDごとに作る。
+ * 部位Ⅱが空欄の行は、入力のある上の行から引き継いだ内容を使う。
+ */
+export function roomNamesByRowId(
+  rows: EstimateRowDraft[],
+): Map<number, string> {
+  const inherited = resolveInherited(rows);
+  const names = new Map<number, string>();
+  rows.forEach((row, index) => {
+    if (row.id === null) return;
+    names.set(row.id, `${inherited[index].part2} ${row.part3}`.trim());
+  });
+  return names;
 }
 
 export function insertRow(
@@ -212,9 +236,22 @@ export function copyRowsInto(
   return [...rows.slice(0, at), ...cloned, ...rows.slice(at)];
 }
 
+export function hasRowInput(row: EstimateRowDraft): boolean {
+  return (
+    row.rowType === "room" &&
+    (row.part1.trim() !== "" ||
+      row.part2.trim() !== "" ||
+      row.formwork.trim() !== "" ||
+      row.part3.trim() !== "" ||
+      row.ceilingHeight !== null ||
+      row.part2Split === 1)
+  );
+}
+
 /**
  * 他の行を上書きで貼り込む（カーソルの行から、控えた行数だけ置き換える）。
- * 足りない分は末尾へ足す。挿入貼付と同じく新しい行として複製する。
+ * 入力のある部屋行は入力を残し、計算書の複製元を設定する。
+ * それ以外は新しい行として置き換え、足りない分は末尾へ足す。
  */
 export function overwriteRowsInto(
   rows: EstimateRowDraft[],
@@ -222,12 +259,49 @@ export function overwriteRowsInto(
   copied: EstimateRowDraft[],
 ): EstimateRowDraft[] {
   const at = Math.min(Math.max(index, 0), rows.length);
-  const cloned = copied.map((row) => ({
-    ...row,
-    id: null,
-    copySourceId: row.id ?? row.copySourceId ?? null,
-  }));
-  return [...rows.slice(0, at), ...cloned, ...rows.slice(at + cloned.length)];
+  const pasted = copied.map((source, offset) => {
+    const target = rows[at + offset];
+    if (
+      target === undefined ||
+      source.rowType !== "room" ||
+      !hasRowInput(target)
+    ) {
+      return {
+        ...source,
+        id: null,
+        copySourceId: source.id ?? source.copySourceId ?? null,
+      };
+    }
+
+    const sourceId = source.id ?? source.copySourceId;
+    if (sourceId === target.id) return target;
+
+    const targetPart2 = target.part2.trim() !== "";
+    return {
+      ...target,
+      id: target.id,
+      part1: target.part1.trim() !== "" ? target.part1 : source.part1,
+      part2: targetPart2 ? target.part2 : source.part2,
+      part2Split: targetPart2 ? target.part2Split : source.part2Split,
+      formwork:
+        target.formwork.trim() !== "" ? target.formwork : source.formwork,
+      part3: target.part3.trim() !== "" ? target.part3 : source.part3,
+      ceilingHeight:
+        target.ceilingHeight !== null
+          ? target.ceilingHeight
+          : source.ceilingHeight,
+      multiplier: target.multiplier,
+      note: target.note.trim() !== "" ? target.note : source.note,
+      calcType: source.calcType,
+      rowType: "room" as const,
+      copySourceId: source.id ?? source.copySourceId ?? null,
+    };
+  });
+  return [
+    ...rows.slice(0, at),
+    ...pasted,
+    ...rows.slice(at + pasted.length),
+  ];
 }
 
 /** Excelからの貼り付け・コピーで扱う列（画面の列順と同じ） */

@@ -3,8 +3,10 @@ import {
   buildInsertPastePreview,
   buildPastePreview,
   copyRangeAsTsv,
+  clearRange,
   isInRange,
   normalizeRange,
+  pasteIntoRange,
   type GridColumn,
 } from "../../src/renderer/src/features/grid/gridClipboard";
 
@@ -174,5 +176,161 @@ describe("グリッドのExcel互換コピー＆ペースト", () => {
       createRow,
     );
     expect(preview.rows.map((r) => r.code)).toEqual(["A", "B", "C"]);
+  });
+
+  it("単一値を複数セルの選択範囲全体へ貼り付ける", () => {
+    const preview = pasteIntoRange(
+      rows,
+      columns,
+      "5",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 1,
+        endCol: 2,
+      },
+      createRow,
+    );
+    expect(preview.rows).toEqual([
+      { code: "5", name: "5", qty: 5 },
+      { code: "5", name: "5", qty: 5 },
+    ]);
+    expect(preview.addedRows).toBe(0);
+  });
+
+  it("選択範囲より大きいTSVは範囲内だけに貼り付け、行を追加しない", () => {
+    const preview = pasteIntoRange(
+      rows,
+      columns,
+      "C\t天井\t3\nD\t梁\t4\nE\t床\t5",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 1,
+        endCol: 1,
+      },
+      createRow,
+    );
+    expect(preview.rows).toEqual([
+      { code: "C", name: "天井", qty: 1 },
+      { code: "D", name: "梁", qty: 2 },
+    ]);
+    expect(preview.addedRows).toBe(0);
+  });
+
+  it("選択範囲より小さいTSVは貼り付けたセル以外を維持する", () => {
+    const threeRows = [...rows, { code: "C", name: "梁", qty: 3 }];
+    const preview = pasteIntoRange(
+      threeRows,
+      columns,
+      "X\t天井\nY\t床",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 2,
+        endCol: 2,
+      },
+      createRow,
+    );
+    expect(preview.rows).toEqual([
+      { code: "X", name: "天井", qty: 1 },
+      { code: "Y", name: "床", qty: 2 },
+      { code: "C", name: "梁", qty: 3 },
+    ]);
+    expect(preview.addedRows).toBe(0);
+  });
+
+  it("単一セル選択では通常貼り付けと同様に展開して行を追加する", () => {
+    const range = {
+      startRow: 1,
+      startCol: 1,
+      endRow: 1,
+      endCol: 1,
+    };
+    const preview = pasteIntoRange(
+      rows,
+      columns,
+      "天井\t3\n梁\t4",
+      range,
+      createRow,
+    );
+    expect(preview).toEqual(
+      buildPastePreview(rows, columns, "天井\t3\n梁\t4", 1, 1, createRow),
+    );
+    expect(preview.addedRows).toBe(1);
+    expect(preview.rows[2]).toEqual({ code: "", name: "梁", qty: 4 });
+  });
+
+  it("範囲内の文字列列と数値列を消去し、範囲外を維持する", () => {
+    const cleared = clearRange(rows, columns, {
+      startRow: 0,
+      startCol: 1,
+      endRow: 0,
+      endCol: 2,
+    });
+    expect(cleared).toEqual([
+      { code: "A", name: "", qty: null },
+      { code: "B", name: "壁", qty: 2 },
+    ]);
+    expect(rows[0]).toEqual({ code: "A", name: "床", qty: 1 });
+  });
+
+  it("貼り付けでは自動計算列の警告を維持する", () => {
+    const preview = pasteIntoRange(
+      rows,
+      columns,
+      "値",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 0,
+        endCol: 2,
+      },
+      createRow,
+    );
+    expect(preview.warningCount).toBe(0);
+
+    const calculatedColumns: GridColumn<Row>[] = [
+      columns[0],
+      {
+        key: "calc",
+        label: "計算",
+        get: () => "",
+        set: (row) => ({ row, warning: "自動計算" }),
+      },
+    ];
+    const calculated = pasteIntoRange(
+      rows,
+      calculatedColumns,
+      "値",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 1,
+        endCol: 1,
+      },
+      createRow,
+    );
+    expect(calculated.warningCount).toBe(2);
+
+    const inputlessColumn: GridColumn<Row>[] = [
+      columns[0],
+      { key: "readonly", label: "参照", get: (row) => row.name },
+    ];
+    const inputless = pasteIntoRange(
+      rows,
+      inputlessColumn,
+      "C\t値",
+      {
+        startRow: 0,
+        startCol: 0,
+        endRow: 0,
+        endCol: 1,
+      },
+      createRow,
+    );
+    expect(inputless.errorCount).toBe(0);
+    expect(inputless.rows[0].code).toBe("C");
+    expect(inputless.rows[0].name).toBe("床");
   });
 });

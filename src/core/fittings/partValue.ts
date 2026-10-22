@@ -81,6 +81,29 @@ export function fittingSymbolForPart(
   return `<${symbol}${fittingSuffix(kind)}>`;
 }
 
+/**
+ * 計算式に <記号> だけ書いたとき、そのセットの部位が採る数値を返す。
+ * 画面（計算書）と集計で同じ採り方にするためここに1か所だけ置く。
+ * 面積を採る部位では空（<記号> はそのまま面積を指す）。
+ */
+export function fittingPartVariables(
+  set: { partName: string; partNumber: number | null },
+  fittingSymbols: string[],
+  variables: Record<string, number>,
+  values: FittingPartValue[],
+): Record<string, number> {
+  const suffix = fittingSuffix(
+    fittingKindForPart(set.partName, values, set.partNumber),
+  );
+  if (suffix === "") return {};
+  const out: Record<string, number> = {};
+  fittingSymbols.forEach((symbol) => {
+    const value = variables[`<${symbol}${suffix}>`];
+    if (value !== undefined) out[`<${symbol}>`] = value;
+  });
+  return out;
+}
+
 /** 保存されている値を読み込む（壊れた値は初期の決まりに戻す） */
 export function parseFittingPartValues(text: string): FittingPartValue[] {
   try {
