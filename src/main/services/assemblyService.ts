@@ -77,6 +77,8 @@ export function listAssemblies(
     id: row.id,
     scope: toScope(row.scope),
     projectId: row.projectId,
+    setPartNumber: row.setPartNumber,
+    setPartName: row.setPartName,
     note: row.note,
     displayOrder: row.displayOrder,
     items: listItems(db, row.id),
@@ -167,6 +169,8 @@ export function saveAssembly(
       assemblyName: assemblyHead(request.items)?.name ?? "",
       scope: request.scope,
       projectId: request.scope === "project" ? request.projectId : null,
+      setPartNumber: request.setPartNumber ?? null,
+      setPartName: request.setPartName ?? "",
       note: request.note,
     };
     if (assemblyId === null) {
@@ -307,6 +311,8 @@ function applyItemChangesToOtherAssemblies(
       id: other.id,
       scope: other.scope,
       projectId: other.projectId,
+      setPartNumber: other.setPartNumber,
+      setPartName: other.setPartName,
       note: other.note,
       items,
     });
@@ -536,6 +542,10 @@ export function propagateAssemblyToSheets(
           const applied = applyItemsToSet(assembly.items, set);
           set.details = applied.details;
           set.lines = applied.lines;
+          if (assembly.setPartName.trim() !== "") {
+            set.partNumber = assembly.setPartNumber;
+            set.partName = assembly.setPartName;
+          }
           changed = true;
           synced += 1;
         });
@@ -589,11 +599,24 @@ export function syncAssembliesFromSheets(
   db: AppDatabase,
   projectId: number,
 ): number {
-  const bySignature = new Map(
-    listAssemblies(db, projectId).map((assembly) => [
-      assemblySignature(assembly.items),
+  const assemblies = listAssemblies(db, projectId);
+  const byKey = new Map(
+    assemblies.map((assembly) => [
+      assemblyKey(
+        assembly.items,
+        assembly.setPartNumber,
+        assembly.setPartName,
+      ),
       assembly,
     ]),
+  );
+  const emptyPartBySignature = new Map(
+    assemblies
+      .filter(
+        (assembly) =>
+          assembly.setPartNumber === null && assembly.setPartName === "",
+      )
+      .map((assembly) => [assemblySignature(assembly.items), assembly]),
   );
   let added = 0;
   projectSheetTables().forEach((table) => {
@@ -608,12 +631,44 @@ export function syncAssembliesFromSheets(
           const items = itemsOfCalcSet(set);
           if (items.length === 0) return;
           const signature = assemblySignature(items);
-          let assembly = bySignature.get(signature);
+          const setPartNumber = set.partNumber ?? null;
+          const setPartName = set.partName.trim();
+          const key = assemblyKey(items, setPartNumber, setPartName);
+          let assembly = byKey.get(key);
+          if (!assembly && (setPartNumber !== null || setPartName !== "")) {
+            const emptyPartAssembly = emptyPartBySignature.get(signature);
+            if (emptyPartAssembly) {
+              db.update(mFinishAssemblies)
+                .set({
+                  setPartNumber,
+                  setPartName,
+                  updatedAt: new Date().toISOString(),
+                })
+                .where(eq(mFinishAssemblies.id, emptyPartAssembly.id))
+                .run();
+              byKey.delete(
+                assemblyKey(
+                  emptyPartAssembly.items,
+                  emptyPartAssembly.setPartNumber,
+                  emptyPartAssembly.setPartName,
+                ),
+              );
+              assembly = {
+                ...emptyPartAssembly,
+                setPartNumber,
+                setPartName,
+              };
+              byKey.set(key, assembly);
+              emptyPartBySignature.delete(signature);
+            }
+          }
           if (!assembly) {
             assembly = saveAssembly(db, {
               id: null,
               scope: "project",
               projectId,
+              setPartNumber,
+              setPartName,
               note: "",
               items,
             }).assembly;
@@ -621,7 +676,10 @@ export function syncAssembliesFromSheets(
               .set({ autoRegistered: 1 })
               .where(eq(mFinishAssemblies.id, assembly.id))
               .run();
-            bySignature.set(signature, assembly);
+            byKey.set(key, assembly);
+            if (setPartNumber === null && setPartName === "") {
+              emptyPartBySignature.set(signature, assembly);
+            }
             added += 1;
           }
           if (set.assemblyId !== assembly.id) {
@@ -678,12 +736,16 @@ function mergeDuplicateAutoAssemblies(
   projectId: number,
 ): number {
   const auto = autoAssemblyIds(db, projectId);
-  const keepBySignature = new Map<string, number>();
+  const keepByKey = new Map<string, number>();
   const remap = new Map<number, number>();
   listAssemblies(db, projectId).forEach((assembly) => {
-    const signature = assemblySignature(assembly.items);
-    const keep = keepBySignature.get(signature);
-    if (keep === undefined) keepBySignature.set(signature, assembly.id);
+    const key = assemblyKey(
+      assembly.items,
+      assembly.setPartNumber,
+      assembly.setPartName,
+    );
+    const keep = keepByKey.get(key);
+    if (keep === undefined) keepByKey.set(key, assembly.id);
     else if (auto.has(assembly.id)) remap.set(assembly.id, keep);
   });
   if (remap.size === 0) return 0;
@@ -781,14 +843,27 @@ function findDuplicate(
   db: AppDatabase,
   assembly: FinishAssembly,
 ): FinishAssembly | null {
-  const signature = assemblySignature(assembly.items);
+  const key = assemblyKey(
+    assembly.items,
+    assembly.setPartNumber,
+    assembly.setPartName,
+  );
   return (
     listAssemblies(db, assembly.projectId).find(
       (other) =>
         other.id !== assembly.id &&
-        assemblySignature(other.items) === signature,
+        assemblyKey(other.items, other.setPartNumber, other.setPartName) ===
+          key,
     ) ?? null
   );
+}
+
+function assemblyKey(
+  items: AssemblyItem[],
+  setPartNumber: number | null,
+  setPartName: string,
+): string {
+  return `${assemblySignature(items)}\u001d${setPartNumber ?? ""}\u001f${setPartName.trim()}`;
 }
 
 export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
@@ -802,6 +877,8 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
     id: row.id,
     scope: toScope(row.scope),
     projectId: row.projectId,
+    setPartNumber: row.setPartNumber,
+    setPartName: row.setPartName,
     note: row.note,
     displayOrder: row.displayOrder,
     items: listItems(db, row.id),
@@ -843,6 +920,8 @@ export function promoteAssemblyToBasic(
     id: null,
     scope: "basic",
     projectId: null,
+    setPartNumber: source.setPartNumber,
+    setPartName: source.setPartName,
     note: source.note,
     items: source.items.map((item) => ({ ...item, id: null })),
   });

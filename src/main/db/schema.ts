@@ -209,6 +209,8 @@ export const mFinishAssemblies = sqliteTable(
     sourceAssemblyId: integer("source_assembly_id"),
     /** 計算書から自動登録したセット（使われなくなったら集計時に片付ける） */
     autoRegistered: integer("auto_registered").notNull().default(0),
+    setPartNumber: integer("set_part_number"),
+    setPartName: text("set_part_name").notNull().default(""),
     note: text("note").notNull().default(""),
     displayOrder: integer("display_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(now),

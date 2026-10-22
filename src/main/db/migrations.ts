@@ -1093,4 +1093,9 @@ CREATE INDEX idx_transfer_rows_project ON project_transfer_rows(project_id, disp
   // 計算書で入れた説明だけの明細（集計書の印刷には出さない印）
   `ALTER TABLE project_aggregate_items ADD COLUMN note INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE m_finish_assembly_items ADD COLUMN note INTEGER NOT NULL DEFAULT 0;`,
+  // セット明細マスターに計算書のセット用部位を保持
+  `
+ALTER TABLE m_finish_assemblies ADD COLUMN set_part_number INTEGER;
+ALTER TABLE m_finish_assemblies ADD COLUMN set_part_name TEXT NOT NULL DEFAULT '';
+`,
 ];

@@ -183,6 +183,23 @@
   margin-left: auto;
 }
 
+.modal.assembly-editor header .set-part {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.modal.assembly-editor header .set-part-input {
+  width: 12ch;
+}
+
+.modal.assembly-editor header .set-part-number {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .modal .modal-body {
   overflow: auto;
   padding: 8px 12px;

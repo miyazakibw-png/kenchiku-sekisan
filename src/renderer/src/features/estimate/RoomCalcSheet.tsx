@@ -1051,8 +1051,21 @@ export default function RoomCalcSheet({
         !underBanner && !insertMode && at >= 0 && !isCommentSet(sets[at]);
       const keptPart =
         overwrites && sets[at].partName.trim() !== "" ? sets[at] : null;
-      created.partName = keptPart?.partName ?? head?.partName ?? "";
-      created.partNumber = keptPart?.partNumber ?? head?.partNumber ?? null;
+      const assemblyPart =
+        assembly.setPartName.trim() === ""
+          ? null
+          : {
+              partNumber: assembly.setPartNumber,
+              partName: assembly.setPartName,
+            };
+      const selectedPart =
+        keptPart ??
+        assemblyPart ??
+        (head
+          ? { partNumber: head.partNumber, partName: head.partName }
+          : null);
+      created.partName = selectedPart?.partName ?? "";
+      created.partNumber = selectedPart?.partNumber ?? null;
       created.details = assembly.items.map((item) =>
         calcDetail({
           sourceDetailId: item.sourceDetailId,
@@ -3217,34 +3230,46 @@ export default function RoomCalcSheet({
                         </tr>
                       );
                     })
-                  : details.map((detail, detailIndex) => (
-                      <tr
-                        key={`${detail.id}-${detailIndex}`}
-                        tabIndex={0}
-                        onDoubleClick={() => callDetail(detail)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") callDetail(detail);
-                        }}
-                      >
-                        <td className="no">{detail.partNumber ?? ""}</td>
-                        <td className="no">
-                          {detail.detailNumber?.toFixed(2) ?? ""}
-                        </td>
-                        <td>
-                          <div className="upper">{detail.partName}</div>
-                          <div className="lower">{detail.name}</div>
-                        </td>
-                        <td>
-                          <div className="upper">{detail.descriptionUpper}</div>
-                          <div className="lower">{detail.descriptionLower}</div>
-                        </td>
-                        <td className="unit">{detail.unit}</td>
-                        <td>
-                          <div className="upper">{detail.remarksUpper}</div>
-                          <div className="lower">{detail.remarksLower}</div>
-                        </td>
-                      </tr>
-                    ))}
+                  : details.map((detail, detailIndex) => {
+                      const band =
+                        source === "project"
+                          ? assemblyBandColor(detail.partNumber)
+                          : null;
+                      return (
+                        <tr
+                          key={`${detail.id}-${detailIndex}`}
+                          className={band ? "banded" : undefined}
+                          style={band ? { backgroundColor: band } : undefined}
+                          tabIndex={0}
+                          onDoubleClick={() => callDetail(detail)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") callDetail(detail);
+                          }}
+                        >
+                          <td className="no">{detail.partNumber ?? ""}</td>
+                          <td className="no">
+                            {detail.detailNumber?.toFixed(2) ?? ""}
+                          </td>
+                          <td>
+                            <div className="upper">{detail.partName}</div>
+                            <div className="lower">{detail.name}</div>
+                          </td>
+                          <td>
+                            <div className="upper">
+                              {detail.descriptionUpper}
+                            </div>
+                            <div className="lower">
+                              {detail.descriptionLower}
+                            </div>
+                          </td>
+                          <td className="unit">{detail.unit}</td>
+                          <td>
+                            <div className="upper">{detail.remarksUpper}</div>
+                            <div className="lower">{detail.remarksLower}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
               </tbody>
             </table>
           </div>

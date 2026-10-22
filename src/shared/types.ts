@@ -656,6 +656,9 @@ export interface FinishAssembly {
   id: number;
   scope: AssemblyScope;
   projectId: number | null;
+  /** セット用部位（計算書のセット先頭の部位欄。管理用部位の番号） */
+  setPartNumber: number | null;
+  setPartName: string;
   note: string;
   displayOrder: number;
   /** 1行目が一覧の表示行になる */
@@ -667,6 +670,9 @@ export interface SaveAssemblyRequest {
   id: number | null;
   scope: AssemblyScope;
   projectId: number | null;
+  /** セット用部位（計算書のセット先頭の部位欄。管理用部位の番号） */
+  setPartNumber?: number | null;
+  setPartName?: string;
   note: string;
   items: AssemblyItem[];
   /** マスター画面での修正のとき true。計算書のセットへ内容を連動させる */

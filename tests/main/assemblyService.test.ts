@@ -8,6 +8,7 @@ import { seedInitialData } from "../../src/main/db/seed";
 import type { AppDatabase } from "../../src/main/db";
 import {
   buildItemFromDetail,
+  getAssembly,
   listAssemblies,
   listAssemblyMasterOptions,
   mergeAssemblies,
@@ -215,6 +216,30 @@ describe("仕上明細セットマスター", () => {
     ]);
   });
 
+  it("同じ明細でもセット用部位が異なる場合は統合候補にしない", () => {
+    saveAssembly(db, {
+      id: null,
+      scope: "basic",
+      projectId: null,
+      setPartNumber: 10,
+      setPartName: "床",
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+
+    const second = saveAssembly(db, {
+      id: null,
+      scope: "basic",
+      projectId: null,
+      setPartNumber: 30,
+      setPartName: "壁",
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+
+    expect(second.duplicateOf).toBeNull();
+  });
+
   it("構成明細が空の保存は拒否する（最低1明細）", () => {
     expect(() =>
       saveAssembly(db, {
@@ -256,6 +281,27 @@ describe("仕上明細セットマスター", () => {
     expect(listAssemblies(db, null).map((a) => a.note)).toEqual([
       "現場で組んだセット",
     ]);
+  });
+
+  it("セット用部位を保存・取得し、基本セットへの昇格でも引き継ぐ", () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      setPartNumber: 30,
+      setPartName: "壁",
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+    expect(getAssembly(db, assembly.id)).toMatchObject({
+      setPartNumber: 30,
+      setPartName: "壁",
+    });
+
+    expect(promoteAssemblyToBasic(db, assembly.id)).toMatchObject({
+      setPartNumber: 30,
+      setPartName: "壁",
+    });
   });
 
   it("セット編集用のマスター選択肢を返す", () => {
@@ -357,6 +403,85 @@ describe("計算書からの自動登録と連動", () => {
     // 同じ構成は1件にまとめるので2回目は増えない
     expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(0);
     expect(listAssemblies(db, projectIdRef).length).toBe(1);
+  });
+
+  it("計算書のセット部位を自動登録したセットへ保持する", () => {
+    const set = calcSetJson(["軽鉄下地"]) as {
+      partNumber: number | null;
+      partName: string;
+    };
+    set.partNumber = 10;
+    set.partName = "床";
+    makeRoomSheet([set]);
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1);
+    expect(listAssemblies(db, projectIdRef)[0]).toMatchObject({
+      setPartNumber: 10,
+      setPartName: "床",
+    });
+  });
+
+  it("同じ明細でもセット用部位が異なれば別セットとして自動登録する", () => {
+    const floor = calcSetJson(["軽鉄下地"]) as {
+      id: string;
+      partNumber: number | null;
+      partName: string;
+    };
+    floor.id = "floor";
+    floor.partNumber = 10;
+    floor.partName = "床";
+    const wall = calcSetJson(["軽鉄下地"]) as {
+      id: string;
+      partNumber: number | null;
+      partName: string;
+    };
+    wall.id = "wall";
+    wall.partNumber = 30;
+    wall.partName = "壁";
+    makeRoomSheet([floor, wall]);
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(2);
+    expect(
+      listAssemblies(db, projectIdRef).map((assembly) => [
+        assembly.setPartNumber,
+        assembly.setPartName,
+      ]),
+    ).toEqual([
+      [10, "床"],
+      [30, "壁"],
+    ]);
+  });
+
+  it("空のセット用部位の自動登録セットは既存リンクを保って部位を補う", () => {
+    const set = calcSetJson(["軽鉄下地"]) as {
+      partNumber: number | null;
+      partName: string;
+    };
+    set.partNumber = null;
+    set.partName = "";
+    const sheetId = makeRoomSheet([set]);
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(1);
+    const [original] = listAssemblies(db, projectIdRef);
+
+    const sets = JSON.parse(lowerJsonOf(sheetId)) as {
+      partNumber: number | null;
+      partName: string;
+    }[];
+    sets[0].partNumber = 20;
+    sets[0].partName = "巾木";
+    db.update(schema.projectRoomSheets)
+      .set({ lowerJson: JSON.stringify(sets) })
+      .where(eq(schema.projectRoomSheets.id, sheetId))
+      .run();
+
+    expect(syncAssembliesFromSheets(db, projectIdRef)).toBe(0);
+    expect(listAssemblies(db, projectIdRef)).toHaveLength(1);
+    expect(listAssemblies(db, projectIdRef)[0]).toMatchObject({
+      id: original.id,
+      setPartNumber: 20,
+      setPartName: "巾木",
+    });
+    expect(lowerJsonOf(sheetId)).toContain(`"assemblyId":${original.id}`);
   });
 
   it("空の明細部位名をセット見出しで補わず、再登録・呼び出し後も空のまま保つ", () => {
@@ -665,6 +790,8 @@ describe("計算書からの自動登録と連動", () => {
       id: null,
       scope: "project",
       projectId: projectIdRef,
+      setPartNumber: assembly.setPartNumber,
+      setPartName: assembly.setPartName,
       note: "",
       items: assembly.items.map((item) => ({ ...item, id: null })),
     });
@@ -707,6 +834,50 @@ describe("計算書からの自動登録と連動", () => {
     expect(lowerJsonOf(sheetId)).toContain("軽鉄下地（65形）");
     // 計算式はそのまま残す
     expect(lowerJsonOf(sheetId)).toContain('"formulaA":"10"');
+  });
+
+  it("セット用部位の変更は連動し、空にした後は計算書の部位を残す", () => {
+    const set = calcSetJson(["軽鉄下地"]) as {
+      partNumber: number | null;
+      partName: string;
+    };
+    set.partNumber = 10;
+    set.partName = "床";
+    const sheetId = makeRoomSheet([set]);
+    syncAssembliesFromSheets(db, projectIdRef);
+    const [assembly] = listAssemblies(db, projectIdRef);
+
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      setPartNumber: 30,
+      setPartName: "壁",
+      note: assembly.note,
+      items: assembly.items,
+      propagate: true,
+    });
+    let linked = JSON.parse(lowerJsonOf(sheetId)) as {
+      partNumber: number | null;
+      partName: string;
+    }[];
+    expect(linked[0]).toMatchObject({ partNumber: 30, partName: "壁" });
+
+    saveAssembly(db, {
+      id: assembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      setPartNumber: null,
+      setPartName: "",
+      note: assembly.note,
+      items: assembly.items,
+      propagate: true,
+    });
+    linked = JSON.parse(lowerJsonOf(sheetId)) as {
+      partNumber: number | null;
+      partName: string;
+    }[];
+    expect(linked[0]).toMatchObject({ partNumber: 30, partName: "壁" });
   });
 
   it("計算式だけの空行があってもマスター連動で明細の位置がずれない", () => {

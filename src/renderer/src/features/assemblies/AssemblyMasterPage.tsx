@@ -32,6 +32,7 @@ import "./AssemblyMasterPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { assemblyBandColor } from "../estimate/bannerColors";
+import { pickMaster } from "../estimate/partNumberInput";
 
 interface Props {
   options: AssemblyMasterOptions;
@@ -49,9 +50,14 @@ const SCOPE_LABEL: Record<PickerScope, string> = {
   project: "工事マスター（明細）",
 };
 
+const EDITOR_ONLY_COLUMN_WIDTHS = new Map([["積算用表示", 120]]);
+
 interface EditorState {
   /** 既存セットのID。新規は null */
   id: number | null;
+  setPartNumber: number | null;
+  setPartName: string;
+  setPartInput: string;
   note: string;
   items: DraftItem[];
 }
@@ -104,7 +110,10 @@ function alignTableToList(
     const isLast = index === header.cells.length - 1;
     const width = Math.max(
       isLast ? Math.max(28, lastFloor) : 28,
-      widths.byLabel.get(label) ?? widths.byIndex[index] ?? 28,
+      widths.byLabel.get(label) ??
+        EDITOR_ONLY_COLUMN_WIDTHS.get(label) ??
+        widths.byIndex[index] ??
+        28,
     );
     col.style.width = `${width}px`;
     total += width;
@@ -248,7 +257,14 @@ export default function AssemblyMasterPage({
     ]);
     setEditor((prev) =>
       prev === null
-        ? { id: null, note: "", items: [draft] }
+        ? {
+            id: null,
+            setPartNumber: null,
+            setPartName: "",
+            setPartInput: "",
+            note: "",
+            items: [draft],
+          }
         : { ...prev, items: addItem(prev.items, draft) },
     );
     setToast(`「${detail.partName} / ${detail.name}」を足しました`);
@@ -263,6 +279,8 @@ export default function AssemblyMasterPage({
       if (
         quiet &&
         before &&
+        before.setPartNumber === editor.setPartNumber &&
+        before.setPartName === editor.setPartName &&
         before.note === editor.note &&
         JSON.stringify(before.items) === JSON.stringify(items)
       ) {
@@ -275,6 +293,8 @@ export default function AssemblyMasterPage({
         id: editor.id,
         scope: projectId === null ? "basic" : "project",
         projectId,
+        setPartNumber: editor.setPartNumber,
+        setPartName: editor.setPartName,
         note: editor.note,
         items,
         propagate: true,
@@ -308,6 +328,13 @@ export default function AssemblyMasterPage({
       if (isDirty()) await save(true);
       const next: EditorState = {
         id: assembly.id,
+        setPartNumber: assembly.setPartNumber,
+        setPartName: assembly.setPartName,
+        setPartInput:
+          assembly.setPartName ||
+          (assembly.setPartNumber === null
+            ? ""
+            : String(assembly.setPartNumber)),
         note: assembly.note,
         items: toDraftItems(assembly.items),
       };
@@ -341,6 +368,22 @@ export default function AssemblyMasterPage({
     (next: DraftItem[]) =>
       setEditor((prev) => (prev === null ? prev : { ...prev, items: next })),
     [],
+  );
+  const resolveSetPart = useCallback(
+    (text: string): void => {
+      const picked = pickMaster(options.aggregationParts, text);
+      setEditor((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              setPartNumber: picked.id,
+              setPartName: picked.name,
+              setPartInput: picked.name,
+            },
+      );
+    },
+    [options.aggregationParts],
   );
 
   return (
@@ -474,6 +517,30 @@ export default function AssemblyMasterPage({
           <div className="modal assembly-editor">
             <header>
               <h3>セット明細{editor.id === null ? "（新規）" : ""}</h3>
+              <label className="set-part">
+                セット用部位
+                <input
+                  className="set-part-input"
+                  lang="ja"
+                  value={editor.setPartInput}
+                  onChange={(e) =>
+                    setEditor((prev) =>
+                      prev === null
+                        ? prev
+                        : { ...prev, setPartInput: e.target.value },
+                    )
+                  }
+                  onBlur={(e) => resolveSetPart(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }}
+                />
+                <span className="set-part-number">
+                  {editor.setPartNumber ?? ""}
+                </span>
+              </label>
               <label className="note">
                 備考
                 <input
@@ -500,6 +567,7 @@ export default function AssemblyMasterPage({
                     <th>単位</th>
                     <th>掛け率</th>
                     <th>備考</th>
+                    <th>積算用表示</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -609,6 +677,19 @@ export default function AssemblyMasterPage({
                             editItems(
                               updateItem(editor.items, index, {
                                 remarksUpper: e.target.value,
+                              }),
+                            )
+                          }
+                        />
+                      </td>
+                      <td rowSpan={2}>
+                        <input
+                          lang="ja"
+                          value={item.estimateDisplay}
+                          onChange={(e) =>
+                            editItems(
+                              updateItem(editor.items, index, {
+                                estimateDisplay: e.target.value,
                               }),
                             )
                           }

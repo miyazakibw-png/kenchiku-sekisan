@@ -12,6 +12,8 @@ function assembly(id: number, names: string[]): FinishAssembly {
     id,
     scope: "project",
     projectId: 1,
+    setPartNumber: null,
+    setPartName: "",
     note: "",
     displayOrder: id,
     items: names.map(item),
