@@ -231,7 +231,7 @@ function sideLines(
 }
 
 function gapCell(): XlsxCell {
-  return { value: "", kind: "text", border: "one" };
+  return { value: "", kind: "text", border: "none" };
 }
 
 function headerRow(leftTitle: string, rightTitle: string): XlsxCell[] {

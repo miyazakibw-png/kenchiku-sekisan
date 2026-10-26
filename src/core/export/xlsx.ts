@@ -13,9 +13,9 @@ export type XlsxCellKind = "text" | "number" | "header" | "wrap";
 
 /**
  * 行の罫線。
- * one：上下とも線あり、upper：1明細の上の行（下の線なし）、lower：下の行（上の線なし）
+ * one：上下とも線あり、upper：1明細の上の行（下の線なし）、lower：下の行（上の線なし）、none：罫線なし
  */
-export type XlsxBorder = "one" | "upper" | "lower";
+export type XlsxBorder = "one" | "upper" | "lower" | "none";
 
 /**
  * 色の印。plain：ふつう、diff：前回と違うところ（背景は黄色・文字は赤）
@@ -40,7 +40,9 @@ export interface XlsxSheet {
 }
 
 const KINDS: XlsxCellKind[] = ["text", "number", "header", "wrap"];
-const BORDERS: XlsxBorder[] = ["one", "upper", "lower"];
+type XlsxBorderStyle = Exclude<XlsxBorder, "none">;
+
+const BORDERS: XlsxBorderStyle[] = ["one", "upper", "lower"];
 const MARKS: XlsxMark[] = ["plain", "diff"];
 
 function escapeXml(value: string): string {
@@ -89,16 +91,16 @@ export function xlsxSheetName(
  */
 function styleIndex(cell: XlsxCell): number {
   const mark = MARKS.indexOf(cell.mark ?? "plain");
-  return (
-    1 +
-    ((mark * KINDS.length + KINDS.indexOf(cell.kind)) * BORDERS.length +
-      BORDERS.indexOf(cell.border)) *
-      2 +
-    (cell.strike === true ? 1 : 0)
-  );
+  const kind = KINDS.indexOf(cell.kind);
+  const strike = cell.strike === true ? 1 : 0;
+  const group = mark * KINDS.length + kind;
+  if (cell.border === "none") {
+    return 1 + MARKS.length * KINDS.length * BORDERS.length * 2 + group * 2 + strike;
+  }
+  return 1 + (group * BORDERS.length + BORDERS.indexOf(cell.border)) * 2 + strike;
 }
 
-function borderXml(border: XlsxBorder): string {
+function borderXml(border: XlsxBorderStyle): string {
   // 線の色を書かないと、エクセルの版によっては線が見えないことがある
   const line = '<color indexed="64"/>';
   const top =
@@ -114,7 +116,28 @@ function borderXml(border: XlsxBorder): string {
 
 /** 罫線の番号。0番はエクセルが「罫線なし」として扱うので、実際の罫線は1番から */
 function borderIndex(border: XlsxBorder): number {
+  if (border === "none") return 0;
   return 1 + BORDERS.indexOf(border);
+}
+
+function xfXml(
+  mark: XlsxMark,
+  kind: XlsxCellKind,
+  border: XlsxBorder,
+  strike: boolean,
+): string {
+  // 違うところは文字を赤・背景を黄色にする（太字にはしない）。取り消しは4以降の打消し付き文字
+  const fontId =
+    (mark === "diff" ? 2 : kind === "header" ? 1 : 0) + (strike ? 4 : 0);
+  const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
+  const numFmtId = kind === "number" ? 176 : 0;
+  const alignment =
+    kind === "number"
+      ? '<alignment vertical="center" horizontal="right"/>'
+      : kind === "wrap"
+        ? '<alignment vertical="center" wrapText="1"/>'
+        : '<alignment vertical="center"/>';
+  return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
 }
 
 function stylesXml(): string {
@@ -125,24 +148,17 @@ function stylesXml(): string {
   const xfs = MARKS.flatMap((mark) =>
     KINDS.flatMap((kind) =>
       BORDERS.flatMap((border) =>
-        [false, true].map((strike) => {
-          // 違うところは文字を赤・背景を黄色にする（太字にはしない）。取り消しは4以降の打消し付き文字
-          const fontId =
-            (mark === "diff" ? 2 : kind === "header" ? 1 : 0) + (strike ? 4 : 0);
-          const fillId = mark === "diff" ? 3 : kind === "header" ? 2 : 0;
-          const numFmtId = kind === "number" ? 176 : 0;
-          const alignment =
-            kind === "number"
-              ? '<alignment vertical="center" horizontal="right"/>'
-              : kind === "wrap"
-                ? '<alignment vertical="center" wrapText="1"/>'
-                : '<alignment vertical="center"/>';
-          return `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderIndex(border)}" xfId="0" applyBorder="1" applyFont="1" applyFill="1" applyNumberFormat="1" applyAlignment="1">${alignment}</xf>`;
-        }),
+        [false, true].map((strike) => xfXml(mark, kind, border, strike)),
       ),
     ),
   ).join("");
-  const count = MARKS.length * KINDS.length * BORDERS.length * 2 + 1;
+  const noBorderXfs = MARKS.flatMap((mark) =>
+    KINDS.flatMap((kind) =>
+      [false, true].map((strike) => xfXml(mark, kind, "none", strike)),
+    ),
+  ).join("");
+  const count =
+    MARKS.length * KINDS.length * (BORDERS.length + 1) * 2 + 1;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="1"><numFmt numFmtId="176" formatCode="#,##0.00"/></numFmts>
@@ -150,7 +166,7 @@ function stylesXml(): string {
 <fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEFEF"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="${BORDERS.length + 1}">${borders}</borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="${count}">${plain}${xfs}</cellXfs>
+<cellXfs count="${count}">${plain}${xfs}${noBorderXfs}</cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 <dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;

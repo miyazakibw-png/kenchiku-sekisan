@@ -45,6 +45,25 @@ describe("比較のエクセル掃き出し", () => {
     expect(sheet.rows[2]?.[8]?.value).toBe("普通コンクリート");
   });
 
+  it("左右の間の列は見出し・明細・空行とも横罫線なしにする", () => {
+    const sheet = toCompareSheet({
+      left: [row({}), row({ rowKind: "blank", nameLower: "", quantity: null })],
+      right: [row({}), row({})],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+
+    expect(sheet.rows.slice(0, 4).map((cells) => cells[7]?.border)).toEqual([
+      "none",
+      "none",
+      "none",
+      "none",
+    ]);
+    expect(sheet.rows[0]?.[6]?.border).toBe("one");
+    expect(sheet.rows[0]?.[8]?.border).toBe("one");
+  });
+
   it("違うところは左だけ色を付け、比べる元（右）には付けない", () => {
     const sheet = toCompareSheet({
       left: [row({ quantity: 12 })],
