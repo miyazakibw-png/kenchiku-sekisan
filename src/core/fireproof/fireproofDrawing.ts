@@ -197,9 +197,17 @@ export interface FireproofDrawingAuxLine {
   baseAuxId?: string;
 }
 
+export type GridLabels = {
+  /** 左から数えた縦線の名前 */
+  x?: string[];
+  /** 下から数えた横線の名前 */
+  y?: string[];
+};
+
 /** 工事ごとの鉄骨伏図。キーは階の表示名（耐火被覆の階リストと同じ "R","3","2","1" など） */
 export interface FireproofDrawing {
   floors: Record<string, FireproofDrawingFloor>;
+  gridLabels?: GridLabels;
 }
 
 export const EMPTY_DRAWING: FireproofDrawing = { floors: {} };
@@ -429,14 +437,35 @@ export function parseDrawing(json: string): FireproofDrawing {
         floors[floor] = normalizeFloor(raw);
       });
     }
-    return { floors };
+    const gridLabels = normalizeGridLabels(parsed.gridLabels);
+    return gridLabels === undefined ? { floors } : { floors, gridLabels };
   } catch {
     return { floors: {} };
   }
 }
 
+function normalizeGridLabels(value: unknown): GridLabels | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  const labels: GridLabels = {};
+  if (Array.isArray(raw.x))
+    labels.x = raw.x.map((label) =>
+      typeof label === "string" ? label.trim() : "",
+    );
+  if (Array.isArray(raw.y))
+    labels.y = raw.y.map((label) =>
+      typeof label === "string" ? label.trim() : "",
+    );
+  return labels;
+}
+
 export function serializeDrawing(drawing: FireproofDrawing): string {
-  return JSON.stringify(drawing);
+  if (drawing.gridLabels === undefined) return JSON.stringify(drawing);
+  const gridLabels = normalizeGridLabels(drawing.gridLabels);
+  return JSON.stringify(
+    gridLabels === undefined ? { floors: drawing.floors } : { ...drawing, gridLabels },
+  );
 }
 
 /** "7300,7650,7300" や "7350 6650" の入力を寸法の並びにする（全角・読点も使える） */
@@ -674,13 +703,16 @@ export function girderOffset(
   return align === "min" ? gh - face : face - gh;
 }
 
-/** X軸の柱線につける通し番号（左から 1,2,3…。数は柱線＝寸法+1本） */
-export function xGridLabel(index: number): string {
-  return String(index + 1);
+/** X軸の柱線につける名前（左から。数は柱線＝寸法+1本） */
+export function xGridLabel(index: number, labels?: GridLabels): string {
+  const custom = labels?.x?.[index]?.trim();
+  return custom || String(index + 1);
 }
 
-/** Y軸の柱線につける記号（A,B,C…Z,AA,AB…） */
-export function yGridLabel(index: number): string {
+/** Y軸の柱線につける名前（下から。既定はA,B,C…Z,AA,AB…） */
+export function yGridLabel(index: number, labels?: GridLabels): string {
+  const custom = labels?.y?.[index]?.trim();
+  if (custom) return custom;
   let label = "";
   let rest = index;
   for (;;) {
@@ -1754,8 +1786,11 @@ export interface ColumnImportItem {
 }
 
 /** 伏図から取り込んだブロックの先頭に入れる案内文 */
-export const COLUMN_IMPORT_HEAD_COMMENT =
-  "柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）";
+export function columnImportHeadComment(labels?: GridLabels): string {
+  return `柱位置表示（縦軸左より${xGridLabel(0, labels)}から順に${xGridLabel(1, labels)},${xGridLabel(2, labels)}と表記する・横軸下より${yGridLabel(0, labels)}から順に${yGridLabel(1, labels)},${yGridLabel(2, labels)}と表記する）`;
+}
+
+export const COLUMN_IMPORT_HEAD_COMMENT = columnImportHeadComment();
 
 /**
  * 取合記号が入っていない部材のキー（"c:…"・"g:…"・"b:…" の形）。
@@ -1799,6 +1834,7 @@ export function missingJointKeys(floor: FireproofDrawingFloor): string[] {
 export function columnImportItems(
   floor: FireproofDrawingFloor,
   floorHeight: number | null,
+  labels?: GridLabels,
 ): ColumnImportItem[] {
   const ys = positions(floor.ySpans);
   const keys = Object.keys(floor.columns)
@@ -1813,7 +1849,7 @@ export function columnImportItems(
     });
   return keys.map((key) => {
     const [xi, yi] = key.split(",").map(Number);
-    const position = `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
+    const position = `${xGridLabel(xi, labels)}-${yGridLabel(ys.length - 1 - yi, labels)}`;
     const height =
       floor.axisHeights?.[String(yi)] ??
       floor.axisHeightsX?.[String(xi)] ??
@@ -1828,17 +1864,21 @@ export function columnImportItems(
 }
 
 /** 伏図から取り込んだ梁ブロックの先頭に入れる案内文 */
-export const BEAM_IMPORT_HEAD_COMMENT =
-  "梁位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）";
+export function beamImportHeadComment(labels?: GridLabels): string {
+  return `梁位置表示（縦軸左より${xGridLabel(0, labels)}から順に${xGridLabel(1, labels)},${xGridLabel(2, labels)}と表記する・横軸下より${yGridLabel(0, labels)}から順に${yGridLabel(1, labels)},${yGridLabel(2, labels)}と表記する）`;
+}
+
+export const BEAM_IMPORT_HEAD_COMMENT = beamImportHeadComment();
 
 /** 斜梁の位置表示（例「4-A〜5-C」。始点→終点の交点ラベル） */
 export function diagGirderPosition(
   floor: FireproofDrawingFloor,
   g: FireproofDrawingDiagGirder,
+  labels?: GridLabels,
 ): string {
   const ys = positions(floor.ySpans);
   const at = (xi: number, yi: number) =>
-    `${xGridLabel(xi)}-${yGridLabel(ys.length - 1 - yi)}`;
+    `${xGridLabel(xi, labels)}-${yGridLabel(ys.length - 1 - yi, labels)}`;
   const from = g.fromMm !== undefined ? "線上" : at(g.fx, g.fy);
   const to = g.toMm !== undefined ? "線上" : at(g.tx, g.ty);
   return `${from}〜${to}`;
@@ -2209,6 +2249,7 @@ export function beamImportItems(
   floorHeight: number | null,
   columnHalfOf?: ColumnHalfOf,
   memberHalfOf?: HalfWidthOf,
+  labels?: GridLabels,
 ): ColumnImportItem[] {
   const xs = positions(floor.xSpans);
   const ys = positions(floor.ySpans);
@@ -2259,8 +2300,8 @@ export function beamImportItems(
     /** 位置（大梁は軸-区間。区間は通しのとき繋げて出す） */
     const position =
       member.axis === "x"
-        ? `${yGridLabel(ys.length - 1 - member.fromYi)}-${xGridLabel(member.fromXi)}〜${xGridLabel(member.toXi)}`
-        : `${xGridLabel(member.fromXi)}-${yGridLabel(ys.length - 1 - member.toYi)}〜${yGridLabel(ys.length - 1 - member.fromYi)}`;
+        ? `${yGridLabel(ys.length - 1 - member.fromYi, labels)}-${xGridLabel(member.fromXi, labels)}〜${xGridLabel(member.toXi, labels)}`
+        : `${xGridLabel(member.fromXi, labels)}-${yGridLabel(ys.length - 1 - member.toYi, labels)}〜${yGridLabel(ys.length - 1 - member.fromYi, labels)}`;
     girders.push({
       group: member.axis === "x" ? 0 : 1,
       row: member.axis === "x" ? -member.fromYi : member.fromXi,
@@ -2315,7 +2356,7 @@ export function beamImportItems(
       row: index,
       column: 0,
       order: index,
-      position: diagGirderPosition(floor, g),
+      position: diagGirderPosition(floor, g, labels),
       symbol,
       mark: floor.jointSymbols?.[`d:${g.id ?? `#${index}`}`] ?? "",
       mm: Math.hypot(len, dh),
@@ -2357,7 +2398,7 @@ export function beamImportItems(
     const yb = bay(my, ys);
     const position =
       xb !== null && yb !== null
-        ? `${xGridLabel(xb.from)}〜${xGridLabel(xb.to)}-${yGridLabel(ys.length - 1 - yb.to)}〜${yGridLabel(ys.length - 1 - yb.from)}`
+        ? `${xGridLabel(xb.from, labels)}〜${xGridLabel(xb.to, labels)}-${yGridLabel(ys.length - 1 - yb.to, labels)}〜${yGridLabel(ys.length - 1 - yb.from, labels)}`
         : "小";
     const mm =
       floorHeight === null

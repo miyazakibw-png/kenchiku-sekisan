@@ -44,9 +44,9 @@ import {
 } from "../../../../core/fireproof/fireproofList";
 import {
   beamImportItems,
-  BEAM_IMPORT_HEAD_COMMENT,
+  beamImportHeadComment,
   columnImportItems,
-  COLUMN_IMPORT_HEAD_COMMENT,
+  columnImportHeadComment,
   drawingColumnHalfOf,
   EMPTY_DRAWING,
   parseDrawing,
@@ -1105,8 +1105,9 @@ function ColumnSheetView({
             height,
             drawingColumnHalfOf(columnsList, common, columnLabel),
             beamHalfOf,
+            drawing.gridLabels,
           )
-        : columnImportItems(floorData, height);
+        : columnImportItems(floorData, height, drawing.gridLabels);
     const memberName = kind === "beam" ? "梁" : "柱";
     if (items.length === 0) {
       onMessage(`${config.title}：${label} の伏図に${memberName}がありません`);
@@ -1119,8 +1120,8 @@ function ColumnSheetView({
         floor: label,
         comment:
           kind === "beam"
-            ? BEAM_IMPORT_HEAD_COMMENT
-            : COLUMN_IMPORT_HEAD_COMMENT,
+            ? beamImportHeadComment(drawing.gridLabels)
+            : columnImportHeadComment(drawing.gridLabels),
       },
       ...items.map((item) => ({
         ...newRow(),

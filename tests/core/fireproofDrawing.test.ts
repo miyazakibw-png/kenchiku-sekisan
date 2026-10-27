@@ -3,6 +3,7 @@ import {
   axisHeightAt,
   beamImportItems,
   BEAM_IMPORT_HEAD_COMMENT,
+  beamImportHeadComment,
   beamLength,
   beamSlopeLength,
   clipBeamAtDiagEdges,
@@ -10,6 +11,7 @@ import {
   columnKey,
   columnNumbers,
   COLUMN_IMPORT_HEAD_COMMENT,
+  columnImportHeadComment,
   dividedBeams,
   emptyFloor,
   enclosingRegion,
@@ -250,6 +252,34 @@ describe("通し芯ラベル", () => {
     expect(yGridLabel(25)).toBe("Z");
     expect(yGridLabel(26)).toBe("AA");
     expect(yGridLabel(27)).toBe("AB");
+  });
+
+  it("通り名を変えられ、空欄は既定の名前に戻る", () => {
+    const labels = {
+      x: ["X1", "X2"],
+      y: ["Y1", "  "],
+    };
+    expect(xGridLabel(0, labels)).toBe("X1");
+    expect(xGridLabel(2, labels)).toBe("3");
+    expect(yGridLabel(0, labels)).toBe("Y1");
+    expect(yGridLabel(1, labels)).toBe("B");
+    expect(columnImportHeadComment(labels)).toBe(
+      "柱位置表示（縦軸左よりX1から順にX2,3と表記する・横軸下よりY1から順にB,Cと表記する）",
+    );
+    expect(beamImportHeadComment(labels)).toBe(
+      "梁位置表示（縦軸左よりX1から順にX2,3と表記する・横軸下よりY1から順にB,Cと表記する）",
+    );
+  });
+
+  it("既定の取込案内文は従来の文字列と同じ", () => {
+    expect(columnImportHeadComment()).toBe(
+      "柱位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
+    );
+    expect(COLUMN_IMPORT_HEAD_COMMENT).toBe(columnImportHeadComment());
+    expect(beamImportHeadComment()).toBe(
+      "梁位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
+    );
+    expect(BEAM_IMPORT_HEAD_COMMENT).toBe(beamImportHeadComment());
   });
 });
 
@@ -621,6 +651,18 @@ describe("parseDrawing / serializeDrawing", () => {
     expect(parsed.floors["1"].columns).toEqual({ "1,1": "C9" });
   });
 
+  it("通り名をtrimして往復し、古いJSONは通り名なしのまま読む", () => {
+    const drawing = {
+      floors: {},
+      gridLabels: { x: [" X1 ", "  "], y: [" Y1 ", "Y2 "] },
+    };
+    expect(parseDrawing(serializeDrawing(drawing))).toEqual({
+      floors: {},
+      gridLabels: { x: ["X1", ""], y: ["Y1", "Y2"] },
+    });
+    expect(parseDrawing('{"floors":{}}')).toEqual({ floors: {} });
+  });
+
   it("小梁の無はtrueだけを保存から読み込む", () => {
     const parsed = parseDrawing(
       JSON.stringify({
@@ -744,6 +786,14 @@ describe("columnImportItems", () => {
     );
   });
 
+  it("カスタム通り名を柱位置に使う", () => {
+    const items = columnImportItems(floor, 4000, {
+      x: ["X1", "X2", "X3"],
+      y: ["Y1", "Y2"],
+    });
+    expect(items[0]?.comment).toBe("X1-Y1");
+  });
+
   it("2×2区画はA行から左→右、つづいてB・C行へ取り込む", () => {
     const grid: FireproofDrawingFloor = {
       ...emptyFloor(),
@@ -827,6 +877,22 @@ describe("beamImportItems", () => {
     expect(BEAM_IMPORT_HEAD_COMMENT).toBe(
       "梁位置表示（縦軸左より1から順に2,3と表記する・横軸下よりAから順にB,Cと表記する）",
     );
+  });
+
+  it("カスタム通り名を梁位置に使う", () => {
+    const customFloor: FireproofDrawingFloor = {
+      ...floor,
+      girders: { "x:0,1": "G1" },
+      beams: [],
+    };
+    const items = beamImportItems(
+      customFloor,
+      4000,
+      undefined,
+      undefined,
+      { x: ["X1", "X2"], y: ["Y1", "Y2"] },
+    );
+    expect(items[0]?.comment).toBe("Y1-X1〜X2");
   });
 
   it("大梁は通し番号どおり・小梁はそのあとに並ぶ（柱の面どうしの長さ）", () => {

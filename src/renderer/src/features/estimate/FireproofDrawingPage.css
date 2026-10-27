@@ -669,6 +669,14 @@
   width: 7ch;
   padding: 2px 4px;
 }
+.fireproof-drawing-body .grid-labels .list-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fireproof-drawing-body .grid-labels .axis-height-list input {
+  flex: 0 0 7ch;
+}
 
 /* ⑤取合記号の入力欄 */
 .fireproof-drawing-body .joint-form {

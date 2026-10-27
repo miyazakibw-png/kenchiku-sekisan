@@ -54,6 +54,7 @@ import {
   type FireproofDrawingBeam,
   type FireproofDrawingDiagGirder,
   type FireproofDrawingFloor,
+  type GridLabels,
 } from "../../../../core/fireproof/fireproofDrawing";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { toHalfWidth } from "@shared/tsv";
@@ -120,11 +121,12 @@ const diagDrawRank = (g: {
 function auxLineLabel(
   floor: FireproofDrawingFloor,
   line: FireproofDrawingAuxLine,
+  labels?: GridLabels,
 ): string {
   const gridLabel = (l: FireproofDrawingAuxLine): string =>
     l.axis === "x"
-      ? xGridLabel(l.base)
-      : yGridLabel(floor.ySpans.length - l.base);
+      ? xGridLabel(l.base, labels)
+      : yGridLabel(floor.ySpans.length - l.base, labels);
   const dirWord = (axis: "x" | "y", positive: boolean): string =>
     positive ? (axis === "x" ? "右" : "下") : axis === "x" ? "左" : "上";
   if (line.baseAuxId !== undefined) {
@@ -670,6 +672,7 @@ function hasColumn(
  */
 function FloorSvg({
   floor,
+  gridLabels,
   regions,
   focus,
   selectedBeams,
@@ -705,6 +708,7 @@ function FloorSvg({
   svgRef,
 }: {
   floor: FireproofDrawingFloor;
+  gridLabels?: GridLabels;
   regions: DrawingRegion[];
   /** ③大梁リストで範囲指定した梁（点線で図に出す） */
   girderSel?: ReadonlySet<string>;
@@ -934,7 +938,7 @@ function FloorSvg({
           <g key={`ax${x}`}>
             <circle cx={x} cy={-BUBBLE_Y} r={BUBBLE_R} />
             <text x={x} y={-BUBBLE_Y + FONT_BUBBLE * 0.36} textAnchor="middle" fontSize={FONT_BUBBLE}>
-              {xGridLabel(xi)}
+              {xGridLabel(xi, gridLabels)}
             </text>
           </g>
         ))}
@@ -942,7 +946,7 @@ function FloorSvg({
           <g key={`ay${y}`}>
             <circle cx={-BUBBLE_Y} cy={y} r={BUBBLE_R} />
             <text x={-BUBBLE_Y} y={y + FONT_BUBBLE * 0.36} textAnchor="middle" fontSize={FONT_BUBBLE}>
-              {yGridLabel(ys.length - 1 - yi)}
+              {yGridLabel(ys.length - 1 - yi, gridLabels)}
             </text>
           </g>
         ))}
@@ -1791,7 +1795,7 @@ function FloorSvg({
               y2={totalY}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("x", xi, 0, xGridLabel(xi));
+                onAuxBasePick?.("x", xi, 0, xGridLabel(xi, gridLabels));
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1805,7 +1809,12 @@ function FloorSvg({
               y2={y}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("y", yi, 0, yGridLabel(ys.length - yi));
+                onAuxBasePick?.(
+                  "y",
+                  yi,
+                  0,
+                  yGridLabel(ys.length - yi, gridLabels),
+                );
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1820,7 +1829,13 @@ function FloorSvg({
               y2={totalY}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("x", e.line.base, e.line.offset, auxLineLabel(floor, e.line), e.line.id);
+                onAuxBasePick?.(
+                  "x",
+                  e.line.base,
+                  e.line.offset,
+                  auxLineLabel(floor, e.line, gridLabels),
+                  e.line.id,
+                );
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1834,7 +1849,13 @@ function FloorSvg({
               y2={e.pos}
               onPointerDown={(event) => {
                 event.stopPropagation();
-                onAuxBasePick?.("y", e.line.base, e.line.offset, auxLineLabel(floor, e.line), e.line.id);
+                onAuxBasePick?.(
+                  "y",
+                  e.line.base,
+                  e.line.offset,
+                  auxLineLabel(floor, e.line, gridLabels),
+                  e.line.id,
+                );
               }}
               onClick={(event) => event.stopPropagation()}
             />
@@ -1913,7 +1934,10 @@ async function renderPng(
 }
 
 /** 階の中身のうち、描き直し・画像化の元になる部分だけの合印 */
-function floorSignature(floor: FireproofDrawingFloor): string {
+function floorSignature(
+  floor: FireproofDrawingFloor,
+  gridLabels?: GridLabels,
+): string {
   return JSON.stringify({
     x: floor.xSpans,
     y: floor.ySpans,
@@ -1921,6 +1945,7 @@ function floorSignature(floor: FireproofDrawingFloor): string {
     g: floor.girders,
     b: floor.beams,
     d: floor.diagGirders,
+    l: gridLabels,
   });
 }
 
@@ -2178,6 +2203,7 @@ export default function FireproofDrawingPage({
     (patch: Partial<FireproofDrawingFloor>) => {
       const target = drawing.floors[floor] ?? emptyFloor();
       const next: FireproofDrawing = {
+        ...drawing,
         floors: { ...drawing.floors, [floor]: { ...target, ...patch } },
       };
       // 欄を離れただけなどの変わらない入力で履歴が埋まると、「戻る」が効かなくなる
@@ -2190,6 +2216,42 @@ export default function FireproofDrawingPage({
       setDrawing(next);
     },
     [drawing, floor],
+  );
+  const updateGridLabels = useCallback(
+    (labels: GridLabels | undefined) => {
+      const next: FireproofDrawing =
+        labels === undefined
+          ? { floors: drawing.floors }
+          : { ...drawing, gridLabels: labels };
+      if (JSON.stringify(next) === JSON.stringify(drawing)) {
+        setDrawing(next);
+        return;
+      }
+      setPast((rows) => [...rows.slice(-49), drawing]);
+      setFuture([]);
+      setDrawing(next);
+    },
+    [drawing],
+  );
+  const setGridLabel = useCallback(
+    (axis: "x" | "y", index: number, value: string) => {
+      const values = [...(drawing.gridLabels?.[axis] ?? [])];
+      values[index] = value;
+      updateGridLabels({ ...(drawing.gridLabels ?? {}), [axis]: values });
+    },
+    [drawing.gridLabels, updateGridLabels],
+  );
+  const setGridLabelPreset = useCallback(
+    (axis: "x" | "y", count: number) => {
+      updateGridLabels({
+        ...(drawing.gridLabels ?? {}),
+        [axis]: Array.from(
+          { length: count },
+          (_unused, index) => `${axis.toUpperCase()}${index + 1}`,
+        ),
+      });
+    },
+    [drawing.gridLabels, updateGridLabels],
   );
   const commitXSpanText = useCallback(
     (text: string) => {
@@ -2312,7 +2374,7 @@ export default function FireproofDrawingPage({
           return {
             xi: p.xi,
             yi: p.yi,
-            label: `${xGridLabel(p.xi)}-${yGridLabel(ysNow.length - 1 - p.yi)}`,
+            label: `${xGridLabel(p.xi, drawing.gridLabels)}-${yGridLabel(ysNow.length - 1 - p.yi, drawing.gridLabels)}`,
           };
         let xi = 0;
         let xDist = Number.POSITIVE_INFINITY;
@@ -2454,7 +2516,7 @@ export default function FireproofDrawingPage({
   const pasteFloorTo = useCallback(
     (names: string[]) => {
       if (clipFloor === null || names.length === 0) return;
-      const next: FireproofDrawing = { floors: { ...drawing.floors } };
+      const next: FireproofDrawing = { ...drawing, floors: { ...drawing.floors } };
       names.forEach((name) => {
         next.floors[name] = JSON.parse(JSON.stringify(clipFloor));
       });
@@ -2937,7 +2999,10 @@ export default function FireproofDrawingPage({
         const beams = target.beams.map((beam, i) =>
           i === drag.index ? nudgeBeam(drag.start, delta) : beam,
         );
-        return { floors: { ...before.floors, [floor]: { ...target, beams } } };
+        return {
+          ...before,
+          floors: { ...before.floors, [floor]: { ...target, beams } },
+        };
       });
     },
     [floor],
@@ -2960,7 +3025,10 @@ export default function FireproofDrawingPage({
         const beams = target.beams.map((beam, i) =>
           i === drag.index ? refit : beam,
         );
-        return { floors: { ...before.floors, [floor]: { ...target, beams } } };
+        return {
+          ...before,
+          floors: { ...before.floors, [floor]: { ...target, beams } },
+        };
       });
     }
     // つかんで離すと発生するクリックで区画選択に化けないよう、少しの間だけ持ち場を残す
@@ -3384,7 +3452,7 @@ export default function FireproofDrawingPage({
   /* 図の中身が変わったら画像を書き直して保存する（呼び出せるようにするため） */
   useEffect(() => {
     if (floor === "") return;
-    const signature = floorSignature(current);
+    const signature = floorSignature(current, drawing.gridLabels);
     if (signature === renderedSignatureRef.current) return;
     const timer = window.setTimeout(() => {
       const svg = svgRef.current;
@@ -3394,6 +3462,7 @@ export default function FireproofDrawingPage({
         const png = await renderPng(svg);
         if (png === null) return;
         setDrawing((before) => ({
+          ...before,
           floors: {
             ...before.floors,
             [floor]: {
@@ -3425,7 +3494,7 @@ export default function FireproofDrawingPage({
     numbers[yi].forEach((no, xi) =>
       columnRows.push({
         no,
-        at: `${yGridLabel(ny - yi)}-${xGridLabel(xi)}`,
+        at: `${yGridLabel(ny - yi, drawing.gridLabels)}-${xGridLabel(xi, drawing.gridLabels)}`,
         key: columnKey(xi, yi),
         gap: xi === 0 && yi !== numbers.length - 1,
       }),
@@ -3435,7 +3504,7 @@ export default function FireproofDrawingPage({
     for (let xi = 0; xi < nx; xi += 1)
       girderRows.push({
         no: girderNumber("x", xi, yi, current),
-        at: `${yGridLabel(ny - yi)}／${xGridLabel(xi)}〜${xGridLabel(xi + 1)}`,
+        at: `${yGridLabel(ny - yi, drawing.gridLabels)}／${xGridLabel(xi, drawing.gridLabels)}〜${xGridLabel(xi + 1, drawing.gridLabels)}`,
         key: girderKey("x", xi, yi),
         gap: xi === 0,
       });
@@ -3443,7 +3512,7 @@ export default function FireproofDrawingPage({
     for (let yi = ny - 1; yi >= 0; yi -= 1)
       girderRows.push({
         no: girderNumber("y", xi, yi, current),
-        at: `${xGridLabel(xi)}／${yGridLabel(ny - yi - 1)}〜${yGridLabel(ny - yi)}`,
+        at: `${xGridLabel(xi, drawing.gridLabels)}／${yGridLabel(ny - yi - 1, drawing.gridLabels)}〜${yGridLabel(ny - yi, drawing.gridLabels)}`,
         key: girderKey("y", xi, yi),
         gap: yi === ny - 1,
       });
@@ -3841,7 +3910,7 @@ export default function FireproofDrawingPage({
                     return (
                       <div key={line.id ?? `a${index}`} className="aux-row">
                         <span>
-                          {auxLineLabel(current, line)}
+                          {auxLineLabel(current, line, drawing.gridLabels)}
                           （{line.axis === "x" ? "縦" : "横"}の線）
                         </span>
                         <button
@@ -3894,7 +3963,7 @@ export default function FireproofDrawingPage({
                       const value = current.axisHeightsX?.[String(xi)];
                       return (
                         <label key={xi}>
-                          {xGridLabel(xi)}
+                          {xGridLabel(xi, drawing.gridLabels)}
                           <AxisHeightInput
                             mm={value}
                             placeholder={
@@ -3918,6 +3987,7 @@ export default function FireproofDrawingPage({
                   {positions(current.ySpans).map((_, yi) => {
                     const label = yGridLabel(
                       current.ySpans.length - yi,
+                      drawing.gridLabels,
                     );
                     const value = current.axisHeights?.[String(yi)];
                     return (
@@ -3943,6 +4013,75 @@ export default function FireproofDrawingPage({
                 </div>
               </div>
             )}
+            <div className="span-inputs axis-heights grid-labels">
+              <p className="hint">
+                通りの名前（全部の階で同じ。空欄は 1,2,3／A,B,C）
+              </p>
+              <div className="list-buttons">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGridLabelPreset(
+                      "x",
+                      positions(current.xSpans).length,
+                    )
+                  }
+                >
+                  X1,X2…にする
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGridLabelPreset(
+                      "y",
+                      positions(current.ySpans).length,
+                    )
+                  }
+                >
+                  Y1,Y2…にする
+                </button>
+                <button
+                  type="button"
+                  className="flat"
+                  onClick={() => updateGridLabels(undefined)}
+                >
+                  元の名前に戻す
+                </button>
+              </div>
+              <div className="axis-height-list">
+                {positions(current.xSpans).map((_, xi) => (
+                  <label key={`x${xi}`}>
+                    {xGridLabel(xi)}
+                    <input
+                      value={drawing.gridLabels?.x?.[xi] ?? ""}
+                      placeholder={xGridLabel(xi)}
+                      aria-label={`X軸 ${xGridLabel(xi)} の名前`}
+                      onChange={(event) =>
+                        setGridLabel("x", xi, event.target.value)
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="axis-height-list">
+                {positions(current.ySpans).map((_, yi) => {
+                  const index = current.ySpans.length - yi;
+                  return (
+                    <label key={`y${index}`}>
+                      {yGridLabel(index)}
+                      <input
+                        value={drawing.gridLabels?.y?.[index] ?? ""}
+                        placeholder={yGridLabel(index)}
+                        aria-label={`Y軸 ${yGridLabel(index)} の名前`}
+                        onChange={(event) =>
+                          setGridLabel("y", index, event.target.value)
+                        }
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </section>
 
           <section className="drawing-section">
@@ -4067,7 +4206,9 @@ export default function FireproofDrawingPage({
                     className={`diag-row${index === selDiag ? " on" : ""}`}
                     onClick={() => setSelDiag(index)}
                   >
-                    <span className="at">{diagGirderPosition(current, g)}</span>
+                    <span className="at">
+                      {diagGirderPosition(current, g, drawing.gridLabels)}
+                    </span>
                     <input
                       className={
                         g.symbol.trim() !== "" &&
@@ -4422,6 +4563,7 @@ export default function FireproofDrawingPage({
             <>
               <FloorSvg
                 floor={current}
+                gridLabels={drawing.gridLabels}
                 regions={regions}
                 focus={focusRect}
                 selectedBeams={selBeamSet}

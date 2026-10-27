@@ -82,7 +82,7 @@ export default function EstimateCoverSheet({
                       <td className="num" />
                       <td className="num" />
                       <td />
-                      <td className="note">{row.note}</td>
+                      <td className="note" />
                     </tr>
                   );
                 return (
@@ -100,7 +100,7 @@ export default function EstimateCoverSheet({
                     </td>
                     <td className="num">{formatNumber(row.multiplier, 2)}</td>
                     <td>{calcName(row.calcType)}</td>
-                    <td className="note">{row.note}</td>
+                    <td className="note" />
                   </tr>
                 );
               })}
