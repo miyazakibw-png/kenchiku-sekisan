@@ -673,12 +673,7 @@ export default function AggregatePage({
     [view.details],
   );
 
-  /**
-   * 積算用表示欄まわりのカーソル移動（2行組＋縦結合セルなので専用に処理）。
-   * ・積算用表示で↑↓＝上下の明細の積算用表示へ
-   * ・備考（下段）から→＝積算用表示へ（積算用表示から←は備考欄下へ）
-   * ・積算用表示から→は既定のまま（全体共通の移動に任せる）
-   */
+  /** 備考（下段）と積算用表示の左右移動を補う（上下は共通処理に任せる）。 */
   const onTableKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
     const field = event.target;
     if (!(field instanceof HTMLInputElement)) return;
@@ -694,46 +689,7 @@ export default function AggregatePage({
         ? true
         : all || (start === field.value.length && start === end);
 
-    const columnMark =
-      field.dataset.unit !== undefined
-        ? "data-unit"
-        : field.dataset.materialCategory !== undefined
-          ? "data-material-category"
-          : null;
-    if (columnMark !== null) {
-      // 単位欄・材種区分欄の↑↓は同じ欄の上下の明細へ移る
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        const inputs = Array.from(
-          field
-            .closest("table")
-            ?.querySelectorAll<HTMLInputElement>(`input[${columnMark}]`) ?? [],
-        );
-        const target =
-          inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
-        if (!target) return;
-        event.preventDefault();
-        focusCell(target);
-        target.select();
-      }
-      return;
-    }
     if (field.dataset.estimateDisplay !== undefined) {
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-        const inputs = Array.from(
-          field
-            .closest("table")
-            ?.querySelectorAll<HTMLInputElement>(
-              "input[data-estimate-display]",
-            ) ?? [],
-        );
-        const target =
-          inputs[inputs.indexOf(field) + (event.key === "ArrowDown" ? 1 : -1)];
-        if (!target) return;
-        event.preventDefault();
-        focusCell(target);
-        target.select();
-        return;
-      }
       if (event.key === "ArrowLeft" && atStart) {
         const target = field
           .closest("tbody")
@@ -1009,6 +965,7 @@ export default function AggregatePage({
         </nav>
         <table
           className="parts aggregate"
+          data-nav-shared
           onKeyDown={onTableKeyDown}
           onMouseDownCapture={onCellMouseDown}
           onMouseOverCapture={onCellMouseOver}
@@ -1314,6 +1271,7 @@ export default function AggregatePage({
                     className={rangeCellClass(lowerGridRow, 7)}
                     data-grow={lowerGridRow}
                     data-gcol={7}
+                    data-nav-both
                   >
                     <PickInput
                       entries={unitEntries}

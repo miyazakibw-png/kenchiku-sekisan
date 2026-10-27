@@ -804,7 +804,7 @@ export default function DetailMasterPage({
         </header>
 
         <div className="grid-scroll">
-          <table className="grid">
+          <table className="grid" data-nav-shared>
             <colgroup>
               {COLUMN_KEYS.map((key) => (
                 <col
@@ -983,6 +983,7 @@ export default function DetailMasterPage({
                   <td
                     {...cellProps(index, 7)}
                     className={`col-unit ${cellProps(index, 7).className}`}
+                    data-nav-both
                   >
                     <PickInput
                       entries={unitEntries}

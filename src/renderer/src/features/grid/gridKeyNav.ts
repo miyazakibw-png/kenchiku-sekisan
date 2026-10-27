@@ -8,6 +8,11 @@ export interface CellPosition {
   col: number;
 }
 
+export interface NavLineCell<T = unknown> {
+  key: T;
+  left: number;
+}
+
 export type NavMove = "up" | "down" | "left" | "right";
 
 /** 押されたキーからどこへ動くかを決める。動かさないときは null */
@@ -73,6 +78,49 @@ export function nextCellPosition(
   if (col < counts[row] - 1) return { row, col: col + 1 };
   for (let next = row + 1; next < counts.length; next++) {
     if (counts[next] > 0) return { row: next, col: 0 };
+  }
+  return null;
+}
+
+/**
+ * 行をまたぐ欄を含む表の移動先を求める。
+ * lines は左から順に並び、同じ欄が上下の行に含まれる場合は同じ key を使う。
+ */
+export function nextSharedCellPosition<T>(
+  move: NavMove,
+  current: CellPosition,
+  lines: readonly (readonly NavLineCell<T>[])[],
+): CellPosition | null {
+  const currentCell = lines[current.row]?.[current.col];
+  if (!currentCell) return null;
+
+  if (move !== "up" && move !== "down")
+    return nextCellPosition(
+      move,
+      current,
+      lines.map((line) => line.length),
+    );
+
+  const step = move === "down" ? 1 : -1;
+  for (
+    let row = current.row + step;
+    row >= 0 && row < lines.length;
+    row += step
+  ) {
+    const line = lines[row];
+    if (line.length === 0) continue;
+
+    let closest = 0;
+    let closestDistance = Math.abs(line[0].left - currentCell.left);
+    for (let col = 1; col < line.length; col++) {
+      const distance = Math.abs(line[col].left - currentCell.left);
+      if (distance < closestDistance) {
+        closest = col;
+        closestDistance = distance;
+      }
+    }
+    if (line[closest].key === currentCell.key) continue;
+    return { row, col: closest };
   }
   return null;
 }

@@ -590,7 +590,11 @@ export default function AssemblyMasterPage({
             </header>
 
             <div className="modal-body">
-              <table className="grid" ref={editorTableRef}>
+              <table
+                className="grid"
+                data-nav-shared
+                ref={editorTableRef}
+              >
                 <thead>
                   <tr>
                     <th>行</th>
