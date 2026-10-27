@@ -8,6 +8,7 @@ import { seedInitialData } from "../../src/main/db/seed";
 import type { AppDatabase } from "../../src/main/db";
 import {
   buildItemFromDetail,
+  deleteAssembly,
   getAssembly,
   listAssemblies,
   listAssemblyMasterOptions,
@@ -214,6 +215,68 @@ describe("仕上明細セットマスター", () => {
     expect(listAssemblies(db, null).map((a) => a.id)).toEqual([
       first.assembly.id,
     ]);
+  });
+
+  it("共通セットを削除すると構成明細と部位別入力の参照も消える", () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
+      scope: "basic",
+      projectId: null,
+      note: "",
+      items: [itemOf(detailIds[0]), itemOf(detailIds[1])],
+    });
+    const finishId = Number(
+      db
+        .insert(schema.projectRoomFinishes)
+        .values({
+          projectId: projectIdRef,
+          roomNumber: "101",
+          roomName: "検証室",
+          finishAssemblyId: assembly.id,
+        })
+        .run().lastInsertRowid,
+    );
+
+    deleteAssembly(db, assembly.id);
+
+    expect(
+      db
+        .select()
+        .from(schema.mFinishAssemblies)
+        .where(eq(schema.mFinishAssemblies.id, assembly.id))
+        .get(),
+    ).toBeUndefined();
+    expect(
+      db
+        .select()
+        .from(schema.mFinishAssemblyItems)
+        .where(eq(schema.mFinishAssemblyItems.assemblyId, assembly.id))
+        .all(),
+    ).toHaveLength(0);
+    expect(
+      db
+        .select({
+          finishAssemblyId: schema.projectRoomFinishes.finishAssemblyId,
+        })
+        .from(schema.projectRoomFinishes)
+        .where(eq(schema.projectRoomFinishes.id, finishId))
+        .get()?.finishAssemblyId,
+    ).toBeNull();
+  });
+
+  it("工事専用セットは削除せずに拒否する", () => {
+    const { assembly } = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+
+    expect(() => deleteAssembly(db, assembly.id)).toThrow(
+      "工事専用の仕上明細セットは削除できません",
+    );
+    expect(getAssembly(db, assembly.id).items).toHaveLength(1);
   });
 
   it("同じ明細でもセット用部位が異なる場合は統合候補にしない", () => {

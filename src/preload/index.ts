@@ -149,6 +149,8 @@ const api = {
     ipcRenderer.invoke(IPC.assemblyMerge, keepId, mergedId),
   promoteAssembly: (id: number): Promise<FinishAssembly> =>
     ipcRenderer.invoke(IPC.assemblyPromote, id),
+  deleteAssembly: (id: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.assemblyDelete, id),
   listEstimateRows: (projectId: number): Promise<EstimateRow[]> =>
     ipcRenderer.invoke(IPC.estimateRowsList, projectId),
   saveEstimateRows: (

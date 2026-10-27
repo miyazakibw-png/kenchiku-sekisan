@@ -888,7 +888,7 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
 /**
  * 内容が同じになった2つのセットを1つへ統合する。
  * 計算書など参照している側を残す側へ付け替えてから、重複したセットを取り除く。
- * （マスターからの任意削除は誤操作防止のため設けない）
+ * （工事専用マスターからの任意削除は誤操作防止のため設けない）
  */
 export function mergeAssemblies(
   db: AppDatabase,
@@ -906,6 +906,27 @@ export function mergeAssemblies(
       .run();
   });
   return getAssembly(db, keepId);
+}
+
+/** 全物件共通の基本セットだけを削除する（工事専用セットは削除しない）。 */
+export function deleteAssembly(db: AppDatabase, id: number): void {
+  db.transaction((tx) => {
+    const row = tx
+      .select({
+        scope: mFinishAssemblies.scope,
+        projectId: mFinishAssemblies.projectId,
+      })
+      .from(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, id))
+      .get();
+    if (!row) throw new Error(`仕上明細セットが見つかりません: id=${id}`);
+    if (row.scope !== "basic" || row.projectId !== null) {
+      throw new Error("工事専用の仕上明細セットは削除できません");
+    }
+    tx.delete(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, id))
+      .run();
+  });
 }
 
 /**

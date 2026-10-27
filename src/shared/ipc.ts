@@ -18,6 +18,7 @@ export const IPC = {
   assemblyItemFromDetail: "assembly:itemFromDetail",
   assemblyMerge: "assembly:merge",
   assemblyPromote: "assembly:promote",
+  assemblyDelete: "assembly:delete",
   estimateRowsList: "estimateRows:list",
   estimateRowsSave: "estimateRows:save",
   estimateRowsFilledSheets: "estimateRows:filledSheets",

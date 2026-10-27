@@ -54,6 +54,7 @@ import {
   listAssemblyMasterOptions,
   mergeAssemblies,
   promoteAssemblyToBasic,
+  deleteAssembly,
   saveAssembly,
 } from "./services/assemblyService";
 import {
@@ -812,6 +813,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
     promoteAssemblyToBasic(getDatabase(), id),
+  );
+  ipcMain.handle(IPC.assemblyDelete, (_event, id: number) =>
+    deleteAssembly(getDatabase(), id),
   );
   ipcMain.handle(IPC.projectLedger, () => listProjectLedger(getDatabase()));
   ipcMain.handle(IPC.projectCreate, (_event, name: string) =>

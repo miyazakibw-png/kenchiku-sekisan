@@ -129,6 +129,11 @@ interface MergeState {
   message: string;
 }
 
+interface DeleteState {
+  id: number;
+  name: string;
+}
+
 export default function AssemblyMasterPage({
   options,
   projectId = null,
@@ -161,6 +166,7 @@ export default function AssemblyMasterPage({
   /** 先頭の通常明細が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
   const [chooser, setChooser] = useState<FinishAssembly[]>([]);
   const [merge, setMerge] = useState<MergeState | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const { markSaved, isDirty } = useSaveOnLeave(editor, () => save(true));
@@ -354,6 +360,34 @@ export default function AssemblyMasterPage({
       `共通の仕上明細セットマスターに写しました（${headItem(result)?.name ?? ""}）`,
     );
   }, [editor, isDirty, save]);
+
+  const requestDelete = useCallback(() => {
+    if (projectId !== null || editor === null || editor.id === null) return;
+    setDeleteConfirm({
+      id: editor.id,
+      name:
+        editor.items.find((item) => item.note !== true)?.name ??
+        editor.items[0]?.name ??
+        "",
+    });
+  }, [editor, projectId]);
+
+  const applyDelete = useCallback(async () => {
+    if (deleteConfirm === null) return;
+    try {
+      await window.sekisan.deleteAssembly(deleteConfirm.id);
+      setDeleteConfirm(null);
+      setEditor(null);
+      markSaved(null);
+      setSelectedId(null);
+      await reload();
+      setToast("セットを削除しました");
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "セットを削除できませんでした",
+      );
+    }
+  }, [deleteConfirm, markSaved, reload]);
 
   const applyMerge = useCallback(async () => {
     if (!merge) return;
@@ -804,6 +838,11 @@ export default function AssemblyMasterPage({
               >
                 ➕ 空行を追加
               </button>
+              {projectId === null && editor.id !== null && (
+                <button type="button" onClick={requestDelete}>
+                  🗑 このセットを削除
+                </button>
+              )}
               <span className="spacer" />
               {projectId !== null && editor.id !== null && (
                 <button
@@ -1026,6 +1065,28 @@ export default function AssemblyMasterPage({
                 onClick={() => void applyMerge()}
               >
                 統合する
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div className="modal-backdrop" role="dialog">
+          <div className="modal confirm">
+            <p>
+              このセット（{deleteConfirm.name}）を削除しますか。もう計算書に呼び出してある明細はそのまま残ります。
+            </p>
+            <footer>
+              <button type="button" onClick={() => setDeleteConfirm(null)}>
+                やめる
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void applyDelete()}
+              >
+                削除する
               </button>
             </footer>
           </div>
