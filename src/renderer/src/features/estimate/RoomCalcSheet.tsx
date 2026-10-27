@@ -17,7 +17,10 @@ import { resolveMasterName } from "@shared/masters";
 import { pickMaster, resolvePartNumberInput } from "./partNumberInput";
 import { BANNER_COLORS, assemblyBandColor } from "./bannerColors";
 import type { AssemblyGroup } from "../../../../core/masters/assemblyGroup";
-import { groupAssembliesByHead } from "../../../../core/masters/assemblyGroup";
+import {
+  groupAssembliesByHead,
+  hideBasicDuplicates,
+} from "../../../../core/masters/assemblyGroup";
 import {
   addSetRow,
   calcDetail,
@@ -583,7 +586,7 @@ export default function RoomCalcSheet({
       if (source === "assembly") {
         const basic = await window.sekisan.listAssemblies(null);
         const project = await window.sekisan.listAssemblies(projectId);
-        setAssemblies([...basic, ...project]);
+        setAssemblies(hideBasicDuplicates([...basic, ...project]));
         return;
       }
       if (subjectId === null) {

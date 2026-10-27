@@ -8,6 +8,32 @@ export interface AssemblyGroup {
   list: FinishAssembly[];
 }
 
+/** 工事に同じ中身のセットがある基準のセットは、呼出一覧から外す */
+export function hideBasicDuplicates(
+  assemblies: FinishAssembly[],
+): FinishAssembly[] {
+  const keyOf = (assembly: FinishAssembly): string => {
+    const head = assemblyHead(assembly.items);
+    const setPartName = assembly.setPartName.trim();
+    const partNumber =
+      setPartName !== "" ? assembly.setPartNumber : (head?.partNumber ?? null);
+    const partName =
+      setPartName !== "" ? setPartName : (head?.partName.trim() ?? "");
+    const items = assembly.items.map((item) => ({ ...item, formula: "" }));
+    return `${assemblySignature(items)}\u001d${partNumber ?? ""}\u001f${partName}`;
+  };
+
+  const projectKeys = new Set(
+    assemblies
+      .filter((assembly) => assembly.scope === "project")
+      .map(keyOf),
+  );
+  return assemblies.filter(
+    (assembly) =>
+      assembly.scope !== "basic" || !projectKeys.has(keyOf(assembly)),
+  );
+}
+
 /**
  * セットを先頭の通常明細でまとめる。
  * 呼出画面では先頭の通常明細だけを見せ、複数あるときだけ中のセットを選ばせる。
