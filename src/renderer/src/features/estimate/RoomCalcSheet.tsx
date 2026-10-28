@@ -82,6 +82,7 @@ import { useColumnWidths } from "../../hooks/useColumnWidths";
 import PickInput, { type PickEntry } from "../../components/PickInput";
 import type { CalcFocus } from "@shared/calcWindow";
 import { assemblyHead, assemblyItemSubjectId } from "@shared/assemblyItem";
+import { fillRoomName } from "../../../../core/room/roomPartName";
 import "./RoomCalcSheet.css";
 
 export type { CalcFocus };
@@ -99,6 +100,7 @@ interface Props {
   variables: Record<string, number>;
   options: MasterOptions | null;
   projectId: number;
+  roomPartName?: string;
   focus: CalcFocus | null;
   onFocus: (focus: CalcFocus | null) => void;
   result: CalcSheetResult;
@@ -331,6 +333,7 @@ export default function RoomCalcSheet({
   variables,
   options,
   projectId,
+  roomPartName,
   focus,
   onFocus,
   result,
@@ -542,6 +545,7 @@ export default function RoomCalcSheet({
     if (!inOtherWindow) return;
     const state = {
       title: windowTitle ?? "セット明細計算表",
+      roomPartName,
       projectId,
       hasUpper,
       variables,
@@ -559,6 +563,7 @@ export default function RoomCalcSheet({
     inOtherWindow,
     projectId,
     result,
+    roomPartName,
     sets,
     variables,
     windowTitle,
@@ -972,7 +977,7 @@ export default function RoomCalcSheet({
         // （空欄は空欄のまま。書き込み先の行の値は引き継がない）
         materialCategory: detail.materialCategory,
         partNumber: detail.partNumber,
-        partName: detail.partName,
+        partName: fillRoomName(detail.partName, roomPartName),
         name: detail.name,
         descriptionUpper: detail.descriptionUpper,
         descriptionLower: detail.descriptionLower,
@@ -1031,6 +1036,7 @@ export default function RoomCalcSheet({
       onFocus,
       onMessage,
       pickupParts,
+      roomPartName,
       sets,
       updateSet,
       writeFocus,
@@ -1076,7 +1082,7 @@ export default function RoomCalcSheet({
           detailNumber: item.detailNumber,
           materialCategory: item.materialCategory,
           partNumber: item.partNumber ?? null,
-          partName: item.partName,
+          partName: fillRoomName(item.partName, roomPartName),
           name: item.name,
           descriptionUpper: item.descriptionUpper,
           descriptionLower: item.descriptionLower,
@@ -1112,7 +1118,16 @@ export default function RoomCalcSheet({
         `${head?.name ?? "セット明細"} を${insertMode ? "挿入" : "上書き"}呼出しました`,
       );
     },
-    [bannerSetId, commit, currentSet?.id, insertMode, onFocus, onMessage, sets],
+    [
+      bannerSetId,
+      commit,
+      currentSet?.id,
+      insertMode,
+      onFocus,
+      onMessage,
+      roomPartName,
+      sets,
+    ],
   );
 
   /** カーソルの位置で判断して行を足す（明細欄なら明細、計算式欄なら計算行） */
@@ -2634,17 +2649,24 @@ export default function RoomCalcSheet({
                               }
                               title="明細用部位のID。登録済みの番号を入れると右の部位名にマスターの文字が入ります"
                               onFocus={focusDetail}
-                              onCommit={(text) =>
+                              onCommit={(text) => {
+                                const resolved = resolvePartNumberInput(
+                                  pickupParts,
+                                  text,
+                                  detail.partName,
+                                );
                                 updateDetail(
                                   set.id,
                                   rowIndex,
-                                  resolvePartNumberInput(
-                                    pickupParts,
-                                    text,
-                                    detail.partName,
-                                  ),
+                                  {
+                                    ...resolved,
+                                    partName: fillRoomName(
+                                      resolved.partName,
+                                      roomPartName,
+                                    ),
+                                  },
                                 )
-                              }
+                              }}
                             />
                           </td>
                           <td className="id">
@@ -2689,6 +2711,14 @@ export default function RoomCalcSheet({
                                   partName: e.target.value,
                                 })
                               }
+                              onBlur={(e) => {
+                                const partName = fillRoomName(
+                                  e.currentTarget.value,
+                                  roomPartName,
+                                );
+                                if (partName !== e.currentTarget.value)
+                                  updateDetail(set.id, rowIndex, { partName });
+                              }}
                             />
                           </td>
                           <td>

@@ -140,6 +140,7 @@ interface Props {
   project: ProjectSummary;
   row: EstimateRowDraft;
   roomName: string;
+  roomPartName?: string;
   onBack: () => void;
   jumpDetail?: CalcDetailJump | null;
   /** 天井高さを直したときに部位別入力表の行へも伝える */
@@ -388,6 +389,7 @@ export default function RoomSheetPage({
   project,
   row,
   roomName,
+  roomPartName,
   onBack,
   jumpDetail = null,
   onCeilingHeightChange,
@@ -5747,6 +5749,7 @@ export default function RoomSheetPage({
         variables={calcVariables}
         options={options}
         projectId={project.id}
+        roomPartName={roomPartName}
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}

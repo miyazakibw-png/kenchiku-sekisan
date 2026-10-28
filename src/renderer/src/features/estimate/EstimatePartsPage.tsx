@@ -37,6 +37,7 @@ import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import "./EstimatePartsPage.css";
 import { displayedValue } from "../../../../core/room/calcSheet";
+import { toHalfWidth } from "../../../../core/text/halfWidth";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { ask } from "../common/askDialog";
@@ -466,10 +467,18 @@ export default function EstimatePartsPage({
   };
 
   /** 計算書に出す部屋名。部位Ⅱは空欄なら上の行から引き継いだ内容を使う */
-  const openedRoomName =
+  const openedPart2 =
     openedSheet !== null && rows[openedSheet]
-      ? `${inherited[openedSheet]?.part2 ?? rows[openedSheet].part2} ${rows[openedSheet].part3}`.trim()
+      ? (inherited[openedSheet]?.part2 ?? rows[openedSheet].part2)
       : "";
+  const openedPart3 =
+    openedSheet !== null && rows[openedSheet]
+      ? rows[openedSheet].part3
+      : "";
+  const openedRoomName = `${openedPart2} ${openedPart3}`.trim();
+  const openedRoomPartName = toHalfWidth(
+    openedPart2.trim() + openedPart3.trim(),
+  );
 
   if (openedSheet !== null && rows[openedSheet]?.calcType === "frame") {
     return (
@@ -477,6 +486,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        roomPartName={openedRoomPartName}
         jumpDetail={activeJumpDetail}
         onWorkHeightChange={(height) => {
           if (openedSheet === null) return;
@@ -512,6 +522,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        roomPartName={openedRoomPartName}
         jumpDetail={activeJumpDetail}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;
@@ -541,6 +552,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        roomPartName={openedRoomPartName}
         jumpDetail={activeJumpDetail}
         sheetName={
           rows[openedSheet]?.calcType === "area" ? "面積計算書" : undefined
@@ -560,6 +572,7 @@ export default function EstimatePartsPage({
         project={project}
         row={rows[openedSheet]}
         roomName={openedRoomName}
+        roomPartName={openedRoomPartName}
         jumpDetail={activeJumpDetail}
         onCeilingHeightChange={(height) => {
           if (openedSheet === null) return;

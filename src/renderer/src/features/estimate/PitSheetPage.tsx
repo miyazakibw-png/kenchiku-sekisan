@@ -123,6 +123,7 @@ interface Props {
   project: ProjectSummary;
   row: EstimateRowDraft;
   roomName: string;
+  roomPartName?: string;
   onBack: () => void;
   jumpDetail?: CalcDetailJump | null;
   /** 印刷書式（A3横）で出す。入力はせず、保存もしない */
@@ -191,6 +192,7 @@ export default function PitSheetPage({
   project,
   row,
   roomName,
+  roomPartName,
   onBack,
   jumpDetail = null,
   printMode = false,
@@ -2986,6 +2988,7 @@ export default function PitSheetPage({
         variables={calcVariables}
         options={options}
         projectId={project.id}
+        roomPartName={roomPartName}
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}

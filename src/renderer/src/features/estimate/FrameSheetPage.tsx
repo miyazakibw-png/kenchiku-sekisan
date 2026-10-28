@@ -90,6 +90,7 @@ interface Props {
   project: ProjectSummary;
   row: EstimateRowDraft;
   roomName: string;
+  roomPartName?: string;
   onBack: () => void;
   jumpDetail?: CalcDetailJump | null;
   /** 置ける部屋の名前を押したとき、その部屋の計算書を開く */
@@ -193,6 +194,7 @@ export default function FrameSheetPage({
   project,
   row,
   roomName,
+  roomPartName,
   onBack,
   jumpDetail = null,
   onOpenRoomSheet,
@@ -4407,6 +4409,7 @@ export default function FrameSheetPage({
         variables={calcVariables}
         options={options}
         projectId={project.id}
+        roomPartName={roomPartName}
         focus={calcFocus}
         onFocus={setCalcFocus}
         jumpTick={errorJump}
