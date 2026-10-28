@@ -2,6 +2,7 @@ export const IPC = {
   masterOptions: "master:options",
   basicMastersList: "basicMasters:list",
   basicMasterSave: "basicMasters:save",
+  basicMasterSyncToBasic: "basicMasters:syncToBasic",
   subjectsList: "subjects:list",
   subjectsSave: "subjects:save",
   projectMastersCopy: "projectMasters:copy",

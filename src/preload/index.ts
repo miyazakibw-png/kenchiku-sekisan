@@ -12,6 +12,7 @@ import type {
   BackupInfo,
   BackupResult,
   ProjectFileResult,
+  BasicMasterKind,
   BasicMasters,
   SaveBasicMasterRequest,
   SaveBasicMasterResult,
@@ -89,6 +90,11 @@ const api = {
     request: SaveBasicMasterRequest,
   ): Promise<SaveBasicMasterResult> =>
     ipcRenderer.invoke(IPC.basicMasterSave, request),
+  syncProjectBasicMasterToBasic: (
+    projectId: number,
+    kind: BasicMasterKind,
+  ): Promise<SaveBasicMasterResult> =>
+    ipcRenderer.invoke(IPC.basicMasterSyncToBasic, projectId, kind),
   listSubjects: (projectId: number | null = null): Promise<Subject[]> =>
     ipcRenderer.invoke(IPC.subjectsList, projectId),
   saveSubjects: (

@@ -21,7 +21,7 @@ import type {
   Subject,
   SubjectDraft,
 } from "../../shared/types";
-import { listBasicMasters } from "./basicMasterService";
+import { listBasicMasters, saveBasicMaster } from "./basicMasterService";
 import { listSubjects, subjectCode } from "./subjectService";
 
 /** 工事ごとに持てるマスターの種類 */
@@ -189,6 +189,23 @@ export function saveProjectBasicMaster(
   }));
   replaceRows(db, projectId, kind, trimmed);
   return { masters: listProjectBasicMasters(db, projectId), errors: [] };
+}
+
+/** 工事のその他マスター1種類を基本マスターへ同期する */
+export function syncProjectBasicMasterToBasic(
+  db: AppDatabase,
+  projectId: number,
+  kind: BasicMasterKind,
+): SaveBasicMasterResult {
+  const result = saveBasicMaster(
+    db,
+    kind,
+    listProjectBasicMasters(db, projectId)[kind],
+  );
+  return {
+    masters: listProjectBasicMasters(db, projectId),
+    errors: result.errors,
+  };
 }
 
 /** その工事の明細・セット明細で使われている科目ID */

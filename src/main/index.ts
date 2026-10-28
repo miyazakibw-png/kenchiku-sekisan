@@ -85,6 +85,7 @@ import {
   projectMasterKinds,
   saveProjectBasicMaster,
   saveProjectSubjects,
+  syncProjectBasicMasterToBasic,
 } from "./services/projectMasterService";
 import {
   getFittingPartValues,
@@ -201,6 +202,7 @@ import type {
   PrintPaper,
   PrintResult,
   ScreenExcelRequest,
+  BasicMasterKind,
   SaveBasicMasterRequest,
   BreakdownExportRequest,
   BreakdownExportResult,
@@ -382,6 +384,11 @@ function registerIpcHandlers(): void {
             request.rows,
           );
     },
+  );
+  ipcMain.handle(
+    IPC.basicMasterSyncToBasic,
+    (_event, projectId: number, kind: BasicMasterKind) =>
+      syncProjectBasicMasterToBasic(getDatabase(), projectId, kind),
   );
   ipcMain.handle(IPC.subjectsList, (_event, projectId: number | null = null) =>
     projectId === null

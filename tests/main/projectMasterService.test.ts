@@ -16,6 +16,7 @@ import {
   projectMasterKinds,
   saveProjectBasicMaster,
   saveProjectSubjects,
+  syncProjectBasicMasterToBasic,
 } from "../../src/main/services/projectMasterService";
 import {
   listBasicMasters,
@@ -114,6 +115,44 @@ describe("工事別の基準マスター", () => {
     expect(saveBasicMaster(db, "units", renamed).errors).toEqual([]);
     expect(listProjectBasicMasters(db, project.id).units[0]?.name).toBe(
       basic.units[0]?.name,
+    );
+  });
+
+  it("開いている種類だけ工事から基本マスターへ同期する", () => {
+    const project = createProject(db, "同期元工事");
+    const otherProject = createProject(db, "別工事");
+    const before = listBasicMasters(db);
+    const projectRows = [
+      { id: 3, name: "工事側の床", note: "工事側の備考" },
+      { id: 88, name: "工事側の追加", note: "追加の備考" },
+    ];
+    const otherProjectRows = [
+      { id: 2, name: "別工事の床", note: "別工事の備考" },
+      { id: 77, name: "別工事専用", note: "" },
+    ];
+    saveProjectBasicMaster(db, project.id, "pickupParts", projectRows);
+    saveProjectBasicMaster(
+      db,
+      otherProject.id,
+      "pickupParts",
+      otherProjectRows,
+    );
+
+    const result = syncProjectBasicMasterToBasic(
+      db,
+      project.id,
+      "pickupParts",
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.masters.pickupParts).toEqual(projectRows);
+    expect(listBasicMasters(db).pickupParts).toEqual(projectRows);
+    expect(listBasicMasters(db).materialCategories).toEqual(
+      before.materialCategories,
+    );
+    expect(listBasicMasters(db).units).toEqual(before.units);
+    expect(listProjectBasicMasters(db, otherProject.id).pickupParts).toEqual(
+      otherProjectRows,
     );
   });
 
