@@ -16,6 +16,7 @@ import type {
   MasterOptions,
   ProjectSummary,
 } from "@shared/types";
+import { toHalfWidthName } from "../../../../core/text/halfWidth";
 import {
   applyMasterDetailToFurnitureRow,
   applyFurnitureDetails,
@@ -676,7 +677,7 @@ export default function FurnitureSheetPage({
               new Set(
                 estimateRows
                   .filter((row) => row.rowType === "room")
-                  .map((row) => row.part3.trim())
+                  .map((row) => toHalfWidthName(row.part3.trim()))
                   .filter((text) => text !== ""),
               ),
             ),
@@ -2625,6 +2626,7 @@ export default function FurnitureSheetPage({
                           entries={part3Entries}
                           japanese
                           commitOnBlur
+                          copyValue
                           value={rows[index].partAdd}
                           title="文字を入れるか、部位別入力表の部位Ⅲから選びます"
                           onCommit={(text) => editRow(index, { partAdd: text })}

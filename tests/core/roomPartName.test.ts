@@ -6,6 +6,10 @@ describe("部位名の室名置きかえ", () => {
     expect(fillRoomName("室名床", "１Ｆ玄関")).toBe("1F玄関床");
   });
 
+  it("部位Ⅲのカタカナも名前用に半角へ直す", () => {
+    expect(fillRoomName("室名床", "１Ｆロビー")).toBe("1Fﾛﾋﾞｰ床");
+  });
+
   it("部位名にあるすべての室名を置きかえる", () => {
     expect(fillRoomName("室名床・室名巾木", "１Ｆ玄関")).toBe(
       "1F玄関床・1F玄関巾木",

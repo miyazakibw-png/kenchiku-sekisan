@@ -37,7 +37,7 @@ import GeneralSheetPage from "./GeneralSheetPage";
 import PitSheetPage from "./PitSheetPage";
 import "./EstimatePartsPage.css";
 import { displayedValue } from "../../../../core/room/calcSheet";
-import { toHalfWidth } from "../../../../core/text/halfWidth";
+import { toHalfWidthName } from "../../../../core/text/halfWidth";
 import { useTableResize } from "../../hooks/useTableResize";
 import { useSaveOnLeave } from "../../hooks/useSaveOnLeave";
 import { ask } from "../common/askDialog";
@@ -476,7 +476,7 @@ export default function EstimatePartsPage({
       ? rows[openedSheet].part3
       : "";
   const openedRoomName = `${openedPart2} ${openedPart3}`.trim();
-  const openedRoomPartName = toHalfWidth(
+  const openedRoomPartName = toHalfWidthName(
     openedPart2.trim() + openedPart3.trim(),
   );
 

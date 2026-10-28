@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { writeClipboard } from "../features/grid/writeClipboard";
 import "./PickInput.css";
 
 /** 候補一覧に出す1行（value＝欄に入る文字、label＝一覧に見せる文字） */
@@ -26,6 +27,7 @@ export function PickInput({
   row,
   col,
   commitOnBlur = false,
+  copyValue = false,
   popupSide = "bottom",
   popupAnchorCol,
   dataAttrs,
@@ -46,6 +48,7 @@ export function PickInput({
   row?: number;
   col?: number;
   commitOnBlur?: boolean;
+  copyValue?: boolean;
   /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
   popupSide?: "bottom" | "right";
   /** 右側の候補一覧を揃える列番号 */
@@ -126,7 +129,7 @@ export function PickInput({
   );
 
   const commit = (text: string, picked = false): void => {
-    setEditing(null);
+    setEditing(copyValue && picked ? "" : null);
     setBox(null);
     onCommit(text, picked);
   };
@@ -156,6 +159,21 @@ export function PickInput({
           if (!commitOnBlur) onCommit(e.target.value);
         }}
         onKeyDown={(e) => {
+          if (
+            copyValue &&
+            e.ctrlKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === "c" &&
+            editing === "" &&
+            value !== "" &&
+            e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+          ) {
+            e.preventDefault();
+            setBox(null);
+            writeClipboard(value);
+            return;
+          }
           if (e.key === "Escape") {
             setBox(null);
             return;
