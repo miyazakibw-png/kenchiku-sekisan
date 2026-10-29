@@ -6,11 +6,13 @@ import {
   emptyTransferRow,
   insertTransferRow,
   insertTransferRows,
+  moveTransferRow,
   overwriteTransferRows,
   parseQuantity,
   removeTransferRow,
   resolveTransferInherited,
   updateTransferRow,
+  withInitialTransferRows,
 } from "../../src/renderer/src/features/estimate/transferRows";
 import {
   copyTransferCells,
@@ -19,6 +21,38 @@ import {
 import type { Detail, EstimateRow } from "../../src/shared/types";
 
 describe("転記入力表の行操作", () => {
+  it("保存行がない場合は独立した空行を30行用意し、既存行はそのまま返す", () => {
+    const padded = withInitialTransferRows([]);
+    expect(padded).toHaveLength(30);
+    expect(padded.every((row) => row.id === null && row.name === "")).toBe(
+      true,
+    );
+    expect(new Set(padded).size).toBe(30);
+
+    const existing = [emptyTransferRow()];
+    expect(withInitialTransferRows(existing)).toBe(existing);
+  });
+
+  it("行を上下に移動し、端では変化しない", () => {
+    const rows = [
+      { ...emptyTransferRow(), name: "床" },
+      { ...emptyTransferRow(), name: "壁" },
+      { ...emptyTransferRow(), name: "天井" },
+    ];
+    expect(moveTransferRow(rows, 1, -1).map((row) => row.name)).toEqual([
+      "壁",
+      "床",
+      "天井",
+    ]);
+    expect(moveTransferRow(rows, 1, 1).map((row) => row.name)).toEqual([
+      "床",
+      "天井",
+      "壁",
+    ]);
+    expect(moveTransferRow(rows, 0, -1)).toBe(rows);
+    expect(moveTransferRow(rows, 2, 1)).toBe(rows);
+  });
+
   it("Ａ〜Ｉは入力が無ければ入力のある上の行を引き継ぐ", () => {
     const rows = [
       {

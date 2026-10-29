@@ -17,24 +17,23 @@ import OtherProjectSheetPicker from "./OtherProjectSheetPicker";
 import "./EstimatePartsPage.css";
 import "./MiscSheetListPage.css";
 
-/** 一覧の列（右端の「消す」列はボタンだけ置く空の見出し） */
+/** 一覧の列 */
 const LIST_COLUMNS: {
   key: string;
   label: string;
   className: string;
   defaultWidth: number;
 }[] = [
-  { key: "ops", label: "操作", className: "ops", defaultWidth: 150 },
-  { key: "no", label: "No", className: "no", defaultWidth: 40 },
+  { key: "no", label: "No", className: "no", defaultWidth: 148 },
   { key: "part1", label: "部位Ⅰ", className: "name", defaultWidth: 110 },
   { key: "part2", label: "部位Ⅱ", className: "name", defaultWidth: 110 },
   { key: "split", label: "仕訳", className: "count", defaultWidth: 50 },
   { key: "name", label: "表の名前（部位Ⅲ）", className: "name", defaultWidth: 170 },
   { key: "kind", label: "種類", className: "name", defaultWidth: 150 },
   { key: "multiplier", label: "倍率", className: "count", defaultWidth: 56 },
+  { key: "open", label: "開く", className: "open", defaultWidth: 64 },
   { key: "rows", label: "行数", className: "count", defaultWidth: 50 },
   { key: "note", label: "メモ", className: "note", defaultWidth: 240 },
-  { key: "del", label: "", className: "ops del", defaultWidth: 64 },
 ];
 
 interface Props {
@@ -149,6 +148,25 @@ export default function FurnitureSheetListPage({
       "furniture",
     );
     await load();
+    setMessage("表を1枚足しました");
+  };
+
+  const insertAbove = async (index: number): Promise<void> => {
+    pushHistory();
+    const created = await window.sekisan.createFurnitureSheet(
+      project.id,
+      `家具計算書${sheets.length + 1}`,
+      "furniture",
+    );
+    const next = (
+      await window.sekisan.listFurnitureSheets(project.id)
+    ).filter(
+      (sheet) => !isFittingDetailSheet(sheet.kind) && sheet.id !== created.id,
+    );
+    next.splice(index, 0, created);
+    await save(next);
+    setSelected(index);
+    setSelectedEnd(index);
     setMessage("表を1枚足しました");
   };
 
@@ -456,18 +474,44 @@ export default function FurnitureSheetListPage({
                 setSelectedEnd(index);
               }}
             >
-              <td className="ops">
-                <button type="button" onClick={() => onOpen(sheet.id)}>
-                  📂 開く
-                </button>
-                <button type="button" onClick={() => void move(index, -1)}>
-                  ↑
-                </button>
-                <button type="button" onClick={() => void move(index, 1)}>
-                  ↓
-                </button>
+              <td className="no">
+                <span className="no-cell">
+                  <span className="row-no">{index + 1}</span>
+                  <span className="row-move">
+                    <button
+                      type="button"
+                      title="この行の上へ空表を挿入"
+                      onClick={() => void insertAbove(index)}
+                    >
+                      ＋
+                    </button>
+                    <button
+                      type="button"
+                      title="上へ移動"
+                      disabled={index === 0}
+                      onClick={() => void move(index, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      title="下へ移動"
+                      disabled={index === sheets.length - 1}
+                      onClick={() => void move(index, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="row-delete"
+                      title="この表を削除"
+                      onClick={() => void remove(sheet)}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </span>
               </td>
-              <td className="no">{index + 1}</td>
               <td className="name">
                 <input
                   lang="ja"
@@ -549,6 +593,11 @@ export default function FurnitureSheetListPage({
                   onBlur={() => void save(sheets)}
                 />
               </td>
+              <td className="open">
+                <button type="button" onClick={() => onOpen(sheet.id)}>
+                  📐 開く
+                </button>
+              </td>
               <td className="count">{sheet.rowCount}</td>
               <td className="note">
                 <input
@@ -559,11 +608,6 @@ export default function FurnitureSheetListPage({
                   }
                   onBlur={() => void save(sheets)}
                 />
-              </td>
-              <td className="ops del">
-                <button type="button" onClick={() => void remove(sheet)}>
-                  🗑 消す
-                </button>
               </td>
             </tr>
           ))}

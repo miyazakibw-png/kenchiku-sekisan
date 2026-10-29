@@ -1,4 +1,5 @@
 table.transfer {
+  --transfer-action-size: 25px;
   border-collapse: collapse;
   margin: 8px;
   width: auto;
@@ -27,9 +28,48 @@ table.transfer td.future {
 
 table.transfer th.no,
 table.transfer td.no {
-  width: 6ch;
+  width: 148px;
+  min-width: 148px;
   text-align: right;
   color: #6b7280;
+}
+
+table.transfer td.no .no-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+table.transfer td.no .row-no {
+  flex: 0 0 3ch;
+  min-width: 3ch;
+  text-align: right;
+}
+
+table.transfer td.no .row-move {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+  line-height: 1;
+}
+
+table.transfer td.no .row-move button,
+table.transfer td.no .row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--transfer-action-size);
+  min-width: var(--transfer-action-size);
+  height: var(--transfer-action-size);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+table.transfer td.no .row-delete {
+  color: #b91c1c;
 }
 
 table.transfer th.part,

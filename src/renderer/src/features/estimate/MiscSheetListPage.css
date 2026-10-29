@@ -1,5 +1,6 @@
 /** 部位別雑・金物入力表の管理表（何枚でも作れる表の一覧） */
 .misc-list-page table.grid.misc-list {
+  --misc-list-action-size: 25px;
   border-collapse: collapse;
   margin: 8px;
   width: calc(100% - 16px);
@@ -21,31 +22,63 @@
 }
 
 .misc-list-page table.grid.misc-list .no {
-  width: 40px;
-  text-align: center;
+  width: 148px;
+  min-width: 148px;
+  text-align: right;
+  color: #6b7280;
+}
+
+.misc-list-page table.grid.misc-list .no-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.misc-list-page table.grid.misc-list .row-no {
+  flex: 0 0 3ch;
+  min-width: 3ch;
+  text-align: right;
+}
+
+.misc-list-page table.grid.misc-list .row-move {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+  line-height: 1;
+}
+
+.misc-list-page table.grid.misc-list .row-move button,
+.misc-list-page table.grid.misc-list .row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--misc-list-action-size);
+  min-width: var(--misc-list-action-size);
+  height: var(--misc-list-action-size);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.misc-list-page table.grid.misc-list .row-delete {
+  color: #b91c1c;
+}
+
+.misc-list-page table.grid.misc-list td.open button {
+  white-space: nowrap;
+  height: var(--misc-list-action-size);
+}
+
+.misc-list-page table.grid.misc-list td.open,
+.misc-list-page table.grid.misc-list th.open {
+  min-width: 61px;
 }
 
 .misc-list-page table.grid.misc-list .count {
   width: 60px;
   text-align: right;
-}
-
-.misc-list-page table.grid.misc-list .ops {
-  white-space: nowrap;
-}
-
-.misc-list-page table.grid.misc-list .ops button {
-  font-size: 11px;
-  margin-right: 4px;
-}
-
-/** いちばん右の「消す」だけの列 */
-.misc-list-page table.grid.misc-list .ops.del {
-  text-align: center;
-}
-
-.misc-list-page table.grid.misc-list .ops.del button {
-  margin-right: 0;
 }
 
 /** 見出しの中身（th 自体を position 指定すると Chrome で行の高さが崩れるため、この箱を基準にする） */

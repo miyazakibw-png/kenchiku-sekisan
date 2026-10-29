@@ -20,12 +20,14 @@ import {
   formatQuantity,
   insertTransferRow,
   insertTransferRows,
+  moveTransferRow,
   overwriteTransferRows,
   parseQuantity,
   removeTransferRow,
   resolveTransferInherited,
   toTransferDrafts,
   updateTransferRow,
+  withInitialTransferRows,
 } from "./transferRows";
 import {
   copyTransferCells,
@@ -113,8 +115,8 @@ export default function TransferSheetPage({
   const { markSaved } = useSaveOnLeave(rows, () => save(true));
 
   const reload = useCallback(async () => {
-    const next = toTransferDrafts(
-      await window.sekisan.listTransferRows(project.id),
+    const next = withInitialTransferRows(
+      toTransferDrafts(await window.sekisan.listTransferRows(project.id)),
     );
     setRows(next);
     markSaved(next);
@@ -619,7 +621,94 @@ export default function TransferSheetPage({
             >
               <tr className="detail-upper">
                 <td className="no" rowSpan={2}>
-                  {index + 1}
+                  <span className="no-cell">
+                    <span className="row-no">{index + 1}</span>
+                    <span className="row-move">
+                      <button
+                        type="button"
+                        title="この行の上へ空行を挿入"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          history.edit((current) =>
+                            insertTransferRow(current, index),
+                          );
+                          setSelected(index);
+                          setSelectedEnd(index);
+                          const pos = { row: index, line: 0, col: 0 };
+                          setCell(pos);
+                          setCellEnd(pos);
+                        }}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ上へ"
+                        disabled={index === 0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const to = index - 1;
+                          history.edit((current) =>
+                            moveTransferRow(current, index, -1),
+                          );
+                          setSelected(to);
+                          setSelectedEnd(to);
+                          const pos = { row: to, line: 0, col: 0 };
+                          setCell(pos);
+                          setCellEnd(pos);
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ下へ"
+                        disabled={index === rows.length - 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const to = index + 1;
+                          history.edit((current) =>
+                            moveTransferRow(current, index, 1),
+                          );
+                          setSelected(to);
+                          setSelectedEnd(to);
+                          const pos = { row: to, line: 0, col: 0 };
+                          setCell(pos);
+                          setCellEnd(pos);
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="この行を削除"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          history.edit((current) =>
+                            removeTransferRow(current, index),
+                          );
+                          const nextSelected =
+                            index === selected
+                              ? Math.max(0, Math.min(index, rows.length - 2))
+                              : index < selected
+                                ? selected - 1
+                                : selected;
+                          setSelected(nextSelected);
+                          setSelectedEnd(nextSelected);
+                          const pos = {
+                            row: nextSelected,
+                            line: 0,
+                            col: 0,
+                          };
+                          setCell(pos);
+                          setCellEnd(pos);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </span>
                 </td>
                 <td rowSpan={2}>
                   <PickInput

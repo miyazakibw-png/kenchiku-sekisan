@@ -48,6 +48,14 @@ export function emptyTransferRow(): TransferRowDraft {
   };
 }
 
+export function withInitialTransferRows(
+  rows: TransferRowDraft[],
+): TransferRowDraft[] {
+  return rows.length > 0
+    ? rows
+    : Array.from({ length: 30 }, () => emptyTransferRow());
+}
+
 /** A〜Iは入力がない場合、入力のある上の行と同じ入力があるものとして扱う（集計と同じ規則） */
 export function resolveTransferInherited(
   rows: TransferRowDraft[],
@@ -61,6 +69,20 @@ export function insertTransferRow(
 ): TransferRowDraft[] {
   const at = Math.min(Math.max(index, 0), rows.length);
   return [...rows.slice(0, at), emptyTransferRow(), ...rows.slice(at)];
+}
+
+export function moveTransferRow(
+  rows: TransferRowDraft[],
+  index: number,
+  step: number,
+): TransferRowDraft[] {
+  const to = index + step;
+  if (index < 0 || index >= rows.length || to < 0 || to >= rows.length)
+    return rows;
+  const next = [...rows];
+  const moved = next.splice(index, 1)[0];
+  next.splice(to, 0, moved);
+  return next;
 }
 
 export function removeTransferRow(
