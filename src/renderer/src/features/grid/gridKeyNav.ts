@@ -91,7 +91,7 @@ export function nextSharedCellPosition<T>(
   move: NavMove,
   current: CellPosition,
   lines: readonly (readonly NavLineCell<T>[])[],
-  options?: { sameColumn?: boolean },
+  options?: { sameColumn?: boolean; lineGroups?: readonly unknown[] },
 ): CellPosition | null {
   const currentCell = lines[current.row]?.[current.col];
   if (!currentCell) return null;
@@ -114,6 +114,43 @@ export function nextSharedCellPosition<T>(
           if (move === "right" && sharedCol < adjacent.length - 1)
             return { row, col: sharedCol + 1 };
         }
+      }
+
+      const lineGroups = options.lineGroups;
+      const currentGroup = lineGroups?.[current.row];
+      if (lineGroups && currentGroup !== undefined && currentGroup !== null) {
+        const line = lines[current.row];
+        const candidate =
+          line[move === "left" ? current.col - 1 : current.col + 1];
+        const currentKeys = new Set(line.map((cell) => cell.key));
+        let closest: CellPosition | null = null;
+        let closestDistance = Number.POSITIVE_INFINITY;
+
+        for (const row of [current.row - 1, current.row + 1]) {
+          if (lineGroups[row] !== currentGroup) continue;
+          const adjacent = lines[row];
+          if (!adjacent) continue;
+
+          for (let col = 0; col < adjacent.length; col++) {
+            const cell = adjacent[col];
+            if (currentKeys.has(cell.key)) continue;
+            const between =
+              move === "left"
+                ? cell.left < currentCell.left &&
+                  (candidate === undefined || candidate.left < cell.left)
+                : cell.left > currentCell.left &&
+                  (candidate === undefined || cell.left < candidate.left);
+            if (!between) continue;
+
+            const distance = Math.abs(cell.left - currentCell.left);
+            if (distance < closestDistance) {
+              closest = { row, col };
+              closestDistance = distance;
+            }
+          }
+        }
+
+        if (closest) return closest;
       }
     }
     return nextCellPosition(

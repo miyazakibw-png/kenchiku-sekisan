@@ -230,7 +230,10 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
               return { key: cell, left: rect.left, right: rect.right };
             }),
           ),
-          { sameColumn: table.hasAttribute("data-nav-same-column") },
+          {
+            sameColumn: table.hasAttribute("data-nav-same-column"),
+            lineGroups: rows.map((tr) => tr.closest("tbody")),
+          },
         )
       : nextCellPosition(
           move,

@@ -166,6 +166,12 @@ describe("明細マスターの同じ列を優先するキーボード移動", (
     ],
   ];
   const sameColumn = { sameColumn: true };
+  const firstDetail = {};
+  const secondDetail = {};
+  const sameDetailColumn = {
+    sameColumn: true,
+    lineGroups: [firstDetail, firstDetail, secondDetail, secondDetail],
+  };
 
   it("明細番号の上下は次・前の明細番号へ移る", () => {
     expect(
@@ -205,5 +211,160 @@ describe("明細マスターの同じ列を優先するキーボード移動", (
       row: 2,
       col: 0,
     });
+  });
+
+  it("上段の摘要から左へは同じ明細の名称へ移る", () => {
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 0, col: 1 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 2 });
+  });
+
+  it("材種区分から右へは上段・下段とも同じ明細の名称へ移る", () => {
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 0, col: 0 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 2 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 1, col: 1 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 2 });
+  });
+
+  it("名称・摘要下段・備考・積算用表示・明細番号の横移動は変えない", () => {
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 1, col: 3 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 2 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 1, col: 2 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 3 });
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 1, col: 2 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 1 });
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 0, col: 3 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 0, col: 2 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 0, col: 2 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 0, col: 3 });
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 0, col: 4 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 0, col: 3 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 0, col: 3 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 0, col: 4 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 1, col: 0 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 1 });
+  });
+
+  it("グループ情報またはsameColumnがないときは従来どおりの移動", () => {
+    const current = { row: 0, col: 0 };
+    expect(nextSharedCellPosition("right", current, lines)).toEqual({
+      row: 0,
+      col: 1,
+    });
+    expect(
+      nextSharedCellPosition("right", current, lines, sameColumn),
+    ).toEqual({ row: 0, col: 1 });
+    expect(
+      nextSharedCellPosition("right", current, lines, {
+        lineGroups: sameDetailColumn.lineGroups,
+      }),
+    ).toEqual({ row: 0, col: 1 });
+  });
+
+  it("グループ付きでも材種区分から左へは明細番号へ移る", () => {
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 0, col: 0 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 0 });
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 1, col: 1 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 0 });
+  });
+
+  it("行末に通常の候補がなくても同じ明細の右側欄へ移る", () => {
+    const group = {};
+    const edgeLines = [
+      [
+        { key: "category", left: 100, right: 200 },
+        { key: "description-upper", left: 300, right: 400 },
+        { key: "remarks-upper", left: 500, right: 600 },
+      ],
+      [
+        { key: "detail-number", left: 0, right: 100 },
+        { key: "category", left: 100, right: 200 },
+        { key: "name-lower", left: 200, right: 300 },
+        { key: "remarks-lower", left: 650, right: 750 },
+      ],
+    ];
+    expect(
+      nextSharedCellPosition("right", { row: 0, col: 2 }, edgeLines, {
+        sameColumn: true,
+        lineGroups: [group, group],
+      }),
+    ).toEqual({ row: 1, col: 3 });
   });
 });
