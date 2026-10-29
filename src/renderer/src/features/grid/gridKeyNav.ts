@@ -11,6 +11,7 @@ export interface CellPosition {
 export interface NavLineCell<T = unknown> {
   key: T;
   left: number;
+  right?: number;
 }
 
 export type NavMove = "up" | "down" | "left" | "right";
@@ -90,16 +91,37 @@ export function nextSharedCellPosition<T>(
   move: NavMove,
   current: CellPosition,
   lines: readonly (readonly NavLineCell<T>[])[],
+  options?: { sameColumn?: boolean },
 ): CellPosition | null {
   const currentCell = lines[current.row]?.[current.col];
   if (!currentCell) return null;
 
-  if (move !== "up" && move !== "down")
+  if (move !== "up" && move !== "down") {
+    if (options?.sameColumn) {
+      const line = lines[current.row];
+      const atEdge =
+        move === "left" ? current.col === 0 : current.col === line.length - 1;
+      if (atEdge) {
+        for (const row of [current.row - 1, current.row + 1]) {
+          const adjacent = lines[row];
+          if (!adjacent) continue;
+          const sharedCol = adjacent.findIndex(
+            (cell) => cell.key === currentCell.key,
+          );
+          if (sharedCol < 0) continue;
+          if (move === "left" && sharedCol > 0)
+            return { row, col: sharedCol - 1 };
+          if (move === "right" && sharedCol < adjacent.length - 1)
+            return { row, col: sharedCol + 1 };
+        }
+      }
+    }
     return nextCellPosition(
       move,
       current,
       lines.map((line) => line.length),
     );
+  }
 
   const step = move === "down" ? 1 : -1;
   for (
@@ -110,10 +132,21 @@ export function nextSharedCellPosition<T>(
     const line = lines[row];
     if (line.length === 0) continue;
 
-    let closest = 0;
-    let closestDistance = Math.abs(line[0].left - currentCell.left);
-    for (let col = 1; col < line.length; col++) {
-      const distance = Math.abs(line[col].left - currentCell.left);
+    const candidates = line
+      .map((cell, col) => ({ cell, col }))
+      .filter(
+        ({ cell }) =>
+          !options?.sameColumn ||
+          currentCell.right === undefined ||
+          cell.right === undefined ||
+          (cell.left < currentCell.right && cell.right > currentCell.left),
+      );
+    if (candidates.length === 0) continue;
+
+    let closest = candidates[0].col;
+    let closestDistance = Math.abs(candidates[0].cell.left - currentCell.left);
+    for (const { cell, col } of candidates.slice(1)) {
+      const distance = Math.abs(cell.left - currentCell.left);
       if (distance < closestDistance) {
         closest = col;
         closestDistance = distance;

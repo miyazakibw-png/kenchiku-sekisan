@@ -225,11 +225,12 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
           move,
           { row, col },
           lines.map((line) =>
-            line.map((cell) => ({
-              key: cell,
-              left: cell.getBoundingClientRect().left,
-            })),
+            line.map((cell) => {
+              const rect = cell.getBoundingClientRect();
+              return { key: cell, left: rect.left, right: rect.right };
+            }),
           ),
+          { sameColumn: table.hasAttribute("data-nav-same-column") },
         )
       : nextCellPosition(
           move,

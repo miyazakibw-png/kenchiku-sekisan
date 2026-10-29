@@ -129,3 +129,81 @@ describe("上下2行の表で共有欄を含めたキーボード移動", () => 
     ).toEqual({ row: 1, col: 2 });
   });
 });
+
+describe("明細マスターの同じ列を優先するキーボード移動", () => {
+  const lines = [
+    [
+      { key: "category-1", left: 100, right: 200 },
+      { key: "description-upper-1", left: 300, right: 400 },
+      { key: "unit-1", left: 400, right: 500 },
+      { key: "remarks-upper-1", left: 500, right: 600 },
+      { key: "estimate-1", left: 600, right: 700 },
+    ],
+    [
+      { key: "detail-number-1", left: 0, right: 100 },
+      { key: "category-1", left: 100, right: 200 },
+      { key: "name-lower-1", left: 200, right: 300 },
+      { key: "description-lower-1", left: 300, right: 400 },
+      { key: "unit-1", left: 400, right: 500 },
+      { key: "remarks-lower-1", left: 500, right: 600 },
+      { key: "estimate-1", left: 600, right: 700 },
+    ],
+    [
+      { key: "category-2", left: 100, right: 200 },
+      { key: "description-upper-2", left: 300, right: 400 },
+      { key: "unit-2", left: 400, right: 500 },
+      { key: "remarks-upper-2", left: 500, right: 600 },
+      { key: "estimate-2", left: 600, right: 700 },
+    ],
+    [
+      { key: "detail-number-2", left: 0, right: 100 },
+      { key: "category-2", left: 100, right: 200 },
+      { key: "name-lower-2", left: 200, right: 300 },
+      { key: "description-lower-2", left: 300, right: 400 },
+      { key: "unit-2", left: 400, right: 500 },
+      { key: "remarks-lower-2", left: 500, right: 600 },
+      { key: "estimate-2", left: 600, right: 700 },
+    ],
+  ];
+  const sameColumn = { sameColumn: true };
+
+  it("明細番号の上下は次・前の明細番号へ移る", () => {
+    expect(
+      nextSharedCellPosition("down", { row: 1, col: 0 }, lines, sameColumn),
+    ).toEqual({ row: 3, col: 0 });
+    expect(
+      nextSharedCellPosition("up", { row: 3, col: 0 }, lines, sameColumn),
+    ).toEqual({ row: 1, col: 0 });
+  });
+
+  it("名称（下段）の上下は次・前の明細の名称へ移る", () => {
+    expect(
+      nextSharedCellPosition("down", { row: 1, col: 2 }, lines, sameColumn),
+    ).toEqual({ row: 3, col: 2 });
+    expect(
+      nextSharedCellPosition("up", { row: 3, col: 2 }, lines, sameColumn),
+    ).toEqual({ row: 1, col: 2 });
+  });
+
+  it("摘要（下段）から下へは次明細の摘要（上段）へ移る", () => {
+    expect(
+      nextSharedCellPosition("down", { row: 1, col: 3 }, lines, sameColumn),
+    ).toEqual({ row: 2, col: 1 });
+  });
+
+  it("材種区分から左へは上段・下段とも明細番号へ移る", () => {
+    expect(
+      nextSharedCellPosition("left", { row: 0, col: 0 }, lines, sameColumn),
+    ).toEqual({ row: 1, col: 0 });
+    expect(
+      nextSharedCellPosition("left", { row: 1, col: 1 }, lines, sameColumn),
+    ).toEqual({ row: 1, col: 0 });
+  });
+
+  it("sameColumnを省略したときは従来どおりの移動", () => {
+    expect(nextSharedCellPosition("down", { row: 1, col: 0 }, lines)).toEqual({
+      row: 2,
+      col: 0,
+    });
+  });
+});

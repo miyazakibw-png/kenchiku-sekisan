@@ -804,7 +804,7 @@ export default function DetailMasterPage({
         </header>
 
         <div className="grid-scroll">
-          <table className="grid" data-nav-shared>
+          <table className="grid" data-nav-shared data-nav-same-column>
             <colgroup>
               {COLUMN_KEYS.map((key) => (
                 <col
