@@ -113,7 +113,6 @@ import {
   trimEmptySets,
   type CalcSet,
 } from "../../../../core/room/calcSheet";
-import { parseLowerTemplate } from "../../../../core/room/lowerTemplate";
 import {
   frameArcApex,
   frameLinePath,
@@ -588,14 +587,13 @@ export default function RoomSheetPage({
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [showCheck, setShowCheck] = useState(false);
   const [deductionLimit, setDeductionLimit] = useState(0.5);
-  /** 下段の初期状態（見出し行＋部位の並び。全物件共通）の保存・読み出し */
+  /** 下段の初期状態（見出し行＋部位の並び。全物件共通）の保存 */
   const lowerTemplate = useMemo(
     () => ({
+      label: "部屋計算書",
       save: async (sets: CalcSet[]): Promise<void> => {
-        await window.sekisan.saveRoomLowerTemplate(JSON.stringify(sets));
+        await window.sekisan.saveLowerTemplate("room", JSON.stringify(sets));
       },
-      load: async (): Promise<CalcSet[]> =>
-        parseLowerTemplate(await window.sekisan.getRoomLowerTemplate()),
     }),
     [],
   );

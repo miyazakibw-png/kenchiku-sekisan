@@ -16,12 +16,12 @@ import {
 } from "../../src/main/services/estimateRowService";
 import {
   getDeductionLimit,
-  getRoomLowerTemplate,
+  getLowerTemplate,
   getRoomSheet,
   listRoomSheets,
   registerRoomFitting,
   saveDeductionLimit,
-  saveRoomLowerTemplate,
+  saveLowerTemplate,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
 import {
@@ -324,7 +324,7 @@ describe("部屋計算書（上段）", () => {
       projectId: project.id,
       rows: [roomRow("事務室", 2.6)],
     });
-    expect(getRoomLowerTemplate(db)).toBeNull();
+    expect(getLowerTemplate(db, "room")).toBeNull();
 
     const sets = JSON.parse(getRoomSheet(db, row.id).lowerJson) as CalcSet[];
     const parts = sets.filter((set) => !isCommentSet(set));
@@ -357,6 +357,39 @@ describe("部屋計算書（上段）", () => {
     expect(listFilledCalcSheets(db, project.id)[row.id]).toBeUndefined();
   });
 
+  it("初期状態は計算書の種類ごとに分かれ、既存の部屋用キーを読み込む", () => {
+    const roomJson = '[{"id":"room-template"}]';
+    const pitJson = '[{"id":"pit-template"}]';
+    const frameJson = '[{"id":"frame-template"}]';
+    const generalJson = '[{"id":"general-template"}]';
+
+    db.insert(schema.appSettings)
+      .values({ key: "roomLowerTemplate", valueJson: roomJson })
+      .run();
+    saveLowerTemplate(db, "pit", pitJson);
+    saveLowerTemplate(db, "frame", frameJson);
+    saveLowerTemplate(db, "general", generalJson);
+
+    expect(getLowerTemplate(db, "room")).toBe(roomJson);
+    expect(getLowerTemplate(db, "pit")).toBe(pitJson);
+    expect(getLowerTemplate(db, "frame")).toBe(frameJson);
+    expect(getLowerTemplate(db, "general")).toBe(generalJson);
+    expect(
+      db
+        .select()
+        .from(schema.appSettings)
+        .all()
+        .map((setting) => setting.key),
+    ).toEqual(
+      expect.arrayContaining([
+        "roomLowerTemplate",
+        "pitLowerTemplate",
+        "frameLowerTemplate",
+        "generalLowerTemplate",
+      ]),
+    );
+  });
+
   it("初期状態を保存すると、次に作る計算書からその並びになる（今ある計算書は変わらない）", () => {
     const project = createProject(db, "初期状態保存テスト");
     const [before, after] = saveEstimateRows(db, {
@@ -367,8 +400,9 @@ describe("部屋計算書（上段）", () => {
 
     const wall = calcSet(1);
     wall.partName = "壁";
-    saveRoomLowerTemplate(
+    saveLowerTemplate(
       db,
+      "room",
       JSON.stringify([commentSet("仕上", "#dbeafe"), wall]),
     );
 
@@ -380,7 +414,7 @@ describe("部屋計算書（上段）", () => {
     expect(getRoomSheet(db, before.id).lowerJson).toBe(beforeSheet.lowerJson);
 
     // 空の初期状態も保存できる（何も入っていない下段で始まる）
-    saveRoomLowerTemplate(db, "[]");
+    saveLowerTemplate(db, "room", "[]");
     const [third] = saveEstimateRows(db, {
       projectId: project.id,
       rows: [roomRow("空で始める部屋", 2.6)],

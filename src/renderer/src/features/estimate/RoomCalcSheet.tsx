@@ -52,11 +52,7 @@ import {
   type CalcSet,
   type CalcSheetResult,
 } from "../../../../core/room/calcSheet";
-import {
-  hasLowerContent,
-  lowerFromTemplate,
-  lowerTemplateFrom,
-} from "../../../../core/room/lowerTemplate";
+import { lowerTemplateFrom } from "../../../../core/room/lowerTemplate";
 import {
   duplicateDetail,
   duplicateLine,
@@ -115,12 +111,11 @@ interface Props {
   /** 明細入力ウィンドウの中に表示しているか */
   inWindow?: boolean;
   /**
-   * 下段の初期状態（見出し行＋部位の並び）を持つ計算書だけ渡す。
-   * save は今の並びを初期状態として保存、load は初期状態を返す（空なら置き換え、中身があれば下に足す）
+   * 下段の初期状態（見出し行＋部位の並び）を保存できる計算書だけ渡す。
    */
   template?: {
+    label: string;
     save: (sets: CalcSet[]) => Promise<void>;
-    load: () => Promise<CalcSet[]>;
   };
   /** この計算書を保存する（「マスター作成」が集計へ入る前に呼ぶ。別画面では渡さない） */
   saveSheet?: () => Promise<void>;
@@ -2340,53 +2335,27 @@ export default function RoomCalcSheet({
           </button>
         )}
         {template && (
-          <>
-            <button
-              type="button"
-              title="初期状態（見出し行＋部位の並び。全物件共通）をこの計算書に入れます。明細・計算式がまだ何も入っていなければ置き換え、入っていればいちばん下に足します（ↆ 戻るで戻せます）"
-              onClick={() =>
-                void (async () => {
-                  const loaded = lowerFromTemplate(await template.load());
-                  if (loaded.length === 0) {
-                    onMessage(
-                      "初期状態は空です（見出し行と部位を入れて「初期状態として保存」してください）",
-                    );
-                    return;
-                  }
-                  if (!hasLowerContent(sets)) {
-                    commit(loaded);
-                    onMessage("下段を初期状態にしました（ↆ 戻るで戻せます）");
-                  } else {
-                    commit([...sets, ...loaded]);
-                    onMessage("初期状態を下に足しました（ↆ 戻るで戻せます）");
-                  }
-                })()
-              }
-            >
-              ☰ 初期状態を入れる
-            </button>
-            <button
-              type="button"
-              title="この計算書の下段の並び（見出し行の色・文字とセットの部位だけ。明細・計算式は入りません）を、新しい部屋計算書の初期状態として保存します（全物件共通）"
-              onClick={() =>
-                void (async () => {
-                  const next = lowerTemplateFrom(sets);
-                  if (
-                    !window.confirm(
-                      `この計算書の並び（見出し行${next.filter(isCommentSet).length}行・セット${next.length - next.filter(isCommentSet).length}件）を、新しい部屋計算書の初期状態にします（全物件共通。今ある計算書は変わりません）。よろしいですか？`,
-                    )
+          <button
+            type="button"
+            title={`この計算書の下段の並び（見出し行の色・文字とセットの部位だけ。明細・計算式は入りません）を、新しい${template.label}の初期状態として保存します（全物件共通）`}
+            onClick={() =>
+              void (async () => {
+                const next = lowerTemplateFrom(sets);
+                if (
+                  !window.confirm(
+                    `この計算書の並び（見出し行${next.filter(isCommentSet).length}行・セット${next.length - next.filter(isCommentSet).length}件）を、新しい${template.label}の初期状態にします（全物件共通。今ある計算書は変わりません）。よろしいですか？`,
                   )
-                    return;
-                  await template.save(next);
-                  onMessage(
-                    "下段の初期状態を保存しました（次に新しく開く部屋計算書からこの並びで始まります）",
-                  );
-                })()
-              }
-            >
-              💾 初期状態として保存
-            </button>
-          </>
+                )
+                  return;
+                await template.save(next);
+                onMessage(
+                  `下段の初期状態を保存しました（次に新しく開く${template.label}からこの並びで始まります）`,
+                );
+              })()
+            }
+          >
+            💾 初期状態として保存
+          </button>
         )}
         {!hasUpper && (
           <span className="hint">

@@ -14,7 +14,9 @@ import {
   saveEstimateRows,
 } from "../../src/main/services/estimateRowService";
 import {
+  getLowerTemplate,
   getRoomSheet,
+  saveLowerTemplate,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
 import {
@@ -24,6 +26,13 @@ import {
   saveFrameSheet,
 } from "../../src/main/services/frameSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
+import {
+  calcSet,
+  commentSet,
+  isCommentSet,
+  type CalcSet,
+} from "../../src/core/room/calcSheet";
+import { lowerTemplateFrom } from "../../src/core/room/lowerTemplate";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -72,8 +81,53 @@ describe("軸組計算書", () => {
     expect(sheet.estimateRowId).toBe(frameRow.id);
     expect(sheet.workHeight).toBe(2.7);
     expect(sheet.layoutJson).toBe("[]");
+    expect(sheet.lowerJson).toBe("[]");
     // 行ごとに1つ（開き直しても同じ計算書）
     expect(getFrameSheet(db, frameRow.id).id).toBe(sheet.id);
+  });
+
+  it("新しい軸組計算書は軸組用の初期状態を使い、明細とIDを作り直す", () => {
+    const project = createProject(db, "軸組初期状態");
+    const [frameRow] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("軸組A", "frame", 2.7)],
+    });
+
+    const part = calcSet(1);
+    part.partName = "壁";
+    part.details[0].name = "旧明細";
+    part.lines[0].formulaA = "3*2";
+    const template = lowerTemplateFrom([
+      commentSet("軸組見出し", "#dbeafe"),
+      part,
+    ]);
+    const templateJson = JSON.stringify(template);
+    saveLowerTemplate(db, "frame", templateJson);
+
+    const sheet = getFrameSheet(db, frameRow.id);
+    const sets = JSON.parse(sheet.lowerJson) as CalcSet[];
+    expect(sets.map((set) => set.banner?.text ?? set.partName)).toEqual([
+      "軸組見出し",
+      "壁",
+    ]);
+    expect(sets[1].details[0].name).toBe("");
+    expect(sets[1].lines[0].formulaA).toBe("");
+    const templateIds = new Set(
+      template.flatMap((set) => [
+        set.id,
+        ...set.details.map((detail) => detail.id),
+        ...set.lines.map((line) => line.id),
+      ]),
+    );
+    const createdIds = sets.flatMap((set) => [
+      set.id,
+      ...set.details.map((detail) => detail.id),
+      ...set.lines.map((line) => line.id),
+    ]);
+    expect(new Set(createdIds).size).toBe(createdIds.length);
+    expect(createdIds.some((id) => templateIds.has(id))).toBe(false);
+    expect(isCommentSet(sets[0])).toBe(true);
+    expect(getLowerTemplate(db, "frame")).toBe(templateJson);
   });
 
   it("レイアウト・軸組ライン・下段を保存して開き直せる", () => {

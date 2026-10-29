@@ -102,12 +102,12 @@ import {
 } from "./services/estimateRowService";
 import {
   getDeductionLimit,
-  getRoomLowerTemplate,
+  getLowerTemplate,
   getRoomSheet,
   listRoomSheets,
   registerRoomFitting,
   saveDeductionLimit,
-  saveRoomLowerTemplate,
+  saveLowerTemplate,
   saveRoomSheet,
 } from "./services/roomSheetService";
 import {
@@ -233,6 +233,7 @@ import type {
   SaveTransferRowsRequest,
   SetDetailUnusedRequest,
   SubjectDraft,
+  LowerTemplateKind,
 } from "../shared/types";
 import { rememberWindowState, savedBounds, wasMaximized } from "./windowState";
 
@@ -749,11 +750,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
     saveDeductionLimit(getDatabase(), limit),
   );
-  ipcMain.handle(IPC.roomLowerTemplateGet, () =>
-    getRoomLowerTemplate(getDatabase()),
+  ipcMain.handle(IPC.lowerTemplateGet, (_event, kind: LowerTemplateKind) =>
+    getLowerTemplate(getDatabase(), kind),
   );
-  ipcMain.handle(IPC.roomLowerTemplateSave, (_event, json: string) =>
-    saveRoomLowerTemplate(getDatabase(), json),
+  ipcMain.handle(
+    IPC.lowerTemplateSave,
+    (_event, kind: LowerTemplateKind, json: string) =>
+      saveLowerTemplate(getDatabase(), kind, json),
   );
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
     listFittings(getDatabase(), projectId),

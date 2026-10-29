@@ -224,6 +224,15 @@ export default function GeneralSheetPage({
         result={calcResult}
         onMessage={setMessage}
         hasUpper={false}
+        template={{
+          label: "汎用計算書",
+          save: async (sets: CalcSet[]) => {
+            await window.sekisan.saveLowerTemplate(
+              "general",
+              JSON.stringify(sets),
+            );
+          },
+        }}
         windowTitle={`汎用計算書　${project.managementNo}`}
         saveSheet={save}
       />

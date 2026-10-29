@@ -4416,6 +4416,15 @@ export default function FrameSheetPage({
         jumpDetail={sheet !== null ? jumpDetail : null}
         result={calcResult}
         onMessage={setMessage}
+        template={{
+          label: "軸組計算書",
+          save: async (sets: CalcSet[]) => {
+            await window.sekisan.saveLowerTemplate(
+              "frame",
+              JSON.stringify(sets),
+            );
+          },
+        }}
         windowTitle={`軸組・梁計算書　${project.managementNo}`}
         saveSheet={save}
       />

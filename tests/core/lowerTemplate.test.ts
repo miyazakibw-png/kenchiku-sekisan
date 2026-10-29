@@ -10,6 +10,7 @@ import {
   lowerFromTemplate,
   lowerTemplateFrom,
   parseLowerTemplate,
+  parseSavedLowerTemplate,
 } from "../../src/core/room/lowerTemplate";
 
 describe("部屋別計算書 下段の初期状態", () => {
@@ -108,5 +109,26 @@ describe("部屋別計算書 下段の初期状態", () => {
     expect(parseLowerTemplate("[]")).toEqual([]);
     const saved = JSON.stringify([commentSet("仕上", "#fef9c3"), calcSet(1)]);
     expect(parseLowerTemplate(saved)).toHaveLength(2);
+  });
+
+  it("保存済み初期状態の解析は未保存・不正値をnullにし、有効な配列を正規化する", () => {
+    expect(parseSavedLowerTemplate(null)).toBeNull();
+    expect(parseSavedLowerTemplate("")).toBeNull();
+    expect(parseSavedLowerTemplate("{bad")).toBeNull();
+    expect(parseSavedLowerTemplate('{"a":1}')).toBeNull();
+    expect(parseSavedLowerTemplate("[null]")).toBeNull();
+    expect(parseSavedLowerTemplate("[]")).toEqual([]);
+
+    const saved = JSON.stringify([
+      commentSet("仕上", "#fef9c3"),
+      calcSet(1),
+    ]);
+    const parsed = parseSavedLowerTemplate(saved);
+    expect(parsed?.map((set) => set.banner?.text ?? set.partName)).toEqual([
+      "仕上",
+      "",
+    ]);
+    expect(parsed?.[1].details).toHaveLength(1);
+    expect(parsed?.[1].lines).toHaveLength(1);
   });
 });

@@ -280,6 +280,8 @@ export interface MasterEntry {
 /** 部屋ごとの計算タイプ（計算書書式の key。将来書式が増えても字面を増やすだけで済む） */
 export type CalcType = string;
 
+export type LowerTemplateKind = "room" | "pit" | "frame" | "general";
+
 /** 部位別入力表（積算管理）の1行 */
 export interface EstimateRow {
   id: number;

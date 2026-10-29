@@ -2996,6 +2996,12 @@ export default function PitSheetPage({
         result={calcResult}
         onMessage={setMessage}
         hasUpper
+        template={{
+          label: "ピット計算書",
+          save: async (sets: CalcSet[]) => {
+            await window.sekisan.saveLowerTemplate("pit", JSON.stringify(sets));
+          },
+        }}
         windowTitle={`${sheetName}　${project.managementNo}`}
         saveSheet={save}
       />

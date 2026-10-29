@@ -11,6 +11,11 @@ import type {
   SaveFrameSheetRequest,
   SheetOption,
 } from "../../shared/types";
+import {
+  lowerFromTemplate,
+  parseSavedLowerTemplate,
+} from "../../core/room/lowerTemplate";
+import { getLowerTemplate } from "./roomSheetService";
 
 function toSheet(row: typeof projectFrameSheets.$inferSelect): FrameSheet {
   return {
@@ -49,12 +54,16 @@ export function getFrameSheet(
   if (!estimateRow)
     throw new Error(`部位別入力表の行が見つかりません: ${estimateRowId}`);
 
+  const template = parseSavedLowerTemplate(getLowerTemplate(db, "frame"));
   const created = db
     .insert(projectFrameSheets)
     .values({
       projectId: estimateRow.projectId,
       estimateRowId,
       workHeight: estimateRow.ceilingHeight,
+      ...(template === null
+        ? {}
+        : { lowerJson: JSON.stringify(lowerFromTemplate(template)) }),
     })
     .returning()
     .get();
