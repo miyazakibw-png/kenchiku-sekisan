@@ -29,6 +29,7 @@ import {
   subtotalSums,
   toDrafts,
   updateRow,
+  withInitialRows,
 } from "./estimateRows";
 import RoomSheetPage from "./RoomSheetPage";
 import FrameSheetPage from "./FrameSheetPage";
@@ -192,7 +193,9 @@ export default function EstimatePartsPage({
   const { markSaved } = useSaveOnLeave(rows, () => save());
 
   const reload = useCallback(async () => {
-    const next = toDrafts(await window.sekisan.listEstimateRows(project.id));
+    const next = withInitialRows(
+      toDrafts(await window.sekisan.listEstimateRows(project.id)),
+    );
     setRows(next);
     markSaved(next);
     setFilledSheets(await window.sekisan.listFilledCalcSheets(project.id));

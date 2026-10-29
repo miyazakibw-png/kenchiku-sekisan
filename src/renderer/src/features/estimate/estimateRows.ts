@@ -9,6 +9,7 @@ import type { GridColumn } from "../grid/gridClipboard";
 
 /** 計算タイプ（計算書書式）の既定値。書式マスターの先頭を使う */
 export const DEFAULT_CALC_TYPE = "room";
+const INITIAL_EMPTY_ROWS = 30;
 
 export function toDrafts(rows: EstimateRow[]): EstimateRowDraft[] {
   return rows.map(
@@ -35,6 +36,12 @@ export function emptyRow(
     note: "",
     calcType,
   };
+}
+
+export function withInitialRows(rows: EstimateRowDraft[]): EstimateRowDraft[] {
+  return rows.length > 0
+    ? rows
+    : Array.from({ length: INITIAL_EMPTY_ROWS }, () => emptyRow());
 }
 
 export function subtotalRow(): EstimateRowDraft {

@@ -27,6 +27,7 @@ import {
   sortBySymbol,
   toDrafts,
   updateRow,
+  withInitialRows,
 } from "./fittingRows";
 import {
   buildInsertPastePreview,
@@ -111,7 +112,9 @@ export default function FittingsPage({
   const { markSaved } = useSaveOnLeave(rows, () => save(true));
 
   const reload = useCallback(async () => {
-    const next = toDrafts(await window.sekisan.listFittings(project.id));
+    const next = withInitialRows(
+      toDrafts(await window.sekisan.listFittings(project.id)),
+    );
     setRows(next);
     markSaved(next);
     setSources(

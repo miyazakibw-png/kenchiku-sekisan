@@ -14,6 +14,7 @@ import {
   subtotalRow,
   subtotalSums,
   updateRow,
+  withInitialRows,
 } from "../../src/renderer/src/features/estimate/estimateRows";
 import { buildPastePreview } from "../../src/renderer/src/features/grid/gridClipboard";
 
@@ -26,6 +27,22 @@ const FORMWORKS = [
 function row(patch: Partial<EstimateRowDraft>): EstimateRowDraft {
   return { ...emptyRow(), ...patch };
 }
+
+describe("部位別入力表の初期行", () => {
+  it("空のときは既定の計算タイプを持つ独立した空行を30行作る", () => {
+    const rows = withInitialRows([]);
+    expect(rows).toHaveLength(30);
+    expect(rows.every((row) => row.id === null)).toBe(true);
+    expect(rows.every((row) => row.calcType === "room")).toBe(true);
+    expect(new Set(rows).size).toBe(30);
+    expect(rows).toEqual(Array.from({ length: 30 }, () => emptyRow()));
+  });
+
+  it("行があるときは元の配列をそのまま返す", () => {
+    const rows = [row({ part3: "事務室" })];
+    expect(withInitialRows(rows)).toBe(rows);
+  });
+});
 
 describe("部位Ⅰ・部位Ⅱの引き継ぎ", () => {
   it("空欄の行は入力のある上の行を引き継ぐ", () => {
