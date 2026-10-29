@@ -205,7 +205,8 @@ body,
 
 /* 操作ボタンの行と表の見出し行は、画面を下げても上に残す */
 .app-main .toolbar,
-.app-main .grid-toolbar {
+.app-main .grid-toolbar,
+.app-main .sticky-top {
   position: sticky;
   top: 0;
   z-index: 6;

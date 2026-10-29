@@ -561,129 +561,133 @@ export default function FittingsPage({
         }
       }}
     >
-      <div className="toolbar">
-        <button type="button" onClick={onBack}>
-          ← 工事管理画面へ
-        </button>
-        <h2>建具表</h2>
-        <span className="project">
-          {project.managementNo} {project.name}
-        </span>
-        <button
-          type="button"
-          onClick={() => setRows(insertRow(rows, selected))}
-        >
-          ➕ 行挿入
-        </button>
-        <button
-          type="button"
-          onClick={() => setRows(insertRow(rows, rows.length))}
-        >
-          ⤓ 最終行に追加
-        </button>
-        <button
-          type="button"
-          onClick={() => setRows(removeRow(rows, selected))}
-        >
-          🗑 行削除
-        </button>
-        <button type="button" onClick={() => setSeries(EMPTY_SERIES)}>
-          🔢 記号まとめて入力
-        </button>
-        <button type="button" onClick={() => setRows(sortBySymbol(rows))}>
-          ⇅ 記号で昇順
-        </button>
-        <button
-          type="button"
-          title="選んだ行から下へ、Excelの表をまとめて取り込みます（Ctrl+V）"
-          onClick={() => void paste(selected)}
-        >
-          📋 Excelから貼り付け
-        </button>
-        <button
-          type="button"
-          title="選んだ行をコピーします。Shift＋クリックで複数行選べます（Ctrl+C）"
-          onClick={() => void copyRow()}
-        >
-          ⧉ 行コピー（複数可）
-        </button>
-        <button
-          type="button"
-          title="選んだ行の上に差し込みます。元の行は下へずれます（Ctrl+Shift+V）"
-          onClick={() =>
-            void pasteInsert(Math.min(selected, selectedEnd), false)
-          }
-        >
-          ⤓ 挿入貼り付け
-        </button>
-        <button
-          type="button"
-          title="一番下に足します"
-          onClick={() => void pasteInsert(rows.length, true)}
-        >
-          ⤓ 追加貼り付け（最終行）
-        </button>
-        <button
-          type="button"
-          title="建具記号を計算式へ入れるとき、部位ごとにどの数値を採るかを決めます"
-          onClick={() => setShowPartValues((current) => !current)}
-        >
-          ⚙ 部位ごとの採用値
-        </button>
-        <button
-          type="button"
-          title="この建具表から建具明細作成表を作ります（W・Hはどちらで変えても連動します）"
-          onClick={() => void save(true).then(() => onOpenFittingDetail?.())}
-        >
-          📋 建具明細作成
-        </button>
-        <button type="button" onClick={() => void save()}>
-          💾 保存
-        </button>
-        <span className="status">{message}</span>
-      </div>
-
-      {series && (
-        <div className="series-form">
-          <span>記号</span>
-          <input
-            value={series.prefix}
-            onChange={(e) => setSeries({ ...series, prefix: e.target.value })}
-          />
-          <span>番号</span>
-          <input
-            className="num"
-            value={series.from}
-            onChange={(e) => setSeries({ ...series, from: e.target.value })}
-          />
-          <span>〜</span>
-          <input
-            className="num"
-            value={series.to}
-            onChange={(e) => setSeries({ ...series, to: e.target.value })}
-          />
-          <span>枝番（任意）</span>
-          <input
-            className="num"
-            value={series.suffixFrom}
-            onChange={(e) =>
-              setSeries({ ...series, suffixFrom: e.target.value })
+      <div className="sticky-top">
+        <div className="toolbar">
+          <button type="button" onClick={onBack}>
+            ← 工事管理画面へ
+          </button>
+          <h2>建具表</h2>
+          <span className="project">
+            {project.managementNo} {project.name}
+          </span>
+          <button
+            type="button"
+            onClick={() => setRows(insertRow(rows, selected))}
+          >
+            ➕ 行挿入
+          </button>
+          <button
+            type="button"
+            onClick={() => setRows(insertRow(rows, rows.length))}
+          >
+            ⤓ 最終行に追加
+          </button>
+          <button
+            type="button"
+            onClick={() => setRows(removeRow(rows, selected))}
+          >
+            🗑 行削除
+          </button>
+          <button type="button" onClick={() => setSeries(EMPTY_SERIES)}>
+            🔢 記号まとめて入力
+          </button>
+          <button type="button" onClick={() => setRows(sortBySymbol(rows))}>
+            ⇅ 記号で昇順
+          </button>
+          <button
+            type="button"
+            title="選んだ行から下へ、Excelの表をまとめて取り込みます（Ctrl+V）"
+            onClick={() => void paste(selected)}
+          >
+            📋 Excelから貼り付け
+          </button>
+          <button
+            type="button"
+            title="選んだ行をコピーします。Shift＋クリックで複数行選べます（Ctrl+C）"
+            onClick={() => void copyRow()}
+          >
+            ⧉ 行コピー（複数可）
+          </button>
+          <button
+            type="button"
+            title="選んだ行の上に差し込みます。元の行は下へずれます（Ctrl+Shift+V）"
+            onClick={() =>
+              void pasteInsert(Math.min(selected, selectedEnd), false)
             }
-          />
-          <span>〜</span>
-          <input
-            className="num"
-            value={series.suffixTo}
-            onChange={(e) => setSeries({ ...series, suffixTo: e.target.value })}
-          />
-          <button type="button" onClick={() => addSeries(series)}>
-            追加
+          >
+            ⤓ 挿入貼り付け
           </button>
-          <button type="button" onClick={() => setSeries(null)}>
-            取消
+          <button
+            type="button"
+            title="一番下に足します"
+            onClick={() => void pasteInsert(rows.length, true)}
+          >
+            ⤓ 追加貼り付け（最終行）
           </button>
+          <button
+            type="button"
+            title="建具記号を計算式へ入れるとき、部位ごとにどの数値を採るかを決めます"
+            onClick={() => setShowPartValues((current) => !current)}
+          >
+            ⚙ 部位ごとの採用値
+          </button>
+          <button
+            type="button"
+            title="この建具表から建具明細作成表を作ります（W・Hはどちらで変えても連動します）"
+            onClick={() => void save(true).then(() => onOpenFittingDetail?.())}
+          >
+            📋 建具明細作成
+          </button>
+          <button type="button" onClick={() => void save()}>
+            💾 保存
+          </button>
+          <span className="status">{message}</span>
         </div>
-      )}
+
+        {series && (
+          <div className="series-form">
+            <span>記号</span>
+            <input
+              value={series.prefix}
+              onChange={(e) => setSeries({ ...series, prefix: e.target.value })}
+            />
+            <span>番号</span>
+            <input
+              className="num"
+              value={series.from}
+              onChange={(e) => setSeries({ ...series, from: e.target.value })}
+            />
+            <span>〜</span>
+            <input
+              className="num"
+              value={series.to}
+              onChange={(e) => setSeries({ ...series, to: e.target.value })}
+            />
+            <span>枝番（任意）</span>
+            <input
+              className="num"
+              value={series.suffixFrom}
+              onChange={(e) =>
+                setSeries({ ...series, suffixFrom: e.target.value })
+              }
+            />
+            <span>〜</span>
+            <input
+              className="num"
+              value={series.suffixTo}
+              onChange={(e) =>
+                setSeries({ ...series, suffixTo: e.target.value })
+              }
+            />
+            <button type="button" onClick={() => addSeries(series)}>
+              追加
+            </button>
+            <button type="button" onClick={() => setSeries(null)}>
+              取消
+            </button>
+          </div>
+        )}
+      </div>
 
       {showPartValues && (
         <div className="part-values">
