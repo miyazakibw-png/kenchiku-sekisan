@@ -13,12 +13,14 @@ import {
   beamSheetTotals,
   columnSheetTotals,
   inheritedFloors,
+  isBlankManageRow,
   manageRowQuantity,
   newBeamRow,
   newColumnRow,
   newManageRow,
   normalizeManageRows,
   normalizeWallLabels,
+  withTrailingBlankManageRow,
   type FireproofColumnRow,
   type FireproofColumnSheet,
   type FireproofManageDetail,
@@ -98,7 +100,7 @@ function formatNumber(value: number | null, decimals = 2): string {
 
 /** 入力管理表の列（No〜備考（上段））の既定の幅 */
 const MANAGE_WIDTHS = [
-  30, 100, 72, 50, 100, 60, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
+  144, 100, 72, 50, 100, 60, 70, 64, 48, 48, 56, 90, 180, 150, 150, 60, 100, 100,
 ];
 /** 計算書先頭の明細行（区分〜備考（上段））の既定の幅 */
 export const HEAD_DETAIL_WIDTHS = [
@@ -257,7 +259,6 @@ export default function FireproofEstimatePage({
   useEffect(() => {
     void (async () => {
       const record = await window.sekisan.getFireproofSheet(project.id);
-      setRecordId(record.id);
       listRef.current = {
         floorCount: record.floorCount,
         columnsJson: record.columnsJson,
@@ -270,7 +271,11 @@ export default function FireproofEstimatePage({
       setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
       setCommonList(normalizeCommonRows(parseJson(record.commonJson, [])));
       setDrawing(parseDrawing(record.drawingJson));
-      setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
+      const loadedRows = withTrailingBlankManageRow(
+        normalizeManageRows(parseJson(record.estimateJson, [])),
+      );
+      setRows(loadedRows);
+      setRecordId(record.id);
     })();
   }, [project.id]);
 
@@ -294,7 +299,7 @@ export default function FireproofEstimatePage({
     [recordId], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  const { markSaved } = useSaveOnLeave(rows, () => save(true));
+  const { markSaved, isDirty } = useSaveOnLeave(rows, () => save(true));
 
   useEffect(() => {
     if (recordId !== null) markSaved(rowsRef.current);
@@ -303,13 +308,15 @@ export default function FireproofEstimatePage({
 
   const commit = (next: FireproofManageRow[]): void => {
     history.push(rowsRef.current);
-    setRows(next);
+    setRows(withTrailingBlankManageRow(next));
   };
 
   /** 入力欄を打っている間は履歴に積まない（欄ごとの細かい戻りを作らない） */
   const change = (index: number, patch: Partial<FireproofManageRow>): void =>
     setRows((current) =>
-      current.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+      withTrailingBlankManageRow(
+        current.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+      ),
     );
 
   const changeDetail = (
@@ -317,8 +324,10 @@ export default function FireproofEstimatePage({
     patch: Partial<FireproofManageDetail>,
   ): void =>
     setRows((current) =>
-      current.map((row, at) =>
-        at === index ? { ...row, detail: { ...row.detail, ...patch } } : row,
+      withTrailingBlankManageRow(
+        current.map((row, at) =>
+          at === index ? { ...row, detail: { ...row.detail, ...patch } } : row,
+        ),
       ),
     );
 
@@ -331,7 +340,7 @@ export default function FireproofEstimatePage({
       setMessage("戻せる操作がありません");
       return;
     }
-    setRows(previous);
+    setRows(withTrailingBlankManageRow(previous));
     setMessage("1つ前に戻しました");
   };
 
@@ -341,7 +350,7 @@ export default function FireproofEstimatePage({
       setMessage("進める操作がありません");
       return;
     }
-    setRows(next);
+    setRows(withTrailingBlankManageRow(next));
     setMessage("1つ先へ進めました");
   };
 
@@ -396,9 +405,46 @@ export default function FireproofEstimatePage({
     const next = [...rows];
     if (mode === "overwrite") next.splice(start, fresh.length, ...fresh);
     if (mode === "insert") next.splice(start, 0, ...fresh);
-    if (mode === "append") next.push(...fresh);
+    if (mode === "append")
+      next.splice(
+        next.length > 0 && isBlankManageRow(next[next.length - 1])
+          ? next.length - 1
+          : next.length,
+        0,
+        ...fresh,
+      );
     commit(next);
     setMessage(`${fresh.length} 行を貼り付けました`);
+  };
+
+  const insertManageRowAbove = (index: number): void => {
+    const next = [...rows];
+    next.splice(index, 0, newManageRow());
+    commit(next);
+    setSelected(index);
+    setSelectedEnd(index);
+  };
+
+  const moveManageRow = (index: number, to: number): void => {
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    const [moved] = next.splice(index, 1);
+    next.splice(to, 0, moved);
+    commit(next);
+    setSelected(to);
+    setSelectedEnd(to);
+  };
+
+  const removeManageRow = (index: number): void => {
+    commit(rows.filter((_, at) => at !== index));
+    const nextSelected =
+      index === selected
+        ? Math.max(0, Math.min(index, rows.length - 2))
+        : index < selected
+          ? selected - 1
+          : selected;
+    setSelected(nextSelected);
+    setSelectedEnd(nextSelected);
   };
 
   /** 部位1は空欄なら入力のある上の行を引き継ぐ（部位別入力表と同じ） */
@@ -512,30 +558,32 @@ export default function FireproofEstimatePage({
       }
       const detail = found;
       setRows(
-        rowsRef.current.map((each, at) =>
-          at === index
-            ? {
-                ...each,
-                detail: {
-                  ...each.detail,
-                  subjectId: detail.subjectId,
-                  detailNumber: detail.detailNumber,
-                  materialCategory:
-                    detail.materialCategory || each.detail.materialCategory,
-                  partNumber:
-                    options.pickupParts.find(
-                      (part) => part.name === detail.partName,
-                    )?.id ?? each.detail.partNumber,
-                  partName: detail.partName || each.detail.partName,
-                  name: detail.name,
-                  descriptionUpper: detail.descriptionUpper,
-                  descriptionLower: detail.descriptionLower,
-                  unit: detail.unit || each.detail.unit,
-                  remarksUpper: detail.remarksUpper,
-                  remarksLower: detail.remarksLower,
-                },
-              }
-            : each,
+        withTrailingBlankManageRow(
+          rowsRef.current.map((each, at) =>
+            at === index
+              ? {
+                  ...each,
+                  detail: {
+                    ...each.detail,
+                    subjectId: detail.subjectId,
+                    detailNumber: detail.detailNumber,
+                    materialCategory:
+                      detail.materialCategory || each.detail.materialCategory,
+                    partNumber:
+                      options.pickupParts.find(
+                        (part) => part.name === detail.partName,
+                      )?.id ?? each.detail.partNumber,
+                    partName: detail.partName || each.detail.partName,
+                    name: detail.name,
+                    descriptionUpper: detail.descriptionUpper,
+                    descriptionLower: detail.descriptionLower,
+                    unit: detail.unit || each.detail.unit,
+                    remarksUpper: detail.remarksUpper,
+                    remarksLower: detail.remarksLower,
+                  },
+                }
+              : each,
+          ),
         ),
       );
       setMessage(`${detail.name} を呼び出しました`);
@@ -560,7 +608,7 @@ export default function FireproofEstimatePage({
           onChange={(next) => change(index, next)}
           onBack={() => {
             setOpened(null);
-            void save(true);
+            if (isDirty()) void save(true);
           }}
           onMessage={setMessage}
           saveSheet={() => save(true)}
@@ -585,7 +633,7 @@ export default function FireproofEstimatePage({
         }
         onBack={() => {
           setOpened(null);
-          void save(true);
+          if (isDirty()) void save(true);
         }}
         onMessage={setMessage}
       />
@@ -706,7 +754,7 @@ export default function FireproofEstimatePage({
           type="button"
           onClick={() => {
             void (async () => {
-              await save(true);
+              if (isDirty()) await save(true);
               onBack();
             })();
           }}
@@ -857,7 +905,56 @@ export default function FireproofEstimatePage({
                   setSelectedEnd(index);
                 }}
               >
-                <td className="no">{index + 1}</td>
+                <td className="no">
+                  <span className="no-cell">
+                    <span className="row-no">{index + 1}</span>
+                    <span className="row-actions">
+                      <button
+                        type="button"
+                        title="この行の上へ空行を挿入"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          insertManageRowAbove(index);
+                        }}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ上へ"
+                        disabled={index === 0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveManageRow(index, index - 1);
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ下へ"
+                        disabled={index === rows.length - 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveManageRow(index, index + 1);
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="この行を削除"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeManageRow(index);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </span>
+                </td>
                 <td className="part1">
                   <input
                     lang="ja"

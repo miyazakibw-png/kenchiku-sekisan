@@ -14,7 +14,7 @@
 }
 
 .fireproof-page .toolbar .floor-count input {
-  width: 4ch;
+  width: 12ch;
   text-align: right;
 }
 
@@ -170,6 +170,30 @@
 .fireproof-common table.fireproof td.ops {
   position: static;
   left: auto;
+}
+
+.fireproof-common table.fireproof th.ops,
+.fireproof-common table.fireproof td.ops {
+  width: 112px;
+  min-width: 112px;
+}
+
+.fireproof-common table.fireproof .row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fireproof-common table.fireproof .row-actions button {
+  width: 24px;
+  min-width: 24px;
+  height: 22px;
+  padding: 0;
+  line-height: 1;
+}
+
+.fireproof-common table.fireproof .row-actions .row-delete {
+  color: #b91c1c;
 }
 
 .fireproof-page table.fireproof th.selected,

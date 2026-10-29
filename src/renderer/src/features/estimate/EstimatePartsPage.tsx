@@ -847,6 +847,18 @@ export default function EstimatePartsPage({
                     <span className="row-move">
                       <button
                         type="button"
+                        title="この行の上へ空行を挿入"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editRows(insertRow(rows, index));
+                          setSelected(index);
+                          setSelectedEnd(index);
+                        }}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
                         title="この行を1つ上へ"
                         disabled={index === 0}
                         onClick={(e) => {

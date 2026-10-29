@@ -98,6 +98,42 @@
 .fireproof-estimate-page table.fireproof-manage td.no,
 .fireproof-estimate-page table.fireproof-manage th.no {
   text-align: center;
+  min-width: 144px;
+}
+
+.fireproof-estimate-page table.fireproof-manage td.no .no-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.fireproof-estimate-page table.fireproof-manage td.no .row-no {
+  flex: 0 0 3ch;
+  min-width: 3ch;
+  text-align: right;
+}
+
+.fireproof-estimate-page table.fireproof-manage td.no .row-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.fireproof-estimate-page table.fireproof-manage td.no .row-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 22px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.fireproof-estimate-page table.fireproof-manage td.no .row-delete {
+  color: #b91c1c;
 }
 
 /* 柱入力表の先頭（管理表と同じ明細）はスクロールしない固定の表 */

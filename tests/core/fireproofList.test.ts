@@ -5,6 +5,11 @@ import {
   columnFloorLabels,
   fireproofId,
   formatSizeInput,
+  fillCommonSeries,
+  fillMemberSeries,
+  insertCommonRowsAfterLastNonblank,
+  isBlankMember,
+  isBlankCommonRow,
   newCommonRow,
   newMember,
   normalizeCommonRows,
@@ -15,6 +20,8 @@ import {
   resolveSize,
   sizeFromInput,
   toHalfWidth,
+  withInitialCommonRows,
+  withInitialMembers,
   type FireproofFloorList,
   type FireproofMember,
 } from "../../src/core/fireproof/fireproofList";
@@ -30,6 +37,69 @@ function floorList(
 }
 
 describe("耐火被覆・塗装のリスト", () => {
+  it("柱・梁の初期空列と階共通の初期空行を必要な数だけ作る", () => {
+    const members = withInitialMembers([], 11);
+    const common = withInitialCommonRows([], 30);
+    expect(members).toHaveLength(11);
+    expect(new Set(members.map((member) => member.id)).size).toBe(11);
+    expect(new Set(members).size).toBe(11);
+    expect(new Set(members.map((member) => member.sizes)).size).toBe(11);
+    expect(members.every(isBlankMember)).toBe(true);
+    expect(common).toHaveLength(30);
+    expect(new Set(common.map((row) => row.id)).size).toBe(30);
+    expect(new Set(common).size).toBe(30);
+    expect(common.every(isBlankCommonRow)).toBe(true);
+  });
+
+  it("既存の柱・梁列と階共通行は初期行で置き換えない", () => {
+    const members = [newMember("C1")];
+    const common = [newCommonRow("P1")];
+    expect(withInitialMembers(members)).toBe(members);
+    expect(withInitialCommonRows(common)).toBe(common);
+  });
+
+  it("記号まとめて入力は最終入力の後から空欄を埋めて必要なら延長する", () => {
+    const members = [
+      newMember("C1"),
+      newMember(),
+      newMember("C2"),
+      newMember(),
+    ];
+    const filledMembers = fillMemberSeries(members, ["C3", "C4", "C5"]);
+    expect(filledMembers.map((member) => member.symbol)).toEqual([
+      "C1",
+      "",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+    ]);
+
+    const rows = [
+      newCommonRow("P1"),
+      newCommonRow(),
+      newCommonRow("P2"),
+      newCommonRow(),
+    ];
+    const filledRows = fillCommonSeries(rows, ["P3", "P4", "P5"]);
+    expect(filledRows.map((row) => row.symbol)).toEqual([
+      "P1",
+      "",
+      "P2",
+      "P3",
+      "P4",
+      "P5",
+    ]);
+  });
+
+  it("階共通の追加貼付は入力済みの最後と末尾空欄の間に入れる", () => {
+    const rows = [newCommonRow("P1"), newCommonRow("P2"), newCommonRow()];
+    const added = [newCommonRow("P3")];
+    expect(
+      insertCommonRowsAfterLastNonblank(rows, added).map((row) => row.symbol),
+    ).toEqual(["P1", "P2", "P3", ""]);
+  });
+
   it("階数から階の名を作る（柱＝上から順に下がり、梁＝一番上がＲ）", () => {
     expect(columnFloorLabels(5)).toEqual(["5", "4", "3", "2", "1"]);
     expect(beamFloorLabels(5)).toEqual(["R", "5", "4", "3", "2"]);

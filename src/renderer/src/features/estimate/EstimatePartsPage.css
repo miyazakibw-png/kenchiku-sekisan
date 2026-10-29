@@ -108,8 +108,8 @@ table.estimate th.open {
 
 table.estimate td.no,
 table.estimate th.no {
-  width: 121px;
-  min-width: 121px;
+  width: 148px;
+  min-width: 148px;
   text-align: right;
   color: #6b7280;
 }

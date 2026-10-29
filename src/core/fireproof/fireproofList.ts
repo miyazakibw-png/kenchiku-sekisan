@@ -174,6 +174,89 @@ export function newCommonRow(symbol = ""): FireproofCommonRow {
   };
 }
 
+export function withInitialMembers(
+  members: FireproofMember[],
+  count = 11,
+): FireproofMember[] {
+  return members.length > 0
+    ? members
+    : Array.from({ length: count }, () => newMember());
+}
+
+export function withInitialCommonRows(
+  rows: FireproofCommonRow[],
+  count = 30,
+): FireproofCommonRow[] {
+  return rows.length > 0
+    ? rows
+    : Array.from({ length: count }, () => newCommonRow());
+}
+
+export function isBlankMember(member: FireproofMember): boolean {
+  return (
+    member.symbol === "" &&
+    Object.values(member.sizes).every(
+      (size) =>
+        size.shape === "" && size.first === null && size.second === null,
+    )
+  );
+}
+
+export function isBlankCommonRow(row: FireproofCommonRow): boolean {
+  return row.symbol === "" && row.first === null && row.second === null;
+}
+
+function lastNonblankIndex<T>(
+  rows: readonly T[],
+  isBlank: (row: T) => boolean,
+): number {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    if (!isBlank(rows[index])) return index;
+  }
+  return -1;
+}
+
+export function fillMemberSeries(
+  members: FireproofMember[],
+  symbols: string[],
+): FireproofMember[] {
+  const next = [...members];
+  let index = lastNonblankIndex(next, isBlankMember) + 1;
+  symbols.forEach((symbol) => {
+    const member = next[index];
+    next[index] =
+      member === undefined
+        ? newMember(symbol)
+        : { ...member, symbol };
+    index += 1;
+  });
+  return next;
+}
+
+export function fillCommonSeries(
+  rows: FireproofCommonRow[],
+  symbols: string[],
+): FireproofCommonRow[] {
+  const next = [...rows];
+  let index = lastNonblankIndex(next, isBlankCommonRow) + 1;
+  symbols.forEach((symbol) => {
+    const row = next[index];
+    next[index] =
+      row === undefined ? newCommonRow(symbol) : { ...row, symbol };
+    index += 1;
+  });
+  return next;
+}
+
+export function insertCommonRowsAfterLastNonblank(
+  rows: FireproofCommonRow[],
+  added: FireproofCommonRow[],
+): FireproofCommonRow[] {
+  const next = [...rows];
+  next.splice(lastNonblankIndex(rows, isBlankCommonRow) + 1, 0, ...added);
+  return next;
+}
+
 /**
  * 全角の英数字・記号を半角に直す（リストは記号と寸法だけなので日本語変換は使わない）。
  */

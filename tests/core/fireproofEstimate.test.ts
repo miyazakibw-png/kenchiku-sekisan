@@ -15,12 +15,14 @@ import {
   findBeamSize,
   findColumnSize,
   inheritedFloors,
+  isBlankManageRow,
   beamMarkFaces,
   markFaces,
   manageRowQuantity,
   newColumnRow,
   newManageRow,
   normalizeManageRows,
+  withTrailingBlankManageRow,
   wallFactor,
   type FireproofColumnRow,
   type FireproofManageRow,
@@ -47,6 +49,64 @@ function columnRow(patch: Partial<FireproofColumnRow>): FireproofColumnRow {
 }
 
 describe("耐火被覆・塗装入力表", () => {
+  it("管理表の空行は30行で始まり、末尾が入力済みなら空行を1行足す", () => {
+    const initial = withTrailingBlankManageRow([]);
+    expect(initial).toHaveLength(30);
+    expect(new Set(initial.map((row) => row.id)).size).toBe(30);
+    expect(initial.every(isBlankManageRow)).toBe(true);
+
+    const filled = { ...newManageRow(), part1: "1階" };
+    const withTrailing = withTrailingBlankManageRow([filled]);
+    expect(withTrailing).toHaveLength(2);
+    expect(withTrailing[0]).toBe(filled);
+    expect(isBlankManageRow(withTrailing[1])).toBe(true);
+    expect(withTrailingBlankManageRow(withTrailing)).toBe(withTrailing);
+  });
+
+  it("管理表の初期空行は集計明細を作らない", () => {
+    expect(
+      entriesFromFireproofSheet(
+        withTrailingBlankManageRow([]),
+        list(),
+        new Map(),
+      ),
+    ).toEqual([]);
+    expect(
+      entriesFromFireproofSheet(
+        [{ ...newManageRow(), calcType: "general" }],
+        list(),
+        new Map(),
+      ),
+    ).toEqual([]);
+  });
+
+  it("空管理行の判定は明細・計算書・倍率の入力内容を見て行う", () => {
+    const blank = newManageRow();
+    expect(isBlankManageRow(blank)).toBe(true);
+    expect(isBlankManageRow({ ...blank, scope: "梁型", calcType: "beam" })).toBe(
+      true,
+    );
+    expect(isBlankManageRow({ ...blank, multiplier: 2 })).toBe(false);
+    expect(
+      isBlankManageRow({
+        ...blank,
+        detail: { ...emptyManageDetail(), name: "塗装" },
+      }),
+    ).toBe(false);
+    expect(
+      isBlankManageRow({
+        ...blank,
+        sheet: { ...blank.sheet, thickness: 25 },
+      }),
+    ).toBe(false);
+    expect(
+      isBlankManageRow({
+        ...blank,
+        generalSheet: [{ ...calcSet(1), banner: { text: "見出し", color: "#eee" } }],
+      }),
+    ).toBe(false);
+  });
+
   it("記号と階から鉄骨リスト（柱）の寸法を拾う", () => {
     expect(findColumnSize(list(), "1", "C1")).toMatchObject({
       shape: "box",

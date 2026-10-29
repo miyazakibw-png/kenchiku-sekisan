@@ -15,6 +15,7 @@ import {
 import { isFittingDetailSheet } from "../../../../core/furniture/furnitureSheet";
 import RoomCalcPrintPage from "./RoomCalcPrintPage";
 import {
+  isBlankManageRow,
   normalizeManageRows,
   type FireproofManageRow,
 } from "../../../../core/fireproof/fireproofEstimate";
@@ -78,7 +79,9 @@ export default function CalcPrintLauncher({
       setFurnitureSheets(await window.sekisan.listFurnitureSheets(project.id));
       const fireproof = await window.sekisan.getFireproofSheet(project.id);
       setFireproofRows(
-        normalizeManageRows(parseJson(fireproof.estimateJson, [])),
+        normalizeManageRows(parseJson(fireproof.estimateJson, [])).filter(
+          (row) => !isBlankManageRow(row),
+        ),
       );
     })();
   }, [project.id]);

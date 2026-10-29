@@ -5,8 +5,11 @@ import {
   beamFloorLabels,
   columnFloorLabels,
   emptyFireproofSheet,
+  fillCommonSeries,
+  fillMemberSeries,
   fireproofId,
   formatSizeInput,
+  insertCommonRowsAfterLastNonblank,
   newCommonRow,
   newMember,
   normalizeCommonRows,
@@ -16,6 +19,8 @@ import {
   resolveSize,
   sizeFromInput,
   toHalfWidth,
+  withInitialCommonRows,
+  withInitialMembers,
   EMPTY_SIZE,
   type FireproofCommonRow,
   type FireproofFloorList,
@@ -173,16 +178,26 @@ export default function FireproofListPage({
   useEffect(() => {
     void (async () => {
       const record = await window.sekisan.getFireproofSheet(project.id);
-      setRecordId(record.id);
       estimateJsonRef.current = record.estimateJson;
       drawingJsonRef.current = record.drawingJson;
+      const columns = normalizeFloorList(parseJson(record.columnsJson, {}));
+      const beams = normalizeFloorList(parseJson(record.beamsJson, {}));
       setSheet({
         floorCount: record.floorCount,
-        columns: normalizeFloorList(parseJson(record.columnsJson, {})),
-        beams: normalizeFloorList(parseJson(record.beamsJson, {})),
-        common: normalizeCommonRows(parseJson(record.commonJson, [])),
+        columns: {
+          ...columns,
+          members: withInitialMembers(columns.members),
+        },
+        beams: {
+          ...beams,
+          members: withInitialMembers(beams.members),
+        },
+        common: withInitialCommonRows(
+          normalizeCommonRows(parseJson(record.commonJson, [])),
+        ),
       });
       setNote(record.note);
+      setRecordId(record.id);
     })();
   }, [project.id]);
 
@@ -584,10 +599,7 @@ function FloorListSection({
               onMessage(`${title}：記号と番号を確認してください`);
               return;
             }
-            setMembers([
-              ...list.members,
-              ...symbols.map((symbol) => newMember(symbol)),
-            ]);
+            setMembers(fillMemberSeries(list.members, symbols));
             setSeries(null);
             onMessage(`${title}：${symbols.length} 列追加しました`);
           }}
@@ -868,9 +880,40 @@ function CommonListSection({
     const next = [...rows];
     if (mode === "overwrite") next.splice(start, fresh.length, ...fresh);
     if (mode === "insert") next.splice(start, 0, ...fresh);
-    if (mode === "append") next.push(...fresh);
-    commit(next);
+    if (mode === "append")
+      commit(insertCommonRowsAfterLastNonblank(rows, fresh));
+    else commit(next);
     onMessage(`階共通リスト：${fresh.length} 行を貼り付けました`);
+  };
+
+  const insertRowAbove = (index: number): void => {
+    const next = [...rows];
+    next.splice(index, 0, newCommonRow());
+    commit(next);
+    setSelected(index);
+    setSelectedEnd(index);
+  };
+
+  const moveRow = (index: number, to: number): void => {
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    const [moved] = next.splice(index, 1);
+    next.splice(to, 0, moved);
+    commit(next);
+    setSelected(to);
+    setSelectedEnd(to);
+  };
+
+  const removeRow = (index: number): void => {
+    commit(rows.filter((_, at) => at !== index));
+    const nextSelected =
+      index === selected
+        ? Math.max(0, Math.min(index, rows.length - 2))
+        : index < selected
+          ? selected - 1
+          : selected;
+    setSelected(nextSelected);
+    setSelectedEnd(nextSelected);
   };
 
   const change = (index: number, patch: Partial<FireproofCommonRow>): void =>
@@ -951,7 +994,7 @@ function CommonListSection({
               onMessage("階共通リスト：記号と番号を確認してください");
               return;
             }
-            commit([...rows, ...symbols.map((symbol) => newCommonRow(symbol))]);
+            commit(fillCommonSeries(rows, symbols));
             setSeries(null);
             onMessage(`階共通リスト：${symbols.length} 行追加しました`);
           }}
@@ -986,14 +1029,51 @@ function CommonListSection({
                   }}
                 >
                   <td className="ops">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        commit(rows.filter((_, at) => at !== index))
-                      }
-                    >
-                      🗑
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        title="この行の上へ空行を挿入"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          insertRowAbove(index);
+                        }}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ上へ"
+                        disabled={index === 0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveRow(index, index - 1);
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ下へ"
+                        disabled={index === rows.length - 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          moveRow(index, index + 1);
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="この行を削除"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeRow(index);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </td>
                   <td className="symbol">
                     <input

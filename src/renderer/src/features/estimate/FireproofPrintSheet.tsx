@@ -7,6 +7,7 @@ import {
   beamSheetTotals,
   columnSheetTotals,
   inheritedFloors,
+  isBlankManageRow,
   normalizeManageRows,
   normalizeWallLabels,
   type FireproofColumnRow,
@@ -377,7 +378,11 @@ export default function FireproofPrintSheet({
   useEffect(() => {
     void (async () => {
       const record = await window.sekisan.getFireproofSheet(project.id);
-      setRows(normalizeManageRows(parseJson(record.estimateJson, [])));
+      setRows(
+        normalizeManageRows(parseJson(record.estimateJson, [])).filter(
+          (row) => !isBlankManageRow(row),
+        ),
+      );
       setColumnsList(normalizeFloorList(parseJson(record.columnsJson, {})));
       setBeamsList(normalizeFloorList(parseJson(record.beamsJson, {})));
       setCommon(normalizeCommonRows(parseJson(record.commonJson, [])));

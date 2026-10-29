@@ -14,6 +14,7 @@ import {
   normalizeSets,
   type CalcSet,
 } from "../room/calcSheet";
+import { hasLowerContent } from "../room/lowerTemplate";
 import { evaluateFormula } from "../formula/evaluate";
 import {
   resolveCommonRow,
@@ -195,6 +196,34 @@ export function newManageRow(): FireproofManageRow {
     },
     generalSheet: [],
   };
+}
+
+export function isBlankManageRow(row: FireproofManageRow): boolean {
+  const emptyDetail = emptyManageDetail();
+  const detailIsEmpty = Object.entries(emptyDetail).every(
+    ([key, value]) =>
+      row.detail[key as keyof FireproofManageDetail] === value,
+  );
+  return (
+    row.part1 === "" &&
+    row.multiplier === null &&
+    detailIsEmpty &&
+    row.sheet.thickness === null &&
+    row.sheet.rows.length === 0 &&
+    row.beamSheet.thickness === null &&
+    row.beamSheet.rows.length === 0 &&
+    !hasLowerContent(row.generalSheet)
+  );
+}
+
+export function withTrailingBlankManageRow(
+  rows: FireproofManageRow[],
+): FireproofManageRow[] {
+  if (rows.length === 0)
+    return Array.from({ length: 30 }, () => newManageRow());
+  return isBlankManageRow(rows[rows.length - 1])
+    ? rows
+    : [...rows, newManageRow()];
 }
 
 /** 柱入力表または梁型入力表を保存した中身から整える */
@@ -590,6 +619,7 @@ export function entriesFromFireproofSheet(
   const variables = adjacencyVariables(rows, list, beamsList, common);
   rows.forEach((row) => {
     if (row.part1.trim() !== "") part1 = row.part1;
+    if (isBlankManageRow(row)) return;
     if (!part2Order.has("")) part2Order.set("", part2Order.size);
     // 汎用計算書の行は、計算書のセット明細がそのまま集計の明細になる（管理表の明細は使わない）
     if (row.calcType === "general") {
