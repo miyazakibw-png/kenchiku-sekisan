@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateByPart,
   aggregateByRoom,
   aggregateItems,
+  NO_PART_LABEL,
+  aggregateQuantityText,
   checkQuantityUnit,
   entriesFromCalcSheet,
   masterKeyOf,
@@ -9,6 +12,10 @@ import {
   type AggregateEntry,
   type EstimateRowContext,
 } from "../../src/core/aggregate/aggregate";
+import {
+  mergeManualItems,
+  type ManualAggregateRow,
+} from "../../src/core/aggregate/manualItems";
 import type { CalcSet, CalcSheetResult } from "../../src/core/room/calcSheet";
 
 function context(over: Partial<EstimateRowContext> = {}): EstimateRowContext {
@@ -62,6 +69,26 @@ function result(id: string, total: number): CalcSheetResult {
 }
 
 describe("集計処理", () => {
+  it("説明行は数量0で集計へ入る（名称・摘要だけの行）", () => {
+    const target = set("s1", 1);
+    const note = {
+      ...target.details[0],
+      id: "s1-note",
+      name: "内部 白塗装仕上 ※要メンテナンス",
+      note: true,
+    };
+    target.details = [target.details[0], note];
+    const entries = entriesFromCalcSheet(
+      context(),
+      [target],
+      result("s1", 10),
+    );
+    expect(entries).toHaveLength(2);
+    expect(entries[0].quantity).toBe(10);
+    expect(entries[1].name).toBe("内部 白塗装仕上 ※要メンテナンス");
+    expect(entries[1].quantity).toBe(0);
+  });
+
   it("計上数量はセット累計×明細の掛け率×部位別入力表の倍率", () => {
     const entries = entriesFromCalcSheet(
       context({ multiplier: 2 }),
@@ -229,6 +256,32 @@ describe("集計処理", () => {
     expect(items[0].traceIds).toContain("furniture:3:r2");
   });
 
+  it("部位Ⅰは部位別入力表の入力順。表に無い新しい部位Ⅰはその後ろ（出てきた順）", () => {
+    const z = entriesFromCalcSheet(
+      context({ estimateRowId: 1, part1: "Z床" }),
+      [set("s1", 1)],
+      result("s1", 1),
+    );
+    const a = entriesFromCalcSheet(
+      context({ estimateRowId: 2, part1: "A天井" }),
+      [set("s2", 1)],
+      result("s2", 1),
+    );
+    // 部位別入力表に無い部位Ⅰ（建具明細作成表など）
+    const newPart1: AggregateEntry = {
+      ...z[0],
+      traceId: "furniture:1:r1",
+      sourceKind: "furniture",
+      estimateRowId: null,
+      part1: "A新設",
+      setTotal: 1,
+      quantity: 1,
+    };
+    const items = aggregateItems([...z, newPart1, ...a]);
+    // 部位別入力表の部位Ⅰは入力行順（Z床→A天井）、新しい部位Ⅰは後ろ
+    expect(items.map((item) => item.part1)).toEqual(["Z床", "A天井", "A新設"]);
+  });
+
   it("並びは科目ID→部位Ⅰ→部位Ⅱの入力順→部位ID→明細ID", () => {
     const later = entriesFromCalcSheet(
       context({ part2: "2階", part2Order: 1 }),
@@ -272,7 +325,7 @@ describe("部屋別集計", () => {
       result("s3", 2.5),
     );
     const groups = aggregateByRoom([...a, ...b, ...c], ["事務室", "会議室"]);
-    expect(groups.map((group) => group.roomName)).toEqual(["事務室", "会議室"]);
+    expect(groups.map((group) => group.label)).toEqual(["事務室", "会議室"]);
     expect(groups[0].items).toHaveLength(1);
     expect(groups[0].items[0].quantity).toBe(12.5);
     expect(groups[0].quantityTotal).toBe(12.5);
@@ -295,6 +348,64 @@ describe("部屋別集計", () => {
     const groups = aggregateByRoom([...room, transfer, noRoom]);
     expect(groups).toHaveLength(1);
     expect(groups[0].quantityTotal).toBe(10);
+  });
+});
+
+describe("部位別集計", () => {
+  it("部位Ⅱごとにまとめ、同じ部位Ⅱの部屋はひとつにまとまる", () => {
+    // 居室・押入れ・踏み込みは同じ部位Ⅱ「居室」
+    const a = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "居室", part2Order: 1 }),
+      [set("s1", 1)],
+      result("s1", 4),
+    );
+    const b = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "押入れ", part2Order: 1 }),
+      [set("s2", 1)],
+      result("s2", 2.5),
+    );
+    const c = entriesFromCalcSheet(
+      context({ part2: "玄関", part3: "玄関", part2Order: 0 }),
+      [set("s3", 1)],
+      result("s3", 3),
+    );
+    const groups = aggregateByPart([...a, ...b, ...c]);
+    // 部位Ⅱの出た順（玄関→居室）で並ぶ
+    expect(groups.map((group) => group.label)).toEqual(["玄関", "居室"]);
+    expect(groups[1].items).toHaveLength(1);
+    expect(groups[1].items[0].quantity).toBe(6.5);
+    expect(groups[1].quantityTotal).toBe(6.5);
+  });
+
+  it("部位Ⅱが空の明細は最後にまとめ、転記入力表の分も部位Ⅱで入る", () => {
+    const room = entriesFromCalcSheet(
+      context({ part2: "居室", part3: "居室", part2Order: 1 }),
+      [set("s1", 1)],
+      result("s1", 10),
+    );
+    const transfer: AggregateEntry = {
+      ...room[0],
+      traceId: "t:1",
+      sourceKind: "transfer",
+      part2Raw: "玄関",
+      part2Order: 0,
+      quantity: 3,
+    };
+    const noPart: AggregateEntry = {
+      ...room[0],
+      traceId: "x:1",
+      part2Raw: "",
+      quantity: 5,
+    };
+    const groups = aggregateByPart([...room, transfer, noPart]);
+    expect(groups.map((group) => group.label)).toEqual([
+      "玄関",
+      "居室",
+      NO_PART_LABEL,
+    ]);
+    expect(groups[0].quantityTotal).toBe(3);
+    expect(groups[1].quantityTotal).toBe(10);
+    expect(groups[2].quantityTotal).toBe(5);
   });
 });
 
@@ -322,5 +433,155 @@ describe("数量・単位チェック", () => {
     expect(checkQuantityUnit(3, "")).toBe("warn");
     expect(checkQuantityUnit(0, "")).toBe("");
     expect(checkQuantityUnit(null, "")).toBe("");
+  });
+});
+
+describe("集計書兼工事マスターの数量表示", () => {
+  it("単位が無い数量0は何も書かない", () => {
+    expect(aggregateQuantityText(0, "")).toBe("");
+    expect(aggregateQuantityText(0, " ")).toBe("");
+  });
+
+  it("単位があるとき・数量があるときは今までどおり表示する", () => {
+    expect(aggregateQuantityText(0, "m2")).toBe("0.00");
+    expect(aggregateQuantityText(1.25, "")).toBe("1.25");
+  });
+});
+
+describe("集計書の手入力行", () => {
+  const manualRow = (
+    over: Partial<ManualAggregateRow> = {},
+  ): ManualAggregateRow => ({
+    id: 1,
+    afterMasterKey: "",
+    before: false,
+    subjectId: 5,
+    materialCategory: "仕上",
+    part1: "建築",
+    part2: "1階",
+    part2Raw: "1階",
+    partNumber: null,
+    partName: "",
+    detailNumber: null,
+    name: "説明行",
+    descriptionUpper: "",
+    descriptionLower: "",
+    unit: "",
+    remarksUpper: "",
+    remarksLower: "",
+    estimateDisplay: "",
+    formwork: "",
+    quantity: 0,
+    ...over,
+  });
+
+  it("手入力行の番号・部位名は入力した通り（空は空のまま）", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [manualRow({ afterMasterKey: anchor.masterKey })],
+      new Set(),
+    );
+    expect(merged).toHaveLength(2);
+    expect(merged[1].partNumber).toBeNull();
+    expect(merged[1].partName).toBe("");
+    expect(merged[1].detailNumber).toBeNull();
+  });
+
+  it("手で入れた番号は付き先で上書きしない", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [
+        manualRow({
+          afterMasterKey: anchor.masterKey,
+          partNumber: 99,
+          partName: "柱型",
+          detailNumber: 99.5,
+        }),
+      ],
+      new Set(),
+    );
+    expect(merged[1].partNumber).toBe(99);
+    expect(merged[1].partName).toBe("柱型");
+    expect(merged[1].detailNumber).toBe(99.5);
+  });
+
+  it("部位Ⅰ・部位Ⅱ・科目・材種区分は付き先に揃える（見出しで分かれないように）", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [manualRow({ afterMasterKey: anchor.masterKey })],
+      new Set(),
+    );
+    expect(merged[1].subjectId).toBe(anchor.subjectId);
+    expect(merged[1].materialCategory).toBe(anchor.materialCategory);
+    expect(merged[1].part1).toBe(anchor.part1);
+    expect(merged[1].part2).toBe(anchor.part2);
+    expect(merged[1].part2Raw).toBe(anchor.part2Raw);
+  });
+
+  it("付き先が見つからない手入力行は、置いた場所の隣の明細の部位に揃える", () => {
+    const anchor = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1)], result("s1", 2)),
+    )[0];
+    const merged = mergeManualItems(
+      [anchor],
+      [
+        manualRow({
+          afterMasterKey: "missing",
+          subjectId: 999,
+          part1: "別の部位",
+          part2: "別の部位Ⅱ",
+        }),
+      ],
+      new Set(),
+    );
+    // 付き先不明で末尾に置かれる → 隣の明細の部位に揃うので見出しで分かれない
+    expect(merged).toHaveLength(2);
+    expect(merged[1].subjectId).toBe(anchor.subjectId);
+    expect(merged[1].part1).toBe(anchor.part1);
+    expect(merged[1].part2).toBe(anchor.part2);
+  });
+
+  it("番号を振った手入力行は、番号の順で同じ科目の直近の明細の次に付く", () => {
+    const second = set("s2", 1);
+    second.details = [
+      { ...second.details[0], detailNumber: 1.5, name: "巾木" },
+    ];
+    const items = aggregateItems(
+      entriesFromCalcSheet(context(), [set("s1", 1), second], {
+        setTotals: new Map([
+          ["s1", 2],
+          ["s2", 3],
+        ]),
+        lineValues: new Map(),
+        errors: [],
+      } as unknown as CalcSheetResult),
+    );
+    const merged = mergeManualItems(
+      items,
+      [
+        manualRow({
+          afterMasterKey: "missing",
+          partNumber: 10,
+          detailNumber: 1.02,
+        }),
+      ],
+      new Set(),
+    );
+    // (10/1.01) 明細 → 手入力行 (10/1.02) → (10/1.5) 明細 の順に並ぶ
+    expect(merged.map((item) => item.name)).toEqual([
+      "ビニル床シート",
+      "説明行",
+      "巾木",
+    ]);
+    expect(merged[1].part1).toBe(merged[0].part1);
   });
 });

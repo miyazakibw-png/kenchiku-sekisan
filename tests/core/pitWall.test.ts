@@ -93,6 +93,31 @@ describe("ピット間（基礎梁）と人通口・スリーブ", () => {
     expect(pitSleeveLength(sleeve("v2", "w1", "s1", null), walls)).toBe(420);
   });
 
+  it("ピット間の長さを手で直すと、まとめ・記号・スリーブの自動長さがその値になる", () => {
+    const fixed: PitWall = { ...wall("w1", 0.42, 0.5), length: 400 };
+    expect(pitWallLength(fixed)).toBe(0.4);
+    const walls = [fixed];
+    const tallies = pitWallTallies(walls);
+    expect(tallies).toEqual([{ lengthMm: 400, count: 1, total: 0.4 }]);
+    const table = pitWallTable(walls);
+    expect(table.lengths).toEqual([400]);
+    const values = pitWallVariables(walls, [], defaultPitSleeveKinds());
+    expect(values.MW).toBe(0.4);
+    expect(values.MWL400).toBe(0.4);
+    expect(values.MNL400).toBe(1);
+    expect(values.MWL450).toBeUndefined();
+    expect(pitSleeveLength(sleeve("v1", "w1", "s1", null), walls)).toBe(400);
+  });
+
+  it("ピット間の手直し長さは消すと図の間隔に戻る", () => {
+    const fixed: PitWall = { ...wall("w1", 0.42, 0.5), length: 400 };
+    const { length: _manual, ...rest } = fixed;
+    expect(pitWallLength(rest)).toBe(0.42);
+    expect(pitWallTallies([rest])).toEqual([
+      { lengthMm: 450, count: 1, total: 0.42 },
+    ]);
+  });
+
   it("種類別×長さ別の個数表を作る", () => {
     const walls = [wall("w1", 0.5, 0.5), wall("w2", 0.35, 0.2)];
     const kinds = defaultPitSleeveKinds();

@@ -11,7 +11,15 @@ export type LedgerSortKey =
 
 const collator = new Intl.Collator("ja");
 
-/** 作成順と関係なく、行を任意の位置へ移動する */
+/** 「上に固定」の工事を並びの先頭に集める（固定同士の順はそのまま保つ） */
+export function pinnedOnTop(projects: ProjectSummary[]): ProjectSummary[] {
+  return [
+    ...projects.filter((project) => project.pinned),
+    ...projects.filter((project) => !project.pinned),
+  ];
+}
+
+/** 作成順と関係なく、行を任意の位置へ移動する（固定の段は崩れない） */
 export function moveProject(
   projects: ProjectSummary[],
   from: number,
@@ -29,17 +37,20 @@ export function moveProject(
   const next = [...projects];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
-  return next;
+  return pinnedOnTop(next);
 }
 
-/** 列を指定して並べ替える（結果はそのまま台帳の並び順として保存する） */
+/** 列を指定して並べ替える（結果はそのまま台帳の並び順として保存する。固定の行は対象外で先頭のまま） */
 export function sortProjects(
   projects: ProjectSummary[],
   key: LedgerSortKey,
   descending = false,
 ): ProjectSummary[] {
-  const sorted = [...projects].sort((a, b) => collator.compare(a[key], b[key]));
-  return descending ? sorted.reverse() : sorted;
+  const pinned = projects.filter((project) => project.pinned);
+  const sorted = projects
+    .filter((project) => !project.pinned)
+    .sort((a, b) => collator.compare(a[key], b[key]));
+  return [...pinned, ...(descending ? sorted.reverse() : sorted)];
 }
 
 /** 日付は桁ずれしないよう YYYY-MM-DD の固定形式に整える */

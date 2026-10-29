@@ -27,6 +27,7 @@ import {
   closeDatabase,
   getDatabase,
   getDatabasePath,
+  getRawConnection,
   initDatabase,
   restoreDatabaseFrom,
   schema,
@@ -53,6 +54,7 @@ import {
   listAssemblyMasterOptions,
   mergeAssemblies,
   promoteAssemblyToBasic,
+  deleteAssembly,
   saveAssembly,
 } from "./services/assemblyService";
 import {
@@ -60,10 +62,17 @@ import {
   createProject,
   getProject,
   listProjectLedger,
+  nextManagementNo,
   reorderProjects,
   saveProject,
   saveProjectFields,
 } from "./services/projectService";
+import {
+  checkProjectFile,
+  deleteProjectFully,
+  exportProjectFile,
+  importProjectFile,
+} from "./services/projectFileService";
 import { listSubjects, saveSubjects } from "./services/subjectService";
 import {
   listBasicMasters,
@@ -76,6 +85,7 @@ import {
   projectMasterKinds,
   saveProjectBasicMaster,
   saveProjectSubjects,
+  syncProjectBasicMasterToBasic,
 } from "./services/projectMasterService";
 import {
   getFittingPartValues,
@@ -87,20 +97,23 @@ import {
 import {
   listEstimateRows,
   listFilledCalcSheets,
+  listSheetDrawingSources,
   saveEstimateRows,
 } from "./services/estimateRowService";
 import {
   getDeductionLimit,
-  getRoomLowerTemplate,
+  getLowerTemplate,
   getRoomSheet,
+  listRoomSheets,
   registerRoomFitting,
   saveDeductionLimit,
-  saveRoomLowerTemplate,
+  saveLowerTemplate,
   saveRoomSheet,
 } from "./services/roomSheetService";
 import {
   getFrameSheet,
   listFrameRooms,
+  listFrameSheets,
   saveFrameSheet,
 } from "./services/frameSheetService";
 import {
@@ -120,6 +133,7 @@ import {
 import {
   createFurnitureSheet,
   deleteFurnitureSheet,
+  ensureFittingDetailSheet,
   getFurnitureBaseSettings,
   getFurnitureSheet,
   listFurnitureSheets,
@@ -131,19 +145,35 @@ import {
 } from "./services/furnitureSheetService";
 import { getPitSheet, savePitSheet } from "./services/pitSheetService";
 import {
+  getFireproofSheet,
+  saveFireproofSheet,
+} from "./services/fireproofService";
+import { getLineStyles, saveLineStyles } from "./services/lineStyleService";
+import {
+  getCheckSheetPartMap,
+  getCheckSheetShownParts,
+  saveCheckSheetPartMap,
+  saveCheckSheetShownParts,
+} from "./services/checkSheetService";
+import {
   listTransferRows,
   saveTransferRows,
 } from "./services/transferRowService";
 import {
+  deleteAggregateManualItem,
+  moveAggregateManualItem,
   getAggregate,
   collectEstimateRowChecks,
+  insertAggregateManualItem,
   listAggregateRuns,
   runAggregation,
+  buildProjectMasters,
   saveAggregateEdits,
   setDetailUnused,
 } from "./services/aggregationService";
 import {
   getFormworkTransfer,
+  reorderFormworkTransfer,
   runFormworkTransfer,
   saveFormworkRules,
 } from "./services/formworkTransferService";
@@ -166,13 +196,17 @@ import { setImeMode } from "./ime";
 import type {
   BackupInfo,
   ImeMode,
+  LineStyleSettings,
   BackupResult,
+  ProjectFileResult,
   PrintPaper,
   PrintResult,
   ScreenExcelRequest,
+  BasicMasterKind,
   SaveBasicMasterRequest,
   BreakdownExportRequest,
   BreakdownExportResult,
+  BreakdownGrouping,
   BreakdownSettingsRecord,
   SaveBreakdownRowsRequest,
   MiscSheetSummary,
@@ -187,18 +221,25 @@ import type {
   SaveMiscSheetRequest,
   SaveFurnitureSheetRequest,
   SavePitSheetRequest,
+  SaveFireproofSheetRequest,
   SaveProjectRequest,
   SaveRoomSheetRequest,
+  DeleteAggregateManualItemRequest,
+  InsertAggregateManualItemRequest,
+  MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
+  ReorderFormworkRowsRequest,
   SaveFormworkRulesRequest,
   SaveTransferRowsRequest,
   SetDetailUnusedRequest,
   SubjectDraft,
+  LowerTemplateKind,
 } from "../shared/types";
 import { rememberWindowState, savedBounds, wasMaximized } from "./windowState";
 
-/** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用） */
-function createWindow(projectId?: number): void {
+/** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用）。
+ *  menu を渡すとその画面を開いた状態で出す（例：集計書を開いたまま内訳書を別窓で見る） */
+function createWindow(projectId?: number, menu?: string): void {
   const window = new BrowserWindow({
     ...savedBounds("main", { width: 1440, height: 900 }),
     show: false,
@@ -226,7 +267,10 @@ function createWindow(projectId?: number): void {
     return { action: "deny" };
   });
 
-  const hash = projectId === undefined ? "" : `project=${projectId}`;
+  const hash =
+    projectId === undefined
+      ? ""
+      : `project=${projectId}${menu === undefined ? "" : `&menu=${menu}`}`;
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     window.loadURL(
@@ -310,6 +354,13 @@ function recoverInput(target: BrowserWindow | null): void {
   window.webContents.focus();
 }
 
+/** 保存ダイアログを開く場所（ドキュメントの実フォルダ。ライブラリの既定先が無いときは作る） */
+function saveDialogDir(): string {
+  const dir = app.getPath("documents");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function registerIpcHandlers(): void {
   ipcMain.handle(IPC.masterOptions, (_event, projectId: number | null = null) =>
     listMasterOptions(getDatabase(), projectId),
@@ -334,6 +385,11 @@ function registerIpcHandlers(): void {
             request.rows,
           );
     },
+  );
+  ipcMain.handle(
+    IPC.basicMasterSyncToBasic,
+    (_event, projectId: number, kind: BasicMasterKind) =>
+      syncProjectBasicMasterToBasic(getDatabase(), projectId, kind),
   );
   ipcMain.handle(IPC.subjectsList, (_event, projectId: number | null = null) =>
     projectId === null
@@ -361,6 +417,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.estimateRowsFilledSheets, (_event, projectId: number) =>
     listFilledCalcSheets(getDatabase(), projectId),
   );
+  ipcMain.handle(IPC.sheetDrawingSources, (_event, projectId: number) =>
+    listSheetDrawingSources(getDatabase(), projectId),
+  );
   ipcMain.handle(
     IPC.estimateRowsSave,
     (_event, request: SaveEstimateRowsRequest) =>
@@ -371,6 +430,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.roomSheetSave, (_event, request: SaveRoomSheetRequest) =>
     saveRoomSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.roomSheetList, (_event, projectId: number) =>
+    listRoomSheets(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.roomFittingRegister,
@@ -399,6 +461,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.frameSheetSave, (_event, request: SaveFrameSheetRequest) =>
     saveFrameSheet(getDatabase(), request),
+  );
+  ipcMain.handle(IPC.frameSheetList, (_event, projectId: number) =>
+    listFrameSheets(getDatabase(), projectId),
   );
   ipcMain.handle(IPC.frameRoomsList, (_event, projectId: number) =>
     listFrameRooms(getDatabase(), projectId),
@@ -472,6 +537,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.furnitureSheetGet, (_event, sheetId: number) =>
     getFurnitureSheet(getDatabase(), sheetId),
   );
+  ipcMain.handle(IPC.fittingDetailSheetEnsure, (_event, projectId: number) =>
+    ensureFittingDetailSheet(getDatabase(), projectId),
+  );
   ipcMain.handle(
     IPC.furnitureSheetSave,
     (_event, request: SaveFurnitureSheetRequest) =>
@@ -491,6 +559,14 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.pitSheetSave, (_event, request: SavePitSheetRequest) =>
     savePitSheet(getDatabase(), request),
   );
+  ipcMain.handle(IPC.fireproofSheetGet, (_event, projectId: number) =>
+    getFireproofSheet(getDatabase(), projectId),
+  );
+  ipcMain.handle(
+    IPC.fireproofSheetSave,
+    (_event, request: SaveFireproofSheetRequest) =>
+      saveFireproofSheet(getDatabase(), request),
+  );
   ipcMain.handle(IPC.transferRowsList, (_event, projectId: number) =>
     listTransferRows(getDatabase(), projectId),
   );
@@ -501,6 +577,9 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle(IPC.aggregateRun, (_event, projectId: number) =>
     runAggregation(getDatabase(), projectId),
+  );
+  ipcMain.handle(IPC.aggregateBuildMasters, (_event, projectId: number) =>
+    buildProjectMasters(getDatabase(), projectId),
   );
   ipcMain.handle(
     IPC.aggregateGet,
@@ -525,6 +604,21 @@ function registerIpcHandlers(): void {
     (_event, request: SetDetailUnusedRequest) =>
       setDetailUnused(getDatabase(), request),
   );
+  ipcMain.handle(
+    IPC.aggregateManualInsert,
+    (_event, request: InsertAggregateManualItemRequest) =>
+      insertAggregateManualItem(getDatabase(), request),
+  );
+  ipcMain.handle(
+    IPC.aggregateManualDelete,
+    (_event, request: DeleteAggregateManualItemRequest) =>
+      deleteAggregateManualItem(getDatabase(), request),
+  );
+  ipcMain.handle(
+    IPC.aggregateManualMove,
+    (_event, request: MoveAggregateManualItemRequest) =>
+      moveAggregateManualItem(getDatabase(), request),
+  );
   ipcMain.handle(IPC.formworkTransferGet, (_event, projectId: number) =>
     getFormworkTransfer(getDatabase(), projectId),
   );
@@ -537,6 +631,11 @@ function registerIpcHandlers(): void {
     runFormworkTransfer(getDatabase(), projectId),
   );
   ipcMain.handle(
+    IPC.formworkTransferReorder,
+    (_event, request: ReorderFormworkRowsRequest) =>
+      reorderFormworkTransfer(getDatabase(), request.projectId, request.rows),
+  );
+  ipcMain.handle(
     IPC.breakdownGet,
     (_event, projectId: number, versionId?: number) =>
       getBreakdown(getDatabase(), projectId, versionId),
@@ -544,8 +643,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.breakdownVersions, (_event, projectId: number) =>
     listBreakdownVersions(getDatabase(), projectId),
   );
-  ipcMain.handle(IPC.breakdownTransfer, (_event, projectId: number) =>
-    transferBreakdown(getDatabase(), projectId),
+  ipcMain.handle(
+    IPC.breakdownTransfer,
+    (
+      _event,
+      projectId: number,
+      newRound?: boolean,
+      grouping?: BreakdownGrouping,
+      runId?: number,
+    ) =>
+      transferBreakdown(
+        getDatabase(),
+        projectId,
+        newRound === true,
+        grouping ?? "subject",
+        runId,
+      ),
   );
   ipcMain.handle(
     IPC.breakdownSaveRows,
@@ -591,24 +704,59 @@ function registerIpcHandlers(): void {
             },
       );
       const window = BrowserWindow.fromWebContents(event.sender);
+      const defaultPath = join(saveDialogDir(), defaultName);
       const result = window
-        ? await dialog.showSaveDialog(window, { defaultPath: defaultName })
-        : await dialog.showSaveDialog({ defaultPath: defaultName });
+        ? await dialog.showSaveDialog(window, { defaultPath })
+        : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
-      writeExport(result.filePath, content);
+      try {
+        writeExport(result.filePath, content);
+      } catch {
+        throw new Error(
+          "ファイルを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );
+  ipcMain.handle(IPC.lineStylesGet, () => getLineStyles(getDatabase()));
+  ipcMain.handle(IPC.lineStylesSave, (_event, settings: LineStyleSettings) => {
+    saveLineStyles(getDatabase(), settings);
+    // 開いている別ウィンドウ（物件専用・明細入力ウィンドウ）にも即反映する
+    for (const contents of webContents.getAllWebContents()) {
+      contents.send(IPC.lineStylesChanged, settings);
+    }
+    return settings;
+  });
+  ipcMain.handle(IPC.checkSheetPartMapGet, () =>
+    getCheckSheetPartMap(getDatabase()),
+  );
+  ipcMain.handle(
+    IPC.checkSheetPartMapSave,
+    (_event, map: Record<string, string>) => {
+      saveCheckSheetPartMap(getDatabase(), map);
+      return map;
+    },
+  );
+  ipcMain.handle(IPC.checkSheetShownPartsGet, () =>
+    getCheckSheetShownParts(getDatabase()),
+  );
+  ipcMain.handle(IPC.checkSheetShownPartsSave, (_event, partIds: number[]) => {
+    saveCheckSheetShownParts(getDatabase(), partIds);
+    return partIds;
+  });
   ipcMain.handle(IPC.deductionLimitGet, () => getDeductionLimit(getDatabase()));
   ipcMain.handle(IPC.deductionLimitSave, (_event, limit: number) =>
     saveDeductionLimit(getDatabase(), limit),
   );
-  ipcMain.handle(IPC.roomLowerTemplateGet, () =>
-    getRoomLowerTemplate(getDatabase()),
+  ipcMain.handle(IPC.lowerTemplateGet, (_event, kind: LowerTemplateKind) =>
+    getLowerTemplate(getDatabase(), kind),
   );
-  ipcMain.handle(IPC.roomLowerTemplateSave, (_event, json: string) =>
-    saveRoomLowerTemplate(getDatabase(), json),
+  ipcMain.handle(
+    IPC.lowerTemplateSave,
+    (_event, kind: LowerTemplateKind, json: string) =>
+      saveLowerTemplate(getDatabase(), kind, json),
   );
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
     listFittings(getDatabase(), projectId),
@@ -676,6 +824,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.assemblyPromote, (_event, id: number) =>
     promoteAssemblyToBasic(getDatabase(), id),
   );
+  ipcMain.handle(IPC.assemblyDelete, (_event, id: number) =>
+    deleteAssembly(getDatabase(), id),
+  );
   ipcMain.handle(IPC.projectLedger, () => listProjectLedger(getDatabase()));
   ipcMain.handle(IPC.projectCreate, (_event, name: string) =>
     createProject(getDatabase(), name),
@@ -699,8 +850,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.projectFieldsSave, (_event, fields: ProjectField[]) =>
     saveProjectFields(getDatabase(), fields),
   );
-  ipcMain.handle(IPC.projectOpenWindow, (_event, projectId: number) =>
-    createWindow(projectId),
+  ipcMain.handle(
+    IPC.projectOpenWindow,
+    (_event, projectId: number, menu?: string) => createWindow(projectId, menu),
   );
   ipcMain.handle(IPC.calcWindowOpen, (event, title: string) =>
     openCalcWindow(event.sender, title),
@@ -817,6 +969,169 @@ function registerIpcHandlers(): void {
     };
   });
   ipcMain.handle(
+    IPC.projectFileExport,
+    async (event, projectId: number): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const project = getProject(getDatabase(), projectId);
+      const safeName = `${project.managementNo}_${project.name}`.replace(
+        /[\\/:*?"<>|]/g,
+        "_",
+      );
+      const options = {
+        title: "この工事の掃き出し先を選んでください",
+        defaultPath: join(app.getPath("documents"), `${safeName}.sekisan`),
+        filters: [{ name: "1物件の積算データ", extensions: ["sekisan"] }],
+      };
+      const picked = window
+        ? await dialog.showSaveDialog(window, options)
+        : await dialog.showSaveDialog(options);
+      recoverInput(window);
+      if (picked.canceled || !picked.filePath)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      exportProjectFile(getRawConnection(), projectId, picked.filePath);
+      return {
+        done: true,
+        filePath: picked.filePath,
+        message: `${project.managementNo} ${project.name} を書き出しました：${picked.filePath}`,
+        projectId: null,
+      };
+    },
+  );
+  ipcMain.handle(
+    IPC.projectFileImport,
+    async (event): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: "読み込む1物件のファイルを選んでください",
+        properties: ["openFile" as const],
+        filters: [
+          { name: "1物件の積算データ", extensions: ["sekisan", "db"] },
+          { name: "すべてのファイル", extensions: ["*"] },
+        ],
+      };
+      const picked = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options);
+      recoverInput(window);
+      if (picked.canceled || picked.filePaths.length === 0)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      const sourcePath = picked.filePaths[0];
+      const checked = checkProjectFile(getRawConnection(), sourcePath);
+      if (!checked.ok)
+        return {
+          done: false,
+          filePath: sourcePath,
+          message: checked.message,
+          projectId: null,
+        };
+      const fileName = `${checked.managementNo} ${checked.name}`;
+      // 同じ管理番号の工事があるときだけ、入れ方を選んでもらう
+      const confirmOptions = checked.sameManagementNo
+        ? {
+            type: "warning" as const,
+            buttons: ["置き換える", "別の工事として足す", "やめる"],
+            defaultId: 2,
+            cancelId: 2,
+            title: "1物件の読み込み",
+            message: `同じ管理番号（${checked.managementNo}）の工事がこのパソコンにあります。`,
+            detail:
+              "「置き換える」＝このパソコンのその工事を消して、ファイルの内容に入れ替えます（元に戻せません）。\n「別の工事として足す」＝新しい管理番号を付けて、別の工事として足します。",
+          }
+        : {
+            type: "question" as const,
+            buttons: ["読み込む", "やめる"],
+            defaultId: 0,
+            cancelId: 1,
+            title: "1物件の読み込み",
+            message: `${fileName} を読み込みます。`,
+            detail:
+              "新しい工事として足します（このパソコンの他の工事・マスターは変わりません）。",
+          };
+      const answer = window
+        ? await dialog.showMessageBox(window, confirmOptions)
+        : await dialog.showMessageBox(confirmOptions);
+      recoverInput(window);
+      const cancelled = checked.sameManagementNo
+        ? answer.response === 2
+        : answer.response === 1;
+      if (cancelled)
+        return {
+          done: false,
+          filePath: sourcePath,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      const mode =
+        checked.sameManagementNo && answer.response === 0 ? "replace" : "add";
+      const db = getDatabase();
+      const result = importProjectFile(
+        getRawConnection(),
+        sourcePath,
+        mode,
+        () => nextManagementNo(db),
+      );
+      for (const opened of BrowserWindow.getAllWindows()) {
+        opened.webContents.reload();
+      }
+      return {
+        done: true,
+        filePath: sourcePath,
+        message: result.replaced
+          ? `${result.managementNo} ${result.name} を置き換えました。`
+          : `${result.managementNo} ${result.name} を読み込みました。`,
+        projectId: result.projectId,
+      };
+    },
+  );
+  ipcMain.handle(
+    IPC.projectFileDelete,
+    async (event, projectId: number): Promise<ProjectFileResult> => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const project = getProject(getDatabase(), projectId);
+      const confirmOptions = {
+        type: "warning" as const,
+        buttons: ["消す", "やめる"],
+        defaultId: 1,
+        cancelId: 1,
+        title: "工事の削除",
+        message: `${project.managementNo} ${project.name} を消します。`,
+        detail:
+          "この工事に入れた全部（工事概要・建具表・部位別入力表・各計算書・転記入力表・集計・内訳書・その工事専用のマスター）が消え、元には戻せません。",
+      };
+      const answer = window
+        ? await dialog.showMessageBox(window, confirmOptions)
+        : await dialog.showMessageBox(confirmOptions);
+      recoverInput(window);
+      if (answer.response !== 0)
+        return {
+          done: false,
+          filePath: null,
+          message: "取り消しました。",
+          projectId: null,
+        };
+      deleteProjectFully(getRawConnection(), projectId);
+      for (const opened of BrowserWindow.getAllWindows()) {
+        opened.webContents.reload();
+      }
+      return {
+        done: true,
+        filePath: null,
+        message: `${project.managementNo} ${project.name} を消しました。`,
+        projectId: null,
+      };
+    },
+  );
+  ipcMain.handle(
     IPC.printPaper,
     async (event, paper: PrintPaper): Promise<PrintResult> => {
       await new Promise<void>((resolve) => {
@@ -840,11 +1155,10 @@ function registerIpcHandlers(): void {
       paper: PrintPaper,
     ): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
+      const defaultPath = join(saveDialogDir(), `${defaultName}.pdf`);
       const result = window
-        ? await dialog.showSaveDialog(window, {
-            defaultPath: `${defaultName}.pdf`,
-          })
-        : await dialog.showSaveDialog({ defaultPath: `${defaultName}.pdf` });
+        ? await dialog.showSaveDialog(window, { defaultPath })
+        : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
       const pdf = await event.sender.printToPDF({
@@ -853,7 +1167,13 @@ function registerIpcHandlers(): void {
         printBackground: true,
         preferCSSPageSize: true,
       });
-      writeExport(result.filePath, pdf);
+      try {
+        writeExport(result.filePath, pdf);
+      } catch {
+        throw new Error(
+          "PDFを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );
@@ -861,13 +1181,22 @@ function registerIpcHandlers(): void {
     IPC.screenExcel,
     async (event, request: ScreenExcelRequest): Promise<PrintResult> => {
       const window = BrowserWindow.fromWebContents(event.sender);
-      const defaultPath = `${request.defaultName}.xlsx`;
+      const defaultPath = join(
+        saveDialogDir(),
+        `${request.defaultName}.xlsx`,
+      );
       const result = window
         ? await dialog.showSaveDialog(window, { defaultPath })
         : await dialog.showSaveDialog({ defaultPath });
       recoverInput(window);
       if (result.canceled || !result.filePath) return { filePath: null };
-      writeExport(result.filePath, toScreenWorkbook(request.sheets));
+      try {
+        writeExport(result.filePath, toScreenWorkbook(request.sheets));
+      } catch {
+        throw new Error(
+          "エクセルを保存できませんでした（保存先に書き込めません）。デスクトップなど別のフォルダを選んでください",
+        );
+      }
       return { filePath: result.filePath };
     },
   );
@@ -898,42 +1227,50 @@ function registerIpcHandlers(): void {
       note: `絵 ${size.width}×${size.height}（${formats}）`,
     };
   });
-  // 図面のPDFや画像ファイルを選んで、画像（data URL）として取り込む
-  ipcMain.handle(IPC.drawingOpen, async (event, page: number) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const options = {
-      title: "図面のファイルを選んでください",
-      properties: ["openFile" as const],
-      filters: [
-        {
-          name: "図面（PDF・画像）",
-          extensions: ["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp"],
-        },
-      ],
-    };
-    const picked = window
-      ? await dialog.showOpenDialog(window, options)
-      : await dialog.showOpenDialog(options);
-    recoverInput(window);
-    if (picked.canceled || picked.filePaths.length === 0)
-      return { image: "", pdf: "", note: "取り消しました" };
-    const file = picked.filePaths[0];
-    if (file.toLowerCase().endsWith(".pdf")) {
-      try {
-        return {
-          image: "",
-          pdf: readFileSync(file).toString("base64"),
-          note: `PDF ${page > 0 ? page : 1}ページ`,
-        };
-      } catch {
-        return { image: "", pdf: "", note: "PDFを読めませんでした" };
-      }
-    }
-    const image = fileToDataUrl(file);
-    return image === ""
-      ? { image: "", pdf: "", note: "画像を読めませんでした" }
-      : { image, pdf: "", note: "画像ファイル" };
-  });
+  // 図面のPDFや画像ファイルを選んで、画像（data URL）として取り込む。multiなら複数まとめて選べる
+  ipcMain.handle(
+    IPC.drawingOpen,
+    async (event, page: number, multi?: boolean) => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: "図面のファイルを選んでください",
+        properties: multi
+          ? ["openFile" as const, "multiSelections" as const]
+          : ["openFile" as const],
+        filters: [
+          {
+            name: "図面（PDF・画像）",
+            extensions: ["pdf", "png", "jpg", "jpeg", "gif", "bmp", "webp"],
+          },
+        ],
+      };
+      const picked = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options);
+      recoverInput(window);
+      if (picked.canceled || picked.filePaths.length === 0)
+        return { image: "", pdf: "", note: "取り消しました", items: [] };
+      const items = picked.filePaths.map((file) => {
+        if (file.toLowerCase().endsWith(".pdf")) {
+          try {
+            return {
+              image: "",
+              pdf: readFileSync(file).toString("base64"),
+              note: `PDF ${page > 0 ? page : 1}ページ`,
+            };
+          } catch {
+            return { image: "", pdf: "", note: "PDFを読めませんでした" };
+          }
+        }
+        const image = fileToDataUrl(file);
+        return image === ""
+          ? { image: "", pdf: "", note: "画像を読めませんでした" }
+          : { image, pdf: "", note: "画像ファイル" };
+      });
+      const first = items[0];
+      return { image: first.image, pdf: first.pdf, note: first.note, items };
+    },
+  );
   // 欄ごとに日本語入力（ひらがな／半角英数）を切り替える
   ipcMain.handle(IPC.imeMode, async (event, mode: ImeMode) => {
     const window = BrowserWindow.fromWebContents(event.sender);

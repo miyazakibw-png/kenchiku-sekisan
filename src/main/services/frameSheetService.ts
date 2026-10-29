@@ -9,7 +9,13 @@ import type {
   FrameRoomOption,
   FrameSheet,
   SaveFrameSheetRequest,
+  SheetOption,
 } from "../../shared/types";
+import {
+  lowerFromTemplate,
+  parseSavedLowerTemplate,
+} from "../../core/room/lowerTemplate";
+import { getLowerTemplate } from "./roomSheetService";
 
 function toSheet(row: typeof projectFrameSheets.$inferSelect): FrameSheet {
   return {
@@ -48,39 +54,83 @@ export function getFrameSheet(
   if (!estimateRow)
     throw new Error(`部位別入力表の行が見つかりません: ${estimateRowId}`);
 
+  const template = parseSavedLowerTemplate(getLowerTemplate(db, "frame"));
   const created = db
     .insert(projectFrameSheets)
     .values({
       projectId: estimateRow.projectId,
       estimateRowId,
       workHeight: estimateRow.ceilingHeight,
+      ...(template === null
+        ? {}
+        : { lowerJson: JSON.stringify(lowerFromTemplate(template)) }),
     })
     .returning()
     .get();
   return toSheet(created);
 }
 
+/** 保存。施工高さは部位別入力表の天井高さと相互連動させる */
 export function saveFrameSheet(
   db: AppDatabase,
   request: SaveFrameSheetRequest,
 ): FrameSheet {
-  const saved = db
-    .update(projectFrameSheets)
-    .set({
-      layoutJson: request.layoutJson,
-      linesJson: request.linesJson,
-      attributesJson: request.attributesJson,
-      fittingsJson: request.fittingsJson,
-      lowerJson: request.lowerJson,
-      workHeight: request.workHeight,
-      traceJson: request.traceJson,
-      kindsJson: request.kindsJson,
-      note: request.note,
-    })
-    .where(eq(projectFrameSheets.id, request.id))
-    .returning()
-    .get();
+  const saved = db.transaction((tx) => {
+    const row = tx
+      .update(projectFrameSheets)
+      .set({
+        layoutJson: request.layoutJson,
+        linesJson: request.linesJson,
+        attributesJson: request.attributesJson,
+        fittingsJson: request.fittingsJson,
+        lowerJson: request.lowerJson,
+        workHeight: request.workHeight,
+        traceJson: request.traceJson,
+        kindsJson: request.kindsJson,
+        note: request.note,
+      })
+      .where(eq(projectFrameSheets.id, request.id))
+      .returning()
+      .get();
+
+    tx.update(projectEstimateRows)
+      .set({ ceilingHeight: request.workHeight })
+      .where(eq(projectEstimateRows.id, row.estimateRowId))
+      .run();
+
+    return row;
+  });
   return toSheet(saved);
+}
+
+/**
+ * この工事にある軸組計算書の一覧（他の計算書の上段を写すときの選択に出す）。
+ * 部屋名は 部位Ⅱ＋半角スペース＋部位Ⅲ。
+ */
+export function listFrameSheets(
+  db: AppDatabase,
+  projectId: number,
+): SheetOption[] {
+  const rows = db
+    .select({
+      estimateRowId: projectFrameSheets.estimateRowId,
+      part2: projectEstimateRows.part2,
+      part3: projectEstimateRows.part3,
+      displayOrder: projectEstimateRows.displayOrder,
+    })
+    .from(projectFrameSheets)
+    .innerJoin(
+      projectEstimateRows,
+      eq(projectFrameSheets.estimateRowId, projectEstimateRows.id),
+    )
+    .where(eq(projectFrameSheets.projectId, projectId))
+    .orderBy(projectEstimateRows.displayOrder)
+    .all();
+
+  return rows.map((row) => ({
+    estimateRowId: row.estimateRowId,
+    roomName: `${row.part2} ${row.part3}`.trim(),
+  }));
 }
 
 /**

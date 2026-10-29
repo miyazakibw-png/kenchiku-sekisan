@@ -8,8 +8,10 @@ import {
 } from "../db/schema";
 import type {
   Fitting,
+  LowerTemplateKind,
   RoomSheet,
   SaveRoomSheetRequest,
+  SheetOption,
 } from "../../shared/types";
 import { DEFAULT_DEDUCTION_LIMIT } from "../../core/room/shape";
 import {
@@ -18,7 +20,12 @@ import {
 } from "../../core/room/lowerTemplate";
 import { listFittings } from "./fittingService";
 
-const LOWER_TEMPLATE_KEY = "roomLowerTemplate";
+const LOWER_TEMPLATE_KEYS: Record<LowerTemplateKind, string> = {
+  room: "roomLowerTemplate",
+  pit: "pitLowerTemplate",
+  frame: "frameLowerTemplate",
+  general: "generalLowerTemplate",
+};
 
 const EMPTY_SHAPE = '{"edges":[]}';
 
@@ -36,6 +43,36 @@ function toSheet(row: typeof projectRoomSheets.$inferSelect): RoomSheet {
     ceilingHeight: row.ceilingHeight,
     note: row.note,
   };
+}
+
+/**
+ * この工事にある部屋計算書の一覧（他の計算書の上段を写すときの選択に出す）。
+ * 部屋名は 部位Ⅱ＋半角スペース＋部位Ⅲ。
+ */
+export function listRoomSheets(
+  db: AppDatabase,
+  projectId: number,
+): SheetOption[] {
+  const rows = db
+    .select({
+      estimateRowId: projectRoomSheets.estimateRowId,
+      part2: projectEstimateRows.part2,
+      part3: projectEstimateRows.part3,
+      displayOrder: projectEstimateRows.displayOrder,
+    })
+    .from(projectRoomSheets)
+    .innerJoin(
+      projectEstimateRows,
+      eq(projectRoomSheets.estimateRowId, projectEstimateRows.id),
+    )
+    .where(eq(projectRoomSheets.projectId, projectId))
+    .orderBy(projectEstimateRows.displayOrder)
+    .all();
+
+  return rows.map((row) => ({
+    estimateRowId: row.estimateRowId,
+    roomName: `${row.part2} ${row.part3}`.trim(),
+  }));
 }
 
 /** 部屋計算書を開く。まだ無ければ部位別入力表の行から作る（天井高さも引き継ぐ） */
@@ -66,7 +103,7 @@ export function getRoomSheet(
       shapeJson: EMPTY_SHAPE,
       // 新しい計算書の下段は全物件共通の初期状態（見出し行＋部位）で始める
       lowerJson: JSON.stringify(
-        lowerFromTemplate(parseLowerTemplate(getRoomLowerTemplate(db))),
+        lowerFromTemplate(parseLowerTemplate(getLowerTemplate(db, "room"))),
       ),
       ceilingHeight: estimateRow.ceilingHeight,
     })
@@ -183,19 +220,26 @@ export function getDeductionLimit(db: AppDatabase): number {
   return Number.isFinite(value) ? value : DEFAULT_DEDUCTION_LIMIT;
 }
 
-/** 部屋別計算書の下段の初期状態（JSON。未保存なら null） */
-export function getRoomLowerTemplate(db: AppDatabase): string | null {
+/** 計算書の下段の初期状態（JSON。未保存なら null） */
+export function getLowerTemplate(
+  db: AppDatabase,
+  kind: LowerTemplateKind,
+): string | null {
   const row = db
     .select()
     .from(appSettings)
-    .where(eq(appSettings.key, LOWER_TEMPLATE_KEY))
+    .where(eq(appSettings.key, LOWER_TEMPLATE_KEYS[kind]))
     .get();
   return row ? row.valueJson : null;
 }
 
-export function saveRoomLowerTemplate(db: AppDatabase, json: string): string {
+export function saveLowerTemplate(
+  db: AppDatabase,
+  kind: LowerTemplateKind,
+  json: string,
+): string {
   db.insert(appSettings)
-    .values({ key: LOWER_TEMPLATE_KEY, valueJson: json })
+    .values({ key: LOWER_TEMPLATE_KEYS[kind], valueJson: json })
     .onConflictDoUpdate({
       target: appSettings.key,
       set: { valueJson: json },

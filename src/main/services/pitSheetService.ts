@@ -2,6 +2,11 @@ import { eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectEstimateRows, projectPitSheets } from "../db/schema";
 import type { PitSheet, SavePitSheetRequest } from "../../shared/types";
+import {
+  lowerFromTemplate,
+  parseSavedLowerTemplate,
+} from "../../core/room/lowerTemplate";
+import { getLowerTemplate } from "./roomSheetService";
 
 function toSheet(row: typeof projectPitSheets.$inferSelect): PitSheet {
   return {
@@ -37,9 +42,16 @@ export function getPitSheet(db: AppDatabase, estimateRowId: number): PitSheet {
   if (!estimateRow)
     throw new Error(`部位別入力表の行が見つかりません: ${estimateRowId}`);
 
+  const template = parseSavedLowerTemplate(getLowerTemplate(db, "pit"));
   const created = db
     .insert(projectPitSheets)
-    .values({ projectId: estimateRow.projectId, estimateRowId })
+    .values({
+      projectId: estimateRow.projectId,
+      estimateRowId,
+      ...(template === null
+        ? {}
+        : { lowerJson: JSON.stringify(lowerFromTemplate(template)) }),
+    })
     .returning()
     .get();
   return toSheet(created);

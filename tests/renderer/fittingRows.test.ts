@@ -2,14 +2,32 @@ import { describe, expect, it } from "vitest";
 import {
   buildFittingColumns,
   emptyRow,
+  INITIAL_EMPTY_ROWS,
   insertRow,
   parseNumber,
   parseSize,
   removeRow,
   sortBySymbol,
   updateRow,
+  withInitialRows,
 } from "../../src/renderer/src/features/fittings/fittingRows";
 import { buildPastePreview } from "../../src/renderer/src/features/grid/gridClipboard";
+
+describe("建具表の初期行", () => {
+  it("空のときは独立した空行を30行作る", () => {
+    const rows = withInitialRows([]);
+    expect(INITIAL_EMPTY_ROWS).toBe(30);
+    expect(rows).toHaveLength(30);
+    expect(rows.every((row) => row.id === null)).toBe(true);
+    expect(new Set(rows).size).toBe(30);
+    expect(rows).toEqual(Array.from({ length: 30 }, () => emptyRow()));
+  });
+
+  it("行があるときは元の配列をそのまま返す", () => {
+    const rows = [{ ...emptyRow(), symbol: "AW1" }];
+    expect(withInitialRows(rows)).toBe(rows);
+  });
+});
 
 describe("建具表の行操作", () => {
   it("行挿入・削除・更新ができる", () => {

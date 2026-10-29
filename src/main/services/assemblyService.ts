@@ -7,6 +7,7 @@ import {
   mFinishAssemblyItems,
   projectFrameSheets,
   projectGeneralSheets,
+  projectPitSheets,
   projectRoomFinishes,
   projectRoomSheets,
 } from "../db/schema";
@@ -19,6 +20,7 @@ import type {
   SaveAssemblyRequest,
   SaveAssemblyResult,
 } from "../../shared/types";
+import { assemblyHead, assemblyItemSubjectId } from "../../shared/assemblyItem";
 import { assemblySignature } from "../../shared/assemblySignature";
 import type { CalcDetail, CalcLine, CalcSet } from "../../core/room/calcSheet";
 import {
@@ -75,6 +77,8 @@ export function listAssemblies(
     id: row.id,
     scope: toScope(row.scope),
     projectId: row.projectId,
+    setPartNumber: row.setPartNumber,
+    setPartName: row.setPartName,
     note: row.note,
     displayOrder: row.displayOrder,
     items: listItems(db, row.id),
@@ -108,6 +112,7 @@ function listItems(db: AppDatabase, assemblyId: number): AssemblyItem[] {
       estimateDisplay: item.estimateDisplay,
       formula: item.formula,
       coefficient: item.coefficient,
+      note: item.note === 1,
     }));
 }
 
@@ -160,10 +165,12 @@ export function saveAssembly(
   const id = db.transaction((tx) => {
     let assemblyId = request.id;
     const values = {
-      // 一覧・参照用にセット名としてセット1行目の名称を保持する
-      assemblyName: request.items[0].name,
+      // 一覧・参照用にセット名として先頭の通常明細の名称を保持する
+      assemblyName: assemblyHead(request.items)?.name ?? "",
       scope: request.scope,
       projectId: request.scope === "project" ? request.projectId : null,
+      setPartNumber: request.setPartNumber ?? null,
+      setPartName: request.setPartName ?? "",
       note: request.note,
     };
     if (assemblyId === null) {
@@ -193,6 +200,7 @@ export function saveAssembly(
       beforeSnapshot: DetailSnapshot | null,
       afterSnapshot: DetailSnapshot | null,
     ): void => {
+      if (item.note === true) return;
       tx.insert(detailChangeLogs)
         .values({
           scope: values.scope,
@@ -236,6 +244,7 @@ export function saveAssembly(
           // セット明細は計算式を持たない（式は計算書ごとに入れる）
           formula: "",
           coefficient: item.coefficient,
+          note: item.note === true ? 1 : 0,
           displayOrder: index,
         })
         .run();
@@ -302,6 +311,8 @@ function applyItemChangesToOtherAssemblies(
       id: other.id,
       scope: other.scope,
       projectId: other.projectId,
+      setPartNumber: other.setPartNumber,
+      setPartName: other.setPartName,
       note: other.note,
       items,
     });
@@ -315,8 +326,14 @@ function projectSheetTables(): (
   | typeof projectRoomSheets
   | typeof projectFrameSheets
   | typeof projectGeneralSheets
+  | typeof projectPitSheets
 )[] {
-  return [projectRoomSheets, projectFrameSheets, projectGeneralSheets];
+  return [
+    projectRoomSheets,
+    projectFrameSheets,
+    projectGeneralSheets,
+    projectPitSheets,
+  ];
 }
 
 function parseSets(lowerJson: string): CalcSet[] {
@@ -336,7 +353,7 @@ function toCalcDetail(
   return calcDetail({
     ...(base ?? {}),
     sourceDetailId: item.sourceDetailId,
-    subjectId: item.subjectId,
+    subjectId: assemblyItemSubjectId(item),
     detailNumber: item.detailNumber,
     materialCategory: item.materialCategory,
     partNumber: item.partNumber,
@@ -349,19 +366,52 @@ function toCalcDetail(
     remarksLower: item.remarksLower,
     estimateDisplay: item.estimateDisplay,
     coefficient: item.coefficient,
+    note: item.note === true,
   });
 }
 
 /** マスターの明細とつき合わせる行か（空行・科目なしの行はマスターに無い） */
 function isMasterRow(detail: CalcDetail): boolean {
-  return !isEmptyDetail(detail) && detail.subjectId !== null;
+  return (
+    !isEmptyDetail(detail) && detail.subjectId !== null && detail.note !== true
+  );
+}
+
+function isNoteRow(detail: CalcDetail): boolean {
+  return (
+    detail.note === true &&
+    [
+      detail.name,
+      detail.partName,
+      detail.descriptionUpper,
+      detail.descriptionLower,
+    ].some((value) => value.trim() !== "")
+  );
+}
+
+function isAssemblyRow(detail: CalcDetail): boolean {
+  return isMasterRow(detail) || isNoteRow(detail);
 }
 
 /** 同じ明細かを見分ける目印（明細マスターのID。無いものは名称で見る） */
 function rowKeyOf(value: {
   sourceDetailId: number | null;
   name: string;
+  note?: boolean;
+  descriptionLower: string;
+  descriptionUpper: string;
+  partName: string;
 }): string {
+  if (value.note === true) {
+    return `note:${[
+      value.name,
+      value.descriptionLower,
+      value.descriptionUpper,
+      value.partName,
+    ]
+      .map((part) => part.trim())
+      .join("\u001f")}`;
+  }
   return value.sourceDetailId === null
     ? `n:${value.name.trim()}`
     : `d:${value.sourceDetailId}`;
@@ -400,6 +450,12 @@ function matchItemsToRows(
     let at = 0;
     for (let item = itemFrom; item < anchorItem; item += 1) {
       if (anchors.has(item)) continue;
+      if (items[item].note === true) continue;
+      while (
+        freeRows[at] !== undefined &&
+        rows[freeRows[at]].detail.note === true
+      )
+        at += 1;
       const row = freeRows[at];
       at += 1;
       if (row !== undefined) matched.set(item, row);
@@ -421,7 +477,7 @@ function applyItemsToSet(
 ): { details: CalcDetail[]; lines: CalcLine[] } {
   const rows = set.details
     .map((detail, index) => ({ detail, index }))
-    .filter((row) => isMasterRow(row.detail));
+    .filter((row) => isAssemblyRow(row.detail));
   const matched = matchItemsToRows(items, rows);
   const itemOfRow = new Map<number, number>();
   matched.forEach((position, itemIndex) => {
@@ -441,12 +497,17 @@ function applyItemsToSet(
   };
   set.details.forEach((detail, index) => {
     const line = set.lines[index] ?? calcLine();
-    if (!isMasterRow(detail)) {
+    if (!isAssemblyRow(detail)) {
       details.push(detail);
       lines.push(line);
       return;
     }
     const itemIndex = itemOfRow.get(index);
+    if (itemIndex === undefined && isNoteRow(detail)) {
+      details.push(detail);
+      lines.push(line);
+      return;
+    }
     // マスターから消えた明細は計算書からも消す
     if (itemIndex === undefined) return;
     pushNewItems(itemIndex);
@@ -481,6 +542,10 @@ export function propagateAssemblyToSheets(
           const applied = applyItemsToSet(assembly.items, set);
           set.details = applied.details;
           set.lines = applied.lines;
+          if (assembly.setPartName.trim() !== "") {
+            set.partNumber = assembly.setPartNumber;
+            set.partName = assembly.setPartName;
+          }
           changed = true;
           synced += 1;
         });
@@ -499,24 +564,29 @@ export function propagateAssemblyToSheets(
 
 /** 計算書の1セットを、セット明細マスターの構成明細に写し取る */
 function itemsOfCalcSet(set: CalcSet): AssemblyItem[] {
-  return set.details.filter(isMasterRow).map((detail) => ({
-    id: null,
-    sourceDetailId: detail.sourceDetailId,
-    subjectId: detail.subjectId as number,
-    partNumber: detail.partNumber,
-    detailNumber: detail.detailNumber,
-    materialCategory: detail.materialCategory,
-    partName: detail.partName || set.partName,
-    name: detail.name,
-    descriptionUpper: detail.descriptionUpper,
-    descriptionLower: detail.descriptionLower,
-    unit: detail.unit,
-    remarksUpper: detail.remarksUpper,
-    remarksLower: detail.remarksLower,
-    estimateDisplay: detail.estimateDisplay,
-    formula: "",
-    coefficient: detail.coefficient,
-  }));
+  if (!set.details.some(isMasterRow)) return [];
+  return set.details.filter(isAssemblyRow).map((detail) => {
+    const note = detail.note === true;
+    return {
+      id: null,
+      sourceDetailId: detail.sourceDetailId,
+      subjectId: note ? (detail.subjectId ?? 0) : (detail.subjectId as number),
+      partNumber: detail.partNumber,
+      detailNumber: detail.detailNumber,
+      materialCategory: detail.materialCategory,
+      partName: detail.partName,
+      name: detail.name,
+      descriptionUpper: detail.descriptionUpper,
+      descriptionLower: detail.descriptionLower,
+      unit: detail.unit,
+      remarksUpper: detail.remarksUpper,
+      remarksLower: detail.remarksLower,
+      estimateDisplay: detail.estimateDisplay,
+      formula: "",
+      coefficient: detail.coefficient,
+      note,
+    };
+  });
 }
 
 /**
@@ -529,11 +599,24 @@ export function syncAssembliesFromSheets(
   db: AppDatabase,
   projectId: number,
 ): number {
-  const bySignature = new Map(
-    listAssemblies(db, projectId).map((assembly) => [
-      assemblySignature(assembly.items),
+  const assemblies = listAssemblies(db, projectId);
+  const byKey = new Map(
+    assemblies.map((assembly) => [
+      assemblyKey(
+        assembly.items,
+        assembly.setPartNumber,
+        assembly.setPartName,
+      ),
       assembly,
     ]),
+  );
+  const emptyPartBySignature = new Map(
+    assemblies
+      .filter(
+        (assembly) =>
+          assembly.setPartNumber === null && assembly.setPartName === "",
+      )
+      .map((assembly) => [assemblySignature(assembly.items), assembly]),
   );
   let added = 0;
   projectSheetTables().forEach((table) => {
@@ -548,12 +631,44 @@ export function syncAssembliesFromSheets(
           const items = itemsOfCalcSet(set);
           if (items.length === 0) return;
           const signature = assemblySignature(items);
-          let assembly = bySignature.get(signature);
+          const setPartNumber = set.partNumber ?? null;
+          const setPartName = set.partName.trim();
+          const key = assemblyKey(items, setPartNumber, setPartName);
+          let assembly = byKey.get(key);
+          if (!assembly && (setPartNumber !== null || setPartName !== "")) {
+            const emptyPartAssembly = emptyPartBySignature.get(signature);
+            if (emptyPartAssembly) {
+              db.update(mFinishAssemblies)
+                .set({
+                  setPartNumber,
+                  setPartName,
+                  updatedAt: new Date().toISOString(),
+                })
+                .where(eq(mFinishAssemblies.id, emptyPartAssembly.id))
+                .run();
+              byKey.delete(
+                assemblyKey(
+                  emptyPartAssembly.items,
+                  emptyPartAssembly.setPartNumber,
+                  emptyPartAssembly.setPartName,
+                ),
+              );
+              assembly = {
+                ...emptyPartAssembly,
+                setPartNumber,
+                setPartName,
+              };
+              byKey.set(key, assembly);
+              emptyPartBySignature.delete(signature);
+            }
+          }
           if (!assembly) {
             assembly = saveAssembly(db, {
               id: null,
               scope: "project",
               projectId,
+              setPartNumber,
+              setPartName,
               note: "",
               items,
             }).assembly;
@@ -561,7 +676,10 @@ export function syncAssembliesFromSheets(
               .set({ autoRegistered: 1 })
               .where(eq(mFinishAssemblies.id, assembly.id))
               .run();
-            bySignature.set(signature, assembly);
+            byKey.set(key, assembly);
+            if (setPartNumber === null && setPartName === "") {
+              emptyPartBySignature.set(signature, assembly);
+            }
             added += 1;
           }
           if (set.assemblyId !== assembly.id) {
@@ -618,12 +736,16 @@ function mergeDuplicateAutoAssemblies(
   projectId: number,
 ): number {
   const auto = autoAssemblyIds(db, projectId);
-  const keepBySignature = new Map<string, number>();
+  const keepByKey = new Map<string, number>();
   const remap = new Map<number, number>();
   listAssemblies(db, projectId).forEach((assembly) => {
-    const signature = assemblySignature(assembly.items);
-    const keep = keepBySignature.get(signature);
-    if (keep === undefined) keepBySignature.set(signature, assembly.id);
+    const key = assemblyKey(
+      assembly.items,
+      assembly.setPartNumber,
+      assembly.setPartName,
+    );
+    const keep = keepByKey.get(key);
+    if (keep === undefined) keepByKey.set(key, assembly.id);
     else if (auto.has(assembly.id)) remap.set(assembly.id, keep);
   });
   if (remap.size === 0) return 0;
@@ -721,14 +843,27 @@ function findDuplicate(
   db: AppDatabase,
   assembly: FinishAssembly,
 ): FinishAssembly | null {
-  const signature = assemblySignature(assembly.items);
+  const key = assemblyKey(
+    assembly.items,
+    assembly.setPartNumber,
+    assembly.setPartName,
+  );
   return (
     listAssemblies(db, assembly.projectId).find(
       (other) =>
         other.id !== assembly.id &&
-        assemblySignature(other.items) === signature,
+        assemblyKey(other.items, other.setPartNumber, other.setPartName) ===
+          key,
     ) ?? null
   );
+}
+
+function assemblyKey(
+  items: AssemblyItem[],
+  setPartNumber: number | null,
+  setPartName: string,
+): string {
+  return `${assemblySignature(items)}\u001d${setPartNumber ?? ""}\u001f${setPartName.trim()}`;
 }
 
 export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
@@ -742,6 +877,8 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
     id: row.id,
     scope: toScope(row.scope),
     projectId: row.projectId,
+    setPartNumber: row.setPartNumber,
+    setPartName: row.setPartName,
     note: row.note,
     displayOrder: row.displayOrder,
     items: listItems(db, row.id),
@@ -751,7 +888,7 @@ export function getAssembly(db: AppDatabase, id: number): FinishAssembly {
 /**
  * 内容が同じになった2つのセットを1つへ統合する。
  * 計算書など参照している側を残す側へ付け替えてから、重複したセットを取り除く。
- * （マスターからの任意削除は誤操作防止のため設けない）
+ * （工事専用マスターからの任意削除は誤操作防止のため設けない）
  */
 export function mergeAssemblies(
   db: AppDatabase,
@@ -771,6 +908,27 @@ export function mergeAssemblies(
   return getAssembly(db, keepId);
 }
 
+/** 全物件共通の基本セットだけを削除する（工事専用セットは削除しない）。 */
+export function deleteAssembly(db: AppDatabase, id: number): void {
+  db.transaction((tx) => {
+    const row = tx
+      .select({
+        scope: mFinishAssemblies.scope,
+        projectId: mFinishAssemblies.projectId,
+      })
+      .from(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, id))
+      .get();
+    if (!row) throw new Error(`仕上明細セットが見つかりません: id=${id}`);
+    if (row.scope !== "basic" || row.projectId !== null) {
+      throw new Error("工事専用の仕上明細セットは削除できません");
+    }
+    tx.delete(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, id))
+      .run();
+  });
+}
+
 /**
  * 積算入力時に組まれた物件セットを、全物件共通の基本セットへ昇格（複製）する。
  */
@@ -783,6 +941,8 @@ export function promoteAssemblyToBasic(
     id: null,
     scope: "basic",
     projectId: null,
+    setPartNumber: source.setPartNumber,
+    setPartName: source.setPartName,
     note: source.note,
     items: source.items.map((item) => ({ ...item, id: null })),
   });

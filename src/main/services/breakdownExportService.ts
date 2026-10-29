@@ -3,7 +3,8 @@
  * BCS.CSV（Shift_JIS）と、エクセル（全明細1シート／工種科目ごとに1シート）を作る。
  */
 
-import { writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
 import iconv from "iconv-lite";
 import { toBcsCsv } from "../../core/breakdown/bcs";
 import {
@@ -11,7 +12,12 @@ import {
   toSpreadsheetWorkbook,
 } from "../../core/breakdown/spreadsheet";
 import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
-import type { BreakdownRow } from "../../core/breakdown/breakdown";
+import {
+  relayoutBreakdownRows,
+  unwrapBreakdownRows,
+  withSubjectSubtotals,
+  type BreakdownRow,
+} from "../../core/breakdown/breakdown";
 import type {
   BreakdownExportKind,
   BreakdownRowRecord,
@@ -42,6 +48,30 @@ function toCoreRow(row: BreakdownRowRecord): BreakdownRow {
     amount: row.amount,
     remarksUpper: row.remarksUpper,
     remarksLower: row.remarksLower,
+    struck: row.struck,
+    wrap:
+      row.wrap === "upper" ||
+      row.wrap === "lower" ||
+      row.wrap === "fill" ||
+      row.wrap === "pair" ||
+      row.wrap === "keepUpper" ||
+      row.wrap === "keepLower"
+        ? row.wrap
+        : "",
+    wrapGlue: row.wrapGlue,
+    wrapUpper:
+      row.wrapUpper === "upper" ||
+      row.wrapUpper === "lower" ||
+      row.wrapUpper === "fill" ||
+      row.wrapUpper === "pair" ||
+      row.wrapUpper === "keepUpper" ||
+      row.wrapUpper === "keepLower"
+        ? row.wrapUpper
+        : "",
+    wrapGlueUpper: row.wrapGlueUpper,
+    wrapUpperSource: row.wrapUpperSource,
+    wrapOrder: row.wrapOrder,
+    wrapOrderUpper: row.wrapOrderUpper,
   };
 }
 
@@ -60,21 +90,27 @@ export function buildExport(
   projectName: string,
   compare?: CompareExportInput,
 ): { content: Buffer; defaultName: string } {
-  const coreRows = rows.map(toCoreRow);
+  const coreRows = relayoutBreakdownRows(rows.map(toCoreRow), settings);
   if (kind === "excelCompare") {
     return {
       content: toCompareWorkbook({
-        left: coreRows,
-        right: (compare?.rows ?? []).map(toCoreRow),
+        left: withSubjectSubtotals(coreRows),
+        right: withSubjectSubtotals(
+          relayoutBreakdownRows((compare?.rows ?? []).map(toCoreRow), settings),
+        ),
         layout: settings.layout,
         leftTitle: compare?.leftTitle ?? "新しい内訳書",
         rightTitle: compare?.rightTitle ?? "前の内訳書",
+        page: {
+          detailsPerPage: settings.detailsPerPage,
+          detailsPerPageLater: settings.detailsPerPageLater,
+        },
       }),
       defaultName: `${projectName}_内訳書_比較.xlsx`,
     };
   }
   if (kind === "bcs") {
-    const csv = toBcsCsv(coreRows, {
+    const csv = toBcsCsv(unwrapBreakdownRows(coreRows), {
       projectName,
       workCategory: settings.workCategory,
     });
@@ -83,10 +119,11 @@ export function buildExport(
       defaultName: `${projectName}_BCS.CSV`,
     };
   }
+  const withTotals = withSubjectSubtotals(coreRows);
   const sheets =
     kind === "excelBySubject"
-      ? splitBySubject(coreRows)
-      : [{ name: "内訳書", rows: coreRows }];
+      ? splitBySubject(withTotals)
+      : [{ name: "内訳書", rows: withTotals }];
   return {
     content: toSpreadsheetWorkbook(sheets, settings.layout, {
       detailsPerPage: settings.detailsPerPage,
@@ -97,5 +134,7 @@ export function buildExport(
 }
 
 export function writeExport(filePath: string, content: Buffer): void {
+  // 保存先のフォルダが無いとき（OneDriveに移された「ドキュメント」など）も保存できるよう、無ければ作る
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content);
 }

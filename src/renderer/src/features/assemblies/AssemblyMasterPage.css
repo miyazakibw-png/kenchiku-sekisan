@@ -77,6 +77,57 @@
   background: var(--selected, #eaf1fb);
 }
 
+.assembly-list tbody.detail-group.banded td {
+  background-color: inherit;
+}
+
+.assembly-list tbody.detail-group.banded.selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.assembly-list.grid td {
+  border: 1px solid #e2e8f0;
+  padding: 1px 4px;
+  font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assembly-list.grid tbody.detail-group {
+  border-bottom: none;
+}
+
+.assembly-list.grid tbody.detail-group > tr.upper-row > td:not([rowspan]) {
+  border-bottom: 1px dotted #cbd5e1;
+}
+
+.assembly-list.grid tbody.detail-group > tr:last-child > td:not([rowspan]) {
+  border-top: 1px dotted #cbd5e1;
+}
+
+.assembly-list.grid tbody.detail-group > tr:last-child > td,
+.assembly-list.grid tbody.detail-group > tr:first-child > td[rowspan] {
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.assembly-page .note-row td {
+  background: #e8f6e8;
+}
+
+.assembly-page .note-mark {
+  display: inline-block;
+  margin-right: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #15803d;
+  color: #fff;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
 .assembly-main .toolbar .hint {
   font-size: 12px;
   color: #6b7280;
@@ -132,6 +183,23 @@
   margin-left: auto;
 }
 
+.modal.assembly-editor header .set-part {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.modal.assembly-editor header .set-part-input {
+  width: 12ch;
+}
+
+.modal.assembly-editor header .set-part-number {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .modal .modal-body {
   overflow: auto;
   padding: 8px 12px;
@@ -165,6 +233,12 @@
 
 .assembly-editor .ops button {
   padding: 0 4px;
+}
+
+/* セット明細の入力欄は、一覧画面と同じ行の高さに揃える */
+.modal.assembly-editor .grid td input,
+.modal.assembly-editor .grid td select {
+  padding: 1px 4px;
 }
 
 .assembly-page .num {
