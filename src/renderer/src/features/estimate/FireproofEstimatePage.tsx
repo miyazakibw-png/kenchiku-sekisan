@@ -12,6 +12,7 @@ import {
   calcColumnRow,
   beamSheetTotals,
   columnSheetTotals,
+  clearBlankRowScope,
   inheritedFloors,
   isBlankManageRow,
   manageRowQuantity,
@@ -272,7 +273,9 @@ export default function FireproofEstimatePage({
       setCommonList(normalizeCommonRows(parseJson(record.commonJson, [])));
       setDrawing(parseDrawing(record.drawingJson));
       const loadedRows = withTrailingBlankManageRow(
-        normalizeManageRows(parseJson(record.estimateJson, [])),
+        clearBlankRowScope(
+          normalizeManageRows(parseJson(record.estimateJson, [])),
+        ),
       );
       setRows(loadedRows);
       setRecordId(record.id);

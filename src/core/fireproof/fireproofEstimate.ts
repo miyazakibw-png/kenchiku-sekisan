@@ -184,7 +184,7 @@ export function newManageRow(): FireproofManageRow {
   return {
     id: estimateId("m"),
     part1: "",
-    scope: "柱",
+    scope: "",
     multiplier: null,
     calcType: "column",
     detail: emptyManageDetail(),
@@ -213,6 +213,16 @@ export function isBlankManageRow(row: FireproofManageRow): boolean {
     row.beamSheet.thickness === null &&
     row.beamSheet.rows.length === 0 &&
     !hasLowerContent(row.generalSheet)
+  );
+}
+
+export function clearBlankRowScope(
+  rows: FireproofManageRow[],
+): FireproofManageRow[] {
+  return rows.map((row) =>
+    row.scope === "柱" && isBlankManageRow(row)
+      ? { ...row, scope: "" }
+      : row,
   );
 }
 

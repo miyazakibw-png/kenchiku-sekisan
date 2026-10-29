@@ -7,6 +7,7 @@ import {
   calcBeamRow,
   calcColumnRow,
   columnSheetTotals,
+  clearBlankRowScope,
   newBeamRow,
   slabFactor,
   defaultWallLabels,
@@ -54,6 +55,8 @@ describe("耐火被覆・塗装入力表", () => {
     expect(initial).toHaveLength(30);
     expect(new Set(initial.map((row) => row.id)).size).toBe(30);
     expect(initial.every(isBlankManageRow)).toBe(true);
+    expect(initial.every((row) => row.scope === "")).toBe(true);
+    expect(initial.every((row) => row.calcType === "column")).toBe(true);
 
     const filled = { ...newManageRow(), part1: "1階" };
     const withTrailing = withTrailingBlankManageRow([filled]);
@@ -63,6 +66,26 @@ describe("耐火被覆・塗装入力表", () => {
     expect(withTrailingBlankManageRow(withTrailing)).toBe(withTrailing);
   });
 
+  it("読み込み時に既存の空行だけ柱の積算範囲を空欄にする", () => {
+    const [legacyBlank, legacyFilled] = normalizeManageRows([
+      { scope: "column" },
+      { scope: "column", part1: "1階" },
+    ]);
+    const customBlank = { ...newManageRow(), scope: "梁型" };
+    const cleaned = clearBlankRowScope([
+      legacyBlank,
+      legacyFilled,
+      customBlank,
+    ]);
+
+    expect(legacyBlank.scope).toBe("柱");
+    expect(cleaned[0].scope).toBe("");
+    expect(cleaned[0].calcType).toBe("column");
+    expect(cleaned[1]).toBe(legacyFilled);
+    expect(cleaned[1].scope).toBe("柱");
+    expect(cleaned[2]).toBe(customBlank);
+  });
+
   it("管理表の初期空行は集計明細を作らない", () => {
     expect(
       entriesFromFireproofSheet(
@@ -70,6 +93,11 @@ describe("耐火被覆・塗装入力表", () => {
         list(),
         new Map(),
       ),
+    ).toEqual([]);
+    const scopeOnly = { ...newManageRow(), scope: "柱" };
+    expect(isBlankManageRow(scopeOnly)).toBe(true);
+    expect(
+      entriesFromFireproofSheet([scopeOnly], list(), new Map()),
     ).toEqual([]);
     expect(
       entriesFromFireproofSheet(
