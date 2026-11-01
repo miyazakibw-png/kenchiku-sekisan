@@ -179,6 +179,13 @@
   text-decoration: underline;
 }
 
+.pit-quantities td.quantity-symbol,
+.pit-list td.quantity-symbol {
+  cursor: pointer;
+  color: #0b5cab;
+  text-decoration: underline;
+}
+
 .pit-list td.corners {
   white-space: nowrap;
 }

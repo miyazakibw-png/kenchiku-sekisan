@@ -65,6 +65,7 @@ import {
   type PitSide,
   type PitBeam,
   type PitDirection,
+  type PitQuantity,
   type PitShape,
   type PitWall,
   type PitSleeve,
@@ -151,6 +152,97 @@ const DIRECTIONS: { key: PitDirection; label: string }[] = [
   { key: "down", label: "↓（下）" },
   { key: "free", label: "自由（位置指定）" },
 ];
+
+type PitQuantityField = keyof Pick<
+  PitQuantity,
+  | "floorArea"
+  | "wallLength"
+  | "columnLength"
+  | "depth"
+  | "wallArea"
+  | "columnArea"
+  | "beamBottomArea"
+  | "beamArea"
+  | "ceilingArea"
+>;
+
+interface PitQuantityColumn {
+  field: PitQuantityField;
+  label: string;
+  symbol: string;
+  totalSymbol: string | null;
+  showInPitList: boolean;
+}
+
+const PIT_QUANTITY_COLUMNS: readonly PitQuantityColumn[] = [
+  {
+    field: "floorArea",
+    label: "床面積",
+    symbol: "FA",
+    totalSymbol: "FA",
+    showInPitList: true,
+  },
+  {
+    field: "wallLength",
+    label: "壁面長さ",
+    symbol: "WL",
+    totalSymbol: "WL",
+    showInPitList: true,
+  },
+  {
+    field: "columnLength",
+    label: "柱長さ",
+    symbol: "CL",
+    totalSymbol: "CL",
+    showInPitList: true,
+  },
+  {
+    field: "depth",
+    label: "深さ",
+    symbol: "DP",
+    totalSymbol: null,
+    showInPitList: false,
+  },
+  {
+    field: "wallArea",
+    label: "壁面面積",
+    symbol: "WA",
+    totalSymbol: "WA",
+    showInPitList: true,
+  },
+  {
+    field: "columnArea",
+    label: "柱面積",
+    symbol: "HA",
+    totalSymbol: "HA",
+    showInPitList: false,
+  },
+  {
+    field: "beamBottomArea",
+    label: "梁底面積",
+    symbol: "GB",
+    totalSymbol: "GB",
+    showInPitList: true,
+  },
+  {
+    field: "beamArea",
+    label: "梁面積",
+    symbol: "GA",
+    totalSymbol: "GA",
+    showInPitList: true,
+  },
+  {
+    field: "ceilingArea",
+    label: "天井面積",
+    symbol: "CA",
+    totalSymbol: "CA",
+    showInPitList: true,
+  },
+];
+
+const PIT_LIST_QUANTITY_COLUMNS = PIT_QUANTITY_COLUMNS.filter(
+  (column) => column.showInPitList,
+);
 
 function parseJson<T>(json: string, fallback: T): T {
   try {
@@ -1734,42 +1826,48 @@ export default function PitSheetPage({
       <thead>
         <tr>
           <th>記号</th>
-          <th className="num">床面積</th>
-          <th className="num">壁面長さ</th>
-          <th className="num">柱長さ</th>
-          <th className="num">深さ</th>
-          <th className="num">壁面面積</th>
-          <th className="num">柱面積</th>
-          <th className="num">梁底面積</th>
-          <th className="num">梁面積</th>
-          <th className="num">天井面積</th>
+          {PIT_QUANTITY_COLUMNS.map((column) => (
+            <th className="num" key={column.field}>
+              {column.label}（{column.symbol}）
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
         <tr className="pit-total">
           <td>ＰＡ</td>
-          <td className="num">{formatNumber(total.floorArea, 2)}</td>
-          <td className="num">{formatNumber(total.wallLength, 2)}</td>
-          <td className="num">{formatNumber(total.columnLength, 2)}</td>
-          <td className="num"></td>
-          <td className="num">{formatNumber(total.wallArea, 2)}</td>
-          <td className="num">{formatNumber(total.columnArea, 2)}</td>
-          <td className="num">{formatNumber(total.beamBottomArea, 2)}</td>
-          <td className="num">{formatNumber(total.beamArea, 2)}</td>
-          <td className="num">{formatNumber(total.ceilingArea, 2)}</td>
+          {PIT_QUANTITY_COLUMNS.map((column) => {
+            const symbol = column.totalSymbol;
+            return symbol ? (
+              <td
+                className="num quantity-symbol"
+                key={column.field}
+                onClick={() => useSymbol(symbol)}
+                title={`クリックで計算式へ（${symbol}）`}
+              >
+                {formatNumber(total[column.field], 2)}
+              </td>
+            ) : (
+              <td className="num" key={column.field}></td>
+            );
+          })}
         </tr>
-        {quantities.map((quantity) => (
+        {quantities.map((quantity, index) => (
           <tr key={quantity.id}>
             <td>{quantity.symbol}</td>
-            <td className="num">{formatNumber(quantity.floorArea, 2)}</td>
-            <td className="num">{formatNumber(quantity.wallLength, 2)}</td>
-            <td className="num">{formatNumber(quantity.columnLength, 2)}</td>
-            <td className="num">{formatNumber(quantity.depth, 2)}</td>
-            <td className="num">{formatNumber(quantity.wallArea, 2)}</td>
-            <td className="num">{formatNumber(quantity.columnArea, 2)}</td>
-            <td className="num">{formatNumber(quantity.beamBottomArea, 2)}</td>
-            <td className="num">{formatNumber(quantity.beamArea, 2)}</td>
-            <td className="num">{formatNumber(quantity.ceilingArea, 2)}</td>
+            {PIT_QUANTITY_COLUMNS.map((column) => {
+              const symbol = `${column.symbol}${index + 1}`;
+              return (
+                <td
+                  className="num quantity-symbol"
+                  key={column.field}
+                  onClick={() => useSymbol(symbol)}
+                  title={`クリックで計算式へ（${symbol}）`}
+                >
+                  {formatNumber(quantity[column.field], 2)}
+                </td>
+              );
+            })}
           </tr>
         ))}
       </tbody>
@@ -1904,13 +2002,11 @@ export default function PitSheetPage({
                 <th>置き方</th>
                 <th>そろえ／Y位置</th>
                 <th className="num">すき間／X位置</th>
-                <th className="num">床面積</th>
-                <th className="num">壁面長さ</th>
-                <th className="num">柱長さ</th>
-                <th className="num">壁面面積</th>
-                <th className="num">梁底面積</th>
-                <th className="num">梁面積</th>
-                <th className="num">天井面積</th>
+                {PIT_LIST_QUANTITY_COLUMNS.map((column) => (
+                  <th className="num" key={column.field}>
+                    {column.label}（{column.symbol}）
+                  </th>
+                ))}
                 <th></th>
               </tr>
             </thead>
@@ -1925,13 +2021,21 @@ export default function PitSheetPage({
                   ＰＡ
                 </td>
                 <td colSpan={12}>合計（全{pitWord}）</td>
-                <td className="num">{formatNumber(total.floorArea, 2)}</td>
-                <td className="num">{formatNumber(total.wallLength, 2)}</td>
-                <td className="num">{formatNumber(total.columnLength, 2)}</td>
-                <td className="num">{formatNumber(total.wallArea, 2)}</td>
-                <td className="num">{formatNumber(total.beamBottomArea, 2)}</td>
-                <td className="num">{formatNumber(total.beamArea, 2)}</td>
-                <td className="num">{formatNumber(total.ceilingArea, 2)}</td>
+                {PIT_LIST_QUANTITY_COLUMNS.map((column) => {
+                  const symbol = column.totalSymbol;
+                  return symbol ? (
+                    <td
+                      className="num quantity-symbol"
+                      key={column.field}
+                      onClick={() => useSymbol(symbol)}
+                      title={`クリックで計算式へ（${symbol}）`}
+                    >
+                      {formatNumber(total[column.field], 2)}
+                    </td>
+                  ) : (
+                    <td className="num" key={column.field}></td>
+                  );
+                })}
                 <td></td>
               </tr>
               {pits.map((pit, index) => (
@@ -2218,27 +2322,19 @@ export default function PitSheetPage({
                       />
                     )}
                   </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.floorArea ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.wallLength ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.columnLength ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.wallArea ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.beamBottomArea ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.beamArea ?? 0, 2)}
-                  </td>
-                  <td className="num">
-                    {formatNumber(quantities[index]?.ceilingArea ?? 0, 2)}
-                  </td>
+                  {PIT_LIST_QUANTITY_COLUMNS.map((column) => {
+                    const symbol = `${column.symbol}${index + 1}`;
+                    return (
+                      <td
+                        className="num quantity-symbol"
+                        key={column.field}
+                        onClick={() => useSymbol(symbol)}
+                        title={`クリックで計算式へ（${symbol}）`}
+                      >
+                        {formatNumber(quantities[index]?.[column.field] ?? 0, 2)}
+                      </td>
+                    );
+                  })}
                   <td>
                     {pitNotch(pit) && (
                       <button
@@ -3018,8 +3114,11 @@ export default function PitSheetPage({
         を追加して置き方を「自由（位置指定）」にし、X位置・Y位置を入れます。
         <br />
         Ｐ記号（P1・P2…）は、その行のセット部位で中身が変わります（床＝床面積／壁＝壁面積／梁型＝梁面積／天井＝天井面積）。
-        FA:床面積／WL:壁面長さ／WA:壁面積／GB:梁底面積／GA:梁面積／CA:天井面積
-        は全部の合計、FA1・WA1・CA1・DP1 …は{pitWord}ごとです。
+        FA:床面積／WL:壁面長さ／CL:柱長さ／HA:柱面積／WA:壁面面積／GB:梁底面積／GA:梁面積／CA:天井面積
+        は全部の合計、FA1・WL1・CL1・HA1・DP1・WA1・GB1・GA1・CA1 …は{pitWord}
+        ごとです。
+        <br />
+        表の数字をクリックすると、その記号が計算式に入ります。
       </p>
     </div>
   );
