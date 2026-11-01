@@ -1827,8 +1827,9 @@ export default function PitSheetPage({
         <tr>
           <th>記号</th>
           {PIT_QUANTITY_COLUMNS.map((column) => (
-            <th className="num" key={column.field}>
-              {column.label}（{column.symbol}）
+            <th className="num quantity-header" key={column.field}>
+              <span className="quantity-header-label">{column.label}</span>
+              <span className="quantity-header-symbol">{column.symbol}</span>
             </th>
           ))}
         </tr>
@@ -2003,8 +2004,9 @@ export default function PitSheetPage({
                 <th>そろえ／Y位置</th>
                 <th className="num">すき間／X位置</th>
                 {PIT_LIST_QUANTITY_COLUMNS.map((column) => (
-                  <th className="num" key={column.field}>
-                    {column.label}（{column.symbol}）
+                  <th className="num quantity-header" key={column.field}>
+                    <span className="quantity-header-label">{column.label}</span>
+                    <span className="quantity-header-symbol">{column.symbol}</span>
                   </th>
                 ))}
                 <th></th>

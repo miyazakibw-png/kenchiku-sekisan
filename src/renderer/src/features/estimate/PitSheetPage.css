@@ -186,8 +186,40 @@
   text-decoration: underline;
 }
 
+.pit-quantities th.quantity-header,
+.pit-list table.grid th.quantity-header {
+  width: 51px;
+  min-width: 51px;
+  text-align: center;
+  white-space: normal;
+}
+
+.pit-quantities th.quantity-header .quantity-header-label,
+.pit-list table.grid th.quantity-header .quantity-header-label {
+  display: block;
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.pit-quantities th.quantity-header .quantity-header-symbol,
+.pit-list table.grid th.quantity-header .quantity-header-symbol {
+  display: block;
+  color: #0b5cab;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .pit-list td.corners {
   white-space: nowrap;
+}
+
+.pit-quantities td.quantity-symbol,
+.pit-list td.quantity-symbol {
+  width: 44px;
+  min-width: 44px;
 }
 
 .pit-list td.corners label {
