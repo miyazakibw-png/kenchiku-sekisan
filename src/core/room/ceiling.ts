@@ -1006,6 +1006,79 @@ export function ceilingBaseHeights(
 }
 
 /**
+ * 区画一覧で高さを入力した区画に取りつく梁型・下がり壁の天井高さを補う。
+ * 手入力の高さと下がり天井の判定は、既存の取りつく天井高さを優先する。
+ */
+export function regionBaseHeights(
+  elements: CeilingElement[],
+  solved: SolvedShape,
+  roomCeilingHeight: number | null,
+  heights: CeilingRegionHeight[] = [],
+): Map<string, number | null> {
+  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  const points = solved.points;
+  if (heights.length === 0 || roomCeilingHeight === null || points.length < 3)
+    return bases;
+
+  const notedRegions = ceilingRegions(
+    elements,
+    solved,
+    roomCeilingHeight,
+    false,
+    false,
+    heights,
+  ).filter(
+    (region) =>
+      region.height !== null &&
+      heights.some((height) =>
+        region.parts.some((part) => inside(part, height.at)),
+      ),
+  );
+  const heightAt = (target: CeilingPoint): number | null =>
+    notedRegions.find((region) =>
+      region.parts.some((part) => inside(part, target)),
+    )?.height ?? null;
+
+  elements.forEach((element) => {
+    if (
+      (element.baseHeight !== null && element.baseHeight !== undefined) ||
+      (element.free ?? null) !== null ||
+      (element.kind !== "wallBeam" &&
+        element.kind !== "dropWall" &&
+        element.kind !== "ceilingBeam") ||
+      element.edgeId === null
+    )
+      return;
+    const index = solved.edges.findIndex((row) => row.id === element.edgeId);
+    if (index < 0 || index >= points.length) return;
+    const from = points[index];
+    const to = points[(index + 1) % points.length];
+    const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+    const normal = inwardNormal(points, index);
+    const probeAt = (distance: number): CeilingPoint => ({
+      x: midpoint.x + normal.x * distance,
+      y: midpoint.y + normal.y * distance,
+    });
+
+    if (element.kind === "ceilingBeam") {
+      const offset = element.offset ?? 0;
+      const width = element.width ?? 0;
+      const found = [offset - 0.005, offset + width + 0.005]
+        .filter((distance) => distance > 0)
+        .map((distance) => heightAt(probeAt(distance)))
+        .filter((height): height is number => height !== null);
+      if (found.length > 0) bases.set(element.id, Math.max(...found));
+      return;
+    }
+
+    const height = heightAt(probeAt((element.width ?? 0) + 0.005));
+    if (height !== null) bases.set(element.id, height);
+  });
+
+  return bases;
+}
+
+/**
  * 保存済みの「壁高さ（範囲の天井高さ）」をＨ（梁せい・下がり）に直す。
  * 計算書をコピーしたときに、元の部屋の天井高さで入れた壁高さが残らないようにする。
  */
@@ -2048,9 +2121,9 @@ function regionPieces(
 
 /**
  * 壁・曲面壁・柱ごとの高さ（その辺が面する天井区画の高さで重み付けした実効値）。
- * 低い天井の区画に面する部分はその区画の高さ、残りは部屋の天井高さで壁面積・柱面積を計算する。
+ * 天井区画に面する部分は区画の高さ（高い区画も含む）、区画の外や高さ未定部分は部屋の天井高さで壁面積・柱面積を計算する。
  * 区画の境目で分かれる辺（下がり天井が壁に直角に付くとき）は長さの割合で合わせる。
- * 高さが決まっていない区画・部屋の天井より高い区画に面する部分は部屋の天井高さのまま。
+ * 梁型の帯の中は取りつく天井高さからＨを引いた高さにする。
  */
 export function wallEdgeHeights(
   elements: CeilingElement[],
@@ -2077,7 +2150,8 @@ export function wallEdgeHeights(
   );
   // 壁に付く梁型がある壁は、壁面が梁底（取りつく天井高さ−Ｈ）までなのでその高さにする
   // （梁は壁から壁までなので辺全体に効く。複数あればいちばん低い梁底に合わせる）
-  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  const bases = regionBaseHeights(elements, solved, roomCeilingHeight, heights);
+  const bands = beamBands(elements, solved, roomCeilingHeight);
   const beamHeightByEdge = new Map<string, number>();
   for (const element of elements) {
     if (
@@ -2148,12 +2222,22 @@ export function wallEdgeHeights(
       const region = regions.find((row) =>
         row.parts.some((part) => inside(part, probe)),
       );
-      const height = region?.height ?? null;
-      // 低い区画に面する部分だけ下げる（高い区画・高さ未定・区画の外はそのまま）
-      const effective =
-        height === null || height >= roomCeilingHeight
-          ? roomCeilingHeight
-          : height;
+      // 区画内はその高さ、取付辺の壁付き梁型は梁底、ほかの帯は取りつく天井高さ
+      let effective: number;
+      if (region !== undefined) {
+        effective = region.height ?? roomCeilingHeight;
+      } else {
+        const band = bands.find((row) => insideBand(points, row, probe));
+        if (band === undefined) {
+          effective = roomCeilingHeight;
+        } else {
+          const base = bases.get(band.element.id) ?? roomCeilingHeight;
+          effective =
+            band.element.kind === "wallBeam" && band.index === index
+              ? base - (elementDrop(band.element, base) ?? 0)
+              : base;
+        }
+      }
       weighted += (bounds[i + 1] - bounds[i]) * effective;
     }
     // 壁付き梁型の梁底より上は壁面に入らないので、梁底の高さまで下げる
@@ -2161,7 +2245,7 @@ export function wallEdgeHeights(
     if (beamHeight !== undefined && beamHeight < weighted) {
       weighted = beamHeight;
     }
-    if (weighted < roomCeilingHeight - 1e-6) {
+    if (Math.abs(weighted - roomCeilingHeight) > 1e-6) {
       result.set(edge.id, round2(weighted));
     }
   }
@@ -2629,7 +2713,7 @@ export function ceilingQuantities(
 
   // 下がり天井・天井付梁型は壁や、自分より低くなる線のところで止まる
   const lines = ceilingLines(elements, solved, roomCeilingHeight);
-  const bases = ceilingBaseHeights(elements, solved, roomCeilingHeight);
+  const bases = regionBaseHeights(elements, solved, roomCeilingHeight, heights);
   // 下がり天井は、段差になっている所の長さと、その見付面積（長さ×段差）で数える
   const spans = dropCeilingSpans(elements, solved, roomCeilingHeight, heights);
 

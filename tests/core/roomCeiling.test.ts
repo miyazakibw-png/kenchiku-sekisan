@@ -1244,6 +1244,106 @@ describe("低い天井の区画に面している壁の壁高さ", () => {
     expect(heights.size).toBe(0);
   });
 
+  it("区画一覧で入力した高い区画の高さを壁と梁型に反映する", () => {
+    const solved = solveShape({
+      edges: [
+        edge("E", 1.97, "opening"),
+        edge("S", 0.46),
+        edge("S", 1.03, "opening"),
+        edge("S", 4.2),
+        edge("W", 4.11),
+        edge("N", 2.39),
+        edge("W", 0.38),
+        edge("N", 0.96),
+        edge("E", 1.85),
+        edge("S", 0.15),
+        edge("E", 1.08, "column"),
+        edge("N", 0.95, "column"),
+        edge("W", 0.41),
+        edge("N", 1.54),
+      ],
+    });
+    const edges = solved.edges;
+    const elements = [
+      element("wallBeam", null, { width: 0.5, height: 1.2 }),
+      element("wallBeam", edges[13].id, { width: 0.3 }),
+      element("dropCeiling", edges[0].id, { offset: 1.8, length: 1.56 }),
+    ];
+    const c1 = ceilingRegions(elements, solved, 2.7).find(
+      (region) => region.code === "C1",
+    )!;
+    expect(c1.area).toBe(2.98);
+    const heights = noteRegionHeight([], c1, -1.28);
+    const edgeHeights = wallEdgeHeights(elements, solved, 2.7, heights);
+
+    expect(
+      edges
+        .map((row, index) => ({
+          no: index + 1,
+          height: edgeHeights.get(row.id),
+        }))
+        .filter((row) => row.height !== undefined),
+    ).toEqual([
+      { no: 1, height: 3.98 },
+      { no: 2, height: 3.98 },
+      { no: 3, height: 3.98 },
+      { no: 4, height: 2.79 },
+      { no: 12, height: 3.05 },
+      { no: 13, height: 3.98 },
+      { no: 14, height: 3.98 },
+    ]);
+    expect(edges.slice(4, 11).every((row) => !edgeHeights.has(row.id))).toBe(
+      true,
+    );
+
+    const quantities = roomQuantities(solved, 2.7, [], undefined, 0, edgeHeights);
+    expect(quantities.wallArea).toBe(47.88);
+    expect(quantities.columnArea).toBe(5.81);
+    const ceiling = ceilingQuantities(elements, solved, 2.7, heights);
+    expect(ceiling.items[1].baseHeight).toBe(3.98);
+    expect(ceiling.items[0].baseHeight).toBe(2.7);
+  });
+
+  it("高い区画と通常区画に面する壁の高さを長さで重み付けする", () => {
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[1].id, {
+      offset: 2,
+      height: null,
+    });
+    const right = ceilingRegions([drop], solved, 3.0).find(
+      (region) => region.center.x > 2.5,
+    )!;
+    const heights = noteRegionHeight([], right, -1.0);
+    const edgeHeights = wallEdgeHeights([drop], solved, 3.0, heights);
+
+    expect(edgeHeights.get(solved.edges[1].id)).toBe(4.0);
+    expect(edgeHeights.get(solved.edges[0].id)).toBe(3.5);
+    expect(edgeHeights.get(solved.edges[2].id)).toBe(3.5);
+    expect(edgeHeights.has(solved.edges[3].id)).toBe(false);
+  });
+
+  it("高い区画に付く壁梁型は高い取りつく天井からＨを引く", () => {
+    const solved = shape();
+    const drop = element("dropCeiling", solved.edges[1].id, {
+      offset: 2,
+      height: null,
+    });
+    const right = ceilingRegions([drop], solved, 3.0).find(
+      (region) => region.center.x > 2.5,
+    )!;
+    const heights = noteRegionHeight([], right, -1.0);
+    const beam = element("wallBeam", solved.edges[1].id, {
+      width: 0.15,
+      height: 0.6,
+    });
+    const elements = [drop, beam];
+    const edgeHeights = wallEdgeHeights(elements, solved, 3.0, heights);
+
+    expect(edgeHeights.get(solved.edges[1].id)).toBe(3.4);
+    expect(ceilingQuantities(elements, solved, 3.0, heights).items[1].baseHeight)
+      .toBe(4.0);
+  });
+
   it("壁高さを手で入れた辺は形の計算でもその値を持つ", () => {
     const solved = solveShape({
       edges: [
