@@ -152,6 +152,11 @@
   grid-column: 4;
 }
 
+.room-sheet-page > .upper:not(.expanded) > .room-fittings {
+  max-height: calc(33vh + 22px - 16px);
+  overflow-x: scroll;
+}
+
 .room-sheet-page .edges input.num {
   width: 38px;
 }
@@ -845,6 +850,9 @@
 
 .room-sheet-page .room-fittings table.grid {
   font-size: 11px;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .room-sheet-page .room-fittings table.grid th:last-child,
