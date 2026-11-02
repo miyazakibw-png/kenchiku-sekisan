@@ -246,6 +246,12 @@ function parseRoomFittings(json: string): RoomSheetFitting[] {
   }
 }
 
+function persistableRoomFittings(
+  fittings: RoomSheetFitting[],
+): RoomSheetFitting[] {
+  return fittings.filter((fitting) => fitting.symbol.trim() !== "");
+}
+
 function newRoomFittingId(): string {
   return `f${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 }
@@ -875,7 +881,7 @@ export default function RoomSheetPage({
   const { markSaved } = useSaveOnLeave(
     {
       shape,
-      roomFittings,
+      roomFittings: persistableRoomFittings(roomFittings),
       ceiling,
       codes,
       lower,
@@ -898,12 +904,13 @@ export default function RoomSheetPage({
       const loaded = await window.sekisan.getRoomSheet(row.id as number);
       // 天井高さは部位別入力表の値を優先（計算書をコピーしたときに元の高さが残らないように）
       const height = rowCeilingRef.current ?? loaded.ceilingHeight;
+      const loadedRoomFittings = parseRoomFittings(loaded.fittingsJson);
       setSheet(loaded);
       setCeilingHeight(height);
       setShape(parseShape(loaded.shapeJson));
       setShapePast([]);
       setShapeFuture([]);
-      setRoomFittings(parseRoomFittings(loaded.fittingsJson));
+      setRoomFittings(loadedRoomFittings);
       setCeiling(parseCeiling(loaded.ceilingJson, height));
       setCodes(parseCeilingCodes(loaded.ceilingCodesJson));
       ceilingHistory.clear();
@@ -913,17 +920,17 @@ export default function RoomSheetPage({
       underlayTool.setMoveAll(parseUnderlayLocked(loaded.traceJson));
       underlayTool.setScalePending(parseScalePending(loaded.traceJson));
       markSaved({
-        trace: parseTrace(loaded.traceJson),
-        underlays: parseUnderlays(loaded.traceJson),
-        underlayLocked: parseUnderlayLocked(loaded.traceJson),
-        scalePending: parseScalePending(loaded.traceJson),
         shape: parseShape(loaded.shapeJson),
-        roomFittings: parseRoomFittings(loaded.fittingsJson),
+        roomFittings: persistableRoomFittings(loadedRoomFittings),
         ceiling: parseCeiling(loaded.ceilingJson, height),
         codes: parseCeilingCodes(loaded.ceilingCodesJson),
         lower: parseLower(loaded.lowerJson),
         // 保存してある高さと違うときは、閉じるときに直した高さで保存させる
         ceilingHeight: loaded.ceilingHeight,
+        trace: parseTrace(loaded.traceJson),
+        underlays: parseUnderlays(loaded.traceJson),
+        underlayLocked: parseUnderlayLocked(loaded.traceJson),
+        scalePending: parseScalePending(loaded.traceJson),
       });
       setOptions(await window.sekisan.getMasterOptions(project.id));
       setFittings(await window.sekisan.listFittings(project.id));
@@ -1388,10 +1395,11 @@ export default function RoomSheetPage({
     if (!sheet || printMode) return;
     // 入力の無いセット明細は保存時に取り除く（画面からも消す）
     const trimmed = trimEmptySets(lower);
+    const savedRoomFittings = persistableRoomFittings(roomFittings);
     setLower(trimmed);
     markSaved({
       shape,
-      roomFittings,
+      roomFittings: savedRoomFittings,
       ceiling,
       codes,
       lower: trimmed,
@@ -1404,7 +1412,7 @@ export default function RoomSheetPage({
     const saved = await window.sekisan.saveRoomSheet({
       id: sheet.id,
       shapeJson: JSON.stringify(shape),
-      fittingsJson: JSON.stringify(roomFittings),
+      fittingsJson: JSON.stringify(savedRoomFittings),
       ceilingJson: JSON.stringify(ceiling),
       ceilingCodesJson: JSON.stringify(codes),
       lowerJson: JSON.stringify(trimmed),
@@ -2111,6 +2119,46 @@ export default function RoomSheetPage({
       { id: newRoomFittingId(), symbol, multiplier, edgeId: null },
     ]);
   }, []);
+
+  const insertRoomFittingAbove = useCallback((index: number): void => {
+    const inserted = {
+      id: newRoomFittingId(),
+      symbol: "",
+      multiplier: 1,
+      edgeId: null,
+    };
+    setRoomFittings((current) => {
+      const next = [...current];
+      next.splice(index, 0, inserted);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLInputElement>(
+          `.room-fittings input[data-room-fitting-id="${inserted.id}"]`,
+        )
+        ?.focus();
+    });
+  }, []);
+
+  const moveRoomFitting = useCallback(
+    (index: number, offset: number): void => {
+      setRoomFittings((current) => {
+        const target = index + offset;
+        if (
+          index < 0 ||
+          index >= current.length ||
+          target < 0 ||
+          target >= current.length
+        )
+          return current;
+        const next = [...current];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      });
+    },
+    [],
+  );
 
   /**
    * 表のいちばん下の空行に書いた建具を、この部屋へ足す。
@@ -4559,12 +4607,14 @@ export default function RoomSheetPage({
                 (fitting) => fitting.symbol === item.symbol,
               );
               const computed = master ? computeFitting(master) : null;
-              const unknown = master === undefined;
+              const unknown =
+                item.symbol.trim() !== "" && master === undefined;
               return (
                 <tr key={item.id} className={unknown ? "unknown" : ""}>
                   <td className="symbol">
                     <input
                       list="room-fitting-symbols"
+                      data-room-fitting-id={item.id}
                       onMouseDown={selectWholeOnFirstClick}
                       onFocus={(e) => e.currentTarget.select()}
                       defaultValue={item.symbol}
@@ -4633,16 +4683,43 @@ export default function RoomSheetPage({
                     {formatNumber(computed?.reinforcement ?? null, 2)}
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setRoomFittings((current) =>
-                          current.filter((each) => each.id !== item.id),
-                        )
-                      }
-                    >
-                      🗑
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        title="この行の上へ空行を挿入"
+                        onClick={() => insertRoomFittingAbove(index)}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ上へ"
+                        disabled={index === 0}
+                        onClick={() => moveRoomFitting(index, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        title="この行を1つ下へ"
+                        disabled={index === roomFittings.length - 1}
+                        onClick={() => moveRoomFitting(index, 1)}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="この行を削除"
+                        onClick={() =>
+                          setRoomFittings((current) =>
+                            current.filter((each) => each.id !== item.id),
+                          )
+                        }
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

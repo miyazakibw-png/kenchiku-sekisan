@@ -847,6 +847,35 @@
   font-size: 11px;
 }
 
+.room-sheet-page .room-fittings table.grid th:last-child,
+.room-sheet-page .room-fittings table.grid td:last-child {
+  min-width: 108px;
+  white-space: nowrap;
+}
+
+.room-sheet-page .room-fittings .row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.room-sheet-page .room-fittings .row-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 22px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.room-sheet-page .room-fittings .row-actions .row-delete {
+  color: #b91c1c;
+}
+
 /* 記号は建具名がそのまま読めるよう広くとる */
 .room-sheet-page .room-fittings th.symbol,
 .room-sheet-page .room-fittings td.symbol {
