@@ -511,6 +511,25 @@ export function furnitureRow(patch: Partial<FurnitureRow> = {}): FurnitureRow {
   };
 }
 
+/** 建具表からの連動項目だけの建具明細作成表は空とみなす。 */
+export function isBlankFittingDetailSheet(
+  rows: FurnitureRow[],
+  columns: FurnitureColumn[],
+): boolean {
+  return (
+    rows.every(
+      (row) =>
+        row.subjectId === null &&
+        row.partNumber === null &&
+        row.detailNumber === null &&
+        row.detail.detailNumber === null &&
+        row.detail.edited.length === 0 &&
+        row.quantity.trim() === "" &&
+        Object.values(row.values ?? {}).every((value) => value.trim() === ""),
+    ) && columns.every(isEmptyColumn)
+  );
+}
+
 /** 表を丸ごと写す（一覧のコピー・貼り付け用。行のidは付け直す） */
 export function copyFurnitureRows(rows: FurnitureRow[]): FurnitureRow[] {
   return rows.map((row) => ({

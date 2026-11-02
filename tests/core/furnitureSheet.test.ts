@@ -18,6 +18,7 @@ import {
   hasModel,
   hasShape,
   hasTripleWidth,
+  isBlankFittingDetailSheet,
   pasteFurnitureRows,
   resolveFurnitureRows,
   revertFurnitureDetail,
@@ -1009,5 +1010,47 @@ describe("家具計算書の行コピー・貼り付け", () => {
   it("何もコピーしていなければそのまま", () => {
     const rows = sample();
     expect(pasteFurnitureRows(rows, 1, [], "insert")).toBe(rows);
+  });
+});
+
+describe("建具明細作成表の空判定", () => {
+  it("建具表からの連動項目だけなら空", () => {
+    const row = furnitureRow({
+      part: "AWD1",
+      width: "8040",
+      height: "2000",
+      nameSymbol: "ドア",
+      fittingId: 1,
+    });
+
+    expect(isBlankFittingDetailSheet([row], [])).toBe(true);
+  });
+
+  it("行または明細の明細番号があれば空ではない", () => {
+    expect(
+      isBlankFittingDetailSheet([furnitureRow({ detailNumber: 1 })], []),
+    ).toBe(false);
+
+    const row = furnitureRow();
+    row.detail.detailNumber = 1;
+    expect(isBlankFittingDetailSheet([row], [])).toBe(false);
+  });
+
+  it("数量が入力されていれば空ではない", () => {
+    expect(
+      isBlankFittingDetailSheet([furnitureRow({ quantity: "2" })], []),
+    ).toBe(false);
+  });
+
+  it("タテ明細の値が入力されていれば空ではない", () => {
+    expect(
+      isBlankFittingDetailSheet([furnitureRow({ values: { c1: "1" } })], []),
+    ).toBe(false);
+  });
+
+  it("部位番号が入ったタテ明細の列があれば空ではない", () => {
+    expect(
+      isBlankFittingDetailSheet([], [furnitureColumn({ partNumber: 1 })]),
+    ).toBe(false);
   });
 });

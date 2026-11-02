@@ -481,6 +481,8 @@ export interface FurnitureSheetSummary {
   part2Split: number;
   multiplier: number;
   kind: string;
+  /** 中身の無い建具明細作成表（一括印刷に出さない） */
+  blank: boolean;
   note: string;
   displayOrder: number;
   /** 入力した行数 */

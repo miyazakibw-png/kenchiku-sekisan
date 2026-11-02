@@ -10,6 +10,7 @@ import {
   fittingsFromFurniture,
   furnitureSettings,
   furnitureSettingsFor,
+  isBlankFittingDetailSheet,
   isConvertibleFitting,
   isFittingDetailSheet,
   numberOf,
@@ -104,6 +105,18 @@ function countOf(json: string): number {
 function toSummary(
   row: typeof projectFurnitureSheets.$inferSelect,
 ): FurnitureSheetSummary {
+  let blank = false;
+  if (isFittingDetailSheet(row.kind)) {
+    const rows = parseJson<unknown>(row.rowsJson, []);
+    const columns = parseJson<unknown>(row.columnsJson, []);
+    blank =
+      Array.isArray(rows) &&
+      Array.isArray(columns) &&
+      isBlankFittingDetailSheet(
+        rows as FurnitureRow[],
+        columns as FurnitureColumn[],
+      );
+  }
   return {
     id: row.id,
     name: row.name,
@@ -112,6 +125,7 @@ function toSummary(
     part2Split: row.part2Split,
     multiplier: row.multiplier,
     kind: row.kind,
+    blank,
     note: row.note,
     displayOrder: row.displayOrder,
     rowCount: countOf(row.rowsJson),

@@ -76,7 +76,11 @@ export default function CalcPrintLauncher({
       setRows(toDrafts(await window.sekisan.listEstimateRows(project.id)));
       setOptions(await window.sekisan.getMasterOptions(project.id));
       setMiscSheets(await window.sekisan.listMiscSheets(project.id));
-      setFurnitureSheets(await window.sekisan.listFurnitureSheets(project.id));
+      setFurnitureSheets(
+        (await window.sekisan.listFurnitureSheets(project.id)).filter(
+          (sheet) => !sheet.blank,
+        ),
+      );
       const fireproof = await window.sekisan.getFireproofSheet(project.id);
       setFireproofRows(
         normalizeManageRows(parseJson(fireproof.estimateJson, [])).filter(
