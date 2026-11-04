@@ -151,6 +151,16 @@ interface Props {
 /** チェック表で合計する材種区分 */
 const FINISH_CATEGORY = "仕上";
 
+function fitUnderlayZoom(
+  canvasSize: number,
+  underlayScale: number | null,
+  viewSpan: number,
+): number {
+  return underlayScale !== null && canvasSize > 0
+    ? Math.max((canvasSize * underlayScale) / viewSpan, 0.05)
+    : 1;
+}
+
 const DIRECTION_LABEL: Record<EdgeDirection, string> = {
   E: "→ 右",
   S: "↓ 下",
@@ -641,6 +651,7 @@ export default function RoomSheetPage({
     baseY: number;
   } | null>(null);
   const [zoom, setZoom] = useState(1);
+  const autoFitPendingRef = useRef(false);
   /**
    * 角の○印を出すか（形が決まったら消して寸法を見やすくできます）。
    * 標準は「消す」。出す／消すは覚えておき、次に開いたときも同じ状態にする。印刷では出さない。
@@ -744,6 +755,7 @@ export default function RoomSheetPage({
   const promptBoxRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
+  const [canvasMeasured, setCanvasMeasured] = useState(false);
   const previousCanvasSizeRef = useRef(canvasSize);
   const [message, setMessage] = useState("");
 
@@ -900,6 +912,7 @@ export default function RoomSheetPage({
   rowCeilingRef.current = row.ceilingHeight;
 
   useEffect(() => {
+    autoFitPendingRef.current = row.id !== null;
     if (row.id === null) return;
     void (async () => {
       const loaded = await window.sekisan.getRoomSheet(row.id as number);
@@ -1077,8 +1090,10 @@ export default function RoomSheetPage({
     const element = canvasRef.current;
     if (!element) return;
     // 図は正方形のviewBoxを枠に収めて描くので、短い辺が実際の縮尺を決める
-    const measure = (): void =>
+    const measure = (): void => {
       setCanvasSize(Math.min(element.clientWidth, element.clientHeight));
+      setCanvasMeasured(true);
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     measure();
@@ -1099,6 +1114,43 @@ export default function RoomSheetPage({
     const ratio = canvasSize / previous;
     setZoom((current) => Math.min(Math.max(current * ratio, 0.05), 8));
   }, [canvasSize, underlayScale]);
+
+  useEffect(() => {
+    if (
+      !autoFitPendingRef.current ||
+      row.id === null ||
+      sheet?.estimateRowId !== row.id
+    ) {
+      return;
+    }
+    const hasUnderlay = underlayTool.underlays.some(
+      (item) => item.image !== "" && item.metersPerPixel > 0,
+    );
+    if (!hasUnderlay) {
+      autoFitPendingRef.current = false;
+      return;
+    }
+    if (underlayScale === null) return;
+    if (
+      !canvasMeasured ||
+      canvasSize <= 0 ||
+      underlayTool.mode === "move"
+    ) {
+      return;
+    }
+    previousCanvasSizeRef.current = canvasSize;
+    setZoom(fitUnderlayZoom(canvasSize, underlayScale, view.span));
+    autoFitPendingRef.current = false;
+  }, [
+    canvasMeasured,
+    canvasSize,
+    row.id,
+    sheet,
+    underlayScale,
+    underlayTool.mode,
+    underlayTool.underlays,
+    view.span,
+  ]);
 
   /** 寸法文字の大きさ（画面上で表と同じ12px相当になるようにする） */
   const dimFontSize = useMemo(
@@ -3899,11 +3951,7 @@ export default function RoomSheetPage({
               type="button"
               title="下敷きの図面があるときは、全体が画面に入る大きさにします（＋−で原寸の何倍かにできます）"
               onClick={() =>
-                setZoom(
-                  underlayScale !== null && canvasSize > 0
-                    ? Math.max((canvasSize * underlayScale) / view.span, 0.05)
-                    : 1,
-                )
+                setZoom(fitUnderlayZoom(canvasSize, underlayScale, view.span))
               }
             >
               全体
