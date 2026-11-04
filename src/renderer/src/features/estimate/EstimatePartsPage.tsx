@@ -657,11 +657,12 @@ export default function EstimatePartsPage({
         </button>
         <button
           type="button"
+          title="選んでいる行の上に小計行を挿入します"
           onClick={() =>
             editRows([
-              ...rows.slice(0, selected + 1),
+              ...rows.slice(0, selected),
               subtotalRow(),
-              ...rows.slice(selected + 1),
+              ...rows.slice(selected),
             ])
           }
         >
