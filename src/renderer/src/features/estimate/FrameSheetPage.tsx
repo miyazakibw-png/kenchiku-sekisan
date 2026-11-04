@@ -28,8 +28,10 @@ import {
   frameQuantities,
   frameSymbols,
   linePartVariables,
+  mirrorFrameDiagram,
   isPickedUp,
   nearMissWalls,
+  placeRoomPoint,
   reinforcementKind,
   reinforcementLength,
   snapPlacement,
@@ -74,6 +76,7 @@ import SheetCopyPicker from "./SheetCopyPicker";
 import { pdfPageImage } from "./pdfPage";
 import {
   loadImageSize,
+  mirrorUnderlay,
   rotateUnderlay,
   spotBesideBoxes,
   type UnderlayBox,
@@ -863,6 +866,103 @@ export default function FrameSheetPage({
       );
     },
     [pushDiagram, trace, traces, traceLocked, traceAngleText],
+  );
+
+  const flipDiagram = useCallback(
+    async (axis: "x" | "y") => {
+      if (
+        placements.length === 0 &&
+        manualLines.length === 0 &&
+        traces.length === 0
+      ) {
+        setMessage("反転するものがありません");
+        return;
+      }
+
+      const boxes = await Promise.all(
+        traces.map(async (item, index) => {
+          const box = traceBoxes[index];
+          if (box) return box;
+          if (item.image === "" || item.metersPerPixel <= 0) return null;
+          const size = await loadImageSize(item.image).catch(() => null);
+          return size
+            ? {
+                x: item.x,
+                y: item.y,
+                width: size.width * item.metersPerPixel,
+                height: size.height * item.metersPerPixel,
+              }
+            : null;
+        }),
+      );
+      if (boxes.some((box) => box === null)) {
+        setMessage("反転できない図面がありました");
+        return;
+      }
+
+      const points = lines.flatMap((line) => [
+        { x: line.x1, y: line.y1 },
+        { x: line.x2, y: line.y2 },
+        ...(line.bulge === null || line.bulge === undefined || line.bulge === 0
+          ? []
+          : [frameArcApex(line)]),
+      ]);
+      boxes.forEach((box) => {
+        if (box === null) return;
+        points.push(
+          { x: box.x, y: box.y },
+          { x: box.x + box.width, y: box.y + box.height },
+        );
+      });
+      if (points.length === 0) {
+        points.push(...placements.map(({ x, y }) => ({ x, y })));
+      }
+      if (points.length === 0) {
+        setMessage("反転するものがありません");
+        return;
+      }
+
+      const axisValues = points.map((point) => point[axis]);
+      const center =
+        (Math.min(...axisValues) + Math.max(...axisValues)) / 2;
+      const mirroredTraces = await Promise.all(
+        traces.map((item) =>
+          mirrorUnderlay({ ...item, opacity: item.opacity ?? 0.75 }, axis, center),
+        ),
+      );
+      if (mirroredTraces.some((item) => item === null)) {
+        setMessage("反転できない図面がありました");
+        return;
+      }
+
+      const mirroredDiagram = mirrorFrameDiagram(
+        { placements, manualLines },
+        axis,
+        center,
+      );
+      pushDiagram();
+      panDragRef.current = null;
+      traceDragRef.current = null;
+      dragRef.current = null;
+      endRef.current = null;
+      setPlacements(mirroredDiagram.placements);
+      setManualLines(mirroredDiagram.manualLines);
+      setTraces(mirroredTraces as FrameTrace[]);
+      setDrawStart(null);
+      setDrawCursor(null);
+      setScalePoints([]);
+      setSelectedLineId(null);
+      setSelectedPlacementId(null);
+      setCheckedIds([]);
+      setFittingTargetId(null);
+      setCurveTargetId(null);
+      setTraceMode("off");
+      setHeldView(null);
+      setMessage(
+        `${axis === "x" ? "左右" : "上下"}に反転しました（置いた部屋・引いた線・貼った図面も一緒です）`,
+      );
+    },
+    [lines, manualLines, placements, pushDiagram, traceBoxes, traces],
   );
 
   /** 拡大・縮小のあとに動かす先（見えていた所の真ん中が同じ所を指し続けるよう、描き直しのあとで動かす） */
@@ -1878,7 +1978,7 @@ export default function FrameSheetPage({
             solved: {
               ...solved,
               points: solved.points.map((point) =>
-                turnPoint(point, placement.rotation ?? 0),
+                placeRoomPoint(point, placement),
               ),
             },
           },
@@ -2484,6 +2584,34 @@ export default function FrameSheetPage({
               >
                 ↷ 進む
               </button>
+              {mode === "layout" && (
+                <>
+                  <button
+                    type="button"
+                    title="今の図を左右に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
+                    onClick={() => void flipDiagram("x")}
+                    disabled={
+                      placements.length === 0 &&
+                      manualLines.length === 0 &&
+                      traces.length === 0
+                    }
+                  >
+                    ⇔ 左右反転
+                  </button>
+                  <button
+                    type="button"
+                    title="今の図を上下に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
+                    onClick={() => void flipDiagram("y")}
+                    disabled={
+                      placements.length === 0 &&
+                      manualLines.length === 0 &&
+                      traces.length === 0
+                    }
+                  >
+                    ⇕ 上下反転
+                  </button>
+                </>
+              )}
             </>
           )}
           <button
@@ -3316,10 +3444,9 @@ export default function FrameSheetPage({
               placements.map((placement) => {
                 const solved = shapes.get(placement.estimateRowId);
                 if (!solved || solved.points.length === 0) return null;
-                const rotation = placement.rotation ?? 0;
                 const points = solved.points
                   .map((point) => {
-                    const turned = turnPoint(point, rotation);
+                    const turned = placeRoomPoint(point, placement);
                     return `${turned.x + placement.x},${turned.y + placement.y}`;
                   })
                   .join(" ");
@@ -3330,7 +3457,7 @@ export default function FrameSheetPage({
                   }),
                   { x: 0, y: 0 },
                 );
-                const centerAt = turnPoint(center, rotation);
+                const centerAt = placeRoomPoint(center, placement);
                 return (
                   <g key={`p-${placement.id}`}>
                     <polygon

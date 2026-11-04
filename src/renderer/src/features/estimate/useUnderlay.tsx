@@ -1025,12 +1025,12 @@ export function UnderlayScaleMarks({
 }
 
 /**
- * 貼った図面を、図形と同じ反転（左右＝x、上下上下＝y）で裏返した下敷きに作り直す。
- * 形は始点を通る軸で裏返る（x→−x / y→−y）ので、画像も裏返して置き場所を合わせる。
+ * 貼った図面を、指定した位置の左右・上下軸で裏返した下敷きに作り直す。
  */
 export async function mirrorUnderlay(
   underlay: TraceUnderlay,
   axis: "x" | "y",
+  center = 0,
 ): Promise<TraceUnderlay | null> {
   if (underlay.image === "" || underlay.metersPerPixel <= 0) return null;
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -1056,11 +1056,11 @@ export async function mirrorUnderlay(
     ctx.scale(1, -1);
   }
   ctx.drawImage(img, 0, 0);
-  // 図と同じ変形（x→−x / y→−y）を画像の枠に掛けた置き場所
+  // 図と同じ変形を画像の枠に掛けた置き場所
   return {
     ...underlay,
     image: canvas.toDataURL("image/png"),
-    x: axis === "x" ? -underlay.x - w * mpp : underlay.x,
-    y: axis === "x" ? underlay.y : -underlay.y - h * mpp,
+    x: axis === "x" ? 2 * center - underlay.x - w * mpp : underlay.x,
+    y: axis === "x" ? underlay.y : 2 * center - underlay.y - h * mpp,
   };
 }

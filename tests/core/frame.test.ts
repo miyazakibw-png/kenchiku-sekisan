@@ -13,6 +13,8 @@ import {
   frameSymbols,
   isPickedUp,
   linePartVariables,
+  mirrorFrameDiagram,
+  placeRoomPoint,
   reinforcementKind,
   reinforcementLength,
   roomLineId,
@@ -179,6 +181,124 @@ describe("軸組ライン", () => {
       x: 1,
       y: 0.3,
     });
+  });
+});
+
+describe("部屋レイアウトの反転", () => {
+  for (const axis of ["x", "y"] as const) {
+    for (const mirrored of [false, true]) {
+      it(`${axis}軸反転後も${mirrored ? "反転済みの" : ""}L型の壁端点と長さが保たれる`, () => {
+        const solved = solveShape({
+          edges: [
+            edge("E", 4),
+            edge("S", 2),
+            edge("W", 2),
+            edge("S", 2),
+            edge("W", 2),
+            edge("N", 4),
+          ],
+        });
+        const shapes = new Map([[1, solved]]);
+        const original = {
+          placements: [
+            placement({
+              x: 1.23,
+              y: -2.37,
+              rotation: 30,
+              mirrored,
+            }),
+          ],
+          manualLines: [],
+        };
+        const before = buildFrameLines({
+          ...original,
+          shapes,
+          attributes: {},
+        });
+        const flipped = mirrorFrameDiagram(original, axis, 0.47);
+        const after = buildFrameLines({
+          ...flipped,
+          shapes,
+          attributes: {},
+        });
+
+        expect(after.map((line) => line.id)).toEqual(
+          before.map((line) => line.id),
+        );
+        before.forEach((line) => {
+          const mirroredLine = after.find((candidate) => candidate.id === line.id);
+          expect(mirroredLine).toBeDefined();
+          if (!mirroredLine) return;
+          expect(mirroredLine.x1).toBeCloseTo(
+            axis === "x" ? 2 * 0.47 - line.x1 : line.x1,
+            2,
+          );
+          expect(mirroredLine.y1).toBeCloseTo(
+            axis === "y" ? 2 * 0.47 - line.y1 : line.y1,
+            2,
+          );
+          expect(mirroredLine.x2).toBeCloseTo(
+            axis === "x" ? 2 * 0.47 - line.x2 : line.x2,
+            2,
+          );
+          expect(mirroredLine.y2).toBeCloseTo(
+            axis === "y" ? 2 * 0.47 - line.y2 : line.y2,
+            2,
+          );
+          expect(mirroredLine.length).toBe(line.length);
+        });
+      });
+    }
+  }
+
+  it("反転を2回すると位置・向き・反転状態が元に戻る", () => {
+    const original = {
+      placements: [
+        placement({ x: 1.23, y: -2.37, rotation: 30.75, mirrored: true }),
+      ],
+      manualLines: [
+        { id: "m1", x1: 1.25, y1: -0.5, x2: 3.75, y2: 2.25, bulge: 0.4 },
+      ],
+    };
+    for (const axis of ["x", "y"] as const) {
+      const twice = mirrorFrameDiagram(
+        mirrorFrameDiagram(original, axis, 0.47),
+        axis,
+        0.47,
+      );
+      expect(twice.placements[0]).toEqual(original.placements[0]);
+      expect(twice.manualLines[0]).toEqual(original.manualLines[0]);
+    }
+  });
+
+  it("曲面線の矢を反転し、nullはnullのままにする", () => {
+    const mirrored = mirrorFrameDiagram(
+      {
+        placements: [],
+        manualLines: [
+          { id: "curve", x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.25 },
+          { id: "straight", x1: 1, y1: 1, x2: 2, y2: 2, bulge: null },
+        ],
+      },
+      "x",
+      0,
+    );
+    expect(mirrored.manualLines[0]).toMatchObject({
+      id: "curve",
+      x1: 0,
+      x2: -2,
+      bulge: -0.25,
+    });
+    expect(mirrored.manualLines[1].bulge).toBeNull();
+  });
+
+  it("部屋の点は左右反転してから配置角度に回る", () => {
+    const point = placeRoomPoint(
+      { x: 2, y: 1 },
+      placement({ rotation: 90, mirrored: true }),
+    );
+    expect(point.x).toBeCloseTo(-1);
+    expect(point.y).toBeCloseTo(-2);
   });
 });
 

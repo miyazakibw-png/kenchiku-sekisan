@@ -225,23 +225,30 @@ function RegionNumberCell({
   const shown = formatNumber(value, 2);
   const [text, setText] = useState(shown);
   const [editing, setEditing] = useState(false);
+  // 打ち替えた欄だけ決める（天井高さと下がりは同じ値を書くので、触っただけの欄で上書きしない）
+  const [dirty, setDirty] = useState(false);
   return (
     <input
       className="num"
-      value={editing ? text : shown}
+      value={editing && dirty ? text : shown}
       title={title}
       onFocus={() => {
         setText(shown);
+        setDirty(false);
         setEditing(true);
       }}
       onClick={selectWholeOnFirstClick}
-      onChange={(e) => setText(e.target.value)}
+      onChange={(e) => {
+        setText(e.target.value);
+        setDirty(true);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
       onBlur={() => {
         setEditing(false);
-        onCommit(text);
+        if (dirty) onCommit(text);
+        setDirty(false);
       }}
     />
   );

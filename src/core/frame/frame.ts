@@ -26,6 +26,8 @@ export interface FramePlacement {
   y: number;
   /** 部屋の向き（度。右回りがプラス。無いときは0＝部屋計算書どおりの向き） */
   rotation?: number;
+  /** 部屋のローカル座標を左右反転してから回す */
+  mirrored?: boolean;
   /** 輪郭の色（計算には使わないが見分けに使う） */
   color: string;
 }
@@ -44,6 +46,17 @@ export function turnPoint(
   };
 }
 
+/** 配置位置を足さず、部屋の点を反転してから配置角度に回す */
+export function placeRoomPoint(
+  point: { x: number; y: number },
+  placement: FramePlacement,
+): { x: number; y: number } {
+  return turnPoint(
+    placement.mirrored ? { x: -point.x, y: point.y } : point,
+    placement.rotation ?? 0,
+  );
+}
+
 /** レイアウトを使わずに直接引いた軸組ライン（始点クリック→終点クリック） */
 export interface FrameManualLine {
   id: string;
@@ -53,6 +66,44 @@ export interface FrameManualLine {
   y1: number;
   x2: number;
   y2: number;
+}
+
+/** 部屋と手描き線を、指定した軸の中央で反転する */
+export function mirrorFrameDiagram(
+  input: {
+    placements: FramePlacement[];
+    manualLines: FrameManualLine[];
+  },
+  axis: "x" | "y",
+  center: number,
+): { placements: FramePlacement[]; manualLines: FrameManualLine[] } {
+  const reflect = (value: number): number => round2(2 * center - value);
+  const rotation = (value: number): number => {
+    if (axis === "x") return round2(-value);
+    const normalized = ((180 - value) % 360 + 360) % 360;
+    const rounded = round2(normalized);
+    return rounded >= 360 ? 0 : rounded;
+  };
+
+  return {
+    placements: input.placements.map((placement) => ({
+      ...placement,
+      x: axis === "x" ? reflect(placement.x) : placement.x,
+      y: axis === "y" ? reflect(placement.y) : placement.y,
+      rotation: rotation(placement.rotation ?? 0),
+      mirrored: !placement.mirrored,
+    })),
+    manualLines: input.manualLines.map((line) => ({
+      ...line,
+      x1: axis === "x" ? reflect(line.x1) : line.x1,
+      y1: axis === "y" ? reflect(line.y1) : line.y1,
+      x2: axis === "x" ? reflect(line.x2) : line.x2,
+      y2: axis === "y" ? reflect(line.y2) : line.y2,
+      ...(line.bulge === undefined
+        ? {}
+        : { bulge: line.bulge === null ? null : round2(-line.bulge) }),
+    })),
+  };
 }
 
 /** 軸組計算書の下敷きにする図面画像（なぞって線を引くために置く） */
@@ -339,11 +390,10 @@ export function buildFrameLines(input: BuildLinesInput): FrameLine[] {
     if (!solved || solved.points.length === 0) return;
     solved.edges.forEach((edge, index) => {
       if (edge.kind !== "wall" || edge.resolved === null) return;
-      const rotation = placement.rotation ?? 0;
-      const from = turnPoint(solved.points[index], rotation);
-      const to = turnPoint(
+      const from = placeRoomPoint(solved.points[index], placement);
+      const to = placeRoomPoint(
         solved.points[(index + 1) % solved.points.length],
-        rotation,
+        placement,
       );
       const id = roomLineId(placement.id, edge.id);
       lines.push({
