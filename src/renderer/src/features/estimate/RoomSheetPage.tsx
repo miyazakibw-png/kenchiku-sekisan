@@ -744,6 +744,7 @@ export default function RoomSheetPage({
   const promptBoxRef = useRef<HTMLDivElement | null>(null);
   /** 図の実寸（寸法文字を表と同じ大きさで出すために測る） */
   const [canvasSize, setCanvasSize] = useState(200);
+  const previousCanvasSizeRef = useRef(canvasSize);
   const [message, setMessage] = useState("");
 
   const solved = useMemo(() => solveShape(shape), [shape]);
@@ -1083,6 +1084,21 @@ export default function RoomSheetPage({
     measure();
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const previous = previousCanvasSizeRef.current;
+    previousCanvasSizeRef.current = canvasSize;
+    if (
+      underlayScale === null ||
+      previous <= 0 ||
+      canvasSize <= 0 ||
+      previous === canvasSize
+    ) {
+      return;
+    }
+    const ratio = canvasSize / previous;
+    setZoom((current) => Math.min(Math.max(current * ratio, 0.05), 8));
+  }, [canvasSize, underlayScale]);
 
   /** 寸法文字の大きさ（画面上で表と同じ12px相当になるようにする） */
   const dimFontSize = useMemo(
