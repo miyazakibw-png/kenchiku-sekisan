@@ -231,6 +231,45 @@
   cursor: pointer;
 }
 
+.modal.picker {
+  width: min(1100px, 94vw);
+}
+
+.modal.picker .detail-picker-grid {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.modal.picker .detail-picker-grid th:nth-child(1),
+.modal.picker .detail-picker-grid td:nth-child(1) {
+  width: 14%;
+  white-space: nowrap;
+}
+
+.modal.picker .detail-picker-grid th:nth-child(2),
+.modal.picker .detail-picker-grid td:nth-child(2),
+.modal.picker .detail-picker-grid th:nth-child(3),
+.modal.picker .detail-picker-grid td:nth-child(3) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.modal.picker .detail-picker-grid th:nth-child(2),
+.modal.picker .detail-picker-grid td:nth-child(2) {
+  width: 25%;
+}
+
+.modal.picker .detail-picker-grid th:nth-child(3),
+.modal.picker .detail-picker-grid td:nth-child(3) {
+  width: 53%;
+}
+
+.modal.picker .detail-picker-grid th:nth-child(4),
+.modal.picker .detail-picker-grid td:nth-child(4) {
+  width: 8%;
+  white-space: nowrap;
+}
+
 .assembly-editor .ops button {
   padding: 0 4px;
 }
@@ -239,6 +278,17 @@
 .modal.assembly-editor .grid td input,
 .modal.assembly-editor .grid td select {
   padding: 1px 4px;
+}
+
+.modal.assembly-editor .grid th.subject,
+.modal.assembly-editor .grid td.subject {
+  white-space: nowrap;
+}
+
+.modal.assembly-editor .grid td.subject select {
+  width: 100%;
+  min-width: 11ch;
+  box-sizing: border-box;
 }
 
 .assembly-page .num {

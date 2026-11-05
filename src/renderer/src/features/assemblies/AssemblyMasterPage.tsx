@@ -50,7 +50,10 @@ const SCOPE_LABEL: Record<PickerScope, string> = {
   project: "工事マスター（明細）",
 };
 
-const EDITOR_ONLY_COLUMN_WIDTHS = new Map([["積算用表示", 120]]);
+const EDITOR_ONLY_COLUMN_WIDTHS = new Map([
+  ["工種科目", 132],
+  ["積算用表示", 120],
+]);
 
 interface EditorState {
   /** 既存セットのID。新規は null */
@@ -598,6 +601,7 @@ export default function AssemblyMasterPage({
                 <thead>
                   <tr>
                     <th>行</th>
+                    <th className="subject">工種科目</th>
                     <th>材種区分</th>
                     <th>部位番号／明細番号</th>
                     <th>部位名／名称</th>
@@ -620,6 +624,34 @@ export default function AssemblyMasterPage({
                           <span className="note-mark">説</span>
                         )}
                         {index + 1}
+                      </td>
+                      <td rowSpan={2} className="subject">
+                        {item.note !== true && (
+                          <select
+                            value={item.subjectId}
+                            title="この明細の工種科目（集計でこの科目に入ります）"
+                            onChange={(e) =>
+                              editItems(
+                                updateItem(editor.items, index, {
+                                  subjectId: Number.parseInt(
+                                    e.target.value,
+                                    10,
+                                  ),
+                                }),
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "ArrowUp" || e.key === "ArrowDown")
+                                e.stopPropagation();
+                            }}
+                          >
+                            {options.subjects.map((row) => (
+                              <option key={row.id} value={row.id}>
+                                {row.id}：{row.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td rowSpan={2}>
                         <MasterCodeInput
@@ -1008,7 +1040,7 @@ export default function AssemblyMasterPage({
               <span className="count">{pickerDetails.length}件</span>
             </header>
             <div className="modal-body">
-              <table className="grid">
+              <table className="grid detail-picker-grid">
                 <thead>
                   <tr>
                     <th>明細番号</th>
