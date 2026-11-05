@@ -5,11 +5,13 @@
 export function focusCell(field: HTMLElement): void {
   field.focus({ preventScroll: true });
   const table = field.closest("table");
-  const headCell = table?.tHead?.querySelector("th");
+  const headCells = Array.from(
+    table?.tHead?.querySelectorAll<HTMLElement>("th,td") ?? [],
+  ).filter((cell) => getComputedStyle(cell).position === "sticky");
   // 貼り付いている見出し行の下端。欄がこの下に来るまで送る
   const headBottom =
-    headCell && getComputedStyle(headCell).position === "sticky"
-      ? headCell.getBoundingClientRect().bottom
+    headCells.length > 0
+      ? Math.max(...headCells.map((cell) => cell.getBoundingClientRect().bottom))
       : null;
   for (let node = field.parentElement; node; node = node.parentElement) {
     const style = getComputedStyle(node);

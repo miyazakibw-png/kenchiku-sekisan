@@ -87,6 +87,15 @@ table.estimate td.check {
   padding: 2px 4px;
 }
 
+/* 仕上名称は長くても1段のまま（列幅は変えず、はみ出た分は隠す。全部はマウスを当てると出る） */
+table.estimate td.check .check-name {
+  width: 0;
+  min-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 table.estimate td.check.number {
   text-align: right;
   min-width: 7ch;

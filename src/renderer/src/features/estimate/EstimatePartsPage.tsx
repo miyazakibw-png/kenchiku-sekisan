@@ -343,11 +343,7 @@ export default function EstimatePartsPage({
       const next =
         mode === "over"
           ? overwriteRowsInto(rows, at, copied)
-          : copyRowsInto(
-              rows,
-              at,
-              copied,
-            );
+          : copyRowsInto(rows, at, copied);
       const mergedRows =
         mode === "over"
           ? copied.filter((source, offset) => {
@@ -475,9 +471,7 @@ export default function EstimatePartsPage({
       ? (inherited[openedSheet]?.part2 ?? rows[openedSheet].part2)
       : "";
   const openedPart3 =
-    openedSheet !== null && rows[openedSheet]
-      ? rows[openedSheet].part3
-      : "";
+    openedSheet !== null && rows[openedSheet] ? rows[openedSheet].part3 : "";
   const openedRoomName = `${openedPart2} ${openedPart3}`.trim();
   const openedRoomPartName = toHalfWidthName(
     openedPart2.trim() + openedPart3.trim(),
@@ -601,163 +595,166 @@ export default function EstimatePartsPage({
 
   return (
     <div className="estimate-page" ref={pageRef}>
-      <div className="toolbar">
-        <div className="left-actions">
-          <button type="button" onClick={onBack}>
-            ← 工事管理画面へ
-          </button>
-          <div className="three">
-            {/* 計算書は行ごとの「開く」欄から開く（上の帯のボタンは使わない） */}
-            <button
-              type="button"
-              disabled
-              title="計算書は行ごとの「📐 開く」から開いてください"
-            >
-              📐 計算書を開く
+      {/* 操作ボタンとチェック表示の切替は、画面を下げても上に残す */}
+      <div className="sticky-top">
+        <div className="toolbar">
+          <div className="left-actions">
+            <button type="button" onClick={onBack}>
+              ← 工事管理画面へ
             </button>
-            <button type="button" onClick={() => void pasteFromExcel()}>
-              📋 Excelから貼り付け
-            </button>
-            <button type="button" onClick={() => void save()}>
-              💾 保存
-            </button>
+            <div className="three">
+              {/* 計算書は行ごとの「開く」欄から開く（上の帯のボタンは使わない） */}
+              <button
+                type="button"
+                disabled
+                title="計算書は行ごとの「📐 開く」から開いてください"
+              >
+                📐 計算書を開く
+              </button>
+              <button type="button" onClick={() => void pasteFromExcel()}>
+                📋 Excelから貼り付け
+              </button>
+              <button type="button" onClick={() => void save()}>
+                💾 保存
+              </button>
+            </div>
           </div>
+          <h2>部位別入力表</h2>
+          <span className="project">
+            {project.managementNo} {project.name}
+          </span>
+          <button
+            type="button"
+            disabled={!canUndo}
+            title="1つ前の内容に戻します"
+            onClick={undoRows}
+          >
+            ↶ 戻る
+          </button>
+          <button
+            type="button"
+            disabled={!canRedo}
+            title="戻した内容を1つ先へ進めます"
+            onClick={redoRows}
+          >
+            ↷ 進む
+          </button>
+          <button
+            type="button"
+            onClick={() => editRows(insertRow(rows, selected))}
+          >
+            ⤒ 行挿入
+          </button>
+          <button
+            type="button"
+            onClick={() => editRows(insertRow(rows, rows.length))}
+          >
+            ⤓ 最終行に追加
+          </button>
+          <button
+            type="button"
+            title="選んでいる行の上に小計行を挿入します"
+            onClick={() =>
+              editRows([
+                ...rows.slice(0, selected),
+                subtotalRow(),
+                ...rows.slice(selected),
+              ])
+            }
+          >
+            Σ 小計行
+          </button>
+          <button
+            type="button"
+            onClick={() => editRows(removeRow(rows, selected))}
+          >
+            🗑 行削除
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              editRows(moveRow(rows, selected, selected - 1));
+              setSelected(Math.max(selected - 1, 0));
+            }}
+          >
+            ↑ 上へ
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              editRows(moveRow(rows, selected, selected + 1));
+              setSelected(Math.min(selected + 1, rows.length - 1));
+            }}
+          >
+            ↓ 下へ
+          </button>
+          <button
+            type="button"
+            title="カーソルの行（Shift+クリックで選んだ範囲）をコピーします"
+            onClick={copyRows}
+          >
+            ⧉ 行コピー（複数可）
+          </button>
+          <button
+            type="button"
+            title="カーソルの行から、コピーした行で上書きします。入力のある行は部位Ⅰ〜倍率・備考を残して空欄だけ埋め、計算書の中身を貼り付けます。"
+            disabled={clipboard.length === 0}
+            onClick={() => void pasteRows("over")}
+          >
+            📋 上書貼付
+          </button>
+          <button
+            type="button"
+            title="カーソルの行の上へ、コピーした行を挿入します"
+            disabled={clipboard.length === 0}
+            onClick={() => void pasteRows("insert")}
+          >
+            📋 挿入貼付
+          </button>
+          <button
+            type="button"
+            title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
+            disabled={clipboard.length === 0}
+            onClick={() => void pasteRows("append")}
+          >
+            📋 追加貼付
+          </button>
+          <button
+            type="button"
+            title="他の物件の部位別入力表を開き、コピーしたい部位の行を選んで控えに入れます"
+            onClick={() => setOthers(true)}
+          >
+            🏢 他物件から
+          </button>
+          <span className="status">{message}</span>
         </div>
-        <h2>部位別入力表</h2>
-        <span className="project">
-          {project.managementNo} {project.name}
-        </span>
-        <button
-          type="button"
-          disabled={!canUndo}
-          title="1つ前の内容に戻します"
-          onClick={undoRows}
-        >
-          ↶ 戻る
-        </button>
-        <button
-          type="button"
-          disabled={!canRedo}
-          title="戻した内容を1つ先へ進めます"
-          onClick={redoRows}
-        >
-          ↷ 進む
-        </button>
-        <button
-          type="button"
-          onClick={() => editRows(insertRow(rows, selected))}
-        >
-          ⤒ 行挿入
-        </button>
-        <button
-          type="button"
-          onClick={() => editRows(insertRow(rows, rows.length))}
-        >
-          ⤓ 最終行に追加
-        </button>
-        <button
-          type="button"
-          title="選んでいる行の上に小計行を挿入します"
-          onClick={() =>
-            editRows([
-              ...rows.slice(0, selected),
-              subtotalRow(),
-              ...rows.slice(selected),
-            ])
-          }
-        >
-          Σ 小計行
-        </button>
-        <button
-          type="button"
-          onClick={() => editRows(removeRow(rows, selected))}
-        >
-          🗑 行削除
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            editRows(moveRow(rows, selected, selected - 1));
-            setSelected(Math.max(selected - 1, 0));
-          }}
-        >
-          ↑ 上へ
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            editRows(moveRow(rows, selected, selected + 1));
-            setSelected(Math.min(selected + 1, rows.length - 1));
-          }}
-        >
-          ↓ 下へ
-        </button>
-        <button
-          type="button"
-          title="カーソルの行（Shift+クリックで選んだ範囲）をコピーします"
-          onClick={copyRows}
-        >
-          ⧉ 行コピー（複数可）
-        </button>
-        <button
-          type="button"
-          title="カーソルの行から、コピーした行で上書きします。入力のある行は部位Ⅰ〜倍率・備考を残して空欄だけ埋め、計算書の中身を貼り付けます。"
-          disabled={clipboard.length === 0}
-          onClick={() => void pasteRows("over")}
-        >
-          📋 上書貼付
-        </button>
-        <button
-          type="button"
-          title="カーソルの行の上へ、コピーした行を挿入します"
-          disabled={clipboard.length === 0}
-          onClick={() => void pasteRows("insert")}
-        >
-          📋 挿入貼付
-        </button>
-        <button
-          type="button"
-          title="最終行の下へ、コピーした行を足します（カーソル位置に関係なし）"
-          disabled={clipboard.length === 0}
-          onClick={() => void pasteRows("append")}
-        >
-          📋 追加貼付
-        </button>
-        <button
-          type="button"
-          title="他の物件の部位別入力表を開き、コピーしたい部位の行を選んで控えに入れます"
-          onClick={() => setOthers(true)}
-        >
-          🏢 他物件から
-        </button>
-        <span className="status">{message}</span>
-      </div>
 
-      <div className="check-setting">
-        <span>チェック表示の材種区分</span>
-        <select
-          value={checkCategory}
-          onChange={(e) => setCheckCategory(e.target.value)}
-        >
-          {options.materialCategories.map((category) => (
-            <option key={category.id} value={category.name}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-        <span>数量</span>
-        <select
-          value={applyMultiplier ? "on" : "off"}
-          onChange={(e) => setApplyMultiplier(e.target.value === "on")}
-        >
-          <option value="on">倍率あり</option>
-          <option value="off">倍率なし</option>
-        </select>
-        <span className="note">
-          部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
-          {checkCategory}
-          だけを表示します（計算書の作成後に反映）。「倍率なし」は倍率をかける前の計算書そのままの数量です。
-        </span>
+        <div className="check-setting">
+          <span>チェック表示の材種区分</span>
+          <select
+            value={checkCategory}
+            onChange={(e) => setCheckCategory(e.target.value)}
+          >
+            {options.materialCategories.map((category) => (
+              <option key={category.id} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <span>数量</span>
+          <select
+            value={applyMultiplier ? "on" : "off"}
+            onChange={(e) => setApplyMultiplier(e.target.value === "on")}
+          >
+            <option value="on">倍率あり</option>
+            <option value="off">倍率なし</option>
+          </select>
+          <span className="note">
+            部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
+            {checkCategory}
+            だけを表示します（計算書の作成後に反映）。「倍率なし」は倍率をかける前の計算書そのままの数量です。
+          </span>
+        </div>
       </div>
 
       {others && (
@@ -1114,8 +1111,12 @@ export default function EstimatePartsPage({
                   const sum = partSums[index]?.[label];
                   const cell = isSubtotal ? null : checkOf(row.id, label);
                   return [
-                    <td key={`n-${label}`} className="check">
-                      {cell?.name ?? ""}
+                    <td
+                      key={`n-${label}`}
+                      className="check"
+                      title={cell?.name || undefined}
+                    >
+                      <div className="check-name">{cell?.name ?? ""}</div>
                     </td>,
                     <td key={`q-${label}`} className="check number">
                       {isSubtotal
