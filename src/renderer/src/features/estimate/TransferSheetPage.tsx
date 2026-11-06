@@ -558,6 +558,7 @@ export default function TransferSheetPage({
 
       <table
         className="grid transfer"
+        data-nav-shared
         ref={tableRef}
         onCopy={(event) => {
           const text = copyCells();
@@ -896,7 +897,10 @@ export default function TransferSheetPage({
                     }
                   />
                 </td>
-                <td className={`num ${cellClass(index, 1, 3)}`}>
+                <td
+                  className={`num ${cellClass(index, 1, 3)}`}
+                  data-nav-both
+                >
                   <input
                     className="num"
                     key={`q-${index}-${formatQuantity(row.quantity)}`}
@@ -912,7 +916,10 @@ export default function TransferSheetPage({
                     }}
                   />
                 </td>
-                <td className={`unit ${cellClass(index, 1, 4)}`}>
+                <td
+                  className={`unit ${cellClass(index, 1, 4)}`}
+                  data-nav-both
+                >
                   <input
                     list="transfer-units"
                     value={row.unit}
