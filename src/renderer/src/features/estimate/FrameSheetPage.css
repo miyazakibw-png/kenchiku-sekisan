@@ -528,3 +528,10 @@
   vector-effect: non-scaling-stroke;
   stroke-opacity: 0.7;
 }
+
+/* 左の作図ボタン・橙枠の図面ボタンも、押している間は上の帯と同じ青にする */
+.frame-sheet-page .shape-tools button.on,
+.frame-sheet-page .underlay-tools button.on {
+  background: #1e3a8a;
+  color: #fff;
+}
