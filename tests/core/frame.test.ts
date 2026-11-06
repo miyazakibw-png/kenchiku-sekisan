@@ -20,6 +20,7 @@ import {
   roomLineId,
   nearMissWalls,
   snapPlacement,
+  scaleFrameTraceFromPoints,
   type FrameFitting,
   type FrameLineAttribute,
   type FramePlacement,
@@ -42,6 +43,51 @@ function placement(patch: Partial<FramePlacement> = {}): FramePlacement {
     ...patch,
   };
 }
+
+describe("軸組図面だけの縮尺合わせ", () => {
+  it("実寸に合わせて伸縮し、最初のクリック点を固定する", () => {
+    const trace = {
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+      opacity: 0.6,
+    };
+    const scaled = scaleFrameTraceFromPoints(
+      trace,
+      { x: 1.5, y: 2.25 },
+      { x: 2, y: 2.25 },
+      1,
+    );
+
+    expect(scaled?.metersPerPixel).toBeCloseTo(0.02);
+    expect(scaled?.x).toBeCloseTo(0.5);
+    expect(scaled?.y).toBeCloseTo(1.75);
+    expect(scaled?.opacity).toBe(0.6);
+    expect(trace).toEqual({
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+      opacity: 0.6,
+    });
+  });
+
+  it("同じ2点や0以下の実寸では縮尺を変更しない", () => {
+    const trace = {
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+    };
+    expect(
+      scaleFrameTraceFromPoints(trace, { x: 1, y: 1 }, { x: 1, y: 1 }, 3),
+    ).toBeNull();
+    expect(
+      scaleFrameTraceFromPoints(trace, { x: 0, y: 0 }, { x: 1, y: 0 }, 0),
+    ).toBeNull();
+  });
+});
 
 describe("開口部補強", () => {
   it("ドア類は W ＋ 施工高さ*2", () => {
@@ -226,7 +272,9 @@ describe("部屋レイアウトの反転", () => {
           before.map((line) => line.id),
         );
         before.forEach((line) => {
-          const mirroredLine = after.find((candidate) => candidate.id === line.id);
+          const mirroredLine = after.find(
+            (candidate) => candidate.id === line.id,
+          );
           expect(mirroredLine).toBeDefined();
           if (!mirroredLine) return;
           expect(mirroredLine.x1).toBeCloseTo(

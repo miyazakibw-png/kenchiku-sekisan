@@ -43,6 +43,7 @@ import {
   type FramePlacement,
   type FrameTrace,
   parseFrameTraces,
+  scaleFrameTraceFromPoints,
 } from "../../../../core/frame/frame";
 import {
   floorArea,
@@ -791,6 +792,8 @@ export default function FrameSheetPage({
 
   /** 図面を回す角度（度。右回転・左回転で使う） */
   const [traceAngleText, setTraceAngleText] = useState("90");
+  const [rotateTraceOnly, setRotateTraceOnly] = useState<boolean | null>(null);
+  const rotateOnly = rotateTraceOnly ?? traces.length > 1;
   /** いま選んでいる図面の真ん中を軸に、図面・置いた部屋・引いた線を一緒に回す（プラス＝右回り） */
   const rotateTrace = useCallback(
     async (sign: 1 | -1) => {
@@ -824,6 +827,27 @@ export default function FrameSheetPage({
         };
       };
       const radians = (sign * degrees * Math.PI) / 180;
+      if (rotateOnly) {
+        const rotatedTrace = await rotateUnderlay(
+          { ...trace, opacity: trace.opacity ?? 0.75 },
+          pivot,
+          pivot,
+          radians,
+        );
+        if (rotatedTrace === null) {
+          setMessage("回せない図面がありました");
+          return;
+        }
+        pushDiagram();
+        setTrace(rotatedTrace);
+        setMessage(
+          `選んだ図面だけ${sign > 0 ? "右" : "左"}へ ${formatNumber(
+            degrees,
+            2,
+          )}° 回しました（引いた線・部屋はそのまま）`,
+        );
+        return;
+      }
       // 選んだ図面は必ず回す。「まとめて動かす」ONのときは他の図面も同じ軸で回す
       const rotatedTraces = await Promise.all(
         traces.map((item) =>
@@ -865,7 +889,15 @@ export default function FrameSheetPage({
         `図面と部屋・線を${sign > 0 ? "右" : "左"}へ ${formatNumber(degrees, 2)}° 回しました`,
       );
     },
-    [pushDiagram, trace, traces, traceLocked, traceAngleText],
+    [
+      pushDiagram,
+      rotateOnly,
+      setTrace,
+      trace,
+      traces,
+      traceLocked,
+      traceAngleText,
+    ],
   );
 
   const flipDiagram = useCallback(
@@ -923,11 +955,14 @@ export default function FrameSheetPage({
       }
 
       const axisValues = points.map((point) => point[axis]);
-      const center =
-        (Math.min(...axisValues) + Math.max(...axisValues)) / 2;
+      const center = (Math.min(...axisValues) + Math.max(...axisValues)) / 2;
       const mirroredTraces = await Promise.all(
         traces.map((item) =>
-          mirrorUnderlay({ ...item, opacity: item.opacity ?? 0.75 }, axis, center),
+          mirrorUnderlay(
+            { ...item, opacity: item.opacity ?? 0.75 },
+            axis,
+            center,
+          ),
         ),
       );
       if (mirroredTraces.some((item) => item === null)) {
@@ -1327,9 +1362,7 @@ export default function FrameSheetPage({
         });
         // 線に付けてあった建具も新しい線に付け替える（線に付かない建具は持ってこない）
         const newFittings = part.fittings
-          .filter(
-            (item) => item.lineId !== null && idMap.has(item.lineId),
-          )
+          .filter((item) => item.lineId !== null && idMap.has(item.lineId))
           .map((item) => ({
             ...item,
             id: newId("ff"),
@@ -1459,12 +1492,50 @@ export default function FrameSheetPage({
       pending: boolean;
     }[]
   >([]);
+  const [scaleTraceOnly, setScaleTraceOnly] = useState<boolean | null>(null);
+  const traceOnly = scaleTraceOnly ?? traces.length > 1;
 
   /** 縮尺合わせ：2点の間、または選んだ線の実寸を入れて、図面と引いた線を伸び縮みさせる */
   const applyScale = useCallback(() => {
     const meters = Number(scaleText);
     if (!Number.isFinite(meters) || meters <= 0) {
       setMessage("実寸（m）を入れてください");
+      return;
+    }
+    if (traceOnly) {
+      const from = scalePoints[0];
+      const to = scalePoints[1];
+      if (from === undefined || to === undefined) {
+        setMessage(
+          "図面だけのときは、図面の上で長さの分かる2点をクリックしてください",
+        );
+        return;
+      }
+      const scaledTrace = scaleFrameTraceFromPoints(trace, from, to, meters);
+      if (scaledTrace === null) {
+        setMessage(
+          "図面だけのときは、図面の上で長さの分かる2点をクリックしてください",
+        );
+        return;
+      }
+      pushDiagram();
+      setScaleUndo((current) => [
+        ...current.slice(-9),
+        {
+          traces,
+          active: Math.min(activeTrace, Math.max(traces.length - 1, 0)),
+          lines: manualLines,
+          pending: scalePending,
+        },
+      ]);
+      setTrace(scaledTrace);
+      setScalePending(false);
+      setScalePoints([]);
+      setHeldView(null);
+      setTraceMode("off");
+      setMessage(
+        "選んだ図面だけ縮尺を合わせました（引いた線・部屋はそのまま）。「✥ 図面を動かす」で線に重ねてください",
+      );
       return;
     }
     const chosen = manualLines.find((line) => line.id === selectedLineId);
@@ -1521,7 +1592,10 @@ export default function FrameSheetPage({
     scalePoints,
     scaleText,
     selectedLineId,
+    trace,
+    traceOnly,
     traces,
+    setTrace,
   ]);
 
   /** 「📍 近くへ戻す」で図面を置き直す場所（置いた部屋・引いた線の左上の角。無ければ原点） */
@@ -1992,8 +2066,7 @@ export default function FrameSheetPage({
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
-      if (crosshairOn)
-        setDrawCursor(toModel(event.clientX, event.clientY));
+      if (crosshairOn) setDrawCursor(toModel(event.clientX, event.clientY));
       const movePan = panDragRef.current;
       if (movePan) {
         const canvas = canvasRef.current;
@@ -2186,7 +2259,9 @@ export default function FrameSheetPage({
       if (chainDraw) {
         // 連続線：引き終わった終点がそのまま次の線の始点になる（Esc・⌁連続線OFFで終わる）
         setDrawStart(end);
-        setMessage("次の終点をクリックしてください（Escキーで連続線を終わります）");
+        setMessage(
+          "次の終点をクリックしてください（Escキーで連続線を終わります）",
+        );
         return;
       }
       setDrawStart(null);
@@ -2551,6 +2626,575 @@ export default function FrameSheetPage({
     </p>
   );
 
+  const shapeToolsStart = (
+    <>
+      {!printMode && mode === "layout" && (
+        <>
+          <button
+            type="button"
+            title="今の図を左右に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
+            onClick={() => void flipDiagram("x")}
+            disabled={
+              placements.length === 0 &&
+              manualLines.length === 0 &&
+              traces.length === 0
+            }
+          >
+            ⇔ 左右反転
+          </button>
+          <button
+            type="button"
+            title="今の図を上下に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
+            onClick={() => void flipDiagram("y")}
+            disabled={
+              placements.length === 0 &&
+              manualLines.length === 0 &&
+              traces.length === 0
+            }
+          >
+            ⇕ 上下反転
+          </button>
+        </>
+      )}
+      {mode === "layout" && (
+        <button
+          type="button"
+          className={drawing ? "on" : ""}
+          title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します。終点をShiftを押しながらクリックすると斜め線になります）"
+          onClick={() => {
+            setDrawStart(null);
+            // 線を引く間は表示範囲を止めて、図面が動かないようにする
+            setHeldView(drawing ? null : baseView);
+            setDrawing(!drawing);
+            // 縮尺合わせ・図面を動かすが入ったままだと線が引けないのでやめる
+            if (!drawing) {
+              setTraceMode("off");
+              setScalePoints([]);
+              setFittingMode(false);
+              setFittingTargetId(null);
+              // 画面を動かす（パン）中はクリックが効かないので切る
+              setPanMode(false);
+              panDragRef.current = null;
+            }
+            setMessage(
+              drawing
+                ? "線引きをやめました（部屋を動かせます）"
+                : "始点をクリックしてください（部屋は動きません）",
+            );
+          }}
+        >
+          ✎ 線を引く
+        </button>
+      )}
+      {mode !== "check" && !printMode && (
+        <button
+          type="button"
+          className={chainDraw ? "on" : ""}
+          title="線をつないで引きます（引いた線の終点がそのまま次の線の始点になります。Escキーか、もう一度押すと終わります）"
+          onClick={() => {
+            const next = !chainDraw;
+            setChainDraw(next);
+            if (!next) setDrawStart(null);
+            setMessage(
+              next
+                ? "終点を次々クリックすると、つながった線が引けます（Escキーで終わります）"
+                : "連続線をやめました",
+            );
+          }}
+        >
+          ⌁ 連続線
+        </button>
+      )}
+      {mode === "layout" && manualLines.length > 0 && !printMode && (
+        <button
+          type="button"
+          className={fittingMode ? "on" : ""}
+          title="引いた線をクリックして、その線に付く建具を記号で入れます"
+          onClick={() => {
+            const next = !fittingMode;
+            setFittingMode(next);
+            setFittingTargetId(null);
+            // 先に線を選んであるときは、その線をそのまま付ける先に使う
+            const preset =
+              next && selectedLineId !== null
+                ? (manualLines.find((line) => line.id === selectedLineId)?.id ??
+                  null)
+                : null;
+            if (next) {
+              // 線引き中はクリックが点になるのでやめる
+              setDrawing(false);
+              setDrawStart(null);
+              setTraceMode("off");
+              setScalePoints([]);
+              setFittingTargetId(preset);
+            }
+            setMessage(
+              next
+                ? preset === null
+                  ? "建具を付ける線をクリックしてください"
+                  : "付ける建具の記号を入れてください"
+                : "",
+            );
+          }}
+        >
+          🚪 建具入力
+        </button>
+      )}
+      {mode === "layout" && manualLines.length > 0 && !printMode && (
+        <button
+          type="button"
+          className={curveMode ? "on" : ""}
+          title="引いた線をクリックして、離れ寸法と向きを入れて弧（曲面壁）にします"
+          onClick={() => {
+            const next = !curveMode;
+            setCurveMode(next);
+            setCurveTargetId(null);
+            setCurveText("");
+            setCurveFlip(false);
+            if (next) {
+              // 線引き中はクリックが点になるのでやめる
+              setDrawing(false);
+              setDrawStart(null);
+              setTraceMode("off");
+              setScalePoints([]);
+              setFittingMode(false);
+              setFittingTargetId(null);
+            }
+            setMessage(next ? "曲面にする線をクリックしてください" : "");
+          }}
+        >
+          ⌒ 曲面壁
+        </button>
+      )}
+      {manualLines.length > 0 && (
+        <button
+          type="button"
+          className={manualOnly ? "on" : ""}
+          title="自分で引いた線だけを出します（下敷きの図面は消え、部屋の図は薄くなります）"
+          onClick={() => setManualOnly(!manualOnly)}
+        >
+          ☉ 引いた線だけ
+        </button>
+      )}
+      {expanded && (
+        <button
+          type="button"
+          className={showRoomList ? "on" : ""}
+          title="「置ける部屋」の表を出す／消す（消すと図を広く使えます）"
+          onClick={() => setShowRoomList(!showRoomList)}
+        >
+          🏠 置ける部屋
+        </button>
+      )}
+      {mode === "layout" && manualLines.length > 0 && (
+        <button
+          type="button"
+          title="最後に引いた線を1本消します（図の上の線をダブルクリックでも消せます）"
+          onClick={() => {
+            pushDiagram();
+            setManualLines((current) => current.slice(0, -1));
+            setDrawStart(null);
+            setMessage("引いた線を1本消しました");
+          }}
+        >
+          ↩ 1本消す
+        </button>
+      )}
+      {!printMode && manualLines.length > 0 && (
+        <button
+          type="button"
+          title="自分で引いた線をすべて消します（下敷きの図面は残ります）"
+          onClick={async () => {
+            if (
+              !(await ask(
+                `引いた線（${manualLines.length}本）をすべて消します。よろしいですか`,
+              ))
+            )
+              return;
+            pushDiagram();
+            setManualLines([]);
+            setDrawStart(null);
+            setSelectedLineId(null);
+            setCheckedIds([]);
+            setMessage("引いた線をすべて消しました");
+          }}
+        >
+          🗑 線を全部消す
+        </button>
+      )}
+    </>
+  );
+
+  const removeTraceTool = (
+    <>
+      {!printMode && trace.image !== "" && (
+        <button
+          type="button"
+          title="下敷きの図面（元図）を外します（引いた線は残ります）"
+          onClick={async () => {
+            if (!(await ask("下敷きの図面を外します。よろしいですか")))
+              return;
+            pushDiagram();
+            setTrace(EMPTY_FRAME_TRACE);
+            setTraceMode("off");
+            setScalePoints([]);
+            setMessage(
+              traces.length > 1
+                ? "選んでいる図面を外しました（他の図面は残ります）"
+                : "下敷きの図面を外しました",
+            );
+          }}
+        >
+          🗑 図面を外す
+        </button>
+      )}
+    </>
+  );
+
+  const underlayTools = (
+    <>
+      {!printMode && traces.length > 1 && (
+        <>
+          <label
+            className="snap-field"
+            title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
+          >
+            図面を選ぶ
+            <select
+              value={Math.min(activeTrace, Math.max(traces.length - 1, 0))}
+              onChange={(e) => {
+                setActiveTrace(Number(e.target.value));
+                // 選んだ図面が表示範囲の外にあっても見えるようにする
+                setFitTrace(true);
+              }}
+            >
+              {traces.map((_, index) => (
+                <option key={index} value={index}>
+                  図面{index + 1}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
+            onClick={bringTraceFront}
+          >
+            ⬆ 上に出す
+          </button>
+          <button
+            type="button"
+            className={traceLocked ? "on" : ""}
+            title="ONの間「✥ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
+            onClick={() => {
+              setTraceLocked(!traceLocked);
+              setMessage(
+                traceLocked
+                  ? "まとめて動かすをOFFにしました（つかんだ図面だけ動きます）"
+                  : "まとめて動かすをONにしました（全部の図面が一緒に動きます）",
+              );
+            }}
+          >
+            🔗 まとめて動かす
+          </button>
+        </>
+      )}
+      {!printMode && trace.image !== "" && (
+        <button
+          type="button"
+          title="選んでいる図面（橙枠）を線や部屋の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
+          onClick={goHomeTrace}
+        >
+          📍 近くへ戻す
+        </button>
+      )}
+      {!printMode && (
+        <>
+          <button
+            type="button"
+            title="Shift+Windows+S で切り取った図面を下敷きに足します（なぞって線を引けます。2枚目以降は右横に置きます）"
+            onClick={() => void pasteTraceImage()}
+          >
+            📋 図面を貼る
+          </button>
+          <button
+            type="button"
+            title="PDF・画像のファイルを選んで下敷きに足します（複数まとめて選ぶと横に並べて置きます）"
+            onClick={() => void openTraceFiles()}
+          >
+            📄 図面ファイル
+          </button>
+          <label className="snap-field" title="PDFの何ページ目を使うか">
+            頁
+            <input
+              className="num"
+              value={pageText}
+              onChange={(e) => setPageText(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            title="他の計算書（部屋・軸組・ピット）で置いた図面、または他の軸組計算書で引いた線を呼び出して貼ります"
+            onClick={() => setImportPicker(true)}
+          >
+            📥 図面・線を呼び出す
+          </button>
+        </>
+      )}
+      {scalePending && !printMode && (
+        <span
+          className="underlay-pending"
+          title="この計算書は図面の縮尺合わせがまだです。部位別入力表の備考欄に「縮尺調整（未）」が出ています。図面を呼び出して縮尺合わせをするか、図面が要らなければ右のボタンで印を消せます"
+        >
+          ⚠ 縮尺合わせがまだ
+          {traces.filter((row) => row.image !== "").length === 0 && (
+            <button
+              type="button"
+              title="図面がありません。この印だけを消します"
+              onClick={() => setScalePending(false)}
+            >
+              調整済みにする
+            </button>
+          )}
+        </span>
+      )}
+      {trace.image !== "" && !printMode && (
+        <>
+          <button
+            type="button"
+            className={traceMode === "scale" ? "on" : ""}
+            title="図面の中で長さの分かる所を2点クリックするか、引いた線を選び、実寸（m）を入れると縮尺が合います"
+            onClick={() => {
+              setScalePoints([]);
+              setTraceMode(traceMode === "scale" ? "off" : "scale");
+              if (traceMode !== "scale") {
+                setDrawing(false);
+                setDrawStart(null);
+                // 図を動かす（パン）中はクリックが効かないので切り、対象の図面が見えるよう表示範囲に入れる
+                setPanMode(false);
+                panDragRef.current = null;
+                setFitTrace(true);
+              }
+              setMessage(
+                traceMode === "scale"
+                  ? "縮尺合わせをやめました"
+                  : "長さの分かる所を2点クリックするか、直したい線を選んで、実寸（m）を入れてください",
+              );
+            }}
+          >
+            ⤢ 縮尺合わせ
+          </button>
+          {scaleUndo.length > 0 && (
+            <button
+              type="button"
+              title="縮尺合わせをする前の図面と線に戻します"
+              onClick={undoScale}
+            >
+              ↶ 縮尺を戻す
+            </button>
+          )}
+          {traceMode === "scale" && (
+            <>
+              <label
+                className="snap-field"
+                title="2点の間、または選んだ線の実寸（m）"
+              >
+                実寸
+                <input
+                  className="num"
+                  value={scaleText}
+                  onChange={(e) => setScaleText(e.target.value)}
+                />
+                m
+              </label>
+              <label
+                className="trace-only-toggle"
+                title="入れると選んでいる図面だけ伸び縮みします（引いた線・部屋はそのまま。図面を差し替えるときに）。図面の上の長さの分かる2点をクリックして実寸を入れます"
+              >
+                <input
+                  type="checkbox"
+                  checked={traceOnly}
+                  onChange={(event) =>
+                    setScaleTraceOnly(event.target.checked)
+                  }
+                />
+                図面だけ
+              </label>
+              <button type="button" onClick={applyScale}>
+                合わせる
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className={traceMode === "move" ? "on" : ""}
+            title="図面をつまんで動かします（引いた線に合わせる位置決め）"
+            onClick={() => {
+              setHeldView(traceMode === "move" ? null : baseView);
+              setTraceMode(traceMode === "move" ? "off" : "move");
+              if (traceMode !== "move") {
+                setDrawing(false);
+                setDrawStart(null);
+                // 図を動かす（パン）中は図面をつかめないので切り、対象の図面が見えるよう表示範囲に入れる
+                setPanMode(false);
+                panDragRef.current = null;
+                setFitTrace(true);
+                setMessage(
+                  traceLocked
+                    ? "🔗まとめて動かすがON：全部の図面が一緒に動きます。1枚だけ動かすときは「🔗 まとめて動かす」を押してOFFにしてください"
+                    : "図面をつまんで動かせます（つかんだ1枚だけ動きます）",
+                );
+              }
+            }}
+          >
+            ✥ 図面を動かす
+          </button>
+          <label
+            className="snap-field"
+            title="回す角度（度。図面の真ん中を軸に、図面も部屋も線も一緒に回ります）"
+          >
+            角度
+            <input
+              className="num"
+              style={{ width: "3.5em" }}
+              value={traceAngleText}
+              onChange={(e) => setTraceAngleText(e.target.value)}
+            />
+            °
+          </label>
+          <button
+            type="button"
+            disabled={traces.length === 0}
+            title="選んでいる図面の真ん中を軸に右へ回します。「図面だけ」がONなら図面だけ、OFFなら図面・部屋・線をまとめて回します"
+            onClick={() => void rotateTrace(1)}
+          >
+            ↻ 右回転
+          </button>
+          <button
+            type="button"
+            disabled={traces.length === 0}
+            title="選んでいる図面の真ん中を軸に左へ回します。「図面だけ」がONなら図面だけ、OFFなら図面・部屋・線をまとめて回します"
+            onClick={() => void rotateTrace(-1)}
+          >
+            ↺ 左回転
+          </button>
+          <label
+            className="trace-only-toggle"
+            title="入れると選んでいる図面だけ回します（引いた線・部屋はそのまま。図面を差し替えるときに）"
+          >
+            <input
+              type="checkbox"
+              checked={rotateOnly}
+              disabled={traces.length === 0}
+              onChange={(event) => setRotateTraceOnly(event.target.checked)}
+            />
+            図面だけ
+          </label>
+          <label
+            className="snap-field"
+            title="下敷きの図面の濃さを変えます（図面は消えません）"
+          >
+            図面の濃さ
+            <select
+              value={String(trace.opacity ?? 0.75)}
+              onChange={(e) => {
+                pushDiagram();
+                setTrace((current) => ({
+                  ...current,
+                  opacity: Number(e.target.value),
+                }));
+              }}
+            >
+              <option value="1">濃い</option>
+              <option value="0.75">ふつう</option>
+              <option value="0.4">薄い</option>
+              <option value="0.15">とても薄い</option>
+            </select>
+          </label>
+        </>
+      )}
+    </>
+  );
+
+  const shapeToolsEnd = (
+    <>
+      {!printMode && (
+        <label
+          className="snap-field"
+          title="これから引く線に付ける軸組種類です（線の色になります）"
+        >
+          種類
+          <select
+            value={drawKindId}
+            style={{
+              color: kindOf(drawKindId)?.color ?? "#334155",
+              fontWeight: 700,
+            }}
+            onChange={(e) => setDrawKindId(e.target.value)}
+          >
+            <option value="">（種類なし）</option>
+            {kinds.map((kind) => (
+              <option key={kind.id} value={kind.id}>
+                {kind.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {!printMode && (
+        <button
+          type="button"
+          className={showKinds ? "on" : ""}
+          title="軸組種類の名前と色を直します"
+          onClick={() => setShowKinds(!showKinds)}
+        >
+          🎨 軸組種類
+        </button>
+      )}
+      <label
+        className="snap-field"
+        title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます。0にすると吸着しません"
+      >
+        吸着
+        <input
+          className="num"
+          value={snapText}
+          onChange={(e) => setSnapText(e.target.value)}
+          onBlur={() => {
+            const value = Number(snapText);
+            // 数でないときや0以下のときは元の幅に戻す
+            if (!Number.isFinite(value) || value < 0) {
+              setSnapText(String(snapMm));
+              return;
+            }
+            setSnapMm(value);
+            try {
+              window.localStorage.setItem(SNAP_KEY, String(value));
+            } catch {
+              // 覚えられなくても使えるようにする
+            }
+          }}
+        />
+        mm
+      </label>
+      {gaps.length > 0 && (
+        <span
+          className="gap-note"
+          title={gaps
+            .map(
+              (gap) =>
+                `${gap.roomName} ${formatNumber(gap.gap * 1000, 0)}mm違い`,
+            )
+            .join(" / ")}
+        >
+          壁のずれ {gaps.length}か所（最大{" "}
+          {formatNumber(Math.max(...gaps.map((gap) => gap.gap)) * 1000, 0)}
+          mm）
+        </span>
+      )}
+    </>
+  );
+
   /** 上段（レイアウト図・軸組の表）。印刷では紙の1枚目に入れる */
   const upperArea = (
     <div
@@ -2584,34 +3228,7 @@ export default function FrameSheetPage({
               >
                 ↷ 進む
               </button>
-              {mode === "layout" && (
-                <>
-                  <button
-                    type="button"
-                    title="今の図を左右に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
-                    onClick={() => void flipDiagram("x")}
-                    disabled={
-                      placements.length === 0 &&
-                      manualLines.length === 0 &&
-                      traces.length === 0
-                    }
-                  >
-                    ⇔ 左右反転
-                  </button>
-                  <button
-                    type="button"
-                    title="今の図を上下に反転します（寸法はそのまま。置いた部屋・引いた線・貼った図面も一緒に裏返ります）"
-                    onClick={() => void flipDiagram("y")}
-                    disabled={
-                      placements.length === 0 &&
-                      manualLines.length === 0 &&
-                      traces.length === 0
-                    }
-                  >
-                    ⇕ 上下反転
-                  </button>
-                </>
-              )}
+
             </>
           )}
           <button
@@ -2632,10 +3249,7 @@ export default function FrameSheetPage({
           >
             ＋
           </button>
-          <button
-            type="button"
-            onClick={() => zoomBy(1 / 1.25)}
-          >
+          <button type="button" onClick={() => zoomBy(1 / 1.25)}>
             －
           </button>
           <button
@@ -2692,503 +3306,44 @@ export default function FrameSheetPage({
               ⤓ 他室から写す
             </button>
           )}
-          {mode === "layout" && (
-            <button
-              type="button"
-              className={drawing ? "on" : ""}
-              title="置いた部屋の上から線を引きます（始点→終点をクリック。端は近くの角・壁に吸着します。終点をShiftを押しながらクリックすると斜め線になります）"
-              onClick={() => {
-                setDrawStart(null);
-                // 線を引く間は表示範囲を止めて、図面が動かないようにする
-                setHeldView(drawing ? null : baseView);
-                setDrawing(!drawing);
-                // 縮尺合わせ・図面を動かすが入ったままだと線が引けないのでやめる
-                if (!drawing) {
-                  setTraceMode("off");
-                  setScalePoints([]);
-                  setFittingMode(false);
-                  setFittingTargetId(null);
-                  // 画面を動かす（パン）中はクリックが効かないので切る
-                  setPanMode(false);
-                  panDragRef.current = null;
-                }
-                setMessage(
-                  drawing
-                    ? "線引きをやめました（部屋を動かせます）"
-                    : "始点をクリックしてください（部屋は動きません）",
-                );
-              }}
-            >
-              ✎ 線を引く
-            </button>
-          )}
-          {mode !== "check" && !printMode && (
-            <button
-              type="button"
-              className={chainDraw ? "on" : ""}
-              title="線をつないで引きます（引いた線の終点がそのまま次の線の始点になります。Escキーか、もう一度押すと終わります）"
-              onClick={() => {
-                const next = !chainDraw;
-                setChainDraw(next);
-                if (!next) setDrawStart(null);
-                setMessage(
-                  next
-                    ? "終点を次々クリックすると、つながった線が引けます（Escキーで終わります）"
-                    : "連続線をやめました",
-                );
-              }}
-            >
-              ⌁ 連続線
-            </button>
-          )}
-          {mode === "layout" && manualLines.length > 0 && !printMode && (
-            <button
-              type="button"
-              className={fittingMode ? "on" : ""}
-              title="引いた線をクリックして、その線に付く建具を記号で入れます"
-              onClick={() => {
-                const next = !fittingMode;
-                setFittingMode(next);
-                setFittingTargetId(null);
-                // 先に線を選んであるときは、その線をそのまま付ける先に使う
-                const preset =
-                  next && selectedLineId !== null
-                    ? (manualLines.find((line) => line.id === selectedLineId)
-                        ?.id ?? null)
-                    : null;
-                if (next) {
-                  // 線引き中はクリックが点になるのでやめる
-                  setDrawing(false);
-                  setDrawStart(null);
-                  setTraceMode("off");
-                  setScalePoints([]);
-                  setFittingTargetId(preset);
-                }
-                setMessage(
-                  next
-                    ? preset === null
-                      ? "建具を付ける線をクリックしてください"
-                      : "付ける建具の記号を入れてください"
-                    : "",
-                );
-              }}
-            >
-              🚪 建具入力
-            </button>
-          )}
-          {mode === "layout" && manualLines.length > 0 && !printMode && (
-            <button
-              type="button"
-              className={curveMode ? "on" : ""}
-              title="引いた線をクリックして、離れ寸法と向きを入れて弧（曲面壁）にします"
-              onClick={() => {
-                const next = !curveMode;
-                setCurveMode(next);
-                setCurveTargetId(null);
-                setCurveText("");
-                setCurveFlip(false);
-                if (next) {
-                  // 線引き中はクリックが点になるのでやめる
-                  setDrawing(false);
-                  setDrawStart(null);
-                  setTraceMode("off");
-                  setScalePoints([]);
-                  setFittingMode(false);
-                  setFittingTargetId(null);
-                }
-                setMessage(next ? "曲面にする線をクリックしてください" : "");
-              }}
-            >
-              ⌒ 曲面壁
-            </button>
-          )}
-          {manualLines.length > 0 && (
-            <button
-              type="button"
-              className={manualOnly ? "on" : ""}
-              title="自分で引いた線だけを出します（下敷きの図面は消え、部屋の図は薄くなります）"
-              onClick={() => setManualOnly(!manualOnly)}
-            >
-              ☉ 引いた線だけ
-            </button>
-          )}
-          {expanded && (
-            <button
-              type="button"
-              className={showRoomList ? "on" : ""}
-              title="「置ける部屋」の表を出す／消す（消すと図を広く使えます）"
-              onClick={() => setShowRoomList(!showRoomList)}
-            >
-              🏠 置ける部屋
-            </button>
-          )}
-          {mode === "layout" && manualLines.length > 0 && (
-            <button
-              type="button"
-              title="最後に引いた線を1本消します（図の上の線をダブルクリックでも消せます）"
-              onClick={() => {
-                pushDiagram();
-                setManualLines((current) => current.slice(0, -1));
-                setDrawStart(null);
-                setMessage("引いた線を1本消しました");
-              }}
-            >
-              ↩ 1本消す
-            </button>
-          )}
-          {!printMode && manualLines.length > 0 && (
-            <button
-              type="button"
-              title="自分で引いた線をすべて消します（下敷きの図面は残ります）"
-              onClick={async () => {
-                if (
-                  !(await ask(
-                    `引いた線（${manualLines.length}本）をすべて消します。よろしいですか`,
-                  ))
-                )
-                  return;
-                pushDiagram();
-                setManualLines([]);
-                setDrawStart(null);
-                setSelectedLineId(null);
-                setCheckedIds([]);
-                setMessage("引いた線をすべて消しました");
-              }}
-            >
-              🗑 線を全部消す
-            </button>
-          )}
-          {!printMode && trace.image !== "" && (
-            <button
-              type="button"
-              title="下敷きの図面（元図）を外します（引いた線は残ります）"
-              onClick={async () => {
-                if (!(await ask("下敷きの図面を外します。よろしいですか")))
-                  return;
-                pushDiagram();
-                setTrace(EMPTY_FRAME_TRACE);
-                setTraceMode("off");
-                setScalePoints([]);
-                setMessage(
-                  traces.length > 1
-                    ? "選んでいる図面を外しました（他の図面は残ります）"
-                    : "下敷きの図面を外しました",
-                );
-              }}
-            >
-              🗑 図面を外す
-            </button>
-          )}
-          {!printMode && traces.length > 1 && (
+          {mode !== "layout" && (
             <>
-              <label
-                className="snap-field"
-                title="動かす・合わせる・外すの対象にする図面を選びます（選んだ図面に橙の枠が出ます）"
-              >
-                図面を選ぶ
-                <select
-                  value={Math.min(activeTrace, Math.max(traces.length - 1, 0))}
-                  onChange={(e) => {
-                    setActiveTrace(Number(e.target.value));
-                    // 選んだ図面が表示範囲の外にあっても見えるようにする
-                    setFitTrace(true);
-                  }}
-                >
-                  {traces.map((_, index) => (
-                    <option key={index} value={index}>
-                      図面{index + 1}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                title="選んでいる図面（橙枠）をいちばん上に重ねて出します（重なっている所で見える図面を変えます）"
-                onClick={bringTraceFront}
-              >
-                ⬆ 上に出す
-              </button>
-              <button
-                type="button"
-                className={traceLocked ? "on" : ""}
-                title="ONの間「✥ 図面を動かす」で全部の図面が一緒に動きます（重ね合わせたあと1枚の絵として固定したいときに）"
-                onClick={() => {
-                  setTraceLocked(!traceLocked);
-                  setMessage(
-                    traceLocked
-                      ? "まとめて動かすをOFFにしました（つかんだ図面だけ動きます）"
-                      : "まとめて動かすをONにしました（全部の図面が一緒に動きます）",
-                  );
-                }}
-              >
-                🔗 まとめて動かす
-              </button>
+              {shapeToolsStart}
+              {removeTraceTool}
+              {underlayTools}
+              {shapeToolsEnd}
             </>
-          )}
-          {!printMode && trace.image !== "" && (
-            <button
-              type="button"
-              title="選んでいる図面（橙枠）を線や部屋の近くへ戻します（動かして遠くへ行き、見えなくなったときに。まとめて動かす中は全員まとめて戻ります）"
-              onClick={goHomeTrace}
-            >
-              📍 近くへ戻す
-            </button>
-          )}
-          {!printMode && (
-            <>
-              <button
-                type="button"
-                title="Shift+Windows+S で切り取った図面を下敷きに足します（なぞって線を引けます。2枚目以降は右横に置きます）"
-                onClick={() => void pasteTraceImage()}
-              >
-                📋 図面を貼る
-              </button>
-              <button
-                type="button"
-                title="PDF・画像のファイルを選んで下敷きに足します（複数まとめて選ぶと横に並べて置きます）"
-                onClick={() => void openTraceFiles()}
-              >
-                📄 図面ファイル
-              </button>
-              <label className="snap-field" title="PDFの何ページ目を使うか">
-                頁
-                <input
-                  className="num"
-                  value={pageText}
-                  onChange={(e) => setPageText(e.target.value)}
-                />
-              </label>
-              <button
-                type="button"
-                title="他の計算書（部屋・軸組・ピット）で置いた図面、または他の軸組計算書で引いた線を呼び出して貼ります"
-                onClick={() => setImportPicker(true)}
-              >
-                📥 図面・線を呼び出す
-              </button>
-            </>
-          )}
-          {scalePending && !printMode && (
-            <span
-              className="underlay-pending"
-              title="この計算書は図面の縮尺合わせがまだです。部位別入力表の備考欄に「縮尺調整（未）」が出ています。図面を呼び出して縮尺合わせをするか、図面が要らなければ右のボタンで印を消せます"
-            >
-              ⚠ 縮尺合わせがまだ
-              {traces.filter((row) => row.image !== "").length === 0 && (
-                <button
-                  type="button"
-                  title="図面がありません。この印だけを消します"
-                  onClick={() => setScalePending(false)}
-                >
-                  調整済みにする
-                </button>
-              )}
-            </span>
-          )}
-          {trace.image !== "" && !printMode && (
-            <>
-              <button
-                type="button"
-                className={traceMode === "scale" ? "on" : ""}
-                title="図面の中で長さの分かる所を2点クリックするか、引いた線を選び、実寸（m）を入れると縮尺が合います"
-                onClick={() => {
-                  setScalePoints([]);
-                  setTraceMode(traceMode === "scale" ? "off" : "scale");
-                  if (traceMode !== "scale") {
-                    setDrawing(false);
-                    setDrawStart(null);
-                    // 図を動かす（パン）中はクリックが効かないので切り、対象の図面が見えるよう表示範囲に入れる
-                    setPanMode(false);
-                    panDragRef.current = null;
-                    setFitTrace(true);
-                  }
-                  setMessage(
-                    traceMode === "scale"
-                      ? "縮尺合わせをやめました"
-                      : "長さの分かる所を2点クリックするか、直したい線を選んで、実寸（m）を入れてください",
-                  );
-                }}
-              >
-                ⤢ 縮尺合わせ
-              </button>
-              {scaleUndo.length > 0 && (
-                <button
-                  type="button"
-                  title="縮尺合わせをする前の図面と線に戻します"
-                  onClick={undoScale}
-                >
-                  ↶ 縮尺を戻す
-                </button>
-              )}
-              {traceMode === "scale" && (
-                <>
-                  <label
-                    className="snap-field"
-                    title="2点の間、または選んだ線の実寸（m）"
-                  >
-                    実寸
-                    <input
-                      className="num"
-                      value={scaleText}
-                      onChange={(e) => setScaleText(e.target.value)}
-                    />
-                    m
-                  </label>
-                  <button type="button" onClick={applyScale}>
-                    合わせる
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                className={traceMode === "move" ? "on" : ""}
-                title="図面をつまんで動かします（引いた線に合わせる位置決め）"
-                onClick={() => {
-                  setHeldView(traceMode === "move" ? null : baseView);
-                  setTraceMode(traceMode === "move" ? "off" : "move");
-                  if (traceMode !== "move") {
-                    setDrawing(false);
-                    setDrawStart(null);
-                    // 図を動かす（パン）中は図面をつかめないので切り、対象の図面が見えるよう表示範囲に入れる
-                    setPanMode(false);
-                    panDragRef.current = null;
-                    setFitTrace(true);
-                    setMessage(
-                      traceLocked
-                        ? "🔗まとめて動かすがON：全部の図面が一緒に動きます。1枚だけ動かすときは「🔗 まとめて動かす」を押してOFFにしてください"
-                        : "図面をつまんで動かせます（つかんだ1枚だけ動きます）",
-                    );
-                  }
-                }}
-              >
-                ✥ 図面を動かす
-              </button>
-              <label
-                className="snap-field"
-                title="回す角度（度。図面の真ん中を軸に、図面も部屋も線も一緒に回ります）"
-              >
-                角度
-                <input
-                  className="num"
-                  style={{ width: "3.5em" }}
-                  value={traceAngleText}
-                  onChange={(e) => setTraceAngleText(e.target.value)}
-                />
-                °
-              </label>
-              <button
-                type="button"
-                disabled={traces.length === 0}
-                title="いま選んでいる図面の真ん中を軸に、図面・部屋・線をまとめて右へ回します"
-                onClick={() => void rotateTrace(1)}
-              >
-                ↻ 右回転
-              </button>
-              <button
-                type="button"
-                disabled={traces.length === 0}
-                title="いま選んでいる図面の真ん中を軸に、図面・部屋・線をまとめて左へ回します"
-                onClick={() => void rotateTrace(-1)}
-              >
-                ↺ 左回転
-              </button>
-              <label
-                className="snap-field"
-                title="下敷きの図面の濃さを変えます（図面は消えません）"
-              >
-                図面の濃さ
-                <select
-                  value={String(trace.opacity ?? 0.75)}
-                  onChange={(e) => {
-                    pushDiagram();
-                    setTrace((current) => ({
-                      ...current,
-                      opacity: Number(e.target.value),
-                    }));
-                  }}
-                >
-                  <option value="1">濃い</option>
-                  <option value="0.75">ふつう</option>
-                  <option value="0.4">薄い</option>
-                  <option value="0.15">とても薄い</option>
-                </select>
-              </label>
-            </>
-          )}
-          {!printMode && (
-            <label
-              className="snap-field"
-              title="これから引く線に付ける軸組種類です（線の色になります）"
-            >
-              種類
-              <select
-                value={drawKindId}
-                style={{
-                  color: kindOf(drawKindId)?.color ?? "#334155",
-                  fontWeight: 700,
-                }}
-                onChange={(e) => setDrawKindId(e.target.value)}
-              >
-                <option value="">（種類なし）</option>
-                {kinds.map((kind) => (
-                  <option key={kind.id} value={kind.id}>
-                    {kind.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {!printMode && (
-            <button
-              type="button"
-              className={showKinds ? "on" : ""}
-              title="軸組種類の名前と色を直します"
-              onClick={() => setShowKinds(!showKinds)}
-            >
-              🎨 軸組種類
-            </button>
-          )}
-          <label
-            className="snap-field"
-            title="この幅より近い壁・角はぴったり合わせます。部屋ごとに寸法を測るので、大きい部屋と小さい部屋で同じ壁の長さが食い違うときはここを広げます。0にすると吸着しません"
-          >
-            吸着
-            <input
-              className="num"
-              value={snapText}
-              onChange={(e) => setSnapText(e.target.value)}
-              onBlur={() => {
-                const value = Number(snapText);
-                // 数でないときや0以下のときは元の幅に戻す
-                if (!Number.isFinite(value) || value < 0) {
-                  setSnapText(String(snapMm));
-                  return;
-                }
-                setSnapMm(value);
-                try {
-                  window.localStorage.setItem(SNAP_KEY, String(value));
-                } catch {
-                  // 覚えられなくても使えるようにする
-                }
-              }}
-            />
-            mm
-          </label>
-          {gaps.length > 0 && (
-            <span
-              className="gap-note"
-              title={gaps
-                .map(
-                  (gap) =>
-                    `${gap.roomName} ${formatNumber(gap.gap * 1000, 0)}mm違い`,
-                )
-                .join(" / ")}
-            >
-              壁のずれ {gaps.length}か所（最大{" "}
-              {formatNumber(Math.max(...gaps.map((gap) => gap.gap)) * 1000, 0)}
-              mm）
-            </span>
           )}
         </div>
+        {mode === "layout" && !printMode && (
+          <div className="kind-pick underlay-tools">
+            {underlayTools}
+            {removeTraceTool}
+          </div>
+        )}
+        <div
+          className={mode === "layout" ? "drawing-body" : undefined}
+          style={mode === "layout" ? undefined : { display: "contents" }}
+        >
+          {mode === "layout" && (
+            <div className="shape-tools">
+              {shapeToolsStart}
+              {shapeToolsEnd}
+            </div>
+          )}
+          <div
+            style={
+              mode === "layout"
+                ? {
+                    display: "flex",
+                    flex: "1 1 auto",
+                    flexDirection: "column",
+                    minWidth: 0,
+                    minHeight: 0,
+                  }
+                : { display: "contents" }
+            }
+          >
         {drawing && !printMode && (
           <div className="frame-draw-bar">
             <strong>線を引く</strong>
@@ -3721,6 +3876,8 @@ export default function FrameSheetPage({
             </button>
           </p>
         )}
+          </div>
+        </div>
       </section>
 
       {showRoomTables && (

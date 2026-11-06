@@ -10,6 +10,7 @@ import {
   arcLength,
   round2,
   solveShape,
+  type Point,
   type RoomShape,
   type SolvedShape,
 } from "../room/shape";
@@ -80,7 +81,7 @@ export function mirrorFrameDiagram(
   const reflect = (value: number): number => round2(2 * center - value);
   const rotation = (value: number): number => {
     if (axis === "x") return round2(-value);
-    const normalized = ((180 - value) % 360 + 360) % 360;
+    const normalized = (((180 - value) % 360) + 360) % 360;
     const rounded = round2(normalized);
     return rounded >= 360 ? 0 : rounded;
   };
@@ -117,6 +118,29 @@ export interface FrameTrace {
   y: number;
   /** 図面の濃さ（0.05〜1。無いときは0.75） */
   opacity?: number;
+}
+
+export function scaleFrameTraceFromPoints(
+  trace: FrameTrace,
+  from: Point,
+  to: Point,
+  realLength: number,
+): FrameTrace | null {
+  const distance = Math.hypot(to.x - from.x, to.y - from.y);
+  if (
+    !Number.isFinite(distance) ||
+    distance < 1e-6 ||
+    !Number.isFinite(realLength) ||
+    realLength <= 0
+  )
+    return null;
+  const factor = realLength / distance;
+  return {
+    ...trace,
+    metersPerPixel: trace.metersPerPixel * factor,
+    x: from.x + (trace.x - from.x) * factor,
+    y: from.y + (trace.y - from.y) * factor,
+  };
 }
 
 export const EMPTY_FRAME_TRACE: FrameTrace = {
