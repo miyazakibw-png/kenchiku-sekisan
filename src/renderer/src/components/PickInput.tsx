@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { writeClipboard } from "../features/grid/writeClipboard";
 import "./PickInput.css";
 
 /** 候補一覧に出す1行（value＝欄に入る文字、label＝一覧に見せる文字） */
@@ -26,6 +27,10 @@ export function PickInput({
   row,
   col,
   commitOnBlur = false,
+  copyValue = false,
+  popupSide = "bottom",
+  popupAnchorCol,
+  dataAttrs,
   onCommit,
   onFocus,
 }: {
@@ -43,7 +48,15 @@ export function PickInput({
   row?: number;
   col?: number;
   commitOnBlur?: boolean;
-  onCommit: (text: string) => void;
+  copyValue?: boolean;
+  /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
+  popupSide?: "bottom" | "right";
+  /** 右側の候補一覧を揃える列番号 */
+  popupAnchorCol?: number;
+  /** inputへ付けるdata-*属性（表のキー移動の目印に使う） */
+  dataAttrs?: Record<string, string>;
+  /** picked＝一覧の行をクリックして選んだとき（同じ値でも呼び直したいときに使う） */
+  onCommit: (text: string, picked?: boolean) => void;
   onFocus?: () => void;
 }): JSX.Element {
   const [editing, setEditing] = useState<string | null>(null);
@@ -58,6 +71,42 @@ export function PickInput({
   const openList = (): void => {
     if (!entries || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
+    const width = Math.max(rect.width, 220);
+    if (popupSide === "right") {
+      // 欄の右側に出す（下の行をふさがない）。すぐ右の1列分はあけるので、
+      // 一覧の上に乗らずに右のマスへマウスを動かせる。右に入らなければ左側へ
+      const height = Math.min(320, window.innerHeight - 16);
+      let left: number | null = null;
+      if (popupAnchorCol !== undefined) {
+        const anchorInput = ref.current
+          .closest("tr")
+          ?.querySelector<HTMLInputElement>(
+            `input[data-col="${popupAnchorCol}"]`,
+          );
+        const anchorCell = anchorInput?.closest("td");
+        if (anchorCell instanceof HTMLElement) {
+          const anchoredLeft = anchorCell.getBoundingClientRect().right + 4;
+          if (anchoredLeft + width <= window.innerWidth - 4) {
+            left = anchoredLeft;
+          }
+        }
+      }
+      if (left === null) {
+        const cell = ref.current.closest("td");
+        const next = cell?.nextElementSibling;
+        const skip = next instanceof HTMLElement ? next.offsetWidth : 0;
+        left =
+          rect.right + skip + 4 + width <= window.innerWidth - 4
+            ? rect.right + skip + 4
+            : Math.max(4, rect.left - width - 4);
+      }
+      const top = Math.max(
+        4,
+        Math.min(rect.top, window.innerHeight - height - 4),
+      );
+      setBox({ left, top, width, height });
+      return;
+    }
     // 画面の下に入りきらないときは欄の上に出す（一覧の中はスクロールできる）
     const below = window.innerHeight - rect.bottom - 8;
     const above = rect.top - 8;
@@ -66,7 +115,7 @@ export function PickInput({
     setBox({
       left: Math.min(rect.left, window.innerWidth - 240),
       top: up ? rect.top - height : rect.bottom,
-      width: Math.max(rect.width, 220),
+      width,
       height,
     });
   };
@@ -79,10 +128,10 @@ export function PickInput({
       entry.label.includes(typed.trim()),
   );
 
-  const commit = (text: string): void => {
-    setEditing(null);
+  const commit = (text: string, picked = false): void => {
+    setEditing(copyValue && picked ? "" : null);
     setBox(null);
-    onCommit(text);
+    onCommit(text, picked);
   };
 
   return (
@@ -95,6 +144,7 @@ export function PickInput({
         list={entries ? undefined : listId}
         data-row={row}
         data-col={col}
+        {...dataAttrs}
         value={editing ?? value}
         placeholder={editing !== null && value !== "" ? value : placeholder}
         title={title}
@@ -109,6 +159,21 @@ export function PickInput({
           if (!commitOnBlur) onCommit(e.target.value);
         }}
         onKeyDown={(e) => {
+          if (
+            copyValue &&
+            e.ctrlKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === "c" &&
+            editing === "" &&
+            value !== "" &&
+            e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+          ) {
+            e.preventDefault();
+            setBox(null);
+            writeClipboard(value);
+            return;
+          }
           if (e.key === "Escape") {
             setBox(null);
             return;
@@ -149,7 +214,7 @@ export function PickInput({
                   // クリックで欄から離れる前に選べるよう mousedown で決める
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    commit(entry.value);
+                    commit(entry.value, true);
                   }}
                 >
                   <span className="key">{entry.value}</span>

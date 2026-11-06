@@ -87,6 +87,17 @@ table.aggregate tbody.row.warn td {
   background: #ffffcc;
 }
 
+/* 手で挿入した明細行は薄い緑で示し、番号欄に小さな「手」印を付ける */
+table.aggregate tbody.row.manual td {
+  background: #e8f5e9;
+}
+
+table.aggregate td .manual-mark {
+  margin-left: 2px;
+  font-size: 10px;
+  color: #0e7a0e;
+}
+
 /* 不要明細（内訳書へ飛ばさない明細）は灰色で示す */
 table.aggregate tbody.row.unused td {
   background: #eeeeee;
@@ -96,6 +107,22 @@ table.aggregate tbody.row.unused td {
 /* 選んだ明細は枠ではなく薄い黄色の背景で示す */
 table.aggregate tbody.row.selected td {
   background: #fff6b8;
+}
+
+table.aggregate td.in-range {
+  background: #dbe8fb;
+  outline: 1px solid #7aa4e0;
+}
+
+table.aggregate td.in-range input,
+table.aggregate td.in-range select {
+  background: transparent;
+}
+
+.aggregate-page .aggregate-bulk-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* 左端の工種科目ボタン。押すとその科目の先頭明細へ飛ぶ */
@@ -150,6 +177,22 @@ table.aggregate tbody.row.selected td {
   font-weight: bold;
 }
 
+/* 出所の計算書へ飛ぶボタン */
+.aggregate-page .basis td.source button.link {
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  font-size: 11px;
+  color: #6d28d9;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.aggregate-page .basis td.source button.link:hover {
+  background: #f3e8ff;
+}
+
 .aggregate-page .basis .note {
   font-size: 11px;
   color: #6b7280;
@@ -174,4 +217,26 @@ table.aggregate td input:focus,
 table.aggregate td select:focus {
   background: #fff;
   outline: 1px solid #1f4e79;
+}
+
+/* 表の下に白い余白を残す（行削除で上の行が動かないようにする。
+   aggregate-bodyは横flexのスクロール欄なので、中の末尾要素の下マージンで作る） */
+.aggregate-body > :last-child {
+  margin-bottom: 100vh;
+}
+
+@media print {
+  .aggregate-body > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* 前後に空白がある欄（見た目が同じでも別の明細になる） */
+table.aggregate .edge-space {
+  background: #ffe4e1;
+  outline: 1px dashed #d00000;
+}
+
+table.aggregate td.estimate-display {
+  vertical-align: middle;
 }

@@ -2,6 +2,11 @@ import { eq } from "drizzle-orm";
 import type { AppDatabase } from "../db";
 import { projectEstimateRows, projectGeneralSheets } from "../db/schema";
 import type { GeneralSheet, SaveGeneralSheetRequest } from "../../shared/types";
+import {
+  lowerFromTemplate,
+  parseSavedLowerTemplate,
+} from "../../core/room/lowerTemplate";
+import { getLowerTemplate } from "./roomSheetService";
 
 function toSheet(row: typeof projectGeneralSheets.$inferSelect): GeneralSheet {
   return {
@@ -33,9 +38,16 @@ export function getGeneralSheet(
   if (!estimateRow)
     throw new Error(`部位別入力表の行が見つかりません: ${estimateRowId}`);
 
+  const template = parseSavedLowerTemplate(getLowerTemplate(db, "general"));
   const created = db
     .insert(projectGeneralSheets)
-    .values({ projectId: estimateRow.projectId, estimateRowId })
+    .values({
+      projectId: estimateRow.projectId,
+      estimateRowId,
+      ...(template === null
+        ? {}
+        : { lowerJson: JSON.stringify(lowerFromTemplate(template)) }),
+    })
     .returning()
     .get();
   return toSheet(created);

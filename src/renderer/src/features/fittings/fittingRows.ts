@@ -6,6 +6,8 @@ import {
 } from "../../../../core/formula/evaluate";
 import type { GridColumn } from "../grid/gridClipboard";
 
+export const INITIAL_EMPTY_ROWS = 30;
+
 export function toDrafts(rows: Fitting[]): FittingDraft[] {
   return rows.map(
     ({ id, projectId: _projectId, displayOrder: _displayOrder, ...rest }) => ({
@@ -34,6 +36,12 @@ export function emptyRow(): FittingDraft {
     fromFurniture: 0,
     furnitureKey: "",
   };
+}
+
+export function withInitialRows(rows: FittingDraft[]): FittingDraft[] {
+  return rows.length > 0
+    ? rows
+    : Array.from({ length: INITIAL_EMPTY_ROWS }, () => emptyRow());
 }
 
 /** 寸法欄の表示（未入力は空欄、入力済みは小数2桁） */

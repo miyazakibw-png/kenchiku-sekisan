@@ -7,8 +7,10 @@ import type {
 } from "@shared/types";
 import {
   buildCheckSheet,
+  describePartMap,
   toCheckSheetTsv,
 } from "../../../../core/aggregate/checkSheet";
+import { toHalfWidth } from "../../../../core/breakdown/breakdown";
 import "../estimate/EstimatePartsPage.css";
 import "./CheckSheetPage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -39,6 +41,10 @@ export default function CheckSheetPage({
   );
   const [materialCategory, setMaterialCategory] = useState("仕上");
   const [message, setMessage] = useState("");
+  /** 列ごとに計上する部位番号（管理用部位の番号 → "10-19" など） */
+  const [partMap, setPartMap] = useState<Record<string, string>>({});
+  /** 表に出す列（✔を付けた管理用部位の番号）。null は未設定＝全部に✔ */
+  const [shownParts, setShownParts] = useState<number[] | null>(null);
 
   const reload = useCallback(
     async (runId?: number) => {
@@ -52,6 +58,8 @@ export default function CheckSheetPage({
     void (async () => {
       const masters = await window.sekisan.listBasicMasters(project.id);
       setAggregationParts(masters.aggregationParts);
+      setPartMap(await window.sekisan.getCheckSheetPartMap());
+      setShownParts(await window.sekisan.getCheckSheetShownParts());
       await reload();
     })();
   }, [reload]);
@@ -63,10 +71,50 @@ export default function CheckSheetPage({
     return found.includes("仕上") ? found : ["仕上", ...found];
   }, [view.items]);
 
-  const sheet = useMemo(
-    () => buildCheckSheet(view.items, aggregationParts, materialCategory),
-    [aggregationParts, materialCategory, view.items],
+  /** ✔を付けた列。未設定なら全部に✔が付いている扱い */
+  const checkedParts = useMemo(
+    () => shownParts ?? aggregationParts.map((part) => part.id),
+    [aggregationParts, shownParts],
   );
+
+  const sheet = useMemo(
+    () =>
+      buildCheckSheet(
+        view.items,
+        aggregationParts,
+        materialCategory,
+        partMap,
+        checkedParts,
+      ),
+    [aggregationParts, checkedParts, materialCategory, partMap, view.items],
+  );
+
+  /** 今どの部位番号がどの列に入るか（表の下に出す説明） */
+  const partRules = useMemo(
+    () => describePartMap(aggregationParts, partMap),
+    [aggregationParts, partMap],
+  );
+
+  const saveRule = async (id: number, text: string): Promise<void> => {
+    const next = { ...partMap, [String(id)]: text };
+    if (text.trim() === "") delete next[String(id)];
+    setPartMap(next);
+    await window.sekisan.saveCheckSheetPartMap(next);
+    setMessage(
+      "計上する部位番号を保存しました（集計をし直すと部位別入力表のチェック列にも従います）",
+    );
+  };
+
+  const toggleShown = async (id: number, on: boolean): Promise<void> => {
+    const next = on
+      ? [...checkedParts, id]
+      : checkedParts.filter((each) => each !== id);
+    setShownParts(next);
+    await window.sekisan.saveCheckSheetShownParts(next);
+    setMessage(
+      "表に出す部位を保存しました（Excelへのコピーも✔を付けた列だけです）",
+    );
+  };
 
   const copy = async (): Promise<void> => {
     await navigator.clipboard.writeText(toCheckSheetTsv(sheet));
@@ -121,7 +169,7 @@ export default function CheckSheetPage({
             <th colSpan={2}>部位</th>
             {sheet.parts.map((part) => (
               <th key={part.id} colSpan={2}>
-                {part.name}
+                {toHalfWidth(part.name)}
               </th>
             ))}
           </tr>
@@ -143,12 +191,18 @@ export default function CheckSheetPage({
             <tbody key={`${block.part1}|${block.part2}`}>
               {Array.from({ length: rowCount }, (_unused, row) => (
                 <tr key={row}>
-                  {row === 0 && <td rowSpan={rowCount}>{block.part1}</td>}
-                  {row === 0 && <td rowSpan={rowCount}>{block.part2}</td>}
+                  {row === 0 && (
+                    <td rowSpan={rowCount}>{toHalfWidth(block.part1)}</td>
+                  )}
+                  {row === 0 && (
+                    <td rowSpan={rowCount}>{toHalfWidth(block.part2)}</td>
+                  )}
                   {block.columns.flatMap((column, columnIndex) => {
                     const cell = column[row];
                     return [
-                      <td key={`n${columnIndex}`}>{cell ? cell.name : ""}</td>,
+                      <td key={`n${columnIndex}`}>
+                        {cell ? toHalfWidth(cell.name) : ""}
+                      </td>,
                       <td key={`q${columnIndex}`} className="number">
                         {cell ? cell.quantity.toFixed(2) : ""}
                       </td>,
@@ -168,6 +222,53 @@ export default function CheckSheetPage({
       {sheet.blocks.length === 0 && (
         <p className="note">対象の明細がありません。</p>
       )}
+
+      <h3 className="section">計上される仕組み（列ごとの部位番号）</h3>
+      <p className="note">
+        明細の「部位番号」でどの列に入るかが決まります。いずれの列にも当てはまらないときは、明細の部位名に列の名前（床・壁など）が含まれていればその列に入ります。
+        番号は「10-19」のような範囲や「10,12-15」のような並べ方で入れられます（空にするともとの決まり…番号の十の位で分ける…に戻ります）。
+        左端の✔を付けた部位だけを上の表に出します（Excelへのコピーも同じです）。✔を付けた部位は、明細が1件も無くても空欄の列として出ます。
+      </p>
+      <table className="parts check-sheet part-rules">
+        <thead>
+          <tr>
+            <th title="✔を付けた部位を表に出します">表示</th>
+            <th>番号</th>
+            <th>列（管理用部位）</th>
+            <th>計上する部位番号</th>
+            <th>設定</th>
+          </tr>
+        </thead>
+        <tbody>
+          {partRules.map((rule) => (
+            <tr key={rule.id}>
+              <td className="flag">
+                <input
+                  type="checkbox"
+                  checked={checkedParts.includes(rule.id)}
+                  onChange={(e) => void toggleShown(rule.id, e.target.checked)}
+                />
+              </td>
+              <td className="number">{rule.id}</td>
+              <td>{toHalfWidth(rule.name)}</td>
+              <td>
+                <input
+                  value={partMap[String(rule.id)] ?? ""}
+                  placeholder={rule.numbers}
+                  onChange={(e) =>
+                    setPartMap({
+                      ...partMap,
+                      [String(rule.id)]: e.target.value,
+                    })
+                  }
+                  onBlur={(e) => void saveRule(rule.id, e.target.value)}
+                />
+              </td>
+              <td>{rule.custom ? "ここで決めた番号" : "もとの決まり"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

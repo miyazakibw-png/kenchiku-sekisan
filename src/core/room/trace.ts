@@ -118,26 +118,125 @@ export const EMPTY_UNDERLAY: TraceUnderlay = {
   opacity: 0.75,
 };
 
+function normalizeUnderlay(
+  raw: Partial<TraceUnderlay> | null | undefined,
+): TraceUnderlay {
+  if (raw === undefined || raw === null || typeof raw !== "object")
+    return { ...EMPTY_UNDERLAY };
+  const number = (value: unknown, fallback: number): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return {
+    image: typeof raw.image === "string" ? raw.image : "",
+    metersPerPixel: number(raw.metersPerPixel, 0),
+    x: number(raw.x, 0),
+    y: number(raw.y, 0),
+    opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
+    ...(raw.scaled === true ? { scaled: true } : {}),
+  };
+}
+
 /** 保存した trace の JSON に一緒に入れた下敷き（underlay）を読む */
 export function parseUnderlay(json: string): TraceUnderlay {
   try {
     const parsed = JSON.parse(json) as { underlay?: Partial<TraceUnderlay> };
-    const raw = parsed.underlay;
-    if (raw === undefined || raw === null || typeof raw !== "object")
-      return { ...EMPTY_UNDERLAY };
-    const number = (value: unknown, fallback: number): number =>
-      typeof value === "number" && Number.isFinite(value) ? value : fallback;
-    return {
-      image: typeof raw.image === "string" ? raw.image : "",
-      metersPerPixel: number(raw.metersPerPixel, 0),
-      x: number(raw.x, 0),
-      y: number(raw.y, 0),
-      opacity: Math.min(1, Math.max(0.05, number(raw.opacity, 0.75))),
-      ...(raw.scaled === true ? { scaled: true } : {}),
-    };
+    return normalizeUnderlay(parsed.underlay);
   } catch {
     return { ...EMPTY_UNDERLAY };
   }
+}
+
+/**
+ * 保存した trace の JSON に入れた下敷きを全部読む（複数置ける画面は underlays 配列。
+ * 1枚だけの古いデータは underlay 単体なので、その1枚を返す）
+ *
+ * 軸組計算書からコピーしてきた計算書は traces 配列に図面が入っているので、
+ * underlays/underlay が無いときはそちらも読む（項目は同じ）。軸組の図面は縮尺済み
+ * （metersPerPixel>0）として扱う。
+ */
+export function parseUnderlays(json: string): TraceUnderlay[] {
+  try {
+    const parsed = JSON.parse(json) as {
+      underlays?: unknown;
+      underlay?: unknown;
+      traces?: unknown;
+    };
+    const fromTraces =
+      !Array.isArray(parsed.underlays) && parsed.underlay === undefined;
+    const list = Array.isArray(parsed.underlays)
+      ? parsed.underlays
+      : parsed.underlay !== undefined
+        ? [parsed.underlay]
+        : Array.isArray(parsed.traces)
+          ? parsed.traces
+          : [];
+    return list.map((raw) => {
+      const underlay = normalizeUnderlay(raw as Partial<TraceUnderlay>);
+      if (fromTraces && underlay.image !== "" && underlay.metersPerPixel > 0)
+        underlay.scaled = true;
+      return underlay;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** traceJson に保存した「図面をまとめて動かす」の印（重ね合わせたあと1枚の絵として固定する切替） */
+export function parseUnderlayLocked(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { underlayLocked?: unknown };
+    return parsed.underlayLocked === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * traceJson に残す「縮尺合わせがまだ」の印。
+ * 図面を置いた計算書は、あとで図面を外してもなぞった寸法が図面の縮尺のままなので、
+ * 下敷きの有無とは別にこの印で記録する（縮尺合わせが済むと外れる）。
+ */
+export function parseScalePending(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { scalePending?: unknown };
+    return parsed.scalePending === true;
+  } catch {
+    return false;
+  }
+}
+
+/** traceJson の中に、縮尺がまだ合わせられていない下敷きの図面があるか（一覧の「縮尺調整（未）」表示に使う） */
+export function hasUnscaledUnderlay(json: string): boolean {
+  return parseUnderlays(json).some(
+    (underlay) => underlay.image !== "" && underlay.scaled !== true,
+  );
+}
+
+/**
+ * 「縮尺調整（未）」を出すか。
+ * 今残っている未調整の下敷きだけでなく、図面を置いた計算書が縮尺合わせを済ませていない
+ * 記録（scalePending）があれば、図面を外したあとも出す。
+ */
+export function needsScaleAdjustment(json: string): boolean {
+  return hasUnscaledUnderlay(json) || parseScalePending(json);
+}
+
+/**
+ * なぞってできた図形に元図を重ねる下敷きの置き場所。
+ * 図形は最初になぞった点が原点になるので、画像の左上はその点の分だけ左上に置くと
+ * なぞった位置に重なる。meters は toMeters で実寸に直したなぞりの点の並び。
+ */
+export function underlayAtTraceOrigin(
+  underlay: TraceUnderlay,
+  meters: Point[],
+): TraceUnderlay {
+  // 図形の原点＝最初の辺の始点。同じ点が続くときはずれた先の点が始点になる
+  const start =
+    meters.find((point, index) => {
+      const next = meters[(index + 1) % meters.length];
+      return next !== undefined && (next.x !== point.x || next.y !== point.y);
+    }) ?? meters[0];
+  if (start === undefined) return underlay;
+  return { ...underlay, x: -start.x, y: -start.y };
 }
 
 /**
@@ -159,6 +258,23 @@ export function scaleUnderlay(
     x: from.x + (underlay.x - from.x) * factor,
     y: from.y + (underlay.y - from.y) * factor,
     scaled: true,
+  };
+}
+
+/**
+ * 図形の縮尺合わせ（scaleShape）と同じ倍率で下敷きも伸び縮みさせる。
+ * 図形は原点を中心に大きくなるので、画像の置き場所と1画素あたりの寸法を
+ * 同じ倍率にすると、なぞった線と元図がずれないまま一緒に拡大・縮小する。
+ */
+export function growUnderlay(
+  underlay: TraceUnderlay,
+  factor: number,
+): TraceUnderlay {
+  return {
+    ...underlay,
+    metersPerPixel: underlay.metersPerPixel * factor,
+    x: underlay.x * factor,
+    y: underlay.y * factor,
   };
 }
 
@@ -250,7 +366,8 @@ export function traceAfterUnderlay(
   trace: RoomTrace,
   after: TraceUnderlay,
 ): RoomTrace {
-  if (after.image === "") return trace.image === "" ? trace : { ...EMPTY_TRACE };
+  if (after.image === "")
+    return trace.image === "" ? trace : { ...EMPTY_TRACE };
   const perPixel =
     after.scaled === true && after.metersPerPixel > 0
       ? after.metersPerPixel

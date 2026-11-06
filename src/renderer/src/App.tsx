@@ -11,7 +11,9 @@ import { useGridKeyNav } from "./features/grid/useGridKeyNav";
 import { useHalfWidthFields } from "./hooks/useHalfWidthFields";
 import { refocusWindow, useInputRecovery } from "./hooks/useInputRecovery";
 import { useImeMode } from "./hooks/useImeMode";
+import { useLineStyles } from "./hooks/useLineStyles";
 import { useStickyHeaders } from "./features/grid/useStickyHeaders";
+import { useDisplayZoom, ZOOM_STEPS } from "./hooks/useDisplayZoom";
 import SettingsPage from "./features/settings/SettingsPage";
 import CalcWindowPage from "./features/estimate/CalcWindowPage";
 
@@ -39,6 +41,12 @@ function calcWindowParentId(): number | null {
   return matched ? Number(matched[1]) : null;
 }
 
+/** 物件専用ウィンドウを最初に開く画面は #project=<ID>&menu=<画面> で指定できる */
+function openedMenu(): string | null {
+  const matched = /menu=(\w+)/.exec(window.location.hash);
+  return matched ? matched[1] : null;
+}
+
 export default function App(): JSX.Element {
   const projectId = openedProjectId();
   const calcParentId = calcWindowParentId();
@@ -51,10 +59,12 @@ export default function App(): JSX.Element {
   );
   const onGridKeyDown = useGridKeyNav();
   const mainRef = useRef<HTMLElement>(null);
+  const [zoom, setZoom] = useDisplayZoom();
   useStickyHeaders(mainRef);
   useHalfWidthFields();
   useInputRecovery();
   useImeMode();
+  useLineStyles();
 
   // 画面を切り替えるたびにマスターを読み直す（科目マスターを直した内容をすぐ他画面へ反映する）
   // 工事の画面ではその工事専用のマスター（無い種類は基本マスター）を使う
@@ -91,6 +101,22 @@ export default function App(): JSX.Element {
           >
             ⌨ 入力復帰
           </button>
+          <label
+            className="display-zoom"
+            title="画面全体の表示倍率です（Ctrl＋−／＋でも変えられます。全部のウィンドウに同じ倍率がかかります）"
+          >
+            表示
+            <select
+              value={Math.round(zoom * 100)}
+              onChange={(event) => setZoom(Number(event.target.value) / 100)}
+            >
+              {ZOOM_STEPS.map((step) => (
+                <option key={step} value={Math.round(step * 100)}>
+                  {Math.round(step * 100)}%
+                </option>
+              ))}
+            </select>
+          </label>
           <PrintBar projectName={projectName} />
         </header>
         {projectId === null && (
@@ -112,7 +138,11 @@ export default function App(): JSX.Element {
           {!options ? (
             <div className="placeholder">読み込み中…</div>
           ) : projectId !== null ? (
-            <ProjectLedgerPage options={options} initialProjectId={projectId} />
+            <ProjectLedgerPage
+              options={options}
+              initialProjectId={projectId}
+              initialMenu={openedMenu()}
+            />
           ) : nav === "subjects" ? (
             <SubjectMasterPage />
           ) : nav === "details" ? (

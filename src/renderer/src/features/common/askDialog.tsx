@@ -11,6 +11,8 @@ let root: Root | null = null;
 
 function AskBox(props: {
   message: string;
+  confirmText: string;
+  cancelText: string;
   onAnswer: (answer: boolean) => void;
 }): JSX.Element {
   const okRef = useRef<HTMLButtonElement>(null);
@@ -35,10 +37,10 @@ function AskBox(props: {
             className="ask-ok"
             onClick={() => props.onAnswer(true)}
           >
-            はい
+            {props.confirmText}
           </button>
           <button type="button" onClick={() => props.onAnswer(false)}>
-            いいえ
+            {props.cancelText}
           </button>
         </div>
       </div>
@@ -46,8 +48,12 @@ function AskBox(props: {
   );
 }
 
-/** 確認を出して、「はい」なら true を返す */
-export function ask(message: string): Promise<boolean> {
+/** 確認を出して、確定なら true を返す */
+export function ask(
+  message: string,
+  confirmText = "はい",
+  cancelText = "いいえ",
+): Promise<boolean> {
   if (host === null) {
     host = document.createElement("div");
     document.body.appendChild(host);
@@ -63,6 +69,77 @@ export function ask(message: string): Promise<boolean> {
       if (opener !== null && document.contains(opener)) opener.focus();
       resolve(result);
     };
-    root?.render(<AskBox message={message} onAnswer={answer} />);
+    root?.render(
+      <AskBox
+        message={message}
+        confirmText={confirmText}
+        cancelText={cancelText}
+        onAnswer={answer}
+      />,
+    );
+  });
+}
+
+function PickBox(props: {
+  message: string;
+  choices: string[];
+  onAnswer: (answer: number) => void;
+}): JSX.Element {
+  const firstRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="ask-backdrop"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") props.onAnswer(-1);
+      }}
+    >
+      <div className="ask-box" role="dialog" aria-modal="true">
+        <div className="ask-message">{props.message}</div>
+        <div className="ask-buttons">
+          {props.choices.map((choice, index) => (
+            <button
+              key={choice}
+              type="button"
+              ref={index === 0 ? firstRef : undefined}
+              className={index === 0 ? "ask-ok" : undefined}
+              onClick={() => props.onAnswer(index)}
+            >
+              {choice}
+            </button>
+          ))}
+          <button type="button" onClick={() => props.onAnswer(-1)}>
+            やめる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 複数の選択肢から1つを選ばせる（選んだ番号を返す。やめる・Esc は -1） */
+export function pick(message: string, choices: string[]): Promise<number> {
+  if (host === null) {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+  }
+  const opener =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  return new Promise<number>((resolve) => {
+    const answer = (result: number): void => {
+      root?.render(null);
+      if (opener !== null && document.contains(opener)) opener.focus();
+      resolve(result);
+    };
+    root?.render(
+      <PickBox message={message} choices={choices} onAnswer={answer} />,
+    );
   });
 }

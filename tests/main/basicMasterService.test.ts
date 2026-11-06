@@ -114,15 +114,20 @@ describe("その他マスター", () => {
     }));
     expect(saveBasicMaster(db, "units", rows).errors[0]).toContain("30件まで");
     expect(
-      saveBasicMaster(db, "pickupParts", [{ id: 201, name: "床", note: "" }])
+      saveBasicMaster(db, "pickupParts", [{ id: 1000, name: "床", note: "" }])
         .errors[0],
-    ).toContain("1〜200");
+    ).toContain("1〜999");
+    expect(
+      saveBasicMaster(db, "pickupParts", [{ id: 999, name: "床", note: "" }])
+        .errors,
+    ).toEqual([]);
   });
 });
 
 describe("その他マスターの共通規則", () => {
   it("マスターごとの上限", () => {
-    expect(BASIC_MASTER_LIMITS.pickupParts.maxId).toBe(200);
+    expect(BASIC_MASTER_LIMITS.pickupParts.maxId).toBe(999);
+    expect(BASIC_MASTER_LIMITS.pickupParts.maxRows).toBe(999);
     expect(BASIC_MASTER_LIMITS.units.maxRows).toBe(30);
     expect(BASIC_MASTER_LIMITS.aggregationParts.maxRows).toBe(20);
   });

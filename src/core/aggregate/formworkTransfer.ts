@@ -47,7 +47,6 @@ export interface FormworkTransferRule {
   /** 掛け率（元明細ごと） */
   coefficient: number;
   subjectId: number | null;
-  materialCategory: string;
   /** 転記先名称（例：打放型枠） */
   name: string;
   /** 転記先の摘要 上段（元明細から写して、明細ごとに変えられる） */
@@ -99,7 +98,6 @@ export interface FormworkSourceGroup {
 /** 一括作成のもとになる元明細（集計書兼工事マスターの明細） */
 export interface FormworkBulkSource {
   masterKey: string;
-  materialCategory: string;
   descriptionUpper: string;
   descriptionLower: string;
   unit: string;
@@ -115,7 +113,6 @@ export interface FormworkBulkSpec {
   unit: string;
   /** 掛け率の初期値（あとで明細ごとに直せる） */
   coefficient: number;
-  materialCategory: string;
   /** 摘要を元明細から写す */
   copyDescription: boolean;
 }
@@ -134,10 +131,6 @@ export function buildFormworkRulesFromSources(
     sourceKeys: [source.masterKey],
     coefficient: spec.coefficient === 0 ? 1 : spec.coefficient,
     subjectId: spec.subjectId,
-    materialCategory:
-      spec.materialCategory === ""
-        ? source.materialCategory
-        : spec.materialCategory,
     name: spec.name,
     description: spec.copyDescription ? source.descriptionUpper : "",
     descriptionLower: spec.copyDescription ? source.descriptionLower : "",
@@ -175,11 +168,13 @@ export function collectFormworkQuantities(
   }));
 }
 
+/** 転記した行が入る部位Ⅰ（手入力のタイトル行と重ならない名前で1か所にまとめる） */
+export const FORMWORK_PART1 = "仕上転記数量";
+
 interface Bucket {
   formwork: string;
   order: number;
   subjectId: number | null;
-  materialCategory: string;
   name: string;
   description: string;
   descriptionLower: string;
@@ -222,7 +217,6 @@ export function buildFormworkTransferRows(
         const key = [
           formwork,
           rule.subjectId ?? "",
-          rule.materialCategory,
           rule.name,
           rule.description,
           rule.descriptionLower,
@@ -232,7 +226,6 @@ export function buildFormworkTransferRows(
           formwork,
           order: categoryOrder(categories, formwork),
           subjectId: rule.subjectId,
-          materialCategory: rule.materialCategory,
           name: rule.name,
           description: rule.description,
           descriptionLower: rule.descriptionLower,
@@ -270,7 +263,9 @@ export function buildFormworkTransferRows(
         formworkKey: FORMWORK_ROW_KEY,
         formwork,
         title: true,
-        part1: formwork,
+        // 先頭のタイトル行だけ部位Ⅰを入れ、あとの行は上行を引き継ぐ
+        // （転記分は部位Ⅰ「仕上転記数量」ひとつにまとまる）
+        part1: rows.length === 0 ? FORMWORK_PART1 : "",
         part2: "",
         part2Split: false,
         part3: "",
@@ -298,7 +293,7 @@ export function buildFormworkTransferRows(
       part2Split: false,
       part3: "",
       subjectId: bucket.subjectId,
-      materialCategory: bucket.materialCategory,
+      materialCategory: "",
       partNumber: null,
       partName: "",
       detailNumber: number,
@@ -312,4 +307,139 @@ export function buildFormworkTransferRows(
     });
   });
   return rows;
+}
+
+/** 行の目印（並び替えた順を、あとで作り直すときの照合に使う） */
+function rowSignature(row: {
+  title: boolean;
+  formwork: string;
+  name: string;
+  description: string;
+  descriptionLower: string;
+  unit: string;
+}): string {
+  return [
+    row.title ? "T" : "D",
+    row.formwork,
+    row.name,
+    row.description,
+    row.descriptionLower,
+    row.unit,
+  ].join("|");
+}
+
+/** 転記入力表に入っている行の目印（タイトル行は「<分類>」という名前になっている） */
+export function storedRowSignature(row: {
+  formwork: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+}): string {
+  return rowSignature({
+    title: row.name === `<${row.formwork}>`,
+    formwork: row.formwork,
+    name: row.name,
+    description: row.descriptionUpper,
+    descriptionLower: row.descriptionLower,
+    unit: row.unit,
+  });
+}
+
+/** 明細番号を先頭からの連番に振り直す（行を動かしても番号はその場に残す） */
+export function renumberFormworkRows(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  return rows.map((row, index) => ({ ...row, detailNumber: index + 1 }));
+}
+
+/**
+ * 生成した行を、転記入力表に入っている並び（④で並び替えた順）に合わせる。
+ * 目印が合う行はその順に、合わない行（新しくできた明細や直した分）は
+ * 生成順の1つ前の行のすぐ後ろに置く（新しい分類のタイトル行と明細もまとまる）。
+ */
+export function orderFormworkRows(
+  rows: readonly FormworkTransferRow[],
+  storedSignatures: readonly string[],
+): FormworkTransferRow[] {
+  const rest = new Map<string, number[]>();
+  storedSignatures.forEach((signature, index) => {
+    const queue = rest.get(signature) ?? [];
+    queue.push(index);
+    rest.set(signature, queue);
+  });
+  let last = -1;
+  const keyed = rows.map((row) => {
+    const queue = rest.get(rowSignature(row));
+    if (queue !== undefined && queue.length > 0) {
+      last = queue.shift()!;
+    } else {
+      last += 0.001;
+    }
+    return { row, key: last };
+  });
+  keyed.sort((a, b) => a.key - b.key);
+  return renumberFormworkRows(keyed.map((entry) => entry.row));
+}
+
+/** 明細行の型枠分類を、上にあるタイトル行の分類にそろえる */
+function adoptGroupFormwork(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  let formwork = "";
+  return rows.map((row) => {
+    if (row.title) {
+      formwork = row.formwork;
+      return row;
+    }
+    return formwork === "" ? row : { ...row, formwork };
+  });
+}
+
+/**
+ * ④の表で明細行を1つ上・下の明細行と入れ替える。
+ * タイトル行は動かさない（分類の境を越えた行は越えた先の分類になる）。
+ */
+export function moveFormworkRow(
+  rows: readonly FormworkTransferRow[],
+  index: number,
+  direction: -1 | 1,
+): FormworkTransferRow[] {
+  if (rows[index]?.title !== false) return renumberFormworkRows(rows);
+  let target = index + direction;
+  while (rows[target]?.title === true) target += direction;
+  if (target < 0 || target >= rows.length) return renumberFormworkRows(rows);
+  const next = [...rows];
+  [next[index], next[target]] = [next[target], next[index]];
+  return renumberFormworkRows(adoptGroupFormwork(next));
+}
+
+/**
+ * ④の表の明細行を、分類ごとの中で名称の昇順に並び替える
+ * （例：打放型枠・化粧打放型枠がそれぞれまとまる）。
+ */
+export function sortFormworkRowsByName(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  const next: FormworkTransferRow[] = [];
+  let group: FormworkTransferRow[] = [];
+  const flush = (): void => {
+    group.sort((a, b) =>
+      a.name !== b.name
+        ? a.name.localeCompare(b.name, "ja")
+        : a.description.localeCompare(b.description, "ja"),
+    );
+    next.push(...group);
+    group = [];
+  };
+  rows.forEach((row) => {
+    if (row.title) {
+      flush();
+      next.push(row);
+    } else {
+      group.push(row);
+    }
+  });
+  flush();
+  return renumberFormworkRows(adoptGroupFormwork(next));
 }

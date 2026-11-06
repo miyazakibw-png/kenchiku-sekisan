@@ -321,3 +321,43 @@ body.col-resizing {
 .grid td .readonly-cell {
   min-width: 0;
 }
+
+/* 明細の行の高さ・線の出し方は集計書兼工事マスター（table.aggregate）に揃える */
+.detail-master .grid {
+  font-size: 12px;
+}
+
+.detail-master .grid th,
+.detail-master .grid td {
+  border: 1px solid #c9ced6;
+  padding: 1px 4px;
+}
+
+.detail-master .grid th {
+  padding: 1px 4px;
+}
+
+.detail-master .grid td input[type="text"],
+.detail-master .grid td input:not([type]),
+.detail-master .grid td select {
+  padding: 0 2px;
+}
+
+.detail-master .grid td .readonly-cell {
+  padding: 0 2px;
+  min-height: 16px;
+}
+
+/* 明細の上下2段の間は罫線を出さない（集計書と同じ） */
+.detail-master .grid tr.upper-row td:not([rowspan]) {
+  border-bottom: none;
+}
+
+.detail-master .grid tr.lower-row td:not([rowspan]) {
+  border-top: none;
+}
+
+/* 明細どうしの間も普通の1本線だけにする */
+.detail-master .grid tbody.detail-group {
+  border-bottom: none;
+}

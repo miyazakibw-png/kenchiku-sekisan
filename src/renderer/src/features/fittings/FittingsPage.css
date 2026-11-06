@@ -92,6 +92,15 @@ table.fittings td.calc {
   font-family: "Consolas", "Menlo", monospace;
 }
 
+table.fittings td.in-range {
+  background: #dbe8fb;
+  outline: 1px solid #7aa4e0;
+}
+
+table.fittings td.in-range input {
+  background: transparent;
+}
+
 table.fittings th.formula,
 table.fittings td:nth-child(9) input,
 table.fittings td:nth-child(10) input {
