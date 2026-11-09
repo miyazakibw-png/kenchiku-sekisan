@@ -757,7 +757,7 @@ describe("partOfSet（セットの部位名）", () => {
   });
 });
 
-describe("摘要の○○面・○○下（マスターの印を積算用表示で置き換える）", () => {
+describe("摘要の○○面・○○下・○○用（マスターの印を積算用表示で置き換える）", () => {
   it("○○面は下の行・○○下は上の行の積算用表示に変わり、面・下の文字と位置・空けはマスターのまま", () => {
     expect(resolveDescriptionMark("t2.0 ○○面", "", "モルタル")).toBe(
       "t2.0 モルタル面",
@@ -779,6 +779,18 @@ describe("摘要の○○面・○○下（マスターの印を積算用表示�
       resolveDescriptionMark("トイレ用 ○○下 ○○面", "コンクリート", ""),
     ).toBe("トイレ用 コンクリート下");
     expect(resolveDescriptionMark("○○面", "", "")).toBe("");
+  });
+
+  it("○○用は上の行の積算用表示＋用に変わり、該当が無ければ前の空けとともに消す", () => {
+    expect(resolveDescriptionMark("H30 ○○用", "木部", "")).toBe("H30 木部用");
+    expect(resolveDescriptionMark("H30 ○○用", "", "タイル")).toBe("H30");
+    expect(resolveDescriptionMark("〇〇用", "木部", "")).toBe("木部用");
+    expect(resolveDescriptionMark("○○用 ○○面", "木部", "タイル")).toBe(
+      "木部用 タイル面",
+    );
+    expect(resolveDescriptionMark("トイレ用", "木部", "タイル")).toBe(
+      "トイレ用",
+    );
   });
 
   it("〇（漢数字のゼロ）でも同じに見る。印の無い文字はそのまま", () => {
@@ -813,5 +825,15 @@ describe("摘要の○○面・○○下（マスターの印を積算用表示�
     expect(resolved[2].descriptionLower).toBe("t2.0");
     expect(details[1].descriptionLower).toBe("t20 ○○下 ○○面");
     expect(resolved[0]).toBe(details[0]);
+  });
+
+  it("セットの明細では○○用も上の行の積算用表示で置き換える", () => {
+    const details = [
+      calcDetail({ estimateDisplay: "木部" }),
+      calcDetail({ descriptionLower: "H30 ○○用" }),
+    ];
+    const resolved = resolveDescriptionMarks(details);
+    expect(resolved[1].descriptionLower).toBe("H30 木部用");
+    expect(details[1].descriptionLower).toBe("H30 ○○用");
   });
 });

@@ -117,13 +117,13 @@ export function noteNumbersFrom(
 }
 
 /**
- * 摘要の「○○面」「○○下」（マスターに置いた印）。○○は隣の明細の積算用表示に変わる。
- * ○○面：下の行の積算用表示＋面　○○下：上の行の積算用表示＋下　該当が無ければ印ごと消す（前の空けも）
+ * 摘要の「○○面」「○○下」「○○用」（マスターに置いた印）。○○は隣の明細の積算用表示に変わる。
+ * ○○面：下の行の積算用表示＋面　○○下・○○用：上の行の積算用表示＋下・用　該当が無ければ印ごと消す（前の空けも）
  */
-const DESCRIPTION_MARK = /([ 　]?)[○〇]{2}(面|下)/g;
+const DESCRIPTION_MARK = /([ 　]?)[○〇]{2}(面|下|用)/g;
 
 export function hasDescriptionMark(text: string): boolean {
-  return /[○〇]{2}[面下]/.test(text);
+  return /[○〇]{2}[面下用]/.test(text);
 }
 
 export function resolveDescriptionMark(
@@ -144,7 +144,7 @@ export function resolveDescriptionMark(
   return removed ? replaced.trim() : replaced;
 }
 
-/** セットの明細の摘要（上段・下段）の○○面・○○下を、上下の行の積算用表示で置き換えた明細 */
+/** セットの明細の摘要（上段・下段）の○○面・○○下・○○用を、上下の行の積算用表示で置き換えた明細 */
 export function resolveDescriptionMarks(details: CalcDetail[]): CalcDetail[] {
   return details.map((detail, index) => {
     if (
