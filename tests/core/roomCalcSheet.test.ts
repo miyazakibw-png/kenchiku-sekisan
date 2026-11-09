@@ -18,6 +18,7 @@ import {
   evaluateCalcSheet,
   insertSetBefore,
   isCommentSet,
+  keepRowPart,
   mergeWithPreviousSet,
   nextBSymbol,
   normalizeSets,
@@ -754,6 +755,46 @@ describe("partOfSet（セットの部位名）", () => {
     set.details[0].partName = "";
     expect(partOfSet(set)).toBe("");
     expect(partOfSet(undefined)).toBe("");
+  });
+});
+
+describe("keepRowPart（基本マスター呼出時の部位）", () => {
+  const called = { partNumber: 8, partName: "マスター部位" };
+
+  it("部位番号と部位名がある行の部位を残す", () => {
+    expect(
+      keepRowPart({ partNumber: 3, partName: "計算書部位" }, called),
+    ).toEqual({ partNumber: 3, partName: "計算書部位" });
+  });
+
+  it("部位名だけの行の部位を残す", () => {
+    expect(
+      keepRowPart({ partNumber: null, partName: "計算書部位" }, called),
+    ).toEqual({
+      partNumber: null,
+      partName: "計算書部位",
+    });
+  });
+
+  it("部位番号だけの行の部位を残す", () => {
+    expect(keepRowPart({ partNumber: 3, partName: "" }, called)).toEqual({
+      partNumber: 3,
+      partName: "",
+    });
+  });
+
+  it("部位が空の行ではマスターの部位を使い、マスターも空なら空のままにする", () => {
+    expect(keepRowPart({ partNumber: null, partName: "" }, called)).toEqual(
+      called,
+    );
+    const empty = { partNumber: null, partName: "" };
+    expect(keepRowPart({ partNumber: null, partName: " " }, empty)).toEqual(
+      empty,
+    );
+  });
+
+  it("行が無いときはマスターの部位を使う", () => {
+    expect(keepRowPart(undefined, called)).toEqual(called);
   });
 });
 

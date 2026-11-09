@@ -33,6 +33,7 @@ import {
   evaluateCalcSheet,
   insertSetBefore,
   isCommentSet,
+  keepRowPart,
   mergeWithPreviousSet,
   moveDetailAcrossSets,
   noteNumbersFrom,
@@ -968,8 +969,8 @@ export default function RoomCalcSheet({
         sourceDetailId: detail.id,
         subjectId: detail.subjectId,
         detailNumber: detail.detailNumber,
-        // 部位・材種区分・単位などすべてマスターの登録通りに入れる
-        // （空欄は空欄のまま。書き込み先の行の値は引き継がない）
+        // 基本マスターは上書き先に部位があれば残し、それ以外はマスターの登録通りに入れる
+        // （空欄は空欄のまま）
         materialCategory: detail.materialCategory,
         partNumber: detail.partNumber,
         partName: fillRoomName(detail.partName, roomPartName),
@@ -1016,7 +1017,15 @@ export default function RoomCalcSheet({
         details2.splice(position, 0, item);
         next = position + 1;
       } else {
-        details2[at] = item;
+        const row = details2[at];
+        if (
+          source === "basic" &&
+          (row.partNumber !== null || row.partName.trim() !== "")
+        ) {
+          details2[at] = { ...item, ...keepRowPart(row, item) };
+        } else {
+          details2[at] = item;
+        }
         next = at + 1;
       }
       updateSet(target.id, { details: details2 });
@@ -1033,6 +1042,7 @@ export default function RoomCalcSheet({
       pickupParts,
       roomPartName,
       sets,
+      source,
       updateSet,
       writeFocus,
     ],

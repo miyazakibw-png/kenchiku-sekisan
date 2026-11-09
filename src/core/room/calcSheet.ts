@@ -73,6 +73,16 @@ export function partOfSet(set: CalcSet | undefined): string {
   );
 }
 
+export function keepRowPart(
+  row: Pick<CalcDetail, "partNumber" | "partName"> | undefined,
+  called: { partNumber: number | null; partName: string },
+): { partNumber: number | null; partName: string } {
+  if (!row || (row.partNumber === null && row.partName.trim() === "")) {
+    return called;
+  }
+  return { partNumber: row.partNumber, partName: row.partName };
+}
+
 let counter = 0;
 function newId(prefix: string): string {
   counter += 1;
