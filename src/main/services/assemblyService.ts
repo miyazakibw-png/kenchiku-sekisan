@@ -896,7 +896,50 @@ export function mergeAssemblies(
   mergedId: number,
 ): FinishAssembly {
   if (keepId === mergedId) return getAssembly(db, keepId);
-  db.transaction((tx) => {
+  const survivingId = db.transaction((tx) => {
+    const keep = tx
+      .select({ id: mFinishAssemblies.id })
+      .from(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, keepId))
+      .get();
+    const merged = tx
+      .select({
+        id: mFinishAssemblies.id,
+        projectId: mFinishAssemblies.projectId,
+      })
+      .from(mFinishAssemblies)
+      .where(eq(mFinishAssemblies.id, mergedId))
+      .get();
+    if (!keep) return merged?.id ?? keepId;
+    if (!merged) return keepId;
+
+    projectSheetTables().forEach((table) => {
+      const sheets =
+        merged.projectId === null
+          ? tx.select().from(table).all()
+          : tx
+              .select()
+              .from(table)
+              .where(eq(table.projectId, merged.projectId))
+              .all();
+      sheets.forEach((sheet) => {
+        const sets = parseSets(sheet.lowerJson);
+        let changed = false;
+        sets.forEach((set) => {
+          if (set.assemblyId !== mergedId) return;
+          set.assemblyId = keepId;
+          changed = true;
+        });
+        if (!changed) return;
+        tx.update(table)
+          .set({
+            lowerJson: JSON.stringify(sets),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(table.id, sheet.id))
+          .run();
+      });
+    });
     tx.update(projectRoomFinishes)
       .set({ finishAssemblyId: keepId })
       .where(eq(projectRoomFinishes.finishAssemblyId, mergedId))
@@ -904,8 +947,9 @@ export function mergeAssemblies(
     tx.delete(mFinishAssemblies)
       .where(eq(mFinishAssemblies.id, mergedId))
       .run();
+    return keepId;
   });
-  return getAssembly(db, keepId);
+  return getAssembly(db, survivingId);
 }
 
 /** 全物件共通の基本セットだけを削除する（工事専用セットは削除しない）。 */

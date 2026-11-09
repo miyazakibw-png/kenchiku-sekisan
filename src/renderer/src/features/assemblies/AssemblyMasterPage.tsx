@@ -90,10 +90,7 @@ function listColumnWidths(): {
  * 見出しが同じ列はその幅、見出しが一覧に無い列は同じ位置の幅を使う。
  * lastFloor はいちばん右の列（操作列など）の最小幅。
  */
-function alignTableToList(
-  table: HTMLTableElement | null,
-  lastFloor = 0,
-): void {
+function alignTableToList(table: HTMLTableElement | null, lastFloor = 0): void {
   if (!table) return;
   const header = table.tHead?.rows.item(table.tHead.rows.length - 1);
   const widths = listColumnWidths();
@@ -123,13 +120,6 @@ function alignTableToList(
   });
   table.style.tableLayout = "fixed";
   table.style.width = `${total}px`;
-}
-
-/** 統合確認（内容がまったく同じセットができた場合） */
-interface MergeState {
-  keepId: number;
-  mergedId: number;
-  message: string;
 }
 
 interface DeleteState {
@@ -168,14 +158,15 @@ export default function AssemblyMasterPage({
   );
   /** 先頭の通常明細が同じセットが複数あるときに、どれを開くか選ぶ一覧 */
   const [chooser, setChooser] = useState<FinishAssembly[]>([]);
-  const [merge, setMerge] = useState<MergeState | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteState | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const { markSaved, isDirty } = useSaveOnLeave(editor, () => save(true));
 
   const reload = useCallback(async () => {
-    setAssemblies(await window.sekisan.listAssemblies(projectId));
+    const list = await window.sekisan.listAssemblies(projectId);
+    setAssemblies(list);
+    return list;
   }, [projectId]);
 
   useEffect(() => {
@@ -309,24 +300,54 @@ export default function AssemblyMasterPage({
         propagate: true,
         applyToAllSets: false,
       });
-      await reload();
+      const list = await reload();
       setEditor(null);
       markSaved(null);
+      const { duplicateOf } = result;
+      if (duplicateOf) {
+        const savedStillExists = list.some(
+          (assembly) => assembly.id === result.assembly.id,
+        );
+        const duplicateStillExists = list.some(
+          (assembly) => assembly.id === duplicateOf.id,
+        );
+        if (savedStillExists && duplicateStillExists) {
+          setSelectedId(result.assembly.id);
+          try {
+            await window.sekisan.mergeAssemblies(
+              duplicateOf.id,
+              result.assembly.id,
+            );
+            await reload();
+            setSelectedId(duplicateOf.id);
+            setToast("同じ内容のセットへ統合しました");
+          } catch (error) {
+            await reload().catch(() => undefined);
+            setToast(
+              error instanceof Error && error.message
+                ? error.message
+                : "統合できませんでした",
+            );
+          }
+          return;
+        }
+        setSelectedId(
+          savedStillExists
+            ? result.assembly.id
+            : duplicateStillExists
+              ? duplicateOf.id
+              : result.assembly.id,
+        );
+        setToast("同じ内容のセットへ統合しました");
+        return;
+      }
       setSelectedId(result.assembly.id);
       if (quiet) return;
-      if (result.duplicateOf) {
-        setMerge({
-          keepId: result.duplicateOf.id,
-          mergedId: result.assembly.id,
-          message: `既に同じ内容のセットがあります（${headItem(result.duplicateOf)?.name ?? ""}）。既存セットへ統合しますか。`,
-        });
-      } else {
-        setToast(
-          result.syncedSets === 0
-            ? "保存しました"
-            : `保存しました（計算書の${result.syncedSets}セットも直しました）`,
-        );
-      }
+      setToast(
+        result.syncedSets === 0
+          ? "保存しました"
+          : `保存しました（計算書の${result.syncedSets}セットも直しました）`,
+      );
     },
     [assemblies, editor, markSaved, projectId, reload],
   );
@@ -391,15 +412,6 @@ export default function AssemblyMasterPage({
       );
     }
   }, [deleteConfirm, markSaved, reload]);
-
-  const applyMerge = useCallback(async () => {
-    if (!merge) return;
-    await window.sekisan.mergeAssemblies(merge.keepId, merge.mergedId);
-    setMerge(null);
-    setSelectedId(merge.keepId);
-    await reload();
-    setToast("同じ内容のセットへ統合しました");
-  }, [merge, reload]);
 
   const editItems = useCallback(
     (next: DraftItem[]) =>
@@ -593,11 +605,7 @@ export default function AssemblyMasterPage({
             </header>
 
             <div className="modal-body">
-              <table
-                className="grid"
-                data-nav-shared
-                ref={editorTableRef}
-              >
+              <table className="grid" data-nav-shared ref={editorTableRef}>
                 <thead>
                   <tr>
                     <th>行</th>
@@ -915,11 +923,7 @@ export default function AssemblyMasterPage({
             </header>
             <div className="modal-body">
               {chooser.map((assembly, groupIndex) => (
-                <table
-                  className="grid"
-                  key={assembly.id}
-                  ref={chooserTableRef}
-                >
+                <table className="grid" key={assembly.id} ref={chooserTableRef}>
                   <thead>
                     <tr>
                       <th colSpan={6}>
@@ -1087,31 +1091,12 @@ export default function AssemblyMasterPage({
         </div>
       )}
 
-      {merge && (
-        <div className="modal-backdrop" role="dialog">
-          <div className="modal confirm">
-            <p>{merge.message}</p>
-            <footer>
-              <button type="button" onClick={() => setMerge(null)}>
-                統合しない
-              </button>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void applyMerge()}
-              >
-                統合する
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
-
       {deleteConfirm && (
         <div className="modal-backdrop" role="dialog">
           <div className="modal confirm">
             <p>
-              このセット（{deleteConfirm.name}）を削除しますか。もう計算書に呼び出してある明細はそのまま残ります。
+              このセット（{deleteConfirm.name}
+              ）を削除しますか。もう計算書に呼び出してある明細はそのまま残ります。
             </p>
             <footer>
               <button type="button" onClick={() => setDeleteConfirm(null)}>

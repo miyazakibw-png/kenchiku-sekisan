@@ -16,6 +16,7 @@ import {
   promoteAssemblyToBasic,
   saveAssembly,
   syncAssembliesFromSheets,
+  tidyAutoAssemblies,
 } from "../../src/main/services/assemblyService";
 import {
   listDetailChangeLogs,
@@ -448,6 +449,110 @@ describe("計算書からの自動登録と連動", () => {
         .get()?.lowerJson ?? ""
     );
   }
+
+  it("自動登録セットが先に整理された後の統合候補も安全に処理する", () => {
+    const original = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+    const edited = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: [itemOf(detailIds[1])],
+    });
+    [original.assembly.id, edited.assembly.id].forEach((id) => {
+      db.update(schema.mFinishAssemblies)
+        .set({ autoRegistered: 1 })
+        .where(eq(schema.mFinishAssemblies.id, id))
+        .run();
+    });
+    db.insert(schema.projectRoomFinishes)
+      .values([
+        {
+          projectId: projectIdRef,
+          roomNumber: "101",
+          roomName: "検証室A",
+          finishAssemblyId: original.assembly.id,
+        },
+        {
+          projectId: projectIdRef,
+          roomNumber: "102",
+          roomName: "検証室B",
+          finishAssemblyId: edited.assembly.id,
+        },
+      ])
+      .run();
+
+    const saved = saveAssembly(db, {
+      id: edited.assembly.id,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: original.assembly.items.map((item) => ({ ...item, id: null })),
+      propagate: true,
+      applyToAllSets: false,
+    });
+    expect(saved.duplicateOf?.id).toBe(original.assembly.id);
+
+    tidyAutoAssemblies(db, projectIdRef);
+    expect(listAssemblies(db, projectIdRef)).toHaveLength(1);
+    expect(() =>
+      mergeAssemblies(db, saved.duplicateOf!.id, saved.assembly.id),
+    ).not.toThrow();
+
+    const [survivor] = listAssemblies(db, projectIdRef);
+    expect(
+      db
+        .select({
+          finishAssemblyId: schema.projectRoomFinishes.finishAssemblyId,
+        })
+        .from(schema.projectRoomFinishes)
+        .where(eq(schema.projectRoomFinishes.projectId, projectIdRef))
+        .all()
+        .map((finish) => finish.finishAssemblyId),
+    ).toEqual([survivor.id, survivor.id]);
+  });
+
+  it("セット統合時に計算書の下段の参照も残すセットへ付け替える", () => {
+    const keep = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: [itemOf(detailIds[0])],
+    });
+    const merged = saveAssembly(db, {
+      id: null,
+      scope: "project",
+      projectId: projectIdRef,
+      note: "",
+      items: keep.assembly.items.map((item) => ({ ...item, id: null })),
+    });
+    const sheetId = makeRoomSheet([calcSetJson(["軽鉄下地"])]);
+    const sets = JSON.parse(lowerJsonOf(sheetId)) as {
+      assemblyId: number | null;
+    }[];
+    sets[0].assemblyId = merged.assembly.id;
+    db.update(schema.projectRoomSheets)
+      .set({ lowerJson: JSON.stringify(sets) })
+      .where(eq(schema.projectRoomSheets.id, sheetId))
+      .run();
+
+    mergeAssemblies(db, keep.assembly.id, merged.assembly.id);
+
+    expect(
+      (
+        JSON.parse(lowerJsonOf(sheetId)) as {
+          assemblyId: number | null;
+        }[]
+      )[0].assemblyId,
+    ).toBe(keep.assembly.id);
+  });
 
   it("計算書で組んだセットを集計時に自動登録する", () => {
     const sheetId = makeRoomSheet([calcSetJson(["軽鉄下地", "グラスウール"])]);
