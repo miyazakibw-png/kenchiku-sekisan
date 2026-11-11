@@ -177,9 +177,7 @@ export default function FormworkTransferPage({
     const plaster = subjectOptions
       .filter((option) => option.label.includes("左官"))
       .map((option) => option.key);
-    setSubjectSel(
-      new Set(plaster.length > 0 ? plaster : [...valid]),
-    );
+    setSubjectSel(new Set(plaster.length > 0 ? plaster : [...valid]));
   }, [subjectOptions, subjectSel]);
 
   const toggleSubject = (key: string, on: boolean): void => {
@@ -206,15 +204,10 @@ export default function FormworkTransferPage({
   const shown = useMemo(() => {
     const word = search.trim();
     return view.sources.filter((item) => {
-      if (
-        subjectSel !== null &&
-        !subjectSel.has(subjectKeyOf(item.subjectId))
-      )
+      if (subjectSel !== null && !subjectSel.has(subjectKeyOf(item.subjectId)))
         return false;
       if (word === "") return true;
-      return (
-        item.name.includes(word) || item.descriptionUpper.includes(word)
-      );
+      return item.name.includes(word) || item.descriptionUpper.includes(word);
     });
   }, [search, view.sources, subjectSel]);
 
@@ -295,10 +288,11 @@ export default function FormworkTransferPage({
       setMessage("元明細と転記先の名称を入れてから算出してください。");
       return;
     }
-    const result = await window.sekisan.runFormworkTransfer(project.id);
+    await window.sekisan.runAggregation(project.id);
+    const result = await window.sekisan.getFormworkTransfer(project.id);
     setView(result);
     setMessage(
-      `転記入力表へ ${result.rows.length} 行を自動転記しました（次の集計に含まれます）`,
+      `集計をかけ直して、転記入力表へ ${result.rows.length} 行を自動転記しました（次の集計に含まれます）`,
     );
   };
 
@@ -618,9 +612,7 @@ export default function FormworkTransferPage({
                     halfWidth
                     value={rule.unit}
                     title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
-                    onCommit={(value) =>
-                      update(index, { unit: unitOf(value) })
-                    }
+                    onCommit={(value) => update(index, { unit: unitOf(value) })}
                   />
                 </td>
                 <td>

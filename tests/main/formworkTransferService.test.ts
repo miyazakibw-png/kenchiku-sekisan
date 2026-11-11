@@ -237,6 +237,66 @@ describe("型枠転記", () => {
     );
   });
 
+  it("部位別入力表で型枠区分を直して集計し直すと、型枠転記の分類も直る", () => {
+    const freshProjectId = createProject(db, "型枠分類修正テスト").id;
+    const rows = saveEstimateRows(db, {
+      projectId: freshProjectId,
+      rows: [{ ...roomRow("機械室"), formwork: "地下階" }],
+    });
+    const sheet = getRoomSheet(db, rows[0].id);
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: LOWER_JSON,
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    runAggregation(db, freshProjectId);
+
+    const source = getFormworkTransfer(db, freshProjectId).sources[0].masterKey;
+    saveFormworkRules(db, {
+      projectId: freshProjectId,
+      rules: [rule([source])],
+    });
+    runFormworkTransfer(db, freshProjectId);
+
+    const originalRows = listTransferRows(db, freshProjectId).filter(
+      (row) => row.formworkKey !== "",
+    );
+    expect(originalRows.map((row) => [row.formwork, row.name])).toEqual([
+      ["地下階", "<地下階>"],
+      ["地下階", "打放型枠"],
+    ]);
+    expect(originalRows[1].quantity).toBe(12);
+
+    saveEstimateRows(db, {
+      projectId: freshProjectId,
+      rows: [{ ...roomRow("機械室"), id: rows[0].id, formwork: "基礎階" }],
+    });
+    runAggregation(db, freshProjectId);
+
+    const correctedRows = listTransferRows(db, freshProjectId).filter(
+      (row) => row.formworkKey !== "",
+    );
+    expect(correctedRows.map((row) => [row.formwork, row.name])).toEqual([
+      ["基礎階", "<基礎階>"],
+      ["基礎階", "打放型枠"],
+    ]);
+    expect(correctedRows[1].quantity).toBe(12);
+    expect(
+      listTransferRows(db, freshProjectId).some(
+        (row) => row.formwork === "地下階",
+      ),
+    ).toBe(false);
+    expect(
+      getFormworkTransfer(db, freshProjectId).rows.some(
+        (row) => row.formwork === "地下階",
+      ),
+    ).toBe(false);
+  });
+
   it("④で並び替えた順が転記入力表に反映され、作り直してもその並びを保つ", () => {
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
     saveFormworkRules(db, {
