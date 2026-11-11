@@ -600,6 +600,14 @@
   background: #e8f6e8;
 }
 
+.room-calc-sheet
+  table.calc
+  tbody.set
+  tr.current-row:not(.row-selected):not(.call-row):not(.jump-row)
+  td {
+  background: #fffbeb;
+}
+
 .room-calc-sheet table.calc tbody.set tr.jump-row td,
 .room-calc-sheet table.calc tbody.set tr.jump-row td input {
   background-color: #ffe2b8 !important;

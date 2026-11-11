@@ -2508,6 +2508,9 @@ export default function RoomCalcSheet({
                         jumpedDetail.detailId === detail?.id
                           ? "jump-row"
                           : "",
+                        focus?.setId === set.id && focus.index === rowIndex
+                          ? "current-row"
+                          : "",
                         isSelectedRow(set.id, rowIndex) ? "row-selected" : "",
                         callOpen &&
                         callRow &&
@@ -2977,7 +2980,7 @@ export default function RoomCalcSheet({
                       ) : (
                         <td className="empty" colSpan={3} />
                       )}
-                      <td className="ops">
+                      <td className="ops" onMouseDown={focusDetail}>
                         {detail && (
                           <>
                             <button

@@ -70,6 +70,7 @@
 ### 表の操作（どの表も同じにする）
 
 - Enter・矢印で動きます。キー移動はExcelと同じで、欄が見えている間は画面を送らず、端から外れるときだけ1行分送ります。
+- 計算書は入力中の行を薄い黄色（#fffbeb）にします（部位別雑・金物入力表と同じ）。
 - 列の幅は手で変えられます。範囲のコピー・貼り付けはExcelと同じにします。
 - 行の操作ボタンは「＋（上に挿入）・↑・↓・✕」で揃えます。一覧の画面（部位別雑・金物、家具・設備）では操作の列をいちばん左に置きます。
 - 範囲のコピー・貼り付けは `src/renderer/src/features/grid/` の部品を使います。貼り付けは入力欄の `paste` イベントの `clipboardData`、コピーは隠しtextarea＋`execCommand("copy")`。`navigator.clipboard.readText` やkeydownの `e.key` だけに頼ると、Windowsの日本語入力で動かなくなります。範囲内への貼り付けは `grid/gridClipboard.ts` の `pasteIntoRange`・`clearRange` を使います。
