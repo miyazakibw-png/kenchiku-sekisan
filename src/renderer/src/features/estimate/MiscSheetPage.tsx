@@ -405,6 +405,36 @@ export default function MiscSheetPage({
     [pickedColumn, changeColumns],
   );
 
+  /** 指定した明細（列）の左へ空の明細を挿入する */
+  const insertColumnBefore = useCallback(
+    (id: string): void => {
+      const created = miscColumn();
+      changeColumns((current) => {
+        const at = current.findIndex((column) => column.id === id);
+        if (at < 0) return [...current, created];
+        return [...current.slice(0, at), created, ...current.slice(at)];
+      });
+      setPickedColumn(created.id);
+      setMessage("明細を挿入しました");
+    },
+    [changeColumns],
+  );
+
+  /** 指定した明細（列）を左右へ動かす */
+  const moveColumnById = useCallback(
+    (id: string, step: number): void =>
+      changeColumns((current) => {
+        const at = current.findIndex((column) => column.id === id);
+        const to = at + step;
+        if (at < 0 || to < 0 || to >= current.length) return current;
+        const next = [...current];
+        const [moved] = next.splice(at, 1);
+        next.splice(to, 0, moved);
+        return next;
+      }),
+    [changeColumns],
+  );
+
   /** 選んだ明細（列）を左右へ動かす */
   const moveColumn = useCallback(
     (step: number): void =>
@@ -1005,17 +1035,84 @@ export default function MiscSheetPage({
             ))}
           </colgroup>
           <thead>
+            <tr
+              ref={(el) => {
+                headRows.current[0] = el;
+              }}
+            >
+              <th
+                className="head-label fix corner"
+                colSpan={LEFT_LABELS.length}
+                style={{ left: 0, top: topOffsets[0] ?? 0 }}
+              >
+                操作
+              </th>
+              {columns.map((column, index) => (
+                <th
+                  key={column.id}
+                  className={
+                    pickedColumn === column.id
+                      ? "col fix on ops"
+                      : "col fix ops"
+                  }
+                  style={{ top: topOffsets[0] ?? 0 }}
+                  onClick={() => setPickedColumn(column.id)}
+                >
+                  <span className="row-move">
+                    <button
+                      type="button"
+                      title="この列の左へ空の明細を挿入"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        insertColumnBefore(column.id);
+                      }}
+                    >
+                      ＋
+                    </button>
+                    <button
+                      type="button"
+                      title="右へ移動"
+                      disabled={index === columns.length - 1}
+                      onClick={() => moveColumnById(column.id, 1)}
+                    >
+                      →
+                    </button>
+                    <button
+                      type="button"
+                      title="左へ移動"
+                      disabled={index === 0}
+                      onClick={() => moveColumnById(column.id, -1)}
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      className="row-delete"
+                      title="この明細（列）を消します"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        changeColumns((current) =>
+                          current.filter((each) => each.id !== column.id),
+                        );
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </th>
+              ))}
+            </tr>
             {HEADS.map((head, headIndex) => (
               <tr
                 key={String(head.key)}
                 ref={(el) => {
-                  headRows.current[headIndex] = el;
+                  headRows.current[headIndex + 1] = el;
                 }}
               >
                 <th
                   className="head-label fix corner"
                   colSpan={LEFT_LABELS.length}
-                  style={{ left: 0, top: topOffsets[headIndex] ?? 0 }}
+                  style={{ left: 0, top: topOffsets[headIndex + 1] ?? 0 }}
                 >
                   {head.label}
                 </th>
@@ -1025,7 +1122,7 @@ export default function MiscSheetPage({
                     className={
                       pickedColumn === column.id ? "col fix on" : "col fix"
                     }
-                    style={{ top: topOffsets[headIndex] ?? 0 }}
+                    style={{ top: topOffsets[headIndex + 1] ?? 0 }}
                     onClick={() => setPickedColumn(column.id)}
                   >
                     <span className="cellbox">

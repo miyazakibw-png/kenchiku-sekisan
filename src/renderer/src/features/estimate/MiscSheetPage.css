@@ -5,6 +5,7 @@
 }
 
 .misc-page table.grid.misc {
+  --misc-list-action-size: 25px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -54,6 +55,30 @@
 
 .misc-page table.grid.misc th.col.on {
   background: #fde68a;
+}
+
+.misc-page table.grid.misc .row-move {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+  line-height: 1;
+}
+
+.misc-page table.grid.misc .row-move button,
+.misc-page table.grid.misc .row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--misc-list-action-size);
+  min-width: var(--misc-list-action-size);
+  height: var(--misc-list-action-size);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.misc-page table.grid.misc .row-delete {
+  color: #b91c1c;
 }
 
 .misc-page table.grid.misc th input,
