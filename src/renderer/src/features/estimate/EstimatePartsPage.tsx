@@ -127,7 +127,7 @@ export default function EstimatePartsPage({
       : (options.materialCategories[0]?.name ?? "仕上"),
   );
   /** チェック列の数量に倍率をかけるか（なしなら計算書そのままの数量） */
-  const [applyMultiplier, setApplyMultiplier] = useState(true);
+  const [applyMultiplier, setApplyMultiplier] = useState(false);
   const columns = useMemo(
     () => buildEstimateColumns(options.formworkCategories),
     [options.formworkCategories],
@@ -746,8 +746,8 @@ export default function EstimatePartsPage({
             value={applyMultiplier ? "on" : "off"}
             onChange={(e) => setApplyMultiplier(e.target.value === "on")}
           >
-            <option value="on">倍率あり</option>
             <option value="off">倍率なし</option>
+            <option value="on">倍率あり</option>
           </select>
           <span className="note">
             部位ごとに「名称」と「数量」の2列で、その行の計算書から拾った
