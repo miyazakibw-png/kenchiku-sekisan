@@ -1115,6 +1115,31 @@ export default function FurnitureSheetPage({
     setMessage("タテの明細を足しました");
   };
 
+  /** 指定したタテ明細（列）の左へ空の明細を挿入する */
+  const insertColumnBefore = (id: string): void => {
+    const created = furnitureColumn();
+    changeColumns((current) => {
+      const at = current.findIndex((column) => column.id === id);
+      if (at < 0) return [...current, created];
+      return [...current.slice(0, at), created, ...current.slice(at)];
+    });
+    setPickedColumn(created.id);
+    setMessage("タテの明細を挿入しました");
+  };
+
+  /** 指定したタテ明細（列）を左右へ動かす */
+  const moveColumnById = (id: string, step: number): void => {
+    changeColumns((current) => {
+      const at = current.findIndex((column) => column.id === id);
+      const to = at + step;
+      if (at < 0 || to < 0 || to >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(at, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
   /** タテの明細は少なくとも1列は残す（入力欄が見えるように） */
   const removeColumn = (id: string): void => {
     const rest = columns.filter((column) => column.id !== id);
@@ -1366,7 +1391,7 @@ export default function FurnitureSheetPage({
     );
   };
   const detailCells = printing || visible("detail") ? DETAIL_CELLS : [];
-  const headRowCount = COLUMN_HEADS.length + 1;
+  const headRowCount = COLUMN_HEADS.length + 1 + (printing ? 0 : 1);
 
   /**
    * 行入力部のマスのカーソルを記録する。
@@ -2373,7 +2398,7 @@ export default function FurnitureSheetPage({
             ))}
           </colgroup>
           <thead>
-            <tr>
+            <tr className={printing ? undefined : "ops-row"}>
               {!printing && (
                 <th className="ops-col" rowSpan={headRowCount}>
                   操作
@@ -2410,24 +2435,79 @@ export default function FurnitureSheetPage({
                   </span>
                 </th>
               ))}
-              <th className="vlabel">{COLUMN_HEADS[0].label}</th>
-              {columns.map((column) => (
+              <th className="vlabel">
+                {printing ? COLUMN_HEADS[0].label : "操作"}
+              </th>
+              {columns.map((column, index) => (
                 <th
                   key={column.id}
-                  className={pickedColumn === column.id ? "vcol on" : "vcol"}
+                  className={
+                    printing
+                      ? pickedColumn === column.id
+                        ? "vcol on"
+                        : "vcol"
+                      : pickedColumn === column.id
+                        ? "vcol on ops"
+                        : "vcol ops"
+                  }
                   onClick={() => setPickedColumn(column.id)}
-                  onMouseDown={(event) =>
-                    resizeAtEdge(column.id, COLUMN_DEFAULT, event)
+                  onMouseDown={
+                    printing
+                      ? (event) =>
+                          resizeAtEdge(column.id, COLUMN_DEFAULT, event)
+                      : undefined
                   }
                 >
-                  <span className="cellbox">
-                    {headCell(column, COLUMN_HEADS[0])}
-                    {columnGrip(column.id)}
-                  </span>
+                  {printing ? (
+                    <span className="cellbox">
+                      {headCell(column, COLUMN_HEADS[0])}
+                      {columnGrip(column.id)}
+                    </span>
+                  ) : (
+                    <span className="row-move">
+                      <button
+                        type="button"
+                        title="この列の左へ空の明細を挿入"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          insertColumnBefore(column.id);
+                        }}
+                      >
+                        ＋
+                      </button>
+                      <button
+                        type="button"
+                        title="右へ移動"
+                        disabled={index === columns.length - 1}
+                        onClick={() => moveColumnById(column.id, 1)}
+                      >
+                        →
+                      </button>
+                      <button
+                        type="button"
+                        title="左へ移動"
+                        disabled={index === 0}
+                        onClick={() => moveColumnById(column.id, -1)}
+                      >
+                        ←
+                      </button>
+                      <button
+                        type="button"
+                        className="row-delete"
+                        title="このタテの明細（列）を消します"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeColumn(column.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
                 </th>
               ))}
             </tr>
-            {COLUMN_HEADS.slice(1).map((head) => (
+            {(printing ? COLUMN_HEADS.slice(1) : COLUMN_HEADS).map((head) => (
               <tr key={String(head.key)}>
                 <th className="vlabel">{head.label}</th>
                 {columns.map((column) => (
@@ -2435,6 +2515,12 @@ export default function FurnitureSheetPage({
                     key={column.id}
                     className={pickedColumn === column.id ? "vcol on" : "vcol"}
                     onClick={() => setPickedColumn(column.id)}
+                    onMouseDown={
+                      !printing && head.key === COLUMN_HEADS[0].key
+                        ? (event) =>
+                            resizeAtEdge(column.id, COLUMN_DEFAULT, event)
+                        : undefined
+                    }
                   >
                     <span className="cellbox">
                       {headCell(column, head)}

@@ -1,4 +1,5 @@
 .furniture-page .furniture-table {
+  --furniture-action-size: 25px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -211,6 +212,30 @@
   background: #fde68a;
 }
 
+.furniture-page .furniture-table .row-move {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+  line-height: 1;
+}
+
+.furniture-page .furniture-table .row-move button,
+.furniture-page .furniture-table .row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--furniture-action-size);
+  min-width: var(--furniture-action-size);
+  height: var(--furniture-action-size);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.furniture-page .furniture-table .row-delete {
+  color: #b91c1c;
+}
+
 .furniture-page .furniture-table th.vcol input {
   color: #0f172a;
   background: transparent;
@@ -254,6 +279,7 @@
   .furniture-page .hint,
   .furniture-page .furniture-columns,
   .furniture-page .ops-col,
+  .furniture-page .furniture-table tr.ops-row,
   .furniture-page .no-print {
     display: none !important;
   }
