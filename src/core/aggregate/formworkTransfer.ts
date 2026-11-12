@@ -132,6 +132,11 @@ export interface FormworkBulkSpec {
   copyDescription: boolean;
 }
 
+export interface FormworkListRow<S> {
+  source: S | null;
+  ruleIndex: number | null;
+}
+
 /**
  * 名称で探した元明細から、型枠明細（ルール）をまとめて作る。
  * 元明細1件につき1本作る（摘要と掛け率はあとで明細ごとに直せる）。
@@ -152,6 +157,39 @@ export function buildFormworkRulesFromSources(
     unit: spec.unit === "" ? source.unit : spec.unit,
     remarks: "",
   }));
+}
+
+export function formworkListRows<S extends { masterKey: string }>(
+  sources: readonly S[],
+  shownKeys: ReadonlySet<string>,
+  rules: readonly FormworkTransferRule[],
+): FormworkListRow<S>[] {
+  const sourceKeys = new Set(sources.map((source) => source.masterKey));
+  const firstRuleByKey = new Map<string, number>();
+  rules.forEach((rule, ruleIndex) => {
+    rule.sourceKeys.forEach((key) => {
+      if (!firstRuleByKey.has(key)) firstRuleByKey.set(key, ruleIndex);
+    });
+  });
+
+  const attachedRules = new Set<number>();
+  const rows = sources.flatMap((source): FormworkListRow<S>[] => {
+    const ruleIndex = firstRuleByKey.get(source.masterKey) ?? null;
+    if (!shownKeys.has(source.masterKey) && ruleIndex === null) return [];
+    if (ruleIndex === null || attachedRules.has(ruleIndex)) {
+      return [{ source, ruleIndex: null }];
+    }
+    attachedRules.add(ruleIndex);
+    return [{ source, ruleIndex }];
+  });
+
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.sourceKeys.some((key) => sourceKeys.has(key))) {
+      rows.push({ source: null, ruleIndex });
+    }
+  });
+
+  return rows;
 }
 
 function round2(value: number): number {

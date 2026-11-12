@@ -4,6 +4,7 @@ import {
   buildFormworkTransferRows,
   compareFormworkRuns,
   collectFormworkQuantities,
+  formworkListRows,
   moveFormworkRow,
   orderFormworkRows,
   sortFormworkRowsByName,
@@ -78,6 +79,67 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
     ...patch,
   };
 }
+
+describe("formworkListRows", () => {
+  const sources = [
+    { masterKey: "k1" },
+    { masterKey: "k2" },
+    { masterKey: "k3" },
+  ];
+
+  it("表示中だけの元明細を元の順で返す", () => {
+    expect(formworkListRows(sources, new Set(["k3", "k1"]), [])).toEqual([
+      { source: sources[0], ruleIndex: null },
+      { source: sources[2], ruleIndex: null },
+    ]);
+  });
+
+  it("検索外でも決まりがある元明細を元の順で残す", () => {
+    const rows = formworkListRows(sources, new Set(["k3"]), [
+      rule({ sourceKeys: ["k2"] }),
+    ]);
+
+    expect(rows).toEqual([
+      { source: sources[1], ruleIndex: 0 },
+      { source: sources[2], ruleIndex: null },
+    ]);
+  });
+
+  it("表示外で決まりもない元明細は除く", () => {
+    expect(formworkListRows(sources, new Set(["k2"]), [])).toEqual([
+      { source: sources[1], ruleIndex: null },
+    ]);
+  });
+
+  it("元明細が見つからない決まりを最後に追加する", () => {
+    expect(
+      formworkListRows(sources, new Set(), [rule({ sourceKeys: ["missing"] })]),
+    ).toEqual([{ source: null, ruleIndex: 0 }]);
+  });
+
+  it("元明細の順で表示し、決まりの順序から対応番号を決める", () => {
+    const rows = formworkListRows(sources.slice(0, 2), new Set(["k1", "k2"]), [
+      rule({ key: "k2-rule", sourceKeys: ["k2"] }),
+      rule({ key: "k1-rule", sourceKeys: ["k1"] }),
+    ]);
+
+    expect(rows.map((row) => [row.source?.masterKey, row.ruleIndex])).toEqual([
+      ["k1", 1],
+      ["k2", 0],
+    ]);
+  });
+
+  it("複数の元明細を持つ決まりは最初の一致行にだけ付ける", () => {
+    const rows = formworkListRows(sources.slice(0, 2), new Set(["k1", "k2"]), [
+      rule({ sourceKeys: ["k2", "k1"] }),
+    ]);
+
+    expect(rows.map((row) => [row.source?.masterKey, row.ruleIndex])).toEqual([
+      ["k1", 0],
+      ["k2", null],
+    ]);
+  });
+});
 
 describe("compareFormworkRuns", () => {
   const makeRows = (

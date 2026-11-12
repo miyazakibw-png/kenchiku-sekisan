@@ -13,6 +13,7 @@ import { resolveMasterName } from "@shared/masters";
 import {
   buildFormworkRulesFromSources,
   compareFormworkRuns,
+  formworkListRows,
   moveFormworkRow,
   sortFormworkRowsByName,
 } from "../../../../core/aggregate/formworkTransfer";
@@ -288,8 +289,7 @@ export default function FormworkTransferPage({
   project,
   onBack,
 }: Props): JSX.Element {
-  const tableRef0 = useTableResize("table-widths-formwork-source-v1");
-  const tableRef = useTableResize("table-widths-formwork-rules-v3");
+  const tableRef = useTableResize("table-widths-formwork-merged-v1");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
   const [rules, setRules] = useState<FormworkTransferRule[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -428,6 +428,15 @@ export default function FormworkTransferPage({
       return item.name.includes(word) || item.descriptionUpper.includes(word);
     });
   }, [search, view.sources, subjectSel]);
+
+  const shownKeys = useMemo(
+    () => new Set(shown.map((item) => item.masterKey)),
+    [shown],
+  );
+  const listRows = useMemo(
+    () => formworkListRows(view.sources, shownKeys, rules),
+    [view.sources, shownKeys, rules],
+  );
 
   /** すでに型枠明細に登録してある元明細（再び変換を押すと入れ替わる） */
   const covered = useMemo(
@@ -573,56 +582,6 @@ export default function FormworkTransferPage({
           </button>
         </div>
       )}
-      <table className="parts check-sheet" ref={tableRef0}>
-        <thead>
-          <tr>
-            <th className="flag">選択</th>
-            <th>部位Ⅰ</th>
-            <th>部位Ⅱ</th>
-            <th>部位名</th>
-            <th>名称・摘要</th>
-            <th>数量</th>
-            <th>単位</th>
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((item) => (
-            <tr key={item.masterKey}>
-              <td className="flag">
-                <input
-                  type="checkbox"
-                  checked={picked.includes(item.masterKey)}
-                  onChange={(e) =>
-                    setPicked(
-                      e.target.checked
-                        ? [...picked, item.masterKey]
-                        : picked.filter((key) => key !== item.masterKey),
-                    )
-                  }
-                />
-                {covered.has(item.masterKey) && (
-                  <div className="registered">登録済</div>
-                )}
-              </td>
-              <td>{item.part1}</td>
-              <td>{item.part2}</td>
-              <td>{item.partName}</td>
-              <td>
-                <div>{item.name}</div>
-                <div className="lower">
-                  {item.descriptionUpper}
-                  {item.descriptionLower === ""
-                    ? ""
-                    : ` / ${item.descriptionLower}`}
-                </div>
-              </td>
-              <td className="number">{item.quantity.toFixed(2)}</td>
-              <td>{item.unit}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
       <h3 className="section">
         ② 型枠の内容を決めて、選んだ分をまとめて変える（選択 {picked.length}{" "}
         件）
@@ -684,17 +643,20 @@ export default function FormworkTransferPage({
       </div>
 
       <h3 className="section">
-        ③ 変換の一覧（左：変換元明細／右：変換後の型枠明細。摘要は2段）
+        ③ 変換の一覧（左：①で選ぶ元明細／右：変換後の型枠明細。摘要は2段）
       </h3>
       <table className="parts check-sheet" ref={tableRef}>
         <thead>
           <tr>
-            <th colSpan={5}>変換元明細</th>
-            <th colSpan={5}>変換後の型枠明細</th>
+            <th colSpan={7}>元明細</th>
+            <th colSpan={6}>変換後の型枠明細</th>
             <th rowSpan={2}>取消</th>
           </tr>
           <tr>
-            <th>部位</th>
+            <th className="flag">選択</th>
+            <th>部位Ⅰ</th>
+            <th>部位Ⅱ</th>
+            <th>部位名</th>
             <th>名称・摘要</th>
             <th>数量</th>
             <th>単位</th>
@@ -707,106 +669,151 @@ export default function FormworkTransferPage({
           </tr>
         </thead>
         <tbody>
-          {rules.map((rule, index) => {
-            const sources = sourcesOf(rule.sourceKeys);
-            const quantity = sources.reduce(
-              (sum, item) => sum + item.quantity,
-              0,
-            );
-            const unitMismatch = sources.some(
-              (item) => item.unit !== rule.unit,
+          {listRows.map((listRow, index) => {
+            const { source, ruleIndex } = listRow;
+            const rule = ruleIndex === null ? undefined : rules[ruleIndex];
+            const ruleSources = rule ? sourcesOf(rule.sourceKeys) : [];
+            const unitMismatch = ruleSources.some(
+              (item) => item.unit !== rule?.unit,
             );
             return (
-              <tr key={rule.key}>
-                <td>
-                  {sources.map((item) => (
-                    <div key={item.masterKey}>
-                      {`${item.part1} ${item.part2} ${item.partName}`.trim()}
-                    </div>
-                  ))}
+              <tr
+                key={`${source?.masterKey ?? "orphan"}-${ruleIndex ?? "none"}-${index}`}
+              >
+                <td className="flag">
+                  {source && (
+                    <>
+                      <input
+                        type="checkbox"
+                        checked={picked.includes(source.masterKey)}
+                        onChange={(e) =>
+                          setPicked(
+                            e.target.checked
+                              ? [...picked, source.masterKey]
+                              : picked.filter(
+                                  (key) => key !== source.masterKey,
+                                ),
+                          )
+                        }
+                      />
+                      {covered.has(source.masterKey) && (
+                        <div className="registered">③に入れた</div>
+                      )}
+                    </>
+                  )}
                 </td>
+                <td>{source?.part1 ?? ""}</td>
+                <td>{source?.part2 ?? ""}</td>
+                <td>{source?.partName ?? ""}</td>
                 <td>
-                  {sources.map((item) => (
-                    <div key={item.masterKey}>
-                      <div>{item.name}</div>
+                  {source ? (
+                    <>
+                      <div>{source.name}</div>
                       <div className="lower">
-                        {item.descriptionUpper}
-                        {item.descriptionLower === ""
+                        {source.descriptionUpper}
+                        {source.descriptionLower === ""
                           ? ""
-                          : ` / ${item.descriptionLower}`}
+                          : ` / ${source.descriptionLower}`}
                       </div>
-                    </div>
-                  ))}
+                    </>
+                  ) : (
+                    "（元明細が見つかりません）"
+                  )}
                 </td>
-                <td className="number">{quantity.toFixed(2)}</td>
-                <td>{sources[0]?.unit ?? ""}</td>
                 <td className="number">
-                  <TextInput
-                    className="num"
-                    value={String(rule.coefficient)}
-                    onCommit={(value) =>
-                      update(index, {
-                        coefficient: numberOrNull(value) ?? 0,
-                      })
-                    }
-                  />
+                  {source ? source.quantity.toFixed(2) : ""}
                 </td>
-                <td>
-                  <select
-                    value={rule.subjectId ?? ""}
-                    onChange={(e) =>
-                      update(index, { subjectId: numberOrNull(e.target.value) })
-                    }
-                  >
-                    <option value="">（未設定）</option>
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.id} {subject.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <TextInput
-                    value={rule.name}
-                    onCommit={(value) => update(index, { name: value })}
-                  />
-                </td>
-                <td>
-                  <TextInput
-                    value={rule.descriptionLower}
-                    onCommit={(value) =>
-                      update(index, { descriptionLower: value })
-                    }
-                  />
-                </td>
-                <td>
-                  <TextInput
-                    value={rule.description}
-                    onCommit={(value) => update(index, { description: value })}
-                  />
-                </td>
-                <td
-                  className={unitMismatch ? "unit-mismatch" : undefined}
-                  title={
-                    unitMismatch
-                      ? `元明細の単位（${sources.map((item) => item.unit).join("／")}）と違います`
-                      : undefined
-                  }
-                >
-                  <PickInput
-                    entries={unitEntries}
-                    halfWidth
-                    value={rule.unit}
-                    title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
-                    onCommit={(value) => update(index, { unit: unitOf(value) })}
-                  />
-                </td>
-                <td>
-                  <button type="button" onClick={() => removeRule(index)}>
-                    ✕
-                  </button>
-                </td>
+                <td>{source?.unit ?? ""}</td>
+                {rule && ruleIndex !== null ? (
+                  <>
+                    <td className="number">
+                      <TextInput
+                        className="num"
+                        value={String(rule.coefficient)}
+                        onCommit={(value) =>
+                          update(ruleIndex, {
+                            coefficient: numberOrNull(value) ?? 0,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={rule.subjectId ?? ""}
+                        onChange={(e) =>
+                          update(ruleIndex, {
+                            subjectId: numberOrNull(e.target.value),
+                          })
+                        }
+                      >
+                        <option value="">（未設定）</option>
+                        {subjects.map((subject) => (
+                          <option key={subject.id} value={subject.id}>
+                            {subject.id} {subject.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <TextInput
+                        value={rule.name}
+                        onCommit={(value) => update(ruleIndex, { name: value })}
+                      />
+                    </td>
+                    <td>
+                      <TextInput
+                        value={rule.descriptionLower}
+                        onCommit={(value) =>
+                          update(ruleIndex, { descriptionLower: value })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <TextInput
+                        value={rule.description}
+                        onCommit={(value) =>
+                          update(ruleIndex, { description: value })
+                        }
+                      />
+                    </td>
+                    <td
+                      className={unitMismatch ? "unit-mismatch" : undefined}
+                      title={
+                        unitMismatch
+                          ? `元明細の単位（${ruleSources.map((item) => item.unit).join("／")}）と違います`
+                          : undefined
+                      }
+                    >
+                      <PickInput
+                        entries={unitEntries}
+                        halfWidth
+                        value={rule.unit}
+                        title="単位。一覧から選べます。番号を打つと単位の文字に変わります"
+                        onCommit={(value) =>
+                          update(ruleIndex, { unit: unitOf(value) })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => removeRule(ruleIndex)}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                    <td />
+                  </>
+                )}
               </tr>
             );
           })}
