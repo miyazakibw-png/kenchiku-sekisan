@@ -2439,3 +2439,68 @@ describe("部屋別・部位別のまとめからの内訳書", () => {
     expect(subs.map((row) => row.amount)).toEqual([1230, 200]);
   });
 });
+
+describe("部位名に先頭の空白がある明細の再配置", () => {
+  const source = [
+    item({
+      id: 1,
+      masterKey: "2f-floor",
+      partName: " 2F床",
+      name: "打増コンクリート",
+    }),
+    item({
+      id: 2,
+      masterKey: "10f-floor",
+      partName: "10F床",
+      name: "打増コンクリート",
+    }),
+  ];
+  const cases = [
+    { namePattern: NAME_PATTERN.withPart, separator: " " },
+    { namePattern: NAME_PATTERN.withPartColon, separator: ":" },
+    { namePattern: NAME_PATTERN.withPartFullColon, separator: "：" },
+    { namePattern: NAME_PATTERN.asIs, separator: " " },
+  ];
+
+  it("3回再配置しても部位名を重ねず、10F床の名称も保つ", () => {
+    cases.forEach(({ namePattern, separator }) => {
+      const settings = {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.oneLine,
+        namePattern,
+      };
+      let rows = buildBreakdownRows(source, subjects, settings);
+      for (let iteration = 0; iteration < 3; iteration += 1) {
+        rows = relayoutBreakdownRows(rows, settings);
+        expect(
+          rows
+            .filter((row) => row.rowKind === "detail")
+            .map((row) => row.nameLower),
+        ).toEqual([
+          `2F床${separator}打増コンクリート`,
+          `10F床${separator}打増コンクリート`,
+        ]);
+      }
+    });
+  });
+
+  it("保存済みの重複した部位名を再配置時に修復する", () => {
+    const savedRows = buildBreakdownRows([source[0]], subjects, {
+      ...DEFAULT_BREAKDOWN_SETTINGS,
+      layout: BREAKDOWN_LAYOUT.twoLine,
+      namePattern: NAME_PATTERN.withPart,
+    }).map((row) =>
+      row.rowKind === "detail"
+        ? { ...row, nameLower: "2F床 2F床 2F床 打増コンクリート" }
+        : row,
+    );
+    const rows = relayoutBreakdownRows(savedRows, {
+      layout: BREAKDOWN_LAYOUT.oneLine,
+      namePattern: NAME_PATTERN.withPart,
+    });
+
+    expect(rows.find((row) => row.rowKind === "detail")?.nameLower).toBe(
+      "2F床 打増コンクリート",
+    );
+  });
+});

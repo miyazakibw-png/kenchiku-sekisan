@@ -1366,11 +1366,15 @@ function finishWrappedLayout<T extends BreakdownRowLike>(
 }
 
 function stripPartName(text: string, partName: string): string {
-  if (partName === "") return text;
-  const prefix = [" ", ":", "："]
-    .map((separator) => `${partName}${separator}`)
-    .find((candidate) => text.startsWith(candidate));
-  return prefix === undefined ? text : text.slice(prefix.length);
+  const part = partName.trim();
+  if (part === "") return text;
+  const prefixes = [" ", ":", "："].map((separator) => `${part}${separator}`);
+  let rest = text;
+  for (;;) {
+    const prefix = prefixes.find((candidate) => rest.startsWith(candidate));
+    if (prefix === undefined) return rest;
+    rest = rest.slice(prefix.length);
+  }
 }
 
 type BreakdownRowLike = Omit<
