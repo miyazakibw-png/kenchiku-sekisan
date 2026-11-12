@@ -80,10 +80,6 @@ import { changedFieldsOf, snapshotOf } from "./detailService";
 import { getDeductionLimit } from "./roomSheetService";
 import { syncAssembliesFromSheets } from "./assemblyService";
 import {
-  listFormworkRules,
-  runFormworkTransfer,
-} from "./formworkTransferService";
-import {
   displayedValue,
   evaluateCalcSheet,
   normalizeSets,
@@ -350,13 +346,10 @@ export function deleteAggregateManualItem(
 
 /**
  * 集計を実行して保存する。戻り値は最新の集計結果。
- * 型枠転記を決めてあるときは、そのつど型枠数量を作り直して集計し直す
- * （計算書を直して数量が変わっても、集計をかけ直すだけで型枠数量が合う）。
  */
 export function runAggregation(
   db: AppDatabase,
   projectId: number,
-  options: { skipFormwork?: boolean } = {},
 ): AggregateView {
   // 計算書で組んだセットは、集計をかけた時点で仕上明細セットマスターへ自動登録する
   syncAssembliesFromSheets(db, projectId);
@@ -446,15 +439,7 @@ export function runAggregation(
     return created;
   });
 
-  const view = getAggregate(db, projectId, run.id);
-  if (options.skipFormwork) return view;
-  const rules = listFormworkRules(db, projectId).filter(
-    (rule) => rule.sourceKeys.length > 0 && rule.name.trim() !== "",
-  );
-  if (rules.length === 0) return view;
-  // 型枠転記の行を作り直し、その行を含めてもう一度集計する
-  runFormworkTransfer(db, projectId);
-  return runAggregation(db, projectId, { skipFormwork: true });
+  return getAggregate(db, projectId, run.id);
 }
 
 /**

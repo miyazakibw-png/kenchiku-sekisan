@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrations } from "../../src/main/db/migrations";
 import * as schema from "../../src/main/db/schema";
@@ -17,10 +18,10 @@ import {
 } from "../../src/main/services/transferRowService";
 import { runAggregation } from "../../src/main/services/aggregationService";
 import {
+  deleteFormworkRun,
   getFormworkTransfer,
   reorderFormworkTransfer,
   runFormworkTransfer,
-  saveFormworkRules,
 } from "../../src/main/services/formworkTransferService";
 import type {
   EstimateRowDraft,
@@ -160,19 +161,24 @@ describe("型枠転記", () => {
       name: "コンクリート",
       quantity: 12,
     });
-    expect(view.rules).toEqual([]);
-    expect(view.rows).toEqual([]);
+    expect(view).toMatchObject({
+      groups: [],
+      runs: [],
+      lastSearch: "",
+    });
+    expect(view).not.toHaveProperty("rules");
+    expect(view).not.toHaveProperty("rows");
   });
 
   it("選んだ元明細の数量×掛け率で、転記入力表の最後へ自動転記する", () => {
     saveTransferRows(db, { projectId, rows: [manualRow] });
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
-    saveFormworkRules(db, {
+    const result = runFormworkTransfer(db, {
       projectId,
       rules: [{ ...rule([source]), coefficient: 1.5 }],
+      search: "打放補修",
     });
 
-    runFormworkTransfer(db, projectId);
     const rows = listTransferRows(db, projectId);
     expect(rows).toHaveLength(3);
     expect(rows[0].name).toBe("手入力の明細");
@@ -189,31 +195,71 @@ describe("型枠転記", () => {
       formwork: "打放型枠",
       detailNumber: 2,
     });
+    expect(result.created).toBe(true);
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]).toMatchObject({
+      search: "打放補修",
+      current: true,
+      rows: expect.any(Array),
+    });
+    expect(result.lastSearch).toBe("打放補修");
   });
 
-  it("転記し直しても二重にならず、手入力の行は残す", () => {
+  it("転記行ができない算出では結果を追加せず転記入力表も変えない", () => {
+    saveTransferRows(db, { projectId, rows: [manualRow] });
+    const before = listTransferRows(db, projectId);
+    const result = runFormworkTransfer(db, {
+      projectId,
+      rules: [rule([])],
+      search: "見つからない名称",
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.runs).toEqual([]);
+    expect(listTransferRows(db, projectId)).toEqual(before);
+  });
+
+  it("2回算出すると結果を2回分残し、最新だけを転記入力表に入れる", () => {
     saveTransferRows(db, { projectId, rows: [manualRow] });
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
-    saveFormworkRules(db, { projectId, rules: [rule([source])] });
-    runFormworkTransfer(db, projectId);
-    runFormworkTransfer(db, projectId);
+    runFormworkTransfer(db, {
+      projectId,
+      rules: [rule([source])],
+      search: "1回目",
+    });
+    const second = runFormworkTransfer(db, {
+      projectId,
+      rules: [rule([source])],
+      search: "2回目",
+    });
 
     const rows = listTransferRows(db, projectId);
     expect(rows).toHaveLength(3);
     expect(rows.filter((row) => row.formworkKey !== "")).toHaveLength(2);
     expect(rows[2].quantity).toBe(12);
+    expect(second.runs).toHaveLength(2);
+    expect(second.runs.map((run) => run.search)).toEqual(["2回目", "1回目"]);
+    expect(second.runs.map((run) => run.current)).toEqual([true, false]);
   });
 
-  it("計算書を直して集計をかけ直すと、型枠数量も作り直す", () => {
+  it("通常の再集計では転記行を作り直さず、算出し直すと新しい数量になる", () => {
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
-    saveFormworkRules(db, { projectId, rules: [rule([source])] });
-    runFormworkTransfer(db, projectId);
-    expect(listTransferRows(db, projectId)[1].quantity).toBe(12);
+    const rules = [rule([source])];
+    runFormworkTransfer(db, { projectId, rules, search: "" });
+    expect(
+      listTransferRows(db, projectId).find(
+        (row) => row.formworkKey !== "" && row.name === "打放型枠",
+      )?.quantity,
+    ).toBe(12);
 
-    // 部屋を倍にする（数量が12→24になる）
+    const estimateRowId = db
+      .select({ id: schema.projectEstimateRows.id })
+      .from(schema.projectEstimateRows)
+      .where(eq(schema.projectEstimateRows.projectId, projectId))
+      .get()!.id;
     const rows = saveEstimateRows(db, {
       projectId,
-      rows: [{ ...roomRow("機械室"), id: null, multiplier: 2 }],
+      rows: [{ ...roomRow("機械室"), id: estimateRowId, multiplier: 2 }],
     });
     const sheet = getRoomSheet(db, rows[0].id);
     saveRoomSheet(db, {
@@ -227,17 +273,31 @@ describe("型枠転記", () => {
     });
 
     const view = runAggregation(db, projectId);
-    expect(listTransferRows(db, projectId)[1].quantity).toBe(24);
-    // 集計書兼工事マスターにも型枠明細が載る
-    expect(view.items.filter((item) => item.name === "打放型枠")).toHaveLength(
-      1,
-    );
+    expect(
+      listTransferRows(db, projectId).find(
+        (row) => row.formworkKey !== "" && row.name === "打放型枠",
+      )?.quantity,
+    ).toBe(12);
     expect(view.items.find((item) => item.name === "打放型枠")?.quantity).toBe(
-      24,
+      12,
     );
+
+    runFormworkTransfer(db, { projectId, rules, search: "" });
+    expect(
+      listTransferRows(db, projectId).find(
+        (row) => row.formworkKey !== "" && row.name === "打放型枠",
+      )?.quantity,
+    ).toBe(24);
+    const aggregated = runAggregation(db, projectId);
+    expect(
+      aggregated.items.filter((item) => item.name === "打放型枠"),
+    ).toHaveLength(1);
+    expect(
+      aggregated.items.find((item) => item.name === "打放型枠")?.quantity,
+    ).toBe(24);
   });
 
-  it("部位別入力表で型枠区分を直して集計し直すと、型枠転記の分類も直る", () => {
+  it("算出し直すと部位別入力表で直した型枠分類が反映される", () => {
     const freshProjectId = createProject(db, "型枠分類修正テスト").id;
     const rows = saveEstimateRows(db, {
       projectId: freshProjectId,
@@ -256,15 +316,14 @@ describe("型枠転記", () => {
     runAggregation(db, freshProjectId);
 
     const source = getFormworkTransfer(db, freshProjectId).sources[0].masterKey;
-    saveFormworkRules(db, {
+    const rules = [rule([source])];
+    runFormworkTransfer(db, {
       projectId: freshProjectId,
-      rules: [rule([source])],
+      rules,
+      search: "",
     });
-    runFormworkTransfer(db, freshProjectId);
 
-    const originalRows = listTransferRows(db, freshProjectId).filter(
-      (row) => row.formworkKey !== "",
-    );
+    const originalRows = getFormworkTransfer(db, freshProjectId).runs[0].rows;
     expect(originalRows.map((row) => [row.formwork, row.name])).toEqual([
       ["地下階", "<地下階>"],
       ["地下階", "打放型枠"],
@@ -275,11 +334,12 @@ describe("型枠転記", () => {
       projectId: freshProjectId,
       rows: [{ ...roomRow("機械室"), id: rows[0].id, formwork: "基礎階" }],
     });
-    runAggregation(db, freshProjectId);
-
-    const correctedRows = listTransferRows(db, freshProjectId).filter(
-      (row) => row.formworkKey !== "",
-    );
+    const corrected = runFormworkTransfer(db, {
+      projectId: freshProjectId,
+      rules,
+      search: "",
+    });
+    const correctedRows = corrected.runs[0].rows;
     expect(correctedRows.map((row) => [row.formwork, row.name])).toEqual([
       ["基礎階", "<基礎階>"],
       ["基礎階", "打放型枠"],
@@ -291,28 +351,55 @@ describe("型枠転記", () => {
       ),
     ).toBe(false);
     expect(
-      getFormworkTransfer(db, freshProjectId).rows.some(
+      getFormworkTransfer(db, freshProjectId).runs[0].rows.some(
         (row) => row.formwork === "地下階",
       ),
     ).toBe(false);
   });
 
-  it("④で並び替えた順が転記入力表に反映され、作り直してもその並びを保つ", () => {
+  it("③の決まりを保存せず、算出で型枠の決まりを project_transfer_rules に書かない", () => {
     const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
-    saveFormworkRules(db, {
+    db.insert(schema.projectTransferRules)
+      .values({ projectId, masterKey: "既存の決まり" })
+      .run();
+    const before = db
+      .select()
+      .from(schema.projectTransferRules)
+      .where(eq(schema.projectTransferRules.ruleKind, "formwork"))
+      .all();
+    expect(before).toHaveLength(1);
+
+    const result = runFormworkTransfer(db, {
       projectId,
-      rules: [
-        rule([source]),
-        { ...rule([source]), key: "型枠2", name: "あとの型枠" },
-      ],
+      rules: [rule([source])],
+      search: "",
     });
-    runFormworkTransfer(db, projectId);
+
+    expect(
+      db
+        .select()
+        .from(schema.projectTransferRules)
+        .where(eq(schema.projectTransferRules.ruleKind, "formwork"))
+        .all(),
+    ).toEqual(before);
+    expect(result).not.toHaveProperty("rules");
+  });
+
+  it("④で並び替えると転記入力表と現行の結果が変わり、次の算出でも順を保つ", () => {
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    const rules = [
+      rule([source]),
+      { ...rule([source]), key: "型枠2", name: "あとの型枠" },
+    ];
+    runFormworkTransfer(db, { projectId, rules, search: "" });
 
     const view = getFormworkTransfer(db, projectId);
     // [タイトル, 打放型枠, あとの型枠] → あとの型枠を上へ
-    const moved = [view.rows[0], view.rows[2], view.rows[1]].map(
-      (row, index) => ({ ...row, detailNumber: index + 1 }),
-    );
+    const moved = [
+      view.runs[0].rows[0],
+      view.runs[0].rows[2],
+      view.runs[0].rows[1],
+    ].map((row, index) => ({ ...row, detailNumber: index + 1 }));
     reorderFormworkTransfer(db, projectId, moved);
 
     const rows = listTransferRows(db, projectId);
@@ -321,12 +408,53 @@ describe("型枠転記", () => {
       "あとの型枠",
       "打放型枠",
     ]);
-    // 作り直しても（再集計でも）並び替えた順を保つ
-    runFormworkTransfer(db, projectId);
+    expect(
+      getFormworkTransfer(db, projectId).runs[0].rows.map((row) => row.name),
+    ).toEqual(["<打放型枠>", "あとの型枠", "打放型枠"]);
+
+    runFormworkTransfer(db, { projectId, rules, search: "" });
     expect(listTransferRows(db, projectId).map((row) => row.name)).toEqual([
       "<打放型枠>",
       "あとの型枠",
       "打放型枠",
     ]);
+    expect(
+      getFormworkTransfer(db, projectId).runs[0].rows.map((row) => row.name),
+    ).toEqual(["<打放型枠>", "あとの型枠", "打放型枠"]);
+  });
+
+  it("算出結果だけを消し、転記入力表の行は残して最新検索文字を返す", () => {
+    const source = getFormworkTransfer(db, projectId).sources[0].masterKey;
+    runFormworkTransfer(db, {
+      projectId,
+      rules: [rule([source])],
+      search: "前の検索",
+    });
+    const firstId = getFormworkTransfer(db, projectId).runs[0].id;
+    runFormworkTransfer(db, {
+      projectId,
+      rules: [rule([source])],
+      search: "最新の検索",
+    });
+    const secondView = getFormworkTransfer(db, projectId);
+    const secondId = secondView.runs[0].id;
+    const transferRows = listTransferRows(db, projectId);
+
+    const afterDeleteCurrent = deleteFormworkRun(db, {
+      projectId,
+      runId: secondId,
+    });
+    expect(afterDeleteCurrent.runs).toHaveLength(1);
+    expect(afterDeleteCurrent.runs[0].current).toBe(false);
+    expect(afterDeleteCurrent.lastSearch).toBe("前の検索");
+    expect(listTransferRows(db, projectId)).toEqual(transferRows);
+
+    const afterDeleteOld = deleteFormworkRun(db, {
+      projectId,
+      runId: firstId,
+    });
+    expect(afterDeleteOld.runs).toEqual([]);
+    expect(afterDeleteOld.lastSearch).toBe("");
+    expect(listTransferRows(db, projectId)).toEqual(transferRows);
   });
 });

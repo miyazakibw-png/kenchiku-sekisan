@@ -563,6 +563,18 @@ export const projectTransferRows = sqliteTable(
   }),
 );
 
+/** 型枠転記の算出結果（履歴と転記入力表に入っている回） */
+export const projectFormworkRuns = sqliteTable("project_formwork_runs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  createdAt: text("created_at").notNull(),
+  search: text("search").notNull().default(""),
+  rowsJson: text("rows_json").notNull().default("[]"),
+  current: integer("current").notNull().default(0),
+});
+
 /**
  * 動的計算書スキーマ。
  * 計算書（シート）のUIレイアウトと計算式定義をJSONで保持し、

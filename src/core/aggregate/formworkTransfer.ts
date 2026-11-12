@@ -10,7 +10,8 @@
  * ・掛け率と摘要は元明細ごとに決める
  * ・分類の並びは型枠分類マスターの登録番号順。分類の無い拾いは「分類なし」でまとめる
  *
- * 元明細と転記先の書式は保存するので、計算書を直して集計をかけ直しても作り直せる。
+ * ③の決まりは画面を開いている間だけ保持する。算出ごとの結果は履歴に残し、
+ * 集計では型枠転記の行を自動で作り直さない。
  */
 
 /** 型枠分類が入っていない拾いのまとめ先 */
@@ -83,6 +84,20 @@ export interface FormworkTransferRow {
   sourceQuantity: number;
   unit: string;
   remarks: string;
+}
+
+export interface FormworkCompareRow {
+  row: FormworkTransferRow;
+  /** same: 前回と同じ / changed: 数量が違う / new: 前回に無い。前回が無いときは全部 same */
+  status: "same" | "changed" | "new";
+  /** 前回の転記数量（前回に無い・前回が無い・タイトル行は null） */
+  previousQuantity: number | null;
+}
+
+export interface FormworkCompare {
+  rows: FormworkCompareRow[];
+  /** 前回にあって今回は無い明細（タイトル行は除く） */
+  removed: FormworkTransferRow[];
 }
 
 /** 元明細ごとの型枠分類別の数量（画面で確かめるための表） */
@@ -326,6 +341,53 @@ function rowSignature(row: {
     row.descriptionLower,
     row.unit,
   ].join("|");
+}
+
+export function compareFormworkRuns(
+  current: readonly FormworkTransferRow[],
+  previous: readonly FormworkTransferRow[] | null,
+): FormworkCompare {
+  if (previous === null) {
+    return {
+      rows: current.map((row) => ({
+        row,
+        status: "same",
+        previousQuantity: null,
+      })),
+      removed: [],
+    };
+  }
+
+  const previousBySignature = new Map<string, number[]>();
+  previous.forEach((row, index) => {
+    const signature = rowSignature(row);
+    const indexes = previousBySignature.get(signature) ?? [];
+    indexes.push(index);
+    previousBySignature.set(signature, indexes);
+  });
+
+  const matched = new Set<number>();
+  const rows = current.map((row) => {
+    const indexes = previousBySignature.get(rowSignature(row));
+    const previousIndex = indexes?.shift();
+    if (previousIndex === undefined) {
+      return { row, status: "new" as const, previousQuantity: null };
+    }
+    matched.add(previousIndex);
+    const previousRow = previous[previousIndex];
+    const changed =
+      !row.title && Math.abs(row.quantity - previousRow.quantity) >= 0.005;
+    return {
+      row,
+      status: changed ? ("changed" as const) : ("same" as const),
+      previousQuantity: row.title ? null : previousRow.quantity,
+    };
+  });
+
+  return {
+    rows,
+    removed: previous.filter((row, index) => !matched.has(index) && !row.title),
+  };
 }
 
 /** 転記入力表に入っている行の目印（タイトル行は「<分類>」という名前になっている） */

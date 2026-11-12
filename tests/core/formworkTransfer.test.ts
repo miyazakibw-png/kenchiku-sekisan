@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFormworkRulesFromSources,
   buildFormworkTransferRows,
+  compareFormworkRuns,
   collectFormworkQuantities,
   moveFormworkRow,
   orderFormworkRows,
@@ -9,6 +10,7 @@ import {
   storedRowSignature,
   type FormworkCategory,
   type FormworkSourceDetail,
+  type FormworkTransferRow,
   type FormworkTransferRule,
 } from "../../src/core/aggregate/formworkTransfer";
 
@@ -76,6 +78,86 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
     ...patch,
   };
 }
+
+describe("compareFormworkRuns", () => {
+  const makeRows = (
+    sourceDetails: readonly FormworkSourceDetail[] = [details[0]],
+  ): FormworkTransferRow[] =>
+    buildFormworkTransferRows(sourceDetails, [rule()], categories);
+
+  it("前回が無いときは全行を同じとして返す", () => {
+    const rows = makeRows();
+    const compared = compareFormworkRuns(rows, null);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual(
+      rows.map(() => "same"),
+    );
+    expect(compared.rows.map((entry) => entry.previousQuantity)).toEqual(
+      rows.map(() => null),
+    );
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("同じ行は前回数量を返し、タイトル行の前回数量は空にする", () => {
+    const previous = makeRows();
+    const compared = compareFormworkRuns(previous, previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "same",
+    ]);
+    expect(compared.rows.map((entry) => entry.previousQuantity)).toEqual([
+      null,
+      10.5,
+    ]);
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("数量差が0.005以上の明細を変更として前回数量とともに返す", () => {
+    const previous = makeRows();
+    const current = previous.map((row) =>
+      row.title ? row : { ...row, quantity: row.quantity + 0.005 },
+    );
+    const compared = compareFormworkRuns(current, previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "changed",
+    ]);
+    expect(compared.rows[1].previousQuantity).toBe(10.5);
+  });
+
+  it("前回に無い明細と型枠分類のタイトルを新規として返す", () => {
+    const previous = makeRows();
+    const added = makeRows([{ ...details[0], formwork: "地下階" }]);
+    const compared = compareFormworkRuns([...previous, ...added], previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "same",
+      "new",
+      "new",
+    ]);
+    expect(
+      compared.rows.slice(-2).map((entry) => entry.previousQuantity),
+    ).toEqual([null, null]);
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("前回だけの明細をタイトル行を除いて返す", () => {
+    const previous = makeRows([details[0], details[2]]);
+    const current = makeRows([details[2]]);
+    const compared = compareFormworkRuns(current, previous);
+
+    expect(compared.removed).toHaveLength(1);
+    expect(compared.removed[0]).toMatchObject({
+      title: false,
+      formwork: "地上階",
+      name: "打放型枠",
+      quantity: 10.5,
+    });
+  });
+});
 
 describe("buildFormworkRulesFromSources", () => {
   const sources = [

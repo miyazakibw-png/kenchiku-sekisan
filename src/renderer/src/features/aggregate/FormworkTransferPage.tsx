@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   FormworkSourceItem,
+  FormworkRunView,
+  FormworkTransferRow,
   FormworkTransferRule,
   FormworkTransferView,
   MasterOptions,
@@ -10,6 +12,7 @@ import type {
 import { resolveMasterName } from "@shared/masters";
 import {
   buildFormworkRulesFromSources,
+  compareFormworkRuns,
   moveFormworkRow,
   sortFormworkRowsByName,
 } from "../../../../core/aggregate/formworkTransfer";
@@ -24,10 +27,10 @@ interface Props {
 }
 
 const EMPTY: FormworkTransferView = {
-  rules: [],
   sources: [],
   groups: [],
-  rows: [],
+  runs: [],
+  lastSearch: "",
 };
 
 /** 転記科目の初期値（5 型枠工事） */
@@ -43,12 +46,14 @@ function TextInput({
   className,
   title,
   placeholder,
+  onInput,
 }: {
   value: string;
   onCommit: (value: string) => void;
   className?: string;
   title?: string;
   placeholder?: string;
+  onInput?: () => void;
 }): JSX.Element {
   return (
     <input
@@ -58,6 +63,7 @@ function TextInput({
       defaultValue={value}
       title={title}
       placeholder={placeholder}
+      onInput={onInput}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
@@ -73,19 +79,226 @@ function numberOrNull(value: string): number | null {
   return value.trim() === "" || Number.isNaN(parsed) ? null : parsed;
 }
 
+interface FormworkRunTableProps {
+  projectId: number;
+  run: FormworkRunView;
+  runCount: number;
+  runIndex: number;
+  previousRows: readonly FormworkTransferRow[] | null;
+  onViewChange: (view: FormworkTransferView) => void;
+  onMessage: (message: string) => void;
+}
+
+function FormworkRunTable({
+  projectId,
+  run,
+  runCount,
+  runIndex,
+  previousRows,
+  onViewChange,
+  onMessage,
+}: FormworkRunTableProps): JSX.Element {
+  const tableRef = useTableResize("table-widths-formwork-runs-v1");
+  const comparison = useMemo(
+    () => compareFormworkRuns(run.rows, previousRows),
+    [run.rows, previousRows],
+  );
+
+  const reorder = async (
+    rows: readonly FormworkTransferRow[],
+    message: string,
+  ): Promise<void> => {
+    onViewChange(
+      await window.sekisan.reorderFormworkRows({ projectId, rows: [...rows] }),
+    );
+    onMessage(message);
+  };
+
+  const remove = async (): Promise<void> => {
+    if (
+      !window.confirm(
+        "この算出結果の表を消しますか？（転記入力表の行は消えません）",
+      )
+    )
+      return;
+    onViewChange(
+      await window.sekisan.deleteFormworkRun({ projectId, runId: run.id }),
+    );
+    onMessage("算出結果の表を消しました。");
+  };
+
+  return (
+    <section className="formwork-run-table-block">
+      <div className="formwork-run-caption">
+        第{runCount - runIndex}回 {run.createdAt}　検索：
+        {run.search || "（なし）"}
+      </div>
+      <div className="formwork-run-actions">
+        {run.current && (
+          <>
+            <strong>転記入力表に入っています</strong>
+            <button
+              type="button"
+              onClick={() =>
+                void reorder(
+                  sortFormworkRowsByName(run.rows),
+                  "分類ごとに名称の昇順に並び替えました",
+                )
+              }
+            >
+              名称の昇順に並び替える
+            </button>
+            <span className="note">
+              明細は↑↓で上下へ移せます。並びは転記入力表にも反映されます。
+            </span>
+          </>
+        )}
+        <button type="button" onClick={() => void remove()}>
+          ✕ 消す
+        </button>
+      </div>
+      <table className="parts check-sheet formwork-run-table" ref={tableRef}>
+        <thead>
+          <tr>
+            {run.current && <th className="flag">並び</th>}
+            <th>明細番号</th>
+            <th>名称</th>
+            <th>摘要 下段</th>
+            <th>摘要 上段</th>
+            <th>元数量</th>
+            <th>転記数量</th>
+            <th>単位</th>
+            <th>前回</th>
+            <th>差</th>
+          </tr>
+        </thead>
+        <tbody>
+          {comparison.rows.map((entry, index) => {
+            const { row } = entry;
+            const className = [
+              row.title ? "title-row" : "",
+              entry.status === "changed" ? "formwork-changed-row" : "",
+              entry.status === "new" && !row.title ? "formwork-new-row" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            const difference =
+              entry.previousQuantity === null || row.title
+                ? ""
+                : row.quantity - entry.previousQuantity;
+            return (
+              <tr
+                key={`${row.formwork}|${row.detailNumber}|${row.name}|${index}`}
+                className={className || undefined}
+              >
+                {run.current && (
+                  <td className="flag">
+                    {row.title ? (
+                      ""
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={
+                            !run.rows
+                              .slice(0, index)
+                              .some((above) => !above.title)
+                          }
+                          onClick={() =>
+                            void reorder(
+                              moveFormworkRow(run.rows, index, -1),
+                              "並びを変えました（転記入力表へも反映しました）",
+                            )
+                          }
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            !run.rows
+                              .slice(index + 1)
+                              .some((below) => !below.title)
+                          }
+                          onClick={() =>
+                            void reorder(
+                              moveFormworkRow(run.rows, index, 1),
+                              "並びを変えました（転記入力表へも反映しました）",
+                            )
+                          }
+                        >
+                          ↓
+                        </button>
+                      </>
+                    )}
+                  </td>
+                )}
+                <td className="number">{row.detailNumber}</td>
+                <td>{row.name}</td>
+                <td>{row.descriptionLower}</td>
+                <td>{row.description}</td>
+                <td className="number">
+                  {row.title ? "" : row.sourceQuantity.toFixed(2)}
+                </td>
+                <td className="number">
+                  {row.title ? "" : row.quantity.toFixed(2)}
+                </td>
+                <td>{row.unit}</td>
+                <td className="number">
+                  {entry.previousQuantity === null || row.title
+                    ? ""
+                    : entry.previousQuantity.toFixed(2)}
+                </td>
+                <td>
+                  {row.title
+                    ? ""
+                    : entry.status === "new"
+                      ? "新"
+                      : difference === ""
+                        ? ""
+                        : `${difference >= 0 ? "+" : ""}${difference.toFixed(2)}`}
+                </td>
+              </tr>
+            );
+          })}
+          {comparison.removed.map((row, index) => (
+            <tr
+              key={`removed|${row.formwork}|${row.detailNumber}|${row.name}|${index}`}
+              className="formwork-removed-row"
+            >
+              {run.current && <td className="flag" />}
+              <td className="number">{row.detailNumber}</td>
+              <td>{row.name}</td>
+              <td>{row.descriptionLower}</td>
+              <td>{row.description}</td>
+              <td className="number">{row.sourceQuantity.toFixed(2)}</td>
+              <td className="number" />
+              <td>{row.unit}</td>
+              <td className="number">{row.quantity.toFixed(2)}</td>
+              <td>前回だけ</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 export default function FormworkTransferPage({
   project,
   onBack,
 }: Props): JSX.Element {
   const tableRef0 = useTableResize("table-widths-formwork-source-v1");
   const tableRef = useTableResize("table-widths-formwork-rules-v3");
-  const tableRef1 = useTableResize("table-widths-formwork-rows-v4");
   const [view, setView] = useState<FormworkTransferView>(EMPTY);
+  const [rules, setRules] = useState<FormworkTransferRule[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [options, setOptions] = useState<MasterOptions | null>(null);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const initialSearchSet = useRef(false);
+  const searchTouched = useRef(false);
   const [bulkName, setBulkName] = useState("打放型枠");
   const [bulkSubject, setBulkSubject] = useState<number | null>(
     FORMWORK_SUBJECT,
@@ -99,7 +312,12 @@ export default function FormworkTransferPage({
   );
 
   const reload = useCallback(async () => {
-    setView(await window.sekisan.getFormworkTransfer(project.id));
+    const next = await window.sekisan.getFormworkTransfer(project.id);
+    setView(next);
+    if (!initialSearchSet.current) {
+      if (!searchTouched.current) setSearch(next.lastSearch);
+      initialSearchSet.current = true;
+    }
   }, [project.id]);
 
   useEffect(() => {
@@ -213,18 +431,18 @@ export default function FormworkTransferPage({
 
   /** すでに型枠明細に登録してある元明細（再び変換を押すと入れ替わる） */
   const covered = useMemo(
-    () => new Set(view.rules.flatMap((rule) => rule.sourceKeys)),
-    [view.rules],
+    () => new Set(rules.flatMap((rule) => rule.sourceKeys)),
+    [rules],
   );
 
   const update = (
     index: number,
     patch: Partial<FormworkTransferRule>,
   ): void => {
-    const rules = view.rules.map((rule, i) =>
+    const next = rules.map((rule, i) =>
       i === index ? { ...rule, ...patch } : rule,
     );
-    setView({ ...view, rules });
+    setRules(next);
   };
 
   /** 探した元明細をまとめて型枠明細に変える（1件ずつ入力しない） */
@@ -240,7 +458,7 @@ export default function FormworkTransferPage({
       setMessage("転記先名称（例：打放型枠）を入れてください");
       return;
     }
-    const rules = buildFormworkRulesFromSources(
+    const addedRules = buildFormworkRulesFromSources(
       sources,
       {
         subjectId: bulkSubject,
@@ -253,71 +471,38 @@ export default function FormworkTransferPage({
     );
     // すでに登録済みの元明細を選んだときは、古い決まりを消して入れ替える（二重登録を防ぐ）
     const pickedSet = new Set(picked);
-    const cleared = view.rules.filter(
+    const cleared = rules.filter(
       (rule) => !rule.sourceKeys.some((key) => pickedSet.has(key)),
     );
-    const replaced = view.rules.length - cleared.length;
-    setView({ ...view, rules: [...cleared, ...rules] });
+    const replaced = rules.length - cleared.length;
+    setRules([...cleared, ...addedRules]);
     setPicked([]);
     setMessage(
-      `${rules.length} 件を型枠明細に変えました${replaced > 0 ? `（登録済みの ${replaced} 件は入れ替えました）` : ""}（右側で摘要・掛け率を直せます）`,
+      `${addedRules.length} 件を型枠明細に変えました${replaced > 0 ? `（登録済みの ${replaced} 件は入れ替えました）` : ""}（右側で摘要・掛け率を直せます）`,
     );
   };
 
   const removeRule = (index: number): void => {
-    setView({ ...view, rules: view.rules.filter((_, i) => i !== index) });
-  };
-
-  const save = async (): Promise<void> => {
-    setView(
-      await window.sekisan.saveFormworkRules({
-        projectId: project.id,
-        rules: view.rules,
-      }),
-    );
-    setMessage("型枠明細を保存しました（集計をかけ直すたびに作り直します）");
+    setRules(rules.filter((_, i) => i !== index));
   };
 
   const run = async (): Promise<void> => {
-    const saved = await window.sekisan.saveFormworkRules({
+    const result = await window.sekisan.runFormworkTransfer({
       projectId: project.id,
-      rules: view.rules,
+      rules,
+      search,
     });
-    if (saved.rows.length === 0) {
-      setView(saved);
+    setView(result);
+    if (!result.created) {
       setMessage("元明細と転記先の名称を入れてから算出してください。");
       return;
     }
-    await window.sekisan.runAggregation(project.id);
-    const result = await window.sekisan.getFormworkTransfer(project.id);
-    setView(result);
     setMessage(
-      `集計をかけ直して、転記入力表へ ${result.rows.length} 行を自動転記しました（次の集計に含まれます）`,
+      `集計をかけ直して、転記入力表へ ${result.runs[0]?.rows.length ?? 0} 行を自動転記しました（④のいちばん左に表を足しました）`,
     );
   };
 
-  /** ④の表の並び替え（↑↓・名称順）。並びは転記入力表へそのまま反映する */
-  const reorder = async (
-    rows: typeof view.rows,
-    note: string,
-  ): Promise<void> => {
-    setView(
-      await window.sekisan.reorderFormworkRows({
-        projectId: project.id,
-        rows,
-      }),
-    );
-    setMessage(note);
-  };
-
-  /** 画面を閉じるときは今の内容を自動で保存してから戻る（失敗しても戻る） */
-  const back = async (): Promise<void> => {
-    try {
-      await save();
-    } finally {
-      onBack();
-    }
-  };
+  const back = (): void => onBack();
 
   const sourcesOf = (keys: readonly string[]): FormworkSourceItem[] =>
     keys
@@ -334,13 +519,12 @@ export default function FormworkTransferPage({
         <span className="project">
           {project.managementNo} {project.name}
         </span>
-        <button type="button" onClick={() => void save()}>
-          保存
-        </button>
         <span className="message">
-          {view.sources.length === 0
-            ? "先に集計をかけてください（集計書兼工事マスターの明細から選びます）。"
-            : message}
+          {message !== ""
+            ? message
+            : view.sources.length === 0
+              ? "先に集計をかけてください（集計書兼工事マスターの明細から選びます）。"
+              : ""}
         </span>
       </div>
 
@@ -354,6 +538,9 @@ export default function FormworkTransferPage({
             value={search}
             placeholder="例：打放補修"
             onCommit={setSearch}
+            onInput={() => {
+              searchTouched.current = true;
+            }}
           />
         </label>
         <button
@@ -520,7 +707,7 @@ export default function FormworkTransferPage({
           </tr>
         </thead>
         <tbody>
-          {view.rules.map((rule, index) => {
+          {rules.map((rule, index) => {
             const sources = sourcesOf(rule.sourceKeys);
             const quantity = sources.reduce(
               (sum, item) => sum + item.quantity,
@@ -632,101 +819,28 @@ export default function FormworkTransferPage({
         </button>
         <span className="note">
           ①で元の明細を選び、②で型枠の内容を決めて変え、③の一覧で摘要・掛け率を直してから押してください。
-          転記入力表の最後に部位Ⅰ「仕上転記数量」として入ります（④の表で並びも変えられます）。
+          転記入力表の最後に部位Ⅰ「仕上転記数量」として入り、算出するたびに④の左へ結果の表を足します。
         </span>
       </div>
 
       <h3 className="section">
-        ④ 算出結果（型枠分類ごとにタイトル行を置き、転記入力表へ入れます）
+        ④
+        算出結果（算出するたびに左へ表を足します。色の付いた行は前回（右の表）と数量が違います）
       </h3>
-      <div className="toolbar">
-        <button
-          type="button"
-          onClick={() =>
-            void reorder(
-              sortFormworkRowsByName(view.rows),
-              "分類ごとに名称の昇順に並び替えました",
-            )
-          }
-        >
-          名称の昇順に並び替える
-        </button>
-        <span className="note">
-          明細は↑↓で上下へ移せます（明細番号はそのまま連番）。並びは転記入力表にも反映されます。
-        </span>
+      <div className="formwork-run-tables">
+        {view.runs.map((run, index) => (
+          <FormworkRunTable
+            key={run.id}
+            projectId={project.id}
+            run={run}
+            runCount={view.runs.length}
+            runIndex={index}
+            previousRows={view.runs[index + 1]?.rows ?? null}
+            onViewChange={setView}
+            onMessage={setMessage}
+          />
+        ))}
       </div>
-      <table className="parts check-sheet" ref={tableRef1}>
-        <thead>
-          <tr>
-            <th className="flag">並び</th>
-            <th>明細番号</th>
-            <th>名称</th>
-            <th>摘要 下段</th>
-            <th>摘要 上段</th>
-            <th>元数量</th>
-            <th>転記数量</th>
-            <th>単位</th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.rows.map((row, index) => (
-            <tr
-              key={`${row.formwork}|${row.detailNumber}|${row.name}`}
-              className={row.title ? "title-row" : undefined}
-            >
-              <td className="flag">
-                {row.title ? (
-                  ""
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={
-                        !view.rows.slice(0, index).some((above) => !above.title)
-                      }
-                      onClick={() =>
-                        void reorder(
-                          moveFormworkRow(view.rows, index, -1),
-                          "並びを変えました（転記入力表へも反映しました）",
-                        )
-                      }
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        !view.rows
-                          .slice(index + 1)
-                          .some((below) => !below.title)
-                      }
-                      onClick={() =>
-                        void reorder(
-                          moveFormworkRow(view.rows, index, 1),
-                          "並びを変えました（転記入力表へも反映しました）",
-                        )
-                      }
-                    >
-                      ↓
-                    </button>
-                  </>
-                )}
-              </td>
-              <td className="number">{row.detailNumber}</td>
-              <td>{row.name}</td>
-              <td>{row.descriptionLower}</td>
-              <td>{row.description}</td>
-              <td className="number">
-                {row.title ? "" : row.sourceQuantity.toFixed(2)}
-              </td>
-              <td className="number">
-                {row.title ? "" : row.quantity.toFixed(2)}
-              </td>
-              <td>{row.unit}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
       <p className="note">
         型枠分類は部位別入力表で部屋ごとに入れます。その部屋で拾った分がその分類になり、
         分類ごとにタイトル行（&lt;分類名&gt;）を置いて、その下に摘要ごとの明細を並べます。

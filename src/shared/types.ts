@@ -928,19 +928,37 @@ export interface FormworkSourceItem {
   quantity: number;
 }
 
-/** 型枠転記（選んだ元明細の数量→掛け率→転記入力表へ自動転記） */
+export interface FormworkRunView {
+  id: number;
+  createdAt: string;
+  search: string;
+  current: boolean;
+  rows: FormworkTransferRow[];
+}
+
+/** 型枠転記（元明細と算出結果の履歴） */
 export interface FormworkTransferView {
-  rules: FormworkTransferRule[];
   /** 選べる元明細（集計書兼工事マスターの明細） */
   sources: FormworkSourceItem[];
   /** 元明細ごとの型枠分類別の数量 */
   groups: FormworkSourceGroup[];
-  rows: FormworkTransferRow[];
+  runs: FormworkRunView[];
+  lastSearch: string;
 }
 
-export interface SaveFormworkRulesRequest {
+export interface RunFormworkTransferRequest {
   projectId: number;
   rules: FormworkTransferRule[];
+  search: string;
+}
+
+export type RunFormworkTransferResult = FormworkTransferView & {
+  created: boolean;
+};
+
+export interface DeleteFormworkRunRequest {
+  projectId: number;
+  runId: number;
 }
 
 /** ④の表で並び替えた順を転記入力表へ反映する */

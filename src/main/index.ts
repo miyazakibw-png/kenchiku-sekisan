@@ -172,10 +172,10 @@ import {
   setDetailUnused,
 } from "./services/aggregationService";
 import {
+  deleteFormworkRun,
   getFormworkTransfer,
   reorderFormworkTransfer,
   runFormworkTransfer,
-  saveFormworkRules,
 } from "./services/formworkTransferService";
 import {
   confirmBreakdownVersion,
@@ -228,8 +228,9 @@ import type {
   InsertAggregateManualItemRequest,
   MoveAggregateManualItemRequest,
   SaveAggregateEditsRequest,
+  DeleteFormworkRunRequest,
   ReorderFormworkRowsRequest,
-  SaveFormworkRulesRequest,
+  RunFormworkTransferRequest,
   SaveTransferRowsRequest,
   SetDetailUnusedRequest,
   SubjectDraft,
@@ -623,17 +624,19 @@ function registerIpcHandlers(): void {
     getFormworkTransfer(getDatabase(), projectId),
   );
   ipcMain.handle(
-    IPC.formworkTransferSaveRules,
-    (_event, request: SaveFormworkRulesRequest) =>
-      saveFormworkRules(getDatabase(), request),
-  );
-  ipcMain.handle(IPC.formworkTransferRun, (_event, projectId: number) =>
-    runFormworkTransfer(getDatabase(), projectId),
+    IPC.formworkTransferRun,
+    (_event, request: RunFormworkTransferRequest) =>
+      runFormworkTransfer(getDatabase(), request),
   );
   ipcMain.handle(
     IPC.formworkTransferReorder,
     (_event, request: ReorderFormworkRowsRequest) =>
       reorderFormworkTransfer(getDatabase(), request.projectId, request.rows),
+  );
+  ipcMain.handle(
+    IPC.formworkTransferDeleteRun,
+    (_event, request: DeleteFormworkRunRequest) =>
+      deleteFormworkRun(getDatabase(), request),
   );
   ipcMain.handle(
     IPC.breakdownGet,

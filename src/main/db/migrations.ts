@@ -1112,4 +1112,15 @@ ALTER TABLE project_breakdown_rows ADD COLUMN wrap_upper_source TEXT NOT NULL DE
 ALTER TABLE project_breakdown_rows ADD COLUMN wrap_order INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE project_breakdown_rows ADD COLUMN wrap_order_upper INTEGER NOT NULL DEFAULT 0;
 `,
+  // 型枠転記：算出ごとの結果を保存する
+  `
+CREATE TABLE project_formwork_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  search TEXT NOT NULL DEFAULT '',
+  rows_json TEXT NOT NULL DEFAULT '[]',
+  current INTEGER NOT NULL DEFAULT 0
+);
+`,
 ];

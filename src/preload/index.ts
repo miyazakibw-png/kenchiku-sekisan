@@ -33,6 +33,9 @@ import type {
   Fitting,
   FittingSource,
   FormworkTransferView,
+  RunFormworkTransferRequest,
+  RunFormworkTransferResult,
+  DeleteFormworkRunRequest,
   FrameRoomOption,
   FrameSheet,
   GeneralSheet,
@@ -60,7 +63,6 @@ import type {
   SaveAggregateEditsRequest,
   SetDetailUnusedRequest,
   ReorderFormworkRowsRequest,
-  SaveFormworkRulesRequest,
   SaveFrameSheetRequest,
   SaveGeneralSheetRequest,
   SaveMiscSheetRequest,
@@ -350,20 +352,22 @@ const api = {
     request: MoveAggregateManualItemRequest,
   ): Promise<AggregateView> =>
     ipcRenderer.invoke(IPC.aggregateManualMove, request),
-  /** 型枠転記（型枠分類別に集計して転記入力表の最終行へ追記） */
+  /** 型枠転記（算出結果の履歴と転記入力表を更新） */
   getFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferGet, projectId),
-  saveFormworkRules: (
-    request: SaveFormworkRulesRequest,
-  ): Promise<FormworkTransferView> =>
-    ipcRenderer.invoke(IPC.formworkTransferSaveRules, request),
-  runFormworkTransfer: (projectId: number): Promise<FormworkTransferView> =>
-    ipcRenderer.invoke(IPC.formworkTransferRun, projectId),
+  runFormworkTransfer: (
+    request: RunFormworkTransferRequest,
+  ): Promise<RunFormworkTransferResult> =>
+    ipcRenderer.invoke(IPC.formworkTransferRun, request),
   /** ④の表で並び替えた順を転記入力表へ反映する */
   reorderFormworkRows: (
     request: ReorderFormworkRowsRequest,
   ): Promise<FormworkTransferView> =>
     ipcRenderer.invoke(IPC.formworkTransferReorder, request),
+  deleteFormworkRun: (
+    request: DeleteFormworkRunRequest,
+  ): Promise<FormworkTransferView> =>
+    ipcRenderer.invoke(IPC.formworkTransferDeleteRun, request),
   /** 内訳書（集計書兼工事マスターからの変換転記） */
   getBreakdown: (
     projectId: number,

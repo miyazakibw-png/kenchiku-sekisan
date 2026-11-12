@@ -4,7 +4,7 @@
   color: #6b7280;
 }
 
-/* 型枠転記画面：一番上のヘッダー（戻る・保存）だけ固定にする。
+/* 型枠転記画面：一番上のヘッダー（戻る）だけ固定にする。
    共通CSSで .toolbar は全部上に張り付くので、①②③④の操作行は流して
    一番上のヘッダーが押し出されて見えなくなるのを防ぐ */
 .formwork-transfer-page > .toolbar:not(:first-child) {
@@ -89,4 +89,50 @@ table.check-sheet tr.spacer td {
 /* 型枠転記：変換後の単位が元明細と違う明細（③の表） */
 .formwork-transfer-page td.unit-mismatch {
   background: #ffffcc;
+}
+
+.formwork-run-tables {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 0 8px 8px;
+}
+
+.formwork-run-table-block {
+  flex: 0 0 auto;
+}
+
+.formwork-run-caption {
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.formwork-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.formwork-run-actions .note {
+  margin: 0;
+}
+
+.formwork-transfer-page table.formwork-run-table {
+  margin: 6px 0;
+}
+
+.formwork-transfer-page table.formwork-run-table tr.formwork-changed-row td {
+  background: #fde2e2;
+}
+
+.formwork-transfer-page table.formwork-run-table tr.formwork-new-row td {
+  background: #e0f0ff;
+}
+
+.formwork-transfer-page table.formwork-run-table tr.formwork-removed-row td {
+  color: #6b7280;
 }
