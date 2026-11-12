@@ -91,6 +91,14 @@ table.check-sheet tr.spacer td {
   background: #ffffcc;
 }
 
+.formwork-transfer-page tr.unit-mismatch-row > td {
+  background: #fff1e0;
+}
+
+.formwork-transfer-page tr.unit-mismatch-row > td.unit-mismatch {
+  background: #ffffcc;
+}
+
 .formwork-transfer-page > * {
   flex-shrink: 0;
 }

@@ -678,6 +678,7 @@ export default function FormworkTransferPage({
             );
             return (
               <tr
+                className={unitMismatch ? "unit-mismatch-row" : undefined}
                 key={`${source?.masterKey ?? "orphan"}-${ruleIndex ?? "none"}-${index}`}
               >
                 <td className="flag">
