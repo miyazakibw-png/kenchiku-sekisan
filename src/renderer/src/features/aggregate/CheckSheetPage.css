@@ -95,6 +95,7 @@ table.check-sheet tr.spacer td {
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  flex: 0 0 auto;
   overflow-x: auto;
   padding: 0 8px 8px;
 }
