@@ -1271,11 +1271,17 @@ function foldOneLineRows<T extends BreakdownRowLike>(
       const joined =
         joinPartAndName(partName, name, namePattern) ??
         (partName === "" ? name : `${partName} ${name}`.trim());
+      const upperSource = {
+        ...wrapSource(group[0] as BreakdownRow),
+        lowerNameLower:
+          group.find((row) => row.rowKind === "detail")?.nameLower ?? "",
+      };
       const quantityOutput = {
         ...withoutUpperLineMetadata(quantityRow as T),
         rowKind: "detail",
         nameUpper: "",
         nameLower: joined,
+        wrapUpperSource: JSON.stringify(upperSource),
         wrap: canonicalWrap(quantityRow),
         wrapGlue: quantityRow.wrapGlue ?? "",
       } as T;
@@ -1368,6 +1374,7 @@ function finishWrappedLayout<T extends BreakdownRowLike>(
 function stripPartName(text: string, partName: string): string {
   const part = partName.trim();
   if (part === "") return text;
+  if (text.trim() === part) return "";
   const prefixes = [" ", ":", "："].map((separator) => `${part}${separator}`);
   let rest = text;
   for (;;) {
@@ -1778,13 +1785,59 @@ export function unwrapBreakdownRows<T extends BreakdownRowLike>(
       end += 1;
     }
 
-    const group = orderGroup(rows.slice(index, end));
+    const rawGroup = rows.slice(index, end);
+    const group = orderGroup(rawGroup);
     const upperChunks = group.filter(
       (row) => row.wrap === "keepUpper" || row.wrap === "upper",
     );
     const lowerChunks = group.filter(
       (row) => row.wrap === "keepLower" || row.wrap === "lower",
     );
+    const hasFoldedOneLineSource = rawGroup.some(
+      (row) => parseWrapSource(row.wrapUpperSource) !== null,
+    );
+    const legacyOneLineUpperWrap =
+      rawGroup[0]?.rowKind === "detail" &&
+      rawGroup.slice(1).some((row) => row.rowKind === "note") &&
+      upperChunks.length > 0;
+    if (hasFoldedOneLineSource || legacyOneLineUpperWrap) {
+      const detailTemplate =
+        group.find(
+          (row) =>
+            row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
+        ) ??
+        group.find((row) => row.rowKind === "detail") ??
+        group[0];
+      const joinChunks = (chunks: readonly T[]): string =>
+        chunks
+          .map(
+            (row) =>
+              `${(row as BreakdownRow).wrapGlue ?? ""}${row.descriptionLower}`,
+          )
+          .join("");
+      const upperRow = clearWrap(
+        upperChunks[0] ?? detailTemplate,
+        joinChunks(upperChunks),
+        "note",
+        upperChunks.find((row) => row.remarksLower !== "")?.remarksLower ?? "",
+      );
+      upperRow.partName = detailTemplate.partName;
+      upperRow.nameUpper = "";
+      upperRow.nameLower = "";
+      upperRow.quantity = null;
+      upperRow.unit = "";
+      upperRow.unitPrice = null;
+      upperRow.amount = null;
+      const lowerRow = clearWrap(
+        detailTemplate,
+        joinChunks(lowerChunks),
+        "detail",
+        lowerChunks.find((row) => row.remarksLower !== "")?.remarksLower ?? "",
+      );
+      output.push(upperRow, lowerRow);
+      index = end;
+      continue;
+    }
     const hasOrderedRoleMismatch = group.some((row) => {
         const order = row.wrapOrder ?? 0;
         if (order === 0) return false;

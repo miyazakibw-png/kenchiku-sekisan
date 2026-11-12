@@ -1943,6 +1943,77 @@ describe("内訳書の書式を並べ替える", () => {
     NAME_PATTERN.withPartColon,
     NAME_PATTERN.withPartFullColon,
   ];
+  const fuzzLayouts = [
+    BREAKDOWN_LAYOUT.twoLine,
+    BREAKDOWN_LAYOUT.oneLine,
+    BREAKDOWN_LAYOUT.excel,
+    BREAKDOWN_LAYOUT.twoRow,
+  ];
+  const fuzzNamePatterns = [
+    NAME_PATTERN.asIs,
+    NAME_PATTERN.withPart,
+    NAME_PATTERN.withPartColon,
+  ];
+  const fuzzWidths = [0, 20, 34];
+  const fuzzTexts = [
+    "",
+    "短い",
+    "天板:ｵｰｸ突板 ﾌﾗｯｼｭ t=25",
+    "(ﾆｭｰｽﾄｰﾝｼﾞｬﾊﾟﾝ)/GRESPANIA ARTIC 600*600*10",
+    "上段が長い場合の摘要の折り返しテストです。さらに長く",
+  ];
+  const transitionSettings = (
+    layout: number,
+    namePattern: number,
+    descriptionWidth: number,
+  ) => ({
+    ...DEFAULT_BREAKDOWN_SETTINGS,
+    layout,
+    namePattern,
+    descriptionWidth,
+  });
+  const comparableRows = (rows: ReturnType<typeof buildBreakdownRows>) =>
+    rows.map((row) => ({
+      rowKind: row.rowKind,
+      partName: row.partName,
+      nameUpper: row.nameUpper,
+      nameLower: row.nameLower,
+      descriptionUpper: row.descriptionUpper,
+      descriptionLower: row.descriptionLower,
+      remarksUpper: row.remarksUpper,
+      remarksLower: row.remarksLower,
+      quantity: row.quantity,
+      unit: row.unit,
+    }));
+  const expectTransitionsToMatchFreshBuilds = (
+    items: readonly BreakdownSourceItem[],
+    sourceLayout: number,
+    sourceNamePattern: number,
+    descriptionWidth: number,
+  ) => {
+    const sourceSettings = transitionSettings(
+      sourceLayout,
+      sourceNamePattern,
+      descriptionWidth,
+    );
+    const sourceRows = buildBreakdownRows(items, subjects, sourceSettings);
+    fuzzLayouts.forEach((targetLayout) =>
+      fuzzNamePatterns.forEach((targetNamePattern) => {
+        const targetSettings = transitionSettings(
+          targetLayout,
+          targetNamePattern,
+          descriptionWidth,
+        );
+        const once = relayoutBreakdownRows(sourceRows, targetSettings);
+        expect(comparableRows(once)).toEqual(
+          comparableRows(buildBreakdownRows(items, subjects, targetSettings)),
+        );
+        expect(
+          comparableRows(relayoutBreakdownRows(once, targetSettings)),
+        ).toEqual(comparableRows(once));
+      }),
+    );
+  };
 
   it("全書式・名称欄の組み合わせで新規転記と同じ行になる", () => {
     layouts.forEach((sourceLayout) =>
@@ -1965,6 +2036,198 @@ describe("内訳書の書式を並べ替える", () => {
           }),
         );
       }),
+    );
+  });
+
+  it("シード固定の明細で全書式の再配置が新規転記と一致し、2回目も変わらない", () => {
+    const fuzzSubjects = [{ id: 42, name: "家具工事", displayOrder: 1 }];
+    let seed = 7;
+    const random = (limit: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % limit;
+    };
+    const mismatches: Record<string, number> = {};
+    const nonIdempotent: Record<string, number> = {};
+
+    for (let iteration = 0; iteration < 100; iteration += 1) {
+      const count = 1 + random(4);
+      const items = Array.from({ length: count }, (_, index) => {
+        const hasQuantity = random(2) === 0;
+        return item({
+          id: index + 1,
+          masterKey: `fuzz-${iteration}-${index}`,
+          subjectId: 42,
+          partNumber: 110,
+          partName: random(2) ? `Eタイプ${index}` : "",
+          name: hasQuantity ? "棚" : random(3) === 0 ? "名" : "",
+          descriptionUpper: fuzzTexts[random(fuzzTexts.length)],
+          descriptionLower: fuzzTexts[random(fuzzTexts.length)],
+          quantity: hasQuantity ? 3 : 0,
+          unit: hasQuantity ? "ヶ所" : "",
+          remarksUpper: "",
+          remarksLower: "",
+        });
+      });
+
+      fuzzNamePatterns.forEach((namePattern) =>
+        fuzzLayouts.forEach((from) =>
+          fuzzLayouts.forEach((to) =>
+            fuzzWidths.forEach((width) => {
+              const sourceSettings = transitionSettings(
+                from,
+                namePattern,
+                width,
+              );
+              const targetSettings = transitionSettings(to, namePattern, width);
+              const source = buildBreakdownRows(
+                items,
+                fuzzSubjects,
+                sourceSettings,
+              );
+              const once = relayoutBreakdownRows(source, targetSettings);
+              const twice = relayoutBreakdownRows(once, targetSettings);
+              const direct = buildBreakdownRows(
+                items,
+                fuzzSubjects,
+                targetSettings,
+              );
+              const key = `${from}->${to}`;
+
+              if (
+                JSON.stringify(comparableRows(once)) !==
+                JSON.stringify(comparableRows(direct))
+              )
+                mismatches[key] = (mismatches[key] ?? 0) + 1;
+              if (
+                JSON.stringify(comparableRows(twice)) !==
+                JSON.stringify(comparableRows(once))
+              )
+                nonIdempotent[key] = (nonIdempotent[key] ?? 0) + 1;
+            }),
+          ),
+        ),
+      );
+    }
+
+    expect(mismatches).toEqual({});
+    expect(nonIdempotent).toEqual({});
+  });
+
+  it("②1段の棚で上段だけが折り返されても数量と単位を保つ", () => {
+    const items = [
+      item({
+        id: 301,
+        masterKey: "upper-only-shelf",
+        partName: "",
+        name: "棚",
+        descriptionUpper: "天板:ｵｰｸ突板 ﾌﾗｯｼｭ t=25",
+        descriptionLower: "",
+        quantity: 3,
+        unit: "ヶ所",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 302,
+        masterKey: "upper-only-following",
+        partName: "",
+        name: "後続明細",
+        descriptionUpper: "",
+        descriptionLower: "後続の摘要",
+        quantity: 1,
+        unit: "ヶ所",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+    ];
+
+    expectTransitionsToMatchFreshBuilds(
+      items,
+      BREAKDOWN_LAYOUT.oneLine,
+      NAME_PATTERN.withPart,
+      20,
+    );
+  });
+
+  it("部位名だけの説明明細を再配置しても重複させない", () => {
+    const items = [
+      item({
+        id: 303,
+        masterKey: "part-only-description",
+        partName: "注記",
+        name: "",
+        descriptionUpper: "",
+        descriptionLower: "",
+        quantity: 0,
+        unit: "",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+    ];
+    const sourceSettings = transitionSettings(
+      BREAKDOWN_LAYOUT.oneLine,
+      NAME_PATTERN.withPart,
+      0,
+    );
+    const source = buildBreakdownRows(items, subjects, sourceSettings);
+    const once = relayoutBreakdownRows(source, sourceSettings);
+
+    expect(once.find((row) => row.rowKind === "detail")?.nameLower).toBe(
+      "注記",
+    );
+    expectTransitionsToMatchFreshBuilds(
+      items,
+      BREAKDOWN_LAYOUT.oneLine,
+      NAME_PATTERN.withPart,
+      0,
+    );
+  });
+
+  it("②1段の消火器で下段だけが折り返されても数量と単位を保つ", () => {
+    const items = [
+      item({
+        id: 304,
+        masterKey: "lower-only-extinguisher",
+        partName: "",
+        name: "消火器",
+        descriptionUpper: "",
+        descriptionLower: "粉末ABC10型 / HATSUTA製 または同等品",
+        quantity: 26,
+        unit: "ヶ所",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 305,
+        masterKey: "lower-only-extinguisher-part",
+        partName: "消火器",
+        name: "消火器",
+        descriptionUpper: "",
+        descriptionLower: "粉末ABC10型 / HATSUTA製 または同等品",
+        quantity: 26,
+        unit: "ヶ所",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+      item({
+        id: 306,
+        masterKey: "lower-only-extinguisher-following",
+        partName: "",
+        name: "後続明細",
+        descriptionUpper: "",
+        descriptionLower: "後続の短い摘要",
+        quantity: 1,
+        unit: "ヶ所",
+        remarksUpper: "",
+        remarksLower: "",
+      }),
+    ];
+
+    expectTransitionsToMatchFreshBuilds(
+      items,
+      BREAKDOWN_LAYOUT.oneLine,
+      NAME_PATTERN.withPart,
+      34,
     );
   });
 
