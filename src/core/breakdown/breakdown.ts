@@ -1162,65 +1162,6 @@ function canonicalWrap(row: BreakdownRow): NonNullable<BreakdownRow["wrap"]> {
       : "keepLower";
 }
 
-function foldTwoLineRows<T extends BreakdownRowLike>(
-  rows: readonly T[],
-): T[] {
-  const output: T[] = [];
-  let index = 0;
-  while (index < rows.length) {
-    const upper = rows[index] as BreakdownRow;
-    const lower = rows[index + 1] as BreakdownRow | undefined;
-    if (
-      upper.rowKind !== "note" ||
-      detailUnitKey(upper) === null ||
-      lower?.rowKind !== "detail" ||
-      detailUnitKey(lower) === null
-    ) {
-      output.push(rows[index]);
-      index += 1;
-      continue;
-    }
-
-    const upperSource = wrapSource(upper);
-    const lowerSource = wrapSource(lower);
-    const upperWrap = canonicalWrap(upper);
-    const lowerWrap = canonicalWrap(lower);
-    const isUnitStart =
-      upperWrap === "keepUpper" ||
-      upperWrap === "keepLower" ||
-      lowerWrap === "keepUpper" ||
-      lowerWrap === "keepLower" ||
-      lower.unit !== "" ||
-      (lower.quantity !== null && lower.quantity !== 0) ||
-      upper.nameLower !== "" ||
-      lower.nameLower !== "";
-    const folded = {
-      ...lower,
-      rowKind: isUnitStart ? "detail" : "note",
-      nameUpper: upper.nameLower,
-      nameLower: lower.nameLower,
-      descriptionUpper: upper.descriptionLower,
-      descriptionLower: lower.descriptionLower,
-      remarksUpper: upper.remarksLower,
-      remarksLower: lower.remarksLower,
-      wrapUpper: upperWrap,
-      wrapGlueUpper: upper.wrapGlue ?? "",
-      wrapOrderUpper: upper.wrapOrder ?? 0,
-      wrap: lowerWrap,
-      wrapGlue: lower.wrapGlue ?? "",
-      wrapOrder: lower.wrapOrder ?? 0,
-      wrapUpperSource:
-        JSON.stringify(upperSource) === JSON.stringify(lowerSource) &&
-        upperWrap !== "fill"
-          ? ""
-          : JSON.stringify(upperSource),
-    } as T;
-    output.push(folded);
-    index += 2;
-  }
-  return output;
-}
-
 function withoutUpperLineMetadata<T extends BreakdownRowLike>(row: T): T {
   const copy = { ...row } as Record<string, unknown>;
   delete copy.wrapUpper;
@@ -1233,6 +1174,7 @@ function withoutUpperLineMetadata<T extends BreakdownRowLike>(row: T): T {
 function foldOneLineRows<T extends BreakdownRowLike>(
   rows: readonly T[],
   namePattern: number,
+  preserveTwoLineNames = false,
 ): T[] {
   const output: T[] = [];
   const rowAt = (index: number): BreakdownRow => rows[index] as BreakdownRow;
@@ -1268,8 +1210,9 @@ function foldOneLineRows<T extends BreakdownRowLike>(
         namePattern === NAME_PATTERN.asIs
           ? rawName
           : stripPartName(rawName, partName);
+      const patternedName = joinPartAndName(partName, name, namePattern);
       const joined =
-        joinPartAndName(partName, name, namePattern) ??
+        patternedName ??
         (partName === "" ? name : `${partName} ${name}`.trim());
       const upperSource = {
         ...wrapSource(group[0] as BreakdownRow),
@@ -1279,8 +1222,10 @@ function foldOneLineRows<T extends BreakdownRowLike>(
       const quantityOutput = {
         ...withoutUpperLineMetadata(quantityRow as T),
         rowKind: "detail",
-        nameUpper: "",
-        nameLower: joined,
+        nameUpper:
+          preserveTwoLineNames && patternedName === null ? partName : "",
+        nameLower:
+          preserveTwoLineNames && patternedName === null ? name : joined,
         wrapUpperSource: JSON.stringify(upperSource),
         wrap: canonicalWrap(quantityRow),
         wrapGlue: quantityRow.wrapGlue ?? "",
@@ -1299,6 +1244,7 @@ function foldOneLineRows<T extends BreakdownRowLike>(
           rowKind: "note",
           nameUpper: "",
           nameLower: "",
+          ...(preserveTwoLineNames ? { partName: "" } : {}),
           quantity: null,
           unit: "",
           unitPrice: null,
@@ -1320,8 +1266,9 @@ function foldOneLineRows<T extends BreakdownRowLike>(
         namePattern === NAME_PATTERN.asIs
           ? rawName
           : stripPartName(rawName, partName);
+      const patternedName = joinPartAndName(partName, name, namePattern);
       const joined =
-        joinPartAndName(partName, name, namePattern) ??
+        patternedName ??
         (partName === "" ? name : `${partName} ${name}`.trim());
       const upperSource = {
         ...wrapSource(group[0] as BreakdownRow),
@@ -1332,22 +1279,31 @@ function foldOneLineRows<T extends BreakdownRowLike>(
       let first = true;
       group.forEach((row) => {
         const source = row as BreakdownRow;
-      if (
-        source.wrap === "fill" ||
-        (!first &&
+        if (
+          source.wrap === "fill" ||
+          (!first &&
             source.descriptionLower === "" &&
             source.remarksLower === "")
         )
           return;
         const folded = {
-        ...withoutUpperLineMetadata(row),
-        rowKind: first ? "detail" : "note",
-        nameUpper: "",
-        nameLower: first ? joined : "",
-        ...(first ? { wrapUpperSource: JSON.stringify(upperSource) } : {}),
-        wrap: canonicalWrap(source),
-        wrapGlue: source.wrapGlue ?? "",
-      } as T;
+          ...withoutUpperLineMetadata(row),
+          rowKind: first ? "detail" : "note",
+          ...(preserveTwoLineNames && !first ? { partName: "" } : {}),
+          nameUpper:
+            first && preserveTwoLineNames && patternedName === null
+              ? partName
+              : "",
+          nameLower:
+            first && preserveTwoLineNames && patternedName === null
+              ? name
+              : first
+                ? joined
+                : "",
+          ...(first ? { wrapUpperSource: JSON.stringify(upperSource) } : {}),
+          wrap: canonicalWrap(source),
+          wrapGlue: source.wrapGlue ?? "",
+        } as T;
         output.push(folded);
         first = false;
       });
@@ -1365,7 +1321,7 @@ function finishWrappedLayout<T extends BreakdownRowLike>(
 ): T[] {
   const canonical = compactWrapBlocks(rows, descriptionWidth);
   if (layout === BREAKDOWN_LAYOUT.twoLine)
-    return foldTwoLineRows(canonical);
+    return foldOneLineRows(canonical, namePattern, true);
   if (layout === BREAKDOWN_LAYOUT.oneLine)
     return foldOneLineRows(canonical, namePattern);
   return canonical;
@@ -2028,13 +1984,15 @@ function emitRelayoutUnit(
     pairedUpper !== undefined
       ? pairedUpper.nameLower !== ""
         ? pairedUpper.nameLower
-        : detail.partName
+        : detail.nameUpper !== ""
+          ? detail.nameUpper
+          : detail.partName
       : detail.nameUpper !== ""
         ? detail.nameUpper
         : detail.partName;
   const name =
     pairedUpper !== undefined
-      ? pairedUpper.nameLower !== ""
+      ? pairedUpper.nameLower !== "" || detail.nameUpper !== ""
         ? detail.nameLower
         : stripPartName(detail.nameLower, detail.partName)
       : detail.nameUpper !== ""
