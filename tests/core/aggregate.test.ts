@@ -297,6 +297,38 @@ describe("集計処理", () => {
     expect(items.map((item) => item.part2)).toEqual(["1階", "2階"]);
   });
 
+  it("摘要が空の行を空白で始まる行より先に並べる", () => {
+    const target = set("s1", 1);
+    const base = target.details[0];
+    target.details = [
+      { ...base, id: "s1-curved", descriptionLower: "曲面" },
+      { ...base, id: "s1-parenthesized", descriptionLower: "(A)" },
+      { ...base, id: "s1-leading-space", descriptionLower: " 曲面" },
+      { ...base, id: "s1-empty", descriptionLower: "" },
+    ];
+    const entries = entriesFromCalcSheet(context(), [target], result("s1", 1));
+
+    expect(
+      aggregateItems(entries).map((item) => item.descriptionLower),
+    ).toEqual(["", " 曲面", "(A)", "曲面"]);
+  });
+
+  it("名称は前方一致で並ぶ", () => {
+    const longer = set("s1", 1);
+    longer.details = [{ ...longer.details[0], name: "打放型枠" }];
+    const shorter = set("s2", 1);
+    shorter.details = [{ ...shorter.details[0], name: "打放" }];
+    const entries = [
+      ...entriesFromCalcSheet(context(), [longer], result("s1", 1)),
+      ...entriesFromCalcSheet(context(), [shorter], result("s2", 1)),
+    ];
+
+    expect(aggregateItems(entries).map((item) => item.name)).toEqual([
+      "打放",
+      "打放型枠",
+    ]);
+  });
+
   it("倍率が1でなければ根拠の部屋名に「× 2」を付ける", () => {
     const entries = entriesFromCalcSheet(
       context({ multiplier: 2 }),

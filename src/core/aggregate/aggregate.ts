@@ -342,7 +342,8 @@ export function aggregateItems(
         item.name,
         item.descriptionLower,
         item.descriptionUpper,
-      ].join("|");
+        // 空の欄を先に並べるため、空白より前に並ぶタブで区切る
+      ].join("\t");
     return keyOf(a).localeCompare(keyOf(b), "ja");
   });
 }
