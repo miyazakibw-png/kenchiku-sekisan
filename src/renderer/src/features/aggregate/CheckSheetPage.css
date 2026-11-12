@@ -91,6 +91,10 @@ table.check-sheet tr.spacer td {
   background: #ffffcc;
 }
 
+.formwork-transfer-page > * {
+  flex-shrink: 0;
+}
+
 .formwork-run-tables {
   display: flex;
   align-items: flex-start;
@@ -124,6 +128,15 @@ table.check-sheet tr.spacer td {
 
 .formwork-transfer-page table.formwork-run-table {
   margin: 6px 0;
+}
+
+.formwork-transfer-page table.formwork-run-table td.flag button {
+  margin: 0;
+  padding: 0 4px;
+  height: 16px;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .formwork-transfer-page table.formwork-run-table tr.formwork-changed-row td {
