@@ -2071,6 +2071,95 @@ describe("内訳書の書式を並べ替える", () => {
     expect(once[5]).toBe(blank);
     expect(relayoutBreakdownRows(once, settings)).toEqual(once);
   });
+
+  const wrapIdempotenceItems = [
+    item({
+      id: 201,
+      masterKey: "wrap-idempotence-201",
+      partNumber: 1,
+      partName: "",
+      name: "消火器",
+      descriptionUpper: "",
+      descriptionLower: "粉末ABC10型 / HATSUTA製 または同等品",
+      quantity: 26,
+      unit: "ヶ所",
+      remarksUpper: "",
+      remarksLower: "",
+    }),
+    item({
+      id: 202,
+      masterKey: "wrap-idempotence-202",
+      partNumber: 2,
+      partName: "",
+      name: "後続明細",
+      descriptionUpper: "",
+      descriptionLower: "後続の短い摘要",
+      quantity: 1,
+      unit: "ヶ所",
+      remarksUpper: "",
+      remarksLower: "",
+    }),
+    item({
+      id: 203,
+      masterKey: "wrap-idempotence-203",
+      partNumber: 3,
+      partName: "消火器",
+      name: "消火器",
+      descriptionUpper: "",
+      descriptionLower: "粉末ABC10型 / HATSUTA製 または同等品",
+      quantity: 26,
+      unit: "ヶ所",
+      remarksUpper: "",
+      remarksLower: "",
+    }),
+    item({
+      id: 204,
+      masterKey: "wrap-idempotence-204",
+      partNumber: 4,
+      descriptionUpper: "上段摘要",
+      descriptionLower: "下段摘要",
+    }),
+    item({
+      id: 205,
+      masterKey: "wrap-idempotence-205",
+      partNumber: 5,
+      descriptionUpper: "長い上段摘要".repeat(8),
+      descriptionLower: "短い下段摘要",
+    }),
+  ];
+  const idempotenceLayouts = [
+    BREAKDOWN_LAYOUT.oneLine,
+    BREAKDOWN_LAYOUT.twoLine,
+    BREAKDOWN_LAYOUT.twoRow,
+    BREAKDOWN_LAYOUT.excel,
+  ];
+  const idempotenceNamePatterns = [
+    NAME_PATTERN.asIs,
+    NAME_PATTERN.withPart,
+    NAME_PATTERN.withPartColon,
+  ];
+
+  idempotenceLayouts.forEach((layout) =>
+    idempotenceNamePatterns.forEach((namePattern) => {
+      it(`摘要の折り返しを含む同じ書式の再配置が冪等 (${layout}, ${namePattern})`, () => {
+        const settings = {
+          ...DEFAULT_BREAKDOWN_SETTINGS,
+          layout,
+          namePattern,
+          descriptionWidth: 34,
+        };
+        const built = buildBreakdownRows(
+          wrapIdempotenceItems,
+          subjects,
+          settings,
+        );
+        const once = relayoutBreakdownRows(built, settings);
+
+        expect(once).toEqual(built);
+        expect(relayoutBreakdownRows(once, settings)).toEqual(once);
+      });
+    }),
+  );
 });
 
 describe("BCS.CSV", () => {

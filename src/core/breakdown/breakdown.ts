@@ -1859,9 +1859,33 @@ export function unwrapBreakdownRows<T extends BreakdownRowLike>(
       continue;
     }
     if (
+      group.length > 1 &&
+      group.every((row) => row.wrap === "lower") &&
       group.some(
-        (row) => row.wrap === "keepUpper" || row.wrap === "keepLower",
+        (row) =>
+          row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
       )
+    ) {
+      const quantityRow = group.find(
+        (row) =>
+          row.unit !== "" || (row.quantity !== null && row.quantity !== 0),
+      ) as T;
+      const descriptionLower = group
+        .map(
+          (row) =>
+            `${(row as BreakdownRow).wrapGlue ?? ""}${row.descriptionLower}`,
+        )
+        .join("");
+      const remarksLower =
+        group.find((row) => row.remarksLower !== "")?.remarksLower ?? "";
+      output.push(
+        clearWrap(quantityRow, descriptionLower, "detail", remarksLower),
+      );
+      index = end;
+      continue;
+    }
+    if (
+      group.some((row) => row.wrap === "keepUpper" || row.wrap === "keepLower")
     ) {
       const joinChunks = (chunks: readonly T[]): string =>
         chunks
