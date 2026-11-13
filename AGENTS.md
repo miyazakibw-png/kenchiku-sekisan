@@ -88,6 +88,7 @@
 - 部位別入力表のチェック表示の数量は、開いたとき「倍率なし」で出します（「倍率あり」に切り替えられる）。
 - 列の幅は手で変えられます。範囲のコピー・貼り付けはExcelと同じにします。
 - 行の操作ボタンは「＋（上に挿入）・↑・↓・✕」で揃えます。一覧の画面（部位別雑・金物、家具・設備）では操作の列をいちばん左に置きます。
+- ←→は行の最初と最後の欄で止まり、次の行へは移りません（Excelと同じ）。Enterは今まで通り次へ移ります。
 - 範囲のコピー・貼り付けは `src/renderer/src/features/grid/` の部品を使います。貼り付けは入力欄の `paste` イベントの `clipboardData`、コピーは隠しtextarea＋`execCommand("copy")`。`navigator.clipboard.readText` やkeydownの `e.key` だけに頼ると、Windowsの日本語入力で動かなくなります。範囲内への貼り付けは `grid/gridClipboard.ts` の `pasteIntoRange`・`clearRange` を使います。
 - 押している間続くボタン（線を引く・図面を動かすなど）は、押している間は青く（`className="on"`）します。
 - 版の番号は、画面のソフト名のすぐ後ろに出します。

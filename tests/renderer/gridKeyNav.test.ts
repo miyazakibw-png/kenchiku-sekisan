@@ -42,15 +42,9 @@ describe("表のキーボード移動", () => {
     });
   });
 
-  it("左右は行をまたいで続く", () => {
-    expect(nextCellPosition("right", { row: 0, col: 1 }, [2, 2])).toEqual({
-      row: 1,
-      col: 0,
-    });
-    expect(nextCellPosition("left", { row: 1, col: 0 }, [2, 2])).toEqual({
-      row: 0,
-      col: 1,
-    });
+  it("左右は行の端で止まる", () => {
+    expect(nextCellPosition("right", { row: 0, col: 1 }, [2, 2])).toBeNull();
+    expect(nextCellPosition("left", { row: 1, col: 0 }, [2, 2])).toBeNull();
     expect(nextCellPosition("right", { row: 1, col: 1 }, [2, 2])).toBeNull();
   });
 });
@@ -343,6 +337,46 @@ describe("明細マスターの同じ列を優先するキーボード移動", (
         sameDetailColumn,
       ),
     ).toEqual({ row: 1, col: 0 });
+  });
+
+  it("同じ明細内の共有欄・行グループ移動は維持し、別明細へは移らない", () => {
+    const group = {};
+    const edgeLines = [
+      [
+        { key: "category", left: 100, right: 200 },
+        { key: "description-upper", left: 300, right: 400 },
+        { key: "remarks-upper", left: 500, right: 600 },
+      ],
+      [
+        { key: "detail-number", left: 0, right: 100 },
+        { key: "category", left: 100, right: 200 },
+        { key: "name-lower", left: 200, right: 300 },
+        { key: "remarks-lower", left: 650, right: 750 },
+      ],
+    ];
+
+    expect(
+      nextSharedCellPosition(
+        "left",
+        { row: 0, col: 0 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toEqual({ row: 1, col: 0 });
+    expect(
+      nextSharedCellPosition("right", { row: 0, col: 2 }, edgeLines, {
+        sameColumn: true,
+        lineGroups: [group, group],
+      }),
+    ).toEqual({ row: 1, col: 3 });
+    expect(
+      nextSharedCellPosition(
+        "right",
+        { row: 1, col: 6 },
+        lines,
+        sameDetailColumn,
+      ),
+    ).toBeNull();
   });
 
   it("行末に通常の候補がなくても同じ明細の右側欄へ移る", () => {

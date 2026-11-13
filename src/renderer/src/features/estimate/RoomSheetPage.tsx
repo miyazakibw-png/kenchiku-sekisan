@@ -578,13 +578,42 @@ export default function RoomSheetPage({
       target.focus();
       if (target instanceof HTMLInputElement) target.select();
     };
-    if (e.key === "Enter" || (e.key === "ArrowRight" && caretEnd)) {
-      const next = fields[index + (e.key === "Enter" && e.shiftKey ? -1 : 1)];
+    if (e.key === "Enter") {
+      const next = fields[index + (e.shiftKey ? -1 : 1)];
+      if (next !== undefined) focus(next);
+      return;
+    }
+    if (e.key === "ArrowRight" && caretEnd) {
+      const row = el.closest("tr");
+      const horizontalFields = e.shiftKey
+        ? fields
+        : row === null
+          ? []
+          : Array.from(
+              row.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+                FIELDS,
+              ),
+            );
+      const index = horizontalFields.indexOf(el);
+      if (index < 0) return;
+      const next = horizontalFields[index + 1];
       if (next !== undefined) focus(next);
       return;
     }
     if (e.key === "ArrowLeft" && caretStart) {
-      const next = fields[index - 1];
+      const row = el.closest("tr");
+      const horizontalFields = e.shiftKey
+        ? fields
+        : row === null
+          ? []
+          : Array.from(
+              row.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+                FIELDS,
+              ),
+            );
+      const index = horizontalFields.indexOf(el);
+      if (index < 0) return;
+      const next = horizontalFields[index - 1];
       if (next !== undefined) focus(next);
       return;
     }

@@ -48,7 +48,7 @@ export function caretJumpOf(
 
 /**
  * 移動先のセルを求める。
- * counts は行ごとの入力欄の数。行をまたぐときは同じ列（無ければ最後の列）に移る。
+ * counts は行ごとの入力欄の数。↑↓は同じ列（無ければ最後の列）へ移り、←→は行の端で止まる。
  * 表の外へ出る場合は null を返す。
  */
 export function nextCellPosition(
@@ -71,15 +71,9 @@ export function nextCellPosition(
   }
   if (move === "left") {
     if (col > 0) return { row, col: col - 1 };
-    for (let next = row - 1; next >= 0; next--) {
-      if (counts[next] > 0) return { row: next, col: counts[next] - 1 };
-    }
     return null;
   }
   if (col < counts[row] - 1) return { row, col: col + 1 };
-  for (let next = row + 1; next < counts.length; next++) {
-    if (counts[next] > 0) return { row: next, col: 0 };
-  }
   return null;
 }
 

@@ -1825,7 +1825,12 @@ export default function RoomCalcSheet({
 
   /** Enter・矢印キーで隣の欄へ移る（表の中を行き来する） */
   const moveFocus = useCallback(
-    (from: HTMLInputElement, stepRow: number, stepCol: number): void => {
+    (
+      from: HTMLInputElement,
+      stepRow: number,
+      stepCol: number,
+      wrapRow = true,
+    ): void => {
       const root = gridRef.current;
       if (!root) return;
       const cells = Array.from(
@@ -1871,6 +1876,7 @@ export default function RoomCalcSheet({
         go(next, row);
         return;
       }
+      if (!wrapRow) return;
       // 行の端では、次（前）の行の先頭（末尾）へ移る
       const otherAt = row + (stepCol > 0 ? 1 : -1);
       const otherRow = cells
@@ -1952,7 +1958,7 @@ export default function RoomCalcSheet({
       ) {
         e.preventDefault();
         setCellRange(null);
-        moveFocus(el, 0, -1);
+        moveFocus(el, 0, -1, false);
       } else if (
         e.key === "ArrowRight" &&
         el.selectionStart === el.value.length &&
@@ -1960,7 +1966,7 @@ export default function RoomCalcSheet({
       ) {
         e.preventDefault();
         setCellRange(null);
-        moveFocus(el, 0, 1);
+        moveFocus(el, 0, 1, false);
       }
     },
     [cellRange, moveFocus, sets],
