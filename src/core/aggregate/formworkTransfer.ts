@@ -10,7 +10,8 @@
  * ・掛け率と摘要は元明細ごとに決める
  * ・分類の並びは型枠分類マスターの登録番号順。分類の無い拾いは「分類なし」でまとめる
  *
- * 元明細と転記先の書式は保存するので、計算書を直して集計をかけ直しても作り直せる。
+ * ③の決まりは画面を開いている間だけ保持する。算出ごとの結果は履歴に残し、
+ * 集計では型枠転記の行を自動で作り直さない。
  */
 
 /** 型枠分類が入っていない拾いのまとめ先 */
@@ -47,7 +48,6 @@ export interface FormworkTransferRule {
   /** 掛け率（元明細ごと） */
   coefficient: number;
   subjectId: number | null;
-  materialCategory: string;
   /** 転記先名称（例：打放型枠） */
   name: string;
   /** 転記先の摘要 上段（元明細から写して、明細ごとに変えられる） */
@@ -86,6 +86,20 @@ export interface FormworkTransferRow {
   remarks: string;
 }
 
+export interface FormworkCompareRow {
+  row: FormworkTransferRow;
+  /** same: 前回と同じ / changed: 数量が違う / new: 前回に無い。前回が無いときは全部 same */
+  status: "same" | "changed" | "new";
+  /** 前回の転記数量（前回に無い・前回が無い・タイトル行は null） */
+  previousQuantity: number | null;
+}
+
+export interface FormworkCompare {
+  rows: FormworkCompareRow[];
+  /** 前回にあって今回は無い明細（タイトル行は除く） */
+  removed: FormworkTransferRow[];
+}
+
 /** 元明細ごとの型枠分類別の数量（画面で確かめるための表） */
 export interface FormworkSourceGroup {
   masterKey: string;
@@ -99,7 +113,6 @@ export interface FormworkSourceGroup {
 /** 一括作成のもとになる元明細（集計書兼工事マスターの明細） */
 export interface FormworkBulkSource {
   masterKey: string;
-  materialCategory: string;
   descriptionUpper: string;
   descriptionLower: string;
   unit: string;
@@ -115,9 +128,13 @@ export interface FormworkBulkSpec {
   unit: string;
   /** 掛け率の初期値（あとで明細ごとに直せる） */
   coefficient: number;
-  materialCategory: string;
   /** 摘要を元明細から写す */
   copyDescription: boolean;
+}
+
+export interface FormworkListRow<S> {
+  source: S | null;
+  ruleIndex: number | null;
 }
 
 /**
@@ -134,16 +151,45 @@ export function buildFormworkRulesFromSources(
     sourceKeys: [source.masterKey],
     coefficient: spec.coefficient === 0 ? 1 : spec.coefficient,
     subjectId: spec.subjectId,
-    materialCategory:
-      spec.materialCategory === ""
-        ? source.materialCategory
-        : spec.materialCategory,
     name: spec.name,
     description: spec.copyDescription ? source.descriptionUpper : "",
     descriptionLower: spec.copyDescription ? source.descriptionLower : "",
     unit: spec.unit === "" ? source.unit : spec.unit,
     remarks: "",
   }));
+}
+
+export function formworkListRows<S extends { masterKey: string }>(
+  sources: readonly S[],
+  shownKeys: ReadonlySet<string>,
+  rules: readonly FormworkTransferRule[],
+): FormworkListRow<S>[] {
+  const sourceKeys = new Set(sources.map((source) => source.masterKey));
+  const firstRuleByKey = new Map<string, number>();
+  rules.forEach((rule, ruleIndex) => {
+    rule.sourceKeys.forEach((key) => {
+      if (!firstRuleByKey.has(key)) firstRuleByKey.set(key, ruleIndex);
+    });
+  });
+
+  const attachedRules = new Set<number>();
+  const rows = sources.flatMap((source): FormworkListRow<S>[] => {
+    const ruleIndex = firstRuleByKey.get(source.masterKey) ?? null;
+    if (!shownKeys.has(source.masterKey) && ruleIndex === null) return [];
+    if (ruleIndex === null || attachedRules.has(ruleIndex)) {
+      return [{ source, ruleIndex: null }];
+    }
+    attachedRules.add(ruleIndex);
+    return [{ source, ruleIndex }];
+  });
+
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.sourceKeys.some((key) => sourceKeys.has(key))) {
+      rows.push({ source: null, ruleIndex });
+    }
+  });
+
+  return rows;
 }
 
 function round2(value: number): number {
@@ -175,11 +221,13 @@ export function collectFormworkQuantities(
   }));
 }
 
+/** 転記した行が入る部位Ⅰ（手入力のタイトル行と重ならない名前で1か所にまとめる） */
+export const FORMWORK_PART1 = "仕上転記数量";
+
 interface Bucket {
   formwork: string;
   order: number;
   subjectId: number | null;
-  materialCategory: string;
   name: string;
   description: string;
   descriptionLower: string;
@@ -222,7 +270,6 @@ export function buildFormworkTransferRows(
         const key = [
           formwork,
           rule.subjectId ?? "",
-          rule.materialCategory,
           rule.name,
           rule.description,
           rule.descriptionLower,
@@ -232,7 +279,6 @@ export function buildFormworkTransferRows(
           formwork,
           order: categoryOrder(categories, formwork),
           subjectId: rule.subjectId,
-          materialCategory: rule.materialCategory,
           name: rule.name,
           description: rule.description,
           descriptionLower: rule.descriptionLower,
@@ -270,7 +316,9 @@ export function buildFormworkTransferRows(
         formworkKey: FORMWORK_ROW_KEY,
         formwork,
         title: true,
-        part1: formwork,
+        // 先頭のタイトル行だけ部位Ⅰを入れ、あとの行は上行を引き継ぐ
+        // （転記分は部位Ⅰ「仕上転記数量」ひとつにまとまる）
+        part1: rows.length === 0 ? FORMWORK_PART1 : "",
         part2: "",
         part2Split: false,
         part3: "",
@@ -298,7 +346,7 @@ export function buildFormworkTransferRows(
       part2Split: false,
       part3: "",
       subjectId: bucket.subjectId,
-      materialCategory: bucket.materialCategory,
+      materialCategory: "",
       partNumber: null,
       partName: "",
       detailNumber: number,
@@ -312,4 +360,186 @@ export function buildFormworkTransferRows(
     });
   });
   return rows;
+}
+
+/** 行の目印（並び替えた順を、あとで作り直すときの照合に使う） */
+function rowSignature(row: {
+  title: boolean;
+  formwork: string;
+  name: string;
+  description: string;
+  descriptionLower: string;
+  unit: string;
+}): string {
+  return [
+    row.title ? "T" : "D",
+    row.formwork,
+    row.name,
+    row.description,
+    row.descriptionLower,
+    row.unit,
+  ].join("|");
+}
+
+export function compareFormworkRuns(
+  current: readonly FormworkTransferRow[],
+  previous: readonly FormworkTransferRow[] | null,
+): FormworkCompare {
+  if (previous === null) {
+    return {
+      rows: current.map((row) => ({
+        row,
+        status: "same",
+        previousQuantity: null,
+      })),
+      removed: [],
+    };
+  }
+
+  const previousBySignature = new Map<string, number[]>();
+  previous.forEach((row, index) => {
+    const signature = rowSignature(row);
+    const indexes = previousBySignature.get(signature) ?? [];
+    indexes.push(index);
+    previousBySignature.set(signature, indexes);
+  });
+
+  const matched = new Set<number>();
+  const rows = current.map((row) => {
+    const indexes = previousBySignature.get(rowSignature(row));
+    const previousIndex = indexes?.shift();
+    if (previousIndex === undefined) {
+      return { row, status: "new" as const, previousQuantity: null };
+    }
+    matched.add(previousIndex);
+    const previousRow = previous[previousIndex];
+    const changed =
+      !row.title && Math.abs(row.quantity - previousRow.quantity) >= 0.005;
+    return {
+      row,
+      status: changed ? ("changed" as const) : ("same" as const),
+      previousQuantity: row.title ? null : previousRow.quantity,
+    };
+  });
+
+  return {
+    rows,
+    removed: previous.filter((row, index) => !matched.has(index) && !row.title),
+  };
+}
+
+/** 転記入力表に入っている行の目印（タイトル行は「<分類>」という名前になっている） */
+export function storedRowSignature(row: {
+  formwork: string;
+  name: string;
+  descriptionUpper: string;
+  descriptionLower: string;
+  unit: string;
+}): string {
+  return rowSignature({
+    title: row.name === `<${row.formwork}>`,
+    formwork: row.formwork,
+    name: row.name,
+    description: row.descriptionUpper,
+    descriptionLower: row.descriptionLower,
+    unit: row.unit,
+  });
+}
+
+/** 明細番号を先頭からの連番に振り直す（行を動かしても番号はその場に残す） */
+export function renumberFormworkRows(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  return rows.map((row, index) => ({ ...row, detailNumber: index + 1 }));
+}
+
+/**
+ * 生成した行を、転記入力表に入っている並び（④で並び替えた順）に合わせる。
+ * 目印が合う行はその順に、合わない行（新しくできた明細や直した分）は
+ * 生成順の1つ前の行のすぐ後ろに置く（新しい分類のタイトル行と明細もまとまる）。
+ */
+export function orderFormworkRows(
+  rows: readonly FormworkTransferRow[],
+  storedSignatures: readonly string[],
+): FormworkTransferRow[] {
+  const rest = new Map<string, number[]>();
+  storedSignatures.forEach((signature, index) => {
+    const queue = rest.get(signature) ?? [];
+    queue.push(index);
+    rest.set(signature, queue);
+  });
+  let last = -1;
+  const keyed = rows.map((row) => {
+    const queue = rest.get(rowSignature(row));
+    if (queue !== undefined && queue.length > 0) {
+      last = queue.shift()!;
+    } else {
+      last += 0.001;
+    }
+    return { row, key: last };
+  });
+  keyed.sort((a, b) => a.key - b.key);
+  return renumberFormworkRows(keyed.map((entry) => entry.row));
+}
+
+/** 明細行の型枠分類を、上にあるタイトル行の分類にそろえる */
+function adoptGroupFormwork(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  let formwork = "";
+  return rows.map((row) => {
+    if (row.title) {
+      formwork = row.formwork;
+      return row;
+    }
+    return formwork === "" ? row : { ...row, formwork };
+  });
+}
+
+/**
+ * ④の表で明細行を1つ上・下の明細行と入れ替える。
+ * タイトル行は動かさない（分類の境を越えた行は越えた先の分類になる）。
+ */
+export function moveFormworkRow(
+  rows: readonly FormworkTransferRow[],
+  index: number,
+  direction: -1 | 1,
+): FormworkTransferRow[] {
+  if (rows[index]?.title !== false) return renumberFormworkRows(rows);
+  let target = index + direction;
+  while (rows[target]?.title === true) target += direction;
+  if (target < 0 || target >= rows.length) return renumberFormworkRows(rows);
+  const next = [...rows];
+  [next[index], next[target]] = [next[target], next[index]];
+  return renumberFormworkRows(adoptGroupFormwork(next));
+}
+
+/**
+ * ④の表の明細行を、分類ごとの中で名称の昇順に並び替える
+ * （例：打放型枠・化粧打放型枠がそれぞれまとまる）。
+ */
+export function sortFormworkRowsByName(
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferRow[] {
+  const next: FormworkTransferRow[] = [];
+  let group: FormworkTransferRow[] = [];
+  const flush = (): void => {
+    group.sort((a, b) =>
+      a.name !== b.name
+        ? a.name.localeCompare(b.name, "ja")
+        : a.description.localeCompare(b.description, "ja"),
+    );
+    next.push(...group);
+    group = [];
+  };
+  rows.forEach((row) => {
+    if (row.title) {
+      flush();
+      next.push(row);
+    } else {
+      group.push(row);
+    }
+  });
+  flush();
+  return renumberFormworkRows(adoptGroupFormwork(next));
 }

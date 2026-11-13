@@ -7,19 +7,27 @@
 
 .basic-master-page .toolbar {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 0;
+}
+
+.basic-master-page .toolbar-top,
+.basic-master-page .toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  padding: 8px;
+}
+
+.basic-master-page .toolbar-actions {
+  padding-bottom: 8px;
   border-bottom: 1px solid #d5d9e0;
 }
 
-.basic-master-page .toolbar h2 {
+.basic-master-page .toolbar-top h2 {
   margin: 0 8px 0 0;
   font-size: 15px;
-}
-
-.basic-master-page .toolbar .spacer {
-  flex: 1;
 }
 
 .basic-master-page .tab.active {

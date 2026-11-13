@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildFormworkRulesFromSources,
   buildFormworkTransferRows,
+  compareFormworkRuns,
   collectFormworkQuantities,
+  formworkListRows,
+  moveFormworkRow,
+  orderFormworkRows,
+  sortFormworkRowsByName,
+  storedRowSignature,
   type FormworkCategory,
   type FormworkSourceDetail,
+  type FormworkTransferRow,
   type FormworkTransferRule,
 } from "../../src/core/aggregate/formworkTransfer";
 
@@ -64,7 +71,6 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
     sourceKeys: ["k1"],
     coefficient: 1,
     subjectId: 5,
-    materialCategory: "型枠",
     name: "打放型枠",
     description: "仕上",
     descriptionLower: "",
@@ -74,18 +80,157 @@ function rule(patch: Partial<FormworkTransferRule> = {}): FormworkTransferRule {
   };
 }
 
+describe("formworkListRows", () => {
+  const sources = [
+    { masterKey: "k1" },
+    { masterKey: "k2" },
+    { masterKey: "k3" },
+  ];
+
+  it("表示中だけの元明細を元の順で返す", () => {
+    expect(formworkListRows(sources, new Set(["k3", "k1"]), [])).toEqual([
+      { source: sources[0], ruleIndex: null },
+      { source: sources[2], ruleIndex: null },
+    ]);
+  });
+
+  it("検索外でも決まりがある元明細を元の順で残す", () => {
+    const rows = formworkListRows(sources, new Set(["k3"]), [
+      rule({ sourceKeys: ["k2"] }),
+    ]);
+
+    expect(rows).toEqual([
+      { source: sources[1], ruleIndex: 0 },
+      { source: sources[2], ruleIndex: null },
+    ]);
+  });
+
+  it("表示外で決まりもない元明細は除く", () => {
+    expect(formworkListRows(sources, new Set(["k2"]), [])).toEqual([
+      { source: sources[1], ruleIndex: null },
+    ]);
+  });
+
+  it("元明細が見つからない決まりを最後に追加する", () => {
+    expect(
+      formworkListRows(sources, new Set(), [rule({ sourceKeys: ["missing"] })]),
+    ).toEqual([{ source: null, ruleIndex: 0 }]);
+  });
+
+  it("元明細の順で表示し、決まりの順序から対応番号を決める", () => {
+    const rows = formworkListRows(sources.slice(0, 2), new Set(["k1", "k2"]), [
+      rule({ key: "k2-rule", sourceKeys: ["k2"] }),
+      rule({ key: "k1-rule", sourceKeys: ["k1"] }),
+    ]);
+
+    expect(rows.map((row) => [row.source?.masterKey, row.ruleIndex])).toEqual([
+      ["k1", 1],
+      ["k2", 0],
+    ]);
+  });
+
+  it("複数の元明細を持つ決まりは最初の一致行にだけ付ける", () => {
+    const rows = formworkListRows(sources.slice(0, 2), new Set(["k1", "k2"]), [
+      rule({ sourceKeys: ["k2", "k1"] }),
+    ]);
+
+    expect(rows.map((row) => [row.source?.masterKey, row.ruleIndex])).toEqual([
+      ["k1", 0],
+      ["k2", null],
+    ]);
+  });
+});
+
+describe("compareFormworkRuns", () => {
+  const makeRows = (
+    sourceDetails: readonly FormworkSourceDetail[] = [details[0]],
+  ): FormworkTransferRow[] =>
+    buildFormworkTransferRows(sourceDetails, [rule()], categories);
+
+  it("前回が無いときは全行を同じとして返す", () => {
+    const rows = makeRows();
+    const compared = compareFormworkRuns(rows, null);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual(
+      rows.map(() => "same"),
+    );
+    expect(compared.rows.map((entry) => entry.previousQuantity)).toEqual(
+      rows.map(() => null),
+    );
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("同じ行は前回数量を返し、タイトル行の前回数量は空にする", () => {
+    const previous = makeRows();
+    const compared = compareFormworkRuns(previous, previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "same",
+    ]);
+    expect(compared.rows.map((entry) => entry.previousQuantity)).toEqual([
+      null,
+      10.5,
+    ]);
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("数量差が0.005以上の明細を変更として前回数量とともに返す", () => {
+    const previous = makeRows();
+    const current = previous.map((row) =>
+      row.title ? row : { ...row, quantity: row.quantity + 0.005 },
+    );
+    const compared = compareFormworkRuns(current, previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "changed",
+    ]);
+    expect(compared.rows[1].previousQuantity).toBe(10.5);
+  });
+
+  it("前回に無い明細と型枠分類のタイトルを新規として返す", () => {
+    const previous = makeRows();
+    const added = makeRows([{ ...details[0], formwork: "地下階" }]);
+    const compared = compareFormworkRuns([...previous, ...added], previous);
+
+    expect(compared.rows.map((entry) => entry.status)).toEqual([
+      "same",
+      "same",
+      "new",
+      "new",
+    ]);
+    expect(
+      compared.rows.slice(-2).map((entry) => entry.previousQuantity),
+    ).toEqual([null, null]);
+    expect(compared.removed).toEqual([]);
+  });
+
+  it("前回だけの明細をタイトル行を除いて返す", () => {
+    const previous = makeRows([details[0], details[2]]);
+    const current = makeRows([details[2]]);
+    const compared = compareFormworkRuns(current, previous);
+
+    expect(compared.removed).toHaveLength(1);
+    expect(compared.removed[0]).toMatchObject({
+      title: false,
+      formwork: "地上階",
+      name: "打放型枠",
+      quantity: 10.5,
+    });
+  });
+});
+
 describe("buildFormworkRulesFromSources", () => {
   const sources = [
     {
       masterKey: "k1",
-      materialCategory: "仕上",
       descriptionUpper: "仕上",
       descriptionLower: "打放補修共",
       unit: "m2",
     },
     {
       masterKey: "k2",
-      materialCategory: "仕上",
       descriptionUpper: "貼物下",
       descriptionLower: "",
       unit: "m2",
@@ -97,7 +242,6 @@ describe("buildFormworkRulesFromSources", () => {
     name: "打放型枠",
     unit: "",
     coefficient: 1,
-    materialCategory: "型枠",
     copyDescription: true,
   };
 
@@ -108,7 +252,6 @@ describe("buildFormworkRulesFromSources", () => {
       key: "型枠-1",
       sourceKeys: ["k1"],
       subjectId: 5,
-      materialCategory: "型枠",
       name: "打放型枠",
       description: "仕上",
       descriptionLower: "打放補修共",
@@ -188,11 +331,14 @@ describe("buildFormworkTransferRows", () => {
       formwork: "基礎階",
       part1: "",
       subjectId: 5,
-      materialCategory: "型枠",
+      materialCategory: "",
       description: "仕上",
       unit: "m2",
     });
-    expect(rows[0].part1).toBe("基礎階");
+    // 部位Ⅰは先頭のタイトル行だけ「仕上転記数量」。あとは上行を引き継ぐ
+    expect(rows[0].part1).toBe("仕上転記数量");
+    expect(rows[2].part1).toBe("");
+    expect(rows[4].part1).toBe("");
   });
 
   it("同じ分類・同じ摘要は元明細が違っても合算する", () => {
@@ -260,5 +406,109 @@ describe("buildFormworkTransferRows", () => {
         categories,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("④算出結果の並び替え", () => {
+  const twoGroups = buildFormworkTransferRows(
+    details,
+    [
+      rule({ key: "型枠1", name: "打放型枠" }),
+      rule({
+        key: "型枠2",
+        sourceKeys: ["k2"],
+        name: "化粧打放型枠",
+        description: "貼物下",
+      }),
+    ],
+    categories,
+  );
+
+  it("明細行を↑↓で上下の明細行と入れ替え、明細番号は連番のまま", () => {
+    const moved = moveFormworkRow(twoGroups, 1, 1);
+    // 基礎階の明細が下の明細（地上階の打放型枠）と入れ替わり、タイトル行は動かない
+    expect(moved.map((row) => row.name)).toEqual([
+      "<基礎階>",
+      "打放型枠",
+      "<地上階>",
+      "打放型枠",
+      "化粧打放型枠",
+      "<分類なし>",
+      "打放型枠",
+    ]);
+    expect(moved.map((row) => row.detailNumber)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    // 分類の境を越えた明細は越えた先の分類になる
+    expect(moved[1].formwork).toBe("基礎階");
+    expect(moved[3].formwork).toBe("地上階");
+  });
+
+  it("分類ごとに名称の昇順へ並び替える", () => {
+    const sorted = sortFormworkRowsByName(twoGroups);
+    expect(sorted.map((row) => row.name)).toEqual([
+      "<基礎階>",
+      "打放型枠",
+      "<地上階>",
+      "化粧打放型枠",
+      "打放型枠",
+      "<分類なし>",
+      "打放型枠",
+    ]);
+  });
+
+  it("並び替えた順を覚えて、作り直してもその並びを保つ", () => {
+    // 転記入力表に入った形（DBの列名）で目印を取る
+    const stored = sortFormworkRowsByName(twoGroups).map((row) =>
+      storedRowSignature({
+        formwork: row.formwork,
+        name: row.name,
+        descriptionUpper: row.description,
+        descriptionLower: row.descriptionLower,
+        unit: row.unit,
+      }),
+    );
+    // ルールを足して作り直しても、既存の行は並び替えた順のまま
+    const regenerated = buildFormworkTransferRows(
+      [
+        ...details,
+        {
+          masterKey: "k3",
+          formwork: "地上階",
+          part1: "建築",
+          part2: "1階",
+          part2Split: true,
+          quantity: 7,
+        },
+      ],
+      [
+        rule({ key: "型枠1", name: "打放型枠" }),
+        rule({
+          key: "型枠2",
+          sourceKeys: ["k2"],
+          name: "化粧打放型枠",
+          description: "貼物下",
+        }),
+        rule({
+          key: "型枠3",
+          sourceKeys: ["k3"],
+          name: "新しい型枠",
+        }),
+      ],
+      categories,
+    );
+    const ordered = orderFormworkRows(regenerated, stored);
+    // 新しくできた明細は同じ分類の中（生成順のすぐ後ろ）へ入る
+    expect(ordered.map((row) => row.name)).toEqual([
+      "<基礎階>",
+      "打放型枠",
+      "<地上階>",
+      "化粧打放型枠",
+      "新しい型枠",
+      "打放型枠",
+      "<分類なし>",
+      "打放型枠",
+    ]);
+    expect(ordered.map((row) => row.detailNumber)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
   });
 });

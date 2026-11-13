@@ -1,8 +1,9 @@
 /* 軸組計算書は部屋計算書と同じ見た目にする（RoomSheetPage.css を土台に足すだけ） */
+/* 図を少し絞って、その分を右の壁測定表（種類欄）へ回す */
 .frame-sheet-page > .upper {
-  grid-template-columns: minmax(240px, 1.1fr) minmax(200px, 0.8fr) minmax(
-      240px,
-      1fr
+  grid-template-columns: minmax(240px, 0.9fr) minmax(280px, 0.95fr) minmax(
+      320px,
+      1.05fr
     );
 }
 
@@ -107,6 +108,18 @@
   text-align: right;
   border: 1px solid #cbd5e1;
   background: #fff;
+}
+
+.frame-sheet-page .trace-only-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.frame-sheet-page .trace-only-toggle input {
+  margin: 0;
 }
 
 /* 「引いた線だけ」のとき、部屋の図と部屋の壁は薄くする */
@@ -320,8 +333,9 @@
   width: 32px;
 }
 
+/* 種類（軸組種類を選ぶ欄）。名前が読めるよう、まわりより広めに取る */
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(3) {
-  width: 52px;
+  width: 156px;
 }
 
 .frame-sheet-page .rooms.lines-kind table.grid th:nth-child(4),
@@ -428,9 +442,27 @@
   color: #1e3a8a;
 }
 
+/* 建具の記号ボタンは2段目から（1段目の付ける幅・記号入力が変わってもボタンの位置が動かないように） */
+.frame-sheet-page .frame-draw-bar .candidate-row {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 自分で引いた線は下敷きの図面より目立たせる */
 .frame-sheet-page .frame-line.hand {
   stroke-width: 5;
+}
+
+/* 曲面壁にする前に出す予定の弧（オレンジの点線。クリックはできない） */
+.frame-sheet-page .curve-preview {
+  stroke: #ea580c;
+  stroke-width: 4;
+  stroke-dasharray: 10 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 /* 別窓では図を左に上下いっぱいで置き、表は右側に上から続けて並べる
@@ -478,4 +510,28 @@
   font-size: 9px;
   font-weight: 400;
   color: #1d4ed8;
+}
+
+/* 「選んだ線」パネルは一番右の列に置く（図の上に被らないようにする） */
+.frame-sheet-page > .upper > section.rooms.kind-apply {
+  grid-column: -2;
+}
+
+/* 線を引くとき、矢印カーソルの代わりに画面全体へ広がる細い十字線を出す */
+.frame-sheet-page svg.crosshair-on,
+.frame-sheet-page svg.crosshair-on * {
+  cursor: none !important;
+}
+.frame-sheet-page .crosshair-line {
+  stroke: #2563eb;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-opacity: 0.7;
+}
+
+/* 左の作図ボタン・橙枠の図面ボタンも、押している間は上の帯と同じ青にする */
+.frame-sheet-page .shape-tools button.on,
+.frame-sheet-page .underlay-tools button.on {
+  background: #1e3a8a;
+  color: #fff;
 }

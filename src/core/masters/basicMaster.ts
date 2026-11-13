@@ -16,6 +16,20 @@ export interface BasicMasterRow {
   note: string;
 }
 
+/** 番号の昇順。番号空欄の行は最後に保ち、同じ番号は表示順を維持する */
+export function sortBasicMasterRowsById(
+  rows: readonly BasicMasterRow[],
+): BasicMasterRow[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      if (a.row.id === 0 && b.row.id !== 0) return 1;
+      if (a.row.id !== 0 && b.row.id === 0) return -1;
+      return a.row.id - b.row.id || a.index - b.index;
+    })
+    .map(({ row }) => row);
+}
+
 export interface BasicMasterLimit {
   label: string;
   /** 使用できる番号の上限 */
@@ -30,8 +44,8 @@ export interface BasicMasterLimit {
 export const BASIC_MASTER_LIMITS: Record<BasicMasterKind, BasicMasterLimit> = {
   pickupParts: {
     label: "明細用部位",
-    maxId: 200,
-    maxRows: 200,
+    maxId: 999,
+    maxRows: 999,
     uniqueName: false,
     hint: "転記入力表などの部位欄で番号入力して使います",
   },

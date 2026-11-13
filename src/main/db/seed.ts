@@ -138,6 +138,7 @@ const CALC_SHEETS = [
   { key: "frame", name: "軸組計算書" },
   { key: "general", name: "汎用計算書" },
   { key: "pit", name: "ピット計算書" },
+  { key: "area", name: "面積計算書" },
 ];
 
 /** 初回起動時のみ基礎マスターを投入する（既存データがある場合は何もしない） */

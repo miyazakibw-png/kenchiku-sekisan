@@ -41,7 +41,9 @@ export function lowerTemplateFrom(sets: readonly CalcSet[]): CalcSet[] {
   const template: CalcSet[] = [];
   sets.forEach((set) => {
     if (set.banner != null)
-      template.push(commentSet(set.banner.text, set.banner.color));
+      template.push(
+        commentSet(set.banner.text, set.banner.color, set.banner.text2),
+      );
     if (isCommentSet(set)) return;
     const blank = calcSet(1);
     template.push({
@@ -99,5 +101,19 @@ export function parseLowerTemplate(json: string | null | undefined): CalcSet[] {
     return normalizeSets(parsed as CalcSet[]);
   } catch {
     return defaultLowerTemplate();
+  }
+}
+
+/** 保存済みの初期状態を読む。未保存・壊れた値は null にする */
+export function parseSavedLowerTemplate(
+  json: string | null | undefined,
+): CalcSet[] | null {
+  if (json == null || json === "") return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return null;
+    return normalizeSets(parsed as CalcSet[]);
+  } catch {
+    return null;
   }
 }

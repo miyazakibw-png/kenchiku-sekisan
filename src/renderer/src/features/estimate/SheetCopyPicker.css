@@ -1,0 +1,65 @@
+/** 同じ工事の他の計算書を選ぶ小さな窓 */
+.sheet-copy-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+}
+
+.sheet-copy-box {
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  width: min(480px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sheet-copy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #1e3a5f;
+  color: #fff;
+  font-size: 14px;
+}
+
+.sheet-copy-head button {
+  font-size: 12px;
+}
+
+.sheet-copy-list {
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sheet-copy-list .pick {
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.sheet-copy-list .pick:hover {
+  background: #e8f0fe;
+}
+
+.sheet-copy-list .empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 16px 8px;
+  font-size: 13px;
+}

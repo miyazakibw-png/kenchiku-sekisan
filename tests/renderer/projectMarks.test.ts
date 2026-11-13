@@ -15,6 +15,7 @@ function project(id: number, marks: number[]): ProjectSummary {
     designerName: "",
     note: "",
     displayOrder: id,
+    pinned: false,
     fieldValues: {},
     marks,
   };

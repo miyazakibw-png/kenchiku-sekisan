@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 import { stickyTops } from "./stickyHeader";
 
-const TOOLBARS = ".toolbar,.grid-toolbar";
+const TOOLBARS = ".toolbar,.grid-toolbar,.sticky-top";
 
 function isScrollable(el: HTMLElement): boolean {
   const overflow = getComputedStyle(el).overflowY;
@@ -25,6 +25,9 @@ function scrollParent(el: HTMLElement, root: HTMLElement): HTMLElement {
 function toolbarHeight(container: HTMLElement, table: HTMLElement): number {
   let height = 0;
   container.querySelectorAll<HTMLElement>(TOOLBARS).forEach((toolbar) => {
+    const parentToolbar = toolbar.parentElement?.closest<HTMLElement>(TOOLBARS);
+    if (parentToolbar && container.contains(parentToolbar)) return;
+
     const after =
       toolbar.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING;
     if (after !== 0) height = toolbar.offsetHeight;

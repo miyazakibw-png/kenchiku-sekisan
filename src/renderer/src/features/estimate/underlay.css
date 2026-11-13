@@ -24,3 +24,22 @@ svg .underlay-scale-points circle {
   width: 70px;
   vertical-align: middle;
 }
+
+/* 計算書にある「縮尺合わせがまだ」の印 */
+.underlay-pending {
+  color: #b91c1c;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid #f3c2c2;
+  border-radius: 4px;
+  background: #fef2f2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.underlay-pending button {
+  font-size: 11px;
+  padding: 0 6px;
+}
