@@ -374,7 +374,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
     expect(new Set(numbers).size).toBe(numbers.length);
   });
 
-  it("工事の科目IDを変えると、その番号の明細だけを一緒に変えて次回の再採番でも戻さない", () => {
+  it("工事の科目IDを変えると明細マスターの番号を変え、次回の再採番でも戻さない", () => {
     const projectId = createProject(db, "科目ID変更工事").id;
     const initial = saveProjectSubjects(db, projectId, [
       ...subjectDrafts(db, projectId),
@@ -461,6 +461,297 @@ describe("工事だけの科目がある状態での付け替え", () => {
         (subject) => subject.name === "工事専用46",
       )?.id,
     ).toBe(20);
+  });
+
+  it("工事の科目ID変更ではマスター側だけを付け替え、それ以外の保存済み番号は動かさない", () => {
+    const projectId = createProject(db, "科目IDのマスター側参照だけ変更").id;
+    db.delete(schema.projectMasters)
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+        ),
+      )
+      .run();
+    db.insert(schema.projectMasters)
+      .values([
+        {
+          projectId,
+          kind: "subjects",
+          number: 47,
+          sourceNumber: null,
+          name: "左官工事",
+          displayOrder: 0,
+        },
+        {
+          projectId,
+          kind: "subjects",
+          number: 65,
+          sourceNumber: null,
+          name: "その他雑工事の部",
+          displayOrder: 1,
+        },
+      ])
+      .run();
+
+    db.insert(schema.mDetails)
+      .values([
+        {
+          projectId,
+          scope: "project",
+          subjectId: 47,
+          name: "明細47",
+        },
+        {
+          projectId,
+          scope: "project",
+          subjectId: 65,
+          name: "明細65",
+        },
+      ])
+      .run();
+    db.insert(schema.projectTransferRules)
+      .values([
+        { projectId, masterKey: "rule:47", subjectId: 47 },
+        { projectId, masterKey: "rule:65", subjectId: 65 },
+      ])
+      .run();
+    const assemblyId = Number(
+      db.run(
+        sql`INSERT INTO m_finish_assemblies (assembly_name, scope, project_id) VALUES ('番号変更セット', 'project', ${projectId})`,
+      ).lastInsertRowid,
+    );
+    db.insert(schema.mFinishAssemblyItems)
+      .values([
+        { assemblyId, subjectId: 47, name: "セット明細47" },
+        { assemblyId, subjectId: 65, name: "セット明細65" },
+      ])
+      .run();
+
+    const estimateRowId = Number(
+      db.run(
+        sql`INSERT INTO project_estimate_rows (project_id, calc_type) VALUES (${projectId}, 'general')`,
+      ).lastInsertRowid,
+    );
+    db.run(
+      sql`INSERT INTO project_general_sheets (project_id, estimate_row_id, lower_json) VALUES (${projectId}, ${estimateRowId}, '[{"details":[{"subjectId":47}]}]')`,
+    );
+    db.insert(schema.projectTransferRows)
+      .values({ projectId, subjectId: 47, name: "転記入力表47" })
+      .run();
+    db.insert(schema.projectManualAggregateItems)
+      .values({ projectId, subjectId: 47, name: "集計手入力47" })
+      .run();
+
+    const runId = Number(
+      db.run(
+        sql`INSERT INTO project_aggregate_runs (project_id) VALUES (${projectId})`,
+      ).lastInsertRowid,
+    );
+    db.insert(schema.projectAggregateDetails)
+      .values({ runId, traceId: "aggregate-detail-47", subjectId: 47 })
+      .run();
+    db.insert(schema.projectAggregateItems)
+      .values({
+        runId,
+        masterKey: "aggregate:47",
+        subjectId: 47,
+        roomsJson: '[{"subjectId":47}]',
+      })
+      .run();
+
+    const confirmedVersionId = Number(
+      db.run(
+        sql`INSERT INTO project_breakdown_versions (project_id, round, confirmed, new_subjects_json) VALUES (${projectId}, 1, 1, '[47]')`,
+      ).lastInsertRowid,
+    );
+    const openVersionId = Number(
+      db.run(
+        sql`INSERT INTO project_breakdown_versions (project_id, round, confirmed, new_subjects_json) VALUES (${projectId}, 2, 0, '[47]')`,
+      ).lastInsertRowid,
+    );
+    db.insert(schema.projectBreakdownSettings)
+      .values({ projectId, subjectOrderJson: "[47]" })
+      .run();
+    db.insert(schema.projectBreakdownRows)
+      .values([
+        {
+          versionId: confirmedVersionId,
+          rowKind: "subject",
+          subjectId: 47,
+          subjectName: "左官工事",
+          wrapUpperSource: '{"subjectId":47}',
+        },
+        {
+          versionId: openVersionId,
+          rowKind: "subject",
+          subjectId: 47,
+          subjectName: "左官工事",
+          wrapUpperSource: '{"subjectId":47}',
+        },
+      ])
+      .run();
+    db.insert(schema.detailChangeLogs)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 47,
+        beforeJson: '{"subjectId":47}',
+        afterJson: '{"nested":{"subjectId":47}}',
+      })
+      .run();
+
+    const result = saveProjectSubjects(
+      db,
+      projectId,
+      subjectDrafts(db, projectId).map((row) =>
+        row.id === 47
+          ? { ...row, newId: 26 }
+          : row.id === 65
+            ? { ...row, newId: 47 }
+            : row,
+      ),
+    );
+
+    expect(result.idErrors).toBeUndefined();
+    expect(
+      result.subjects.map((subject) => [subject.id, subject.name]),
+    ).toEqual([
+      [26, "左官工事"],
+      [47, "その他雑工事の部"],
+    ]);
+    expect(
+      db
+        .all(
+          sql`SELECT name, subject_id AS subjectId FROM m_details WHERE project_id = ${projectId} ORDER BY name`,
+        )
+        .map((row) => row as { name: string; subjectId: number }),
+    ).toEqual([
+      { name: "明細47", subjectId: 26 },
+      { name: "明細65", subjectId: 47 },
+    ]);
+    expect(
+      db
+        .select({
+          masterKey: schema.projectTransferRules.masterKey,
+          subjectId: schema.projectTransferRules.subjectId,
+        })
+        .from(schema.projectTransferRules)
+        .where(eq(schema.projectTransferRules.projectId, projectId))
+        .all(),
+    ).toEqual([
+      { masterKey: "rule:47", subjectId: 26 },
+      { masterKey: "rule:65", subjectId: 47 },
+    ]);
+    expect(
+      db
+        .select({
+          name: schema.mFinishAssemblyItems.name,
+          subjectId: schema.mFinishAssemblyItems.subjectId,
+        })
+        .from(schema.mFinishAssemblyItems)
+        .where(eq(schema.mFinishAssemblyItems.assemblyId, assemblyId))
+        .all(),
+    ).toEqual([
+      { name: "セット明細47", subjectId: 26 },
+      { name: "セット明細65", subjectId: 47 },
+    ]);
+
+    const calcJson = db
+      .select({ lowerJson: schema.projectGeneralSheets.lowerJson })
+      .from(schema.projectGeneralSheets)
+      .where(eq(schema.projectGeneralSheets.estimateRowId, estimateRowId))
+      .get()?.lowerJson;
+    expect(JSON.parse(calcJson ?? "[]")[0].details[0].subjectId).toBe(47);
+    expect(
+      db
+        .select({ subjectId: schema.projectTransferRows.subjectId })
+        .from(schema.projectTransferRows)
+        .where(eq(schema.projectTransferRows.projectId, projectId))
+        .get()?.subjectId,
+    ).toBe(47);
+    expect(
+      db
+        .select({ subjectId: schema.projectManualAggregateItems.subjectId })
+        .from(schema.projectManualAggregateItems)
+        .where(eq(schema.projectManualAggregateItems.projectId, projectId))
+        .get()?.subjectId,
+    ).toBe(47);
+    expect(
+      db
+        .select({ subjectId: schema.projectAggregateDetails.subjectId })
+        .from(schema.projectAggregateDetails)
+        .where(eq(schema.projectAggregateDetails.runId, runId))
+        .get()?.subjectId,
+    ).toBe(47);
+    const aggregate = db
+      .select({
+        subjectId: schema.projectAggregateItems.subjectId,
+        roomsJson: schema.projectAggregateItems.roomsJson,
+      })
+      .from(schema.projectAggregateItems)
+      .where(eq(schema.projectAggregateItems.masterKey, "aggregate:47"))
+      .get();
+    expect(aggregate?.subjectId).toBe(47);
+    expect(JSON.parse(aggregate?.roomsJson ?? "[]")[0].subjectId).toBe(47);
+    expect(
+      db
+        .select({
+          versionId: schema.projectBreakdownRows.versionId,
+          subjectId: schema.projectBreakdownRows.subjectId,
+          wrapUpperSource: schema.projectBreakdownRows.wrapUpperSource,
+        })
+        .from(schema.projectBreakdownRows)
+        .all(),
+    ).toEqual([
+      {
+        versionId: confirmedVersionId,
+        subjectId: 47,
+        wrapUpperSource: '{"subjectId":47}',
+      },
+      {
+        versionId: openVersionId,
+        subjectId: 47,
+        wrapUpperSource: '{"subjectId":47}',
+      },
+    ]);
+    expect(
+      db
+        .select({
+          id: schema.projectBreakdownVersions.id,
+          newSubjectsJson: schema.projectBreakdownVersions.newSubjectsJson,
+        })
+        .from(schema.projectBreakdownVersions)
+        .where(eq(schema.projectBreakdownVersions.projectId, projectId))
+        .orderBy(schema.projectBreakdownVersions.round)
+        .all(),
+    ).toEqual([
+      { id: confirmedVersionId, newSubjectsJson: "[47]" },
+      { id: openVersionId, newSubjectsJson: "[47]" },
+    ]);
+    expect(
+      db
+        .select({
+          subjectOrderJson: schema.projectBreakdownSettings.subjectOrderJson,
+        })
+        .from(schema.projectBreakdownSettings)
+        .where(eq(schema.projectBreakdownSettings.projectId, projectId))
+        .get()?.subjectOrderJson,
+    ).toBe("[47]");
+    const log = db
+      .select({
+        subjectId: schema.detailChangeLogs.subjectId,
+        beforeJson: schema.detailChangeLogs.beforeJson,
+        afterJson: schema.detailChangeLogs.afterJson,
+      })
+      .from(schema.detailChangeLogs)
+      .where(eq(schema.detailChangeLogs.projectId, projectId))
+      .get();
+    expect(log).toEqual({
+      subjectId: 47,
+      beforeJson: '{"subjectId":47}',
+      afterJson: '{"nested":{"subjectId":47}}',
+    });
   });
 
   it("工事の科目IDの入れ替えは参照も同時に入れ替える", () => {

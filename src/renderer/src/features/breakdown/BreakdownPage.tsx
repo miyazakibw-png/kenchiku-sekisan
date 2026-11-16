@@ -21,6 +21,7 @@ import {
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
   relayoutBreakdownRows,
+  reorderBySubjectOrder,
 } from "../../../../core/breakdown/breakdown";
 import type { BreakdownHalfField } from "../../../../core/breakdown/compare";
 import { moveRow } from "../../../../core/breakdown/compare";
@@ -182,36 +183,8 @@ function unitsOf(
   return units;
 }
 
-/** 科目のかたまり（見出し＋明細）を科目順に並べ替える（確定した回を直接並べ替えるとき用） */
-function reorderBySubjectOrder(
-  rows: readonly BreakdownRowRecord[],
-  order: readonly number[],
-): BreakdownRowRecord[] {
-  const lead: BreakdownRowRecord[] = [];
-  const groups = new Map<number | null, BreakdownRowRecord[]>();
-  const sequence: (number | null)[] = [];
-  rows.forEach((row) => {
-    if (row.rowKind === "subject") {
-      if (!groups.has(row.subjectId)) {
-        groups.set(row.subjectId, []);
-        sequence.push(row.subjectId);
-      }
-      groups.get(row.subjectId)?.push(row);
-      return;
-    }
-    const last = sequence[sequence.length - 1];
-    if (last === undefined) lead.push(row);
-    else groups.get(last)?.push(row);
-  });
-  const rank = (id: number | null): number => {
-    if (id === null) return Number.MAX_SAFE_INTEGER;
-    const at = order.indexOf(id);
-    return at < 0 ? Number.MAX_SAFE_INTEGER : at;
-  };
-  const sorted = [...sequence].sort((a, b) => rank(a) - rank(b));
-  const next: BreakdownRowRecord[] = [...lead];
-  sorted.forEach((id) => next.push(...(groups.get(id) ?? [])));
-  return next;
+function subjectListKey(subjectId: number | string, name: string): string {
+  return JSON.stringify([typeof subjectId, subjectId, name]);
 }
 
 function blankRow(): BreakdownRowRecord {
@@ -523,18 +496,27 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
   };
 
   const usedSubjects = useMemo(() => {
-    const names = new Map<number | string, string>();
+    const namesById = new Map<number | null, Set<string>>();
+    const entries: [number | string, string][] = [];
     view.rows.forEach((row) => {
-      if (row.rowKind === "subject")
-        // 部屋別・部位別のまとめの見出しは科目IDが無いので名前を目印にする
-        names.set(row.subjectId ?? row.subjectName, row.subjectName);
+      if (row.rowKind !== "subject") return;
+      // 部屋別・部位別のまとめの見出しは科目IDが無いので名前を目印にする
+      const names = namesById.get(row.subjectId) ?? new Set<string>();
+      if (names.has(row.subjectName)) return;
+      names.add(row.subjectName);
+      namesById.set(row.subjectId, names);
+      entries.push([row.subjectId ?? row.subjectName, row.subjectName]);
     });
     const order = settings.subjectOrder;
     const orderIndex = (key: number | string): number =>
       typeof key === "number" ? order.indexOf(key) : Number.MAX_SAFE_INTEGER;
-    return [...names.entries()].sort(
-      (a, b) => orderIndex(a[0]) - orderIndex(b[0]),
-    );
+    return entries
+      .map(([id, name], sequence) => ({ id, name, sequence }))
+      .sort(
+        (a, b) =>
+          orderIndex(a.id) - orderIndex(b.id) || a.sequence - b.sequence,
+      )
+      .map(({ id, name }) => [id, name] as [number | string, string]);
   }, [settings.subjectOrder, view.rows]);
 
   // 全部の科目を出したまま、選んだ科目の見出しへ移動する
@@ -1441,7 +1423,10 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
                 すべて
               </button>
               {usedSubjects.map(([subjectId, name]) => (
-                <div key={subjectId ?? "none"} className="subject-row">
+                <div
+                  key={subjectListKey(subjectId, name)}
+                  className="subject-row"
+                >
                   <button
                     type="button"
                     className={selectedSubject === subjectId ? "selected" : ""}
@@ -1559,7 +1544,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             </button>
             {usedSubjects.map(([subjectId, name]) => (
               <div
-                key={subjectId ?? "none"}
+                key={subjectListKey(subjectId, name)}
                 className="subject-row"
                 data-subject-btn={subjectId ?? "none"}
               >

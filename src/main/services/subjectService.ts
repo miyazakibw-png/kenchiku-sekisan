@@ -420,6 +420,36 @@ export function remapProjectSubjectNumbers(
   remapProjectReferences(tx, projectId, mapping);
 }
 
+/** 工事内の明細マスター・転記の決まり・仕上明細セットが持つ科目番号だけを付け替える。 */
+export function remapProjectSubjectMasterNumbers(
+  tx: AppDatabase,
+  projectId: number,
+  mapping: Map<number, number>,
+): void {
+  if (mapping.size === 0) return;
+  remapReferenceRows(
+    tx,
+    sql`SELECT id AS "rowid", subject_id AS "subjectId" FROM m_details WHERE project_id = ${projectId}`,
+    "m_details",
+    "subject_id",
+    mapping,
+  );
+  remapReferenceRows(
+    tx,
+    sql`SELECT id AS "rowid", subject_id AS "subjectId" FROM project_transfer_rules WHERE project_id = ${projectId}`,
+    "project_transfer_rules",
+    "subject_id",
+    mapping,
+  );
+  remapReferenceRows(
+    tx,
+    sql`SELECT i.id AS "rowid", i.subject_id AS "subjectId" FROM m_finish_assembly_items i JOIN m_finish_assemblies a ON a.id = i.assembly_id WHERE a.scope = 'project' AND a.project_id = ${projectId}`,
+    "m_finish_assembly_items",
+    "subject_id",
+    mapping,
+  );
+}
+
 /**
  * 基本科目を行位置へ揃え、工事では実際に番号が重なる行だけを移す。
  */

@@ -24,7 +24,7 @@ import type {
 import { listBasicMasters, saveBasicMaster } from "./basicMasterService";
 import {
   listSubjects,
-  remapProjectSubjectNumbers,
+  remapProjectSubjectMasterNumbers,
   subjectCode,
 } from "./subjectService";
 
@@ -389,7 +389,11 @@ export function saveProjectSubjects(
   );
   db.transaction((tx) => {
     replaceRowsInTransaction(tx as AppDatabase, projectId, "subjects", saved);
-    remapProjectSubjectNumbers(tx as AppDatabase, projectId, numberMapping);
+    remapProjectSubjectMasterNumbers(
+      tx as AppDatabase,
+      projectId,
+      numberMapping,
+    );
   });
   return {
     subjects: listProjectSubjects(db, projectId),

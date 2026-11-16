@@ -10,6 +10,7 @@ import {
   collectSubjectOrder,
   collectUnits,
   mergeSubjectOrder,
+  reorderBySubjectOrder,
   relayoutBreakdownRows,
   roundQuantity,
   splitDescription,
@@ -55,6 +56,72 @@ function item(patch: Partial<BreakdownSourceItem>): BreakdownSourceItem {
     ...patch,
   };
 }
+
+type SubjectOrderRow = {
+  rowKind: string;
+  subjectId: number | null;
+  label: string;
+};
+
+describe("科目の見出しごとの並べ替え", () => {
+  it("科目IDが一意なら従来どおり指定順へ並べ替える", () => {
+    const rows: SubjectOrderRow[] = [
+      { rowKind: "subject", subjectId: 1, label: "科目1" },
+      { rowKind: "detail", subjectId: 1, label: "明細1" },
+      { rowKind: "subject", subjectId: 2, label: "科目2" },
+      { rowKind: "detail", subjectId: 2, label: "明細2" },
+    ];
+
+    expect(reorderBySubjectOrder(rows, [2, 1]).map((row) => row.label)).toEqual(
+      ["科目2", "明細2", "科目1", "明細1"],
+    );
+  });
+
+  it("重複IDの見出しも別々に保ち、同じ順位では元の順を保つ", () => {
+    const rows: SubjectOrderRow[] = [
+      { rowKind: "subject", subjectId: 1, label: "科目1" },
+      { rowKind: "detail", subjectId: 1, label: "明細1" },
+      { rowKind: "subject", subjectId: 2, label: "科目2-A" },
+      { rowKind: "detail", subjectId: 2, label: "明細2-A" },
+      { rowKind: "subject", subjectId: 2, label: "科目2-B" },
+      { rowKind: "detail", subjectId: 2, label: "明細2-B" },
+      { rowKind: "subject", subjectId: 99, label: "未登録科目" },
+      { rowKind: "detail", subjectId: 99, label: "未登録明細" },
+      { rowKind: "subject", subjectId: null, label: "番号なし科目" },
+      { rowKind: "detail", subjectId: null, label: "番号なし明細" },
+    ];
+
+    expect(reorderBySubjectOrder(rows, [2, 1]).map((row) => row.label)).toEqual(
+      [
+        "科目2-A",
+        "明細2-A",
+        "科目2-B",
+        "明細2-B",
+        "科目1",
+        "明細1",
+        "未登録科目",
+        "未登録明細",
+        "番号なし科目",
+        "番号なし明細",
+      ],
+    );
+  });
+
+  it("最初の科目見出しより前の行は先頭に残す", () => {
+    const rows: SubjectOrderRow[] = [
+      { rowKind: "title", subjectId: null, label: "前置き" },
+      { rowKind: "note", subjectId: null, label: "前置き注記" },
+      { rowKind: "subject", subjectId: 1, label: "科目1" },
+      { rowKind: "detail", subjectId: 1, label: "明細1" },
+      { rowKind: "subject", subjectId: 2, label: "科目2" },
+      { rowKind: "detail", subjectId: 2, label: "明細2" },
+    ];
+
+    expect(reorderBySubjectOrder(rows, [2, 1]).map((row) => row.label)).toEqual(
+      ["前置き", "前置き注記", "科目2", "明細2", "科目1", "明細1"],
+    );
+  });
+});
 
 describe("摘要の文字幅と折り返し", () => {
   it("全角・半角・半角カナを文字幅に換算する", () => {

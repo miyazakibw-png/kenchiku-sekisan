@@ -2118,6 +2118,42 @@ export function collectSubjectOrder(
     .map((subject) => subject.id);
 }
 
+/** 科目の見出しごとに行をまとめ、指定順へ安定して並べ替える。 */
+export function reorderBySubjectOrder<
+  T extends { rowKind: string; subjectId: number | null },
+>(rows: readonly T[], order: readonly number[]): T[] {
+  const lead: T[] = [];
+  const groups: {
+    subjectId: number | null;
+    rows: T[];
+    sequence: number;
+  }[] = [];
+  let current: (typeof groups)[number] | null = null;
+  rows.forEach((row) => {
+    if (row.rowKind === "subject") {
+      current = {
+        subjectId: row.subjectId,
+        rows: [row],
+        sequence: groups.length,
+      };
+      groups.push(current);
+    } else if (current) {
+      current.rows.push(row);
+    } else {
+      lead.push(row);
+    }
+  });
+  const rank = (subjectId: number | null): number => {
+    if (subjectId === null) return Number.MAX_SAFE_INTEGER;
+    const at = order.indexOf(subjectId);
+    return at < 0 ? Number.MAX_SAFE_INTEGER : at;
+  };
+  groups.sort(
+    (a, b) => rank(a.subjectId) - rank(b.subjectId) || a.sequence - b.sequence,
+  );
+  return [...lead, ...groups.flatMap((group) => group.rows)];
+}
+
 /**
  * 工種科目の並びに新しい科目を入れる。
  * 今までの並び（動かした分も含めて覚えたもの）を基準に、新しい科目は
