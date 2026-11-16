@@ -104,6 +104,21 @@ export function checkBackupFile(filePath: string): BackupCheck {
         version: 0,
       };
     }
+    // エクセル積算移行ソフトのデータは版の数え方が違い、復元すると表が欠ける
+    const fromMigrator = conn
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='project_excel_notes'",
+      )
+      .get();
+    if (fromMigrator) {
+      return {
+        ok: false,
+        message:
+          "エクセル積算移行ソフトのデータは復元できません。移行ソフトで「1物件の掃き出し」をして、このソフトの「読み込み」で入れてください。",
+        projectCount: 0,
+        version: 0,
+      };
+    }
     const version = conn.pragma("user_version", { simple: true }) as number;
     if (version > migrations.length) {
       return {

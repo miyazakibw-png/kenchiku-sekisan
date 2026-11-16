@@ -18,7 +18,12 @@ import {
   getRoomSheet,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
-import { runAggregation } from "../../src/main/services/aggregationService";
+import {
+  insertAggregateManualItem,
+  runAggregation,
+  setDetailUnused,
+} from "../../src/main/services/aggregationService";
+import { checkBackupFile } from "../../src/main/db";
 import {
   checkProjectFile,
   deleteProjectFully,
@@ -225,5 +230,85 @@ describe("1物件だけの掃き出しと読み込み", () => {
     const info = checkProjectFile(from.sqlite, allPath);
     expect(info.ok).toBe(false);
     expect(info.message).toContain("1物件の掃き出しファイルではありません");
+  });
+
+  it("集計書へ手で入れた行も移り、付き先・不要の印が付け直した番号に合う", () => {
+    const first = runAggregation(from.db, projectId);
+    const runId = first.run!.id;
+    const afterDetail = insertAggregateManualItem(from.db, {
+      projectId,
+      runId,
+      afterMasterKey: first.items[0].masterKey,
+    });
+    const manual1 = afterDetail.items[1].masterKey;
+    const afterManual = insertAggregateManualItem(from.db, {
+      projectId,
+      runId: afterDetail.run!.id,
+      afterMasterKey: manual1,
+    });
+    setDetailUnused(from.db, {
+      projectId,
+      masterKey: manual1,
+      unused: true,
+      note: "指示で不要",
+    });
+    const before = runAggregation(from.db, projectId);
+    expect(afterManual.items).toHaveLength(3);
+
+    exportProjectFile(from.sqlite, projectId, filePath);
+    const to = createDb();
+    // 読み込み先には先に別の工事の手入力行があり、番号がずれる
+    const other = createProject(to.db, "別の工事").id;
+    for (let i = 0; i < 5; i++) {
+      to.sqlite
+        .prepare(
+          "INSERT INTO project_manual_aggregate_items (project_id) VALUES (?)",
+        )
+        .run(other);
+    }
+    const result = importProjectFile(to.sqlite, filePath, "add", () =>
+      nextManagementNo(to.db),
+    );
+    const view = runAggregation(to.db, result.projectId);
+    expect(view.items).toHaveLength(3);
+    expect(view.items[0].masterKey).toBe(before.items[0].masterKey);
+    expect(view.items[1].masterKey).not.toBe(before.items[1].masterKey);
+    expect(view.items.map((item) => item.unused)).toEqual(
+      before.items.map((item) => item.unused),
+    );
+    const keys = to.sqlite
+      .prepare(
+        "SELECT id, after_master_key FROM project_manual_aggregate_items WHERE project_id = ? ORDER BY id",
+      )
+      .all(result.projectId) as { id: number; after_master_key: string }[];
+    expect(keys[1].after_master_key).toBe(`manual:${keys[0].id}`);
+    const unused = to.sqlite
+      .prepare(
+        "SELECT master_key, note FROM project_unused_details WHERE project_id = ?",
+      )
+      .all(result.projectId);
+    expect(unused).toEqual([
+      { master_key: `manual:${keys[0].id}`, note: "指示で不要" },
+    ]);
+  });
+
+  it("エクセル積算移行ソフトのデータは全体の復元で受け付けない", () => {
+    const plainPath = join(dir, "plain.db");
+    const plain = new Database(plainPath);
+    migrations.forEach((sql) => plain.exec(sql));
+    plain.close();
+    expect(checkBackupFile(plainPath).ok).toBe(true);
+
+    const migratorPath = join(dir, "migrator.db");
+    const migrator = new Database(migratorPath);
+    migrations.slice(0, 62).forEach((sql) => migrator.exec(sql));
+    migrator.exec(
+      "CREATE TABLE project_excel_notes (id INTEGER PRIMARY KEY, project_id INTEGER)",
+    );
+    migrator.pragma("user_version = 64");
+    migrator.close();
+    const checked = checkBackupFile(migratorPath);
+    expect(checked.ok).toBe(false);
+    expect(checked.message).toContain("1物件の掃き出し");
   });
 });

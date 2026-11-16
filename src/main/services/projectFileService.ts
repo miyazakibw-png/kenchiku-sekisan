@@ -8,6 +8,10 @@ import { existsSync, rmSync } from "fs";
 import Database from "better-sqlite3";
 import { applyMigrations } from "../db";
 import { migrations } from "../db/migrations";
+import {
+  MANUAL_KEY_PREFIX,
+  manualMasterKey,
+} from "../../core/aggregate/manualItems";
 
 /** 掃き出しファイルに入れる工事の見出し（読み込み前に画面へ出す） */
 export interface ProjectFileInfo {
@@ -42,6 +46,7 @@ const PROJECT_TABLES = [
   "project_breakdown_settings",
   "project_breakdown_versions",
   "project_aggregate_runs",
+  "project_manual_aggregate_items",
   "calc_sheet_entries",
   "project_field_values",
 ] as const;
@@ -69,6 +74,14 @@ const CHILD_TABLES: { table: string; parent: string; column: string }[] = [
     column: "assembly_id",
   },
 ];
+
+function hasTable(conn: Database.Database, table: string): boolean {
+  return (
+    conn
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?")
+      .get(table) !== undefined
+  );
+}
 
 function columnsOf(conn: Database.Database, table: string): string[] {
   const rows = conn.prepare(`PRAGMA table_info(${table})`).all() as {
@@ -436,6 +449,37 @@ export function importProjectFile(
 
       byProject("project_masters");
 
+      // 集計書へ手で入れた行。目印（manual:番号）も付け直した番号に合わせる
+      const manualIdMap = hasTable(source, "project_manual_aggregate_items")
+        ? byProject("project_manual_aggregate_items")
+        : new Map<number, number>();
+      const remapManualKey = (value: unknown): unknown =>
+        typeof value === "string" && value.includes(MANUAL_KEY_PREFIX)
+          ? value.replace(/manual:(\d+)/g, (all, id: string) => {
+              const mapped = manualIdMap.get(Number(id));
+              return mapped === undefined ? all : manualMasterKey(mapped);
+            })
+          : value;
+      const remapKeys = (row: Row): Row => {
+        const next = { ...row };
+        ["master_key", "after_master_key", "source_keys"].forEach((name) => {
+          if (name in next) next[name] = remapManualKey(next[name]);
+        });
+        return next;
+      };
+      manualIdMap.forEach((newId) => {
+        const row = target
+          .prepare(
+            "SELECT after_master_key FROM project_manual_aggregate_items WHERE id = ?",
+          )
+          .get(newId) as { after_master_key: string };
+        target
+          .prepare(
+            "UPDATE project_manual_aggregate_items SET after_master_key = ? WHERE id = ?",
+          )
+          .run(remapManualKey(row.after_master_key), newId);
+      });
+
       // 工事専用の明細マスター
       byProject("m_details", (row) => ({ ...row, scope: "project" }));
 
@@ -485,8 +529,8 @@ export function importProjectFile(
       byProject("project_furniture_sheets");
       const transferRowIdMap = byProject("project_transfer_rows");
       byProject("project_fireproof_sheets");
-      byProject("project_unused_details");
-      byProject("project_transfer_rules");
+      byProject("project_unused_details", remapKeys);
+      byProject("project_transfer_rules", remapKeys);
       byProject("project_breakdown_settings");
 
       // 計算書の定義は、このパソコンの定義に目印（key）で突き合わせる
@@ -505,7 +549,7 @@ export function importProjectFile(
       const runIdMap = byProject("project_aggregate_runs");
       runIdMap.forEach((newRunId, oldRunId) => {
         put("project_aggregate_details", "run_id = ?", [oldRunId], (row) => ({
-          ...row,
+          ...remapKeys(row),
           run_id: newRunId,
           estimate_row_id:
             row.estimate_row_id === null
@@ -517,7 +561,7 @@ export function importProjectFile(
               : (transferRowIdMap.get(Number(row.transfer_row_id)) ?? null),
         }));
         put("project_aggregate_items", "run_id = ?", [oldRunId], (row) => ({
-          ...row,
+          ...remapKeys(row),
           run_id: newRunId,
         }));
       });
@@ -533,7 +577,7 @@ export function importProjectFile(
           "project_breakdown_rows",
           "version_id = ?",
           [oldVersionId],
-          (row) => ({ ...row, version_id: newVersionId }),
+          (row) => ({ ...remapKeys(row), version_id: newVersionId }),
         );
       });
 
