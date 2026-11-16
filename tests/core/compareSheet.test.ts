@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BREAKDOWN_LAYOUT } from "../../src/core/breakdown/breakdown";
 import type { BreakdownRow } from "../../src/core/breakdown/breakdown";
-import { toCompareSheet } from "../../src/core/breakdown/compareSheet";
+import {
+  toCompareSheet,
+  toCompareWorkbook,
+} from "../../src/core/breakdown/compareSheet";
 
 function row(patch: Partial<BreakdownRow>): BreakdownRow {
   return {
@@ -225,4 +228,118 @@ describe("比較のエクセル掃き出し", () => {
     // 小計の行は明細のすぐ次には出ない
     expect(sheet.rows[4]?.[0]?.value).not.toBe("小計");
   });
+
+  it.each([
+    ["1段", BREAKDOWN_LAYOUT.oneLine, 8, 0],
+    ["2段2行", BREAKDOWN_LAYOUT.twoRow, 14, 4],
+  ] as const)(
+    "続けて出すと%sは科目・小計の間を詰める",
+    (_name, layout, expectedRows, structuralBlankRows) => {
+      const makeRows = (): BreakdownRow[] => {
+        const subject = (id: number, name: string): BreakdownRow =>
+          row({
+            rowKind: "subject",
+            subjectId: id,
+            subjectName: name,
+            nameLower: name,
+            quantity: null,
+            unit: "",
+          });
+        const details = (
+          id: number,
+          name: string,
+          quantity: number,
+          amount: number,
+        ): BreakdownRow[] => {
+          const subjectName = id === 1 ? "A工事" : "B工事";
+          const detail = row({
+            rowKind: "detail",
+            subjectId: id,
+            subjectName,
+            nameLower: name,
+            quantity,
+            amount,
+          });
+          if (layout !== BREAKDOWN_LAYOUT.twoRow) return [detail];
+          return [
+            row({
+              rowKind: "note",
+              subjectId: id,
+              subjectName,
+              nameLower: `${name}上段`,
+              quantity: null,
+              unit: "",
+            }),
+            detail,
+          ];
+        };
+        const subtotal = (id: number, amount: number): BreakdownRow =>
+          row({
+            rowKind: "detail",
+            subjectId: id,
+            subjectName: id === 1 ? "A工事" : "B工事",
+            subtotal: true,
+            nameLower: "小計",
+            amount,
+            quantity: null,
+            unit: "",
+          });
+        return [
+          subject(1, "A工事"),
+          ...details(1, "明細A", 10, 100),
+          subtotal(1, 100),
+          subject(2, "B工事"),
+          ...details(2, "明細B", 20, 200),
+          subtotal(2, 200),
+        ];
+      };
+      const page = { detailsPerPage: 1, detailsPerPageLater: 1 };
+      const input = {
+        left: makeRows(),
+        right: makeRows(),
+        layout,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      };
+      expect(
+        toCompareWorkbook({
+          ...input,
+          page: { ...page, continuous: false },
+        }),
+      ).toEqual(toCompareWorkbook({ ...input, page }));
+
+      const sheet = toCompareSheet({
+        ...input,
+        page: { ...page, continuous: true },
+      });
+      expect(sheet.rows).toHaveLength(expectedRows);
+      expect(
+        sheet.rows.filter((line) =>
+          line.every((cell) => cell.value === "" || cell.value === null),
+        ),
+      ).toHaveLength(structuralBlankRows);
+
+      const detailA = sheet.rows.findIndex((line) => line[2]?.value === 10);
+      const subtotalA = sheet.rows.findIndex(
+        (line) => line[0]?.value === "小計",
+      );
+      const subjectB = sheet.rows.findIndex(
+        (line) => line[0]?.value === "B工事",
+      );
+      const rowsPerBlock = layout === BREAKDOWN_LAYOUT.oneLine ? 1 : 2;
+      expect(subtotalA).toBe(detailA + rowsPerBlock);
+      expect(subjectB).toBe(subtotalA + rowsPerBlock);
+      if (layout === BREAKDOWN_LAYOUT.twoRow) {
+        expect(sheet.rows[subjectB + 1]?.[0]?.value).toBe(
+          "明細B上段",
+        );
+        expect(sheet.rows[subjectB + 2]?.[0]?.value).toBe(
+          "明細B",
+        );
+      } else {
+        expect(sheet.rows[subjectB + rowsPerBlock]?.[0]?.value).toBe("明細B");
+        expect(sheet.rows[subjectB + rowsPerBlock]?.[2]?.value).toBe(20);
+      }
+    },
+  );
 });

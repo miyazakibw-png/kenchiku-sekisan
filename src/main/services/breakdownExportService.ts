@@ -104,6 +104,7 @@ export function buildExport(
         page: {
           detailsPerPage: settings.detailsPerPage,
           detailsPerPageLater: settings.detailsPerPageLater,
+          continuous: settings.continuousPages,
         },
       }),
       defaultName: `${projectName}_内訳書_比較.xlsx`,
@@ -128,6 +129,7 @@ export function buildExport(
     content: toSpreadsheetWorkbook(sheets, settings.layout, {
       detailsPerPage: settings.detailsPerPage,
       detailsPerPageLater: settings.detailsPerPageLater,
+      continuous: settings.continuousPages,
     }),
     defaultName: `${projectName}_内訳書.xlsx`,
   };

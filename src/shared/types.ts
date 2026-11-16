@@ -993,6 +993,8 @@ export interface BreakdownSettingsRecord {
   unitReplacements: { from: string; to: string }[];
   /** 基本部位のタイトル行を出すかどうか（設定の表は残したまま出し入れできる） */
   partTitlesOn: boolean;
+  /** エクセル掃き出しをページで区切らず続けて出すか */
+  continuousPages: boolean;
   /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字。空なら出さない） */
   partTitles: { from: number; title: string }[];
   /** エクセル掃き出し：1ページ目の明細数（タイトル行を含む） */

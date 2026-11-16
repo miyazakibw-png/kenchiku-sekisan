@@ -22,6 +22,8 @@ export interface PageLayout {
   detailsPerPage: number;
   /** 2ページ目以降の明細数（タイトル行が無い分） */
   detailsPerPageLater: number;
+  /** ページで区切らず、科目・小計を続けて出す */
+  continuous?: boolean;
 }
 
 export const DEFAULT_PAGE_LAYOUT: PageLayout = {
@@ -286,6 +288,17 @@ function paginate(
   page: PageLayout,
 ): XlsxCell[][] {
   const unit = rowsPerDetail(layout);
+  const rows: XlsxCell[][] = [];
+  const title = titleRows();
+  title.forEach((row) => rows.push(row));
+
+  if (page.continuous) {
+    subjects.forEach((blocks) =>
+      blocks.forEach((block) => block.lines.forEach((row) => rows.push(row))),
+    );
+    return rows;
+  }
+
   const firstPage =
     pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
   const laterPage =
@@ -294,9 +307,6 @@ function paginate(
       DEFAULT_PAGE_LAYOUT.detailsPerPageLater,
     ) * unit;
 
-  const rows: XlsxCell[][] = [];
-  const title = titleRows();
-  title.forEach((row) => rows.push(row));
   let remaining = firstPage - title.length;
 
   const fillPage = (): void => {

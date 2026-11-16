@@ -129,6 +129,18 @@ describe("内訳書", () => {
     expect(view.settings.unitOrder).toEqual(["m2"]);
   });
 
+  it("続けて出す設定は初期値がfalseで、保存後はtrueで読み込む", () => {
+    const initial = getBreakdown(db, projectId).settings;
+    expect(initial.continuousPages).toBe(false);
+
+    const saved = saveBreakdownSettings(db, {
+      ...initial,
+      continuousPages: true,
+    });
+    expect(saved.continuousPages).toBe(true);
+    expect(getBreakdown(db, projectId).settings.continuousPages).toBe(true);
+  });
+
   it("部位Ⅱに仕分けた見出しも内訳書へ転記する", () => {
     const view = transferBreakdown(db, projectId);
     expect(

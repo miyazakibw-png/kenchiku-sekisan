@@ -928,6 +928,8 @@ export const projectBreakdownSettings = sqliteTable(
       .default("[]"),
     /** 基本部位のタイトル行を出すかどうか（0:出さない 1:出す） */
     partTitlesOn: integer("part_titles_on").notNull().default(0),
+    /** エクセル掃き出しをページで区切らず続けて出すか（0:区切る 1:続けて） */
+    continuousPages: integer("continuous_pages").notNull().default(0),
     /** 基本部位のタイトル行（部位番号の範囲の始まり→出す文字） */
     partTitlesJson: text("part_titles_json")
       .notNull()

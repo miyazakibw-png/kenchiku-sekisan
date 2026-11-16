@@ -2701,6 +2701,83 @@ describe("エクセル掃き出し", () => {
     );
   });
 
+  it.each([
+    ["1段", BREAKDOWN_LAYOUT.oneLine, 8, 1],
+    ["2段2行", BREAKDOWN_LAYOUT.twoRow, 14, 5],
+  ] as const)(
+    "続けて出すと%sは科目・小計の間を詰める",
+    (_name, layout, expectedRows, structuralBlankRows) => {
+      const built = buildBreakdownRows(
+        [
+          item({
+            partName: "部位A",
+            name: "明細A",
+            descriptionUpper: "",
+            descriptionLower: "摘要A",
+            remarksUpper: "",
+          }),
+          item({
+            id: 2,
+            masterKey: "k2",
+            subjectId: 2,
+            partName: "部位B",
+            name: "明細B",
+            descriptionUpper: "",
+            descriptionLower: "摘要B",
+            remarksUpper: "",
+          }),
+        ],
+        subjects,
+        { ...DEFAULT_BREAKDOWN_SETTINGS, layout },
+      );
+      const rows = withSubjectSubtotals(
+        built.map((row) =>
+          row.rowKind === "detail"
+            ? { ...row, amount: row.subjectId === 1 ? 100 : 200 }
+            : row,
+        ),
+      );
+      const sheetData = [{ name: "内訳書", rows }];
+      const page = { detailsPerPage: 1, detailsPerPageLater: 1 };
+      expect(
+        toSpreadsheetWorkbook(sheetData, layout, {
+          ...page,
+          continuous: false,
+        }),
+      ).toEqual(toSpreadsheetWorkbook(sheetData, layout, page));
+
+      const sheet = toSpreadsheetSheets(sheetData, layout, {
+        ...page,
+        continuous: true,
+      })[0];
+      expect(sheet.rows).toHaveLength(expectedRows);
+      expect(
+        sheet.rows.filter((line) =>
+          line.every((cell) => cell.value === "" || cell.value === null),
+        ),
+      ).toHaveLength(structuralBlankRows);
+
+      const detailA = sheet.rows.findIndex(
+        (line) =>
+          line[1]?.value ===
+          (layout === BREAKDOWN_LAYOUT.oneLine ? "部位A 明細A" : "明細A"),
+      );
+      const subtotalA = sheet.rows.findIndex(
+        (line) => line[1]?.value === "小計",
+      );
+      const subjectB = sheet.rows.findIndex(
+        (line) => line[1]?.value === "型枠工事",
+      );
+      const rowsPerBlock = layout === BREAKDOWN_LAYOUT.oneLine ? 1 : 2;
+      expect(subtotalA).toBe(detailA + rowsPerBlock);
+      expect(subjectB).toBe(subtotalA + rowsPerBlock);
+      expect(sheet.rows[subjectB + rowsPerBlock]?.[1]?.value).toBe(
+        layout === BREAKDOWN_LAYOUT.oneLine ? "部位B 明細B" : "明細B",
+      );
+      expect(sheet.rows[subjectB + rowsPerBlock * 2]?.[1]?.value).toBe("小計");
+    },
+  );
+
   it("単位は設定した表記へ置き換える（未入力ならそのまま）", () => {
     const rows = buildBreakdownRows([item({ unit: "m2" })], subjects, {
       ...DEFAULT_BREAKDOWN_SETTINGS,

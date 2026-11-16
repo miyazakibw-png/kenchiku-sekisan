@@ -347,6 +347,7 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
   // 2ページ目以降は detailsPerPageLater 明細分の罫線を引き、
   // 工種科目が変わるところでは残りを空行で埋めて次のページから書き出す。
   const page = input.page ?? DEFAULT_PAGE_LAYOUT;
+  const continuous = page.continuous === true;
   const unit = twoRowPairs(input.layout) ? 2 : 1;
   const firstPage =
     pageDetails(page.detailsPerPage, DEFAULT_PAGE_LAYOUT.detailsPerPage) * unit;
@@ -376,7 +377,7 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
     groups[groups.length - 1].push(diff);
   });
   groups.forEach((group, index) => {
-    if (index > 0) fillPage();
+    if (index > 0 && !continuous) fillPage();
     // このかたまりの工種科目（先頭の見出しが無い固まりは null）
     const subjectId =
       group
@@ -405,14 +406,14 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
         false,
       );
       const count = Math.max(left.length, right.length);
-      if (count > remaining) fillPage();
+      if (!continuous && count > remaining) fillPage();
       for (let line = 0; line < count; line += 1) {
         rows.push([
           ...(left[line] ?? sideLines(null, input.layout, null, false)[line]),
           gapCell(),
           ...(right[line] ?? sideLines(null, input.layout, null, false)[line]),
         ]);
-        remaining -= 1;
+        if (!continuous) remaining -= 1;
       }
     });
     // 金額が入った科目は、かたまりが終わるページの最後の行に小計を出す
@@ -422,17 +423,19 @@ export function toCompareSheet(input: CompareSheetInput): XlsxSheet {
       subjectId === null ? null : (rightSub.totals.get(subjectId) ?? null);
     if (leftTotal !== null || rightTotal !== null) {
       const sub = subtotalLines(leftTotal, rightTotal, unit);
-      if (sub.length > remaining) fillPage();
-      for (let count = 0; count < remaining - sub.length; count += 1) {
-        const border: XlsxBorder =
-          unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
-        rows.push([...blankSide(border), gapCell(), ...blankSide(border)]);
+      if (!continuous) {
+        if (sub.length > remaining) fillPage();
+        for (let count = 0; count < remaining - sub.length; count += 1) {
+          const border: XlsxBorder =
+            unit === 1 ? "one" : count % 2 === 0 ? "upper" : "lower";
+          rows.push([...blankSide(border), gapCell(), ...blankSide(border)]);
+        }
       }
       rows.push(...sub);
-      remaining = 0;
+      if (!continuous) remaining = 0;
     }
   });
-  fillPage();
+  if (!continuous) fillPage();
   return {
     name: "比較",
     columnWidths: [...WIDTHS, GAP_WIDTH, ...WIDTHS],

@@ -127,6 +127,7 @@ export function getBreakdownSettings(
       unitOrder: [],
       unitReplacements: [],
       partTitlesOn: DEFAULT_BREAKDOWN_SETTINGS.partTitlesOn,
+      continuousPages: DEFAULT_BREAKDOWN_SETTINGS.continuousPages,
       partTitles: DEFAULT_BREAKDOWN_SETTINGS.partTitles,
       detailsPerPage: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPage,
       detailsPerPageLater: DEFAULT_BREAKDOWN_SETTINGS.detailsPerPageLater,
@@ -149,6 +150,7 @@ export function getBreakdownSettings(
     unitOrder: parseStrings(row.unitOrderJson),
     unitReplacements: parseReplacements(row.unitReplacementsJson),
     partTitlesOn: row.partTitlesOn === 1,
+    continuousPages: row.continuousPages === 1,
     partTitles: parsePartTitles(row.partTitlesJson),
     detailsPerPage: pageCount(
       row.detailsPerPage,
@@ -183,6 +185,7 @@ export function saveBreakdownSettings(
       unitOrderJson: JSON.stringify(settings.unitOrder),
       unitReplacementsJson: JSON.stringify(settings.unitReplacements),
       partTitlesOn: settings.partTitlesOn ? 1 : 0,
+      continuousPages: settings.continuousPages ? 1 : 0,
       partTitlesJson: JSON.stringify(settings.partTitles),
       detailsPerPage: pageCount(
         settings.detailsPerPage,
@@ -215,6 +218,7 @@ function toCoreSettings(record: BreakdownSettingsRecord): BreakdownSettings {
     unitOrder: record.unitOrder,
     unitReplacements: record.unitReplacements,
     partTitlesOn: record.partTitlesOn,
+    continuousPages: record.continuousPages,
     partTitles: record.partTitles,
     detailsPerPage: record.detailsPerPage,
     detailsPerPageLater: record.detailsPerPageLater,

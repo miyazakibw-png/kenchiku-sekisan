@@ -57,6 +57,7 @@ const EMPTY_SETTINGS: BreakdownSettingsRecord = {
   unitOrder: [],
   unitReplacements: [],
   partTitlesOn: false,
+  continuousPages: false,
   partTitles: [],
   detailsPerPage: 17,
   detailsPerPageLater: 16,
@@ -1312,6 +1313,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             <input
               type="number"
               value={settings.detailsPerPage}
+              disabled={settings.continuousPages}
               onChange={(e) =>
                 void saveSettings({
                   detailsPerPage: pageCount(e.target.value, 17),
@@ -1322,6 +1324,7 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
             <input
               type="number"
               value={settings.detailsPerPageLater}
+              disabled={settings.continuousPages}
               onChange={(e) =>
                 void saveSettings({
                   detailsPerPageLater: pageCount(e.target.value, 16),
@@ -1329,6 +1332,16 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
               }
             />
             明細
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.continuousPages}
+              onChange={(e) =>
+                void saveSettings({ continuousPages: e.target.checked })
+              }
+            />
+            続けて出す（ページで区切らない）
           </label>
           <div className="units">
             <span>単位の変更（入れなければそのまま）</span>
