@@ -1,11 +1,19 @@
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import Database from "better-sqlite3";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrations } from "../../src/main/db/migrations";
 import * as schema from "../../src/main/db/schema";
 import { seedInitialData } from "../../src/main/db/seed";
-import type { AppDatabase } from "../../src/main/db";
+import {
+  applyMigrations,
+  closeDatabase,
+  initDatabase,
+  type AppDatabase,
+} from "../../src/main/db";
 import { calcDetail, calcSet } from "../../src/core/room/calcSheet";
 import { createProject } from "../../src/main/services/projectService";
 import {
@@ -14,7 +22,6 @@ import {
 } from "../../src/main/services/projectMasterService";
 import {
   listSubjects,
-  remapProjectSubjectNumbers,
   renumberSubjects,
   saveSubjects,
 } from "../../src/main/services/subjectService";
@@ -384,7 +391,7 @@ describe("工事ごとの科目番号の付け替え", () => {
     ).toBe(2);
   });
 
-  it("実際の衝突では工事専用の参照だけを移し、基本由来と基本スコープは基本番号に合わせる", () => {
+  it("基本科目を再採番しても工事マスターと参照は変えない", () => {
     const projectId = createProject(db, "衝突する工事").id;
     const rows = projectDrafts(db, projectId).filter((row) => row.id !== 2);
     saveProjectSubjects(db, projectId, [
@@ -446,6 +453,9 @@ describe("工事ごとの科目番号の付け替え", () => {
       .values({ assemblyId, subjectId: 2, name: "セット明細" })
       .run();
     const versionId = addBreakdownVersion(db, projectId, [2, 1]);
+    db.run(
+      sql`UPDATE project_breakdown_versions SET confirmed = 1 WHERE id = ${versionId}`,
+    );
     db.insert(schema.projectBreakdownSettings)
       .values({ projectId, subjectOrderJson: "[2,1]" })
       .run();
@@ -512,6 +522,21 @@ describe("工事ごとの科目番号の付け替え", () => {
     db.insert(schema.mDetails)
       .values({ subjectId: 1, name: "基本スコープ明細", scope: "basic" })
       .run();
+    const projectSubjectsBefore = db
+      .select({
+        number: schema.projectMasters.number,
+        name: schema.projectMasters.name,
+        sourceNumber: schema.projectMasters.sourceNumber,
+      })
+      .from(schema.projectMasters)
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+        ),
+      )
+      .orderBy(asc(schema.projectMasters.number))
+      .all();
 
     const untouchedProjectId = createProject(
       db,
@@ -550,24 +575,46 @@ describe("工事ごとの科目番号の付け替え", () => {
       ...basicRows,
     ]);
 
+    expect(
+      db
+        .select({
+          number: schema.projectMasters.number,
+          name: schema.projectMasters.name,
+          sourceNumber: schema.projectMasters.sourceNumber,
+        })
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+          ),
+        )
+        .orderBy(asc(schema.projectMasters.number))
+        .all(),
+    ).toEqual(projectSubjectsBefore);
+    expect(
+      listSubjects(db).find((subject) => subject.name === basicRows[0].name)
+        ?.id,
+    ).toBe(2);
+
     const movedSubjectId = listProjectSubjects(db, projectId).find(
       (subject) => subject.name === "工事専用2",
     )?.id;
-    expect(movedSubjectId).toBe(21);
+    expect(movedSubjectId).toBe(2);
     expect(
       db
         .select({ subjectId: schema.mDetails.subjectId })
         .from(schema.mDetails)
         .where(eq(schema.mDetails.name, "工事専用明細"))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({ subjectId: schema.mDetails.subjectId })
         .from(schema.mDetails)
         .where(eq(schema.mDetails.name, "基本由来明細"))
         .get()?.subjectId,
-    ).toBe(2);
+    ).toBe(1);
     expect(
       db
         .select({ subjectId: schema.mDetails.subjectId })
@@ -588,14 +635,14 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectTransferRows)
         .where(eq(schema.projectTransferRows.projectId, projectId))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({ subjectId: schema.projectTransferRules.subjectId })
         .from(schema.projectTransferRules)
         .where(eq(schema.projectTransferRules.projectId, projectId))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({ subjectId: schema.detailChangeLogs.subjectId })
@@ -604,21 +651,21 @@ describe("工事ごとの科目番号の付け替え", () => {
         .all()
         .map((row) => row.subjectId)
         .sort((left, right) => left - right),
-    ).toEqual([2, 21]);
+    ).toEqual([1, 2]);
     const changedLog = db
       .select({
         beforeJson: schema.detailChangeLogs.beforeJson,
         afterJson: schema.detailChangeLogs.afterJson,
       })
       .from(schema.detailChangeLogs)
-      .where(eq(schema.detailChangeLogs.subjectId, 21))
+      .where(eq(schema.detailChangeLogs.subjectId, 2))
       .get();
     expect(JSON.parse(changedLog?.beforeJson ?? "{}")).toEqual({
-      subjectId: 21,
-      nested: { subjectId: 2 },
+      subjectId: 2,
+      nested: { subjectId: 1 },
     });
     expect(JSON.parse(changedLog?.afterJson ?? "[]")).toEqual([
-      { subjectId: 21 },
+      { subjectId: 2 },
     ]);
     expect(
       db
@@ -626,21 +673,21 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectManualAggregateItems)
         .where(eq(schema.projectManualAggregateItems.projectId, projectId))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({ subjectId: schema.projectAggregateDetails.subjectId })
         .from(schema.projectAggregateDetails)
         .where(eq(schema.projectAggregateDetails.traceId, "detail-2"))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({ subjectId: schema.projectAggregateDetails.subjectId })
         .from(schema.projectAggregateDetails)
         .where(eq(schema.projectAggregateDetails.traceId, "detail-1"))
         .get()?.subjectId,
-    ).toBe(2);
+    ).toBe(1);
     const aggregate = db
       .select({
         subjectId: schema.projectAggregateItems.subjectId,
@@ -649,9 +696,9 @@ describe("工事ごとの科目番号の付け替え", () => {
       .from(schema.projectAggregateItems)
       .where(eq(schema.projectAggregateItems.masterKey, "aggregate:2"))
       .get();
-    expect(aggregate?.subjectId).toBe(21);
+    expect(aggregate?.subjectId).toBe(2);
     expect(JSON.parse(aggregate?.roomsJson ?? "[]")).toEqual([
-      { subjectId: 21, nested: { subjectId: 2 } },
+      { subjectId: 2, nested: { subjectId: 1 } },
     ]);
     expect(
       db
@@ -659,7 +706,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.mFinishAssemblyItems)
         .where(eq(schema.mFinishAssemblyItems.assemblyId, assemblyId))
         .get()?.subjectId,
-    ).toBe(21);
+    ).toBe(2);
     expect(
       db
         .select({
@@ -668,7 +715,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectBreakdownSettings)
         .where(eq(schema.projectBreakdownSettings.projectId, projectId))
         .get()?.subjectOrderJson,
-    ).toBe("[21,2]");
+    ).toBe("[2,1]");
     expect(
       db
         .select({
@@ -677,7 +724,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectBreakdownVersions)
         .where(eq(schema.projectBreakdownVersions.id, versionId))
         .get()?.newSubjectsJson,
-    ).toBe("[21,2]");
+    ).toBe("[2,1]");
     const breakdown = db
       .select({
         subjectId: schema.projectBreakdownRows.subjectId,
@@ -686,9 +733,9 @@ describe("工事ごとの科目番号の付け替え", () => {
       .from(schema.projectBreakdownRows)
       .where(eq(schema.projectBreakdownRows.versionId, versionId))
       .all();
-    expect(breakdown.map((row) => row.subjectId)).toEqual([21, 2]);
+    expect(breakdown.map((row) => row.subjectId)).toEqual([2, 1]);
     expect(JSON.parse(breakdown[0].wrapUpperSource)).toEqual({
-      subjectId: 21,
+      subjectId: 2,
     });
     const calcJson = db
       .select({ lowerJson: schema.projectGeneralSheets.lowerJson })
@@ -699,32 +746,32 @@ describe("工事ごとの科目番号の付け替え", () => {
       JSON.parse(calcJson ?? "[]")[0].details.map(
         (detail: { subjectId: number }) => detail.subjectId,
       ),
-    ).toEqual([21, 2]);
+    ).toEqual([2, 1]);
     const roomJson = db
       .select({ lowerJson: schema.projectRoomSheets.lowerJson })
       .from(schema.projectRoomSheets)
       .where(eq(schema.projectRoomSheets.estimateRowId, estimateRowId))
       .get()?.lowerJson;
-    expect(JSON.parse(roomJson ?? "[]")[0].details[0].subjectId).toBe(21);
+    expect(JSON.parse(roomJson ?? "[]")[0].details[0].subjectId).toBe(2);
     const frameJson = db
       .select({ lowerJson: schema.projectFrameSheets.lowerJson })
       .from(schema.projectFrameSheets)
       .where(eq(schema.projectFrameSheets.estimateRowId, estimateRowId))
       .get()?.lowerJson;
-    expect(JSON.parse(frameJson ?? "[]")[0].details[0].subjectId).toBe(21);
+    expect(JSON.parse(frameJson ?? "[]")[0].details[0].subjectId).toBe(2);
     const pitJson = db
       .select({ lowerJson: schema.projectPitSheets.lowerJson })
       .from(schema.projectPitSheets)
       .where(eq(schema.projectPitSheets.estimateRowId, estimateRowId))
       .get()?.lowerJson;
-    expect(JSON.parse(pitJson ?? "[]")[0].details[0].subjectId).toBe(21);
+    expect(JSON.parse(pitJson ?? "[]")[0].details[0].subjectId).toBe(2);
     expect(
       db
         .select({ columnsJson: schema.projectMiscSheets.columnsJson })
         .from(schema.projectMiscSheets)
         .where(eq(schema.projectMiscSheets.projectId, projectId))
         .get()?.columnsJson,
-    ).toBe('[{"subjectId":21}]');
+    ).toBe('[{"subjectId":2}]');
     const furniture = db
       .select({
         rowsJson: schema.projectFurnitureSheets.rowsJson,
@@ -733,33 +780,33 @@ describe("工事ごとの科目番号の付け替え", () => {
       .from(schema.projectFurnitureSheets)
       .where(eq(schema.projectFurnitureSheets.projectId, projectId))
       .get();
-    expect(JSON.parse(furniture?.rowsJson ?? "[]")[0].subjectId).toBe(21);
-    expect(JSON.parse(furniture?.columnsJson ?? "[]")[0].subjectId).toBe(2);
+    expect(JSON.parse(furniture?.rowsJson ?? "[]")[0].subjectId).toBe(2);
+    expect(JSON.parse(furniture?.columnsJson ?? "[]")[0].subjectId).toBe(1);
     expect(
       db
         .select({ estimateJson: schema.projectFireproofSheets.estimateJson })
         .from(schema.projectFireproofSheets)
         .where(eq(schema.projectFireproofSheets.projectId, projectId))
         .get()?.estimateJson,
-    ).toBe('[{"detail":{"subjectId":21}}]');
+    ).toBe('[{"detail":{"subjectId":2}}]');
     expect(
       db
         .select({ rowsJson: schema.projectFormworkRuns.rowsJson })
         .from(schema.projectFormworkRuns)
         .where(eq(schema.projectFormworkRuns.projectId, projectId))
         .get()?.rowsJson,
-    ).toBe('[{"subjectId":21}]');
+    ).toBe('[{"subjectId":2}]');
     if (definitionId !== undefined) {
       const dataJson = db
         .select({ dataJson: schema.calcSheetEntries.dataJson })
         .from(schema.calcSheetEntries)
         .where(eq(schema.calcSheetEntries.projectId, projectId))
         .get()?.dataJson;
-      expect(JSON.parse(dataJson ?? "{}").details[0].subjectId).toBe(21);
+      expect(JSON.parse(dataJson ?? "{}").details[0].subjectId).toBe(2);
     }
   });
 
-  it("工事の科目行がない物件では基本番号を計算JSONと内訳にも反映する", () => {
+  it("工事科目マスターがない物件は基本科目保存前に写し、既存参照を保つ", () => {
     const projectId = createProject(db, "基本科目を使う工事").id;
     db.delete(schema.projectMasters)
       .where(
@@ -769,6 +816,10 @@ describe("工事ごとの科目番号の付け替え", () => {
         ),
       )
       .run();
+    const originalSubjects = listSubjects(db).map(({ id, name }) => ({
+      id,
+      name,
+    }));
     const estimateRowId = addProjectCalcSheet(db, projectId, [1]);
     const versionId = addBreakdownVersion(db, projectId, [1]);
     db.insert(schema.projectBreakdownSettings)
@@ -778,6 +829,10 @@ describe("工事ごとの科目番号の付け替え", () => {
       .values({ versionId, rowKind: "subject", subjectId: 1 })
       .run();
     addProjectDetail(db, projectId, 1, "基本番号の明細");
+    const runId = addAggregateRun(db, projectId);
+    db.insert(schema.projectAggregateItems)
+      .values({ runId, masterKey: "snapshot:basic", subjectId: 1 })
+      .run();
 
     const basicRows = drafts(db);
     saveSubjects(db, [
@@ -795,24 +850,47 @@ describe("工事ごとの科目番号の付け替え", () => {
 
     expect(
       db
+        .select({
+          number: schema.projectMasters.number,
+          name: schema.projectMasters.name,
+        })
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+          ),
+        )
+        .orderBy(asc(schema.projectMasters.number))
+        .all(),
+    ).toEqual(originalSubjects.map(({ id, name }) => ({ number: id, name })));
+    expect(
+      listProjectSubjects(db, projectId).map(({ id, name }) => ({ id, name })),
+    ).toEqual(originalSubjects);
+    expect(
+      listSubjects(db).find((subject) => subject.name === basicRows[0].name)
+        ?.id,
+    ).toBe(2);
+    expect(
+      db
         .select({ subjectId: schema.mDetails.subjectId })
         .from(schema.mDetails)
         .where(eq(schema.mDetails.name, "基本番号の明細"))
         .get()?.subjectId,
-    ).toBe(2);
+    ).toBe(1);
     const calcJson = db
       .select({ lowerJson: schema.projectGeneralSheets.lowerJson })
       .from(schema.projectGeneralSheets)
       .where(eq(schema.projectGeneralSheets.estimateRowId, estimateRowId))
       .get()?.lowerJson;
-    expect(JSON.parse(calcJson ?? "[]")[0].details[0].subjectId).toBe(2);
+    expect(JSON.parse(calcJson ?? "[]")[0].details[0].subjectId).toBe(1);
     expect(
       db
         .select({ subjectId: schema.projectBreakdownRows.subjectId })
         .from(schema.projectBreakdownRows)
         .where(eq(schema.projectBreakdownRows.versionId, versionId))
         .get()?.subjectId,
-    ).toBe(2);
+    ).toBe(1);
     expect(
       db
         .select({
@@ -821,7 +899,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectBreakdownSettings)
         .where(eq(schema.projectBreakdownSettings.projectId, projectId))
         .get()?.subjectOrderJson,
-    ).toBe("[2]");
+    ).toBe("[1]");
     expect(
       db
         .select({
@@ -830,41 +908,111 @@ describe("工事ごとの科目番号の付け替え", () => {
         .from(schema.projectBreakdownVersions)
         .where(eq(schema.projectBreakdownVersions.id, versionId))
         .get()?.newSubjectsJson,
-    ).toBe("[2]");
-  });
-
-  it("移行後は外部キーを有効にしていてもm_detailsの未登録番号へ付け替えられる", () => {
-    const projectId = createProject(db, "外部キー確認工事").id;
-    expect(
-      db.get(sql`PRAGMA foreign_keys`) as { foreign_keys: number },
-    ).toEqual({ foreign_keys: 1 });
-    const foreignKeys = db.all(
-      sql`PRAGMA foreign_key_list(m_details)`,
-    ) as unknown as { from: string; table: string; to: string }[];
-    expect(
-      foreignKeys.some(
-        (foreignKey) =>
-          foreignKey.from === "subject_id" && foreignKey.table === "m_subjects",
-      ),
-    ).toBe(false);
-    expect(
-      foreignKeys.some(
-        (foreignKey) =>
-          foreignKey.from === "project_id" &&
-          foreignKey.table === "projects" &&
-          foreignKey.to === "id",
-      ),
-    ).toBe(true);
-    addProjectDetail(db, projectId, 900, "未登録科目番号の明細");
-
-    remapProjectSubjectNumbers(db, projectId, new Map([[900, 901]]));
-
+    ).toBe("[1]");
     expect(
       db
-        .select({ subjectId: schema.mDetails.subjectId })
-        .from(schema.mDetails)
-        .where(eq(schema.mDetails.name, "未登録科目番号の明細"))
+        .select({ subjectId: schema.projectAggregateItems.subjectId })
+        .from(schema.projectAggregateItems)
+        .where(eq(schema.projectAggregateItems.masterKey, "snapshot:basic"))
         .get()?.subjectId,
-    ).toBe(901);
+    ).toBe(1);
+  });
+
+  it("起動時に工事マスターを写しても基本科目の再採番で工事側は変わらない", () => {
+    const directory = mkdtempSync(join(tmpdir(), "sekisan-startup-masters-"));
+    const filePath = join(directory, "sekisan.db");
+    const sqlite = new Database(filePath);
+    let sqliteClosed = false;
+    try {
+      sqlite.pragma("foreign_keys = ON");
+      applyMigrations(sqlite);
+      const existingDb = drizzle(sqlite, { schema }) as AppDatabase;
+      seedInitialData(existingDb);
+      const projectId = createProject(existingDb, "古い工事").id;
+      existingDb
+        .delete(schema.projectMasters)
+        .where(eq(schema.projectMasters.projectId, projectId))
+        .run();
+      existingDb.run(
+        sql`UPDATE m_subjects SET display_order = CASE id WHEN 1 THEN 1 WHEN 2 THEN 0 ELSE display_order END`,
+      );
+      const originalSubjects = existingDb
+        .select({ id: schema.mSubjects.id, name: schema.mSubjects.name })
+        .from(schema.mSubjects)
+        .orderBy(asc(schema.mSubjects.displayOrder), asc(schema.mSubjects.id))
+        .all();
+      sqlite.close();
+      sqliteClosed = true;
+
+      const initializedDb = initDatabase(filePath);
+      const projectSubjects = initializedDb
+        .select({
+          number: schema.projectMasters.number,
+          sourceNumber: schema.projectMasters.sourceNumber,
+          name: schema.projectMasters.name,
+        })
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+          ),
+        )
+        .orderBy(asc(schema.projectMasters.displayOrder))
+        .all();
+      expect(projectSubjects).toEqual(
+        originalSubjects.map((subject) => ({
+          number: subject.id,
+          sourceNumber: subject.id,
+          name: subject.name,
+        })),
+      );
+      expect(
+        [
+          ...new Set(
+            initializedDb
+              .select({ kind: schema.projectMasters.kind })
+              .from(schema.projectMasters)
+              .where(eq(schema.projectMasters.projectId, projectId))
+              .all()
+              .map((row) => row.kind),
+          ),
+        ].sort(),
+      ).toEqual([
+        "aggregationParts",
+        "formworkCategories",
+        "materialCategories",
+        "pickupParts",
+        "subjects",
+        "units",
+      ]);
+      expect(
+        listSubjects(initializedDb).find(
+          (subject) => subject.name === originalSubjects[0].name,
+        )?.id,
+      ).toBe(1);
+      expect(renumberSubjects(initializedDb)).toBe(false);
+      expect(
+        initializedDb
+          .select({
+            number: schema.projectMasters.number,
+            sourceNumber: schema.projectMasters.sourceNumber,
+            name: schema.projectMasters.name,
+          })
+          .from(schema.projectMasters)
+          .where(
+            and(
+              eq(schema.projectMasters.projectId, projectId),
+              eq(schema.projectMasters.kind, "subjects"),
+            ),
+          )
+          .orderBy(asc(schema.projectMasters.displayOrder))
+          .all(),
+      ).toEqual(projectSubjects);
+    } finally {
+      if (!sqliteClosed) sqlite.close();
+      closeDatabase();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

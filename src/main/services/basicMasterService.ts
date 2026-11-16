@@ -16,6 +16,7 @@ import {
   validateBasicMaster,
 } from "../../core/masters/basicMaster";
 import type { BasicMasters, SaveBasicMasterResult } from "../../shared/types";
+import { ensureProjectsOwnMasters } from "./projectMasterCopyService";
 
 /** 画面に出す並びは、人が入力した並び（表示順）をそのまま使う */
 export function listBasicMasters(db: AppDatabase): BasicMasters {
@@ -71,6 +72,7 @@ export function saveBasicMaster(
   kind: BasicMasterKind,
   rows: BasicMasterRow[],
 ): SaveBasicMasterResult {
+  ensureProjectsOwnMasters(db);
   const errors = validateBasicMaster(kind, rows);
   if (errors.length > 0) return { masters: listBasicMasters(db), errors };
 

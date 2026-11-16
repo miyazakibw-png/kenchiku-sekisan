@@ -1,11 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
-import {
-  mDetails,
-  mFinishAssemblyItems,
-  mSubjects,
-  projectMasters,
-} from "../db/schema";
+import { mDetails, mFinishAssemblyItems, projectMasters } from "../db/schema";
 import type {
   BasicMasterKind,
   BasicMasterRow,
@@ -23,22 +18,18 @@ import type {
 } from "../../shared/types";
 import { listBasicMasters, saveBasicMaster } from "./basicMasterService";
 import {
+  copyBasicMastersToProject,
+  PROJECT_MASTER_KINDS,
+} from "./projectMasterCopyService";
+import type { ProjectMasterKind } from "./projectMasterCopyService";
+import {
   listSubjects,
   remapProjectSubjectMasterNumbers,
   subjectCode,
 } from "./subjectService";
 
-/** 工事ごとに持てるマスターの種類 */
-export const PROJECT_MASTER_KINDS = [
-  "subjects",
-  "pickupParts",
-  "materialCategories",
-  "units",
-  "aggregationParts",
-  "formworkCategories",
-] as const;
-
-export type ProjectMasterKind = (typeof PROJECT_MASTER_KINDS)[number];
+export { copyBasicMastersToProject, PROJECT_MASTER_KINDS };
+export type { ProjectMasterKind };
 
 interface ProjectMasterRow {
   number: number;
@@ -399,64 +390,4 @@ export function saveProjectSubjects(
     subjects: listProjectSubjects(db, projectId),
     blockedDeletes: blocked.map((subject) => subject.name),
   };
-}
-
-/**
- * 基準（基本）マスターを工事へ複製する。
- * すでに工事側にある種類は、上書き指定がなければそのまま残す。
- */
-export function copyBasicMastersToProject(
-  db: AppDatabase,
-  projectId: number,
-  overwrite = false,
-): ProjectMasterKind[] {
-  const owned = new Set(projectMasterKinds(db, projectId));
-  const copied: ProjectMasterKind[] = [];
-  const basic = listBasicMasters(db);
-
-  PROJECT_MASTER_KINDS.forEach((kind) => {
-    if (owned.has(kind) && !overwrite) return;
-    if (kind === "subjects") {
-      const subjects = db
-        .select()
-        .from(mSubjects)
-        .orderBy(asc(mSubjects.displayOrder), asc(mSubjects.id))
-        .all();
-      if (subjects.length === 0) return;
-      replaceRows(
-        db,
-        projectId,
-        kind,
-        subjects.map((subject) => ({
-          number: subject.id,
-          sourceNumber: subject.id,
-          name: subject.name,
-          note: subject.note,
-          skipPart2: subject.skipPart2,
-          aggregateOrder: subject.aggregateOrder,
-          displayOrder: 0,
-        })),
-      );
-      copied.push(kind);
-      return;
-    }
-    const rows = basic[kind];
-    if (rows.length === 0) return;
-    replaceRows(
-      db,
-      projectId,
-      kind,
-      rows.map((row) => ({
-        number: row.id,
-        sourceNumber: row.id,
-        name: row.name,
-        note: row.note,
-        skipPart2: 0,
-        aggregateOrder: 1,
-        displayOrder: 0,
-      })),
-    );
-    copied.push(kind);
-  });
-  return copied;
 }

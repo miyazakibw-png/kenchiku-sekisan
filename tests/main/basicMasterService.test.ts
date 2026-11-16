@@ -1,10 +1,13 @@
 import Database from "better-sqlite3";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrations } from "../../src/main/db/migrations";
 import * as schema from "../../src/main/db/schema";
 import { seedInitialData } from "../../src/main/db/seed";
 import type { AppDatabase } from "../../src/main/db";
+import { createProject } from "../../src/main/services/projectService";
+import { listProjectBasicMasters } from "../../src/main/services/projectMasterService";
 import {
   listBasicMasters,
   saveBasicMaster,
@@ -58,6 +61,48 @@ describe("その他マスター", () => {
     expect(after.map((row) => row.id)).toEqual([1, 2, 3, 4, 10]);
     expect(after[0].name).toBe("仕上げ");
     expect(after[4].name).toBe("仮設");
+  });
+
+  it("単位マスターを持たない工事は保存前の基本単位を写す", () => {
+    const project = createProject(db, "単位を使う工事");
+    db.delete(schema.projectMasters)
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, project.id),
+          eq(schema.projectMasters.kind, "units"),
+        ),
+      )
+      .run();
+    const unitsBefore = listBasicMasters(db).units;
+    const addedUnit = {
+      id: nextBasicMasterId("units", unitsBefore),
+      name: "追加単位",
+      note: "",
+    };
+    const existingProject = createProject(db, "単位を持っている工事");
+    db.update(schema.projectMasters)
+      .set({ name: "工事専用単位" })
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, existingProject.id),
+          eq(schema.projectMasters.kind, "units"),
+          eq(schema.projectMasters.number, unitsBefore[0].id),
+        ),
+      )
+      .run();
+    const changedUnits = unitsBefore.map((row, index) =>
+      index === 0 ? { ...row, name: "基本変更単位" } : row,
+    );
+
+    const result = saveBasicMaster(db, "units", [addedUnit, ...changedUnits]);
+
+    expect(result.errors).toEqual([]);
+    expect(listProjectBasicMasters(db, project.id).units).toEqual(unitsBefore);
+    expect(
+      listProjectBasicMasters(db, existingProject.id).units.find(
+        (row) => row.id === unitsBefore[0].id,
+      )?.name,
+    ).toBe("工事専用単位");
   });
 
   it("明細用部位は備考も保存する", () => {

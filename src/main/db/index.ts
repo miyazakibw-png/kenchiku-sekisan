@@ -7,6 +7,7 @@ import {
 import { migrations } from "./migrations";
 import * as schema from "./schema";
 import { seedInitialData } from "./seed";
+import { ensureProjectsOwnMasters } from "../services/projectMasterCopyService";
 import { renumberSubjects } from "../services/subjectService";
 
 export type AppDatabase = BetterSQLite3Database<typeof schema>;
@@ -38,6 +39,7 @@ export function initDatabase(filePath: string): AppDatabase {
   applyMigrations(sqlite);
   db = drizzle(sqlite, { schema });
   seedInitialData(db);
+  ensureProjectsOwnMasters(db);
   // 途中で科目を挿し込んだ古いデータは、科目IDを行位置に合わせ直す
   renumberSubjects(db);
   return db;

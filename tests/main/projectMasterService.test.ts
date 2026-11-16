@@ -140,11 +140,7 @@ describe("工事別の基準マスター", () => {
       otherProjectRows,
     );
 
-    const result = syncProjectBasicMasterToBasic(
-      db,
-      project.id,
-      "pickupParts",
-    );
+    const result = syncProjectBasicMasterToBasic(db, project.id, "pickupParts");
 
     expect(result.errors).toEqual([]);
     expect(result.masters.pickupParts).toEqual(projectRows);
@@ -270,7 +266,7 @@ describe("基本マスターの科目IDを付け替えたときの工事側", ()
     db = createDb();
   });
 
-  it("工事の科目マスターも同じ番号に付け替わる", () => {
+  it("基本マスターの行追加後も工事側の科目番号と名称は変わらない", () => {
     const projectId = createProject(db, "科目ID工事").id;
     copyBasicMastersToProject(db, projectId, true);
     const before = listProjectSubjects(db, projectId);
@@ -298,11 +294,12 @@ describe("基本マスターの科目IDを付け替えたときの工事側", ()
     ]);
 
     const after = listProjectSubjects(db, projectId);
-    const moved = after.find((subject) => subject.name === before[0].name);
-    const basic = listSubjects(db).find(
-      (subject) => subject.name === before[0].name,
+    expect(after.map(({ id, name }) => ({ id, name }))).toEqual(
+      before.map(({ id, name }) => ({ id, name })),
     );
-    expect(moved?.id).toBe(basic?.id);
+    expect(
+      listSubjects(db).find((subject) => subject.name === before[0].name)?.id,
+    ).toBe(before[0].id + 1);
   });
 });
 
@@ -313,7 +310,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
     db = createDb();
   });
 
-  it("工事だけの科目は基本マスターに科目を足しても番号が変わらない（同じ工事の基本由来科目とぶつかるときだけ移る）", () => {
+  it("工事だけの科目は基本マスターに科目を足しても番号が変わらない", () => {
     const projectId = createProject(db, "工事専用科目").id;
     copyBasicMastersToProject(db, projectId, true);
     const projectRows: SubjectDraft[] = listProjectSubjects(db, projectId).map(
