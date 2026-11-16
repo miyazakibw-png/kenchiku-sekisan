@@ -25,6 +25,7 @@ import { buildExport } from "../../src/main/services/breakdownExportService";
 import type { EstimateRowDraft } from "../../src/shared/types";
 import {
   BREAKDOWN_LAYOUT,
+  applyTextSettingsToRows,
   relayoutBreakdownRows,
 } from "../../src/core/breakdown/breakdown";
 
@@ -377,5 +378,54 @@ describe("内訳書", () => {
         rightTitle: "前の回",
       }).content,
     );
+  });
+
+  it("比較のExcelでは確定回に今の文字設定を当ててから出す", () => {
+    const view = transferBreakdown(db, projectId);
+    const savedRightRows = view.rows.map((row) =>
+      row.rowKind === "detail"
+        ? {
+            ...row,
+            partName: "EVﾋﾟｯﾄ床",
+            nameLower: "EVﾋﾟｯﾄ床 ｱﾙﾐﾄﾞｱ",
+            descriptionLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+            unit: "ヶ所",
+          }
+        : row,
+    );
+    const settings = {
+      ...view.settings,
+      nameWidth: "full",
+      replacements: [{ from: "*", to: "×" }],
+      unitReplacements: [{ from: "ヶ所", to: "か所" }],
+    };
+    const convertedRightRows = applyTextSettingsToRows(
+      relayoutBreakdownRows(savedRightRows, settings),
+      settings,
+    );
+    const actual = buildExport(
+      "excelCompare",
+      view.rows,
+      settings,
+      "港区計画",
+      {
+        rows: savedRightRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      },
+    );
+    const expected = buildExport(
+      "excelCompare",
+      view.rows,
+      settings,
+      "港区計画",
+      {
+        rows: convertedRightRows,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      },
+    );
+
+    expect(actual.content).toEqual(expected.content);
   });
 });

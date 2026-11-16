@@ -17,6 +17,7 @@ import type {
 } from "@shared/types";
 import {
   amountOf,
+  applyTextSettingsToRows,
   BREAKDOWN_LAYOUT,
   NAME_PATTERN,
   relayoutBreakdownRows,
@@ -635,9 +636,13 @@ export default function BreakdownPage({ project, onBack }: Props): JSX.Element {
     () => toCompareBlocks(leftRows, settings.layout),
     [leftRows, settings.layout],
   );
+  const rightDisplayRows = useMemo(
+    () => applyTextSettingsToRows(rightRows, settings),
+    [rightRows, settings],
+  );
   const rightBlocks = useMemo(
-    () => toCompareBlocks(rightRows, settings.layout),
-    [rightRows, settings.layout],
+    () => toCompareBlocks(rightDisplayRows, settings.layout),
+    [rightDisplayRows, settings.layout],
   );
   // 工種科目どうしで並びを合わせてから、明細どうしを突き合わせる
   const diffs = useMemo(

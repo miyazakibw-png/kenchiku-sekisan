@@ -13,6 +13,7 @@ import {
 } from "../../core/breakdown/spreadsheet";
 import { toCompareWorkbook } from "../../core/breakdown/compareSheet";
 import {
+  applyTextSettingsToRows,
   relayoutBreakdownRows,
   unwrapBreakdownRows,
   withSubjectSubtotals,
@@ -96,7 +97,13 @@ export function buildExport(
       content: toCompareWorkbook({
         left: withSubjectSubtotals(coreRows),
         right: withSubjectSubtotals(
-          relayoutBreakdownRows((compare?.rows ?? []).map(toCoreRow), settings),
+          applyTextSettingsToRows(
+            relayoutBreakdownRows(
+              (compare?.rows ?? []).map(toCoreRow),
+              settings,
+            ),
+            settings,
+          ),
         ),
         layout: settings.layout,
         leftTitle: compare?.leftTitle ?? "新しい内訳書",

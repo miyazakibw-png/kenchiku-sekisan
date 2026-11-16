@@ -3,6 +3,7 @@ import {
   BREAKDOWN_LAYOUT,
   DEFAULT_BREAKDOWN_SETTINGS,
   NAME_PATTERN,
+  applyTextSettingsToRows,
   applyReplacements,
   buildBreakdownRows,
   buildGroupedBreakdownRows,
@@ -1554,6 +1555,82 @@ describe("文字の変換", () => {
 
   it("摘要の文字を置き換える", () => {
     expect(applyReplacements("21*18", [{ from: "*", to: "✕" }])).toBe("21✕18");
+  });
+
+  it("比較では確定回の明細に今の文字設定を当て、部位と保存行は変えない", () => {
+    const built = buildBreakdownRows(
+      [
+        item({
+          partName: "EVﾋﾟｯﾄ床",
+          name: "ｱﾙﾐﾄﾞｱ",
+          descriptionUpper: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+          descriptionLower: "15×10",
+          unit: "ヶ所",
+        }),
+      ],
+      subjects,
+      {
+        ...DEFAULT_BREAKDOWN_SETTINGS,
+        layout: BREAKDOWN_LAYOUT.oneLine,
+        namePattern: NAME_PATTERN.withPart,
+      },
+    );
+    const rows = built.map((row) =>
+      row.rowKind === "subject"
+        ? {
+            ...row,
+            nameLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+            descriptionUpper: "15*10",
+            unit: "ヶ所",
+          }
+        : {
+            ...row,
+            nameUpper: "EVﾋﾟｯﾄ床 ｱﾙﾐﾄﾞｱ",
+            nameLower: "EVﾋﾟｯﾄ床 ｱﾙﾐﾄﾞｱ",
+            descriptionUpper: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+            descriptionLower: "15×10",
+            unit: "ヶ所",
+          },
+    );
+    const detail = rows.find((row) => row.rowKind === "detail");
+    expect(detail).toBeDefined();
+    rows.push({
+      ...detail!,
+      rowKind: "note",
+      quantity: null,
+      unit: "",
+    });
+    const original = structuredClone(rows);
+    const converted = applyTextSettingsToRows(rows, {
+      replacements: [{ from: "*", to: "×" }],
+      unitReplacements: [{ from: "ヶ所", to: "か所" }],
+      nameWidth: "full",
+    });
+
+    expect(converted).toHaveLength(rows.length);
+    expect(converted).not.toBe(rows);
+    converted.forEach((row, index) => expect(row).not.toBe(rows[index]));
+    expect(rows).toEqual(original);
+    expect(converted[0].nameLower).toBe("ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10");
+    expect(converted[0].descriptionUpper).toBe("15*10");
+    expect(converted[0].unit).toBe("ヶ所");
+
+    const convertedDetail = converted.find((row) => row.rowKind === "detail");
+    expect(convertedDetail).toMatchObject({
+      partName: "EVﾋﾟｯﾄ床",
+      nameUpper: "EVﾋﾟｯﾄ床 アルミドア",
+      nameLower: "EVﾋﾟｯﾄ床 アルミドア",
+      descriptionUpper: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10",
+      descriptionLower: "15×10",
+      unit: "か所",
+    });
+    const convertedNote = converted[converted.length - 1];
+    expect(convertedNote.rowKind).toBe("note");
+    expect(convertedNote).toMatchObject({
+      descriptionUpper: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10",
+      descriptionLower: "15×10",
+      unit: "",
+    });
   });
 });
 

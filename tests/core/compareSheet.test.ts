@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { BREAKDOWN_LAYOUT } from "../../src/core/breakdown/breakdown";
+import {
+  applyTextSettingsToRows,
+  BREAKDOWN_LAYOUT,
+} from "../../src/core/breakdown/breakdown";
 import type { BreakdownRow } from "../../src/core/breakdown/breakdown";
+import {
+  toCompareBlocks,
+  compareBlocksBySubject,
+} from "../../src/core/breakdown/compareBlocks";
 import {
   toCompareSheet,
   toCompareWorkbook,
@@ -81,6 +88,33 @@ describe("比較のエクセル掃き出し", () => {
     expect(line[0]?.mark).toBe("plain");
     // 右側は色を付けない
     expect(line[10]?.mark).toBe("plain");
+  });
+
+  it("確定回の古い摘要・単位を今の設定に直してから比べる", () => {
+    const settings = {
+      replacements: [{ from: "*", to: "×" }],
+      unitReplacements: [{ from: "ヶ所", to: "か所" }],
+      nameWidth: "raw",
+    };
+    const left = row({
+      descriptionLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10",
+      unit: "か所",
+    });
+    const savedRight = row({
+      descriptionLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+      unit: "ヶ所",
+    });
+    const right = applyTextSettingsToRows([savedRight], settings);
+    const diffs = compareBlocksBySubject(
+      toCompareBlocks([left], layout),
+      toCompareBlocks(right, layout),
+    );
+    const detail = diffs.find((diff) => diff.leftIndex !== null);
+
+    expect(right[0]?.descriptionLower).toBe("ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10");
+    expect(right[0]?.unit).toBe("か所");
+    expect(detail?.changedHalves).toEqual([]);
+    expect(detail?.onlyLeft).toBe(false);
   });
 
   it("片側にしかない明細は左側に色が付く", () => {

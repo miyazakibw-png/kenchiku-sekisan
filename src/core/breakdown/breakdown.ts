@@ -1362,6 +1362,47 @@ type BreakdownRowLike = Omit<
   wrapOrderUpper?: number;
 };
 
+/** 比較のとき、確定回の明細にも今の文字の設定（置き換え・単位・全角半角）を当てる。保存してある行は変えない */
+export function applyTextSettingsToRows<T extends BreakdownRowLike>(
+  rows: readonly T[],
+  settings: {
+    replacements: readonly TextReplacement[];
+    unitReplacements: readonly TextReplacement[];
+    nameWidth: string;
+  },
+): T[] {
+  const applyNameWidth = (value: string, partName: string): string => {
+    if (partName === "" || !value.includes(partName)) {
+      return applyWidth(value, settings.nameWidth);
+    }
+    return value
+      .split(partName)
+      .map((part) => applyWidth(part, settings.nameWidth))
+      .join(partName);
+  };
+
+  return rows.map((row) => {
+    if (row.rowKind !== "detail" && row.rowKind !== "note") return { ...row };
+    return {
+      ...row,
+      nameUpper: applyNameWidth(row.nameUpper, row.partName),
+      nameLower: applyNameWidth(row.nameLower, row.partName),
+      descriptionUpper: applyReplacements(
+        row.descriptionUpper,
+        settings.replacements,
+      ),
+      descriptionLower: applyReplacements(
+        row.descriptionLower,
+        settings.replacements,
+      ),
+      unit:
+        row.unit === ""
+          ? row.unit
+          : replaceUnit(row.unit, settings.unitReplacements),
+    };
+  });
+}
+
 /**
  * 保存済みの明細行を、現在の書式と名称欄の設定に合わせて並べ直す。
  * 集計から作り直さず、確定した回の行データだけを組み替える。
