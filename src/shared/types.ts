@@ -61,6 +61,8 @@ export interface Subject {
 /** 工種科目マスター画面の1行。id が null の行は新規追加 */
 export interface SubjectDraft {
   id: number | null;
+  /** 工事専用マスターで変更する科目ID */
+  newId?: number;
   name: string;
   skipPart2: number;
   aggregateOrder: number;
@@ -73,6 +75,8 @@ export interface SaveSubjectsResult {
   subjects: Subject[];
   /** 明細が登録済みで削除できなかった科目名 */
   blockedDeletes: string[];
+  /** 工事専用科目のID重複・不正 */
+  idErrors?: string[];
 }
 
 /** 建具表の1行 */

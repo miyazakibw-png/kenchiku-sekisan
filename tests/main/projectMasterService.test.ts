@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrations } from "../../src/main/db/migrations";
@@ -24,6 +25,7 @@ import {
 } from "../../src/main/services/basicMasterService";
 import {
   listSubjects,
+  renumberSubjects,
   saveSubjects,
 } from "../../src/main/services/subjectService";
 import { listMasterOptions } from "../../src/main/services/detailService";
@@ -311,7 +313,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
     db = createDb();
   });
 
-  it("工事だけの科目は基本マスターとぶつからない番号へ寄る", () => {
+  it("工事だけの科目は基本マスターに科目を足しても番号が変わらない（同じ工事の基本由来科目とぶつかるときだけ移る）", () => {
     const projectId = createProject(db, "工事専用科目").id;
     copyBasicMastersToProject(db, projectId, true);
     const projectRows: SubjectDraft[] = listProjectSubjects(db, projectId).map(
@@ -364,12 +366,315 @@ describe("工事だけの科目がある状態での付け替え", () => {
       },
     ]);
 
-    const basicIds = new Set(listSubjects(db).map((subject) => subject.id));
     const after = listProjectSubjects(db, projectId);
     const only = after.find((subject) => subject.name === "工事だけの科目");
     expect(only).toBeDefined();
-    expect(basicIds.has(only?.id ?? 0)).toBe(false);
+    expect(only?.id).toBe(onlyBefore?.id);
     const numbers = after.map((subject) => subject.id);
     expect(new Set(numbers).size).toBe(numbers.length);
+  });
+
+  it("工事の科目IDを変えると、その番号の明細だけを一緒に変えて次回の再採番でも戻さない", () => {
+    const projectId = createProject(db, "科目ID変更工事").id;
+    const initial = saveProjectSubjects(db, projectId, [
+      ...subjectDrafts(db, projectId),
+      {
+        id: null,
+        name: "工事専用46",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+    ]);
+    const added = initial.subjects.find(
+      (subject) => subject.name === "工事専用46",
+    );
+    expect(added?.id).toBe(20);
+    db.update(schema.projectMasters)
+      .set({ number: 46, sourceNumber: 19 })
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+          eq(schema.projectMasters.number, 20),
+        ),
+      )
+      .run();
+    db.insert(schema.mDetails)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 46,
+        name: "移動する明細",
+      })
+      .run();
+    db.insert(schema.mDetails)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 20,
+        name: "元からあった明細",
+      })
+      .run();
+
+    const result = saveProjectSubjects(
+      db,
+      projectId,
+      subjectDrafts(db, projectId).map((row) =>
+        row.id === 46 ? { ...row, newId: 20 } : row,
+      ),
+    );
+
+    expect(result.idErrors).toBeUndefined();
+    expect(
+      db
+        .select({ subjectId: schema.mDetails.subjectId })
+        .from(schema.mDetails)
+        .where(eq(schema.mDetails.name, "移動する明細"))
+        .get()?.subjectId,
+    ).toBe(20);
+    expect(
+      db
+        .select({ subjectId: schema.mDetails.subjectId })
+        .from(schema.mDetails)
+        .where(eq(schema.mDetails.name, "元からあった明細"))
+        .get()?.subjectId,
+    ).toBe(20);
+    expect(
+      db
+        .select({ sourceNumber: schema.projectMasters.sourceNumber })
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+            eq(schema.projectMasters.number, 20),
+          ),
+        )
+        .get()?.sourceNumber,
+    ).toBeNull();
+    expect(renumberSubjects(db)).toBe(false);
+    expect(
+      listProjectSubjects(db, projectId).find(
+        (subject) => subject.name === "工事専用46",
+      )?.id,
+    ).toBe(20);
+  });
+
+  it("工事の科目IDの入れ替えは参照も同時に入れ替える", () => {
+    const projectId = createProject(db, "科目ID入替工事").id;
+    db.insert(schema.mDetails)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 5,
+        name: "科目5の明細",
+      })
+      .run();
+    db.insert(schema.mDetails)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 6,
+        name: "科目6の明細",
+      })
+      .run();
+
+    const result = saveProjectSubjects(
+      db,
+      projectId,
+      subjectDrafts(db, projectId).map((row) =>
+        row.id === 5
+          ? { ...row, newId: 6 }
+          : row.id === 6
+            ? { ...row, newId: 5 }
+            : row,
+      ),
+    );
+
+    expect(result.idErrors).toBeUndefined();
+    expect(
+      db
+        .select({ subjectId: schema.mDetails.subjectId })
+        .from(schema.mDetails)
+        .where(eq(schema.mDetails.name, "科目5の明細"))
+        .get()?.subjectId,
+    ).toBe(6);
+    expect(
+      db
+        .select({ subjectId: schema.mDetails.subjectId })
+        .from(schema.mDetails)
+        .where(eq(schema.mDetails.name, "科目6の明細"))
+        .get()?.subjectId,
+    ).toBe(5);
+  });
+
+  it("科目IDの重複・不正時は保存せず現在の行を返す", () => {
+    const projectId = createProject(db, "科目ID重複工事").id;
+    const before = subjectDrafts(db, projectId);
+    const first = before[0];
+    const second = before[1];
+    const masterRows = db
+      .select()
+      .from(schema.projectMasters)
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+        ),
+      )
+      .all();
+    const duplicated = saveProjectSubjects(
+      db,
+      projectId,
+      before.map((row, index) =>
+        index === 0 ? { ...row, newId: second.id as number } : row,
+      ),
+    );
+
+    expect(duplicated.idErrors).toContain(
+      `科目ID ${second.id} が2つあります（${first.name}・${second.name}）`,
+    );
+    expect(duplicated.subjects).toEqual(listProjectSubjects(db, projectId));
+    expect(
+      db
+        .select()
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+          ),
+        )
+        .all(),
+    ).toEqual(masterRows);
+
+    const invalid = saveProjectSubjects(
+      db,
+      projectId,
+      before.map((row, index) => (index === 0 ? { ...row, newId: 0 } : row)),
+    );
+    expect(invalid.idErrors?.[0]).toContain("正の整数");
+    expect(
+      db
+        .select()
+        .from(schema.projectMasters)
+        .where(
+          and(
+            eq(schema.projectMasters.projectId, projectId),
+            eq(schema.projectMasters.kind, "subjects"),
+          ),
+        )
+        .all(),
+    ).toEqual(masterRows);
+  });
+
+  it("参照の更新に失敗したら科目と参照の保存をまとめて取り消す", () => {
+    const projectId = createProject(db, "科目ID保存失敗工事").id;
+    const initial = saveProjectSubjects(db, projectId, [
+      ...subjectDrafts(db, projectId),
+      {
+        id: null,
+        name: "工事専用20",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+    ]);
+    expect(
+      initial.subjects.find((subject) => subject.name === "工事専用20")?.id,
+    ).toBe(20);
+    db.insert(schema.mDetails)
+      .values({
+        projectId,
+        scope: "project",
+        subjectId: 20,
+        name: "更新失敗を起こす明細",
+      })
+      .run();
+    db.run(
+      sql.raw(
+        "CREATE TRIGGER fail_subject_remap BEFORE UPDATE ON m_details WHEN OLD.name = '更新失敗を起こす明細' BEGIN SELECT RAISE(ABORT, 'forced subject remap failure'); END",
+      ),
+    );
+    const before = subjectDrafts(db, projectId);
+
+    let thrown: unknown;
+    try {
+      saveProjectSubjects(
+        db,
+        projectId,
+        before.map((row) => (row.id === 20 ? { ...row, newId: 21 } : row)),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error & { cause?: Error }).cause?.message).toBe(
+      "forced subject remap failure",
+    );
+    expect(listProjectSubjects(db, projectId)).toEqual(
+      initial.subjects.map((subject) => ({ ...subject })),
+    );
+    expect(
+      db
+        .select({ subjectId: schema.mDetails.subjectId })
+        .from(schema.mDetails)
+        .where(eq(schema.mDetails.name, "更新失敗を起こす明細"))
+        .get()?.subjectId,
+    ).toBe(20);
+  });
+
+  it("新規科目の自動番号は指定された科目IDを避ける", () => {
+    const projectId = createProject(db, "科目ID自動採番工事").id;
+    db.delete(schema.projectMasters)
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+        ),
+      )
+      .run();
+    db.insert(schema.projectMasters)
+      .values({
+        projectId,
+        kind: "subjects",
+        number: 2,
+        sourceNumber: null,
+        name: "指定1",
+      })
+      .run();
+    db.insert(schema.projectMasters)
+      .values({
+        projectId,
+        kind: "subjects",
+        number: 3,
+        sourceNumber: null,
+        name: "指定2",
+        displayOrder: 1,
+      })
+      .run();
+    const [first, second] = subjectDrafts(db, projectId);
+
+    const result = saveProjectSubjects(db, projectId, [
+      { ...first, newId: 1 },
+      { ...second, newId: 2 },
+      {
+        id: null,
+        name: "追加科目",
+        skipPart2: 0,
+        aggregateOrder: 1,
+        note: "",
+        spare1: "",
+        spare2: "",
+      },
+    ]);
+
+    expect(result.idErrors).toBeUndefined();
+    expect(result.subjects.map((subject) => subject.id)).toEqual([1, 2, 3]);
   });
 });
