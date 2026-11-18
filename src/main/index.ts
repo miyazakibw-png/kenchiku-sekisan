@@ -16,8 +16,10 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  screen,
   shell,
   webContents,
+  type Rectangle,
   type WebContents,
 } from "electron";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
@@ -237,6 +239,7 @@ import type {
   LowerTemplateKind,
 } from "../shared/types";
 import { rememberWindowState, savedBounds, wasMaximized } from "./windowState";
+import { splitHalves } from "./windowLayout";
 
 /** 物件ごとに独立したウィンドウで開けるようにする（複数物件の同時作業用）。
  *  menu を渡すとその画面を開いた状態で出す（例：集計書を開いたまま内訳書を別窓で見る） */
@@ -284,6 +287,45 @@ function createWindow(projectId?: number, menu?: string): void {
       join(__dirname, "../renderer/index.html"),
       hash ? { hash } : undefined,
     );
+  }
+}
+
+/** 工事ごとに建具表を開くウィンドウ */
+const fittingsWindows = new Map<number, BrowserWindow>();
+
+function createFittingsWindow(projectId: number, bounds: Rectangle): void {
+  const window = new BrowserWindow({
+    ...bounds,
+    show: false,
+    title: "建具表",
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      sandbox: false,
+      contextIsolation: true,
+    },
+  });
+  fittingsWindows.set(projectId, window);
+
+  window.on("ready-to-show", () => {
+    window.show();
+    window.focus();
+    window.webContents.focus();
+  });
+  window.on("closed", () => {
+    if (fittingsWindows.get(projectId) === window)
+      fittingsWindows.delete(projectId);
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  const hash = `project=${projectId}&menu=fittings`;
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    void window.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}#${hash}`);
+  } else {
+    void window.loadFile(join(__dirname, "../renderer/index.html"), { hash });
   }
 }
 
@@ -764,9 +806,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.fittingsList, (_event, projectId: number) =>
     listFittings(getDatabase(), projectId),
   );
-  ipcMain.handle(IPC.fittingsSave, (_event, request: SaveFittingsRequest) =>
-    saveFittings(getDatabase(), request),
-  );
+  ipcMain.handle(IPC.fittingsSave, (event, request: SaveFittingsRequest) => {
+    const saved = saveFittings(getDatabase(), request);
+    for (const opened of BrowserWindow.getAllWindows()) {
+      if (opened.webContents.id === event.sender.id) continue;
+      if (!opened.isDestroyed())
+        opened.webContents.send(IPC.fittingsChanged, request.projectId);
+    }
+    return saved;
+  });
   ipcMain.handle(IPC.fittingSourcesList, (_event, projectId: number) =>
     listFittingSources(getDatabase(), projectId),
   );
@@ -857,6 +905,26 @@ function registerIpcHandlers(): void {
     IPC.projectOpenWindow,
     (_event, projectId: number, menu?: string) => createWindow(projectId, menu),
   );
+  ipcMain.handle(IPC.openFittingsWindow, (event, projectId: number): void => {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    if (!parent || parent.isDestroyed()) return;
+
+    const workArea = screen.getDisplayMatching(parent.getBounds()).workArea;
+    const { left, right } = splitHalves(workArea);
+    if (parent.isFullScreen()) parent.setFullScreen(false);
+    if (parent.isMaximized()) parent.unmaximize();
+    parent.setBounds(left);
+
+    const opened = fittingsWindows.get(projectId);
+    if (opened && !opened.isDestroyed()) {
+      opened.setBounds(right);
+      if (opened.isMinimized()) opened.restore();
+      opened.focus();
+      opened.webContents.focus();
+      return;
+    }
+    createFittingsWindow(projectId, right);
+  });
   ipcMain.handle(IPC.calcWindowOpen, (event, title: string) =>
     openCalcWindow(event.sender, title),
   );

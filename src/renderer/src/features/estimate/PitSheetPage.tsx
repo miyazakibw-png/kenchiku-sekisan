@@ -714,6 +714,15 @@ export default function PitSheetPage({
     })();
   }, [markSaved, pitWord, project.id, row.id, setMoveAll, setUnderlays]);
 
+  useEffect(
+    () =>
+      window.sekisan.onFittingsChanged((projectId) => {
+        if (projectId === project.id)
+          void window.sekisan.listFittings(project.id).then(setFittings);
+      }),
+    [project.id],
+  );
+
   // 部位別入力表の天井高さが変わったら、手で書き換えていないピットの深さもそろえる
   useEffect(() => {
     setPits((current) => syncPitDepths(current, row.ceilingHeight));
@@ -1912,6 +1921,13 @@ export default function PitSheetPage({
         </label>
         <button type="button" onClick={() => void save()}>
           💾 保存
+        </button>
+        <button
+          type="button"
+          title="建具表を別の窓で開きます。この窓を左半分、建具表を右半分にします（建具表で保存すると、この計算書にもすぐ反映します）"
+          onClick={() => void window.sekisan.openFittingsWindow(project.id)}
+        >
+          🚪 建具表を横に開く
         </button>
         <span className="status">{message}</span>
       </div>

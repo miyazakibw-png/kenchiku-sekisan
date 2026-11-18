@@ -448,6 +448,13 @@ const api = {
     ipcRenderer.invoke(IPC.fittingsList, projectId),
   saveFittings: (request: SaveFittingsRequest): Promise<Fitting[]> =>
     ipcRenderer.invoke(IPC.fittingsSave, request),
+  /** 建具表が別のウィンドウで保存されたときに受け取る */
+  onFittingsChanged: (handler: (projectId: number) => void): (() => void) => {
+    const listener = (_event: unknown, projectId: number): void =>
+      handler(projectId);
+    ipcRenderer.on(IPC.fittingsChanged, listener);
+    return () => ipcRenderer.removeListener(IPC.fittingsChanged, listener);
+  },
   /** 計算書から追加された建具の出所（部屋計算書・家具計算書） */
   listFittingSources: (projectId: number): Promise<FittingSource[]> =>
     ipcRenderer.invoke(IPC.fittingSourcesList, projectId),
@@ -473,6 +480,9 @@ const api = {
   /** 物件を別ウィンドウで開く（複数物件の同時作業）。menu を渡すとその画面を開いた状態で出す */
   openProjectWindow: (projectId: number, menu?: string): Promise<void> =>
     ipcRenderer.invoke(IPC.projectOpenWindow, projectId, menu),
+  /** 計算書の横に、その工事の建具表を開く */
+  openFittingsWindow: (projectId: number): Promise<void> =>
+    ipcRenderer.invoke(IPC.openFittingsWindow, projectId),
   /** 積算データの保存場所と件数 */
   getBackupInfo: (): Promise<BackupInfo> => ipcRenderer.invoke(IPC.backupInfo),
   /** 積算データを1ファイルに保存（バックアップ） */

@@ -95,6 +95,7 @@ export const IPC = {
   lowerTemplateSave: "settings:lowerTemplateSave",
   fittingsList: "fittings:list",
   fittingsSave: "fittings:save",
+  fittingsChanged: "fittings:changed",
   fittingSourcesList: "fittings:sourcesList",
   fittingPartValuesGet: "settings:fittingPartValuesGet",
   fittingPartValuesSave: "settings:fittingPartValuesSave",
@@ -105,6 +106,7 @@ export const IPC = {
   projectReorder: "project:reorder",
   projectFieldsSave: "project:fieldsSave",
   projectOpenWindow: "project:openWindow",
+  openFittingsWindow: "fittings:openWindow",
   /** 工事の内容が変わったことを開いているすべての画面へ知らせる（送信専用） */
   projectChanged: "project:changed",
   /** 明細入力を独立したウィンドウで開く */

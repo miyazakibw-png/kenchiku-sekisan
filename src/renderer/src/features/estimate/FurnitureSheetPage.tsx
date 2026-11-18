@@ -690,6 +690,15 @@ export default function FurnitureSheetPage({
     })();
   }, [markSaved, sheetId]);
 
+  useEffect(() => {
+    if (sheet === null || !hasFittingSymbol(sheet.kind)) return;
+    const projectId = sheet.projectId;
+    return window.sekisan.onFittingsChanged((changedProjectId) => {
+      if (changedProjectId === projectId)
+        void window.sekisan.listFittings(projectId).then(setFittings);
+    });
+  }, [sheet?.kind, sheet?.projectId]);
+
   const fittingSizes = useMemo<FittingSize[]>(
     () =>
       fittings.map((fitting) => ({
@@ -1624,6 +1633,15 @@ export default function FurnitureSheetPage({
         <h2>
           {isFittingDetailSheet(sheet.kind) ? "建具明細作成表" : "家具計算書"}
         </h2>
+        {!printMode && (
+          <button
+            type="button"
+            title="建具表を別の窓で開きます。この窓を左半分、建具表を右半分にします（建具表で保存すると、この計算書にもすぐ反映します）"
+            onClick={() => void window.sekisan.openFittingsWindow(project.id)}
+          >
+            🚪 建具表を横に開く
+          </button>
+        )}
         <span className="project">
           {sheet.name}／{project.managementNo} {project.name}
         </span>
