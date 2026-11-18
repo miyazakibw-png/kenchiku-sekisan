@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import type {
   Detail,
   FinishAssembly,
@@ -173,7 +174,7 @@ function DescriptionInput({
       value={editing ? value : resolved}
       title={resolved !== value ? `マスター：${value}` : undefined}
       onFocus={(e) => {
-        setEditing(true);
+        flushSync(() => setEditing(true));
         onFocus?.(e);
       }}
       onBlur={(e) => {
