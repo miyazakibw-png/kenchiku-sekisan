@@ -102,6 +102,20 @@ export function removeRow(rows: FittingDraft[], index: number): FittingDraft[] {
   return rows.filter((_row, i) => i !== index);
 }
 
+export function moveRow(
+  rows: FittingDraft[],
+  index: number,
+  step: number,
+): FittingDraft[] {
+  const target = index + step;
+  if (index < 0 || index >= rows.length || target < 0 || target >= rows.length)
+    return rows;
+  const next = [...rows];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved);
+  return next;
+}
+
 export function updateRow(
   rows: FittingDraft[],
   index: number,

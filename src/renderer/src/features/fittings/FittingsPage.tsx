@@ -22,6 +22,7 @@ import {
   emptyRow,
   formatNumber,
   insertRow,
+  moveRow,
   parseSize,
   removeRow,
   sortBySymbol,
@@ -71,6 +72,38 @@ const EMPTY_SERIES: SeriesForm = {
   suffixTo: "",
 };
 
+const FITTINGS_TABLE_WIDTHS_KEY = "table-widths-fittings-v2";
+
+function migrateFittingsTableWidths(): void {
+  try {
+    if (window.localStorage.getItem(FITTINGS_TABLE_WIDTHS_KEY) !== null) return;
+    const saved = window.localStorage.getItem("table-widths-fittings-v1");
+    if (saved === null) return;
+    const parsed: unknown = JSON.parse(saved);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+      return;
+    const shifted: Record<string, number> = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(
+      ([key, value]) => {
+        const index = Number(key);
+        if (
+          Number.isInteger(index) &&
+          index >= 0 &&
+          typeof value === "number" &&
+          Number.isFinite(value)
+        )
+          shifted[String(index + 1)] = value;
+      },
+    );
+    window.localStorage.setItem(
+      FITTINGS_TABLE_WIDTHS_KEY,
+      JSON.stringify(shifted),
+    );
+  } catch {}
+}
+
+if (typeof window !== "undefined") migrateFittingsTableWidths();
+
 export default function FittingsPage({
   project,
   onBack,
@@ -78,7 +111,7 @@ export default function FittingsPage({
   onOpenFurnitureSheet,
   onOpenFittingDetail,
 }: Props): JSX.Element {
-  const tableRef = useTableResize("table-widths-fittings-v1");
+  const tableRef = useTableResize(FITTINGS_TABLE_WIDTHS_KEY);
   const tableElementRef = useRef<HTMLTableElement | null>(null);
   const setTableRef = useCallback(
     (table: HTMLTableElement | null) => {
@@ -177,6 +210,31 @@ export default function FittingsPage({
     },
     [markSaved, project.id, rows],
   );
+
+  const moveFittingRow = (index: number, step: number): void => {
+    const nextIndex = index + step;
+    if (nextIndex < 0 || nextIndex >= rows.length) return;
+    setRows(moveRow(rows, index, step));
+    setSelected(nextIndex);
+    setSelectedEnd(nextIndex);
+  };
+
+  const deleteFittingRow = (index: number): void => {
+    const nextRows = removeRow(rows, index);
+    setRows(nextRows);
+    const nextIndex = (selectedIndex: number): number =>
+      nextRows.length === 0
+        ? 0
+        : Math.min(
+            Math.max(
+              selectedIndex > index ? selectedIndex - 1 : selectedIndex,
+              0,
+            ),
+            nextRows.length - 1,
+          );
+    setSelected(nextIndex(selected));
+    setSelectedEnd(nextIndex(selectedEnd));
+  };
 
   /** 「計算書」を押したら、直した分を保存してからその計算書へ移る */
   const openSource = useCallback(
@@ -756,6 +814,7 @@ export default function FittingsPage({
       <table className="grid fittings" ref={setTableRef}>
         <thead>
           <tr>
+            <th className="ops">操作</th>
             <th className="no">No</th>
             <th className="symbol">建具記号</th>
             <th className="num">W</th>
@@ -808,6 +867,55 @@ export default function FittingsPage({
                   setSelectedEnd(index);
                 }}
               >
+                <td className="ops-col">
+                  <span className="row-move">
+                    <button
+                      type="button"
+                      title="この行の上へ空行を挿入"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRows(insertRow(rows, index));
+                        setSelected(index);
+                        setSelectedEnd(index);
+                      }}
+                    >
+                      ＋
+                    </button>
+                    <button
+                      type="button"
+                      title="この行を1つ上へ"
+                      disabled={index === 0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveFittingRow(index, -1);
+                      }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      title="この行を1つ下へ"
+                      disabled={index === rows.length - 1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveFittingRow(index, 1);
+                      }}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      className="row-delete"
+                      title="この行を削除"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteFittingRow(index);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </td>
                 <td className="no">{index + 1}</td>
                 <td
                   data-row={index}
