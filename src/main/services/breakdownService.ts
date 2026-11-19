@@ -344,6 +344,11 @@ export function transferBreakdown(
         .filter((subject) => subject.skipPart2 === 1)
         .map((subject) => subject.id),
     );
+    const detailFirstSubjectIds = new Set(
+      listProjectSubjects(db, projectId)
+        .filter((subject) => subject.detailFirst === 1)
+        .map((subject) => subject.id),
+    );
     const unused = unusedMasterKeys(db, projectId);
     const entries = detailsToEntries(aggregate.details);
     const grouped =
@@ -353,8 +358,9 @@ export function transferBreakdown(
             roomOrderOf(db, projectId),
             skipPart2,
             unused,
+            detailFirstSubjectIds,
           )
-        : aggregateByPart(entries, skipPart2, unused);
+        : aggregateByPart(entries, skipPart2, unused, detailFirstSubjectIds);
     groups = grouped.map((group) => ({
       name: group.label,
       items: group.items

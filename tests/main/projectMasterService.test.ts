@@ -60,6 +60,7 @@ function subjectDrafts(db: AppDatabase, projectId: number): SubjectDraft[] {
     name: subject.name,
     skipPart2: subject.skipPart2,
     aggregateOrder: subject.aggregateOrder,
+    detailFirst: subject.detailFirst,
     note: subject.note,
     spare1: subject.spare1,
     spare2: subject.spare2,
@@ -120,6 +121,27 @@ describe("工事別の基準マスター", () => {
     );
   });
 
+  it("明細順を基本科目から工事へ複製し、工事コピーにも引き継ぐ", () => {
+    const project = createProject(db, "明細順複製元");
+    const basicRows = listSubjects(db).map((subject, index) => ({
+      id: subject.id,
+      name: subject.name,
+      skipPart2: subject.skipPart2,
+      aggregateOrder: subject.aggregateOrder,
+      detailFirst: index === 0 ? 1 : subject.detailFirst,
+      note: subject.note,
+      spare1: subject.spare1,
+      spare2: subject.spare2,
+    }));
+    saveSubjects(db, basicRows);
+
+    copyBasicMastersToProject(db, project.id, true);
+
+    expect(listProjectSubjects(db, project.id)[0].detailFirst).toBe(1);
+    const copied = copyProject(db, project.id, "明細順複製先");
+    expect(listProjectSubjects(db, copied.id)[0].detailFirst).toBe(1);
+  });
+
   it("開いている種類だけ工事から基本マスターへ同期する", () => {
     const project = createProject(db, "同期元工事");
     const otherProject = createProject(db, "別工事");
@@ -164,6 +186,7 @@ describe("工事別の基準マスター", () => {
         name: "工事専用科目",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -199,6 +222,17 @@ describe("工事別の基準マスター", () => {
     expect(listProjectBasicMasters(db, project.id).units).toEqual(
       listBasicMasters(db).units,
     );
+  });
+
+  it("工事科目の明細順を保存して一覧へ返す", () => {
+    const project = createProject(db, "明細順保存工事");
+    const drafts = subjectDrafts(db, project.id);
+    drafts[0] = { ...drafts[0], detailFirst: 1 };
+
+    const result = saveProjectSubjects(db, project.id, drafts);
+
+    expect(result.subjects[0].detailFirst).toBe(1);
+    expect(listProjectSubjects(db, project.id)[0].detailFirst).toBe(1);
   });
 
   it("基準マスターからの複製は既存の工事マスターを上書きしない", () => {
@@ -248,6 +282,7 @@ describe("工事別の基準マスター", () => {
         name: subject.name,
         skipPart2: subject.skipPart2,
         aggregateOrder: subject.aggregateOrder,
+        detailFirst: subject.detailFirst,
         note: subject.note,
         spare1: subject.spare1,
         spare2: subject.spare2,
@@ -276,6 +311,7 @@ describe("基本マスターの科目IDを付け替えたときの工事側", ()
       name: subject.name,
       skipPart2: subject.skipPart2,
       aggregateOrder: subject.aggregateOrder,
+      detailFirst: subject.detailFirst,
       note: subject.note,
       spare1: subject.spare1,
       spare2: subject.spare2,
@@ -286,6 +322,7 @@ describe("基本マスターの科目IDを付け替えたときの工事側", ()
         name: "先頭追加",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -319,6 +356,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: subject.name,
         skipPart2: subject.skipPart2,
         aggregateOrder: subject.aggregateOrder,
+        detailFirst: subject.detailFirst,
         note: subject.note,
         spare1: subject.spare1,
         spare2: subject.spare2,
@@ -331,6 +369,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: "工事だけの科目",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -346,6 +385,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
       name: subject.name,
       skipPart2: subject.skipPart2,
       aggregateOrder: subject.aggregateOrder,
+      detailFirst: subject.detailFirst,
       note: subject.note,
       spare1: subject.spare1,
       spare2: subject.spare2,
@@ -357,6 +397,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: "末尾追加",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -380,6 +421,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: "工事専用46",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -868,6 +910,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: "工事専用20",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -956,6 +999,7 @@ describe("工事だけの科目がある状態での付け替え", () => {
         name: "追加科目",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",

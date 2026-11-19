@@ -84,6 +84,8 @@ export const mSubjects = sqliteTable("m_subjects", {
   skipPart2: integer("skip_part2").notNull().default(0),
   /** 集計順 1:部位順 2:明細番号順 */
   aggregateOrder: integer("aggregate_order").notNull().default(1),
+  /** 集計書を明細ID→部位IDの順に並べる科目（1） */
+  detailFirst: integer("detail_first").notNull().default(0),
   note: text("note").notNull().default(""),
   spare1: text("spare1").notNull().default(""),
   spare2: text("spare2").notNull().default(""),
@@ -691,6 +693,8 @@ export const projectMasters = sqliteTable("project_masters", {
   /** 科目のみ使用 */
   skipPart2: integer("skip_part2").notNull().default(0),
   aggregateOrder: integer("aggregate_order").notNull().default(1),
+  /** 集計書を明細ID→部位IDの順に並べる科目（1） */
+  detailFirst: integer("detail_first").notNull().default(0),
   displayOrder: integer("display_order").notNull().default(0),
 });
 

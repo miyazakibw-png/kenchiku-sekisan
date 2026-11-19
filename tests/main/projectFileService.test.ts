@@ -13,6 +13,7 @@ import {
   listProjectLedger,
   nextManagementNo,
 } from "../../src/main/services/projectService";
+import { listProjectSubjects } from "../../src/main/services/projectMasterService";
 import { saveEstimateRows } from "../../src/main/services/estimateRowService";
 import {
   getRoomSheet,
@@ -150,6 +151,40 @@ describe("1物件だけの掃き出しと読み込み", () => {
     const view = runAggregation(to.db, result.projectId);
     expect(view.items).toHaveLength(1);
     expect(view.items[0].quantity).toBe(12);
+  });
+
+  it("detail_first列のない旧形式ファイルは0で読み込む", () => {
+    const legacyPath = join(dir, "legacy.sekisan");
+    const legacy = new Database(legacyPath);
+    migrations.slice(0, -1).forEach((sql) => legacy.exec(sql));
+    legacy.pragma(`user_version = ${migrations.length - 1}`);
+    const legacyProjectId = Number(
+      legacy
+        .prepare("INSERT INTO projects (management_no, name) VALUES (?, ?)")
+        .run("P-LEGACY", "旧形式工事").lastInsertRowid,
+    );
+    legacy
+      .prepare(
+        "INSERT INTO project_masters (project_id, kind, number, name, aggregate_order) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(legacyProjectId, "subjects", 12, "旧形式科目", 2);
+    const masterColumns = legacy
+      .prepare("PRAGMA table_info(project_masters)")
+      .all() as { name: string }[];
+    expect(masterColumns.some((column) => column.name === "detail_first")).toBe(
+      false,
+    );
+    legacy.close();
+
+    const imported = importProjectFile(from.sqlite, legacyPath, "add", () =>
+      nextManagementNo(from.db),
+    );
+
+    expect(
+      listProjectSubjects(from.db, imported.projectId).find(
+        (subject) => subject.id === 12,
+      )?.detailFirst,
+    ).toBe(0);
   });
 
   it("同じ管理番号があるとき、置き換えると1件のまま入れ替わる", () => {

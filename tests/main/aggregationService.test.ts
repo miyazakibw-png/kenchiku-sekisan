@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { migrations } from "../../src/main/db/migrations";
@@ -192,6 +193,57 @@ describe("集計処理", () => {
     expect(view.items[0].rooms).toEqual([
       { roomName: "1階：事務室 × 2", quantity: 25.2 },
     ]);
+  });
+
+  it("aggregateOrder=2でも明細順が0なら部位ID順で集計する", () => {
+    addRoom("事務室", 1, 1);
+    const rowId = drafts[drafts.length - 1].id as number;
+    const sheet = getRoomSheet(db, rowId);
+    const lower = JSON.parse(lowerJson(1));
+    const detail = lower[0].details[0];
+    lower[0].details = [
+      {
+        ...detail,
+        id: "part-50-detail-350",
+        partNumber: 50,
+        detailNumber: 350,
+        name: "明細350",
+      },
+      {
+        ...detail,
+        id: "part-30-detail-370",
+        partNumber: 30,
+        detailNumber: 370,
+        name: "明細370",
+      },
+    ];
+    saveRoomSheet(db, {
+      id: sheet.id,
+      shapeJson: SHAPE_JSON,
+      fittingsJson: "[]",
+      ceilingJson: "[]",
+      lowerJson: JSON.stringify(lower),
+      ceilingHeight: 2.5,
+      note: "",
+    });
+    db.update(schema.projectMasters)
+      .set({ aggregateOrder: 2, detailFirst: 0 })
+      .where(
+        and(
+          eq(schema.projectMasters.projectId, projectId),
+          eq(schema.projectMasters.kind, "subjects"),
+          eq(schema.projectMasters.number, 5),
+        ),
+      )
+      .run();
+
+    const view = runAggregation(db, projectId);
+
+    expect(
+      view.items
+        .filter((item) => item.subjectId === 5)
+        .map((item) => `${item.partNumber}/${item.detailNumber}`),
+    ).toEqual(["30/370", "50/350"]);
   });
 
   it("手入力の壁高さをWAの集計に使う", () => {

@@ -52,6 +52,8 @@ export interface Subject {
   skipPart2: number;
   /** 集計順 1:部位順 2:明細番号順 */
   aggregateOrder: number;
+  /** 集計書を明細ID→部位IDの順に並べる科目（1） */
+  detailFirst: number;
   note: string;
   /** 将来の項目追加用の予備列 */
   spare1: string;
@@ -66,6 +68,7 @@ export interface SubjectDraft {
   name: string;
   skipPart2: number;
   aggregateOrder: number;
+  detailFirst: number;
   note: string;
   spare1: string;
   spare2: string;

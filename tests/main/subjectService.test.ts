@@ -43,6 +43,7 @@ function drafts(db: AppDatabase): SubjectDraft[] {
     name: subject.name,
     skipPart2: subject.skipPart2,
     aggregateOrder: subject.aggregateOrder,
+    detailFirst: subject.detailFirst,
     note: subject.note,
     spare1: subject.spare1,
     spare2: subject.spare2,
@@ -82,6 +83,7 @@ function projectDrafts(db: AppDatabase, projectId: number): SubjectDraft[] {
     name: subject.name,
     skipPart2: subject.skipPart2,
     aggregateOrder: subject.aggregateOrder,
+    detailFirst: subject.detailFirst,
     note: subject.note,
     spare1: subject.spare1,
     spare2: subject.spare2,
@@ -146,11 +148,17 @@ beforeEach(() => {
 });
 
 describe("工種科目マスター", () => {
-  it("部位Ⅱ仕分け不要・備考を保存する（集計順は列のみ用意して未使用）", () => {
+  it("部位Ⅱ仕分け不要・明細順・備考を保存する", () => {
     const rows = drafts(db);
-    rows[0] = { ...rows[0], skipPart2: 1, note: "軽鉄は仕分け不要" };
+    rows[0] = {
+      ...rows[0],
+      skipPart2: 1,
+      detailFirst: 1,
+      note: "軽鉄は仕分け不要",
+    };
     const saved = saveSubjects(db, rows);
     expect(saved.subjects[0].skipPart2).toBe(1);
+    expect(saved.subjects[0].detailFirst).toBe(1);
     expect(saved.subjects[0].note).toBe("軽鉄は仕分け不要");
     expect(saved.subjects[0].aggregateOrder).toBe(1);
   });
@@ -166,6 +174,7 @@ describe("工種科目マスター", () => {
       name: "挿入した科目",
       skipPart2: 0,
       aggregateOrder: 1,
+      detailFirst: 0,
       note: "",
       spare1: "",
       spare2: "",
@@ -195,6 +204,7 @@ describe("工種科目マスター", () => {
       name: target.name,
       skipPart2: 0,
       aggregateOrder: 1,
+      detailFirst: 0,
       note: "",
       spare1: "",
       spare2: "",
@@ -261,6 +271,7 @@ describe("科目IDの行位置合わせ", () => {
         name: "追加工事",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -286,6 +297,7 @@ describe("科目IDの行位置合わせ", () => {
         name: "先頭追加",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -322,6 +334,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         name: "工事専用2",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -401,6 +414,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         name: "工事専用2",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -568,6 +582,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         name: "先頭追加",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",
@@ -841,6 +856,7 @@ describe("工事ごとの科目番号の付け替え", () => {
         name: "先頭追加",
         skipPart2: 0,
         aggregateOrder: 1,
+        detailFirst: 0,
         note: "",
         spare1: "",
         spare2: "",

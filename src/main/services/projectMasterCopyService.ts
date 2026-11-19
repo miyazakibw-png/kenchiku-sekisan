@@ -29,6 +29,7 @@ interface ProjectMasterCopyRow {
   note: string;
   skipPart2: number;
   aggregateOrder: number;
+  detailFirst: number;
   displayOrder: number;
 }
 
@@ -58,6 +59,7 @@ function replaceProjectMasterRows(
           note: row.note,
           skipPart2: row.skipPart2,
           aggregateOrder: row.aggregateOrder,
+          detailFirst: row.detailFirst,
           displayOrder: index,
         })
         .run();
@@ -77,6 +79,7 @@ function basicRows(
         note: mSubjects.note,
         skipPart2: mSubjects.skipPart2,
         aggregateOrder: mSubjects.aggregateOrder,
+        detailFirst: mSubjects.detailFirst,
       })
       .from(mSubjects)
       .orderBy(asc(mSubjects.displayOrder), asc(mSubjects.id))
@@ -88,6 +91,7 @@ function basicRows(
         note: row.note,
         skipPart2: row.skipPart2,
         aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
         displayOrder: 0,
       }));
   }
@@ -156,6 +160,7 @@ function basicRows(
     note: row.note,
     skipPart2: 0,
     aggregateOrder: 1,
+    detailFirst: 0,
     displayOrder: 0,
   }));
 }

@@ -68,6 +68,27 @@ function result(id: string, total: number): CalcSheetResult {
   } as unknown as CalcSheetResult;
 }
 
+function sortableEntries(
+  rows: {
+    subjectId: number;
+    partNumber: number;
+    detailNumber: number;
+    name: string;
+  }[],
+): AggregateEntry[] {
+  const base = entriesFromCalcSheet(
+    context(),
+    [set("sortable", 1)],
+    result("sortable", 1),
+  )[0];
+  return rows.map((row, index) => ({
+    ...base,
+    ...row,
+    partName: `部位${row.partNumber}`,
+    traceId: `sortable:${index}`,
+  }));
+}
+
 describe("集計処理", () => {
   it("説明行は数量0で集計へ入る（名称・摘要だけの行）", () => {
     const target = set("s1", 1);
@@ -295,6 +316,84 @@ describe("集計処理", () => {
     );
     const items = aggregateItems([...later, ...earlier]);
     expect(items.map((item) => item.part2)).toEqual(["1階", "2階"]);
+  });
+
+  it("明細順の科目は明細ID→部位IDで並べる", () => {
+    const entries = sortableEntries([
+      { subjectId: 5, partNumber: 30, detailNumber: 350, name: "a" },
+      { subjectId: 5, partNumber: 30, detailNumber: 360, name: "b" },
+      { subjectId: 5, partNumber: 30, detailNumber: 370, name: "c" },
+      { subjectId: 5, partNumber: 50, detailNumber: 370, name: "d" },
+      { subjectId: 5, partNumber: 50, detailNumber: 370, name: "e" },
+      { subjectId: 5, partNumber: 60, detailNumber: 350, name: "f" },
+      { subjectId: 5, partNumber: 60, detailNumber: 350, name: "g" },
+      { subjectId: 5, partNumber: 60, detailNumber: 370, name: "h" },
+    ]);
+
+    const items = aggregateItems(entries, new Set(), new Set(), new Set([5]));
+
+    expect(
+      items.map((item) => `${item.detailNumber}(${item.partNumber})`),
+    ).toEqual([
+      "350(30)",
+      "350(60)",
+      "350(60)",
+      "360(30)",
+      "370(30)",
+      "370(50)",
+      "370(50)",
+      "370(60)",
+    ]);
+  });
+
+  it("明細順の指定が無い科目は部位ID順を保ち、既定引数も従来順", () => {
+    const entries = sortableEntries([
+      { subjectId: 5, partNumber: 50, detailNumber: 350, name: "a" },
+      { subjectId: 5, partNumber: 30, detailNumber: 370, name: "b" },
+      { subjectId: 6, partNumber: 50, detailNumber: 350, name: "c" },
+      { subjectId: 6, partNumber: 30, detailNumber: 370, name: "d" },
+    ]);
+
+    const optedIn = aggregateItems(entries, new Set(), new Set(), new Set([5]));
+    expect(
+      optedIn
+        .filter((item) => item.subjectId === 5)
+        .map((item) => `${item.partNumber}/${item.detailNumber}`),
+    ).toEqual(["50/350", "30/370"]);
+    expect(
+      optedIn
+        .filter((item) => item.subjectId === 6)
+        .map((item) => `${item.partNumber}/${item.detailNumber}`),
+    ).toEqual(["30/370", "50/350"]);
+
+    expect(
+      aggregateItems(entries)
+        .filter((item) => item.subjectId === 5)
+        .map((item) => `${item.partNumber}/${item.detailNumber}`),
+    ).toEqual(["30/370", "50/350"]);
+  });
+
+  it("部屋別・部位別集計にも明細順を渡す", () => {
+    const entries = sortableEntries([
+      { subjectId: 5, partNumber: 50, detailNumber: 350, name: "a" },
+      { subjectId: 5, partNumber: 30, detailNumber: 370, name: "b" },
+    ]);
+    const detailFirst = new Set([5]);
+    const room = aggregateByRoom(
+      entries,
+      [],
+      new Set(),
+      new Set(),
+      detailFirst,
+    );
+    const part = aggregateByPart(entries, new Set(), new Set(), detailFirst);
+
+    expect(
+      room[0].items.map((item) => `${item.detailNumber}/${item.partNumber}`),
+    ).toEqual(["350/50", "370/30"]);
+    expect(
+      part[0].items.map((item) => `${item.detailNumber}/${item.partNumber}`),
+    ).toEqual(["350/50", "370/30"]);
   });
 
   it("摘要が空の行を空白で始まる行より先に並べる", () => {

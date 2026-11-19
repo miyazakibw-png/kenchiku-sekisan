@@ -1124,4 +1124,8 @@ CREATE TABLE project_formwork_runs (
 );
 `,
   `ALTER TABLE project_breakdown_settings ADD COLUMN continuous_pages INTEGER NOT NULL DEFAULT 0;`,
+  `
+ALTER TABLE m_subjects ADD COLUMN detail_first INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_masters ADD COLUMN detail_first INTEGER NOT NULL DEFAULT 0;
+`,
 ];

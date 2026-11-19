@@ -233,12 +233,13 @@ function numberOrder(value: number | null): string {
 
 /**
  * 集計詳細データをまとめて集計書兼工事マスターの行にする。
- * 並びは 科目ID→部位Ⅰ（入力順）→部位Ⅱ（入力順）→部位ID→明細ID→部位名→名称→摘要（下）→摘要（上）。
+ * 並びは 科目ID→部位Ⅰ（入力順）→部位Ⅱ（入力順）→部位ID→明細ID（明細順科目は逆）→部位名→名称→摘要（下）→摘要（上）。
  */
 export function aggregateItems(
   entries: AggregateEntry[],
   skipPart2SubjectIds: ReadonlySet<number> = new Set(),
   unusedMasterKeys: ReadonlySet<string> = new Set(),
+  detailFirstSubjectIds: ReadonlySet<number> = new Set(),
 ): AggregatedItem[] {
   const map = new Map<string, AggregatedItem>();
   entries.forEach((entry) => {
@@ -326,8 +327,10 @@ export function aggregateItems(
   });
 
   return [...map.values()].sort((a, b) => {
-    const keyOf = (item: AggregatedItem): string =>
-      [
+    const keyOf = (item: AggregatedItem): string => {
+      const detailFirst =
+        item.subjectId !== null && detailFirstSubjectIds.has(item.subjectId);
+      return [
         String(item.subjectId ?? 99999).padStart(5, "0"),
         // 不要明細は工種科目の最後にまとめる
         item.unused ? "9" : "0",
@@ -336,14 +339,15 @@ export function aggregateItems(
           : `1|${String(newPart1Order.get(item.part1) ?? 0).padStart(5, "0")}`,
         item.part2 === "" ? " " : String(item.part2Order).padStart(5, "0"),
         item.part2,
-        numberOrder(item.partNumber),
-        numberOrder(item.detailNumber),
+        numberOrder(detailFirst ? item.detailNumber : item.partNumber),
+        numberOrder(detailFirst ? item.partNumber : item.detailNumber),
         item.partName,
         item.name,
         item.descriptionLower,
         item.descriptionUpper,
         // 空の欄を先に並べるため、空白より前に並ぶタブで区切る
       ].join("\t");
+    };
     return keyOf(a).localeCompare(keyOf(b), "ja");
   });
 }
@@ -366,6 +370,7 @@ function groupedAggregates(
   emptyLabel: string | null,
   skipPart2: ReadonlySet<number> = new Set(),
   unusedMasterKeys: ReadonlySet<string> = new Set(),
+  detailFirstSubjectIds: ReadonlySet<number> = new Set(),
 ): AggregateGroup[] {
   const byKey = new Map<string, AggregateEntry[]>();
   entries.forEach((entry) => {
@@ -381,12 +386,15 @@ function groupedAggregates(
 
   return [...byKey.entries()]
     .map(([key, groupEntries]) => {
-      const items = aggregateItems(groupEntries, skipPart2, unusedMasterKeys).map(
-        (item) => ({
-          ...item,
-          rooms: [],
-        }),
-      );
+      const items = aggregateItems(
+        groupEntries,
+        skipPart2,
+        unusedMasterKeys,
+        detailFirstSubjectIds,
+      ).map((item) => ({
+        ...item,
+        rooms: [],
+      }));
       return {
         label: key,
         order: orderOf(key),
@@ -405,7 +413,7 @@ function groupedAggregates(
 
 /**
  * 部屋別集計。部位Ⅲ（部屋名）を工種科目の代わりに使ってまとめる。
- * 並びは 部屋（部位別入力表の入力順）→科目ID→部位番号→明細番号→部位名。
+ * 並びは 部屋（部位別入力表の入力順）→科目ID→科目ごとの部位番号・明細番号の順→部位名。
  * 転記入力表の分は根拠に出さないので入れない。
  */
 export function aggregateByRoom(
@@ -413,6 +421,7 @@ export function aggregateByRoom(
   roomOrder: readonly string[] = [],
   skipPart2: ReadonlySet<number> = new Set(),
   unusedMasterKeys: ReadonlySet<string> = new Set(),
+  detailFirstSubjectIds: ReadonlySet<number> = new Set(),
 ): AggregateGroup[] {
   return groupedAggregates(
     entries,
@@ -426,6 +435,7 @@ export function aggregateByRoom(
     null,
     skipPart2,
     unusedMasterKeys,
+    detailFirstSubjectIds,
   );
 }
 
@@ -435,13 +445,14 @@ export const NO_PART_LABEL = "（部位Ⅱなし）";
 /**
  * 部位別集計。部位Ⅱ（部屋名のひとつ上のまとまり）でまとめる。
  * 押入れ・踏み込み・前室のような細かい部屋を、同じ部位Ⅱならひとつにまとめる。
- * 並びは 部位Ⅱ（部位別入力表に出てくる順＝part2Order）→科目ID→部位番号→明細番号。
+ * 並びは 部位Ⅱ（部位別入力表に出てくる順＝part2Order）→科目ID→科目ごとの部位番号・明細番号の順。
  * 転記入力表の分も部位Ⅱを持つので入れる。部位Ⅱが空の分は最後に「（部位Ⅱなし）」でまとめる。
  */
 export function aggregateByPart(
   entries: AggregateEntry[],
   skipPart2: ReadonlySet<number> = new Set(),
   unusedMasterKeys: ReadonlySet<string> = new Set(),
+  detailFirstSubjectIds: ReadonlySet<number> = new Set(),
 ): AggregateGroup[] {
   return groupedAggregates(
     entries,
@@ -459,6 +470,7 @@ export function aggregateByPart(
     NO_PART_LABEL,
     skipPart2,
     unusedMasterKeys,
+    detailFirstSubjectIds,
   );
 }
 

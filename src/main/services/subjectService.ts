@@ -261,6 +261,7 @@ export function saveSubjects(
         displayOrder: index,
         skipPart2: row.skipPart2,
         aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
         note: row.note,
         spare1: row.spare1,
         spare2: row.spare2,

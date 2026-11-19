@@ -50,6 +50,7 @@ const subjects: Subject[] = [
     displayOrder: 1,
     skipPart2: 0,
     aggregateOrder: 1,
+    detailFirst: 0,
     note: "",
     spare1: "",
     spare2: "",

@@ -238,9 +238,15 @@ function mergedAggregateItems(
   projectId: number,
   entries: AggregateEntry[],
   skipPart2: ReadonlySet<number>,
+  detailFirstSubjectIds: ReadonlySet<number>,
 ): AggregatedItem[] {
   const unused = unusedMasterKeys(db, projectId);
-  const items = aggregateItems(entries, skipPart2, unused);
+  const items = aggregateItems(
+    entries,
+    skipPart2,
+    unused,
+    detailFirstSubjectIds,
+  );
   return mergeManualItems(items, manualRows(db, projectId), unused);
 }
 
@@ -359,7 +365,18 @@ export function runAggregation(
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
-  const items = mergedAggregateItems(db, projectId, entries, skipPart2);
+  const detailFirstSubjectIds = new Set(
+    listProjectSubjects(db, projectId)
+      .filter((subject) => subject.detailFirst === 1)
+      .map((subject) => subject.id),
+  );
+  const items = mergedAggregateItems(
+    db,
+    projectId,
+    entries,
+    skipPart2,
+    detailFirstSubjectIds,
+  );
 
   const run = db.transaction((tx) => {
     const created = tx
@@ -1572,11 +1589,17 @@ function isStale(db: AppDatabase, projectId: number, runId: number): boolean {
       .filter((subject) => subject.skipPart2 === 1)
       .map((subject) => subject.id),
   );
+  const detailFirstSubjectIds = new Set(
+    listProjectSubjects(db, projectId)
+      .filter((subject) => subject.detailFirst === 1)
+      .map((subject) => subject.id),
+  );
   const fresh = mergedAggregateItems(
     db,
     projectId,
     collectEntries(db, projectId),
     skipPart2,
+    detailFirstSubjectIds,
   );
   const saved = db
     .select()

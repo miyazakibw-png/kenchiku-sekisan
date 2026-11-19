@@ -39,6 +39,7 @@ interface ProjectMasterRow {
   note: string;
   skipPart2: number;
   aggregateOrder: number;
+  detailFirst: number;
   displayOrder: number;
 }
 
@@ -55,6 +56,7 @@ function rowsOf(
       note: projectMasters.note,
       skipPart2: projectMasters.skipPart2,
       aggregateOrder: projectMasters.aggregateOrder,
+      detailFirst: projectMasters.detailFirst,
       displayOrder: projectMasters.displayOrder,
     })
     .from(projectMasters)
@@ -99,6 +101,7 @@ export function listProjectSubjects(
     displayOrder: index,
     skipPart2: row.skipPart2,
     aggregateOrder: row.aggregateOrder,
+    detailFirst: row.detailFirst,
     note: row.note,
     spare1: "",
     spare2: "",
@@ -155,6 +158,7 @@ function replaceRowsInTransaction(
         note: row.note,
         skipPart2: row.skipPart2,
         aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
         displayOrder: index,
       })
       .run();
@@ -189,6 +193,7 @@ export function saveProjectBasicMaster(
     note: row.note,
     skipPart2: 0,
     aggregateOrder: 1,
+    detailFirst: 0,
     displayOrder: 0,
   }));
   replaceRows(db, projectId, kind, trimmed);
@@ -316,6 +321,7 @@ export function saveProjectSubjects(
         note: row.note,
         skipPart2: row.skipPart2,
         aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
         displayOrder: 0,
       };
     }
@@ -330,6 +336,7 @@ export function saveProjectSubjects(
       note: row.note,
       skipPart2: row.skipPart2,
       aggregateOrder: row.aggregateOrder,
+      detailFirst: row.detailFirst,
       displayOrder: 0,
     };
   });
@@ -342,6 +349,7 @@ export function saveProjectSubjects(
       note: subject.note,
       skipPart2: subject.skipPart2,
       aggregateOrder: subject.aggregateOrder,
+      detailFirst: subject.detailFirst,
       displayOrder: 0,
     });
   });
