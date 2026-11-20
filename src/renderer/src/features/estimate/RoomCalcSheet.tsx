@@ -71,6 +71,11 @@ import {
   type CopiedBanner,
   type CopiedPart,
 } from "../../../../core/room/calcClipboard";
+import {
+  CALC_COLUMN_WIDTHS_V2_KEY,
+  CALC_COLUMN_WIDTHS_V3_KEY,
+  migrateCalcColumnWidthsV2ToV3,
+} from "../../../../core/room/calcColumnWidths";
 import { parseTsv } from "../../../../shared/tsv";
 import { sortDetails } from "../../../../core/sort/detailSortKey";
 import { getCalcClip, setCalcClip } from "./calcClipboardStore";
@@ -207,11 +212,17 @@ const CALC_COLUMNS: {
   className?: string;
 }[] = [
   {
-    label: "部位",
+    label: "セット部位",
     title:
       "管理用部位。1行に1つ入れられます（途中の行に入れると、その行から別のセットになります）",
     width: 80,
     className: "set-part",
+  },
+  {
+    label: "部位ID",
+    title: "明細用部位のID（数字）。入れると右の部位名が入ります",
+    width: 48,
+    className: "id",
   },
   {
     label: "区分",
@@ -220,12 +231,6 @@ const CALC_COLUMNS: {
     className: "material",
   },
   { label: "科目", title: "工種科目のID（数字）", width: 42, className: "id" },
-  {
-    label: "部位ID",
-    title: "明細用部位のID（数字）。入れると右の部位名が入ります",
-    width: 48,
-    className: "id",
-  },
   {
     label: "名称ID",
     title: "明細番号。入れると名称・摘要がマスターの文字になります",
@@ -287,7 +292,32 @@ const CALC_COLUMNS: {
 ];
 
 const CALC_COLUMN_WIDTHS = CALC_COLUMNS.map((column) => column.width);
-const CALC_COLUMN_WIDTHS_KEY = "calc-sheet-columns-v2";
+const CALC_COLUMN_WIDTHS_KEY = CALC_COLUMN_WIDTHS_V3_KEY;
+
+function migrateCalcColumnWidths(): void {
+  try {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(CALC_COLUMN_WIDTHS_KEY) !== null) return;
+    const saved = window.localStorage.getItem(CALC_COLUMN_WIDTHS_V2_KEY);
+    if (saved === null) return;
+    const widths: unknown = JSON.parse(saved);
+    if (
+      !Array.isArray(widths) ||
+      widths.length !== CALC_COLUMNS.length ||
+      !widths.every(
+        (value) =>
+          typeof value === "number" && Number.isFinite(value) && value >= 28,
+      )
+    )
+      return;
+    window.localStorage.setItem(
+      CALC_COLUMN_WIDTHS_KEY,
+      JSON.stringify(migrateCalcColumnWidthsV2ToV3(widths)),
+    );
+  } catch {
+    // 保存幅を読めない場合は既定幅を使う
+  }
+}
 
 function migrateLegacyOpsColumnWidth(): void {
   try {
@@ -316,6 +346,7 @@ function migrateLegacyOpsColumnWidth(): void {
   }
 }
 
+migrateCalcColumnWidths();
 migrateLegacyOpsColumnWidth();
 
 const SOURCE_LABEL: Record<CallSource, string> = {
@@ -2560,6 +2591,42 @@ export default function RoomCalcSheet({
                         />
                       </td>
                       {detail ? (
+                        <td className="id">
+                          <PickInput
+                            popupSide="right"
+                            popupAnchorCol={5}
+                            row={gridRow}
+                            col={1}
+                            entries={pickupPartEntries}
+                            halfWidth
+                            commitOnBlur
+                            value={
+                              detail.partNumber === null
+                                ? ""
+                                : String(detail.partNumber)
+                            }
+                            title="明細用部位のID。登録済みの番号を入れると右の部位名にマスターの文字が入ります"
+                            onFocus={focusDetail}
+                            onCommit={(text) => {
+                              const resolved = resolvePartNumberInput(
+                                pickupParts,
+                                text,
+                                detail.partName,
+                              );
+                              updateDetail(set.id, rowIndex, {
+                                ...resolved,
+                                partName: fillRoomName(
+                                  resolved.partName,
+                                  roomPartName,
+                                ),
+                              });
+                            }}
+                          />
+                        </td>
+                      ) : (
+                        <td className="empty" />
+                      )}
+                      {detail ? (
                         <>
                           <td className="material">
                             {detail.note === true && (
@@ -2574,7 +2641,7 @@ export default function RoomCalcSheet({
                           popupSide="right"
                               popupAnchorCol={5}
                               row={gridRow}
-                              col={1}
+                              col={2}
                               entries={materialEntries}
                               halfWidth
                               value={detail.materialCategory}
@@ -2600,7 +2667,7 @@ export default function RoomCalcSheet({
                           popupSide="right"
                               popupAnchorCol={5}
                               row={gridRow}
-                              col={2}
+                              col={3}
                               entries={subjectEntries}
                               halfWidth
                               value={
@@ -2624,43 +2691,7 @@ export default function RoomCalcSheet({
                           </td>
                           <td className="id">
                             <PickInput
-                          popupSide="right"
-                              popupAnchorCol={5}
-                              row={gridRow}
-                              col={3}
-                              entries={pickupPartEntries}
-                              halfWidth
-                              commitOnBlur
-                              value={
-                                detail.partNumber === null
-                                  ? ""
-                                  : String(detail.partNumber)
-                              }
-                              title="明細用部位のID。登録済みの番号を入れると右の部位名にマスターの文字が入ります"
-                              onFocus={focusDetail}
-                              onCommit={(text) => {
-                                const resolved = resolvePartNumberInput(
-                                  pickupParts,
-                                  text,
-                                  detail.partName,
-                                );
-                                updateDetail(
-                                  set.id,
-                                  rowIndex,
-                                  {
-                                    ...resolved,
-                                    partName: fillRoomName(
-                                      resolved.partName,
-                                      roomPartName,
-                                    ),
-                                  },
-                                )
-                              }}
-                            />
-                          </td>
-                          <td className="id">
-                            <PickInput
-                          popupSide="right"
+                              popupSide="right"
                               popupAnchorCol={5}
                               row={gridRow}
                               col={4}
@@ -2822,7 +2853,7 @@ export default function RoomCalcSheet({
                           </td>
                         </>
                       ) : (
-                        <td className="empty" colSpan={11} />
+                        <td className="empty" colSpan={10} />
                       )}
                       {line ? (
                         <>

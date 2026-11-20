@@ -154,9 +154,9 @@ export function fillLines(
  */
 export const SHEET_PASTE_FIELDS = [
   "setPartName",
+  "partNumber",
   "materialCategory",
   "subjectId",
-  "partNumber",
   "detailNumber",
   "partName",
   "name",

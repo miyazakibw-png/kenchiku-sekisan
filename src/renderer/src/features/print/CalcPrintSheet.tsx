@@ -14,6 +14,11 @@ import {
   type CalcPrintPage,
   type CalcPrintRow,
 } from "../../../../core/print/calcPrint";
+import {
+  CALC_COLUMN_WIDTHS_V2_KEY,
+  CALC_COLUMN_WIDTHS_V3_KEY,
+  calcPrintColumnWidths,
+} from "../../../../core/room/calcColumnWidths";
 import "./CalcPrintSheet.css";
 
 interface Props {
@@ -42,23 +47,32 @@ const LINE_FINE = 0.7;
 const LAYOUT_SCALE = 1 / LINE_FINE;
 
 /** 画面で伸縮した計算書の列幅（下段計算書と同じ置き場）。無ければ既定幅 */
+function storedColumnWidths(key: string): number[] | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every(
+        (value) =>
+          typeof value === "number" && Number.isFinite(value) && value >= 28,
+      )
+    )
+      return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function screenColumnWidths(): number[] {
   const defaults = CALC_PRINT_COLUMNS.map((column) => column.width);
-  try {
-    const raw = window.localStorage.getItem("calc-sheet-columns-v2");
-    if (!raw) return defaults;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return defaults;
-    const stored = parsed as Record<string, unknown>;
-    return defaults.map((width, index) => {
-      const value = stored[String(index)];
-      return typeof value === "number" && Number.isFinite(value)
-        ? value
-        : width;
-    });
-  } catch {
-    return defaults;
-  }
+  return calcPrintColumnWidths(
+    storedColumnWidths(CALC_COLUMN_WIDTHS_V3_KEY),
+    storedColumnWidths(CALC_COLUMN_WIDTHS_V2_KEY),
+    defaults,
+  );
 }
 
 function TitleRow({ title }: { title: string }): JSX.Element {
