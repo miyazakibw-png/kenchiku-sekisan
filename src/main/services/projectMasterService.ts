@@ -1,11 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { AppDatabase } from "../db";
-import {
-  mDetails,
-  mFinishAssemblyItems,
-  mSubjects,
-  projectMasters,
-} from "../db/schema";
+import { mDetails, mFinishAssemblyItems, projectMasters } from "../db/schema";
 import type {
   BasicMasterKind,
   BasicMasterRow,
@@ -21,20 +16,20 @@ import type {
   Subject,
   SubjectDraft,
 } from "../../shared/types";
-import { listBasicMasters } from "./basicMasterService";
-import { listSubjects, subjectCode } from "./subjectService";
+import { listBasicMasters, saveBasicMaster } from "./basicMasterService";
+import {
+  copyBasicMastersToProject,
+  PROJECT_MASTER_KINDS,
+} from "./projectMasterCopyService";
+import type { ProjectMasterKind } from "./projectMasterCopyService";
+import {
+  listSubjects,
+  remapProjectSubjectMasterNumbers,
+  subjectCode,
+} from "./subjectService";
 
-/** 工事ごとに持てるマスターの種類 */
-export const PROJECT_MASTER_KINDS = [
-  "subjects",
-  "pickupParts",
-  "materialCategories",
-  "units",
-  "aggregationParts",
-  "formworkCategories",
-] as const;
-
-export type ProjectMasterKind = (typeof PROJECT_MASTER_KINDS)[number];
+export { copyBasicMastersToProject, PROJECT_MASTER_KINDS };
+export type { ProjectMasterKind };
 
 interface ProjectMasterRow {
   number: number;
@@ -44,6 +39,7 @@ interface ProjectMasterRow {
   note: string;
   skipPart2: number;
   aggregateOrder: number;
+  detailFirst: number;
   displayOrder: number;
 }
 
@@ -60,6 +56,7 @@ function rowsOf(
       note: projectMasters.note,
       skipPart2: projectMasters.skipPart2,
       aggregateOrder: projectMasters.aggregateOrder,
+      detailFirst: projectMasters.detailFirst,
       displayOrder: projectMasters.displayOrder,
     })
     .from(projectMasters)
@@ -104,6 +101,7 @@ export function listProjectSubjects(
     displayOrder: index,
     skipPart2: row.skipPart2,
     aggregateOrder: row.aggregateOrder,
+    detailFirst: row.detailFirst,
     note: row.note,
     spare1: "",
     spare2: "",
@@ -135,6 +133,38 @@ export function listProjectBasicMasters(
   };
 }
 
+function replaceRowsInTransaction(
+  tx: AppDatabase,
+  projectId: number,
+  kind: ProjectMasterKind,
+  rows: ProjectMasterRow[],
+): void {
+  tx.delete(projectMasters)
+    .where(
+      and(
+        eq(projectMasters.projectId, projectId),
+        eq(projectMasters.kind, kind),
+      ),
+    )
+    .run();
+  rows.forEach((row, index) => {
+    tx.insert(projectMasters)
+      .values({
+        projectId,
+        kind,
+        number: row.number,
+        sourceNumber: row.sourceNumber,
+        name: row.name,
+        note: row.note,
+        skipPart2: row.skipPart2,
+        aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
+        displayOrder: index,
+      })
+      .run();
+  });
+}
+
 function replaceRows(
   db: AppDatabase,
   projectId: number,
@@ -142,29 +172,7 @@ function replaceRows(
   rows: ProjectMasterRow[],
 ): void {
   db.transaction((tx) => {
-    tx.delete(projectMasters)
-      .where(
-        and(
-          eq(projectMasters.projectId, projectId),
-          eq(projectMasters.kind, kind),
-        ),
-      )
-      .run();
-    rows.forEach((row, index) => {
-      tx.insert(projectMasters)
-        .values({
-          projectId,
-          kind,
-          number: row.number,
-          sourceNumber: row.sourceNumber,
-          name: row.name,
-          note: row.note,
-          skipPart2: row.skipPart2,
-          aggregateOrder: row.aggregateOrder,
-          displayOrder: index,
-        })
-        .run();
-    });
+    replaceRowsInTransaction(tx as AppDatabase, projectId, kind, rows);
   });
 }
 
@@ -185,10 +193,28 @@ export function saveProjectBasicMaster(
     note: row.note,
     skipPart2: 0,
     aggregateOrder: 1,
+    detailFirst: 0,
     displayOrder: 0,
   }));
   replaceRows(db, projectId, kind, trimmed);
   return { masters: listProjectBasicMasters(db, projectId), errors: [] };
+}
+
+/** 工事のその他マスター1種類を基本マスターへ同期する */
+export function syncProjectBasicMasterToBasic(
+  db: AppDatabase,
+  projectId: number,
+  kind: BasicMasterKind,
+): SaveBasicMasterResult {
+  const result = saveBasicMaster(
+    db,
+    kind,
+    listProjectBasicMasters(db, projectId)[kind],
+  );
+  return {
+    masters: listProjectBasicMasters(db, projectId),
+    errors: result.errors,
+  };
 }
 
 /** その工事の明細・セット明細で使われている科目ID */
@@ -218,8 +244,7 @@ function usedSubjectNumbers(
 }
 
 /**
- * 工事の科目マスターを保存する。科目IDは既存行はそのまま、
- * 新しい行は空いている一番小さい番号を割り当てる（明細は科目IDで紐づくため番号は変えない）。
+ * 工事の科目マスターを保存する。新しい行は空いている番号を割り当てる。
  */
 export function saveProjectSubjects(
   db: AppDatabase,
@@ -238,31 +263,83 @@ export function saveProjectSubjects(
   );
   const blocked = removed.filter((subject) => used.has(subject.id));
 
-  const usedNumbers = new Set<number>(keptIds);
-  blocked.forEach((subject) => usedNumbers.add(subject.id));
-  let next = 1;
-  const numberFor = (id: number | null): number => {
-    if (id !== null) return id;
-    while (usedNumbers.has(next)) next += 1;
-    usedNumbers.add(next);
-    return next;
-  };
-
   const sourceNumbers = new Map(
     rowsOf(db, projectId, "subjects").map((row) => [
       row.number,
       row.sourceNumber,
     ]),
   );
-  const saved: ProjectMasterRow[] = rows.map((row) => ({
-    number: numberFor(row.id),
-    sourceNumber: row.id === null ? null : (sourceNumbers.get(row.id) ?? null),
-    name: row.name,
-    note: row.note,
-    skipPart2: row.skipPart2,
-    aggregateOrder: row.aggregateOrder,
-    displayOrder: 0,
-  }));
+  const finalExisting = [
+    ...rows.flatMap((row) =>
+      row.id === null ? [] : [{ number: row.newId ?? row.id, name: row.name }],
+    ),
+    ...blocked.map((subject) => ({
+      number: subject.id,
+      name: subject.name,
+    })),
+  ];
+  const idErrors = finalExisting.flatMap(({ number, name }) =>
+    Number.isInteger(number) && number > 0
+      ? []
+      : [`科目IDは正の整数にしてください（${name}）`],
+  );
+  const namesByNumber = new Map<number, string[]>();
+  finalExisting.forEach(({ number, name }) => {
+    if (!Number.isInteger(number) || number <= 0) return;
+    const names = namesByNumber.get(number) ?? [];
+    names.push(name);
+    namesByNumber.set(number, names);
+  });
+  namesByNumber.forEach((names, number) => {
+    if (names.length > 1)
+      idErrors.push(
+        `科目ID ${number} が${names.length}つあります（${names.join("・")}）`,
+      );
+  });
+  if (idErrors.length > 0) {
+    return {
+      subjects: current,
+      blockedDeletes: blocked.map((subject) => subject.name),
+      idErrors,
+    };
+  }
+
+  const usedNumbers = new Set<number>(
+    finalExisting.map(({ number }) => number),
+  );
+  let next = 1;
+  const saved: ProjectMasterRow[] = rows.map((row) => {
+    const number = row.id === null ? undefined : (row.newId ?? row.id);
+    if (number !== undefined) {
+      return {
+        number,
+        sourceNumber:
+          row.newId !== undefined && row.newId !== row.id
+            ? null
+            : (sourceNumbers.get(row.id as number) ?? null),
+        name: row.name,
+        note: row.note,
+        skipPart2: row.skipPart2,
+        aggregateOrder: row.aggregateOrder,
+        detailFirst: row.detailFirst,
+        displayOrder: 0,
+      };
+    }
+    while (usedNumbers.has(next)) next += 1;
+    const assigned = next;
+    usedNumbers.add(assigned);
+    next += 1;
+    return {
+      number: assigned,
+      sourceNumber: null,
+      name: row.name,
+      note: row.note,
+      skipPart2: row.skipPart2,
+      aggregateOrder: row.aggregateOrder,
+      detailFirst: row.detailFirst,
+      displayOrder: 0,
+    };
+  });
   // 明細が残っていて消せない科目は末尾へ回す
   blocked.forEach((subject) => {
     saved.push({
@@ -272,72 +349,53 @@ export function saveProjectSubjects(
       note: subject.note,
       skipPart2: subject.skipPart2,
       aggregateOrder: subject.aggregateOrder,
+      detailFirst: subject.detailFirst,
       displayOrder: 0,
     });
   });
-  replaceRows(db, projectId, "subjects", saved);
+  const finalNumbers = new Map<number, string[]>();
+  const finalIdErrors = saved.flatMap((row) =>
+    Number.isInteger(row.number) && row.number > 0
+      ? []
+      : [`科目IDは正の整数にしてください（${row.name}）`],
+  );
+  saved.forEach((row) => {
+    if (!Number.isInteger(row.number) || row.number <= 0) return;
+    const names = finalNumbers.get(row.number) ?? [];
+    names.push(row.name);
+    finalNumbers.set(row.number, names);
+  });
+  finalNumbers.forEach((names, number) => {
+    if (names.length > 1)
+      finalIdErrors.push(
+        `科目ID ${number} が${names.length}つあります（${names.join("・")}）`,
+      );
+  });
+  if (finalIdErrors.length > 0) {
+    return {
+      subjects: current,
+      blockedDeletes: blocked.map((subject) => subject.name),
+      idErrors: finalIdErrors,
+    };
+  }
+
+  const numberMapping = new Map(
+    rows.flatMap((row) =>
+      row.id !== null && row.newId !== undefined && row.newId !== row.id
+        ? [[row.id, row.newId] as const]
+        : [],
+    ),
+  );
+  db.transaction((tx) => {
+    replaceRowsInTransaction(tx as AppDatabase, projectId, "subjects", saved);
+    remapProjectSubjectMasterNumbers(
+      tx as AppDatabase,
+      projectId,
+      numberMapping,
+    );
+  });
   return {
     subjects: listProjectSubjects(db, projectId),
     blockedDeletes: blocked.map((subject) => subject.name),
   };
-}
-
-/**
- * 基準（基本）マスターを工事へ複製する。
- * すでに工事側にある種類は、上書き指定がなければそのまま残す。
- */
-export function copyBasicMastersToProject(
-  db: AppDatabase,
-  projectId: number,
-  overwrite = false,
-): ProjectMasterKind[] {
-  const owned = new Set(projectMasterKinds(db, projectId));
-  const copied: ProjectMasterKind[] = [];
-  const basic = listBasicMasters(db);
-
-  PROJECT_MASTER_KINDS.forEach((kind) => {
-    if (owned.has(kind) && !overwrite) return;
-    if (kind === "subjects") {
-      const subjects = db
-        .select()
-        .from(mSubjects)
-        .orderBy(asc(mSubjects.displayOrder), asc(mSubjects.id))
-        .all();
-      if (subjects.length === 0) return;
-      replaceRows(
-        db,
-        projectId,
-        kind,
-        subjects.map((subject) => ({
-          number: subject.id,
-          sourceNumber: subject.id,
-          name: subject.name,
-          note: subject.note,
-          skipPart2: subject.skipPart2,
-          aggregateOrder: subject.aggregateOrder,
-          displayOrder: 0,
-        })),
-      );
-      copied.push(kind);
-      return;
-    }
-    const rows = basic[kind];
-    if (rows.length === 0) return;
-    replaceRows(
-      db,
-      projectId,
-      kind,
-      rows.map((row) => ({
-        number: row.id,
-        sourceNumber: row.id,
-        name: row.name,
-        note: row.note,
-        skipPart2: 0,
-        aggregateOrder: 1,
-        displayOrder: 0,
-      })),
-    );
-    copied.push(kind);
-  });
-  return copied;
 }

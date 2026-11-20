@@ -13,6 +13,7 @@ interface Props {
   listId: string;
   className?: string;
   title?: string;
+  placeholder?: string;
 }
 
 /**
@@ -27,12 +28,14 @@ export default function MasterCodeInput({
   listId,
   className,
   title,
+  placeholder,
 }: Props): JSX.Element {
   return (
     <input
       className={className}
       list={listId}
       value={value}
+      placeholder={placeholder}
       title={title ?? "マスターの番号を入力すると名称に変換されます"}
       onChange={(e) => onChange(resolveMasterName(entries, e.target.value))}
     />

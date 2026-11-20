@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { BREAKDOWN_LAYOUT } from "../../src/core/breakdown/breakdown";
+import {
+  applyTextSettingsToRows,
+  BREAKDOWN_LAYOUT,
+} from "../../src/core/breakdown/breakdown";
 import type { BreakdownRow } from "../../src/core/breakdown/breakdown";
-import { toCompareSheet } from "../../src/core/breakdown/compareSheet";
+import {
+  toCompareBlocks,
+  compareBlocksBySubject,
+} from "../../src/core/breakdown/compareBlocks";
+import {
+  toCompareSheet,
+  toCompareWorkbook,
+} from "../../src/core/breakdown/compareSheet";
 
 function row(patch: Partial<BreakdownRow>): BreakdownRow {
   return {
@@ -45,6 +55,25 @@ describe("比較のエクセル掃き出し", () => {
     expect(sheet.rows[2]?.[8]?.value).toBe("普通コンクリート");
   });
 
+  it("左右の間の列は見出し・明細・空行とも横罫線なしにする", () => {
+    const sheet = toCompareSheet({
+      left: [row({}), row({ rowKind: "blank", nameLower: "", quantity: null })],
+      right: [row({}), row({})],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+
+    expect(sheet.rows.slice(0, 4).map((cells) => cells[7]?.border)).toEqual([
+      "none",
+      "none",
+      "none",
+      "none",
+    ]);
+    expect(sheet.rows[0]?.[6]?.border).toBe("one");
+    expect(sheet.rows[0]?.[8]?.border).toBe("one");
+  });
+
   it("違うところは左だけ色を付け、比べる元（右）には付けない", () => {
     const sheet = toCompareSheet({
       left: [row({ quantity: 12 })],
@@ -59,6 +88,33 @@ describe("比較のエクセル掃き出し", () => {
     expect(line[0]?.mark).toBe("plain");
     // 右側は色を付けない
     expect(line[10]?.mark).toBe("plain");
+  });
+
+  it("確定回の古い摘要・単位を今の設定に直してから比べる", () => {
+    const settings = {
+      replacements: [{ from: "*", to: "×" }],
+      unitReplacements: [{ from: "ヶ所", to: "か所" }],
+      nameWidth: "raw",
+    };
+    const left = row({
+      descriptionLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10",
+      unit: "か所",
+    });
+    const savedRight = row({
+      descriptionLower: "ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15*10",
+      unit: "ヶ所",
+    });
+    const right = applyTextSettingsToRows([savedRight], settings);
+    const diffs = compareBlocksBySubject(
+      toCompareBlocks([left], layout),
+      toCompareBlocks(right, layout),
+    );
+    const detail = diffs.find((diff) => diff.leftIndex !== null);
+
+    expect(right[0]?.descriptionLower).toBe("ﾎﾟﾘｻﾙﾌｧｲﾄﾞ系 15×10");
+    expect(right[0]?.unit).toBe("か所");
+    expect(detail?.changedHalves).toEqual([]);
+    expect(detail?.onlyLeft).toBe(false);
   });
 
   it("片側にしかない明細は左側に色が付く", () => {
@@ -89,8 +145,8 @@ describe("比較のエクセル掃き出し", () => {
       leftTitle: "2回目",
       rightTitle: "1回目",
     });
-    // 見出し・明細ともに2行ずつ＝かたまりの数×2
-    expect(sheet.rows.length).toBe(2 + 2 * 2);
+    // 内訳書単体と同じく1ページの行数（17明細×2行）まで空行で埋める
+    expect(sheet.rows.length).toBe(17 * 2);
     // 見出しは下の行に出し、右の明細と高さがそろう
     expect(sheet.rows[2]?.[0]?.value).toBe("");
     expect(sheet.rows[3]?.[0]?.value).toBe("コンクリート工事");
@@ -101,6 +157,44 @@ describe("比較のエクセル掃き出し", () => {
     expect(sheet.rows[5]?.[10]?.mark).toBe("plain");
   });
 
+  it("2段2行の明細は上段・下段を行ごとに色を付ける", () => {
+    const pair = (detail: string): BreakdownRow[] => [
+      row({ rowKind: "note", nameLower: "基礎", quantity: null, unit: "" }),
+      row({ rowKind: "detail", nameLower: detail }),
+    ];
+    const sheet = toCompareSheet({
+      // 上段（note）は同じで下段（detail）だけ違う
+      left: pair("普通コンクリート"),
+      right: pair("型枠コンクリート"),
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+    // 上段の行は同じなので色なし、下段の行は違うので色あり
+    expect(sheet.rows[2]?.[0]?.value).toBe("基礎");
+    expect(sheet.rows[2]?.[0]?.mark).toBe("plain");
+    expect(sheet.rows[3]?.[0]?.value).toBe("普通コンクリート");
+    expect(sheet.rows[3]?.[0]?.mark).toBe("diff");
+  });
+
+  it("2段2行で上段だけ違うときは上段の行にだけ色が付く", () => {
+    const pair = (note: string): BreakdownRow[] => [
+      row({ rowKind: "note", nameLower: note, quantity: null, unit: "" }),
+      row({ rowKind: "detail" }),
+    ];
+    const sheet = toCompareSheet({
+      // 下段（detail）は同じで上段（note）だけ違う
+      left: pair("基礎スラブ"),
+      right: pair("基礎"),
+      layout: BREAKDOWN_LAYOUT.twoRow,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+    });
+    // 上段の行は違うので色あり、下段の行は同じなので色なし
+    expect(sheet.rows[2]?.[0]?.mark).toBe("diff");
+    expect(sheet.rows[3]?.[0]?.mark).toBe("plain");
+  });
+
   it("画面で開けた空行もそのまま出す", () => {
     const sheet = toCompareSheet({
       left: [row({}), row({ rowKind: "blank", nameLower: "", quantity: null })],
@@ -109,7 +203,177 @@ describe("比較のエクセル掃き出し", () => {
       leftTitle: "2回目",
       rightTitle: "1回目",
     });
-    expect(sheet.rows.length).toBe(4);
+    // 1ページの行数（17明細）まで空行で埋める
+    expect(sheet.rows.length).toBe(17);
     expect(sheet.rows[3]?.[0]?.value).toBe("");
   });
+
+  it("内訳書単体と同じく科目が変わるところでページを改める", () => {
+    const subject = (id: number, name: string): BreakdownRow =>
+      row({ rowKind: "subject", subjectId: id, subjectName: name });
+    const sheet = toCompareSheet({
+      left: [
+        subject(1, "A工事"),
+        row({}),
+        subject(2, "B工事"),
+        row({ subjectId: 2 }),
+      ],
+      right: [
+        subject(1, "A工事"),
+        row({}),
+        subject(2, "B工事"),
+        row({ subjectId: 2 }),
+      ],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+      page: { detailsPerPage: 17, detailsPerPageLater: 16 },
+    });
+    // 1ページ目17明細＋2ページ目16明細＝33行
+    expect(sheet.rows.length).toBe(17 + 16);
+    // B工事は次のページの先頭から
+    expect(sheet.rows[17]?.[0]?.value).toBe("B工事");
+    expect(sheet.rows[17]?.[8]?.value).toBe("B工事");
+  });
+
+  it("小計は科目が終わるページの最後の行に出る（左右それぞれ）", () => {
+    const subject = (id: number, name: string): BreakdownRow =>
+      row({ rowKind: "subject", subjectId: id, subjectName: name });
+    const subtotal = (amount: number): BreakdownRow =>
+      row({
+        subtotal: true,
+        nameLower: "小計",
+        amount,
+        quantity: null,
+        unit: "",
+      });
+    const sheet = toCompareSheet({
+      left: [subject(1, "A工事"), row({ amount: 100 }), subtotal(100)],
+      right: [subject(1, "A工事"), row({})],
+      layout,
+      leftTitle: "2回目",
+      rightTitle: "1回目",
+      page: { detailsPerPage: 17, detailsPerPageLater: 16 },
+    });
+    // 1ページ目の最後の行（17行目）に左だけ小計
+    expect(sheet.rows[16]?.[0]?.value).toBe("小計");
+    expect(sheet.rows[16]?.[5]?.value).toBe(100);
+    expect(sheet.rows[16]?.[8]?.value).toBe("");
+    // 小計の行は明細のすぐ次には出ない
+    expect(sheet.rows[4]?.[0]?.value).not.toBe("小計");
+  });
+
+  it.each([
+    ["1段", BREAKDOWN_LAYOUT.oneLine, 8, 0],
+    ["2段2行", BREAKDOWN_LAYOUT.twoRow, 14, 4],
+  ] as const)(
+    "続けて出すと%sは科目・小計の間を詰める",
+    (_name, layout, expectedRows, structuralBlankRows) => {
+      const makeRows = (): BreakdownRow[] => {
+        const subject = (id: number, name: string): BreakdownRow =>
+          row({
+            rowKind: "subject",
+            subjectId: id,
+            subjectName: name,
+            nameLower: name,
+            quantity: null,
+            unit: "",
+          });
+        const details = (
+          id: number,
+          name: string,
+          quantity: number,
+          amount: number,
+        ): BreakdownRow[] => {
+          const subjectName = id === 1 ? "A工事" : "B工事";
+          const detail = row({
+            rowKind: "detail",
+            subjectId: id,
+            subjectName,
+            nameLower: name,
+            quantity,
+            amount,
+          });
+          if (layout !== BREAKDOWN_LAYOUT.twoRow) return [detail];
+          return [
+            row({
+              rowKind: "note",
+              subjectId: id,
+              subjectName,
+              nameLower: `${name}上段`,
+              quantity: null,
+              unit: "",
+            }),
+            detail,
+          ];
+        };
+        const subtotal = (id: number, amount: number): BreakdownRow =>
+          row({
+            rowKind: "detail",
+            subjectId: id,
+            subjectName: id === 1 ? "A工事" : "B工事",
+            subtotal: true,
+            nameLower: "小計",
+            amount,
+            quantity: null,
+            unit: "",
+          });
+        return [
+          subject(1, "A工事"),
+          ...details(1, "明細A", 10, 100),
+          subtotal(1, 100),
+          subject(2, "B工事"),
+          ...details(2, "明細B", 20, 200),
+          subtotal(2, 200),
+        ];
+      };
+      const page = { detailsPerPage: 1, detailsPerPageLater: 1 };
+      const input = {
+        left: makeRows(),
+        right: makeRows(),
+        layout,
+        leftTitle: "新しい回",
+        rightTitle: "前の回",
+      };
+      expect(
+        toCompareWorkbook({
+          ...input,
+          page: { ...page, continuous: false },
+        }),
+      ).toEqual(toCompareWorkbook({ ...input, page }));
+
+      const sheet = toCompareSheet({
+        ...input,
+        page: { ...page, continuous: true },
+      });
+      expect(sheet.rows).toHaveLength(expectedRows);
+      expect(
+        sheet.rows.filter((line) =>
+          line.every((cell) => cell.value === "" || cell.value === null),
+        ),
+      ).toHaveLength(structuralBlankRows);
+
+      const detailA = sheet.rows.findIndex((line) => line[2]?.value === 10);
+      const subtotalA = sheet.rows.findIndex(
+        (line) => line[0]?.value === "小計",
+      );
+      const subjectB = sheet.rows.findIndex(
+        (line) => line[0]?.value === "B工事",
+      );
+      const rowsPerBlock = layout === BREAKDOWN_LAYOUT.oneLine ? 1 : 2;
+      expect(subtotalA).toBe(detailA + rowsPerBlock);
+      expect(subjectB).toBe(subtotalA + rowsPerBlock);
+      if (layout === BREAKDOWN_LAYOUT.twoRow) {
+        expect(sheet.rows[subjectB + 1]?.[0]?.value).toBe(
+          "明細B上段",
+        );
+        expect(sheet.rows[subjectB + 2]?.[0]?.value).toBe(
+          "明細B",
+        );
+      } else {
+        expect(sheet.rows[subjectB + rowsPerBlock]?.[0]?.value).toBe("明細B");
+        expect(sheet.rows[subjectB + rowsPerBlock]?.[2]?.value).toBe(20);
+      }
+    },
+  );
 });

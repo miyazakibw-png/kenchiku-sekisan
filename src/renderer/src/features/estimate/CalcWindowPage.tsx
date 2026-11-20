@@ -92,6 +92,7 @@ export default function CalcWindowPage({ parentId }: Props): JSX.Element {
         variables={state.variables}
         options={options}
         projectId={state.projectId}
+        roomPartName={state.roomPartName}
         focus={focus}
         onFocus={onFocus}
         result={state.result}

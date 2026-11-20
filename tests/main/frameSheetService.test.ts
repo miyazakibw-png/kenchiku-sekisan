@@ -14,15 +14,25 @@ import {
   saveEstimateRows,
 } from "../../src/main/services/estimateRowService";
 import {
+  getLowerTemplate,
   getRoomSheet,
+  saveLowerTemplate,
   saveRoomSheet,
 } from "../../src/main/services/roomSheetService";
 import {
   getFrameSheet,
   listFrameRooms,
+  listFrameSheets,
   saveFrameSheet,
 } from "../../src/main/services/frameSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
+import {
+  calcSet,
+  commentSet,
+  isCommentSet,
+  type CalcSet,
+} from "../../src/core/room/calcSheet";
+import { lowerTemplateFrom } from "../../src/core/room/lowerTemplate";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -71,8 +81,53 @@ describe("軸組計算書", () => {
     expect(sheet.estimateRowId).toBe(frameRow.id);
     expect(sheet.workHeight).toBe(2.7);
     expect(sheet.layoutJson).toBe("[]");
+    expect(sheet.lowerJson).toBe("[]");
     // 行ごとに1つ（開き直しても同じ計算書）
     expect(getFrameSheet(db, frameRow.id).id).toBe(sheet.id);
+  });
+
+  it("新しい軸組計算書は軸組用の初期状態を使い、明細とIDを作り直す", () => {
+    const project = createProject(db, "軸組初期状態");
+    const [frameRow] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("軸組A", "frame", 2.7)],
+    });
+
+    const part = calcSet(1);
+    part.partName = "壁";
+    part.details[0].name = "旧明細";
+    part.lines[0].formulaA = "3*2";
+    const template = lowerTemplateFrom([
+      commentSet("軸組見出し", "#dbeafe"),
+      part,
+    ]);
+    const templateJson = JSON.stringify(template);
+    saveLowerTemplate(db, "frame", templateJson);
+
+    const sheet = getFrameSheet(db, frameRow.id);
+    const sets = JSON.parse(sheet.lowerJson) as CalcSet[];
+    expect(sets.map((set) => set.banner?.text ?? set.partName)).toEqual([
+      "軸組見出し",
+      "壁",
+    ]);
+    expect(sets[1].details[0].name).toBe("");
+    expect(sets[1].lines[0].formulaA).toBe("");
+    const templateIds = new Set(
+      template.flatMap((set) => [
+        set.id,
+        ...set.details.map((detail) => detail.id),
+        ...set.lines.map((line) => line.id),
+      ]),
+    );
+    const createdIds = sets.flatMap((set) => [
+      set.id,
+      ...set.details.map((detail) => detail.id),
+      ...set.lines.map((line) => line.id),
+    ]);
+    expect(new Set(createdIds).size).toBe(createdIds.length);
+    expect(createdIds.some((id) => templateIds.has(id))).toBe(false);
+    expect(isCommentSet(sets[0])).toBe(true);
+    expect(getLowerTemplate(db, "frame")).toBe(templateJson);
   });
 
   it("レイアウト・軸組ライン・下段を保存して開き直せる", () => {
@@ -102,6 +157,33 @@ describe("軸組計算書", () => {
     expect(reopened.attributesJson).toContain("LGS65");
     expect(reopened.fittingsJson).toContain("SD-2");
     expect(reopened.lowerJson).toContain('"s1"');
+  });
+
+  it("施工高さを保存すると部位別入力表の天井高さへも書き戻す", () => {
+    const project = createProject(db, "高さ連動");
+    const [frameRow] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("1階軸組", "frame", 2.7)],
+    });
+    const sheet = getFrameSheet(db, frameRow.id);
+
+    saveFrameSheet(db, {
+      id: sheet.id,
+      layoutJson: "[]",
+      linesJson: "[]",
+      attributesJson: "{}",
+      fittingsJson: "[]",
+      lowerJson: "[]",
+      workHeight: 3.5,
+      traceJson: "{}",
+      kindsJson: "[]",
+      note: "",
+    });
+
+    const saved = listEstimateRows(db, project.id).find(
+      (each) => each.id === frameRow.id,
+    );
+    expect(saved?.ceilingHeight).toBe(3.5);
   });
 
   it("置ける部屋は部屋計算書を作った行だけで、部屋名は部位Ⅱ＋部位Ⅲ", () => {
@@ -171,5 +253,29 @@ describe("軸組計算書", () => {
     expect(copiedFrame.layoutJson).not.toContain(
       `"estimateRowId":${rows[0].id}`,
     );
+  });
+
+  it("計算書一覧は作ってある計算書だけを、部位Ⅱ＋部位Ⅲの名前で出す", () => {
+    const project = createProject(db, "一覧テスト");
+    const rows = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [
+        row("1階軸組", "frame", 2.7),
+        row("2階軸組", "frame", 2.7),
+        row("未作成", "frame", null),
+      ],
+    });
+    getFrameSheet(db, rows[0].id);
+    getFrameSheet(db, rows[1].id);
+
+    const sheets = listFrameSheets(db, project.id);
+    expect(sheets.map((one) => one.roomName)).toEqual([
+      "内部 1階軸組",
+      "内部 2階軸組",
+    ]);
+    expect(sheets.map((one) => one.estimateRowId)).toEqual([
+      rows[0].id,
+      rows[1].id,
+    ]);
   });
 });

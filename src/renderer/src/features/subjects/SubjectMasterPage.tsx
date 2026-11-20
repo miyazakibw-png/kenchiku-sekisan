@@ -49,7 +49,19 @@ export default function SubjectMasterPage({
 
   const save = useCallback(
     async (quiet = false) => {
-      const result = await window.sekisan.saveSubjects(rows, projectId);
+      let result: Awaited<ReturnType<typeof window.sekisan.saveSubjects>>;
+      try {
+        result = await window.sekisan.saveSubjects(rows, projectId);
+      } catch (error) {
+        setToast(error instanceof Error ? error.message : "保存に失敗しました");
+        return;
+      }
+      if (result.idErrors?.length) {
+        setToast(
+          `科目IDが重なっているため保存しませんでした：${result.idErrors.join("、")}`,
+        );
+        return;
+      }
       const next = toDrafts(result.subjects);
       setRows(next);
       markSaved(next);
@@ -124,8 +136,8 @@ export default function SubjectMasterPage({
         </button>
         <span className="hint">
           {projectId === null
-            ? "科目IDは行位置で自動採番します。明細は科目の内部IDに付くため、番号や名称を変えても所属は変わりません（集計順は列のみ用意して未使用）"
-            : "この工事だけの科目です。基本マスターから複製した科目は基本マスターと同じ科目IDになります。追加した行には空き番号を割り当てます"}
+            ? "科目IDは行位置で自動採番します。明細は科目の内部IDに付くため、番号や名称を変えても所属は変わりません"
+            : "この工事だけの科目です。基本マスターから複製した科目は基本マスターと同じ科目IDになります。追加した行には空き番号を割り当てます。科目IDは書き換えられます（同じ番号は使えません）。書き換えると、この工事の明細マスター・転記の決まり・仕上明細セットの番号だけが変わり、計算書・集計書・内訳書の番号は変わりません。直した後は集計実行と転記をし直してください"}
         </span>
         <span className="status">{toast}</span>
       </div>
@@ -137,6 +149,9 @@ export default function SubjectMasterPage({
             <th className="name">工種科目名</th>
             <th className="note">備考</th>
             <th className="flag">部位Ⅱ分不要</th>
+            <th className="flag" title="集計書を明細ID→部位IDの順に並べる">
+              明細順
+            </th>
             <th className="spare">予備1</th>
             <th className="spare">予備2</th>
           </tr>
@@ -149,7 +164,28 @@ export default function SubjectMasterPage({
               onClick={() => setSelected(index)}
             >
               <td className="no">
-                {projectId === null ? displayCode(index) : (row.id ?? "新規")}
+                {projectId === null ? (
+                  displayCode(index)
+                ) : row.id === null ? (
+                  "新規"
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={Number.isNaN(row.newId) ? "" : (row.newId ?? row.id)}
+                    onChange={(e) =>
+                      setRows(
+                        updateRow(rows, index, {
+                          newId:
+                            e.target.value === ""
+                              ? Number.NaN
+                              : e.currentTarget.valueAsNumber,
+                        }),
+                      )
+                    }
+                  />
+                )}
               </td>
               <td>
                 <input
@@ -178,6 +214,20 @@ export default function SubjectMasterPage({
                     setRows(
                       updateRow(rows, index, {
                         skipPart2: e.target.checked ? 1 : 0,
+                      }),
+                    )
+                  }
+                />
+              </td>
+              <td className="flag">
+                <input
+                  type="checkbox"
+                  checked={row.detailFirst === 1}
+                  title="集計書を明細ID→部位IDの順に並べる"
+                  onChange={(e) =>
+                    setRows(
+                      updateRow(rows, index, {
+                        detailFirst: e.target.checked ? 1 : 0,
                       }),
                     )
                   }

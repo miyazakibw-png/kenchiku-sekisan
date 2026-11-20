@@ -109,6 +109,30 @@ describe("エクセル（.xlsx）の書き出し", () => {
     expect(sheet).toContain('<c r="A1" s="1"');
   });
 
+  it("noneセルはborderId 0を使い、既存のoneセルの書式番号を変えない", () => {
+    const file = toXlsx([
+      {
+        name: "比較",
+        rows: [
+          [
+            { value: "既存", kind: "text", border: "one" },
+            { value: "罫線なし", kind: "text", border: "none" },
+          ],
+        ],
+      },
+    ]);
+    const styles = entry(file, "xl/styles.xml");
+    const cellXfs = /<cellXfs[^>]*>(.*?)<\/cellXfs>/s.exec(styles)?.[1] ?? "";
+    const xfs = [...cellXfs.matchAll(/<xf [^>]*>/g)].map((match) => match[0]);
+    const sheet = entry(file, "xl/worksheets/sheet1.xml");
+    const oneStyle = Number(/<c r="A1" s="(\d+)"/.exec(sheet)?.[1]);
+    const noneStyle = Number(/<c r="B1" s="(\d+)"/.exec(sheet)?.[1]);
+
+    expect(oneStyle).toBe(1);
+    expect(xfs[oneStyle]).toContain('borderId="1"');
+    expect(xfs[noneStyle]).toContain('borderId="0"');
+  });
+
   it("違うところ（mark=diff）は背景が黄色・文字が赤の書式になる", () => {
     const file = toXlsx([
       {
@@ -132,10 +156,15 @@ describe("エクセル（.xlsx）の書き出し", () => {
     const xfs = [
       ...cellXfs.matchAll(/<xf [^>]*fontId="(\d+)" fillId="(\d+)"/g),
     ];
-    // 違うセルの書式は、赤文字（fontId=3）・黄色の地（fillId=3）
-    expect(xfs[Number(diff)]?.[1]).toBe("3");
+    // 違うセルの書式は、赤文字（fontId=2・太字なし）・黄色の地（fillId=3）
+    expect(xfs[Number(diff)]?.[1]).toBe("2");
     expect(xfs[Number(diff)]?.[2]).toBe("3");
     expect(xfs[Number(plain)]?.[1]).toBe("0");
     expect(xfs[Number(plain)]?.[2]).toBe("0");
+    const fonts = /<fonts[^>]*>(.*?)<\/fonts>/s.exec(styles)?.[1] ?? "";
+    const fontList = [...fonts.matchAll(/<font>.*?<\/font>/g)].map(
+      (font) => font[0],
+    );
+    expect(fontList[2]).not.toContain("<b/>");
   });
 });

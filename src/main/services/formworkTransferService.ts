@@ -5,24 +5,26 @@ import {
   projectAggregateDetails,
   projectAggregateItems,
   projectAggregateRuns,
+  projectFormworkRuns,
   projectTransferRows,
-  projectTransferRules,
 } from "../db/schema";
 import {
   buildFormworkTransferRows,
-  collectFormworkQuantities,
+  orderFormworkRows,
+  storedRowSignature,
   type FormworkCategory,
   type FormworkSourceDetail,
-  type FormworkTransferRule,
   type FormworkTransferRow,
 } from "../../core/aggregate/formworkTransfer";
 import type {
+  DeleteFormworkRunRequest,
   FormworkSourceItem,
+  FormworkRunView,
   FormworkTransferView,
-  SaveFormworkRulesRequest,
+  RunFormworkTransferRequest,
+  RunFormworkTransferResult,
 } from "../../shared/types";
-
-const RULE_KIND = "formwork";
+import { runAggregation } from "./aggregationService";
 
 function latestRunId(db: AppDatabase, projectId: number): number | null {
   const run = db
@@ -33,42 +35,6 @@ function latestRunId(db: AppDatabase, projectId: number): number | null {
     .limit(1)
     .all();
   return run.length > 0 ? run[0].id : null;
-}
-
-function splitKeys(text: string): string[] {
-  return text
-    .split(",")
-    .map((key) => key.trim())
-    .filter((key) => key !== "");
-}
-
-export function listFormworkRules(
-  db: AppDatabase,
-  projectId: number,
-): FormworkTransferRule[] {
-  return db
-    .select()
-    .from(projectTransferRules)
-    .where(
-      and(
-        eq(projectTransferRules.projectId, projectId),
-        eq(projectTransferRules.ruleKind, RULE_KIND),
-      ),
-    )
-    .orderBy(asc(projectTransferRules.id))
-    .all()
-    .map((rule) => ({
-      key: rule.masterKey,
-      sourceKeys: splitKeys(rule.sourceKeys),
-      coefficient: rule.coefficient,
-      subjectId: rule.subjectId,
-      materialCategory: rule.materialCategory,
-      name: rule.name,
-      description: rule.description,
-      descriptionLower: rule.descriptionLower,
-      unit: rule.unit,
-      remarks: rule.remarks,
-    }));
 }
 
 /** 型枠分類マスター（転記の並びは登録番号順） */
@@ -107,20 +73,16 @@ function sourceDetails(
     }));
 }
 
-/** 型枠転記の元にできる明細（最新の集計書兼工事マスター。型枠転記で作った行は除く） */
+/** 型枠転記の元にできる明細（最新の集計書兼工事マスター） */
 function sourceItems(db: AppDatabase, projectId: number): FormworkSourceItem[] {
   const runId = latestRunId(db, projectId);
   if (runId === null) return [];
-  const ruleKeys = new Set(
-    listFormworkRules(db, projectId).map((rule) => rule.key),
-  );
   return db
     .select()
     .from(projectAggregateItems)
     .where(eq(projectAggregateItems.runId, runId))
     .orderBy(asc(projectAggregateItems.displayOrder))
     .all()
-    .filter((item) => !ruleKeys.has(item.masterKey))
     .map((item) => ({
       masterKey: item.masterKey,
       part1: item.part1,
@@ -138,145 +100,184 @@ function sourceItems(db: AppDatabase, projectId: number): FormworkSourceItem[] {
     }));
 }
 
-/**
- * 型枠転記の画面データ。
- * 選べる元明細、元明細の型枠分類別の数量、いま決めているルール、
- * そのルールでできる行（転記入力表へ入れる行）を返す。
- */
+function formworkRuns(db: AppDatabase, projectId: number): FormworkRunView[] {
+  return db
+    .select()
+    .from(projectFormworkRuns)
+    .where(eq(projectFormworkRuns.projectId, projectId))
+    .orderBy(desc(projectFormworkRuns.id))
+    .all()
+    .map((run) => ({
+      id: run.id,
+      createdAt: run.createdAt,
+      search: run.search,
+      current: run.current === 1,
+      rows: JSON.parse(run.rowsJson) as FormworkTransferRow[],
+    }));
+}
+
+/** 型枠転記の画面データ（元明細と算出結果の履歴） */
 export function getFormworkTransfer(
   db: AppDatabase,
   projectId: number,
 ): FormworkTransferView {
-  const details = sourceDetails(db, projectId);
-  const rules = listFormworkRules(db, projectId);
-  const selected = new Set(rules.flatMap((rule) => rule.sourceKeys));
+  const runs = formworkRuns(db, projectId);
   return {
-    rules,
     sources: sourceItems(db, projectId),
-    groups: collectFormworkQuantities(details).filter((group) =>
-      selected.has(group.masterKey),
-    ),
-    rows: buildFormworkTransferRows(details, rules, formworkCategories(db)),
+    groups: [],
+    runs,
+    lastSearch: runs[0]?.search ?? "",
   };
 }
 
-export function saveFormworkRules(
-  db: AppDatabase,
-  request: SaveFormworkRulesRequest,
-): FormworkTransferView {
-  db.transaction((tx) => {
-    const keep = new Set(request.rules.map((rule) => rule.key));
-    tx.select()
-      .from(projectTransferRules)
-      .where(
-        and(
-          eq(projectTransferRules.projectId, request.projectId),
-          eq(projectTransferRules.ruleKind, RULE_KIND),
-        ),
-      )
-      .all()
-      .filter((rule) => !keep.has(rule.masterKey))
-      .forEach((rule) => {
-        tx.delete(projectTransferRules)
-          .where(eq(projectTransferRules.id, rule.id))
-          .run();
-      });
-    request.rules.forEach((rule) => {
-      const values = {
-        projectId: request.projectId,
-        masterKey: rule.key,
-        ruleKind: RULE_KIND,
-        sourceKeys: rule.sourceKeys.join(","),
-        formwork: "",
-        part1: "",
-        part2: "",
-        part3: "",
-        coefficient: rule.coefficient,
-        subjectId: rule.subjectId,
-        materialCategory: rule.materialCategory,
-        partNumber: null,
-        partName: "",
-        detailNumber: null,
-        name: rule.name,
-        description: rule.description,
-        descriptionLower: rule.descriptionLower,
-        unit: rule.unit,
-        remarks: rule.remarks,
-      };
-      tx.insert(projectTransferRules)
-        .values(values)
-        .onConflictDoUpdate({
-          target: [
-            projectTransferRules.projectId,
-            projectTransferRules.masterKey,
-            projectTransferRules.ruleKind,
-          ],
-          set: values,
-        })
+/** 転記入力表に入っている型枠転記の行の並び（④で並び替えた順を覚えるため） */
+function storedRowOrder(db: AppDatabase, projectId: number): string[] {
+  return db
+    .select()
+    .from(projectTransferRows)
+    .where(eq(projectTransferRows.projectId, projectId))
+    .orderBy(asc(projectTransferRows.displayOrder))
+    .all()
+    .filter((row) => row.formworkKey !== "")
+    .map((row) => storedRowSignature(row));
+}
+
+/** 型枠転記で作った行を消して、渡された順で入れ直す */
+function replaceFormworkRows(
+  tx: AppDatabase,
+  projectId: number,
+  rows: readonly FormworkTransferRow[],
+): void {
+  const existing = tx
+    .select()
+    .from(projectTransferRows)
+    .where(eq(projectTransferRows.projectId, projectId))
+    .all();
+  existing
+    .filter((row) => row.formworkKey !== "")
+    .forEach((row) => {
+      tx.delete(projectTransferRows)
+        .where(eq(projectTransferRows.id, row.id))
         .run();
     });
+  let order =
+    existing
+      .filter((row) => row.formworkKey === "")
+      .reduce((max, row) => Math.max(max, row.displayOrder), -1) + 1;
+  rows.forEach((row) => {
+    tx.insert(projectTransferRows)
+      .values({
+        projectId,
+        part1: row.part1,
+        part2: row.part2,
+        part2Split: row.part2Split ? 1 : 0,
+        formwork: row.formwork,
+        part3: row.part3,
+        subjectId: row.subjectId,
+        materialCategory: row.materialCategory,
+        partId: row.partNumber,
+        partName: row.partName,
+        detailNumber: row.detailNumber,
+        name: row.name,
+        sourceDetailId: null,
+        descriptionUpper: row.description,
+        descriptionLower: row.descriptionLower,
+        quantity: row.quantity,
+        unit: row.unit,
+        unitPrice: null,
+        amount: null,
+        remarks: row.remarks,
+        remarksLower: "",
+        memo: "",
+        formworkKey: row.formworkKey,
+        displayOrder: order,
+      })
+      .run();
+    order += 1;
   });
-  return getFormworkTransfer(db, request.projectId);
+}
+
+function formworkRunTimestamp(): string {
+  const now = new Date();
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
 /**
- * 転記入力表の空き部分（入力があれば最後の行の次）へ型枠の行を自動転記する。
- * 前回この機能で作った行は作り直すので、集計をかけ直しても数量が合う。
- * 人が手で入れた行（型枠転記の印が無い行）はそのまま残す。
+ * 集計し直してから型枠転記の結果を作り、結果の履歴と転記入力表へ保存する。
  */
 export function runFormworkTransfer(
   db: AppDatabase,
-  projectId: number,
-): FormworkTransferView {
-  const view = getFormworkTransfer(db, projectId);
+  request: RunFormworkTransferRequest,
+): RunFormworkTransferResult {
+  const { projectId, rules, search } = request;
+  runAggregation(db, projectId);
+  const rows = orderFormworkRows(
+    buildFormworkTransferRows(
+      sourceDetails(db, projectId),
+      rules,
+      formworkCategories(db),
+    ),
+    storedRowOrder(db, projectId),
+  );
+  if (rows.length === 0)
+    return { ...getFormworkTransfer(db, projectId), created: false };
+
   db.transaction((tx) => {
-    const existing = tx
-      .select()
-      .from(projectTransferRows)
-      .where(eq(projectTransferRows.projectId, projectId))
-      .all();
-    existing
-      .filter((row) => row.formworkKey !== "")
-      .forEach((row) => {
-        tx.delete(projectTransferRows)
-          .where(eq(projectTransferRows.id, row.id))
-          .run();
-      });
-    let order =
-      existing
-        .filter((row) => row.formworkKey === "")
-        .reduce((max, row) => Math.max(max, row.displayOrder), -1) + 1;
-    view.rows.forEach((row: FormworkTransferRow) => {
-      tx.insert(projectTransferRows)
-        .values({
-          projectId,
-          part1: row.part1,
-          part2: row.part2,
-          part2Split: row.part2Split ? 1 : 0,
-          formwork: row.formwork,
-          part3: row.part3,
-          subjectId: row.subjectId,
-          materialCategory: row.materialCategory,
-          partId: row.partNumber,
-          partName: row.partName,
-          detailNumber: row.detailNumber,
-          name: row.name,
-          sourceDetailId: null,
-          descriptionUpper: row.description,
-          descriptionLower: row.descriptionLower,
-          quantity: row.quantity,
-          unit: row.unit,
-          unitPrice: null,
-          amount: null,
-          remarks: row.remarks,
-          remarksLower: "",
-          memo: "",
-          formworkKey: row.formworkKey,
-          displayOrder: order,
-        })
-        .run();
-      order += 1;
-    });
+    replaceFormworkRows(tx, projectId, rows);
+    tx.update(projectFormworkRuns)
+      .set({ current: 0 })
+      .where(eq(projectFormworkRuns.projectId, projectId))
+      .run();
+    tx.insert(projectFormworkRuns)
+      .values({
+        projectId,
+        createdAt: formworkRunTimestamp(),
+        search,
+        rowsJson: JSON.stringify(rows),
+        current: 1,
+      })
+      .run();
+  });
+  runAggregation(db, projectId);
+  return { ...getFormworkTransfer(db, projectId), created: true };
+}
+
+/**
+ * ④の表で並び替えた順を転記入力表へ反映する。
+ * 作った行を全部消して並び替えた順に入れ直す（手入力の行はそのまま残す）。
+ */
+export function reorderFormworkTransfer(
+  db: AppDatabase,
+  projectId: number,
+  rows: readonly FormworkTransferRow[],
+): FormworkTransferView {
+  db.transaction((tx) => {
+    replaceFormworkRows(tx, projectId, rows);
+    tx.update(projectFormworkRuns)
+      .set({ rowsJson: JSON.stringify(rows) })
+      .where(
+        and(
+          eq(projectFormworkRuns.projectId, projectId),
+          eq(projectFormworkRuns.current, 1),
+        ),
+      )
+      .run();
   });
   return getFormworkTransfer(db, projectId);
+}
+
+export function deleteFormworkRun(
+  db: AppDatabase,
+  request: DeleteFormworkRunRequest,
+): FormworkTransferView {
+  db.delete(projectFormworkRuns)
+    .where(
+      and(
+        eq(projectFormworkRuns.projectId, request.projectId),
+        eq(projectFormworkRuns.id, request.runId),
+      ),
+    )
+    .run();
+  return getFormworkTransfer(db, request.projectId);
 }

@@ -46,3 +46,10 @@
 .misc-print-sheet table.misc-print .room {
   width: 210px;
 }
+
+/* 入力が少なく下が空く分は、手入力できるよう横罫線だけを引く（計算書と同じ） */
+.misc-print-sheet table.misc-print tr.blank td {
+  border: none;
+  border-bottom: 1px solid #000;
+  height: 22px;
+}

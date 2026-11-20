@@ -42,6 +42,8 @@ function assembly(id: number, items: AssemblyItem[]): FinishAssembly {
     id,
     scope: "basic",
     projectId: null,
+    setPartNumber: null,
+    setPartName: "",
     note: "",
     displayOrder: 0,
     items,
@@ -56,6 +58,18 @@ describe("仕上明細セットの編集ロジック", () => {
     const swapped = assembly(1, moveItem(toDraftItems(set.items), 1, 0));
     expect(headItem(swapped)?.name).toBe("B");
     expect(swapped.items.map((i) => i.name)).toEqual(["B", "A", "C"]);
+  });
+
+  it("先頭が説明行なら通常明細を見出しにし、説明行を保存変換でも保つ", () => {
+    const note = item("説明", { note: true, subjectId: 0 });
+    const detail = item("明細");
+    const set = assembly(1, [note, detail]);
+
+    expect(headItem(set)?.name).toBe("明細");
+    expect(toAssemblyItems(toDraftItems(set.items))).toMatchObject([
+      { name: "説明", note: true, subjectId: 0 },
+      { name: "明細" },
+    ]);
   });
 
   it("科目で絞り込む（セットの科目は1行目の明細の科目）", () => {
@@ -123,5 +137,16 @@ describe("仕上明細セットの編集ロジック", () => {
     expect(converted).not.toHaveProperty("key");
     expect(converted).not.toHaveProperty("coefficientInput");
     expect(converted.coefficient).toBe(1.2);
+  });
+
+  it("積算用表示を編集して保存し、半角カナの値も維持する", () => {
+    const [draft] = toDraftItems([item("A")]);
+    const edited = updateItem([draft], 0, { estimateDisplay: "貼物" });
+    expect(toAssemblyItems(edited)[0].estimateDisplay).toBe("貼物");
+
+    const loaded = item("B", { estimateDisplay: "ﾎﾞｰﾄﾞ" });
+    expect(toAssemblyItems(toDraftItems([loaded]))[0].estimateDisplay).toBe(
+      "ﾎﾞｰﾄﾞ",
+    );
   });
 });

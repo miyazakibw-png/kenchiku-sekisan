@@ -92,6 +92,17 @@ describe("転記入力表", () => {
     expect(kept[0].quantity).toBe(3);
   });
 
+  it("基本の科目マスターに無い科目ID（工事だけの科目）でも保存される", () => {
+    const project = createProject(db, "転記テスト");
+    saveTransferRows(db, {
+      projectId: project.id,
+      rows: [{ ...draft("ミニキッチン", 1), subjectId: 900 }],
+    });
+    const [first] = listTransferRows(db, project.id);
+    expect(first.name).toBe("ミニキッチン");
+    expect(first.subjectId).toBe(900);
+  });
+
   it("物件コピーで転記入力表も複製し、コピー元と切り離す", () => {
     const project = createProject(db, "コピー元");
     saveTransferRows(db, {

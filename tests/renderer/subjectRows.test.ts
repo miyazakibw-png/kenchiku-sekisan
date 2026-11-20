@@ -5,6 +5,7 @@ import {
   insertRow,
   moveRow,
   removeRow,
+  toDrafts,
   updateRow,
 } from "../../src/renderer/src/features/subjects/subjectRows";
 
@@ -42,6 +43,27 @@ describe("工種科目マスターの行操作", () => {
   it("値を書き換える", () => {
     expect(updateRow(rows, 0, { skipPart2: 1 })[0].skipPart2).toBe(1);
     expect(updateRow(rows, 0, { skipPart2: 1 })[1].skipPart2).toBe(0);
+    expect(updateRow(rows, 0, { detailFirst: 1 })[0].detailFirst).toBe(1);
+  });
+
+  it("明細順を下書きへ反映し、新しい行は0で始める", () => {
+    expect(emptyDraft().detailFirst).toBe(0);
+    expect(
+      toDrafts([
+        {
+          id: 1,
+          code: "01",
+          name: "仮設工事",
+          displayOrder: 0,
+          skipPart2: 0,
+          aggregateOrder: 2,
+          detailFirst: 1,
+          note: "",
+          spare1: "",
+          spare2: "",
+        },
+      ])[0].detailFirst,
+    ).toBe(1);
   });
 
   it("科目IDは行位置で2桁表示になる", () => {

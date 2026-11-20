@@ -179,7 +179,7 @@ export function syncRowsFromEstimate(
   rows: MiscRow[],
   estimateRows: MiscEstimateRow[],
 ): MiscRow[] {
-  const inherited = { part1: "", part2: "", part2Split: 0 };
+  const inherited = { part1: "", part2: "", part2Split: 0, formwork: "" };
   const known = new Map(
     rows
       .filter((row) => row.estimateRowId !== null)
@@ -192,6 +192,7 @@ export function syncRowsFromEstimate(
       inherited.part2 = row.part2;
       inherited.part2Split = row.part2Split;
     }
+    if (row.formwork.trim() !== "") inherited.formwork = row.formwork;
     if (row.rowType === "subtotal") return;
     const current = known.get(row.id);
     synced.push({
@@ -200,7 +201,7 @@ export function syncRowsFromEstimate(
       part1: inherited.part1,
       part2: inherited.part2,
       part2Split: inherited.part2Split === 1,
-      formwork: row.formwork,
+      formwork: inherited.formwork,
       part3: row.part3,
       multiplier: row.multiplier,
     });

@@ -2,14 +2,33 @@ import { describe, expect, it } from "vitest";
 import {
   buildFittingColumns,
   emptyRow,
+  INITIAL_EMPTY_ROWS,
   insertRow,
+  moveRow,
   parseNumber,
   parseSize,
   removeRow,
   sortBySymbol,
   updateRow,
+  withInitialRows,
 } from "../../src/renderer/src/features/fittings/fittingRows";
 import { buildPastePreview } from "../../src/renderer/src/features/grid/gridClipboard";
+
+describe("建具表の初期行", () => {
+  it("空のときは独立した空行を30行作る", () => {
+    const rows = withInitialRows([]);
+    expect(INITIAL_EMPTY_ROWS).toBe(30);
+    expect(rows).toHaveLength(30);
+    expect(rows.every((row) => row.id === null)).toBe(true);
+    expect(new Set(rows).size).toBe(30);
+    expect(rows).toEqual(Array.from({ length: 30 }, () => emptyRow()));
+  });
+
+  it("行があるときは元の配列をそのまま返す", () => {
+    const rows = [{ ...emptyRow(), symbol: "AW1" }];
+    expect(withInitialRows(rows)).toBe(rows);
+  });
+});
 
 describe("建具表の行操作", () => {
   it("行挿入・削除・更新ができる", () => {
@@ -20,6 +39,26 @@ describe("建具表の行操作", () => {
     expect(insertRow(rows, 1)).toHaveLength(3);
     expect(removeRow(rows, 0).map((row) => row.symbol)).toEqual(["AW2"]);
     expect(updateRow(rows, 1, { width: 1.2 })[1].width).toBe(1.2);
+  });
+
+  it("行を上下へ移動し、端からの移動は変えない", () => {
+    const rows = [
+      { ...emptyRow(), symbol: "AW1" },
+      { ...emptyRow(), symbol: "AW2" },
+      { ...emptyRow(), symbol: "AW3" },
+    ];
+    expect(moveRow(rows, 1, -1).map((row) => row.symbol)).toEqual([
+      "AW2",
+      "AW1",
+      "AW3",
+    ]);
+    expect(moveRow(rows, 1, 1).map((row) => row.symbol)).toEqual([
+      "AW1",
+      "AW3",
+      "AW2",
+    ]);
+    expect(moveRow(rows, 0, -1)).toBe(rows);
+    expect(moveRow(rows, 2, 1)).toBe(rows);
   });
 
   it("記号昇順で並べ、積算入力からの登録行は後ろへまとめる", () => {

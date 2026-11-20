@@ -60,6 +60,39 @@ table.fittings td {
   font-size: 12px;
 }
 
+table.fittings th.ops,
+table.fittings td.ops-col {
+  min-width: 108px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+table.fittings td.ops-col .row-move {
+  display: inline-flex;
+  gap: 2px;
+  line-height: 1;
+}
+
+table.fittings td.ops-col .row-move button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+table.fittings td.ops-col .row-delete {
+  color: #b91c1c;
+}
+
+table.fittings tr.selected td.ops-col {
+  background: #cfe0ff;
+}
+
 table.fittings th {
   background: #1f4e79;
   color: #fff;
@@ -74,7 +107,7 @@ table.fittings th.no {
 }
 
 table.fittings th.symbol,
-table.fittings td:nth-child(2) input {
+table.fittings td:nth-child(3) input {
   width: 12ch;
 }
 
@@ -92,14 +125,23 @@ table.fittings td.calc {
   font-family: "Consolas", "Menlo", monospace;
 }
 
+table.fittings td.in-range {
+  background: #dbe8fb;
+  outline: 1px solid #7aa4e0;
+}
+
+table.fittings td.in-range input {
+  background: transparent;
+}
+
 table.fittings th.formula,
-table.fittings td:nth-child(9) input,
-table.fittings td:nth-child(10) input {
+table.fittings td:nth-child(10) input,
+table.fittings td:nth-child(11) input {
   min-width: 22ch;
 }
 
 table.fittings th.note,
-table.fittings td:nth-child(11) input {
+table.fittings td:nth-child(12) input {
   min-width: 20ch;
 }
 
