@@ -82,7 +82,10 @@ import { getCalcClip, setCalcClip } from "./calcClipboardStore";
 import { focusCell } from "../grid/focusCell";
 import { writeClipboard } from "../grid/writeClipboard";
 import { useColumnWidths } from "../../hooks/useColumnWidths";
-import PickInput, { type PickEntry } from "../../components/PickInput";
+import PickInput, {
+  type PickColumn,
+  type PickEntry,
+} from "../../components/PickInput";
 import type { CalcFocus } from "@shared/calcWindow";
 import { assemblyHead, assemblyItemSubjectId } from "@shared/assemblyItem";
 import { fillRoomName } from "../../../../core/room/roomPartName";
@@ -95,6 +98,15 @@ export interface CalcDetailJump {
   detailId: CalcDetail["id"];
   tick: number;
 }
+
+const DETAIL_PICK_COLUMNS: PickColumn[] = [
+  { label: "部位ID", width: 44, className: "no" },
+  { label: "番号", width: 52, className: "no" },
+  { label: "部位名／名称", width: 170 },
+  { label: "摘要", width: 170 },
+  { label: "単位", width: 40, className: "unit" },
+  { label: "備考", width: 110 },
+];
 
 interface Props {
   sets: CalcSet[];
@@ -521,6 +533,25 @@ export default function RoomCalcSheet({
       numberOptions.items.map((item) => ({
         value: item.detailNumber?.toFixed(2) ?? "",
         label: `${item.partName} ${item.name} ${item.descriptionLower}`.trim(),
+        cells: [
+          {
+            upper:
+              item.partNumber === null || item.partNumber === undefined
+                ? ""
+                : String(item.partNumber),
+          },
+          { upper: item.detailNumber?.toFixed(2) ?? "" },
+          { upper: item.partName, lower: item.name },
+          {
+            upper: item.descriptionUpper,
+            lower: item.descriptionLower,
+          },
+          { upper: item.unit },
+          {
+            upper: item.remarksUpper,
+            lower: item.remarksLower,
+          },
+        ],
       })),
     [numberOptions.items],
   );
@@ -2598,6 +2629,7 @@ export default function RoomCalcSheet({
                             row={gridRow}
                             col={1}
                             entries={pickupPartEntries}
+                            popupHeightScale={3}
                             halfWidth
                             commitOnBlur
                             value={
@@ -2669,6 +2701,7 @@ export default function RoomCalcSheet({
                               row={gridRow}
                               col={3}
                               entries={subjectEntries}
+                              popupHeightScale={2}
                               halfWidth
                               value={
                                 detail.subjectId === null
@@ -2695,6 +2728,7 @@ export default function RoomCalcSheet({
                               popupAnchorCol={5}
                               row={gridRow}
                               col={4}
+                              popupColumns={DETAIL_PICK_COLUMNS}
                               entries={
                                 numberOptions.for === detail.subjectId
                                   ? numberEntries
