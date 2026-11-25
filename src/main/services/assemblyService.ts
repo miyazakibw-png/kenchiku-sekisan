@@ -5,6 +5,7 @@ import {
   mDetails,
   mFinishAssemblies,
   mFinishAssemblyItems,
+  projectEstimateRows,
   projectFrameSheets,
   projectGeneralSheets,
   projectPitSheets,
@@ -336,6 +337,67 @@ function projectSheetTables(): (
   ];
 }
 
+type ProjectSheetTable = ReturnType<typeof projectSheetTables>[number];
+
+type ProjectSheetRecord = {
+  id: number;
+  estimateRowId: number;
+  lowerJson: string;
+};
+
+/** 集計の evaluateRowSheets と同じ行・計算書だけを対象にする */
+function liveSheets(
+  db: AppDatabase,
+  projectId: number,
+): { table: ProjectSheetTable; sheet: ProjectSheetRecord }[] {
+  const rows = db
+    .select()
+    .from(projectEstimateRows)
+    .where(eq(projectEstimateRows.projectId, projectId))
+    .orderBy(asc(projectEstimateRows.displayOrder), asc(projectEstimateRows.id))
+    .all();
+  const sheetsByEstimateRow = (
+    table: ProjectSheetTable,
+  ): Map<number, ProjectSheetRecord> =>
+    new Map(
+      db
+        .select()
+        .from(table)
+        .where(eq(table.projectId, projectId))
+        .all()
+        .map((sheet): [number, ProjectSheetRecord] => [
+          sheet.estimateRowId,
+          {
+            id: sheet.id,
+            estimateRowId: sheet.estimateRowId,
+            lowerJson: sheet.lowerJson,
+          },
+        ]),
+    );
+  const roomSheets = sheetsByEstimateRow(projectRoomSheets);
+  const frameSheets = sheetsByEstimateRow(projectFrameSheets);
+  const generalSheets = sheetsByEstimateRow(projectGeneralSheets);
+  const pitSheets = sheetsByEstimateRow(projectPitSheets);
+
+  return rows.flatMap((row) => {
+    if (row.rowType === "subtotal") return [];
+    const selected: {
+      table: ProjectSheetTable;
+      sheet: ProjectSheetRecord | undefined;
+    } =
+      row.calcType === "frame"
+        ? { table: projectFrameSheets, sheet: frameSheets.get(row.id) }
+        : row.calcType === "general"
+          ? { table: projectGeneralSheets, sheet: generalSheets.get(row.id) }
+          : row.calcType === "pit" || row.calcType === "area"
+            ? { table: projectPitSheets, sheet: pitSheets.get(row.id) }
+            : { table: projectRoomSheets, sheet: roomSheets.get(row.id) };
+    return selected.sheet
+      ? [{ table: selected.table, sheet: selected.sheet }]
+      : [];
+  });
+}
+
 function parseSets(lowerJson: string): CalcSet[] {
   try {
     const parsed: unknown = JSON.parse(lowerJson);
@@ -619,83 +681,77 @@ export function syncAssembliesFromSheets(
       .map((assembly) => [assemblySignature(assembly.items), assembly]),
   );
   let added = 0;
-  projectSheetTables().forEach((table) => {
-    db.select()
-      .from(table)
-      .where(eq(table.projectId, projectId))
-      .all()
-      .forEach((sheet) => {
-        const sets = parseSets(sheet.lowerJson);
-        let changed = false;
-        sets.forEach((set) => {
-          const items = itemsOfCalcSet(set);
-          if (items.length === 0) return;
-          const signature = assemblySignature(items);
-          const setPartNumber = set.partNumber ?? null;
-          const setPartName = set.partName.trim();
-          const key = assemblyKey(items, setPartNumber, setPartName);
-          let assembly = byKey.get(key);
-          if (!assembly && (setPartNumber !== null || setPartName !== "")) {
-            const emptyPartAssembly = emptyPartBySignature.get(signature);
-            if (emptyPartAssembly) {
-              db.update(mFinishAssemblies)
-                .set({
-                  setPartNumber,
-                  setPartName,
-                  updatedAt: new Date().toISOString(),
-                })
-                .where(eq(mFinishAssemblies.id, emptyPartAssembly.id))
-                .run();
-              byKey.delete(
-                assemblyKey(
-                  emptyPartAssembly.items,
-                  emptyPartAssembly.setPartNumber,
-                  emptyPartAssembly.setPartName,
-                ),
-              );
-              assembly = {
-                ...emptyPartAssembly,
-                setPartNumber,
-                setPartName,
-              };
-              byKey.set(key, assembly);
-              emptyPartBySignature.delete(signature);
-            }
-          }
-          if (!assembly) {
-            assembly = saveAssembly(db, {
-              id: null,
-              scope: "project",
-              projectId,
+  liveSheets(db, projectId).forEach(({ table, sheet }) => {
+    const sets = parseSets(sheet.lowerJson);
+    let changed = false;
+    sets.forEach((set) => {
+      const items = itemsOfCalcSet(set);
+      if (items.length === 0) return;
+      const signature = assemblySignature(items);
+      const setPartNumber = set.partNumber ?? null;
+      const setPartName = set.partName.trim();
+      const key = assemblyKey(items, setPartNumber, setPartName);
+      let assembly = byKey.get(key);
+      if (!assembly && (setPartNumber !== null || setPartName !== "")) {
+        const emptyPartAssembly = emptyPartBySignature.get(signature);
+        if (emptyPartAssembly) {
+          db.update(mFinishAssemblies)
+            .set({
               setPartNumber,
               setPartName,
-              note: "",
-              items,
-            }).assembly;
-            db.update(mFinishAssemblies)
-              .set({ autoRegistered: 1 })
-              .where(eq(mFinishAssemblies.id, assembly.id))
-              .run();
-            byKey.set(key, assembly);
-            if (setPartNumber === null && setPartName === "") {
-              emptyPartBySignature.set(signature, assembly);
-            }
-            added += 1;
-          }
-          if (set.assemblyId !== assembly.id) {
-            set.assemblyId = assembly.id;
-            changed = true;
-          }
-        });
-        if (!changed) return;
-        db.update(table)
-          .set({
-            lowerJson: JSON.stringify(sets),
-            updatedAt: new Date().toISOString(),
-          })
-          .where(eq(table.id, sheet.id))
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(mFinishAssemblies.id, emptyPartAssembly.id))
+            .run();
+          byKey.delete(
+            assemblyKey(
+              emptyPartAssembly.items,
+              emptyPartAssembly.setPartNumber,
+              emptyPartAssembly.setPartName,
+            ),
+          );
+          assembly = {
+            ...emptyPartAssembly,
+            setPartNumber,
+            setPartName,
+          };
+          byKey.set(key, assembly);
+          emptyPartBySignature.delete(signature);
+        }
+      }
+      if (!assembly) {
+        assembly = saveAssembly(db, {
+          id: null,
+          scope: "project",
+          projectId,
+          setPartNumber,
+          setPartName,
+          note: "",
+          items,
+        }).assembly;
+        db.update(mFinishAssemblies)
+          .set({ autoRegistered: 1 })
+          .where(eq(mFinishAssemblies.id, assembly.id))
           .run();
-      });
+        byKey.set(key, assembly);
+        if (setPartNumber === null && setPartName === "") {
+          emptyPartBySignature.set(signature, assembly);
+        }
+        added += 1;
+      }
+      if (set.assemblyId !== assembly.id) {
+        set.assemblyId = assembly.id;
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    db.update(table)
+      .set({
+        lowerJson: JSON.stringify(sets),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(table.id, sheet.id))
+      .run();
   });
   tidyAutoAssemblies(db, projectId);
   return added;
@@ -785,19 +841,30 @@ function mergeDuplicateAutoAssemblies(
   return remap.size;
 }
 
-/** いまどの計算書・部屋仕上でも使っていない物件セットのID以外を集める */
+/** 現在の計算書内容と部屋仕上が使用する物件セットのIDを集める */
 function usedAssemblyIds(db: AppDatabase, projectId: number): Set<number> {
+  const usedKeys = new Set<string>();
+  liveSheets(db, projectId).forEach(({ sheet }) => {
+    parseSets(sheet.lowerJson).forEach((set) => {
+      const items = itemsOfCalcSet(set);
+      if (items.length === 0) return;
+      usedKeys.add(
+        assemblyKey(items, set.partNumber ?? null, set.partName.trim()),
+      );
+    });
+  });
   const used = new Set<number>();
-  projectSheetTables().forEach((table) => {
-    db.select()
-      .from(table)
-      .where(eq(table.projectId, projectId))
-      .all()
-      .forEach((sheet) => {
-        parseSets(sheet.lowerJson).forEach((set) => {
-          if (typeof set.assemblyId === "number") used.add(set.assemblyId);
-        });
-      });
+  const matchedKeys = new Set<string>();
+  // 重複セットはmergeDuplicateAutoAssembliesが一覧の先頭へ寄せるため、キーごとに1件だけ残す。
+  listAssemblies(db, projectId).forEach((assembly) => {
+    const key = assemblyKey(
+      assembly.items,
+      assembly.setPartNumber,
+      assembly.setPartName,
+    );
+    if (!usedKeys.has(key) || matchedKeys.has(key)) return;
+    matchedKeys.add(key);
+    used.add(assembly.id);
   });
   db.select()
     .from(projectRoomFinishes)
