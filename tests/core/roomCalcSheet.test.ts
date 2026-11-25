@@ -3,7 +3,11 @@ import {
   addSetDetailRow,
   addSetLineRow,
   addSetRow,
+  canMoveRowAcross,
+  moveDetailAcrossSets,
+  moveDetailTo,
   moveSetDetail,
+  noteNumbersFrom,
   removeSetDetail,
   calcDetail,
   calcLine,
@@ -13,8 +17,11 @@ import {
   displayQuantity,
   evaluateCalcSheet,
   insertSetBefore,
+  isCommentSet,
+  keepRowPart,
   mergeWithPreviousSet,
   nextBSymbol,
+  normalizeSets,
   openSetDetail,
   padLines,
   partOfSet,
@@ -22,6 +29,8 @@ import {
   withUniqueIds,
   removeSet,
   removeSetLine,
+  removeSheetRow,
+  removeSheetRows,
   resolveDescriptionMark,
   resolveDescriptionMarks,
   splitSetAt,
@@ -46,6 +55,42 @@ describe("下段セット明細計算表", () => {
     expect(displayQuantity(9.994)).toBe("9.99");
     expect(displayQuantity(0.00035)).toBe("0.0004");
     expect(displayQuantity(0)).toBe("0.00");
+  });
+
+  it("説明行にする際、空の番号だけを直前の明細から引き継ぐ", () => {
+    const prev = calcDetail({
+      subjectId: 12,
+      partNumber: 34,
+      detailNumber: 101,
+      partName: "床",
+      materialCategory: "仕上",
+    });
+    expect(noteNumbersFrom(prev, calcDetail({ detailNumber: null }))).toEqual({
+      subjectId: 12,
+      partNumber: 34,
+      detailNumber: 101.01,
+    });
+    expect(
+      noteNumbersFrom(
+        calcDetail({ subjectId: 5, partNumber: 6, detailNumber: 101.01 }),
+        calcDetail({ subjectId: 7, partNumber: 8, detailNumber: 9 }),
+      ),
+    ).toEqual({});
+    expect(
+      noteNumbersFrom(
+        calcDetail({
+          subjectId: null,
+          partNumber: null,
+          detailNumber: null,
+        }),
+        calcDetail(),
+      ),
+    ).toEqual({});
+    expect(
+      noteNumbersFrom(calcDetail({ detailNumber: 101.01 }), calcDetail())
+        .detailNumber,
+    ).toBe(101.02);
+    expect(noteNumbersFrom(undefined, calcDetail())).toEqual({});
   });
 
   it("A・B両方あれば A×B、Aだけなら A のみ計算する", () => {
@@ -93,17 +138,20 @@ describe("下段セット明細計算表", () => {
     expect(result.lines.get(brace.lines[0].id)?.text).toBe("5.40");
   });
 
-  it("分からない記号・誤った式は理由を返す", () => {
+  it("表に無い記号は0として計算し、誤った式は理由を返す", () => {
     const set = sheet([
       ["XX*2", ""],
       ["1*", ""],
+      ["SL1+2", ""],
     ]);
     const result = evaluateCalcSheet([set], {});
-    expect(result.lines.get(set.lines[0].id)?.error).toContain("XX");
+    expect(result.lines.get(set.lines[0].id)?.error).toBe("");
+    expect(result.lines.get(set.lines[0].id)?.text).toBe("0.00");
     expect(result.lines.get(set.lines[1].id)?.error).toBe(
       "計算式が正しくありません",
     );
-    expect(result.errors).toHaveLength(2);
+    expect(result.lines.get(set.lines[2].id)?.text).toBe("2.00");
+    expect(result.errors).toHaveLength(1);
   });
 
   it("B記号は他のセットの累計として使える", () => {
@@ -318,6 +366,126 @@ describe("行の追加と削除", () => {
     expect(removed.lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
   });
 
+  it("1行しかないセットの行を消すとセットごと消える", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    const next = removeSheetRow([first, second], first.id, 0);
+    expect(next.map((item) => item.id)).toEqual([second.id]);
+  });
+
+  it("見出し付きセットの最後の1行を消しても見出しは残る", () => {
+    const set = calcSet(1);
+    set.banner = { text: "1階", color: "#dbeafe" };
+    set.details = [calcDetail({ name: "床" })];
+    const next = removeSheetRow([set], set.id, 0);
+    expect(next).toHaveLength(1);
+    expect(next[0].banner?.text).toBe("1階");
+    expect(next[0].details).toHaveLength(0);
+  });
+
+  it("行を消しても空でない計算式が残るセットは消えない", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine({ formulaA: "2*3" }), calcLine({ formulaA: "1" })];
+    const next = removeSheetRow([set], set.id, 0);
+    expect(next).toHaveLength(1);
+    expect(next[0].details).toHaveLength(0);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1"]);
+  });
+
+  it("複数セットにまたがる切り取りで明細セットと間の※行を消す", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    first.lines = [calcLine({ formulaA: "1" })];
+    const banner = commentSet("※");
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    second.lines = [calcLine({ formulaA: "2" })];
+
+    const next = removeSheetRows(
+      [first, banner, second],
+      [
+        { setId: first.id, index: 0 },
+        { setId: banner.id, index: 0 },
+        { setId: second.id, index: 0 },
+      ],
+    );
+
+    expect(next).toEqual([]);
+  });
+
+  it("部分削除後も残った明細と計算式の行がそろう", () => {
+    const set = calcSet(1);
+    set.details = [
+      calcDetail({ name: "床" }),
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    set.lines = [
+      calcLine({ formulaA: "1" }),
+      calcLine({ formulaA: "2" }),
+      calcLine({ formulaA: "3" }),
+    ];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 1 }]);
+
+    expect(next[0].details.map((item) => item.name)).toEqual(["床", "天井"]);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1", "3"]);
+  });
+
+  it("全行を消した空セットは除去する", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine()];
+
+    expect(removeSheetRows([set], [{ setId: set.id, index: 0 }])).toEqual([]);
+  });
+
+  it("最後の明細を消しても見出し付きセットは残す", () => {
+    const set = calcSet(1);
+    set.banner = { text: "1階", color: "#dbeafe" };
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine()];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 0 }]);
+
+    expect(next).toHaveLength(1);
+    expect(next[0].banner?.text).toBe("1階");
+    expect(next[0].details).toHaveLength(0);
+  });
+
+  it("明細数より後ろの行番号では計算式だけを消す", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [
+      calcLine({ formulaA: "1" }),
+      calcLine({ formulaA: "2" }),
+      calcLine({ formulaA: "3" }),
+    ];
+
+    const next = removeSheetRows([set], [{ setId: set.id, index: 2 }]);
+
+    expect(next[0].details.map((item) => item.name)).toEqual(["床"]);
+    expect(next[0].lines.map((item) => item.formulaA)).toEqual(["1", "2"]);
+  });
+
+  it("変更対象でないセットは同じオブジェクトを保つ", () => {
+    const removed = calcSet(1);
+    removed.details = [calcDetail({ name: "床" })];
+    const untouched = calcSet(1);
+    untouched.details = [calcDetail({ name: "壁" })];
+
+    const next = removeSheetRows(
+      [removed, untouched],
+      [{ setId: removed.id, index: 0 }],
+    );
+
+    expect(next).toHaveLength(1);
+    expect(next[0]).toBe(untouched);
+  });
+
   it("明細を上下に動かしても計算式は動かない", () => {
     const set = calcSet(1);
     set.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
@@ -367,6 +535,170 @@ describe("行の追加と削除", () => {
     expect(next[0].details.length).toBe(0);
     expect(next[1].banner).toBeNull();
     expect(next[1].partName).toBe("壁");
+  });
+
+  it("※行の2つ目の文字（コメント列）は独立した行にも残る", () => {
+    const host = calcSet(1);
+    host.partName = "壁";
+    host.details = [calcDetail({ name: "壁" })];
+    host.banner = {
+      text: "※ 見出し",
+      text2: "手洗い部",
+      color: "#dcfce7",
+    };
+    const next = detachBanners([host]);
+    expect(next.length).toBe(2);
+    expect(next[0].banner?.text2).toBe("手洗い部");
+    expect(next[1].banner).toBeNull();
+  });
+
+  it("明細の上下移動はセットの端を越えると隣のセットの端へ移る", () => {
+    const first = calcSet(2);
+    first.partName = "床";
+    first.details = [
+      calcDetail({ name: "床1" }),
+      calcDetail({ name: "床2" }),
+    ];
+    const second = calcSet(2);
+    second.partName = "壁";
+    second.details = [
+      calcDetail({ name: "壁1" }),
+      calcDetail({ name: "壁2" }),
+    ];
+    const sets = [first, second];
+    const up = moveDetailAcrossSets(sets, second.id, 0, -1);
+    expect(up?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床1", "床2", "壁1"],
+      ["壁2"],
+    ]);
+    expect(up?.setId).toBe(first.id);
+    expect(up?.index).toBe(2);
+    const down = moveDetailAcrossSets(sets, first.id, 1, 1);
+    expect(down?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床1"],
+      ["床2", "壁1", "壁2"],
+    ]);
+    expect(down?.setId).toBe(second.id);
+    expect(down?.index).toBe(0);
+    // 端では動ける（隣のセットがある）
+    expect(canMoveRowAcross(sets, 0, 0, -1)).toBe(false);
+    expect(canMoveRowAcross(sets, 0, 1, 1)).toBe(true);
+    expect(canMoveRowAcross(sets, 1, 0, -1)).toBe(true);
+    expect(canMoveRowAcross(sets, 1, 1, 1)).toBe(false);
+  });
+
+  it("セットをまたぐ移動は※行をそのままにしてまたぐ", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const comment = commentSet("※ 見出し", "#dcfce7");
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    const moved = moveDetailAcrossSets([first, comment, second], second.id, 0, -1);
+    // 出た側のセットは空行だけになるので消え、※行はそのまま残る
+    expect(moved?.sets.map((set) => set.details.map((d) => d.name))).toEqual([
+      ["床", "壁"],
+      [],
+    ]);
+    expect(isCommentSet(moved!.sets[1])).toBe(true);
+    expect(moved?.sets[1].banner?.text).toBe("※ 見出し");
+  });
+
+  it("セットをまたいで出ると明細だけ移し、空になったセットは消える", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "壁" })];
+    second.lines = [calcLine({ formulaA: "1" })];
+    const moved = moveDetailAcrossSets([first, second], first.id, 0, 1);
+    expect(moved?.sets).toHaveLength(1);
+    expect(moved?.sets[0].id).toBe(second.id);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
+    // 計算式は動かないので、足した明細に合わせて末に空の計算式行が足される
+    expect(moved?.sets[0].lines.map((l) => l.formulaA)).toEqual(["1", ""]);
+  });
+
+  it("つかんで動かすと移し先の行の手前に入る（同じセット）", () => {
+    const set = calcSet(4);
+    set.details = ["A", "B", "C", "D"].map((name) => calcDetail({ name }));
+    const down = moveDetailTo([set], set.id, 0, set.id, 3);
+    expect(down?.sets[0].details.map((d) => d.name)).toEqual([
+      "B",
+      "C",
+      "A",
+      "D",
+    ]);
+    expect(down?.index).toBe(2);
+    const up = moveDetailTo(down!.sets, set.id, 2, set.id, 0);
+    expect(up?.sets[0].details.map((d) => d.name)).toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+    // 同じ行・直下行へ落としても動かない
+    expect(moveDetailTo(up!.sets, set.id, 0, set.id, 0)).toBeNull();
+    expect(moveDetailTo(up!.sets, set.id, 0, set.id, 1)).toBeNull();
+  });
+
+  it("つかんで別のセットへ動かすと手前に入り、出た側が空行だけなら消す", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(2);
+    second.details = [
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    const moved = moveDetailTo([first, second], first.id, 0, second.id, 1);
+    expect(moved?.sets).toHaveLength(1);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual([
+      "壁",
+      "床",
+      "天井",
+    ]);
+    expect(moved?.setId).toBe(second.id);
+    expect(moved?.index).toBe(1);
+    // ※行へは落とせない
+    const comment = commentSet("※ 見出し", "#dcfce7");
+    expect(moveDetailTo([second, comment], second.id, 0, comment.id, 0)).toBeNull();
+  });
+
+  it("つかんでセットの最後へ動かすと末に足す（※行の上に入るときと同じ）", () => {
+    const first = calcSet(1);
+    first.details = [calcDetail({ name: "床" })];
+    const second = calcSet(2);
+    second.details = [
+      calcDetail({ name: "壁" }),
+      calcDetail({ name: "天井" }),
+    ];
+    const moved = moveDetailTo([first, second], second.id, 0, first.id, 1);
+    expect(moved?.sets[0].details.map((d) => d.name)).toEqual(["床", "壁"]);
+    expect(moved?.index).toBe(1);
+  });
+
+  it("明細を出したあと末尾に余った空の計算式行は詰める", () => {
+    const first = calcSet(2);
+    first.details = [calcDetail({ name: "床" }), calcDetail({ name: "壁" })];
+    const second = calcSet(1);
+    second.details = [calcDetail({ name: "天井" })];
+    const moved = moveDetailAcrossSets([first, second], first.id, 1, 1);
+    // 出た側は明細1件なので計算式行も1行にそろう（使えない空行が残らない）
+    expect(moved?.sets[0].details).toHaveLength(1);
+    expect(moved?.sets[0].lines).toHaveLength(1);
+  });
+
+  it("読み込み時に明細より多い末尾の空の計算式行は詰める", () => {
+    const set = calcSet(1);
+    set.details = [calcDetail({ name: "床" })];
+    set.lines = [calcLine(), calcLine(), calcLine()];
+    const next = normalizeSets([set]);
+    expect(next[0].lines).toHaveLength(1);
+    // 式が入っている行は残し、その先の空行だけ詰める
+    const kept = calcSet(1);
+    kept.lines = [calcLine(), calcLine({ formulaA: "1" }), calcLine()];
+    expect(normalizeSets([kept])[0].lines.map((l) => l.formulaA)).toEqual([
+      "",
+      "1",
+    ]);
   });
 
   it("※行に付いた空の計算式行は落とす（空の明細行に見えないように）", () => {
@@ -426,7 +758,47 @@ describe("partOfSet（セットの部位名）", () => {
   });
 });
 
-describe("摘要の○○面・○○下（マスターの印を積算用表示で置き換える）", () => {
+describe("keepRowPart（基本マスター呼出時の部位）", () => {
+  const called = { partNumber: 8, partName: "マスター部位" };
+
+  it("部位番号と部位名がある行の部位を残す", () => {
+    expect(
+      keepRowPart({ partNumber: 3, partName: "計算書部位" }, called),
+    ).toEqual({ partNumber: 3, partName: "計算書部位" });
+  });
+
+  it("部位名だけの行の部位を残す", () => {
+    expect(
+      keepRowPart({ partNumber: null, partName: "計算書部位" }, called),
+    ).toEqual({
+      partNumber: null,
+      partName: "計算書部位",
+    });
+  });
+
+  it("部位番号だけの行の部位を残す", () => {
+    expect(keepRowPart({ partNumber: 3, partName: "" }, called)).toEqual({
+      partNumber: 3,
+      partName: "",
+    });
+  });
+
+  it("部位が空の行ではマスターの部位を使い、マスターも空なら空のままにする", () => {
+    expect(keepRowPart({ partNumber: null, partName: "" }, called)).toEqual(
+      called,
+    );
+    const empty = { partNumber: null, partName: "" };
+    expect(keepRowPart({ partNumber: null, partName: " " }, empty)).toEqual(
+      empty,
+    );
+  });
+
+  it("行が無いときはマスターの部位を使う", () => {
+    expect(keepRowPart(undefined, called)).toEqual(called);
+  });
+});
+
+describe("摘要の○○面・○○下・○○用（マスターの印を積算用表示で置き換える）", () => {
   it("○○面は下の行・○○下は上の行の積算用表示に変わり、面・下の文字と位置・空けはマスターのまま", () => {
     expect(resolveDescriptionMark("t2.0 ○○面", "", "モルタル")).toBe(
       "t2.0 モルタル面",
@@ -448,6 +820,18 @@ describe("摘要の○○面・○○下（マスターの印を積算用表示�
       resolveDescriptionMark("トイレ用 ○○下 ○○面", "コンクリート", ""),
     ).toBe("トイレ用 コンクリート下");
     expect(resolveDescriptionMark("○○面", "", "")).toBe("");
+  });
+
+  it("○○用は上の行の積算用表示＋用に変わり、該当が無ければ前の空けとともに消す", () => {
+    expect(resolveDescriptionMark("H30 ○○用", "木部", "")).toBe("H30 木部用");
+    expect(resolveDescriptionMark("H30 ○○用", "", "タイル")).toBe("H30");
+    expect(resolveDescriptionMark("〇〇用", "木部", "")).toBe("木部用");
+    expect(resolveDescriptionMark("○○用 ○○面", "木部", "タイル")).toBe(
+      "木部用 タイル面",
+    );
+    expect(resolveDescriptionMark("トイレ用", "木部", "タイル")).toBe(
+      "トイレ用",
+    );
   });
 
   it("〇（漢数字のゼロ）でも同じに見る。印の無い文字はそのまま", () => {
@@ -482,5 +866,15 @@ describe("摘要の○○面・○○下（マスターの印を積算用表示�
     expect(resolved[2].descriptionLower).toBe("t2.0");
     expect(details[1].descriptionLower).toBe("t20 ○○下 ○○面");
     expect(resolved[0]).toBe(details[0]);
+  });
+
+  it("セットの明細では○○用も上の行の積算用表示で置き換える", () => {
+    const details = [
+      calcDetail({ estimateDisplay: "木部" }),
+      calcDetail({ descriptionLower: "H30 ○○用" }),
+    ];
+    const resolved = resolveDescriptionMarks(details);
+    expect(resolved[1].descriptionLower).toBe("H30 木部用");
+    expect(details[1].descriptionLower).toBe("H30 ○○用");
   });
 });

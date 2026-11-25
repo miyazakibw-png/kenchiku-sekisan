@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { calcVariables } from "../../src/core/aggregate/variables";
+import { arcLength } from "../../src/core/room/shape";
 import {
+  parseFrameTraces,
   buildFrameLines,
   defaultFrameKinds,
   findSharedWalls,
+  frameArcApex,
   frameLineAttribute,
+  frameLinePath,
   frameQuantities,
   frameSymbols,
   isPickedUp,
   linePartVariables,
+  mirrorFrameDiagram,
+  placeRoomPoint,
   reinforcementKind,
   reinforcementLength,
   roomLineId,
   nearMissWalls,
   snapPlacement,
+  scaleFrameTraceFromPoints,
   type FrameFitting,
   type FrameLineAttribute,
   type FramePlacement,
@@ -36,6 +43,51 @@ function placement(patch: Partial<FramePlacement> = {}): FramePlacement {
     ...patch,
   };
 }
+
+describe("軸組図面だけの縮尺合わせ", () => {
+  it("実寸に合わせて伸縮し、最初のクリック点を固定する", () => {
+    const trace = {
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+      opacity: 0.6,
+    };
+    const scaled = scaleFrameTraceFromPoints(
+      trace,
+      { x: 1.5, y: 2.25 },
+      { x: 2, y: 2.25 },
+      1,
+    );
+
+    expect(scaled?.metersPerPixel).toBeCloseTo(0.02);
+    expect(scaled?.x).toBeCloseTo(0.5);
+    expect(scaled?.y).toBeCloseTo(1.75);
+    expect(scaled?.opacity).toBe(0.6);
+    expect(trace).toEqual({
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+      opacity: 0.6,
+    });
+  });
+
+  it("同じ2点や0以下の実寸では縮尺を変更しない", () => {
+    const trace = {
+      image: "data:image/png;base64,AAAA",
+      metersPerPixel: 0.01,
+      x: 1,
+      y: 2,
+    };
+    expect(
+      scaleFrameTraceFromPoints(trace, { x: 1, y: 1 }, { x: 1, y: 1 }, 3),
+    ).toBeNull();
+    expect(
+      scaleFrameTraceFromPoints(trace, { x: 0, y: 0 }, { x: 1, y: 0 }, 0),
+    ).toBeNull();
+  });
+});
 
 describe("開口部補強", () => {
   it("ドア類は W ＋ 施工高さ*2", () => {
@@ -129,6 +181,172 @@ describe("軸組ライン", () => {
     });
     expect(lines[0].source).toBe("manual");
     expect(lines[0].length).toBe(3.5);
+  });
+
+  it("曲面壁：矢（ふくらみ）を付けた線は長さが弦ではなく弧長になる", () => {
+    const lines = buildFrameLines({
+      placements: [],
+      shapes: new Map(),
+      manualLines: [{ id: "m1", x1: 0, y1: 0, x2: 3.5, y2: 0, bulge: 0.5 }],
+      attributes: {},
+    });
+    expect(lines[0].bulge).toBe(0.5);
+    // 部屋計算書のＲ壁と同じ式の弧長（弦より長い）
+    expect(lines[0].length).toBe(arcLength(3.5, 0.5));
+    expect(lines[0].length).toBeGreaterThan(3.5);
+  });
+
+  it("曲面壁のパスは弧（A命令）で、向きはbulgeの符号に従う", () => {
+    const leftSide = frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.3 });
+    const rightSide = frameLinePath({
+      x1: 0,
+      y1: 0,
+      x2: 2,
+      y2: 0,
+      bulge: -0.3,
+    });
+    // ＋は始点→終点の左側（弦が右向きなら上側）にふくらむ
+    expect(leftSide).toMatch(/^M 0 0 A [\d.]+ [\d.]+ 0 0 1 2 0$/);
+    expect(rightSide).toMatch(/^M 0 0 A [\d.]+ [\d.]+ 0 0 0 2 0$/);
+    // 離れが弦の半分を超えるときは大きい弧（半周超え）になる
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 1.5 })).toMatch(
+      /^M 0 0 A [\d.]+ [\d.]+ 0 1 1 2 0$/,
+    );
+  });
+
+  it("矢が無い・0の線は直線パスで、弧の先端は弦の中点から側へ矢の分", () => {
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0 })).toBe("M 0 0 L 2 0");
+    expect(frameLinePath({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0 })).toBe(
+      "M 0 0 L 2 0",
+    );
+    expect(frameArcApex({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.3 })).toEqual({
+      x: 1,
+      y: -0.3,
+    });
+    expect(frameArcApex({ x1: 0, y1: 0, x2: 2, y2: 0, bulge: -0.3 })).toEqual({
+      x: 1,
+      y: 0.3,
+    });
+  });
+});
+
+describe("部屋レイアウトの反転", () => {
+  for (const axis of ["x", "y"] as const) {
+    for (const mirrored of [false, true]) {
+      it(`${axis}軸反転後も${mirrored ? "反転済みの" : ""}L型の壁端点と長さが保たれる`, () => {
+        const solved = solveShape({
+          edges: [
+            edge("E", 4),
+            edge("S", 2),
+            edge("W", 2),
+            edge("S", 2),
+            edge("W", 2),
+            edge("N", 4),
+          ],
+        });
+        const shapes = new Map([[1, solved]]);
+        const original = {
+          placements: [
+            placement({
+              x: 1.23,
+              y: -2.37,
+              rotation: 30,
+              mirrored,
+            }),
+          ],
+          manualLines: [],
+        };
+        const before = buildFrameLines({
+          ...original,
+          shapes,
+          attributes: {},
+        });
+        const flipped = mirrorFrameDiagram(original, axis, 0.47);
+        const after = buildFrameLines({
+          ...flipped,
+          shapes,
+          attributes: {},
+        });
+
+        expect(after.map((line) => line.id)).toEqual(
+          before.map((line) => line.id),
+        );
+        before.forEach((line) => {
+          const mirroredLine = after.find(
+            (candidate) => candidate.id === line.id,
+          );
+          expect(mirroredLine).toBeDefined();
+          if (!mirroredLine) return;
+          expect(mirroredLine.x1).toBeCloseTo(
+            axis === "x" ? 2 * 0.47 - line.x1 : line.x1,
+            2,
+          );
+          expect(mirroredLine.y1).toBeCloseTo(
+            axis === "y" ? 2 * 0.47 - line.y1 : line.y1,
+            2,
+          );
+          expect(mirroredLine.x2).toBeCloseTo(
+            axis === "x" ? 2 * 0.47 - line.x2 : line.x2,
+            2,
+          );
+          expect(mirroredLine.y2).toBeCloseTo(
+            axis === "y" ? 2 * 0.47 - line.y2 : line.y2,
+            2,
+          );
+          expect(mirroredLine.length).toBe(line.length);
+        });
+      });
+    }
+  }
+
+  it("反転を2回すると位置・向き・反転状態が元に戻る", () => {
+    const original = {
+      placements: [
+        placement({ x: 1.23, y: -2.37, rotation: 30.75, mirrored: true }),
+      ],
+      manualLines: [
+        { id: "m1", x1: 1.25, y1: -0.5, x2: 3.75, y2: 2.25, bulge: 0.4 },
+      ],
+    };
+    for (const axis of ["x", "y"] as const) {
+      const twice = mirrorFrameDiagram(
+        mirrorFrameDiagram(original, axis, 0.47),
+        axis,
+        0.47,
+      );
+      expect(twice.placements[0]).toEqual(original.placements[0]);
+      expect(twice.manualLines[0]).toEqual(original.manualLines[0]);
+    }
+  });
+
+  it("曲面線の矢を反転し、nullはnullのままにする", () => {
+    const mirrored = mirrorFrameDiagram(
+      {
+        placements: [],
+        manualLines: [
+          { id: "curve", x1: 0, y1: 0, x2: 2, y2: 0, bulge: 0.25 },
+          { id: "straight", x1: 1, y1: 1, x2: 2, y2: 2, bulge: null },
+        ],
+      },
+      "x",
+      0,
+    );
+    expect(mirrored.manualLines[0]).toMatchObject({
+      id: "curve",
+      x1: 0,
+      x2: -2,
+      bulge: -0.25,
+    });
+    expect(mirrored.manualLines[1].bulge).toBeNull();
+  });
+
+  it("部屋の点は左右反転してから配置角度に回る", () => {
+    const point = placeRoomPoint(
+      { x: 2, y: 1 },
+      placement({ rotation: 90, mirrored: true }),
+    );
+    expect(point.x).toBeCloseTo(-1);
+    expect(point.y).toBeCloseTo(-2);
   });
 });
 
@@ -321,13 +539,15 @@ describe("軸組数量", () => {
   it("記号表に合計と線ごとの数量が並ぶ", () => {
     const quantities = frameQuantities(lines(), [], 2.5);
     const symbols = frameSymbols(quantities, 2.5);
-    expect(symbols.slice(0, 5).map((item) => item.symbol)).toEqual([
+    expect(symbols.slice(0, 6).map((item) => item.symbol)).toEqual([
       "AH",
+      "CH",
       "AL",
       "AA",
       "DA",
       "RF",
     ]);
+    expect(symbols.find((item) => item.symbol === "CH")?.value).toBe(2.5);
     expect(symbols.find((item) => item.symbol === "AL1")?.value).toBe(4);
     expect(symbols.find((item) => item.symbol === "AA1")?.value).toBe(10);
   });
@@ -433,5 +653,93 @@ describe("軸組種類（線の色分け）", () => {
       attributes: {},
     });
     expect(frameQuantities(lines, [], 3).byKind).toEqual([]);
+  });
+});
+
+describe("parseFrameTraces", () => {
+  it("図面1枚だけの古い形（FrameTraceそのまま）をその1枚として読む", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      }),
+    );
+    expect(got.traces).toEqual([
+      {
+        image: "data:image/png;base64,AAA",
+        metersPerPixel: 0.01,
+        x: 2,
+        y: 3,
+        opacity: 0.4,
+      },
+    ]);
+    expect(got.active).toBe(0);
+    expect(got.locked).toBe(false);
+  });
+
+  it("複数枚の形をそのまま読む（選んだ番号・まとめて動かすも戻る）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "data:a", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 1,
+        locked: true,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(1);
+    expect(got.locked).toBe(true);
+  });
+
+  it("画像の無い図面は除き、選んだ番号は範囲内に収める", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        traces: [
+          { image: "", metersPerPixel: 0.01, x: 0, y: 0 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+        active: 9,
+        locked: false,
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:b"]);
+    expect(got.active).toBe(0);
+  });
+
+  it("部屋・ピット計算書の underlays/underlay に入った図面も読む（traces 優先）", () => {
+    const got = parseFrameTraces(
+      JSON.stringify({
+        underlays: [
+          { image: "data:a", metersPerPixel: 0.01, x: 1, y: 2, opacity: 0.5 },
+          { image: "data:b", metersPerPixel: 0.02, x: 5, y: 0 },
+        ],
+      }),
+    );
+    expect(got.traces.map((item) => item.image)).toEqual(["data:a", "data:b"]);
+    expect(got.active).toBe(0);
+    const single = parseFrameTraces(
+      JSON.stringify({
+        underlay: { image: "data:c", metersPerPixel: 0.01, x: 0, y: 0 },
+      }),
+    );
+    expect(single.traces.map((item) => item.image)).toEqual(["data:c"]);
+    const both = parseFrameTraces(
+      JSON.stringify({
+        traces: [{ image: "data:t", metersPerPixel: 0.01, x: 0, y: 0 }],
+        underlays: [{ image: "data:u", metersPerPixel: 0.01, x: 0, y: 0 }],
+      }),
+    );
+    expect(both.traces.map((item) => item.image)).toEqual(["data:t"]);
+  });
+
+  it("壊れたJSON・空は図面なしで読む", () => {
+    expect(parseFrameTraces("").traces).toEqual([]);
+    expect(parseFrameTraces("null").traces).toEqual([]);
+    expect(parseFrameTraces("{}").traces).toEqual([]);
   });
 });

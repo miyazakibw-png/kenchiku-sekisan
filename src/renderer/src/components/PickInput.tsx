@@ -1,11 +1,25 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { writeClipboard } from "../features/grid/writeClipboard";
+import { pickListHeight } from "./pickListSize";
 import "./PickInput.css";
+
+export interface PickCell {
+  upper: string;
+  lower?: string;
+}
 
 /** 候補一覧に出す1行（value＝欄に入る文字、label＝一覧に見せる文字） */
 export interface PickEntry {
   value: string;
   label: string;
+  cells?: PickCell[];
+}
+
+export interface PickColumn {
+  label: string;
+  width: number;
+  className?: string;
 }
 
 /**
@@ -26,6 +40,12 @@ export function PickInput({
   row,
   col,
   commitOnBlur = false,
+  copyValue = false,
+  popupSide = "bottom",
+  popupAnchorCol,
+  popupHeightScale = 1,
+  popupColumns,
+  dataAttrs,
   onCommit,
   onFocus,
 }: {
@@ -43,7 +63,19 @@ export function PickInput({
   row?: number;
   col?: number;
   commitOnBlur?: boolean;
-  onCommit: (text: string) => void;
+  copyValue?: boolean;
+  /** 候補一覧を出す向き（right＝入力欄の右側。右に入らなければ左側） */
+  popupSide?: "bottom" | "right";
+  /** 右側の候補一覧を揃える列番号 */
+  popupAnchorCol?: number;
+  /** 候補一覧の基本の高さに掛ける倍率 */
+  popupHeightScale?: number;
+  /** 候補一覧を列で表示するときの設定 */
+  popupColumns?: PickColumn[];
+  /** inputへ付けるdata-*属性（表のキー移動の目印に使う） */
+  dataAttrs?: Record<string, string>;
+  /** picked＝一覧の行をクリックして選んだとき（同じ値でも呼び直したいときに使う） */
+  onCommit: (text: string, picked?: boolean) => void;
   onFocus?: () => void;
 }): JSX.Element {
   const [editing, setEditing] = useState<string | null>(null);
@@ -58,15 +90,58 @@ export function PickInput({
   const openList = (): void => {
     if (!entries || !ref.current) return;
     const rect = ref.current.getBoundingClientRect();
+    const width = popupColumns
+      ? Math.max(
+          rect.width,
+          popupColumns.reduce((sum, column) => sum + column.width, 0) + 6,
+        )
+      : Math.max(rect.width, 220);
+    if (popupSide === "right") {
+      // 欄の右側に出す（下の行をふさがない）。すぐ右の1列分はあけるので、
+      // 一覧の上に乗らずに右のマスへマウスを動かせる。右に入らなければ左側へ
+      const height = pickListHeight(popupHeightScale, window.innerHeight - 16);
+      let left: number | null = null;
+      if (popupAnchorCol !== undefined) {
+        const anchorInput = ref.current
+          .closest("tr")
+          ?.querySelector<HTMLInputElement>(
+            `input[data-col="${popupAnchorCol}"]`,
+          );
+        const anchorCell = anchorInput?.closest("td");
+        if (anchorCell instanceof HTMLElement) {
+          const anchoredLeft = anchorCell.getBoundingClientRect().right + 4;
+          if (anchoredLeft + width <= window.innerWidth - 4) {
+            left = anchoredLeft;
+          }
+        }
+      }
+      if (left === null) {
+        const cell = ref.current.closest("td");
+        const next = cell?.nextElementSibling;
+        const skip = next instanceof HTMLElement ? next.offsetWidth : 0;
+        left =
+          rect.right + skip + 4 + width <= window.innerWidth - 4
+            ? rect.right + skip + 4
+            : Math.max(4, rect.left - width - 4);
+      }
+      const top = Math.max(
+        4,
+        Math.min(rect.top, window.innerHeight - height - 4),
+      );
+      setBox({ left, top, width, height });
+      return;
+    }
     // 画面の下に入りきらないときは欄の上に出す（一覧の中はスクロールできる）
     const below = window.innerHeight - rect.bottom - 8;
     const above = rect.top - 8;
     const up = below < 160 && above > below;
-    const height = Math.min(320, up ? above : below);
+    const height = pickListHeight(popupHeightScale, up ? above : below);
     setBox({
-      left: Math.min(rect.left, window.innerWidth - 240),
+      left: popupColumns
+        ? Math.min(rect.left, window.innerWidth - width - 4)
+        : Math.min(rect.left, window.innerWidth - 240),
       top: up ? rect.top - height : rect.bottom,
-      width: Math.max(rect.width, 220),
+      width,
       height,
     });
   };
@@ -79,10 +154,10 @@ export function PickInput({
       entry.label.includes(typed.trim()),
   );
 
-  const commit = (text: string): void => {
-    setEditing(null);
+  const commit = (text: string, picked = false): void => {
+    setEditing(copyValue && picked ? "" : null);
     setBox(null);
-    onCommit(text);
+    onCommit(text, picked);
   };
 
   return (
@@ -95,6 +170,7 @@ export function PickInput({
         list={entries ? undefined : listId}
         data-row={row}
         data-col={col}
+        {...dataAttrs}
         value={editing ?? value}
         placeholder={editing !== null && value !== "" ? value : placeholder}
         title={title}
@@ -109,6 +185,21 @@ export function PickInput({
           if (!commitOnBlur) onCommit(e.target.value);
         }}
         onKeyDown={(e) => {
+          if (
+            copyValue &&
+            e.ctrlKey &&
+            !e.shiftKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === "c" &&
+            editing === "" &&
+            value !== "" &&
+            e.currentTarget.selectionStart === e.currentTarget.selectionEnd
+          ) {
+            e.preventDefault();
+            setBox(null);
+            writeClipboard(value);
+            return;
+          }
           if (e.key === "Escape") {
             setBox(null);
             return;
@@ -133,31 +224,92 @@ export function PickInput({
         shown.length > 0 &&
         // 表の固定した列・行の上に出すため、画面（body）の一番上へ置く
         createPortal(
-          <ul
-            className="pick-list"
-            style={{
-              left: box.left,
-              top: box.top,
-              width: box.width,
-              maxHeight: box.height,
-            }}
-          >
-            {shown.map((entry, index) => (
-              <li key={`${entry.value}-${index}`}>
-                <button
-                  type="button"
-                  // クリックで欄から離れる前に選べるよう mousedown で決める
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    commit(entry.value);
-                  }}
-                >
-                  <span className="key">{entry.value}</span>
-                  <span className="label">{entry.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>,
+          popupColumns ? (
+            <div
+              className="pick-list pick-table"
+              style={{
+                left: box.left,
+                top: box.top,
+                width: box.width,
+                maxHeight: box.height,
+              }}
+            >
+              <table>
+                <colgroup>
+                  {popupColumns.map((column, index) => (
+                    <col
+                      key={`${column.label}-${index}`}
+                      style={{ width: column.width }}
+                    />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {popupColumns.map((column, index) => (
+                      <th
+                        className={column.className}
+                        key={`${column.label}-${index}`}
+                      >
+                        {column.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((entry, index) => (
+                    <tr
+                      key={`${entry.value}-${index}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        commit(entry.value, true);
+                      }}
+                    >
+                      {popupColumns.map((column, columnIndex) => {
+                        const cell = entry.cells?.[columnIndex];
+                        return (
+                          <td
+                            className={column.className}
+                            key={`${column.label}-${columnIndex}`}
+                          >
+                            <div className="upper">{cell?.upper ?? ""}</div>
+                            {cell?.lower !== undefined && (
+                              <div className="lower">{cell.lower}</div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <ul
+              className="pick-list"
+              style={{
+                left: box.left,
+                top: box.top,
+                width: box.width,
+                maxHeight: box.height,
+              }}
+            >
+              {shown.map((entry, index) => (
+                <li key={`${entry.value}-${index}`}>
+                  <button
+                    type="button"
+                    // クリックで欄から離れる前に選べるよう mousedown で決める
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      commit(entry.value, true);
+                    }}
+                  >
+                    <span className="key">{entry.value}</span>
+                    <span className="label">{entry.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ),
           document.body,
         )}
     </>

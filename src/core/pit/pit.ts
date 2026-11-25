@@ -21,6 +21,8 @@ export interface PitShape {
   y: number;
   /** 深さ（天井高さと同じ考え方。ピットごとに変えられる） */
   depth: number;
+  /** 深さを手で書き換えた印。あると部位別入力表の天井高さに連動しない */
+  depthManual?: boolean;
   /** 前のピットから見てどちら側に置くか（1個目は使わない） */
   direction: PitDirection;
   /** 前のピットとのすき間 */
@@ -63,6 +65,21 @@ export interface PitShape {
   cutX?: number;
   /** 斜めのY方向の量（古いデータ用） */
   cutY?: number;
+}
+
+/**
+ * 深さを部位別入力表の天井高さにそろえる。
+ * 深さを手で書き換えたピット（depthManual）はそのままにする。
+ */
+export function syncPitDepths(
+  pits: readonly PitShape[],
+  ceilingHeight: number | null,
+): PitShape[] {
+  return pits.map((pit) =>
+    pit.depthManual === true || ceilingHeight === null
+      ? { ...pit }
+      : { ...pit, depth: ceilingHeight },
+  );
 }
 
 /** ピットの角。左上・右上・右下・左下 */
@@ -317,9 +334,9 @@ export function setPitPoints(
 
 /**
  * なぞって作った（直した）ピットを、同じ図面でなぞった基準ピットからの位置に置く。
- * origin はなぞった形の左上（図面の中の位置・m）。
+ * origin はなぞった形の左上（図の中の位置・m）。
  * 前に置かれたピットのうち、図面の位置を持つ最初のものを基準に「自由」で置く。
- * 基準になるピットが無いときは置き方を変えない（1個目や、なぞっていないピットの隣）。
+ * 基準になるピットが無いときは図面の位置だけ入れる（なぞった形のずれ・古い基準は消す）。
  */
 export function placeTracedPit(
   before: readonly PitShape[],
@@ -330,6 +347,11 @@ export function placeTracedPit(
     ...pit,
     traceX: round4(origin.x),
     traceY: round4(origin.y),
+    baseId: undefined,
+    offsetX: undefined,
+    offsetY: undefined,
+    shiftX: undefined,
+    shiftY: undefined,
   };
   const base = before.find(
     (each) =>
@@ -337,8 +359,12 @@ export function placeTracedPit(
       each.traceX !== undefined &&
       each.traceY !== undefined,
   );
-  if (!base || base.traceX === undefined || base.traceY === undefined)
-    return placed;
+  if (!base || base.traceX === undefined || base.traceY === undefined) {
+    return {
+      ...placed,
+      direction: placed.direction === "free" ? "right" : placed.direction,
+    };
+  }
   return {
     ...placed,
     direction: "free",
@@ -346,9 +372,74 @@ export function placeTracedPit(
     offsetX: round4(origin.x - base.traceX),
     offsetY: round4(origin.y - base.traceY),
     align: undefined,
-    shiftX: undefined,
-    shiftY: undefined,
   };
+}
+
+/** 保存されている「なぞった形」（画素の点の左上）＋なぞりに使った図面の位置・縮尺 */
+export interface RetraceSource {
+  /** なぞった形（id はピットの id） */
+  traced: readonly {
+    id: string;
+    points: readonly { x: number; y: number }[];
+  }[];
+  /** なぞりに使った図面の下敷き（図の座標での左上と、1画素あたりのm） */
+  underlay: {
+    image: string;
+    metersPerPixel: number;
+    x: number;
+    y: number;
+  };
+}
+
+/**
+ * なぞったピットの位置を、保存された「なぞった形」と下敷きから計算し直す。
+ * 図の位置は「下敷きの左上＋なぞった形の左上（m）」。基準にしているピット（baseId）も
+ * なぞったものなら差（offsetX/Y）を入れ直し、無ければ基準を外す。
+ * 位置が合っていれば何も変わらないので、開くたびに実行しても同じ結果になる。
+ */
+export function retracePits(
+  pits: readonly PitShape[],
+  source: RetraceSource,
+): PitShape[] {
+  if (source.underlay.image === "" || source.underlay.metersPerPixel <= 0)
+    return pits.map((pit) => ({ ...pit }));
+  const spots = new Map<string, PitPoint>();
+  source.traced.forEach((shape) => {
+    if (shape.points.length === 0) return;
+    const minX = Math.min(...shape.points.map((point) => point.x));
+    const minY = Math.min(...shape.points.map((point) => point.y));
+    spots.set(shape.id, {
+      x: round4(source.underlay.x + minX * source.underlay.metersPerPixel),
+      y: round4(source.underlay.y + minY * source.underlay.metersPerPixel),
+    });
+  });
+  if (spots.size === 0) return pits.map((pit) => ({ ...pit }));
+  return pits.map((pit) => {
+    const spot = spots.get(pit.id);
+    if (!spot) return { ...pit };
+    const base =
+      pit.baseId !== undefined
+        ? pits.find((each) => each.id === pit.baseId)
+        : undefined;
+    const baseSpot = base === undefined ? undefined : spots.get(base.id);
+    if (pit.direction === "free" && baseSpot !== undefined) {
+      return {
+        ...pit,
+        traceX: spot.x,
+        traceY: spot.y,
+        offsetX: round4(spot.x - baseSpot.x),
+        offsetY: round4(spot.y - baseSpot.y),
+      };
+    }
+    return {
+      ...pit,
+      traceX: spot.x,
+      traceY: spot.y,
+      baseId: undefined,
+      offsetX: undefined,
+      offsetY: undefined,
+    };
+  });
 }
 
 /** 下敷きの図面の置き方（図の座標での左上と、1画素あたりのm） */
@@ -912,12 +1003,30 @@ function pitNumber(index: number): string {
 
 /**
  * ピットを順番に並べる。1個目を基準に、2個目からは向きとすき間で置く。
- * 1個目が図面をなぞって作ったものなら、図面の中の位置（traceX/Y）にそのまま置く
+ * 図面をなぞって作ったピット（traceX/Y を持つもの）は、図面の中の位置にそのまま置く
  * （下敷きの図面を同じ縦尺で左上=0に置けば、描いたピットと図面が重なる）。
+ * 基準ピット（baseId）があるものだけ、その基準からの差（offsetX/Y）で置く。
  */
 export function layoutPits(pits: readonly PitShape[]): PitRect[] {
   const rects: PitRect[] = [];
   pits.forEach((pit, index) => {
+    if (
+      pit.traceX !== undefined &&
+      pit.traceY !== undefined &&
+      (index === 0 ||
+        pit.baseId === undefined ||
+        !rects.some((rect) => rect.id === pit.baseId))
+    ) {
+      rects.push({
+        id: pit.id,
+        symbol: pit.symbol,
+        left: pit.traceX + (pit.shiftX ?? 0),
+        top: pit.traceY + (pit.shiftY ?? 0),
+        x: pit.x,
+        y: pit.y,
+      });
+      return;
+    }
     if (index === 0) {
       rects.push({
         id: pit.id,
@@ -1495,6 +1604,8 @@ export interface PitWall {
   width: number;
   /** 図の印の色 */
   color: string;
+  /** 表の長さを手で直した値（mm）。無いときは図の間隔を使う */
+  length?: number;
 }
 
 /** 図に出す印の太さ（500mm・200mmの2種類） */
@@ -1544,9 +1655,17 @@ export interface PitSleeve {
   length: number | null;
 }
 
-/** ピット間1本の長さ（m） */
-export function pitWallLength(wall: PitWall): number {
+/** ピット間1本の図の間隔（m）。手で直した長さではなく常に座標から出す */
+export function pitWallSpan(wall: PitWall): number {
   return round4(Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1));
+}
+
+/** ピット間1本の長さ（m）。手で直した長さがあればそれを使う */
+export function pitWallLength(wall: PitWall): number {
+  if (typeof wall.length === "number" && wall.length > 0) {
+    return round4(wall.length / 1000);
+  }
+  return pitWallSpan(wall);
 }
 
 /** 集計でまとめる長さの単位（mm）。表の上で選べる */

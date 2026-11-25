@@ -7,6 +7,7 @@ import type {
 import { aggregateByRoom } from "../../../../core/aggregate/aggregate";
 import { displayQuantity } from "../../../../core/room/calcSheet";
 import { detailsToEntries } from "./aggregateRows";
+import { transferToBreakdown } from "./breakdownTransfer";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
 import { useTableResize } from "../../hooks/useTableResize";
@@ -33,6 +34,7 @@ export default function RoomAggregatePage({
   });
   const [runs, setRuns] = useState<AggregateRun[]>([]);
   const [roomOrder, setRoomOrder] = useState<string[]>([]);
+  const [message, setMessage] = useState("");
 
   const reload = useCallback(
     async (runId?: number) => {
@@ -60,6 +62,15 @@ export default function RoomAggregatePage({
     [roomOrder, view.details],
   );
 
+  const transfer = async (): Promise<void> => {
+    const result = await transferToBreakdown(
+      project.id,
+      "room",
+      view.run?.id,
+    );
+    if (result !== null) setMessage(result);
+  };
+
   return (
     <div className="estimate-page aggregate-page">
       <div className="toolbar">
@@ -81,8 +92,17 @@ export default function RoomAggregatePage({
           ))}
           {runs.length === 0 && <option value="">未集計</option>}
         </select>
+        <button
+          type="button"
+          onClick={() => void transfer()}
+          disabled={runs.length === 0}
+          title="このまとめの形（部屋ごとの見出し）で内訳書を作ります"
+        >
+          ⇩ 内訳書に転記
+        </button>
         <span className="message">
-          {runs.length === 0 ? "先に集計処理を実行してください。" : ""}
+          {message ||
+            (runs.length === 0 ? "先に集計処理を実行してください。" : "")}
         </span>
       </div>
 
@@ -101,14 +121,14 @@ export default function RoomAggregatePage({
             </tr>
           </thead>
           {groups.flatMap((group) => [
-            <tbody key={`h-${group.roomName}`} className="heading part2">
+            <tbody key={`h-${group.label}`} className="heading part2">
               <tr>
-                <td colSpan={8}>＜{group.roomName}＞</td>
+                <td colSpan={8}>＜{group.label}＞</td>
               </tr>
             </tbody>,
             ...group.items.map((item) => (
               <tbody
-                key={`${group.roomName}-${item.masterKey}`}
+                key={`${group.label}-${item.masterKey}`}
                 className="row"
               >
                 <tr className="detail-upper">

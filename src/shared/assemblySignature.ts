@@ -9,6 +9,7 @@ export function assemblySignature(items: AssemblyItem[]): string {
   return items
     .map((item) =>
       [
+        item.note === true ? "note" : "",
         item.subjectId,
         item.partNumber ?? "",
         item.detailNumber ?? "",

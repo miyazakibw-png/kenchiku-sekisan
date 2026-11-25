@@ -45,3 +45,60 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.pick-list.pick-table {
+  padding: 0;
+}
+
+.pick-table table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.pick-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: normal;
+  border: 1px solid #cbd5e1;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+
+.pick-table td {
+  border: 1px solid #e2e8f0;
+  border-bottom-color: #cbd5e1;
+  padding: 1px 4px;
+  vertical-align: middle;
+}
+
+.pick-table td .upper,
+.pick-table td .lower {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pick-table td .lower {
+  border-top: 1px dotted #e2e8f0;
+}
+
+.pick-table .no {
+  text-align: right;
+}
+
+.pick-table .unit {
+  text-align: center;
+}
+
+.pick-table tbody tr {
+  cursor: pointer;
+}
+
+.pick-table tbody tr:hover {
+  background: #dbeafe;
+}

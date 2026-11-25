@@ -72,6 +72,10 @@ export default function PrintBar({
       try {
         applyScale(area, paper);
         await job(area, screenName(area, projectName));
+      } catch (error) {
+        window.alert(
+          error instanceof Error ? error.message : "保存できませんでした",
+        );
       } finally {
         setBusy(false);
       }

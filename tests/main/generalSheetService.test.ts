@@ -17,7 +17,17 @@ import {
   getGeneralSheet,
   saveGeneralSheet,
 } from "../../src/main/services/generalSheetService";
+import {
+  getLowerTemplate,
+  saveLowerTemplate,
+} from "../../src/main/services/roomSheetService";
 import type { EstimateRowDraft } from "../../src/shared/types";
+import {
+  calcSet,
+  commentSet,
+  type CalcSet,
+} from "../../src/core/room/calcSheet";
+import { lowerTemplateFrom } from "../../src/core/room/lowerTemplate";
 
 function createDb(): AppDatabase {
   const sqlite = new Database(":memory:");
@@ -72,6 +82,49 @@ describe("汎用計算書", () => {
     expect(reloaded.id).toBe(sheet.id);
     expect(reloaded.lowerJson).toBe('[{"id":"s1"}]');
     expect(reloaded.note).toBe("手拾い");
+  });
+
+  it("新しい汎用計算書は汎用用の初期状態を使い、明細とIDを作り直す", () => {
+    const project = createProject(db, "汎用初期状態");
+    const [target] = saveEstimateRows(db, {
+      projectId: project.id,
+      rows: [row("汎用A")],
+    });
+
+    const part = calcSet(1);
+    part.partName = "床";
+    part.details[0].name = "旧明細";
+    part.lines[0].formulaA = "2*4";
+    const template = lowerTemplateFrom([
+      commentSet("汎用見出し", "#fef9c3"),
+      part,
+    ]);
+    const templateJson = JSON.stringify(template);
+    saveLowerTemplate(db, "general", templateJson);
+
+    const sheet = getGeneralSheet(db, target.id);
+    const sets = JSON.parse(sheet.lowerJson) as CalcSet[];
+    expect(sets.map((set) => set.banner?.text ?? set.partName)).toEqual([
+      "汎用見出し",
+      "床",
+    ]);
+    expect(sets[1].details[0].name).toBe("");
+    expect(sets[1].lines[0].formulaA).toBe("");
+    const templateIds = new Set(
+      template.flatMap((set) => [
+        set.id,
+        ...set.details.map((detail) => detail.id),
+        ...set.lines.map((line) => line.id),
+      ]),
+    );
+    const createdIds = sets.flatMap((set) => [
+      set.id,
+      ...set.details.map((detail) => detail.id),
+      ...set.lines.map((line) => line.id),
+    ]);
+    expect(new Set(createdIds).size).toBe(createdIds.length);
+    expect(createdIds.some((id) => templateIds.has(id))).toBe(false);
+    expect(getLowerTemplate(db, "general")).toBe(templateJson);
   });
 
   it("物件コピーで汎用計算書も複製する", () => {

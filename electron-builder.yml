@@ -18,6 +18,7 @@ asarUnpack:
 # Windows用のbetter-sqlite3は scripts/prepare-win-native.mjs で用意するため、ここでは作り直さない
 npmRebuild: false
 win:
+  icon: build/icon.ico
   target:
     - nsis
   # ネット接続なしで動かすため署名は行わない

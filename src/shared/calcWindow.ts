@@ -12,6 +12,7 @@ export interface CalcFocus {
 export interface CalcWindowState {
   /** ウィンドウの見出し（工事名・部屋名） */
   title: string;
+  roomPartName?: string;
   projectId: number;
   /** 上段（図・記号表）を持つ計算書か */
   hasUpper: boolean;

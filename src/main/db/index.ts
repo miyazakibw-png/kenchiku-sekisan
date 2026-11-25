@@ -7,6 +7,7 @@ import {
 import { migrations } from "./migrations";
 import * as schema from "./schema";
 import { seedInitialData } from "./seed";
+import { ensureProjectsOwnMasters } from "../services/projectMasterCopyService";
 import { renumberSubjects } from "../services/subjectService";
 
 export type AppDatabase = BetterSQLite3Database<typeof schema>;
@@ -15,7 +16,7 @@ let sqlite: Database.Database | null = null;
 let db: AppDatabase | null = null;
 let dbPath = "";
 
-function applyMigrations(conn: Database.Database): void {
+export function applyMigrations(conn: Database.Database): void {
   const current = conn.pragma("user_version", { simple: true }) as number;
   for (let version = current; version < migrations.length; version++) {
     conn.exec("BEGIN");
@@ -38,6 +39,7 @@ export function initDatabase(filePath: string): AppDatabase {
   applyMigrations(sqlite);
   db = drizzle(sqlite, { schema });
   seedInitialData(db);
+  ensureProjectsOwnMasters(db);
   // 途中で科目を挿し込んだ古いデータは、科目IDを行位置に合わせ直す
   renumberSubjects(db);
   return db;
@@ -46,6 +48,12 @@ export function initDatabase(filePath: string): AppDatabase {
 export function getDatabase(): AppDatabase {
   if (!db) throw new Error("データベースが初期化されていません");
   return db;
+}
+
+/** better-sqlite3 の生接続（1物件ファイルの掃き出し・読み込みで使う） */
+export function getRawConnection(): Database.Database {
+  if (!sqlite) throw new Error("データベースが初期化されていません");
+  return sqlite;
 }
 
 export function closeDatabase(): void {
@@ -94,6 +102,21 @@ export function checkBackupFile(filePath: string): BackupCheck {
       return {
         ok: false,
         message: "このファイルは積算データではありません。",
+        projectCount: 0,
+        version: 0,
+      };
+    }
+    // エクセル積算移行ソフトのデータは版の数え方が違い、復元すると表が欠ける
+    const fromMigrator = conn
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='project_excel_notes'",
+      )
+      .get();
+    if (fromMigrator) {
+      return {
+        ok: false,
+        message:
+          "エクセル積算移行ソフトのデータは復元できません。移行ソフトで「1物件の掃き出し」をして、このソフトの「読み込み」で入れてください。",
         projectCount: 0,
         version: 0,
       };

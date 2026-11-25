@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   MasterOptions,
   ProjectField,
@@ -8,6 +15,7 @@ import {
   copyName,
   moveProject,
   normalizeDate,
+  pinnedOnTop,
   sortProjects,
   type LedgerSortKey,
 } from "./projectLedger";
@@ -15,6 +23,7 @@ import ProjectWorkspacePage from "./ProjectWorkspacePage";
 import {
   allLedgerColumns,
   applyColumnSettings,
+  COLUMN_SETTINGS_STORAGE_KEY,
   loadColumnSettings,
   loadColumnWidths,
   moveSetting,
@@ -70,11 +79,14 @@ interface LedgerProps {
   options: MasterOptions;
   /** 物件専用ウィンドウのときは、その工事を最初から開く */
   initialProjectId?: number | null;
+  /** 最初から開く画面（#project=N&menu=… で別窓を特定の画面で開くとき） */
+  initialMenu?: string | null;
 }
 
 export default function ProjectLedgerPage({
   options,
   initialProjectId = null,
+  initialMenu = null,
 }: LedgerProps): JSX.Element {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [fields, setFields] = useState<ProjectField[]>([]);
@@ -109,6 +121,11 @@ export default function ProjectLedgerPage({
     () => applyColumnSettings(columns, columnSettings),
     [columns, columnSettings],
   );
+  /** 「工事を開く」の列は備考欄の手前に出す（備考が隠れているときはいちばん右） */
+  const openAt = useMemo(() => {
+    const at = shownColumns.findIndex((column) => column.key === "note");
+    return at < 0 ? shownColumns.length : at;
+  }, [shownColumns]);
   const shownProjects = useMemo(
     () => filterProjectsByMarks(projects, markFilter),
     [projects, markFilter],
@@ -148,7 +165,7 @@ export default function ProjectLedgerPage({
 
   const reload = useCallback(async () => {
     const ledger = await window.sekisan.getProjectLedger();
-    setProjects(ledger.projects);
+    setProjects(pinnedOnTop(ledger.projects));
     setFields(ledger.fields);
   }, []);
 
@@ -178,6 +195,7 @@ export default function ProjectLedgerPage({
       builderName: project.builderName,
       designerName: project.designerName,
       note: project.note,
+      pinned: project.pinned,
       fieldValues: project.fieldValues,
       marks: project.marks,
     });
@@ -185,6 +203,16 @@ export default function ProjectLedgerPage({
       prev.map((row) => (row.id === saved.id ? saved : row)),
     );
     setToast("保存しました");
+  }, []);
+
+  // 積算操作画面（別ウィンドウ）で表示項目を変えたとき台帳の列にも反映する
+  useEffect(() => {
+    const sync = (event: StorageEvent): void => {
+      if (event.key === null || event.key === COLUMN_SETTINGS_STORAGE_KEY)
+        setColumnSettings(loadColumnSettings());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
 
   // 別のウィンドウ（工事概要など）で直された内容を台帳にも反映する
@@ -265,6 +293,25 @@ export default function ProjectLedgerPage({
     [persistOrder, projects],
   );
 
+  /** 「上に固定」を切り替える（固定した工事は台帳の先頭の段にまとまる） */
+  const togglePin = useCallback(
+    async (project: ProjectSummary) => {
+      const next = { ...project, pinned: !project.pinned };
+      await saveProject(next);
+      await persistOrder(
+        pinnedOnTop(
+          projects.map((row) => (row.id === project.id ? next : row)),
+        ),
+      );
+      setToast(
+        next.pinned
+          ? `${project.name} を上の段に固定しました`
+          : `${project.name} の固定を外しました`,
+      );
+    },
+    [persistOrder, projects, saveProject],
+  );
+
   const commitDate = useCallback(
     (project: ProjectSummary, input: string) => {
       const normalized = normalizeDate(input);
@@ -296,6 +343,7 @@ export default function ProjectLedgerPage({
         project={opened}
         fields={fields}
         options={options}
+        initialMenu={initialMenu}
         onSave={(project) => void saveProject(project)}
         onBack={() => {
           if (projectWindow) void window.sekisan.closeWindow();
@@ -399,44 +447,62 @@ export default function ProjectLedgerPage({
         <table className="grid project-list">
           <colgroup>
             <col style={{ width: "20px" }} />
-            {shownColumns.map((column) => (
-              <col
-                key={column.key}
-                style={{
-                  width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
-                }}
-              />
+            {shownColumns.map((column, index) => (
+              <Fragment key={column.key}>
+                {index === openAt && (
+                  <col className="open" style={{ width: "110px" }} />
+                )}
+                <col
+                  style={{
+                    width: `${columnWidths[column.key] ?? DEFAULT_WIDTH}px`,
+                  }}
+                />
+              </Fragment>
             ))}
+            {openAt === shownColumns.length && (
+              <col className="open" style={{ width: "110px" }} />
+            )}
           </colgroup>
           <thead>
             <tr>
               <th className="handle" />
-              {shownColumns.map((column) => (
-                <th
-                  key={column.key}
-                  onClick={() => sortColumn(column)}
-                  title="クリックで並べ替え／右端のドラッグで列幅"
-                >
-                  {column.title}
-                  <span
-                    className="col-resize"
-                    onMouseDown={(e) => startResize(column.key, e)}
-                  />
-                </th>
+              {shownColumns.map((column, index) => (
+                <Fragment key={column.key}>
+                  {index === openAt && (
+                    <th className="open" title="この行の工事を開きます">
+                      開く
+                    </th>
+                  )}
+                  <th
+                    onClick={() => sortColumn(column)}
+                    title="クリックで並べ替え／右端のドラッグで列幅"
+                  >
+                    {column.title}
+                    <span
+                      className="col-resize"
+                      onMouseDown={(e) => startResize(column.key, e)}
+                    />
+                  </th>
+                </Fragment>
               ))}
+              {openAt === shownColumns.length && (
+                <th className="open" title="この行の工事を開きます">
+                  開く
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
             {projects.length === 0 && (
               <tr>
-                <td colSpan={1 + shownColumns.length} className="empty">
+                <td colSpan={2 + shownColumns.length} className="empty">
                   物件がまだありません。「新規作成」から追加してください。
                 </td>
               </tr>
             )}
             {projects.length > 0 && shownProjects.length === 0 && (
               <tr>
-                <td colSpan={1 + shownColumns.length} className="empty">
+                <td colSpan={2 + shownColumns.length} className="empty">
                   選んだチェックの工事はありません。「全表示」に戻せます。
                 </td>
               </tr>
@@ -467,71 +533,120 @@ export default function ProjectLedgerPage({
                   }}
                 >
                   <td className="handle" title="ドラッグで並べ替え">
+                    <button
+                      type="button"
+                      className={project.pinned ? "pin on" : "pin"}
+                      title={
+                        project.pinned
+                          ? "上の段の固定を外します"
+                          : "この工事を上の段に固定します（並べ替え・ドラッグでは動きません）"
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void togglePin(project);
+                      }}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >
+                      📌
+                    </button>
                     ⋮⋮
                   </td>
-                  {shownColumns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={
-                        column.key === "managementNo"
-                          ? "management-no"
-                          : undefined
-                      }
-                      title={
-                        column.key === "managementNo"
-                          ? "管理用の自動採番のため変更できません"
-                          : undefined
-                      }
-                    >
-                      {column.key === "managementNo" ? (
-                        project.managementNo
-                      ) : column.mark !== undefined ? (
-                        <input
-                          type="checkbox"
-                          checked={project.marks.includes(column.mark)}
-                          onChange={(e) =>
-                            column.mark !== undefined &&
-                            setMark(project, column.mark, e.target.checked)
-                          }
-                        />
-                      ) : column.key === "projectDate" ? (
-                        <input
-                          className="date"
-                          value={project.projectDate}
-                          onChange={(e) =>
-                            editRow(project.id, { projectDate: e.target.value })
-                          }
-                          onBlur={(e) => commitDate(project, e.target.value)}
-                        />
-                      ) : column.fieldId !== undefined ? (
-                        <input
-                          lang="ja"
-                          value={project.fieldValues[column.fieldId] ?? ""}
-                          onChange={(e) =>
-                            column.fieldId !== undefined &&
-                            editFieldValue(
-                              project,
-                              column.fieldId,
-                              e.target.value,
-                            )
-                          }
-                          onBlur={() => void saveProject(project)}
-                        />
-                      ) : (
-                        <input
-                          lang="ja"
-                          value={textValue(project, column.key)}
-                          onChange={(e) =>
-                            editRow(
-                              project.id,
-                              textPatch(column.key, e.target.value),
-                            )
-                          }
-                          onBlur={() => void saveProject(project)}
-                        />
+                  {shownColumns.map((column, index) => (
+                    <Fragment key={column.key}>
+                      {index === openAt && (
+                        <td className="open">
+                          <button
+                            type="button"
+                            title="この工事を別ウインドウで開きます"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void window.sekisan.openProjectWindow(project.id);
+                            }}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            🗔 工事を開く
+                          </button>
+                        </td>
                       )}
-                    </td>
+                      <td
+                        className={
+                          column.key === "managementNo"
+                            ? "management-no"
+                            : undefined
+                        }
+                        title={
+                          column.key === "managementNo"
+                            ? "管理用の自動採番のため変更できません"
+                            : undefined
+                        }
+                      >
+                        {column.key === "managementNo" ? (
+                          project.managementNo
+                        ) : column.mark !== undefined ? (
+                          <input
+                            type="checkbox"
+                            checked={project.marks.includes(column.mark)}
+                            onChange={(e) =>
+                              column.mark !== undefined &&
+                              setMark(project, column.mark, e.target.checked)
+                            }
+                          />
+                        ) : column.key === "projectDate" ? (
+                          <input
+                            className="date"
+                            value={project.projectDate}
+                            onChange={(e) =>
+                              editRow(project.id, {
+                                projectDate: e.target.value,
+                              })
+                            }
+                            onBlur={(e) => commitDate(project, e.target.value)}
+                          />
+                        ) : column.fieldId !== undefined ? (
+                          <input
+                            lang="ja"
+                            value={project.fieldValues[column.fieldId] ?? ""}
+                            onChange={(e) =>
+                              column.fieldId !== undefined &&
+                              editFieldValue(
+                                project,
+                                column.fieldId,
+                                e.target.value,
+                              )
+                            }
+                            onBlur={() => void saveProject(project)}
+                          />
+                        ) : (
+                          <input
+                            lang="ja"
+                            value={textValue(project, column.key)}
+                            onChange={(e) =>
+                              editRow(
+                                project.id,
+                                textPatch(column.key, e.target.value),
+                              )
+                            }
+                            onBlur={() => void saveProject(project)}
+                          />
+                        )}
+                      </td>
+                    </Fragment>
                   ))}
+                  {openAt === shownColumns.length && (
+                    <td className="open">
+                      <button
+                        type="button"
+                        title="この工事を別ウインドウで開きます"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void window.sekisan.openProjectWindow(project.id);
+                        }}
+                        onDoubleClick={(e) => e.stopPropagation()}
+                      >
+                        🗔 工事を開く
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -545,7 +660,8 @@ export default function ProjectLedgerPage({
             <header>
               <h3>列の表示・並び</h3>
               <span className="hint">
-                日付・管理番号・工事名称はいつも先頭に表示します
+                日付・管理番号・工事名称はいつも先頭に表示します／
+                積算操作画面の項目もこの並びで出ます
               </span>
             </header>
             <div className="modal-body">
