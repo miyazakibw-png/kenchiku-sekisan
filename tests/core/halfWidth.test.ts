@@ -25,6 +25,7 @@ describe("toHalfWidth", () => {
 
   it("名前用に英数字・空白・カタカナを半角へ直す", () => {
     expect(toHalfWidthName("ロビー")).toBe("ﾛﾋﾞｰ");
+    expect(toHalfWidthName("コンクリート金ゴテ")).toBe("ｺﾝｸﾘｰﾄ金ｺﾞﾃ");
     expect(toHalfWidthName("コミュニケーション・ラウンジ")).toBe(
       "ｺﾐｭﾆｹｰｼｮﾝ･ﾗｳﾝｼﾞ",
     );

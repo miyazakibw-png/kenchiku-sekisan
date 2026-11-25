@@ -5,6 +5,7 @@
  */
 
 import { evaluateFormula, normalizeFormula } from "../formula/evaluate";
+import { toHalfWidthName } from "../text/halfWidth";
 
 /** セット明細の1明細（基本／工事マスターの明細を写し取ったもの） */
 export interface CalcDetail {
@@ -28,6 +29,49 @@ export interface CalcDetail {
   coefficient: number;
   /** 説明行（計算しない文字だけの明細。集計では数量0） */
   note?: boolean;
+}
+
+/** 仕上・下地摘要が空なら、名称を半角にして入れる（説明行・名称が空の行はそのまま） */
+export function withAutoEstimateDisplay(detail: CalcDetail): CalcDetail {
+  if (
+    detail.note === true ||
+    detail.name.trim() === "" ||
+    detail.estimateDisplay.trim() !== ""
+  )
+    return detail;
+  return {
+    ...detail,
+    estimateDisplay: toHalfWidthName(detail.name.trim()),
+  };
+}
+
+/** 名称が変わった・新しく入った明細だけ、仕上・下地摘要が空なら名称の半角を入れる */
+export function autoEstimateDisplayForChanged(
+  before: CalcSet[],
+  after: CalcSet[],
+): CalcSet[] {
+  const beforeNames = new Map<string, string>();
+  for (const set of before)
+    for (const detail of set.details) beforeNames.set(detail.id, detail.name);
+
+  let changed = false;
+  const next = after.map((set) => {
+    let setChanged = false;
+    const details = set.details.map((detail) => {
+      const nameChanged =
+        !beforeNames.has(detail.id) ||
+        beforeNames.get(detail.id) !== detail.name;
+      if (!nameChanged) return detail;
+      const nextDetail = withAutoEstimateDisplay(detail);
+      if (nextDetail === detail) return detail;
+      setChanged = true;
+      return nextDetail;
+    });
+    if (!setChanged) return set;
+    changed = true;
+    return { ...set, details };
+  });
+  return changed ? next : after;
 }
 
 /** セット明細の計算式1行（A・Bの2欄。両方あれば A×B） */

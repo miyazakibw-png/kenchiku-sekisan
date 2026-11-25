@@ -24,6 +24,7 @@ import {
 } from "../../../../core/masters/assemblyGroup";
 import {
   addSetRow,
+  autoEstimateDisplayForChanged,
   calcDetail,
   calcLine,
   calcSet,
@@ -49,6 +50,7 @@ import {
   splitSetAt,
   syncLines,
   usedBSymbols,
+  withAutoEstimateDisplay,
   type CalcDetail,
   type CalcLine,
   type CalcSet,
@@ -421,6 +423,7 @@ export default function RoomCalcSheet({
   const jumpedTick = useRef<number | null>(null);
   const cellDragAnchor = useRef<CellPosition | null>(null);
   const pasteEventCount = useRef(0);
+  const nameAtFocus = useRef(new Map<string, string>());
   /** Shift+クリック中は範囲の先頭を動かさないための目印 */
   const shiftClicking = useRef(false);
   /** 最後にカーソルがあった欄の列（貼付ボタンを押しても残る） */
@@ -857,7 +860,7 @@ export default function RoomCalcSheet({
       }
       // 先に入れてある部位は書き換えない（空欄のときだけマスターの部位を入れる）
       const keepPart = row.partNumber !== null || row.partName.trim() !== "";
-      updateDetail(setId, index, {
+      const patch: Partial<CalcDetail> = {
         sourceDetailId: found.id,
         subjectId: found.subjectId,
         detailNumber: found.detailNumber,
@@ -872,6 +875,11 @@ export default function RoomCalcSheet({
         remarksUpper: found.remarksUpper,
         remarksLower: found.remarksLower,
         estimateDisplay: found.estimateDisplay,
+      };
+      const autoDisplay = withAutoEstimateDisplay({ ...row, ...patch });
+      updateDetail(setId, index, {
+        ...patch,
+        estimateDisplay: autoDisplay.estimateDisplay,
       });
       onMessage(`${found.name} を呼び出しました`);
     },
@@ -1028,23 +1036,25 @@ export default function RoomCalcSheet({
   const callDetail = useCallback(
     (detail: Detail) => {
       const target = currentSet;
-      const item = calcDetail({
-        sourceDetailId: detail.id,
-        subjectId: detail.subjectId,
-        detailNumber: detail.detailNumber,
-        // 基本マスターは上書き先に部位があれば残し、それ以外はマスターの登録通りに入れる
-        // （空欄は空欄のまま）
-        materialCategory: detail.materialCategory,
-        partNumber: detail.partNumber,
-        partName: fillRoomName(detail.partName, roomPartName),
-        name: detail.name,
-        descriptionUpper: detail.descriptionUpper,
-        descriptionLower: detail.descriptionLower,
-        unit: detail.unit,
-        remarksUpper: detail.remarksUpper,
-        remarksLower: detail.remarksLower,
-        estimateDisplay: detail.estimateDisplay,
-      });
+      const item = withAutoEstimateDisplay(
+        calcDetail({
+          sourceDetailId: detail.id,
+          subjectId: detail.subjectId,
+          detailNumber: detail.detailNumber,
+          // 基本マスターは上書き先に部位があれば残し、それ以外はマスターの登録通りに入れる
+          // （空欄は空欄のまま）
+          materialCategory: detail.materialCategory,
+          partNumber: detail.partNumber,
+          partName: fillRoomName(detail.partName, roomPartName),
+          name: detail.name,
+          descriptionUpper: detail.descriptionUpper,
+          descriptionLower: detail.descriptionLower,
+          unit: detail.unit,
+          remarksUpper: detail.remarksUpper,
+          remarksLower: detail.remarksLower,
+          estimateDisplay: detail.estimateDisplay,
+        }),
+      );
       // ※行にカーソルがあるときは、その※行の下に新しいセットとして入れる
       const bannerAt =
         bannerSetId === null
@@ -1144,23 +1154,25 @@ export default function RoomCalcSheet({
       created.partName = selectedPart?.partName ?? "";
       created.partNumber = selectedPart?.partNumber ?? null;
       created.details = assembly.items.map((item) =>
-        calcDetail({
-          sourceDetailId: item.sourceDetailId,
-          subjectId: assemblyItemSubjectId(item),
-          detailNumber: item.detailNumber,
-          materialCategory: item.materialCategory,
-          partNumber: item.partNumber ?? null,
-          partName: fillRoomName(item.partName, roomPartName),
-          name: item.name,
-          descriptionUpper: item.descriptionUpper,
-          descriptionLower: item.descriptionLower,
-          unit: item.unit,
-          remarksUpper: item.remarksUpper,
-          remarksLower: item.remarksLower,
-          estimateDisplay: item.estimateDisplay,
-          coefficient: item.coefficient,
-          note: item.note === true,
-        }),
+        withAutoEstimateDisplay(
+          calcDetail({
+            sourceDetailId: item.sourceDetailId,
+            subjectId: assemblyItemSubjectId(item),
+            detailNumber: item.detailNumber,
+            materialCategory: item.materialCategory,
+            partNumber: item.partNumber ?? null,
+            partName: fillRoomName(item.partName, roomPartName),
+            name: item.name,
+            descriptionUpper: item.descriptionUpper,
+            descriptionLower: item.descriptionLower,
+            unit: item.unit,
+            remarksUpper: item.remarksUpper,
+            remarksLower: item.remarksLower,
+            estimateDisplay: item.estimateDisplay,
+            coefficient: item.coefficient,
+            note: item.note === true,
+          }),
+        ),
       );
       created.lines = syncLines(created.details, []);
       const next = [...sets];
@@ -1539,6 +1551,8 @@ export default function RoomCalcSheet({
     async (text: string, mode: "overwrite" | "insert" | "append") => {
       if (text.trim() === "") return;
       const clip = getCalcClip(text);
+      const commitWithAutoEstimateDisplay = (next: CalcSet[]): void =>
+        commit(autoEstimateDisplayForChanged(sets, next));
       // カーソルのある列（この列から画面の並びどおりに貼り付ける）。
       // 貼付ボタンを押すと欄から離れるので、最後にいた列を覚えておいて使う
       const active = document.activeElement;
@@ -1574,7 +1588,7 @@ export default function RoomCalcSheet({
           // 上書きしても、そのセットに付いている※行は残す
           next[at] = { ...created, banner: sets[at].banner ?? null };
         else next.splice(at < 0 ? next.length : at, 0, created);
-        commit(next);
+        commitWithAutoEstimateDisplay(next);
         onFocus({ setId: created.id, area: "detail", index: 0 });
         onMessage(
           mode === "overwrite"
@@ -1621,7 +1635,7 @@ export default function RoomCalcSheet({
         }
         const next = [...base];
         next.splice(at, 0, ...created);
-        commit(next);
+        commitWithAutoEstimateDisplay(next);
         const head = created.find((set) => !isCommentSet(set));
         if (head) onFocus({ setId: head.id, area: "detail", index: 0 });
         onMessage(
@@ -1654,7 +1668,7 @@ export default function RoomCalcSheet({
         };
         const next = [...sets];
         next.splice(bannerAt, 0, created);
-        commit(next);
+        commitWithAutoEstimateDisplay(next);
         onFocus({ setId: created.id, area: "detail", index: 0 });
         onMessage(
           `コピーした${copiedDetails.length}行をコメント行の上へ差し込みました`,
@@ -1666,7 +1680,7 @@ export default function RoomCalcSheet({
         const bounds = cellRange ? cellRangeBounds(cellRange) : null;
         const matrix = parseTsv(text);
         if (bounds && matrix.length === 1 && (matrix[0]?.length ?? 0) === 1) {
-          commit(
+          commitWithAutoEstimateDisplay(
             fillCells(
               sets,
               bounds.rowFrom,
@@ -1686,7 +1700,7 @@ export default function RoomCalcSheet({
             (activeRow !== null && Number.isFinite(activeRow)
               ? activeRow
               : (lastGridRow.current ?? 0));
-          commit(
+          commitWithAutoEstimateDisplay(
             pasteCells(sets, startRow, bounds?.colFrom ?? cursorColumn, text),
           );
         }
@@ -1704,7 +1718,7 @@ export default function RoomCalcSheet({
         // 汎用計算書などでセットが無いときは、新しいセットを作って取り込む
         const created = calcSet(1);
         const pasted = pasteRows(created.details, created.lines, 0, text);
-        commit([
+        commitWithAutoEstimateDisplay([
           ...sets,
           {
             ...created,
@@ -1757,9 +1771,16 @@ export default function RoomCalcSheet({
         // 貼り付け先のセットに部位が入っていなければ、写し元の部位を入れる
         const emptyPart =
           currentSet.partNumber === null && currentSet.partName.trim() === "";
+        const adjusted = autoEstimateDisplayForChanged(
+          sets,
+          sets.map((set) =>
+            set.id === currentSet.id ? { ...set, details } : set,
+          ),
+        ).find((set) => set.id === currentSet.id);
+        const adjustedDetails = adjusted?.details ?? details;
         updateSet(currentSet.id, {
-          details,
-          lines: fillLines(details, lines),
+          details: adjustedDetails,
+          lines: fillLines(adjustedDetails, lines),
           ...(clip.kind === "rows" && emptyPart
             ? { partNumber: clip.partNumber, partName: clip.partName }
             : {}),
@@ -1809,9 +1830,18 @@ export default function RoomCalcSheet({
           byColumn && cursorColumn !== null
             ? pasteSheet(base, baseLines, at, cursorColumn, text)
             : pasteRows(base, baseLines, at, text);
+        const adjusted = autoEstimateDisplayForChanged(
+          sets,
+          sets.map((set) =>
+            set.id === currentSet.id
+              ? { ...set, details: pasted.details }
+              : set,
+          ),
+        ).find((set) => set.id === currentSet.id);
+        const adjustedDetails = adjusted?.details ?? pasted.details;
         updateSet(currentSet.id, {
-          details: pasted.details,
-          lines: fillLines(pasted.details, pasted.lines),
+          details: adjustedDetails,
+          lines: fillLines(adjustedDetails, pasted.lines),
         });
         onMessage(
           byColumn
@@ -2187,13 +2217,16 @@ export default function RoomCalcSheet({
           if (rows * cols > 1) {
             e.preventDefault();
             commit(
-              fillCells(
+              autoEstimateDisplayForChanged(
                 sets,
-                bounds.rowFrom,
-                bounds.rowTo,
-                bounds.colFrom,
-                bounds.colTo,
-                "",
+                fillCells(
+                  sets,
+                  bounds.rowFrom,
+                  bounds.rowTo,
+                  bounds.colFrom,
+                  bounds.colTo,
+                  "",
+                ),
               ),
             );
             onMessage(`${rows}行×${cols}列を消去しました`);
@@ -2781,12 +2814,40 @@ export default function RoomCalcSheet({
                               data-row={gridRow}
                               data-col={6}
                               value={detail.name}
-                              onFocus={focusDetail}
+                              onFocus={(e) => {
+                                nameAtFocus.current.set(
+                                  detail.id,
+                                  e.currentTarget.value,
+                                );
+                                focusDetail();
+                              }}
                               onChange={(e) =>
                                 updateDetail(set.id, rowIndex, {
                                   name: e.target.value,
                                 })
                               }
+                              onBlur={(e) => {
+                                const previousName = nameAtFocus.current.get(
+                                  detail.id,
+                                );
+                                nameAtFocus.current.delete(detail.id);
+                                if (
+                                  previousName === undefined ||
+                                  previousName === e.currentTarget.value
+                                )
+                                  return;
+                                const nextDetail = withAutoEstimateDisplay({
+                                  ...detail,
+                                  name: e.currentTarget.value,
+                                });
+                                if (
+                                  nextDetail.estimateDisplay !==
+                                  detail.estimateDisplay
+                                )
+                                  updateDetail(set.id, rowIndex, {
+                                    estimateDisplay: nextDetail.estimateDisplay,
+                                  });
+                              }}
                             />
                           </td>
                           <td>
