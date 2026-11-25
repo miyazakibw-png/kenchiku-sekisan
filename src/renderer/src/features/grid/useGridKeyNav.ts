@@ -9,7 +9,7 @@ import {
 import { focusCell } from "./focusCell";
 
 const FIELDS =
-  "input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])";
+  "input:not([type=hidden]):not([disabled]):not(.bulk-check),select:not([disabled]),textarea:not([disabled])";
 
 type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -154,6 +154,7 @@ export function useGridKeyNav(): (event: KeyboardEvent) => void {
     if (event.defaultPrevented) return;
     const field = event.target;
     if (!isField(field)) return;
+    if (field.classList.contains("bulk-check")) return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     if (field instanceof HTMLTextAreaElement && event.key === "Enter") return;
 

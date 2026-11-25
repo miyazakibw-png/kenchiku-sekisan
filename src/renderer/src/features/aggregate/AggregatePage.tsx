@@ -39,6 +39,7 @@ import {
   type AggregateGridLine,
   type AggregateGridRange,
 } from "./aggregateGrid";
+import { toggleBulkCheck } from "./bulkChecks";
 import "../estimate/EstimatePartsPage.css";
 import "./AggregatePage.css";
 
@@ -216,6 +217,8 @@ export default function AggregatePage({
   const editsRef = useRef(edits);
   const lastEditKeyRef = useRef<string | null>(null);
   const [cellRange, setCellRange] = useState<AggregateGridRange | null>(null);
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
+  const checkAnchorRef = useRef<string | null>(null);
   const cellDragAnchorRef =
     useRef<AggregateGridRange["anchor"] | null>(null);
   const lastCellRef = useRef<AggregateGridRange["anchor"] | null>(null);
@@ -251,6 +254,8 @@ export default function AggregatePage({
 
   const reload = useCallback(
     async (runId?: number) => {
+      setCheckedKeys(new Set());
+      checkAnchorRef.current = null;
       setView(await window.sekisan.getAggregate(project.id, runId));
       setRuns(await window.sekisan.listAggregateRuns(project.id));
       replaceEdits({});
@@ -340,6 +345,14 @@ export default function AggregatePage({
   const onCellMouseDown = useCallback(
     (event: ReactMouseEvent<HTMLTableElement>) => {
       if (event.button !== 0) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".bulk-check")
+      ) {
+        cellDragAnchorRef.current = null;
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
       const cell = gridCellFromTarget(event.target);
       if (!cell) return;
       const anchor =
@@ -358,6 +371,13 @@ export default function AggregatePage({
   );
   const onCellMouseOver = useCallback(
     (event: ReactMouseEvent<HTMLTableElement>) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".bulk-check")
+      ) {
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
       const anchor = cellDragAnchorRef.current;
       if (!anchor || event.buttons !== 1) return;
       const cell = gridCellFromTarget(event.target);
@@ -367,9 +387,17 @@ export default function AggregatePage({
     },
     [],
   );
-  const onCellMouseUp = useCallback(() => {
-    cellDragAnchorRef.current = null;
-  }, []);
+  const onCellMouseUp = useCallback(
+    (event: ReactMouseEvent<HTMLTableElement>) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".bulk-check")
+      )
+        window.getSelection()?.removeAllRanges();
+      cellDragAnchorRef.current = null;
+    },
+    [],
+  );
 
   const numKey = (item: AggregateItem, field: string): string =>
     `${item.masterKey}\u0000${field}`;
@@ -421,6 +449,8 @@ export default function AggregatePage({
       setRawNums({});
       markSaved({});
       setSelected(null);
+      setCheckedKeys(new Set());
+      checkAnchorRef.current = null;
       if (quiet) return;
       setMessage(
         `${list.length}件を直して計算書・明細マスターへ反映し、集計し直しました`,
@@ -532,15 +562,35 @@ export default function AggregatePage({
     () => buildLines(view.items, subjects),
     [subjects, view.items],
   );
-  const bulkSubjectTargets = useMemo(
+  const itemOrder = useMemo(
     () =>
-      cellRange
-        ? itemsInGridRange(lines, cellRange)
-        : selected
-          ? [selected]
-          : [],
-    [cellRange, lines, selected],
+      lines.flatMap((line) =>
+        line.kind === "item" ? [line.item.masterKey] : [],
+      ),
+    [lines],
   );
+  useEffect(() => {
+    const present = new Set(itemOrder);
+    if (checkAnchorRef.current !== null && !present.has(checkAnchorRef.current))
+      checkAnchorRef.current = null;
+    setCheckedKeys((current) => {
+      const next = new Set([...current].filter((key) => present.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [itemOrder]);
+  const bulkSubjectTargets = useMemo(() => {
+    if (checkedKeys.size > 0)
+      return lines.flatMap((line) =>
+        line.kind === "item" && checkedKeys.has(line.item.masterKey)
+          ? [line.item]
+          : [],
+      );
+    return cellRange
+      ? itemsInGridRange(lines, cellRange)
+      : selected
+        ? [selected]
+        : [];
+  }, [cellRange, checkedKeys, lines, selected]);
   const lineGridRows = useMemo(() => {
     let row = 0;
     return lines.map((line) => {
@@ -628,6 +678,8 @@ export default function AggregatePage({
     }
     replaceEdits(next);
     setBulkSubjectOpen(false);
+    setCheckedKeys(new Set());
+    checkAnchorRef.current = null;
     const subjectName =
       subjects.find((row) => row.id === subjectId)?.name ?? "（科目なし）";
     setMessage(
@@ -676,7 +728,11 @@ export default function AggregatePage({
   /** 備考（下段）と積算用表示の左右移動を補う（上下は共通処理に任せる）。 */
   const onTableKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
     const field = event.target;
-    if (!(field instanceof HTMLInputElement)) return;
+    if (
+      !(field instanceof HTMLInputElement) ||
+      field.classList.contains("bulk-check")
+    )
+      return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     const start = field.selectionStart;
     const end = field.selectionEnd;
@@ -840,7 +896,7 @@ export default function AggregatePage({
         <button
           type="button"
           disabled={bulkSubjectTargets.length === 0}
-          title="範囲で選んだ明細の科目をまとめて変えます。保存するまでは ↶ 戻る で戻せます"
+          title="✔を付けた明細（✔が無いときは範囲で選んだ明細）の科目をまとめて変えます。保存するまでは ↶ 戻る で戻せます"
           onClick={() => {
             setBulkSubjectId(selected?.subjectId ?? "");
             setBulkSubjectOpen(true);
@@ -1059,6 +1115,29 @@ export default function AggregatePage({
                     data-gcol={0}
                     rowSpan={2}
                   >
+                    <input
+                      type="checkbox"
+                      className="bulk-check"
+                      tabIndex={-1}
+                      checked={checkedKeys.has(item.masterKey)}
+                      title="科目をまとめて変える行に✔を付けます（Shiftを押しながら押すと、前に押した行からここまで全部）"
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const shift =
+                          (e.nativeEvent as MouseEvent).shiftKey === true;
+                        const anchor = checkAnchorRef.current;
+                        setCheckedKeys((previous) =>
+                          toggleBulkCheck(
+                            itemOrder,
+                            previous,
+                            item.masterKey,
+                            anchor,
+                            shift,
+                          ),
+                        );
+                        checkAnchorRef.current = item.masterKey;
+                      }}
+                    />
                     {draft.subjectId ?? ""}
                     {item.manual && (
                       <span
